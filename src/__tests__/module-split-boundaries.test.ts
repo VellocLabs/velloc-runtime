@@ -186,9 +186,13 @@ describe('AssistantUiThread/ split', () => {
   const dir = ['browser', 'webview']
 
   it('keeps the extracted components from importing their old host', () => {
-    // Sidebar, the composer-sync effects and the dialogs were lifted out of
-    // AssistantUiThread.tsx. It imports them; none may import it back.
-    for (const name of ['Sidebar.tsx', 'ThreadComposerSync.tsx', 'ThreadDialogs.tsx']) {
+    // AssistantUiThread.tsx imports these modules; none may import it back.
+    for (const name of [
+      'Sidebar.tsx', 'ThreadComposerSync.tsx', 'ThreadDialogs.tsx', 'AssistantUiThreadProps.ts',
+      'composerSendGate.ts', 'runtimeErrorText.ts', 'generativeToolParts.ts',
+      'useThreadApprovalContexts.ts', 'useComposerSubmit.ts', 'useThreadTranscriptMessages.ts',
+      'useThreadPanelContexts.ts', 'usePendingMessageJumpReveal.ts', 'useBypassPermissionsGate.ts',
+    ]) {
       expect(
         importsFrom(read(...dir, name), './AssistantUiThread'),
         `${name} must not import AssistantUiThread — it is their host.`,
@@ -202,15 +206,15 @@ describe('AssistantUiThread/ split', () => {
     // bypass warning at most once per session. A copy in a second module
     // would be a second, independent gate — the warning would fire twice and
     // nothing would fail. It must exist in exactly one file.
-    const owners = ['AssistantUiThread.tsx', 'Sidebar.tsx', 'ThreadComposerSync.tsx',
-      'ThreadDialogs.tsx', 'MultiSessionShell.tsx']
+    const owners = ['AssistantUiThread.tsx', 'useBypassPermissionsGate.ts', 'Sidebar.tsx',
+      'ThreadComposerSync.tsx', 'ThreadDialogs.tsx', 'MultiSessionShell.tsx']
       .filter(name => /const startupBypassGatedSessions\b/.test(read(...dir, name)))
 
     expect(
       owners,
       'startupBypassGatedSessions must be declared exactly once — a duplicate '
       + 'is a second independent once-per-session gate.',
-    ).toEqual(['AssistantUiThread.tsx'])
+    ).toEqual(['useBypassPermissionsGate.ts'])
   })
 })
 

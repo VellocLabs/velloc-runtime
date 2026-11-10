@@ -410,7 +410,7 @@ describe('slash output — the call site that actually broke', () => {
   // the cheap way to pin a call site no unit test reaches — same technique
   // `module-split-boundaries.test.ts` uses for import edges.
   const source = readFileSync(
-    join(__dirname, '..', 'browser', 'webview', 'AssistantUiThread.tsx'),
+    join(__dirname, '..', 'browser', 'webview', 'useThreadTranscriptMessages.ts'),
     'utf8',
   )
 

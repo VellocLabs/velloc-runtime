@@ -22,10 +22,9 @@ import {
 } from '../../components/assistant-ui/chapter-marks'
 import { SessionProposalsContext } from '../../components/assistant-ui/session-proposals-context'
 import { useCan } from './useCan'
-import { useMcpAuth } from './mcpAuthView'
-import type { RuntimeConnection } from '../runtimeClient/RuntimeConnection'
+
+
 import type {
-  AppendMessage,
   ThreadMessageLike,
 } from '@assistant-ui/react'
 import {
@@ -33,8 +32,7 @@ import {
   takeInjectRestoreFiles,
   type ComposerDelivery,
 } from '../../components/assistant-ui/inject-message-context'
-import { resolveForkSendPlan } from './forkSend'
-import { composerSendText, createPassageDraftStore, passageAsQuoted, serializePassagePrompt } from './capturedPassages'
+
 import { resolveAfterResponseCut } from './messageContextMenuModel'
 import { ComposerPassagesProvider } from '@/components/assistant-ui/composer-passages'
 import {
@@ -42,8 +40,7 @@ import {
   mergeWantedRows,
   windowMessageContent,
 } from './historyContentWindow'
-import { shareRowsById } from './structuralSharing'
-import type { InjectRemoveResult, SubmitDelivery } from './BrowserRuntimeClient'
+
 import {
   AssistantRuntimeProvider,
   AuiIf,
@@ -74,19 +71,13 @@ import {
   useRef,
   useState,
 } from 'react'
-import type {
-  BrowserLlmSelection,
-  NexusSettingsSection,
-  ProviderMissingPrompt,
-} from '../bridge/browserBridgeProtocol'
-import type { AgentRuntimeWorkerSnapshot, SessionMcpServerView } from '../worker/workerProtocol'
-import type { NexusAgentChangeSection, NexusTaskSummaryRow } from '../bridge/protocol/ui'
+import type { NexusAgentChangeSection } from '../bridge/protocol/ui'
 import {
   deriveSessionMetadataFromMessages,
   isConversationResumable,
   resolvePromptCutForToolCall,
 } from '../../sessions/sessionStore'
-import { CONTINUE_IN_CODE_TOOL_ID } from '../../toolkit/builtin/continueInCode'
+
 import type { ContinueInCodeFolder } from './sessionMessageCallbacks'
 import { BrowserComposerAttachmentAdapter } from './BrowserComposerAttachmentAdapter'
 import { getSupportsImageInputForModel } from '../../engine/contextWindow'
@@ -96,55 +87,33 @@ import {
 } from '@/components/assistant-ui/attachment'
 import {
   BypassPermissionsDialog,
-  shouldGateBypassSwitch,
 } from './BypassPermissionsDialog'
 
-// The startup bypass-warning gate (F-13) fires at most once PER SESSION. Keyed
-// by sessionId — NOT a per-instance ref — so it survives MultiSessionShell's LRU
-// mount/unmount churn: a session that boots in the background and later
-// foregrounds, or one evicted and remounted, must not re-warn. Keying on
-// sessionId means this module-global does not leak across sessions (each session
-// reads only its own key — cf. the multi-session global-state caveat).
-const startupBypassGatedSessions = new Set<string>()
 import { BackgroundTasksContext } from '@/components/assistant-ui/background-tasks-context'
 import { SessionConnectorsContext } from '@/components/assistant-ui/session-connectors-context'
 import { SessionBusyProvider } from '@/components/assistant-ui/session-busy-context'
 import {
   RightPanelContentContext,
-  type RightPanelDiffTarget,
-  type RightPanelSkillTarget,
-  type RightPanelFileTarget,
 } from '@/components/assistant-ui/right-panel-content-context'
-import { ShellCommandContext, type ShellCommandContextValue } from '@/components/assistant-ui/shell-command'
-import { TERMINAL_CAPABILITY, type TerminalRunResult } from '@/terminal/protocol'
-import { useResolvedConnection, useTerminalsState } from './terminal/useTerminals'
+import { ShellCommandContext } from '@/components/assistant-ui/shell-command'
 import {
   FilePathContext,
-  createFilePathProbe,
-  type FilePathStat,
 } from '@/components/assistant-ui/file-path-context'
 import {
   PlanPanelContext,
-  type PlanPanelContextValue,
 } from '@/components/assistant-ui/plan-panel-context'
 import {
   PermissionAskContext,
-  type PermissionAskContextValue,
 } from '@/components/assistant-ui/permission-ask-context'
 import {
   EnterPlanApprovalContext,
-  type EnterPlanApprovalContextValue,
 } from '@/components/assistant-ui/enter-plan-approval-context'
-import { resolvePlanApproval } from '@/permissions/planApproval'
+
 import { snapshotNeedsAnswer, snapshotBlocksComposerInput } from '@/utils/sessionNeedsAnswer'
-import type { RuleEdit } from '@/permissions/ruleUpdates'
+
 import type { BrowserRuntimeClientState } from './BrowserRuntimeClient'
-import type { BrowserRuntimeToolResultSubmission } from './BrowserRuntimeClient'
+
 import {
-  combineThreadMessages,
-  combineThreadMessagesDeps,
-  convertTranscriptToThreadMessages,
-  extractTextFromAppendMessage,
   PROVIDER_API_ERROR_RESUME_PROMPT,
   resolveProviderApiErrorRetryAction,
   shouldShowLoadingSkeleton,
@@ -152,7 +121,6 @@ import {
 } from './assistantUiAdapter'
 import {
   engageConversationLockOnFirstForeground,
-  engageConversationLockToBottom,
   findConversationViewport,
 } from './conversationScrollLock'
 import {
@@ -162,7 +130,7 @@ import {
 import { sessionTimeBucket, sessionActivityTime } from './sessionTimeBucket'
 import { useComposerDraftSync } from './useComposerDraftSync'
 import { useProviderMissingPrompt } from './useProviderMissingPrompt'
-import { useT, type TranslateFn } from './i18n'
+import { useT } from './i18n'
 import {
   getThreadLaunchers,
   getLauncherForType,
@@ -182,8 +150,7 @@ import { MessageActionsContext } from '@/components/assistant-ui/message-actions
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
-import type { BrowserToolCallDetailRecord } from '../../utils/toolCallDetails'
-import { findWorkspaceDiffFile, type TurnFileChange } from '../../utils/turnDiffs'
+
 import {
   getBootDiagnosticTraceId,
   installSessionTracer,
@@ -204,40 +171,38 @@ import {
   Thread,
   ThreadWelcome,
 } from '@/components/assistant-ui/thread'
-import { ASK_TOOL_ID } from '@/toolkit/builtin/askUser'
-import { SKILL_TOOL_NAME } from '@/prompting/skillToolName'
+
+
 import { hasA2uiBlockInRecentRows, hasA2uiContent } from './a2ui/hasA2uiSurface'
 import { useAppBoard } from './apps/appSurfaceView'
+
 import {
-  A2UI_CREATE_SURFACE,
-  A2UI_DELETE_SURFACE,
-  A2UI_UPDATE_COMPONENTS,
-  A2UI_UPDATE_DATA_MODEL,
-} from '@/toolkit/builtin/a2ui/a2uiToolNames'
-import { type SessionListItem } from './Sidebar'
-import {
-  consumePendingMessageJump,
-  findLastEntryAtOrBeforeLine,
-  setPendingMessageJump,
-  peekPendingMessageJump,
-  subscribePendingMessageJump,
-} from './pendingMessageJumpStore'
-import {
-  currentRevealGeneration,
   revealChapterRow,
-  revealRowForPart,
-  revealThreadMessage,
 } from './revealThreadMessage'
-import { requestPartReveal } from './partRevealStore'
+
 import { useShowReasoning, withoutReasoningParts } from './showReasoning'
 import { ComposerDraftSync, ComposerTextInsert, ComposerTextRestore } from './ThreadComposerSync'
 import { ProviderMissingDialog, WorkspaceProjectFolderDialog } from './ThreadDialogs'
 
-/**
- * How many times one search jump may re-arm itself after a failed reveal; unbounded, a
- * reveal that cannot succeed would loop for as long as the session stays open.
- */
-const MAX_JUMP_ATTEMPTS = 2
+import type { AssistantUiThreadProps } from './AssistantUiThreadProps'
+import { runtimeErrorText } from './runtimeErrorText'
+import { hasGenerativeToolParts } from './generativeToolParts'
+import { useThreadApprovalContexts } from './useThreadApprovalContexts'
+import { useComposerSubmit } from './useComposerSubmit'
+import { useThreadTranscriptMessages } from './useThreadTranscriptMessages'
+import { useThreadPanelContexts } from './useThreadPanelContexts'
+import { usePendingMessageJumpReveal } from './usePendingMessageJumpReveal'
+import { useBypassPermissionsGate } from './useBypassPermissionsGate'
+
+export type { AssistantUiThreadProps } from './AssistantUiThreadProps'
+export {
+  COMPOSER_CATALOG_WAIT_MS,
+  resolveComposerSendGate,
+  resolveComposerSendGateOnceCatalogLoads,
+  type ComposerSendGateDecision,
+} from './composerSendGate'
+export { runtimeErrorText } from './runtimeErrorText'
+export { hasGenerativeToolParts } from './generativeToolParts'
 
 /** One empty list, so a session without sub-agent changes keeps a stable value. */
 const NO_AGENT_CHANGES: readonly NexusAgentChangeSection[] = []
@@ -262,408 +227,12 @@ const A2uiProviderHost = lazy(async () => {
   return { default: module.A2uiProviderHost }
 })
 
-const GENERATIVE_TOOL_NAMES = new Set([
-  'collect_contact',
-  'select_date',
-  'show_location',
-  ASK_TOOL_ID,
-  // The a2ui_* tool-calls render a card (or an update note) at their position
-  // in the conversation; the surface itself is in the side pane.
-  A2UI_CREATE_SURFACE,
-  A2UI_UPDATE_COMPONENTS,
-  A2UI_UPDATE_DATA_MODEL,
-  A2UI_DELETE_SURFACE,
-  CONTINUE_IN_CODE_TOOL_ID,
-  // The Skill card names the skill and anchors a model-invoked review's report card.
-  SKILL_TOOL_NAME,
-])
-
-export type AssistantUiThreadProps = {
-  state: BrowserRuntimeClientState
-  readOnly?: boolean
-  /** The session this thread shows, for reads that must work without a snapshot (a read-only thread has none). */
-  threadSessionId?: string
-  submitPrompt: (prompt: string) => Promise<void>
-  /**
-   * Submit a hidden, model-only "meta" turn — used by A2UI surface actions
-   * (button clicks). Threaded down to the lazy A2UI panel; absent for sessions
-   * that never render a surface. See UpstreamA2uiPanel.
-   */
-  submitActionMessage?: (prompt: string) => Promise<void>
-  /**
-   * Resume an interrupted/completed conversation (the composer's Continue
-   * button) via `BrowserRuntimeClient.continueConversation` — a hidden
-   * `isMeta` continuation that never renders as a user bubble. Absent ⇒ the
-   * Continue button stays hidden (thread.tsx gates on the context value).
-   */
-  continueConversation?: () => Promise<void>
-  submitComposerMessage?: (
-    message: AppendMessage,
-    options?: { delivery?: SubmitDelivery },
-  ) => Promise<void>
-  /**
-   * Open the host's native multi-file picker (the guest `<webview>` cannot raise its own
-   * `<input type=file>`). Absent ⇒ assistant-ui's built-in `<input>`. `allowImages` follows
-   * the ACTIVE model's capability.
-   */
-  onPickAttachmentFiles?: (options?: { allowImages?: boolean }) => Promise<File[]>
-  submitToolResult: (submission: BrowserRuntimeToolResultSubmission) => Promise<void>
-  loadToolCallDetail?: (
-    toolCallId: string,
-  ) => Promise<BrowserToolCallDetailRecord | null>
-  loadTurnDiffDetail?: (
-    turnIndex: number,
-  ) => Promise<TurnFileChange[] | null>
-  interrupt: () => Promise<void>
-  /**
-   * Clear this session's saved "next message" (the NextMessageStrip × button).
-   * Routes to the active session's client → `worker.clearPendingMessage`. The
-   * clearing WebView restores the text into its own composer (handled inside
-   * the strip); other WebViews just hide the strip. Absent ⇒ the × is inert.
-   */
-  onClearPendingMessage?: () => void
-  /**
-   * Remove one pending plain-Enter bubble (its ×) via
-   * `worker.removeInjectMessage`. Resolves with the worker's verdict; only an
-   * `ok:true` hands the text (and the files this page attached) back to this
-   * composer. Absent ⇒ no × is shown.
-   */
-  onRemoveInjectMessage?: (uuid: string) => Promise<InjectRemoveResult>
-  /**
-   * Set this session's permission mode (composer mode picker / Shift+Ctrl+M).
-   * Routes to `worker.setPermissionMode`. Absent ⇒ the picker doesn't render
-   * (e.g. tests / storybook). Mirrors how other host actions thread in.
-   */
-  setPermissionMode?: (mode: string) => void
-  /**
-   * Persist the user's acceptance of the Bypass-Permissions warning dialog
-   * (F-13). Used by the confirm-before-apply gate over switches into
-   * `bypassPermissions`. Absent ⇒ the gate still works but the acknowledgment
-   * is not persisted (re-prompts next session).
-   */
-  setSkipDangerousMode?: (value: boolean) => void
-  /** Resolve a queued interactive tool confirmation (one ask at a time). */
-  resolveToolUseConfirm?: (params: {
-    approvalCallId: string
-    behavior: 'allow' | 'reject' | 'abort'
-    updatedInput?: Record<string, unknown>
-    feedback?: string
-    ruleEdits?: RuleEdit[]
-  }) => void | Promise<void>
-  /**
-   * Resolve a pending plan approval: clears it in the engine + refreshes the
-   * snapshot so the plan-approval control dismisses immediately. Called before
-   * setPermissionMode + submitToolResult when the user approves / keeps
-   * planning.
-   */
-  clearPlanApproval?: (toolCallId?: string) => void | Promise<void>
-  /**
-   * Open the right-side plan-details panel (shell-level drawer) for this
-   * session's pending plan. Wired from MultiSessionShell; absent on embeds
-   * without a panel host (the footer control's "View plan" is then inert).
-   */
-  onOpenPlanPanel?: () => void
-  /**
-   * Persisted composer draft for THIS session (loaded from localStorage
-   * by the parent). Restored into the composer on first mount when the
-   * live composer is still empty. Subsequent prop changes are ignored —
-   * we never overwrite the user's in-progress typing.
-   */
-  initialComposerDraft?: string
-  /** Text to add to the end of the composer, once per `nonce` (F-9 *Attach as context*). */
-  composerInsert?: { text: string; nonce: number } | null
-  /**
-   * Fires on a 500 ms debounce after the user edits the composer. The
-   * parent persists the draft to localStorage and bumps the session's
-   * `lastComposerEditAt`, which the sidebar's sort key consumes. The
-   * `sessionId` argument lets the parent share a single stable callback
-   * across all mounted thread trees in the LRU.
-   */
-  onComposerEdit?: (
-    sessionId: string,
-    composerDraft: string,
-    editedAt: number,
-  ) => void
-  /**
-   * Fork the conversation at a message uuid. Bound to this thread's session by
-   * MultiSessionShell; surfaced as the user-message "Fork from here" action.
-   */
-  onForkFromMessage?: (cutUuid: string) => void
-  /**
-   * Fork the conversation INCLUSIVELY at a transcript uuid, the composer left
-   * empty: the message menu's "Fork from here" on a reply (F-22). Bound to
-   * this thread's session by MultiSessionShell.
-   */
-  onForkAfterMessage?: (cutUuid: string) => void
-  /**
-   * Send a composer message into a forked copy of this session (the
-   * composer's Ctrl/Cmd+Alt+Enter), cut inclusively at `cutUuid`. Resolves
-   * `false` when the fork never happened, so the text goes back into the
-   * composer. Bound to this thread's session by MultiSessionShell.
-   */
-  onSendInForkedSession?: (
-    cutUuid: string,
-    message: AppendMessage,
-  ) => Promise<boolean>
-  /**
-   * Continue this chat in a new Code session bound to a folder, forked at
-   * `cutUuid` (exclusive). Resolves false when no folder was chosen. Bound to
-   * this thread's session by MultiSessionShell.
-   */
-  onContinueInCode?: (cutUuid: string, folder: ContinueInCodeFolder) => Promise<boolean>
-  /** Rewind the conversation to a message uuid (restore + discard after). */
-  onRewindToMessage?: (cutUuid: string) => void
-  /** Open a side chat cut at a message, quoting the selection (F-36). */
-  onStartSideChat?: (cutUuid: string, selection: string) => void
-  /**
-   * Session list props (mirror the Sidebar prop shape) — threaded through
-   * to the thread body for session-scoped actions.
-   */
-  sessions?: SessionListItem[]
-  activeSessionId?: string
-  /** Open the global Background Tasks drawer. Provided to the conversation via
-   *  `BackgroundTasksContext` so the Agent tool card can surface a "jump to
-   *  background task" affordance on a background launch. */
-  onOpenBackgroundTasks?: (focusSessionId?: string) => void
-  /** Number of THIS session's background tasks still running. Rides
-   *  `BackgroundTasksContext` to the composer-footer "session still working"
-   *  indicator (a settled turn with running tasks WILL receive more
-   *  task-notification turns). */
-  runningBackgroundTaskCount?: number
-  /** THIS session's background task rows, for the session card stack. */
-  backgroundTaskRows?: readonly NexusTaskSummaryRow[]
-  onStopBackgroundTask?: (taskId: string) => void
-  /** Open the Tasks view on its list rather than a task's detail. */
-  onOpenBackgroundTasksList?: () => void
-  /** Open a file in the right-panel Files view. Provided via
-   *  `RightPanelContentContext`; consumed by the Read/Edit tool cards' path
-   *  headers. Absent on embeds without a panel host. */
-  onOpenFileInPanel?: (target: RightPanelFileTarget) => void
-  /** Bring the Terminal pane forward on one of `sessionId`'s terminals: a chat Run card ran a command in it. */
-  onOpenTerminalInPanel?: (sessionId: string, terminalId: string) => void
-  /** Batched existence check for file paths the transcript auto-detects.
-   *  Absent on hosts without an fs bridge — paths then stay plain text. */
-  statFilePaths?: (paths: string[]) => Promise<readonly FilePathStat[]>
-  /** Open an Edit's diff in the right-panel Diff view. Consumed by the Edit
-   *  tool card's clickable title. */
-  onOpenDiffInPanel?: (target: RightPanelDiffTarget) => void
-  /** Open a skill's instructions in the right-panel Skill view. Consumed by
-   *  the Skill card's "View skill". */
-  onOpenSkillInPanel?: (target: RightPanelSkillTarget) => void
-  onSwitchThread?: (sessionId: string) => void
-  onDeleteThread?: (sessionId: string) => void
-  onRenameThread?: (sessionId: string, title: string) => void
-  onNewThread?: () => void
-  onLaunchThread?: (templateType?: string) => void
-  openSettings?: (section?: NexusSettingsSection) => Promise<void>
-  /** Open Settings → Plugins & Mods at one plugin's row — the icon on a
-   *  mod's rows above the prompt (F-25). */
-  onOpenPluginSettings?: (plugin: string) => void
-  /** The shell docks the mods' panes in its Plugins side pane (F-25,
-   *  `placement: 'dock'`): the thread draws none above the prompt. */
-  modPanesDocked?: boolean
-  /** The session card stack docks at the transcript's top right (F-9). */
-  sessionCardsDocked?: boolean
-  /** The session cards' popover (the stack does not dock): open for this
-   *  thread, and how it asks to close. */
-  sessionCardsPopoverOpen?: boolean
-  onSessionCardsPopoverClose?: () => void
-  /** The page's runtime connection, for `mods/ui/<sessionId>` — the mods'
-   *  status lines, notices and toasts (F-25). Absent on a mock host. */
-  runtimeConnection?: () => Promise<RuntimeConnection>
-  loadProviderMissingPrompt?: () => Promise<ProviderMissingPrompt>
-  /**
-   * Adopt the catalog's default model as this session's selection, when the send gate finds
-   * the persisted one unavailable but enabled providers exist. The shell also opens the quick
-   * model picker.
-   */
-  onAdoptDefaultSelection?: (selection: BrowserLlmSelection) => void
-  /**
-   * Apply a selection to THIS session only — the composer's effort control.
-   * Unlike the topbar pick it never moves the global default new sessions
-   * start on (F-12, "Session effort"). Absent = the
-   * control is not rendered. Called with THIS thread's sessionId (as
-   * `onSelectProjectFolder` is), never routed to whichever session is active.
-   */
-  onSelectSessionModel?: (sessionId: string, selection: BrowserLlmSelection) => void
-  /** Save (tokens) or clear (`'auto'`) the NAMED session's active model's
-   *  auto-compact window — the context popover's drag handle. */
-  onSetAutoCompactWindow?: (sessionId: string, value: number | 'auto') => void
-  /**
-   * Re-bind a code session to an already-known recent project folder (picked
-   * from the composer chip's dropdown). Bound to a sessionId by
-   * MultiSessionShell. No-op once the session has messages (folder is locked).
-   */
-  onSelectProjectFolder?: (sessionId: string, path: string) => void
-  /**
-   * Open the native folder picker for a code session and bind the chosen
-   * folder (the chip's "Open folder…" item + the forced first-run dialog).
-   * Resolves once the pick + bind settle so callers can show progress.
-   */
-  onOpenProjectFolder?: (sessionId: string) => Promise<void> | void
-  /**
-   * Reveal the bound folder in the native OS file manager (the chip's "Show in
-   * Explorer" action). Operates on the folder path, not a session.
-   */
-  onRevealProjectFolder?: (path: string) => void
-  /**
-   * Report whether THIS session currently has an unanswered AskUserQuestion.
-   * That pending state lives only in the per-thread pending-questions store
-   * (it doesn't survive on the worker snapshot), so it's surfaced upward to the
-   * shell to union into the session-list "needs your response" indicator. The
-   * other halting controls (plan / permission approvals) are read directly from
-   * the snapshot at the shell and don't need this.
-   */
-  onPendingQuestionsChange?: (sessionId: string, hasPending: boolean) => void
-}
-
-/**
- * What a composer submit is allowed to do, given the session's current state.
- *
- * `send` is the only outcome that reaches the runtime; every other outcome is a
- * refusal the caller must pair with a composer-text restore, because
- * `composer.send()` has already cleared the composer by the time `onNew` runs.
- */
-export type ComposerSendGateDecision =
-  | { kind: 'send' }
-  /** Snapshot hasn't arrived — we can't tell whether a provider is configured. */
-  | { kind: 'not-ready' }
-  /** This thread isn't the one the submit callbacks are bound to. */
-  | { kind: 'wrong-session' }
-  /** Halted on a permission / plan approval; a message can't unblock it. */
-  | { kind: 'awaiting-confirm' }
-  /** A code session must bind a real project folder before it can send. */
-  | { kind: 'needs-project-folder' }
-  /** The pinned model is gone but the catalog still has a usable default. */
-  | { kind: 'adopt-default'; selection: BrowserLlmSelection }
-  /** No usable provider at all — the set-up-a-provider dialog. */
-  | { kind: 'provider-missing' }
-  /** The model catalog has not loaded yet; see `resolveComposerSendGateOnceCatalogLoads`. */
-  | { kind: 'awaiting-catalog' }
-
-/** How long a send waits for the model catalog before going to the runtime regardless. */
-export const COMPOSER_CATALOG_WAIT_MS = 3_000
-
-/**
- * The send gate, re-run as snapshots arrive while the catalog is still loading.
- * Never returns `awaiting-catalog`: past `timeoutMs` the send goes to the
- * runtime, which holds a first submit for the catalog itself.
- * `waitForSnapshot(ms)` resolves on the next snapshot or after `ms`.
- */
-export async function resolveComposerSendGateOnceCatalogLoads(params: {
-  readSnapshot: () => AgentRuntimeWorkerSnapshot | null | undefined
-  waitForSnapshot: (ms: number) => Promise<void>
-  activeSessionId?: string
-  canAdoptDefault: boolean
-  timeoutMs?: number
-  now?: () => number
-}): Promise<Exclude<ComposerSendGateDecision, { kind: 'awaiting-catalog' }>> {
-  const now = params.now ?? Date.now
-  const deadline = now() + (params.timeoutMs ?? COMPOSER_CATALOG_WAIT_MS)
-  for (;;) {
-    const decision = resolveComposerSendGate({
-      snapshot: params.readSnapshot(),
-      activeSessionId: params.activeSessionId,
-      canAdoptDefault: params.canAdoptDefault,
-    })
-    if (decision.kind !== 'awaiting-catalog') return decision
-    const remaining = deadline - now()
-    if (remaining <= 0) return { kind: 'send' }
-    await params.waitForSnapshot(remaining)
-  }
-}
-
-/**
- * Pure send gate. `wrong-session` guards against validating THIS thread's snapshot while
- * the shell's submit callbacks target the ACTIVE session's client.
- */
-export function resolveComposerSendGate(params: {
-  snapshot: AgentRuntimeWorkerSnapshot | null | undefined
-  activeSessionId?: string
-  canAdoptDefault: boolean
-}): ComposerSendGateDecision {
-  const { snapshot, activeSessionId, canAdoptDefault } = params
-  if (!snapshot) return { kind: 'not-ready' }
-  if (activeSessionId != null && snapshot.sessionId !== activeSessionId) {
-    return { kind: 'wrong-session' }
-  }
-  if ((snapshot.approvalQueue?.length ?? 0) > 0) {
-    return { kind: 'awaiting-confirm' }
-  }
-  if (snapshot.needsProjectFolder) return { kind: 'needs-project-folder' }
-  // A loaded catalog lists every registered provider, so `null` means it has
-  // not arrived yet: no grounds yet to say a provider is missing.
-  if (snapshot.modelCatalog == null) return { kind: 'awaiting-catalog' }
-  const catalog = createConfiguredModelCatalog(snapshot.modelCatalog)
-  if (!isSelectionEnabled(catalog, snapshot.currentSelection)) {
-    // `createConfiguredModelCatalog` only keeps `defaultSelection` when it
-    // resolves to an ENABLED provider+model, so its presence distinguishes
-    // "this session's pinned model went away but providers are fine" (adopt
-    // the default + pop the picker so the user can change it) from "no usable
-    // provider at all" (the set-up-a-provider dialog). Without the split, a
-    // stale pinned model re-opened the provider dialog on every send even
-    // after settings were configured — an endless loop, because opening
-    // settings can never fix a stale per-session pin.
-    const fallback = catalog?.defaultSelection
-    if (fallback && canAdoptDefault) {
-      return { kind: 'adopt-default', selection: fallback }
-    }
-    return { kind: 'provider-missing' }
-  }
-  return { kind: 'send' }
-}
-
 export function getConversationTitle(state: BrowserRuntimeClientState): string {
   const metadata = deriveSessionMetadataFromMessages(
     state.transcriptMessages,
     null,
   )
   return metadata.firstPrompt || 'New Thread'
-}
-
-/**
- * The `state.lastError` codes the thread has words for. A code missing here
- * renders as the raw `code: message` — a developer-facing fallback, kept so a
- * new runtime error is loud rather than hidden. A new code the user is meant
- * to read takes a row here and a catalog entry, never a literal.
- */
-const RUNTIME_ERROR_MESSAGE_KEYS: Partial<Record<string, Parameters<TranslateFn>[0]>> = {
-  runtime_connection_failed: 'thread.runtimeConnectionFailed',
-  plugin_template_absent: 'thread.pluginTemplateAbsent',
-  plugin_template_waiting: 'thread.pluginTemplateWaiting',
-  plugin_template_owner: 'thread.pluginTemplateOwner',
-  plugin_app_seed: 'thread.pluginAppSeedFailed',
-  topbar_command_unknown: 'thread.topbarCommandUnknown',
-}
-
-/**
- * What the error card shows for `lastError`: the catalog text for a known
- * code, with the raw `code: message` as `detail` (the card's `title`, the
- * technical detail for a bug report); the raw pair itself for an unknown code.
- */
-export function runtimeErrorText(
-  lastError: BrowserRuntimeClientState['lastError'],
-  t: TranslateFn,
-): { text: string; detail: string | null } | null {
-  if (!lastError) return null
-  const raw = `${lastError.code}: ${lastError.message}`
-  const key = RUNTIME_ERROR_MESSAGE_KEYS[lastError.code]
-  return key ? { text: t(key), detail: raw } : { text: raw, detail: null }
-}
-
-/** Whether the thread holds a tool call whose card lives in the lazily loaded generative tool UIs. */
-export function hasGenerativeToolParts(messages: readonly ThreadMessageLike[]): boolean {
-  return messages.some(message => {
-    if (typeof message.content === 'string') {
-      return false
-    }
-
-    return message.content.some(
-      part =>
-        part.type === 'tool-call' &&
-        GENERATIVE_TOOL_NAMES.has(part.toolName),
-    )
-  })
 }
 
 // --- Main component ---
@@ -1056,151 +625,21 @@ function InteractiveAssistantUiThread({
     onRevealProjectFolder,
   ])
 
-  // Per-session plan-approval state + actions for the footer plan control
-  // (replaces the old top banner). The loop HALTS on the first ExitPlanMode, so
-  // there is at most one entry — render the first. `resolve` clears the approval
-  // first (instant dismiss) then approves / keeps planning.
-  const planPanelValue = useMemo<PlanPanelContextValue>(() => {
-    if (queuedPlanConfirm) {
-      const pending = {
-        toolCallId: queuedPlanConfirm.approvalCallId,
-        request: {
-          toolName: queuedPlanConfirm.toolName,
-          planText:
-            typeof queuedPlanConfirm.permissionResult.planText === 'string'
-              ? queuedPlanConfirm.permissionResult.planText
-              : '',
-          planFilePath:
-            typeof queuedPlanConfirm.permissionResult.planFilePath === 'string'
-              ? queuedPlanConfirm.permissionResult.planFilePath
-              : '',
-          restoreMode: queuedPlanConfirm.permissionResult.restoreMode ?? 'default',
-        },
-      }
-      return {
-        pending,
-        openPanel: onOpenPlanPanel,
-        resolve: (decision, feedback) =>
-          resolveToolUseConfirm?.({
-            approvalCallId: queuedPlanConfirm.approvalCallId,
-            behavior: decision === 'approve' ? 'allow' : 'reject',
-            updatedInput:
-              decision === 'approve' ? queuedPlanConfirm.input : undefined,
-            feedback,
-          }),
-      }
-    }
-    const entries = state.snapshot?.pendingPlanApproval
-      ? Object.entries(state.snapshot.pendingPlanApproval)
-      : []
-    const first = entries[0]
-    const pending = first
-      ? { toolCallId: first[0], request: first[1] }
-      : null
-    return {
-      pending,
-      openPanel: onOpenPlanPanel,
-      resolve: pending
-        ? (decision, feedback) =>
-            resolvePlanApproval(
-              decision,
-              pending.toolCallId,
-              pending.request,
-              { clearPlanApproval, setPermissionMode, submitToolResult },
-              feedback,
-            )
-        : undefined,
-    }
-  }, [
+  const {
+    planPanelValue,
+    enterPlanApprovalValue,
+    permissionAskValue,
+  } = useThreadApprovalContexts({
+    state,
     queuedPlanConfirm,
-    state.snapshot?.pendingPlanApproval,
-    onOpenPlanPanel,
+    queuedEnterPlanConfirm,
+    queuedPermissionConfirm,
+    submitToolResult,
+    setPermissionMode,
     resolveToolUseConfirm,
     clearPlanApproval,
-    setPermissionMode,
-    submitToolResult,
-  ])
-
-  // Pending model-invoked EnterPlanMode ask for THIS session ("Enter plan
-  // mode?"). Approve resolves the
-  // suspended tool call with allow (call() then flips the mode); reject sends
-  // the model a declined tool result. The dialog has no feedback field.
-  const enterPlanApprovalValue = useMemo<EnterPlanApprovalContextValue>(() => {
-    if (!queuedEnterPlanConfirm) return { pending: null }
-    return {
-      pending: { toolCallId: queuedEnterPlanConfirm.approvalCallId },
-      resolve: decision =>
-        resolveToolUseConfirm?.({
-          approvalCallId: queuedEnterPlanConfirm.approvalCallId,
-          behavior: decision === 'approve' ? 'allow' : 'reject',
-          updatedInput:
-            decision === 'approve' ? queuedEnterPlanConfirm.input : undefined,
-        }),
-    }
-  }, [queuedEnterPlanConfirm, resolveToolUseConfirm])
-
-  // Pending permission ASK (Allow/Deny/Always) for THIS session, surfaced in
-  // the composer footer (PermissionAskFooterControl) instead of a top banner.
-  // Resolve logic mirrors the former PermissionBanner: Deny → error result;
-  // Allow-once/always → add the allow rule (always also persists) + a "granted,
-  // retry" result; Allow-folder → add the directory via RuleEdit.
-  const permissionAskValue = useMemo<PermissionAskContextValue>(() => {
-    if (queuedPermissionConfirm) {
-      const suggestedRule =
-        queuedPermissionConfirm.permissionResult.suggestedRule ??
-        queuedPermissionConfirm.toolName
-      const request = {
-        toolName: queuedPermissionConfirm.toolName,
-        summary:
-          queuedPermissionConfirm.permissionResult.summary ??
-          queuedPermissionConfirm.permissionResult.message,
-        suggestedRule,
-        reason: queuedPermissionConfirm.permissionResult.reason,
-        directory: queuedPermissionConfirm.permissionResult.directory,
-      }
-      const canAllowFolder =
-        request.reason === 'outside-workspace' && Boolean(request.directory)
-      return {
-        pending: {
-          toolCallId: queuedPermissionConfirm.approvalCallId,
-          request,
-        },
-        canAllowFolder,
-        resolve: async (decision, feedback) => {
-          const ruleEdits: RuleEdit[] = []
-          if (decision === 'allow-folder' && request.directory) {
-            ruleEdits.push({
-              type: 'addDirectories',
-              directories: [request.directory],
-              destination: 'localSettings',
-            })
-          } else if (decision === 'allow-always') {
-            ruleEdits.push({
-              type: 'addRules',
-              behavior: 'allow',
-              rules: [suggestedRule],
-              destination: 'localSettings',
-            })
-          }
-          await resolveToolUseConfirm?.({
-            approvalCallId: queuedPermissionConfirm.approvalCallId,
-            behavior: decision === 'deny' ? 'reject' : 'allow',
-            updatedInput:
-              decision === 'deny' ? undefined : queuedPermissionConfirm.input,
-            feedback:
-              decision === 'deny'
-                ? (feedback ?? 'Permission denied by the user. Do not retry this call.')
-                : feedback,
-            ruleEdits:
-              ruleEdits.length > 0 ? ruleEdits : undefined,
-          })
-        },
-      }
-    }
-    // No `pendingPermissions` branch: real asks resolve via `queuedPermissionConfirm` above;
-    // an allow-and-retry would re-match the ask rule and re-prompt.
-    return { pending: null }
-  }, [queuedPermissionConfirm, resolveToolUseConfirm])
+    onOpenPlanPanel,
+  })
 
   const snapshotRef = useRef(state.snapshot)
   snapshotRef.current = state.snapshot
@@ -1365,219 +804,31 @@ function InteractiveAssistantUiThread({
     }),
     [],
   )
+  const {
+    passageStore,
+    onNew,
+  } = useComposerSubmit({
+    state,
+    readOnly,
+    activeSessionId,
+    submitPrompt,
+    submitComposerMessage,
+    onSendInForkedSession,
+    onAdoptDefaultSelection,
+    snapshotRef,
+    waitForSnapshot,
+    runtimeBusyRef,
+    lockToBottomRef,
+    nextDeliveryRef,
+    findViewport,
+    setProviderPrompt,
+    setRestoreComposerText,
+  })
 
-  // The composer's quote cards; one store per mounted thread (threads are
-  // keyed by session).
-  const [passageStore] = useState(() => createPassageDraftStore())
-
-  const onNew = useCallback(
-    async (rawMessage: AppendMessage) => {
-      const delivery = nextDeliveryRef.current
-      nextDeliveryRef.current = undefined
-      if (readOnly) return
-      // The cards leave the composer with its own send, like its text; every
-      // path below that hands the text back hands them back too.
-      const takenPassages = passageStore.takeForSend(composerSendText(rawMessage.content))
-      const message: AppendMessage =
-        takenPassages.length === 0
-          ? rawMessage
-          : {
-              ...rawMessage,
-              metadata: {
-                ...rawMessage.metadata,
-                custom: {
-                  ...rawMessage.metadata?.custom,
-                  passages: takenPassages.map(passageAsQuoted),
-                },
-              },
-            }
-      const handBack = (text: string) => {
-        passageStore.restore(takenPassages)
-        setRestoreComposerText(text)
-      }
-      const decision = await resolveComposerSendGateOnceCatalogLoads({
-        readSnapshot: () => snapshotRef.current,
-        waitForSnapshot,
-        activeSessionId,
-        canAdoptDefault: onAdoptDefaultSelection != null,
-      })
-      if (decision.kind !== 'send') {
-        // `composer.send()` has ALREADY cleared the composer by the time we
-        // run, so EVERY refusal has to hand the text back or the user's draft
-        // is silently destroyed. Restoring here — once, for every non-send
-        // outcome — is what makes that structural instead of something each
-        // new branch has to remember. (`provider-missing` is the exception:
-        // its dialog owns the restore and puts the text back on close, so
-        // restoring here too would clobber anything typed while it was open.)
-        if (decision.kind === 'provider-missing') {
-          passageStore.restore(takenPassages)
-          setProviderPrompt(extractTextFromAppendMessage(message))
-          return
-        }
-        handBack(extractTextFromAppendMessage(message))
-        if (decision.kind === 'adopt-default') {
-          onAdoptDefaultSelection?.(decision.selection)
-        }
-        return
-      }
-
-      // Ctrl/Cmd+Alt+Enter: the message goes into a forked copy of this
-      // session, not into this one. Nothing to fork (an empty session) → it
-      // is an ordinary send (`inject` is ignored while idle) — unless the
-      // first turn is still running, when it would land in THAT turn
-      // (`resolveForkSendPlan`): hand the text back instead.
-      if (delivery === 'fork') {
-        const plan = resolveForkSendPlan(
-          state.transcriptMessages,
-          runtimeBusyRef.current,
-        )
-        if (plan.kind === 'refuse') {
-          handBack(extractTextFromAppendMessage(message))
-          return
-        }
-        if (plan.kind === 'fork' && onSendInForkedSession) {
-          const forked = await onSendInForkedSession(plan.cutUuid, message)
-          if (!forked) {
-            handBack(extractTextFromAppendMessage(message))
-          }
-          return
-        }
-      }
-      const submitDelivery: SubmitDelivery | undefined =
-        delivery === 'fork' ? 'inject' : delivery
-
-      engageConversationLockToBottom(lockToBottomRef, findViewport())
-      if (submitComposerMessage) {
-        try {
-          await submitComposerMessage(
-            message,
-            submitDelivery ? { delivery: submitDelivery } : undefined,
-          )
-        } catch (error) {
-          // Never accepted: the cards go back to the composer.
-          passageStore.restore(takenPassages)
-          throw error
-        }
-        return
-      }
-
-      const prompt = serializePassagePrompt(
-        takenPassages.map(passageAsQuoted),
-        extractTextFromAppendMessage(message),
-      ).trim()
-      if (!prompt) return
-      await submitPrompt(prompt)
-    },
-    [
-      passageStore,
-      submitComposerMessage,
-      submitPrompt,
-      onAdoptDefaultSelection,
-      activeSessionId,
-      onSendInForkedSession,
-      state.transcriptMessages,
-      waitForSnapshot,
-    ],
-  )
-
-  // Tool calls the running turn is parked on awaiting the user (an
-  // AskUserQuestion halt). The transcript conversion must not stamp these as
-  // interrupted-on-restart — see convertTranscriptToThreadMessages. Keyed on a
-  // joined string so the Set's identity (a dep of the HEAVY transcript memo
-  // below) is stable across the snapshot pushes that don't change the halt set.
-  const haltedToolCallIdsKey = Object.keys(
-    state.snapshot?.pendingUserInteraction ?? {},
-  )
-    .sort()
-    .join(',')
-  const liveHaltedToolCallIds = useMemo(
-    () => new Set(haltedToolCallIdsKey ? haltedToolCallIdsKey.split(',') : []),
-    [haltedToolCallIdsKey],
-  )
-
-  // The heavy O(N) half — three full passes over the persisted transcript.
-  // Memoized on `state.transcriptMessages` ALONE so it is NOT redone on every
-  // streaming token (those only grow `state.liveEvents`; the transcript array
-  // keeps a stable reference until the worker persists new messages). This is
-  // the fix for the per-token full-transcript re-conversion that made the UI
-  // run progressively slower as a turn streamed over a long history.
-  const previousTranscriptRowsRef = useRef<readonly ThreadMessageLike[] | null>(
-    null,
-  )
-  const transcriptThreadMessages = useMemo(
-    () => {
-      // Boot instrumentation — Direction B3 (attribute ms_merged_to_unmount).
-      // Capture ENTRY of the FIRST conversion that runs on the FULLY MERGED
-      // transcript. The heavy passes live here, so the start mark belongs here;
-      // the matching end mark is captured in the combine memo below (same
-      // render on the first full convert). Earlier partial-state conversions
-      // (e.g. session-switch transients with truncated message lists) are
-      // skipped so the marks describe the boot transition. Gates mirror the
-      // transcriptMergedMs predicate in MultiSessionShell.
-      const bootMarks = (globalThis as {
-        __nexusBootMarks?: Record<string, number>
-      }).__nexusBootMarks ?? {}
-      const isFirstFullConvert =
-        bootMarks.transcriptConvertStartMs == null &&
-        state.snapshot != null &&
-        state.snapshot.messageCount > 0 &&
-        state.transcriptMessages.length >= state.snapshot.messageCount
-      if (isFirstFullConvert) {
-        bootMarks.transcriptConvertStartMs = Date.now()
-        ;(globalThis as {
-          __nexusBootMarks?: Record<string, number>
-        }).__nexusBootMarks = bootMarks
-      }
-      const converted = convertTranscriptToThreadMessages(
-        state.transcriptMessages,
-        liveHaltedToolCallIds,
-        t,
-      )
-      // Every row comes back as a new object; hand back the previous ones
-      // wherever nothing changed (see `structuralSharing.ts`), so a turn
-      // boundary doesn't rebuild assistant-ui's clients for the whole history.
-      const shared = shareRowsById(
-        previousTranscriptRowsRef.current,
-        converted.messages,
-      ) as ThreadMessageLike[]
-      previousTranscriptRowsRef.current = shared
-      return shared === converted.messages
-        ? converted
-        : { ...converted, messages: shared }
-    },
-    // Keyed on the transcript and the halted-call SET; `state.snapshot` must not be a dep
-    // (snapshot pushes would redo the conversion). `t` translates slash output here.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [state.transcriptMessages, liveHaltedToolCallIds, t],
-  )
-  // The cheap half — pending prompt + live (streaming) messages + merge.
-  // Re-runs per token, but only over the small live delta, reusing the
-  // memoized transcript conversion above.
-  const messages = useMemo(
-    () => {
-      const result = combineThreadMessages(transcriptThreadMessages, state, t)
-      const bootMarks = (globalThis as {
-        __nexusBootMarks?: Record<string, number>
-      }).__nexusBootMarks ?? {}
-      // EXIT of the first full convert (start was set in the transcript memo
-      // on the same render). Set once, then latched.
-      if (
-        bootMarks.transcriptConvertStartMs != null &&
-        bootMarks.transcriptConvertEndMs == null
-      ) {
-        bootMarks.transcriptConvertEndMs = Date.now()
-        bootMarks.transcriptConvertResultLength = result.length
-        ;(globalThis as {
-          __nexusBootMarks?: Record<string, number>
-        }).__nexusBootMarks = bootMarks
-      }
-      return result
-    },
-    // `combineThreadMessagesDeps` owns the state fields the combine reads; `t` is read by the
-    // callback and is identity-stable per locale.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [transcriptThreadMessages, t, ...combineThreadMessagesDeps(state)],
-  )
+  const messages = useThreadTranscriptMessages({
+    state,
+    t,
+  })
   const showLoadingSkeleton = shouldShowLoadingSkeleton(state, messages.length)
 
   // No-hydratable-body terminal state: when no `AssistantMessageBody` will mount in a
@@ -1623,136 +874,29 @@ function InteractiveAssistantUiThread({
   a2uiLoadedRef.current.loaded = shouldLoadA2uiSurfaces
   const conversationTitle = useMemo(() => getConversationTitle(state), [state])
   const sessionId = state.snapshot?.sessionId ?? 'pending'
-  // Handle for the conversation's Agent tool cards to open the global Background
-  // Tasks drawer (the "jump to background task" affordance), provided via
-  // BackgroundTasksContext. Memoized so the context value is referentially
-  // stable across renders.
-  const backgroundTasksValue = useMemo(
-    () => ({
-      openTasksDrawer: onOpenBackgroundTasks,
-      runningTaskCount: runningBackgroundTaskCount,
-      taskRows: backgroundTaskRows,
-      stopTask: onStopBackgroundTask,
-      openTasksList: onOpenBackgroundTasksList,
-    }),
-    [
-      onOpenBackgroundTasks,
-      runningBackgroundTaskCount,
-      backgroundTaskRows,
-      onStopBackgroundTask,
-      onOpenBackgroundTasksList,
-    ],
-  )
-  // Every snapshot is a new object; the Connectors card re-renders only when
-  // the list itself changes.
-  const sessionConnectorsKey = JSON.stringify(state.snapshot?.mcpServers ?? [])
-  const openMcpSettings = useMemo(
-    () =>
-      openSettings
-        ? () => {
-            void openSettings('mcp').catch((error: unknown) => {
-              console.error('Failed to open MCP settings:', error)
-            })
-          }
-        : undefined,
-    [openSettings],
-  )
-  const mcpAuth = useMcpAuth(runtimeConnection)
-  const sessionConnectors = useMemo(
-    () => ({
-      servers: JSON.parse(sessionConnectorsKey) as SessionMcpServerView[],
-      ...(openMcpSettings ? { openMcpSettings } : {}),
-      auth: mcpAuth,
-    }),
-    [sessionConnectorsKey, openMcpSettings, mcpAuth],
-  )
-  // Handle for the conversation's Read/Edit tool cards to open a file or diff in
-  // the global Right Panel (Files / Diff views), provided via
-  // RightPanelContentContext. Memoized for referential stability.
-  // WorkspaceDiff card title → the Diff view. With a path: resolve that
-  // file's whole-session snapshot diff (sentinel turn 0 — served by the
-  // worker for fileSnapshots sessions) and open it as a `file` target; a
-  // path-less call, an unresolvable path, or a load failure all land on the
-  // turn-history tab — never a dead click.
-  const onOpenWorkspaceDiff = useMemo(() => {
-    if (!onOpenDiffInPanel) return undefined
-    return (path?: string) => {
-      void (async () => {
-        if (path && path.trim() && loadTurnDiffDetail) {
-          try {
-            const files = await loadTurnDiffDetail(0)
-            const match = findWorkspaceDiffFile(files, path)
-            if (match) {
-              onOpenDiffInPanel({
-                kind: 'file',
-                filePath: match.filePath,
-                hunks: match.hunks,
-                plusLines: match.plusLines,
-                minusLines: match.minusLines,
-              })
-              return
-            }
-          } catch {
-            // fall through to the turn-history tab
-          }
-        }
-        onOpenDiffInPanel({ kind: 'turnHistory' })
-      })()
-    }
-  }, [onOpenDiffInPanel, loadTurnDiffDetail])
-
-  const rightPanelContentValue = useMemo(
-    () => ({
-      openFile: onOpenFileInPanel,
-      openDiff: onOpenDiffInPanel,
-      openSkill: onOpenSkillInPanel,
-      openWorkspaceDiff: onOpenWorkspaceDiff,
-    }),
-    [onOpenFileInPanel, onOpenDiffInPanel, onOpenSkillInPanel, onOpenWorkspaceDiff],
-  )
-  // One-line shell blocks run in this session's terminal (F-31): offered only
-  // with the `terminal.run` grant, on a host that has terminals, in a thread
-  // that can act.
-  const shellConnection = useResolvedConnection(runtimeConnection)
-  const terminalsAvailable = useTerminalsState(shellConnection)?.available === true
-  const shellSessionId = state.snapshot?.sessionId ?? null
-  const shellCommandValue = useMemo<ShellCommandContextValue>(() => {
-    const canRun =
-      !readOnly &&
-      shellConnection !== null &&
-      shellSessionId !== null &&
-      terminalsAvailable &&
-      shellConnection.can(TERMINAL_CAPABILITY, 'run')
-    return {
-      connection: shellConnection,
-      sessionId: shellSessionId,
-      ...(canRun
-        ? {
-            run: (command: string) =>
-              shellConnection.request<TerminalRunResult>(`${TERMINAL_CAPABILITY}.run`, {
-                sessionId: shellSessionId,
-                command,
-              }),
-          }
-        : {}),
-      ...(onOpenTerminalInPanel && shellSessionId !== null
-        ? { openTerminal: (terminalId: string) => onOpenTerminalInPanel(shellSessionId, terminalId) }
-        : {}),
-    }
-  }, [readOnly, shellConnection, shellSessionId, terminalsAvailable, onOpenTerminalInPanel])
-  // Auto-detected file paths in the transcript: the project root is the ONE
-  // base a relative mention is resolved against (no searching), and the probe
-  // is the batched existence check that decides whether a path becomes an
-  // openable `>>` affordance. One probe per host `statPaths` function, so its
-  // cache is shared by every message in this thread.
-  const filePathProbe = useMemo(
-    () => (statFilePaths ? createFilePathProbe(statFilePaths) : undefined),
-    [statFilePaths],
-  )
-  const filePathContextValue = useMemo(
-    () => ({ projectRoot: state.snapshot?.projectRoot, probe: filePathProbe }),
-    [state.snapshot?.projectRoot, filePathProbe],
-  )
+  const {
+    backgroundTasksValue,
+    sessionConnectors,
+    rightPanelContentValue,
+    shellCommandValue,
+    filePathContextValue,
+  } = useThreadPanelContexts({
+    state,
+    readOnly,
+    runtimeConnection,
+    onOpenBackgroundTasks,
+    runningBackgroundTaskCount,
+    backgroundTaskRows,
+    onStopBackgroundTask,
+    onOpenBackgroundTasksList,
+    openSettings,
+    loadTurnDiffDetail,
+    onOpenDiffInPanel,
+    onOpenFileInPanel,
+    onOpenSkillInPanel,
+    onOpenTerminalInPanel,
+    statFilePaths,
+  })
   const handleComposerEdit = useCallback(
     (composerDraft: string, editedAt: number) => {
       if (!sessionId || sessionId === 'pending') return
@@ -1802,249 +946,26 @@ function InteractiveAssistantUiThread({
     })
   }, [isForegroundSession, findViewport])
 
-  // --- Transcript-search jump consumption ---------------------------------
-  // A search-result selection stashes {uuid, lineOrdinal} in the pending
-  // jump store and switches the session; this effect fires once the
-  // thread's messages contain the target and reveals + flashes the row.
-  // A uuid without its own rendered row (e.g. a tool_result merged into a
-  // tool card) falls back to the nearest EARLIER transcript entry that
-  // does render. Consume-once: the jump is deleted only when acted on.
-  const [pendingJumpVersion, setPendingJumpVersion] = useState(0)
-  useEffect(
-    () =>
-      subscribePendingMessageJump(() =>
-        setPendingJumpVersion(version => version + 1),
-      ),
-    [],
-  )
-  useEffect(() => {
-    if (!isForegroundSession) return
-    const jump = peekPendingMessageJump(sessionId)
-    if (!jump) return
-    const ids = messages.map(message =>
-      typeof message.id === 'string' ? message.id : null,
-    )
-    let index = jump.uuid ? ids.indexOf(jump.uuid) : -1
-    // Locate the row by the hit's LINE, not by its uuid. Rendered rows are
-    // sparse — one row can stand for a hundred transcript lines, and the
-    // lines between two rows may render nowhere — so the row is the one
-    // whose recorded range contains the line. This is also the only step
-    // that can run before anything is on screen, which is what lets the
-    // reveal pin the right row instead of scrolling around looking for it.
-    if (index < 0) {
-      index = messages.findIndex(message => {
-        const custom = (message.metadata as
-          | { custom?: Record<string, unknown> }
-          | undefined)?.custom
-        const from = custom?.lineFrom
-        const to = custom?.lineTo
-        return (
-          typeof from === 'number' &&
-          typeof to === 'number' &&
-          jump.lineOrdinal >= from &&
-          jump.lineOrdinal <= to
-        )
-      })
-    }
-    if (index < 0 && state.transcriptMessages.length > 0) {
-      const entries = state.transcriptMessages as {
-        uuid?: string
-        transcriptLine?: number
-      }[]
-      const at = jump.uuid
-        ? entries.findIndex(entry => entry.uuid === jump.uuid)
-        : -1
-      // `jump.lineOrdinal` is a physical FILE line number (meta and
-      // attachment lines included) — it is NOT an index into `entries`,
-      // which holds message entries only. Map it through each entry's
-      // `transcriptLine` — the physical line the loader read it from, so
-      // the same unit as the hit — and take the last entry at or before
-      // it. Then walk back from there to the nearest entry that has a
-      // rendered row.
-      const start =
-        at >= 0 ? at : findLastEntryAtOrBeforeLine(entries, jump.lineOrdinal)
-      for (let i = start; i >= 0 && index < 0; i--) {
-        const candidate = entries[i]?.uuid
-        if (candidate) index = ids.indexOf(candidate)
-      }
-    }
-    // A uuid that names no rendered row is normal: several entries merge
-    // into one message, and virtualization culls distant rows entirely.
-    // Aim at the proportional position rather than giving up — the reveal
-    // scrolls there, which mounts rows, and then locates the row by its
-    // text. Giving up here is why a hit in a long conversation could
-    // silently do nothing.
-    if (
-      index < 0 &&
-      messages.length > 0 &&
-      state.transcriptMessages.length > 0
-    ) {
-      const share =
-        Math.min(jump.lineOrdinal, state.transcriptMessages.length - 1) /
-        state.transcriptMessages.length
-      index = Math.min(
-        messages.length - 1,
-        Math.max(0, Math.round(share * messages.length)),
-      )
-    }
-    // A hit we cannot place yet is NOT a reason to guess. Switching to a
-    // conversation starts this effect before its transcript has finished
-    // arriving, and aiming at the middle of a half-built thread sends the
-    // reveal scrolling for seconds, failing, re-arming, and doing it
-    // again — which is what "clicking a hit does nothing" looked like.
-    // The effect re-runs as messages arrive, so waiting costs nothing.
-    if (index < 0 && jump.uuid) return
-    // No uuid to wait for (an older jump payload): the reveal can still
-    // find the row by text, and any in-range hint lets it start.
-    if (index < 0 && messages.length > 0 && (jump.needle || jump.term)) {
-      index = Math.floor(messages.length / 2)
-    }
-    // Nothing to aim at and no text to search for — keep it pending; the
-    // effect re-runs as messages arrive.
-    if (index < 0) return
-    // Check the root BEFORE consuming: bailing after the consume threw
-    // the jump away for good, so a thread whose ref had not attached yet
-    // silently swallowed the hit.
-    const root = threadRootRef.current
-    if (!root) return
-    consumePendingMessageJump(sessionId)
-    // Can the message serve this itself? It can when one of its parts
-    // carries the line — then it opens the container holding that part
-    // and the part scrolls itself into view.
-    const target = messages[index]
-    const targetId = typeof target?.id === 'string' ? target.id : null
-    const targetRole = (target as { role?: unknown } | undefined)?.role
-    const targetParts = Array.isArray(target?.content) ? target.content : []
-    const term =
-      typeof jump.term === 'string' ? jump.term.trim().toLowerCase() : ''
-    // Serve from the part only for a hit in VISIBLE assistant text on this line; everything
-    // else takes the line-addressed DOM descent, which opens the enclosing collapsed card.
-    const servedByPart =
-      targetId !== null &&
-      targetRole !== 'user' &&
-      term.length > 0 &&
-      targetParts.some(part => {
-        const p = part as {
-          type?: unknown
-          text?: unknown
-          sourceLine?: unknown
-        }
-        return (
-          p.sourceLine === jump.lineOrdinal &&
-          p.type === 'text' &&
-          typeof p.text === 'string' &&
-          p.text.toLowerCase().includes(term)
-        )
-      })
-    if (servedByPart && targetId) {
-      requestPartReveal(targetId, jump.lineOrdinal, jump.term)
-    }
-    // Only ONE of the two runs. The DOM walk alongside a self-revealing
-    // part is not just redundant: it expands and re-queries while React
-    // re-renders the subtree that just opened, and neither finishes.
-    const reveal = servedByPart
-      ? revealRowForPart(root, index)
-      : revealThreadMessage(root, index, jump.lineOrdinal, jump.term)
-    // Taken right after the call: the reveal claims its generation before its first await.
-    const generation = currentRevealGeneration()
-    void reveal.then(revealed => {
-      // A newer reveal (another hit, or a chapter jump) took over: this
-      // one did not fail, and re-arming it would pull the view back.
-      if (currentRevealGeneration() !== generation) return
-      // Re-arm rather than lose it: the rows for this hit may still be
-      // mounting, and the next render will try again. BOUNDED, because
-      // re-arming unconditionally is an infinite loop when the reveal
-      // simply cannot succeed — it re-runs, fails, re-arms, forever,
-      // scrolling the conversation the whole time.
-      const attempts = (jump.attempts ?? 0) + 1
-      if (!revealed && attempts < MAX_JUMP_ATTEMPTS) {
-        setPendingMessageJump(sessionId, { ...jump, attempts })
-      }
-    })
-  }, [
+  usePendingMessageJumpReveal({
+    state,
     messages,
     sessionId,
     isForegroundSession,
-    pendingJumpVersion,
-    state.transcriptMessages,
-  ])
+    threadRootRef,
+  })
 
-  // Bypass-Permissions warning gate (F-13). A switch INTO bypassPermissions
-  // is intercepted before it applies; `bypassPending` holds the prior mode to
-  // restore on cancel (null for a live switch — it was never applied; 'default'
-  // for the startup case below — it WAS applied at boot).
-  const skipDangerousFlag =
-    state.snapshot?.skipDangerousModePermissionPrompt === true
-  const [bypassPending, setBypassPending] = useState<
-    { revertTo: string | null } | null
-  >(null)
-  const handleSetPermissionMode = useCallback(
-    (mode: string) => {
-      if (
-        shouldGateBypassSwitch({
-          next: mode,
-          current: permissionMode,
-          skipFlag: skipDangerousFlag,
-        })
-      ) {
-        setBypassPending({ revertTo: null }) // not applied yet; cancel = no-op
-        return
-      }
-      void setPermissionMode?.(mode)
-    },
-    [setPermissionMode, permissionMode, skipDangerousFlag],
-  )
-
-  // Startup gate — the primary trigger: a session that boots already in
-  // bypassPermissions without a prior acknowledgment shows the warning once.
-  // Unlike a live switch, the mode was already applied, so cancel reverts to
-  // `default`. Guarded per-session (module Set) so it fires at most once per
-  // session even across LRU mount/unmount churn.
-  const snapshotSessionId = state.snapshot?.sessionId
-  useEffect(() => {
-    if (!isForegroundSession || !snapshotSessionId) return
-    if (startupBypassGatedSessions.has(snapshotSessionId)) return
-    if (permissionMode === 'bypassPermissions' && !skipDangerousFlag) {
-      startupBypassGatedSessions.add(snapshotSessionId)
-      setBypassPending({ revertTo: 'default' })
-    }
-  }, [isForegroundSession, snapshotSessionId, permissionMode, skipDangerousFlag])
-
-  // Isolate the dialog per session: a thread leaving the foreground with a
-  // warning pending must not re-show it on switch-back (the accept/cancel
-  // handlers only run on interaction with the now-unmounted dialog).
-  useEffect(() => {
-    if (!isForegroundSession) setBypassPending(null)
-  }, [isForegroundSession])
-
-  const handleBypassAccept = useCallback(async () => {
-    try {
-      // Mark this session gated BEFORE any await: a stale `worker.state` can predate the
-      // persisted skip flag and re-open the dialog. Accepting IS the ack.
-      if (snapshotSessionId) startupBypassGatedSessions.add(snapshotSessionId)
-      // Persist the acknowledgment FIRST so the snapshot's skip-flag is true
-      // BEFORE bypass becomes the active mode. Apply the mode only for a live
-      // switch (startup is already in bypass). Keep the dialog open if a step
-      // throws (no silent success).
-      await setSkipDangerousMode?.(true)
-      if (permissionMode !== 'bypassPermissions') {
-        await setPermissionMode?.('bypassPermissions')
-      }
-      setBypassPending(null)
-    } catch (err) {
-      console.error('[bypass] failed to apply bypassPermissions', err)
-    }
-  }, [setSkipDangerousMode, setPermissionMode, permissionMode, snapshotSessionId])
-
-  const handleBypassCancel = useCallback(() => {
-    const revertTo = bypassPending?.revertTo
-    setBypassPending(null)
-    if (revertTo) {
-      void Promise.resolve(setPermissionMode?.(revertTo)).catch(err =>
-        console.error('[bypass] failed to revert permission mode', err),
-      )
-    }
-  }, [bypassPending, setPermissionMode])
+  const {
+    bypassPending,
+    handleSetPermissionMode,
+    handleBypassAccept,
+    handleBypassCancel,
+  } = useBypassPermissionsGate({
+    state,
+    permissionMode,
+    isForegroundSession,
+    setPermissionMode,
+    setSkipDangerousMode,
+  })
 
   const isRuntimeBusy =
     state.status === 'submitting' ||

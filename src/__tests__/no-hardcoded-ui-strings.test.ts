@@ -24,10 +24,6 @@ const UI_DIRS = ['browser/webview', 'components/assistant-ui']
  */
 const ALLOWED = new Map<string, string>([
   [
-    'browser/webview/AssistantUiThread.tsx',
-    'The deny `feedback` string is a tool result sent to the MODEL, not UI text.',
-  ],
-  [
     'browser/webview/AskUserQuestionToolUI.tsx',
     'ONLY the answered-questions prose: an `AskUserQuestionOutput` handed to `addResult`, read by the MODEL. Every rendered string in this file goes through the catalog — the exemption covers the tool result, not the file.',
   ],
