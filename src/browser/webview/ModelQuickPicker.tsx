@@ -127,7 +127,27 @@ export type ModelQuickPickerProps = {
    * when its callback is.
    */
   providerMenu?: ModelQuickPickerProviderMenu;
+  /**
+   * Size the trigger to one of `TRIGGER_WIDTH_STEPS` and animate between
+   * steps (topbar), so labels of similar length share a width and a label
+   * change never jumps. Ignored with `triggerClassName`/`triggerContent`.
+   */
+  steppedWidth?: boolean;
 };
+
+/** Trigger widths (px) a stepped trigger snaps up to; the last is its cap. */
+export const TRIGGER_WIDTH_STEPS = [100, 150, 200, 256] as const;
+
+/** The step a trigger whose content needs `contentPx` takes. */
+export function steppedTriggerWidth(contentPx: number): number {
+  return (
+    TRIGGER_WIDTH_STEPS.find((step) => contentPx <= step) ??
+    TRIGGER_WIDTH_STEPS[TRIGGER_WIDTH_STEPS.length - 1]
+  );
+}
+
+/** Horizontal padding + border of the trigger (`px-2.5`, 1px border). */
+const TRIGGER_CHROME_PX = 22;
 
 export type ModelQuickPickerProviderMenu = {
   /** Add `family@version` to the provider's entries (and select it). */
@@ -278,6 +298,7 @@ function ModelQuickPickerImpl({
   leadingOptions,
   modelsHeading,
   providerMenu,
+  steppedWidth,
 }: ModelQuickPickerProps) {
   const t = useT();
   const [open, setOpen] = React.useState(false);
@@ -330,6 +351,22 @@ function ModelQuickPickerImpl({
     });
     return () => cancelAnimationFrame(frame);
   }, [open, selection]);
+
+  const stepped =
+    !!steppedWidth && triggerClassName === undefined && triggerContent === undefined;
+  const contentRef = React.useRef<HTMLSpanElement | null>(null);
+  const [steppedPx, setSteppedPx] = React.useState<number | undefined>(undefined);
+  React.useLayoutEffect(() => {
+    const el = contentRef.current;
+    if (!stepped || !el) return;
+    const measure = () =>
+      setSteppedPx(steppedTriggerWidth(el.offsetWidth + TRIGGER_CHROME_PX));
+    measure();
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(measure);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [stepped]);
 
   const active = findActiveModel(catalog, selection);
   const triggerLabel = active ? activeModelLabel(active) : t("modelPicker.selectModel");
@@ -429,11 +466,25 @@ function ModelQuickPickerImpl({
           aria-description={disabled && inertWhy ? inertWhy : undefined}
           data-slot="model-picker-trigger"
           data-testid={`${testIdPrefix}-model-picker-trigger`}
+          data-stepped-width={stepped ? steppedPx : undefined}
+          style={stepped && steppedPx !== undefined ? { width: steppedPx } : undefined}
           className={cn(
             "inline-flex h-8 max-w-[16rem] items-center gap-1.5 rounded-md border bg-background px-2.5 text-sm outline-none transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-background",
+            stepped &&
+              "overflow-hidden motion-safe:transition-[width] motion-safe:duration-200 motion-safe:ease-out",
             triggerClassName,
           )}
         >
+          {/* Stepped: the content is measured at its own width, never the
+              button's, and capped so a long label still truncates. */}
+          <span
+            ref={stepped ? contentRef : undefined}
+            className={
+              stepped
+                ? "inline-flex w-max max-w-[calc(16rem-22px)] items-center gap-1.5"
+                : "contents"
+            }
+          >
           {triggerContent !== undefined ? (
             triggerContent
           ) : (
@@ -463,6 +514,7 @@ function ModelQuickPickerImpl({
             </>
           )}
           <ChevronDownIcon className="size-3.5 shrink-0 opacity-60" />
+          </span>
         </button>
       </PopoverTrigger>
       {/* 26rem (416px): wide enough that a model label ("GPT-5.6 Terra")

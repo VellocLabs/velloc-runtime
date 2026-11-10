@@ -128,6 +128,7 @@ function NexusModelPickerImpl({
       onNoProviders={canOpenProviderSettings ? onOpenSettings : undefined}
       providerMenu={providerMenu}
       publishE2eSurface
+      steppedWidth
     />
   );
 }

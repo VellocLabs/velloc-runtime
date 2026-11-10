@@ -176,6 +176,7 @@ import {
 } from './SessionDeleteDialog'
 import { ProjectDeleteConfirm, type ProjectDeleteTarget } from './ProjectDeleteDialog'
 import { NexusTopBar } from './topbar/NexusTopBar'
+import { topbarModelSelection } from './topbar/topbarModelSelection'
 import { topbarImportEntries } from './sessionImport/sourceMeta'
 import type { ImportSource } from '../bridge/protocol/sessionImport'
 import { useDetectedImportSources } from './sessionImport/useDetectedImportSources'
@@ -2856,6 +2857,7 @@ export function MultiSessionShell({
   // session whose snapshot has no selection yet — overwriting with that
   // `undefined` would lose the outgoing session's pick and reset to the boot
   // default. Keeping the last defined value inherits what the user was using.
+  const topbarSelection = topbarModelSelection(!!activeState.snapshot, activeSelection, activeSelectionRef.current)
   if (activeSelection) activeSelectionRef.current = activeSelection
 
   // Mirror the active session's title into the NATIVE window title via the host bridge (and
@@ -3843,7 +3845,7 @@ export function MultiSessionShell({
         // Switching tab IS switching session — that is the whole feature.
         onSelectSessionTab={focusSession}
         catalog={orderedActiveCatalog}
-        selection={activeSelection}
+        selection={topbarSelection}
         defaultSelection={globalDefaultSelection ?? browserDefaultSelection}
         onSelectModel={handleTopbarSelectModel}
         sessionKindLabel={activeCliSession ? getTemplateTitle(activeCliSession.type) : undefined}
