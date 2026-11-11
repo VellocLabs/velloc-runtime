@@ -136,7 +136,7 @@ export type ModelQuickPickerProps = {
 };
 
 /** Trigger widths (px) a stepped trigger snaps up to; the last is its cap. */
-export const TRIGGER_WIDTH_STEPS = [100, 150, 200, 256] as const;
+export const TRIGGER_WIDTH_STEPS = [112, 136, 160, 184, 208, 232, 256] as const;
 
 /** The step a trigger whose content needs `contentPx` takes. */
 export function steppedTriggerWidth(contentPx: number): number {

@@ -65,10 +65,13 @@ describe('topbarModelSelection', () => {
 
 describe('steppedTriggerWidth', () => {
   it('snaps up to the next step and caps at the last', () => {
-    expect(steppedTriggerWidth(60)).toBe(100)
-    expect(steppedTriggerWidth(100)).toBe(100)
-    expect(steppedTriggerWidth(101)).toBe(150)
-    expect(steppedTriggerWidth(180)).toBe(200)
+    expect(steppedTriggerWidth(60)).toBe(112)
+    expect(steppedTriggerWidth(112)).toBe(112)
+    expect(steppedTriggerWidth(113)).toBe(136)
+    // A short label with a tier badge needs ~154px: the next step leaves
+    // at most one step (24px) of slack.
+    expect(steppedTriggerWidth(154)).toBe(160)
+    expect(steppedTriggerWidth(233)).toBe(256)
     expect(steppedTriggerWidth(999)).toBe(TRIGGER_WIDTH_STEPS[TRIGGER_WIDTH_STEPS.length - 1])
   })
 })
