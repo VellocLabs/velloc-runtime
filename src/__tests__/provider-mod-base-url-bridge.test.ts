@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { NEXUS_SETTINGS_FILE_NAME, wipeSettingsMemos } from '../settings/settingsStore'
 import { providersHandlers } from '../browser/bridge/adapter/providersBridgeAdapter'
+import { handleSetModBaseUrl } from '../browser/bridge/adapter/modBaseUrlHandler'
 import type { RuntimeFs } from '../utils/fs/runtimeFs'
 import { registerModProviderDefinition, resetModProviderDefinitions } from '../config/nexusModelConfig/providers'
 import type { ProviderDefinition } from '../config/nexusModelConfig/providerDefinition'
@@ -156,6 +157,45 @@ describe('providers.setModBaseUrl', () => {
     const w = world()
     expect(await w.set('https://eu.acme.test/v1')).toEqual({ ok: false, reason: 'refused', problem: 'not-editable' })
     expect(w.stored().baseUrl).toBeUndefined()
+  })
+
+  it('does not make an unconfigured provider the active one', async () => {
+    const { fs, files } = makeMemoryFs({ [SETTINGS_PATH]: JSON.stringify({ version: 1 }) })
+    const ctx = { homeDir: HOME, fs }
+    expect(await providersHandlers.setModBaseUrl({ id: ID, baseUrl: 'https://eu.acme.test/v1' }, ctx)).toMatchObject({ ok: true })
+    const providers = JSON.parse(files.get(SETTINGS_PATH)!).providers
+    expect(providers.configs[ID].baseUrl).toBe('https://eu.acme.test/v1')
+    expect(providers.activeProviderId).toBeUndefined()
+  })
+
+  it('refuses a host the record cannot hold before asking, so a confirmation cannot fail after the dialog', async () => {
+    const w = world()
+    for (const url of ['https://[fd00::5]/v1', 'https://gateway.example./v1', 'https://my_gw.example/v1']) {
+      expect(await w.set(url), url).toEqual({ ok: false, reason: 'refused', problem: 'not-a-url' })
+    }
+    expect(w.state()).toBeUndefined()
+  })
+
+  it('the bound field is not a plugin option: options neither read nor write it', async () => {
+    const w = world()
+    await expect(
+      providersHandlers.setModOptions({ plugin: PLUGIN, owned: ['gateway'], values: { gateway: 'https://x.example' } }, w.ctx),
+    ).rejects.toThrow(/gateway/)
+  })
+
+  it('a confirmed host is not kept when the address cannot be stored', async () => {
+    const keepPersonHost = vi.fn(async () => {})
+    const rewrite = vi.fn(async () => {
+      throw new Error('settings.json is malformed')
+    })
+    const { fs } = makeMemoryFs()
+    await expect(
+      handleSetModBaseUrl(
+        { id: ID, baseUrl: 'https://gateway.example/v1', confirmedHost: 'gateway.example' },
+        { homeDir: HOME, fs, rewrite, keepPersonHost },
+      ),
+    ).rejects.toThrow(/malformed/)
+    expect(keepPersonHost).not.toHaveBeenCalled()
   })
 
   it('rejects an id that is not a provider mod', async () => {

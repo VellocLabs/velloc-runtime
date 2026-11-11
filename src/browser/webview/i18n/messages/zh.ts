@@ -1837,6 +1837,7 @@ export const zh: Messages = {
   'settings.models.mod.baseUrl.confirmTitle': '要把请求发送到 {host} 吗？',
   'settings.models.mod.baseUrl.confirmDescription': '{host} 不在 {provider} 声明的主机之内。该服务商的请求和你的密钥将发送到 {host}。',
   'settings.models.mod.baseUrl.confirm': '使用此 URL',
+  'settings.models.mod.baseUrl.saveFailed': '无法保存 Base URL：{error}',
   'settings.models.mod.secretRemovePending': '保存时将移除',
   'settings.models.mod.secretKeepAria': '保留已保存的{name}',
   'settings.models.mod.secretRemoveAria': '移除已保存的{name}',

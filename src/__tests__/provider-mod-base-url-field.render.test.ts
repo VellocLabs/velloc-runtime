@@ -92,6 +92,15 @@ describe('the base URL field', () => {
     expect(screen.queryByTestId('mod-base-url-confirm')).toBeNull()
   })
 
+  it('shows a failed save inside a catalog sentence', async () => {
+    mount(undefined, () => {
+      throw new Error('disk full')
+    })
+    type('https://eu.acme.test/v1')
+    fireEvent.click(screen.getByTestId('mod-base-url-save'))
+    expect((await screen.findByTestId('mod-base-url-problem')).textContent).toBe('Couldn\'t save the base URL: disk full')
+  })
+
   it('asks before a host outside the domains, naming the host, and sends the confirmation', async () => {
     const h = mount(undefined, payload =>
       payload.confirmedHost === 'gateway.example'

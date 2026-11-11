@@ -1889,6 +1889,7 @@ export const fr: Messages = {
   'settings.models.mod.baseUrl.confirmTitle': 'Envoyer les requêtes à {host} ?',
   'settings.models.mod.baseUrl.confirmDescription': '{host} ne fait pas partie des hôtes déclarés par {provider}. Les requêtes de ce fournisseur et votre clé seront envoyées à {host}.',
   'settings.models.mod.baseUrl.confirm': 'Utiliser cette URL',
+  'settings.models.mod.baseUrl.saveFailed': 'Impossible d’enregistrer l’URL de base : {error}',
   'settings.models.mod.secretRemovePending': 'Supprimée à l’enregistrement',
   'settings.models.mod.secretKeepAria': 'Conserver la valeur enregistrée de {name}',
   'settings.models.mod.secretRemoveAria': 'Supprimer la valeur enregistrée de {name}',

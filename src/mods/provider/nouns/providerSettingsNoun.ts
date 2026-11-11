@@ -1,6 +1,7 @@
 /**
  * `$.provider.settings()`: the manifest-declared settings as the person set them,
- * read-only (`settleOptions`). Security: a `sensitive` field is left out altogether,
+ * read-only (`settleOptions`). A field bound to a platform slot is not a setting
+ * here (`e.baseUrl` carries the base URL). Security: a `sensitive` field is left out altogether,
  * and secret sign-in answers are withheld; `signin` is a reserved name.
  */
 
@@ -39,7 +40,8 @@ export function providerSettingValues(
   // settings page is not needed here.
   const fields: Record<string, PluginUserConfigField> = {}
   for (const [key, field] of Object.entries(manifest.settings ?? {})) {
-    const { title: _title, description: _description, ...rule } = field
+    if (field.binds !== undefined) continue
+    const { title: _title, description: _description, format: _format, binds: _binds, ...rule } = field
     fields[key] = { ...rule, title: key, description: '' }
   }
   const settled = settleOptions(fields, stored)

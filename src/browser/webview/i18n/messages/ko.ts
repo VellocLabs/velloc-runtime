@@ -1857,6 +1857,7 @@ export const ko: Messages = {
   'settings.models.mod.baseUrl.confirmTitle': '요청을 {host}(으)로 보낼까요?',
   'settings.models.mod.baseUrl.confirmDescription': '{host}은(는) {provider}이(가) 선언한 호스트에 포함되어 있지 않습니다. 이 제공업체의 요청과 내 키가 {host}(으)로 전송됩니다.',
   'settings.models.mod.baseUrl.confirm': '이 URL 사용',
+  'settings.models.mod.baseUrl.saveFailed': 'Base URL을 저장하지 못했습니다: {error}',
   'settings.models.mod.secretRemovePending': '저장 시 제거됩니다',
   'settings.models.mod.secretKeepAria': '저장된 {name} 유지',
   'settings.models.mod.secretRemoveAria': '저장된 {name} 제거',

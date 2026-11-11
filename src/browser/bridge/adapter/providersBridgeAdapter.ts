@@ -469,6 +469,8 @@ async function handleUpsert(
    * secret, so it skips sealing.
    */
   derive?: (stored: NexusProviderConfig) => NexusProviderConfig,
+  /** `false`: the write never makes the provider the active one. */
+  promote = true,
 ): Promise<ProvidersBridgeActionMap['upsert']['result']> {
   const idError = validateId(payload.id)
   if (idError) throw new Error(idError)
@@ -511,7 +513,7 @@ async function handleUpsert(
       // user's explicit active selection survives an unrelated upsert. Without
       // this the quick model picker stays empty after the very first provider
       // save (no active provider → no default selection to seed).
-      activeProviderId: prev?.activeProviderId ?? payload.id,
+      ...(prev?.activeProviderId || promote ? { activeProviderId: prev?.activeProviderId ?? payload.id } : {}),
       configs: { ...(prev?.configs ?? {}) },
       ...(prev?.order ? { order: prev.order } : {}),
     }
@@ -879,7 +881,8 @@ const isOptionValue = (value: unknown): value is string | number | boolean | str
 const SIGNIN_OPTION_PREFIX = 'signin.'
 
 /**
- * The settings the registered provider mods of one plugin declare, by name.
+ * The settings the registered provider mods of one plugin declare, by name;
+ * a field bound to a platform slot is the slot's, not an option.
  * What the manifest does not declare is not the page's to read or write; an
  * unknown plugin declares nothing.
  */
@@ -890,6 +893,7 @@ function declaredModSettings(plugin: string): Map<string, { sensitive: boolean }
     if (definition.catalogMod?.configId !== plugin) continue
     known = true
     for (const [name, field] of Object.entries(definition.catalogMod.settings ?? {})) {
+      if (field.binds !== undefined) continue
       declared.set(name, { sensitive: field.sensitive === true })
     }
   }
@@ -969,7 +973,7 @@ function runSetModBaseUrl(
   return handleSetModBaseUrl(payload, {
     homeDir: ctx.homeDir,
     fs: ctx.fs,
-    rewrite: (id, derive) => handleUpsert({ id, config: {} }, ctx, derive),
+    rewrite: (id, derive) => handleUpsert({ id, config: {} }, ctx, derive, false),
     ...(ctx.freshModelIds ? { relist: ctx.freshModelIds } : {}),
   })
 }

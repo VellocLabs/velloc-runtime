@@ -169,13 +169,14 @@ export function storedPromptKeys(
  * The config a save writes. `providers.upsert` REPLACES the whole entry, so the
  * stored one is the base; the redacted `hasApiKey` / `storedSecrets` are dropped.
  * `apiKey` / `secrets` are written only when given; a new key drops the old
- * verification stamp.
+ * verification stamp. `baseUrl` is left out: its writer is `setModBaseUrl`,
+ * and the runtime keeps the stored one.
  */
 export function modProviderConfig(
   saved: NexusProviderConfig | undefined,
   change: { apiKey?: string; secrets?: Record<string, string>; credentialMode?: 'anonymous' | null } = {},
 ): NexusProviderConfig {
-  const { hasApiKey: _flag, storedSecrets: _names, apiKey: _key, secrets: _secrets, ...base } = saved ?? {}
+  const { hasApiKey: _flag, storedSecrets: _names, apiKey: _key, secrets: _secrets, baseUrl: _baseUrl, ...base } = saved ?? {}
   const next: NexusProviderConfig = { ...base, source: 'mod' }
   if (change.apiKey !== undefined && change.apiKey !== '') {
     next.apiKey = change.apiKey

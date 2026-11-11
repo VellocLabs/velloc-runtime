@@ -34,13 +34,13 @@ import {
 import { fetchListingFiles } from './installSteps'
 import { loadInstalledPlugins, recordPluginSetup } from './installedRegistry'
 import { assemblePluginAt } from './loadPlugins'
-import { providerModUpdatesFilePath, pluginsRoot, type PluginInstallPathContext } from './pluginDirs'
+import type { PluginInstallPathContext } from './pluginDirs'
 import { readStrictPluginRef } from './pluginRef'
 import type { PluginSetupRecord } from './registryFormats'
 import type { ExtractedFile } from './extract'
-import { ensureDirRecursive } from './writeExtracted'
 import { pluginGrantOf, widened, type Grant, type GrantDelta } from './providerGrant'
 import { addPersonHost, type PersonAdded } from './personWidening'
+import { readUpdateStateFile, writeUpdateStateFile } from './providerModUpdateState'
 
 // ── state ──
 
@@ -182,8 +182,6 @@ export type ProviderModUpdateDeps = {
 
 export const DEFAULT_UPDATE_INTERVAL_MS = 24 * 60 * 60 * 1000
 
-const EMPTY_STATE: UpdateStateFile = { version: 1, plugins: {} }
-
 function failureText(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
 }
@@ -283,32 +281,10 @@ export function createProviderModUpdateService(deps: ProviderModUpdateDeps): Pro
 
   // ── the state file ──
 
-  async function readState(forWrite: boolean): Promise<UpdateStateFile> {
-    const path = providerModUpdatesFilePath(ctx)
-    let raw: string
-    try {
-      raw = String(await fs.readFile(path, { encoding: 'utf-8' }))
-    } catch (error) {
-      if (/ENOENT|not found|no such file/i.test(failureText(error))) return structuredClone(EMPTY_STATE)
-      if (forWrite) throw new Error(`provider_mod_updates.json is unreadable (${failureText(error)}); refusing to overwrite it`)
-      return structuredClone(EMPTY_STATE)
-    }
-    try {
-      const parsed = JSON.parse(raw) as Partial<UpdateStateFile> | null
-      if (parsed && parsed.version === 1 && parsed.plugins && typeof parsed.plugins === 'object') {
-        return { version: 1, plugins: parsed.plugins as Record<string, PluginUpdateRecord> }
-      }
-      throw new Error('not an update state file')
-    } catch (error) {
-      if (forWrite) throw new Error(`provider_mod_updates.json is malformed (${failureText(error)}); refusing to overwrite it. Fix or delete the file.`)
-      return structuredClone(EMPTY_STATE)
-    }
-  }
+  const readState = (forWrite: boolean): Promise<UpdateStateFile> =>
+    readUpdateStateFile<PluginUpdateRecord>(ctx, fs, forWrite)
 
-  async function writeState(state: UpdateStateFile): Promise<void> {
-    await ensureDirRecursive(fs, pluginsRoot(ctx))
-    await fs.writeFile(providerModUpdatesFilePath(ctx), `${JSON.stringify(state, null, 2)}\n`, { encoding: 'utf-8' })
-  }
+  const writeState = (state: UpdateStateFile): Promise<void> => writeUpdateStateFile(ctx, fs, state)
 
   // ── what is installed ──
 

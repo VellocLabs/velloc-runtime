@@ -1926,6 +1926,7 @@ export const en = {
   'settings.models.mod.baseUrl.confirmTitle': 'Send requests to {host}?',
   'settings.models.mod.baseUrl.confirmDescription': '{host} is not one of the hosts {provider} declares. This provider’s requests and your key will be sent to {host}.',
   'settings.models.mod.baseUrl.confirm': 'Use this URL',
+  'settings.models.mod.baseUrl.saveFailed': 'Couldn\'t save the base URL: {error}',
   'settings.models.mod.secretRemovePending': 'Removed when you save',
   'settings.models.mod.secretKeepAria': 'Keep the saved {name}',
   'settings.models.mod.secretRemoveAria': 'Remove the saved {name}',

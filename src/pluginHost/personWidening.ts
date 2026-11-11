@@ -6,8 +6,8 @@
  * declares, and a switch of version leaves them in place.
  */
 import type { RuntimeFs } from '../utils/fs/runtimeFs'
-import { ensureDirRecursive } from './writeExtracted'
-import { pluginsRoot, providerModUpdatesFilePath, type PluginInstallPathContext } from './pluginDirs'
+import type { PluginInstallPathContext } from './pluginDirs'
+import { readUpdateStateFile, writeUpdateStateFile } from './providerModUpdateState'
 
 /** What the person added, by provider key. */
 export type PersonAdded = {
@@ -15,8 +15,6 @@ export type PersonAdded = {
 }
 
 type RecordWithPersonAdded = { personAdded?: PersonAdded }
-type StateFile = { version: 1; plugins: Record<string, RecordWithPersonAdded> }
-
 const HOST = /^(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)*$/
 
 function normalizedHost(host: string): string {
@@ -42,27 +40,6 @@ export function addPersonHost(record: RecordWithPersonAdded, providerKey: string
   return true
 }
 
-async function readStateFile(ctx: PluginInstallPathContext, fs: RuntimeFs, forWrite: boolean): Promise<StateFile> {
-  let raw: string
-  try {
-    raw = String(await fs.readFile(providerModUpdatesFilePath(ctx), { encoding: 'utf-8' }))
-  } catch (error) {
-    const text = error instanceof Error ? error.message : String(error)
-    if (!forWrite || /ENOENT|not found|no such file/i.test(text)) return { version: 1, plugins: {} }
-    throw new Error(`provider_mod_updates.json is unreadable (${text}); refusing to overwrite it`)
-  }
-  try {
-    const parsed = JSON.parse(raw) as Partial<StateFile> | null
-    if (parsed && parsed.version === 1 && parsed.plugins && typeof parsed.plugins === 'object') {
-      return { version: 1, plugins: parsed.plugins }
-    }
-  } catch {
-    // Falls through to the refusal below.
-  }
-  if (forWrite) throw new Error('provider_mod_updates.json is malformed; refusing to overwrite it. Fix or delete the file.')
-  return { version: 1, plugins: {} }
-}
-
 /** The hosts on file that the person added for one provider of `pluginId`. */
 export async function readPersonHosts(
   ctx: PluginInstallPathContext,
@@ -70,7 +47,7 @@ export async function readPersonHosts(
   pluginId: string,
   providerKey: string,
 ): Promise<string[]> {
-  const state = await readStateFile(ctx, fs, false)
+  const state = await readUpdateStateFile<RecordWithPersonAdded>(ctx, fs, false)
   return personHostsOf(state.plugins[pluginId], providerKey)
 }
 
@@ -86,9 +63,7 @@ export async function storePersonHost(
   providerKey: string,
   host: string,
 ): Promise<void> {
-  const state = await readStateFile(ctx, fs, true)
+  const state = await readUpdateStateFile<RecordWithPersonAdded>(ctx, fs, true)
   const record = (state.plugins[pluginId] ??= {})
-  if (!addPersonHost(record, providerKey, host)) return
-  await ensureDirRecursive(fs, pluginsRoot(ctx))
-  await fs.writeFile(providerModUpdatesFilePath(ctx), `${JSON.stringify(state, null, 2)}\n`, { encoding: 'utf-8' })
+  if (addPersonHost(record, providerKey, host)) await writeUpdateStateFile(ctx, fs, state)
 }

@@ -200,6 +200,11 @@ describe('the config a save writes (providers.upsert replaces the whole entry)',
     }
   })
 
+  it('never carries the page\'s copy of the base URL: the runtime keeps the stored one', () => {
+    const next = modProviderConfig({ ...stored, baseUrl: 'https://eu.acme.test/v1' }, { apiKey: 'sk-new' })
+    expect('baseUrl' in next).toBe(false)
+  })
+
   it('drops the redacted view (hasApiKey / storedSecrets) and never invents a key', () => {
     const next = modProviderConfig(stored, { credentialMode: 'anonymous' })
     expect('hasApiKey' in next).toBe(false)

@@ -1860,6 +1860,7 @@ export const ja: Messages = {
   'settings.models.mod.baseUrl.confirmTitle': 'リクエストを {host} に送信しますか？',
   'settings.models.mod.baseUrl.confirmDescription': '{host} は {provider} が宣言しているホストに含まれていません。このプロバイダへのリクエストとあなたのキーは {host} に送信されます。',
   'settings.models.mod.baseUrl.confirm': 'この URL を使う',
+  'settings.models.mod.baseUrl.saveFailed': 'Base URL を保存できませんでした: {error}',
   'settings.models.mod.secretRemovePending': '保存時に削除されます',
   'settings.models.mod.secretKeepAria': '保存済みの{name}を維持',
   'settings.models.mod.secretRemoveAria': '保存済みの{name}を削除',

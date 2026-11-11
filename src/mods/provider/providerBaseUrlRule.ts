@@ -2,6 +2,8 @@
  * Security: the rule a person's base URL for a provider mod is held to (F-27).
  * The provider's requests and its stored key go to this URL's host, so:
  * - no credentials, query or fragment;
+ * - a host that is loopback or a plain host name (no IP literal other than
+ *   loopback, no trailing dot): what the person's record can hold;
  * - https, except plain http to a loopback host; nothing confirms past this;
  * - a host inside the manifest's `domains` (or a sub-domain of one), a
  *   loopback host, or a host the person added earlier: accepted;
@@ -10,6 +12,8 @@
  */
 
 export const LOOPBACK_HOSTS: readonly string[] = Object.freeze(['localhost', '127.0.0.1', '[::1]'])
+
+const PLAIN_HOST = /^(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)*$/
 
 export type BaseUrlProblem = 'not-a-url' | 'scheme' | 'credentials' | 'query-or-fragment'
 
@@ -60,6 +64,7 @@ export function judgeBaseUrl(value: string, boundary: BaseUrlBoundary): BaseUrlV
   }
   const host = url.hostname.toLowerCase()
   const loopback = isLoopbackHost(host)
+  if (!loopback && (!PLAIN_HOST.test(host) || host.length > 253)) return { kind: 'refused', problem: 'not-a-url' }
   if (url.protocol === 'http:' && !loopback) return { kind: 'refused', problem: 'scheme' }
   const stored = `${url.origin}${url.pathname.replace(/\/+$/, '')}`
   if (loopback || hostCoveredBy(host, boundary.domains) || (boundary.personHosts ?? []).includes(host)) {

@@ -50,6 +50,7 @@ export async function handleSetModBaseUrl(payload: Payload, deps: ModBaseUrlDeps
   }
 
   let next: string | undefined
+  let confirmed: { pluginId: string; providerKey: string; host: string } | undefined
   if (payload.baseUrl !== null) {
     const pluginId = mod.configId
     const providerKey = mod.plugin ? id.slice(`${MOD_PROVIDER_ID_PREFIX}${mod.plugin}.`.length) : ''
@@ -61,8 +62,7 @@ export async function handleSetModBaseUrl(payload: Payload, deps: ModBaseUrlDeps
       if (payload.confirmedHost !== verdict.host) return { ok: false, reason: 'needs-confirmation', host: verdict.host }
       // Nowhere to keep the person's addition: nothing is stored.
       if (!pluginId || !providerKey) return { ok: false, reason: 'refused', problem: 'not-editable' }
-      const keep = deps.keepPersonHost ?? ((plugin, key, host) => keepOnRecord(deps, plugin, key, host))
-      await keep(pluginId, providerKey, verdict.host)
+      confirmed = { pluginId, providerKey, host: verdict.host }
     }
     if (!sameUrl(verdict.url, mod.defaultBaseUrl)) next = verdict.url
   }
@@ -71,6 +71,11 @@ export async function handleSetModBaseUrl(payload: Payload, deps: ModBaseUrlDeps
     const { baseUrl: _previous, ...rest } = stored
     return next === undefined ? rest : { ...rest, baseUrl: next }
   })
+  // Kept only once the address is stored: a failed write leaves no host trusted.
+  if (confirmed) {
+    const keep = deps.keepPersonHost ?? ((plugin, key, host) => keepOnRecord(deps, plugin, key, host))
+    await keep(confirmed.pluginId, confirmed.providerKey, confirmed.host)
+  }
   // A listing reads the base URL in force: ask again against the new one.
   if (deps.relist) void deps.relist(id).catch(() => undefined)
   return { ok: true, baseUrl: next ?? mod.defaultBaseUrl, overridden: next !== undefined }

@@ -1887,6 +1887,7 @@ export const es: Messages = {
   'settings.models.mod.baseUrl.confirmTitle': '¿Enviar las solicitudes a {host}?',
   'settings.models.mod.baseUrl.confirmDescription': '{host} no es uno de los hosts que declara {provider}. Las solicitudes de este proveedor y tu clave se enviarán a {host}.',
   'settings.models.mod.baseUrl.confirm': 'Usar esta URL',
+  'settings.models.mod.baseUrl.saveFailed': 'No se pudo guardar la URL base: {error}',
   'settings.models.mod.secretRemovePending': 'Se quita al guardar',
   'settings.models.mod.secretKeepAria': 'Conservar el valor guardado de {name}',
   'settings.models.mod.secretRemoveAria': 'Quitar el valor guardado de {name}',

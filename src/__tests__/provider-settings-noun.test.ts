@@ -66,6 +66,14 @@ describe('provider setting values', () => {
     expect(JSON.stringify(values)).not.toContain('1234')
   })
 
+  it('leaves out a field bound to a platform slot, also when an old option of that name is stored', () => {
+    const bound = {
+      ...MANIFEST,
+      settings: { gateway: { type: 'string', format: 'url', binds: 'baseUrl', title: 'Gateway' }, region: { type: 'string', title: 'Region' } },
+    } as unknown as ProviderManifest
+    expect(providerSettingValues(bound, { gateway: 'https://stale.example', region: 'us' })).toEqual({ region: 'us', signin: {} })
+  })
+
   it('a manifest with no settings still answers (an empty record and signin)', () => {
     const bare = { ...MANIFEST, settings: undefined } as unknown as ProviderManifest
     expect(providerSettingValues(bare, { 'signin.plan': 'free' })).toEqual({ signin: { plan: 'free' } })

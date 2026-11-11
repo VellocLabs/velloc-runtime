@@ -65,6 +65,13 @@ describe('judgeBaseUrl', () => {
       'needs-confirmation',
     )
   })
+
+  it('refuses a host the person\'s record cannot hold: an IP literal other than loopback, a trailing dot, an underscore', () => {
+    for (const url of ['https://[fd00::5]/v1', 'https://acme.test./v1', 'https://my_gw.example/v1']) {
+      expect(judgeBaseUrl(url, boundary), url).toEqual({ kind: 'refused', problem: 'not-a-url' })
+    }
+    expect(judgeBaseUrl('https://10.0.0.5/v1', boundary).kind).toBe('needs-confirmation')
+  })
 })
 
 function check(settings: Record<string, unknown>) {

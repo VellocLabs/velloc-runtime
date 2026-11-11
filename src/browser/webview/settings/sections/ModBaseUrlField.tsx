@@ -85,7 +85,9 @@ export function ModBaseUrlField({
         setProblem(t(baseUrlProblemKey(result.problem)));
       }
     } catch (error) {
-      setProblem(error instanceof Error ? error.message : String(error));
+      setProblem(
+        t("settings.models.mod.baseUrl.saveFailed", { error: error instanceof Error ? error.message : String(error) }),
+      );
     } finally {
       setBusy(false);
     }

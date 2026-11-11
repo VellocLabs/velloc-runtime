@@ -1883,6 +1883,7 @@ export const de: Messages = {
   'settings.models.mod.baseUrl.confirmTitle': 'Anfragen an {host} senden?',
   'settings.models.mod.baseUrl.confirmDescription': '{host} gehört nicht zu den Hosts, die {provider} angibt. Die Anfragen dieses Anbieters und dein Schlüssel werden an {host} gesendet.',
   'settings.models.mod.baseUrl.confirm': 'Diese URL verwenden',
+  'settings.models.mod.baseUrl.saveFailed': 'Die Base-URL konnte nicht gespeichert werden: {error}',
   'settings.models.mod.secretRemovePending': 'Wird beim Speichern entfernt',
   'settings.models.mod.secretKeepAria': 'Gespeicherten Wert von {name} behalten',
   'settings.models.mod.secretRemoveAria': 'Gespeicherten Wert von {name} entfernen',
