@@ -73,6 +73,7 @@ import { registerMcpAuthCapability } from './mcpAuthCapability'
 import { registerRenderCacheCapability } from './renderCacheCapability'
 import { registerProviderLoginCapability } from './providerLoginCapability'
 import { registerProviderUsageCapability } from './providerUsageCapability'
+import { registerProviderStatusCapability } from './providerStatusCapability'
 import { getProviderCredentials } from '../../mods/provider/login/credentialDeps'
 import { registerModsCapability } from './modsCapability'
 import { modSlotsClientGone } from '../../mods/modSlotRegistry'
@@ -323,6 +324,9 @@ export class RuntimeHub {
       this.broker,
       () => this.context.webUiBridge.directBridge,
     )
+    // Provider status views (F-27): what a provider mod's module left in
+    // its store, shaped and clamped, on `providers/status`.
+    registerProviderStatusCapability(this.registry, this.broker)
     // Provider mod updates (PM-9b): the update service's status on
     // `plugins/providerUpdates`, and the check / consent / decline / rollback /
     // baseline actions - all `full`: they switch which code serves a model

@@ -12,6 +12,7 @@ import { joinRuntimePath } from '../../utils/runtimePaths'
 import type { ProviderPolicy } from '../../models/drivers/providerPolicy'
 import { checkPolicy } from './providerPolicyManifest'
 import { checkProviderJobs, type ProviderJobDecl } from './providerJobsManifest'
+import { checkProviderStatus, type ProviderStatusView } from './providerStatusManifest'
 import {
   CHAIN_FIELDS,
   ID_ALPHABETS,
@@ -151,6 +152,7 @@ export type ProviderManifest = {
   credentials: ProviderCredentials
   settings?: Record<string, ProviderSettingField>
   modelsUi?: ProviderModelsUi
+  status?: ProviderStatusView
   requestNeeds?: ProviderRequestNeed[]
   signNeeds?: ProviderSignNeed
   ids?: Partial<Record<ProviderIdKind, ProviderIdRule>>
@@ -846,6 +848,7 @@ function checkProvider(key: string, raw: unknown, errors: string[]): ProviderMan
   if (raw.settings !== undefined) settings = withSettingBinds(raw.settings, bad, plain => checkSettings(plain, bad))
 
   const modelsUi = raw.modelsUi === undefined ? undefined : checkModelsUi(raw.modelsUi, bad)
+  const status = raw.status === undefined ? undefined : checkProviderStatus(raw.status, raw.jobs, bad)
 
   let requestNeeds: ProviderRequestNeed[] | undefined
   if (raw.requestNeeds !== undefined) {
@@ -884,6 +887,7 @@ function checkProvider(key: string, raw: unknown, errors: string[]): ProviderMan
     credentials,
     ...(settings && Object.keys(settings).length > 0 ? { settings } : {}),
     ...(modelsUi && Object.keys(modelsUi).length > 0 ? { modelsUi } : {}),
+    ...(status ? { status } : {}),
     ...(requestNeeds && requestNeeds.length > 0 ? { requestNeeds } : {}),
     ...(signNeeds !== undefined ? { signNeeds } : {}),
     ...(ids ? { ids } : {}),

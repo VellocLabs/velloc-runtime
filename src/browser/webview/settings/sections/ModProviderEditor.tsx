@@ -56,6 +56,7 @@ import { mapErrorCode } from "../verifyErrorText";
 import { getProviderLoginStore, useProviderLogin } from "../../providerLoginStore";
 import { ModBaseUrlField } from "./ModBaseUrlField";
 import { MissingRequiredMark, OptionFieldControl, OptionRow, OptionRowList } from "./ModOptionRows";
+import { ModProviderStatusCard } from "./ModProviderStatusCard";
 import { ProviderModelEntries } from "./ProviderModelEntries";
 import { ProviderSignInDialog } from "./ProviderSignInDialog";
 import { holdsModSignIn } from "../../../../settings/providerSignIn";
@@ -544,6 +545,8 @@ function ReadyEditor({
           {t("settings.models.mod.optionsLoadFailed")}
         </span>
       ) : null}
+
+      <ModProviderStatusCard providerId={providerId} />
 
       {/* The models to use, picked from the provider's listing: only the
           entries reach the picker. Shown once there is a connection, and

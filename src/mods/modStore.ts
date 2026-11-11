@@ -60,6 +60,16 @@ export function parseModStoreFile(text: string): ModStoreFile | null {
 
 const encoder = new TextEncoder()
 
+export type ModStoreChangeListener = (plugin: string, key: string) => void
+const changeListeners = new Set<ModStoreChangeListener>()
+
+/** Hear of every key a plugin's file store has written or deleted, after the
+ *  write landed. Returns the unsubscribe. */
+export function onModStoreChange(listener: ModStoreChangeListener): () => void {
+  changeListeners.add(listener)
+  return () => changeListeners.delete(listener)
+}
+
 export class FileModStore implements ModStoreHost {
   private values: Map<string, unknown> | undefined
   private loading: { fs: ModStoreFs; values: Promise<Map<string, unknown>> } | undefined
@@ -73,6 +83,8 @@ export class FileModStore implements ModStoreHost {
       fs: ModStoreFs
       capBytes?: number
       report?: (line: string) => void
+      /** The plugin this store belongs to, named to change listeners. */
+      plugin?: string
     },
   ) {}
 
@@ -160,11 +172,25 @@ export class FileModStore implements ModStoreHost {
           next.set(key, data)
           return true
         })
+        this.changed(key)
       },
       delete: async key => {
         await this.commit(fs, next => next.delete(key))
+        this.changed(key)
       },
       keys: async () => [...(await this.load(fs)).keys()],
+    }
+  }
+
+  private changed(key: string): void {
+    const plugin = this.options.plugin
+    if (plugin === undefined) return
+    for (const listener of [...changeListeners]) {
+      try {
+        listener(plugin, key)
+      } catch {
+        // A listener's failure is its own; the write has landed.
+      }
     }
   }
 
@@ -232,7 +258,7 @@ export function fileModStore(
   const path = `${dir}/${MOD_STORE_FILE_NAME}`
   let store = openStores.get(path)
   if (!store) {
-    store = new FileModStore({ path, dir, fs, ...options })
+    store = new FileModStore({ path, dir, fs, plugin, ...options })
     openStores.set(path, store)
   }
   return store.through(fs)

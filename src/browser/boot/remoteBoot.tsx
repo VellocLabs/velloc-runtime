@@ -33,6 +33,7 @@ import type { RuntimeNotification } from '../runtimeProtocol'
 import { attachWorkspaceStore } from '../webview/workspaceStore'
 import { attachProviderLoginStore } from '../webview/providerLoginStore'
 import { attachProviderUsageStore } from '../webview/providerUsageStore'
+import { attachProviderStatusStore } from '../webview/providerStatusStore'
 import { buildGlicInitPayload, resolveBootLocaleTag } from './nexusBoot'
 import { installPerClientTheme } from './perClientTheme'
 import { recoverLocaleCatalog } from './remoteLocaleRecovery'
@@ -615,6 +616,7 @@ export async function remoteBootAndRender(
   attachWorkspaceStore(getRuntimeConnection)
   attachProviderUsageStore(getRuntimeConnection)
   attachProviderLoginStore(getRuntimeConnection)
+  attachProviderStatusStore(getRuntimeConnection)
 
   const ctx: RenderableBootContext = {
     transport,

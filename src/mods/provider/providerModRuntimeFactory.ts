@@ -35,6 +35,7 @@ import { createSessionEnder, setProviderSessionEnder } from './providerSessionEn
 import { providerSeamListener } from './providerSeamWiring'
 import { fileModBuildStore } from '../modBuildStore'
 import { pluginOwnFileReader } from './pluginOwnFiles'
+import { wireProviderStatus } from './providerStatusWiring'
 
 export type ProviderModRuntimeFactoryDeps = {
   homeDir: string
@@ -96,6 +97,7 @@ export function createProviderModRuntime(deps: ProviderModRuntimeFactoryDeps): P
   // fails closed), and - when it states id rules - its id mapper, which keeps
   // its maps with the session. Providers already registered are replayed.
   onProviderModRegistered(providerSeamListener(report, nouns.ids))
+  wireProviderStatus((plugin, key) => fileModStore(modsDir, plugin, storeFs, { report }).get(key))
 
   // Read, compile and scan are the update service's admission too.
   const loaders = providerModuleLoaders({ homeDir, fs, report })
