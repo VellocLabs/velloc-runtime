@@ -8,7 +8,7 @@ export type SessionTimer = {
   /** The session each fire is delivered to. */
   sessionId: string
   schedule: string
-  /** Unix ms the scheduler fires next (slot plus the routine's fixed delay). In the past while a fire is
+  /** Unix ms the scheduler fires next (slot plus the routine's fire delay). In the past while a fire is
    *  due but held back (the session is busy); null when the cron has no slot. */
   nextFireAt: number | null
 }

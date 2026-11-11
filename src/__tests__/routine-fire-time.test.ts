@@ -19,7 +19,6 @@ import {
   MAX_RECURRING_FIRE_DELAY_MS,
   ROUTINE_SCHEDULER_TICK_MS,
   computeRoutineFireAt,
-  recurringFireDelay,
   routineDelayFraction,
 } from '../routines/routineFireTime'
 
@@ -59,6 +58,11 @@ function hourly(over: Partial<CronRoutine> = {}): CronRoutine {
   }
 }
 
+/** How long after `slot` the routine fires, read the way the scheduler reads it. */
+function delayAt(routine: CronRoutine, slot: number): number {
+  return computeRoutineFireAt(routine, slot - 1)! - slot
+}
+
 /** First id `rt_<n>` whose delay fraction is at least `min`. */
 function idWithFraction(min: number): string {
   for (let n = 0; n < 10_000; n++) {
@@ -70,13 +74,13 @@ function idWithFraction(min: number): string {
 
 beforeEach(() => setRoutineRegistry(null))
 
-describe('recurringFireDelay', () => {
+describe('the fire delay', () => {
   it('is the same for one routine every time and differs between routines', () => {
     const slot = Date.UTC(2026, 10, 11, 5)
     const a = hourly({ id: 'rt_a' })
-    expect(recurringFireDelay(a, slot)).toBe(recurringFireDelay({ ...a }, slot))
+    expect(delayAt(a, slot)).toBe(delayAt({ ...a }, slot))
     const delays = new Set(
-      ['rt_a', 'rt_b', 'rt_c', 'rt_d', 'rt_e'].map(id => recurringFireDelay(hourly({ id }), slot)),
+      ['rt_a', 'rt_b', 'rt_c', 'rt_d', 'rt_e'].map(id => delayAt(hourly({ id }), slot)),
     )
     expect(delays.size).toBeGreaterThan(1)
   })
@@ -84,7 +88,7 @@ describe('recurringFireDelay', () => {
   it('stays under half the gap to the following slot', () => {
     const slot = Date.UTC(2026, 10, 11, 5)
     for (let n = 0; n < 200; n++) {
-      const d = recurringFireDelay(hourly({ id: `rt_${n}`, schedule: '*/10 * * * *' }), slot)
+      const d = delayAt(hourly({ id: `rt_${n}`, schedule: '*/10 * * * *' }), slot)
       expect(d).toBeGreaterThanOrEqual(0)
       expect(d).toBeLessThan(5 * MINUTE - ROUTINE_SCHEDULER_TICK_MS)
     }
@@ -93,19 +97,19 @@ describe('recurringFireDelay', () => {
   it('never exceeds 30 minutes, however long the period', () => {
     const slot = Date.UTC(2026, 10, 11, 0)
     const daily = hourly({ id: 'rt_20', schedule: '0 0 * * *' })
-    expect(recurringFireDelay(daily, slot)).toBe(MAX_RECURRING_FIRE_DELAY_MS)
+    expect(delayAt(daily, slot)).toBe(MAX_RECURRING_FIRE_DELAY_MS)
   })
 
   it('is a share of each slot gap, so uneven schedules get a different delay per slot', () => {
     const routine = hourly({ id: 'rt_20', schedule: '0,10 * * * *' })
-    expect(recurringFireDelay(routine, Date.UTC(2026, 10, 11, 5, 0))).toBe(168_650)
-    expect(recurringFireDelay(routine, Date.UTC(2026, 10, 11, 5, 10))).toBe(918_205)
+    expect(delayAt(routine, Date.UTC(2026, 10, 11, 5, 0))).toBe(168_650)
+    expect(delayAt(routine, Date.UTC(2026, 10, 11, 5, 10))).toBe(918_205)
   })
 
   it('is zero when the gap is a minute or less', () => {
     const id = idWithFraction(0.999)
     const slot = Date.UTC(2026, 10, 11, 5)
-    expect(recurringFireDelay(hourly({ id, schedule: '* * * * *' }), slot)).toBe(0)
+    expect(delayAt(hourly({ id, schedule: '* * * * *' }), slot)).toBe(0)
   })
 
   it('is zero for a one-shot', () => {
@@ -120,7 +124,7 @@ describe('an hourly loop registered just before the hour', () => {
   const id = idWithFraction(0.4)
   const routine = hourly({ id })
   const slot = Date.UTC(2026, 10, 11, 5)
-  const delay = recurringFireDelay(routine, slot)
+  const delay = delayAt(routine, slot)
 
   it('has a delay of several minutes for this id', () => {
     expect(delay).toBeGreaterThanOrEqual(12 * MINUTE)

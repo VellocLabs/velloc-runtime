@@ -1,9 +1,9 @@
 /**
  * RoutineScheduler: a fixed-interval tick (default 30s) in the SharedWorker
  * that hands each enabled `cron` routine whose `nextFireAt(lastRunAt ??
- * createdAt) <= now` to `RoutineFireDispatcher`; recurring routines fire a fixed
+ * createdAt) <= now` to `RoutineFireDispatcher`; recurring routines fire a
  * per-routine delay after their slot (`routineFireTime`). Remote-trigger routines are
- * not polled. A fire may lag its slot by up to one tick.
+ * not polled. A fire may lag its due time by up to one tick.
  */
 
 import { ROUTINE_SCHEDULER_TICK_MS, computeRoutineFireAt } from './routineFireTime'

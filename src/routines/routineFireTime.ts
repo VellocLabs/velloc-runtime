@@ -36,17 +36,6 @@ function delayForGap(id: string, gap: number): number {
 }
 
 /**
- * The delay a recurring routine fires after `slot`. 0 for one-shots and
- * exhausted schedules.
- */
-export function recurringFireDelay(routine: FireTimeRoutine, slot: number): number {
-  if (routine.oneShot) return 0
-  const [following] = computeNextFireSlots(routine.schedule, routine.timezone, slot, 1)
-  if (following === undefined || following <= slot) return 0
-  return delayForGap(routine.id, following - slot)
-}
-
-/**
  * Unix ms the routine fires next after `anchor` (its last run, else its
  * creation): the next cron slot plus the routine's delay. Null when the
  * schedule has no further slot.
