@@ -200,6 +200,15 @@ describe('manifest status view: refused, naming the field', () => {
     refused(view({ actions: [{ job: 'probe' }] }), 'providers.main.status.actions[0].label', { jobs: [{ id: 'probe' }] })
   })
 
+  it('an action naming a job the jobs block refused: the provider is refused, so no button reaches it', () => {
+    const { provider, errors } = check({
+      jobs: [{ id: 'probe', everyMs: 0 }],
+      status: view({ actions: [{ label: 'Probe now', job: 'probe' }] }),
+    })
+    expect(provider).toBeUndefined()
+    expect(errors.join('\n')).toContain('providers.main.jobs[0].everyMs')
+  })
+
   it('refuses only that provider: a sibling with a good manifest is kept', () => {
     const { manifest, errors } = checkPluginDescriptor({
       name: 'acme',

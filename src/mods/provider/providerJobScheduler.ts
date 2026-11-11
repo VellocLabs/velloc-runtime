@@ -35,6 +35,12 @@ export type ProviderJobRunResult =
   | { status: 'failed'; message: string }
   | { status: 'refused'; reason: ProviderJobRefusal }
 
+/** A manual run as the scheduler answered it: taken (`done` resolves when it
+ *  ended, never rejects) or refused. */
+export type ProviderJobRequest =
+  | { status: 'accepted'; done: Promise<ProviderJobRunResult> }
+  | { status: 'refused'; reason: ProviderJobRefusal }
+
 export type ProviderJobState = {
   id: string
   /** Queued or running: a manual run is refused meanwhile. */
@@ -108,6 +114,8 @@ export type ProviderJobScheduler = {
   /** Run a declared job now (`reason: 'manual'`). Resolves when the run
    *  ended, or at once with why it was refused. Never rejects. */
   runNow: (providerId: string, jobId: string) => Promise<ProviderJobRunResult>
+  /** `runNow`, answered as soon as the run was taken or refused. */
+  requestRun: (providerId: string, jobId: string) => ProviderJobRequest
   states: (providerId: string) => ProviderJobState[]
   dispose: () => void
 }
@@ -320,8 +328,8 @@ export function createProviderJobScheduler(deps: ProviderJobSchedulerDeps): Prov
     arm()
   }
 
-  async function runNow(providerId: string, jobId: string): Promise<ProviderJobRunResult> {
-    const refused = (reason: ProviderJobRefusal): ProviderJobRunResult => ({ status: 'refused', reason })
+  function requestRun(providerId: string, jobId: string): ProviderJobRequest {
+    const refused = (reason: ProviderJobRefusal): ProviderJobRequest => ({ status: 'refused', reason })
     if (disposed) return refused('unknown_job')
     if (!entries.has(keyOf(providerId, jobId))) sync()
     const entry = entries.get(keyOf(providerId, jobId))
@@ -336,7 +344,12 @@ export function createProviderJobScheduler(deps: ProviderJobSchedulerDeps): Prov
     const done = enqueue(entry, 'manual', at)
     pump()
     arm()
-    return done
+    return { status: 'accepted', done }
+  }
+
+  async function runNow(providerId: string, jobId: string): Promise<ProviderJobRunResult> {
+    const request = requestRun(providerId, jobId)
+    return request.status === 'accepted' ? request.done : request
   }
 
   function states(providerId: string): ProviderJobState[] {
@@ -366,7 +379,7 @@ export function createProviderJobScheduler(deps: ProviderJobSchedulerDeps): Prov
     for (const item of queue.splice(0)) settle(item, { status: 'refused', reason: 'unknown_job' })
   }
 
-  return { sync, runNow, states, dispose }
+  return { sync, runNow, requestRun, states, dispose }
 }
 
 // ── the realm's scheduler ──

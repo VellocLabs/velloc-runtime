@@ -38,7 +38,7 @@ import { pluginOwnFileReader } from './pluginOwnFiles'
 import { wireProviderStatus } from './providerStatusWiring'
 import { providerJobRunnerOf } from './providerJobRunnerAdapter'
 import { setProviderJobRunner } from './providerJobSeam'
-import { noteProviderStatusSubjectChange } from './providerStatusService'
+import { refreshProviderStatus } from './providerStatusService'
 
 export type ProviderModRuntimeFactoryDeps = {
   homeDir: string
@@ -154,7 +154,7 @@ export function createProviderModRuntime(deps: ProviderModRuntimeFactoryDeps): P
       jobs.dispose()
     },
   })
-  setProviderJobRunner(providerJobRunnerOf(jobs, noteProviderStatusSubjectChange))
+  setProviderJobRunner(providerJobRunnerOf(jobs, providerId => void refreshProviderStatus(providerId)))
   return runtime
 }
 

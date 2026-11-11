@@ -5,16 +5,19 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { PROVIDER_JOB_MANUAL_GAP_MS, createProviderJobScheduler } from '../mods/provider/providerJobScheduler'
+import type { ProviderJobDecl } from '../mods/provider/providerJobsManifest'
 import { providerJobRunnerOf } from '../mods/provider/providerJobRunnerAdapter'
 import { runProviderJobNow, setProviderJobRunner } from '../mods/provider/providerJobSeam'
 
 const ID = 'mod.acme.zen'
 const START = 1_800_000_000_000
 
-function world(options: { connected?: boolean } = {}) {
+const JOBS = [{ id: 'probe', everyMs: 30 * 60_000 }]
+
+function world(options: { connected?: boolean; extra?: ProviderJobDecl[] } = {}) {
   const finishers: Array<() => void> = []
   const scheduler = createProviderJobScheduler({
-    providers: () => [{ providerId: ID, jobs: [{ id: 'probe', everyMs: 30 * 60_000 }] }],
+    providers: () => [{ providerId: ID, jobs: options.extra ? [...JOBS, ...options.extra] : JOBS }],
     connected: () => options.connected ?? true,
     ready: () => true,
     online: () => true,
@@ -78,6 +81,30 @@ describe('providerJobRunnerOf', () => {
     await expect(off.runner(ID, 'probe')).resolves.toBe('unavailable')
     expect(off.settled).toEqual([])
     off.scheduler.dispose()
+  })
+
+  it('answers unavailable, not busy, for a provider no longer set up while its run is still going', async () => {
+    const state = { connected: true }
+    const { runner, finishers, scheduler } = world(state)
+    await expect(runner(ID, 'probe')).resolves.toBe('started')
+    state.connected = false
+    await expect(runner(ID, 'probe')).resolves.toBe('unavailable')
+    finishers[0]!()
+    scheduler.dispose()
+  })
+
+  it('answers busy for a click that a connect run got to first, and reports no end for it', async () => {
+    const state: { connected: boolean; extra?: ProviderJobDecl[] } = { connected: false }
+    const { runner, settled, finishers, scheduler } = world(state)
+    scheduler.sync()
+    state.connected = true
+    state.extra = [{ id: 'later', everyMs: 30 * 60_000, runOn: ['connect'] }]
+    await expect(runner(ID, 'later')).resolves.toBe('busy')
+    expect(finishers).toHaveLength(1)
+    finishers[0]!()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(settled).toEqual([])
+    scheduler.dispose()
   })
 
   it('is what the seam reaches once installed, and the seam is unavailable without it', async () => {

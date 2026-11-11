@@ -9,26 +9,20 @@ import type { ProviderJobScheduler } from './providerJobScheduler'
 import type { ProviderJobRunner } from './providerJobSeam'
 
 export function providerJobRunnerOf(
-  jobs: Pick<ProviderJobScheduler, 'runNow' | 'states'>,
+  jobs: Pick<ProviderJobScheduler, 'requestRun'>,
   settled?: (providerId: string) => void,
 ): ProviderJobRunner {
-  const busy = (providerId: string, jobName: string): boolean =>
-    jobs.states(providerId).some(state => state.id === jobName && state.busy)
-
   return async (providerId, jobName) => {
-    if (busy(providerId, jobName)) return 'busy'
-    const run = jobs.runNow(providerId, jobName)
-    if (busy(providerId, jobName)) {
-      void run.then(
+    const request = jobs.requestRun(providerId, jobName)
+    if (request.status === 'accepted') {
+      void request.done.then(
         () => settled?.(providerId),
         () => undefined,
       )
       return 'started'
     }
-    const result = await run
-    if (result.status !== 'refused') return 'started'
-    if (result.reason === 'busy') return 'busy'
-    if (result.reason === 'too_soon') return 'cooldown'
+    if (request.reason === 'busy') return 'busy'
+    if (request.reason === 'too_soon') return 'cooldown'
     return 'unavailable'
   }
 }
