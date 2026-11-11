@@ -18,6 +18,7 @@ import {
   type IdKind,
   type IdRuleShape,
 } from './ids/idRules'
+import { checkModelFacts, type ProviderModelFacts } from './providerModelFacts'
 
 /** The `providerApi` values this Velloc serves. A manifest naming another is
  *  refused with a message that names it. */
@@ -147,6 +148,8 @@ export type ProviderManifest = {
   signNeeds?: ProviderSignNeed
   ids?: Partial<Record<ProviderIdKind, ProviderIdRule>>
   updates?: { marketplace?: string; url?: string }
+  /** The provider's own facts per model id or id prefix, beneath its listing. */
+  modelFacts?: ProviderModelFacts
   /** Package-relative module path, `./`-prefixed. */
   module: string
 }
@@ -853,6 +856,7 @@ function checkProvider(key: string, raw: unknown, errors: string[]): ProviderMan
   }
   const ids = raw.ids === undefined ? undefined : checkIds(raw.ids, bad)
   const updates = raw.updates === undefined ? undefined : checkUpdates(raw.updates, bad)
+  const modelFacts = raw.modelFacts === undefined ? undefined : checkModelFacts(raw.modelFacts, bad)
 
   if (failed || displayName === undefined || defaultBaseUrl === undefined || domains === undefined || format === undefined || credentials === undefined || moduleRef === undefined) {
     return undefined
@@ -871,6 +875,7 @@ function checkProvider(key: string, raw: unknown, errors: string[]): ProviderMan
     ...(signNeeds !== undefined ? { signNeeds } : {}),
     ...(ids ? { ids } : {}),
     ...(updates ? { updates } : {}),
+    ...(modelFacts && Object.keys(modelFacts).length > 0 ? { modelFacts } : {}),
     module: moduleRef,
   }
 }

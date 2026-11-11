@@ -131,6 +131,7 @@ export function modProviderDefinition(options: ModProviderDefinitionOptions): Pr
     },
     versions: modelId => versionOf(id, modelId),
     ...(secrets.length > 0 ? { modSecretNames: secrets.map(secret => secret.name) } : {}),
+    ...(manifest.modelFacts ? { modelFacts: manifest.modelFacts } : {}),
     catalogMod: {
       state: 'ready',
       plugin: options.plugin,

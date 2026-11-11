@@ -18,6 +18,7 @@ export type ListedModelFigures = Pick<
   | 'name'
   | 'contextWindow'
   | 'maxOutputTokens'
+  | 'defaultMaxOutputTokens'
   | 'availableThinkingTiers'
   | 'defaultThinkingTier'
   | 'supportsImageInput'
@@ -216,6 +217,7 @@ export function listedFiguresOf(model: ProviderModelInfo): ListedModelFigures {
   if (model.name) figures.name = model.name
   if (model.contextWindow) figures.contextWindow = model.contextWindow
   if (model.maxOutputTokens) figures.maxOutputTokens = model.maxOutputTokens
+  if (model.defaultMaxOutputTokens) figures.defaultMaxOutputTokens = model.defaultMaxOutputTokens
   if (model.thinkingTiers && model.thinkingTiers.length > 0) {
     figures.availableThinkingTiers = [...model.thinkingTiers]
     if (model.defaultThinkingTier) figures.defaultThinkingTier = model.defaultThinkingTier
@@ -227,8 +229,9 @@ export function listedFiguresOf(model: ProviderModelInfo): ListedModelFigures {
 
 /**
  * A model no row speaks for, as the FIXED row its listing makes: an exact-id pattern
- * plus what the listing states. The first request reserves
- * `firstRequestOutputTokens`; image input is written only when it is "no".
+ * plus what the listing states. The first request reserves the allowance the listing
+ * states (at most the output cap), else `firstRequestOutputTokens`; image input is
+ * written only when it is "no".
  */
 export function listedModelRow(modelId: string, figures: ListedModelFigures | undefined): NexusConfiguredModel {
   const row: NexusConfiguredModel = { model: new RegExp(`^${escapeRegExp(modelId)}$`) }
@@ -237,7 +240,11 @@ export function listedModelRow(modelId: string, figures: ListedModelFigures | un
   if (figures.contextWindow) row.contextWindow = figures.contextWindow
   if (figures.maxOutputTokens) {
     row.maxOutputTokens = figures.maxOutputTokens
-    row.defaultMaxOutputTokens = firstRequestOutputTokens(figures.maxOutputTokens, figures.contextWindow)
+    row.defaultMaxOutputTokens = figures.defaultMaxOutputTokens
+      ? Math.min(figures.defaultMaxOutputTokens, figures.maxOutputTokens)
+      : firstRequestOutputTokens(figures.maxOutputTokens, figures.contextWindow)
+  } else if (figures.defaultMaxOutputTokens) {
+    row.defaultMaxOutputTokens = figures.defaultMaxOutputTokens
   }
   const tiers = figures.availableThinkingTiers
   if (tiers) {

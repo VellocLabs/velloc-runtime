@@ -8,6 +8,7 @@ import type { BrowserBridgeTransport } from '../../browser/bridge/browserBridgeP
 import type { BrowserLlmModProvider } from '../../browser/bridge/protocol/nexus_llm'
 import type { LocalizedText } from '../localizedText'
 import type { PlanUsageAmount, PlanUsageSnapshot } from '../../models/usage/planUsage'
+import type { ProviderModelFacts } from './modelFacts'
 import type { ModelVersionInfo } from './providers/shared/modelVersions'
 import type { NexusProviderModelConfig } from './types'
 
@@ -68,6 +69,9 @@ export type ProviderModelInfo = {
   contextWindow?: number
   /** The largest completion the model may produce. */
   maxOutputTokens?: number
+  /** The output cap a first request carries (at most `maxOutputTokens`).
+   *  Absent = derived from `maxOutputTokens`. */
+  defaultMaxOutputTokens?: number
   /** Function calling. The agent needs it; a model without it is never
    *  offered. */
   supportsTools: boolean
@@ -201,6 +205,8 @@ export type ProviderDefinition = {
   catalogMod?: BrowserLlmModProvider
   /** The listing comes from a mod's code, not a document (`models`). */
   codeListing?: ProviderCodeListing
+  /** A provider mod's own facts per model, read beneath each listed row. */
+  modelFacts?: ProviderModelFacts
   /** Names of the credentials a provider mod declares beyond the API key
    *  (the labels are the vendor's text, on `catalogMod`). */
   modSecretNames?: string[]

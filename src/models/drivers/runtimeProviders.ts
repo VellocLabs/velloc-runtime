@@ -33,6 +33,7 @@ import {
   recordListedFigures,
   resetListedFigures,
 } from '../../config/nexusModelConfig/familyRows'
+import { withProviderModelFacts } from '../../config/nexusModelConfig/modelFacts'
 import { publishListedModelPool, resetProviderModelPool } from '../../config/nexusModelConfig/providerModelPool'
 import type { NexusProviderConfig } from '../../settings/settingsTypes'
 import { holdsModSignIn } from '../../settings/providerSignIn'
@@ -230,7 +231,10 @@ export function listedModelInfo(providerId: string, modelId: string): ProviderMo
  *  mod's `userModels`; a listed id wins). Every reader of the listing reads
  *  this, so a hand-added model is a listed model from there on. */
 function mergedModels(providerId: string): ProviderModelInfo[] {
-  return withHandAdded(providerId, listings.get(providerId)?.models ?? [])
+  return withProviderModelFacts(
+    withHandAdded(providerId, listings.get(providerId)?.models ?? []),
+    getProviderDefinition(providerId)?.modelFacts,
+  )
 }
 
 /** A fresh listing with the hand-added models appended, for reconciling. */

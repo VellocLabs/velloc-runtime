@@ -120,6 +120,19 @@ describe('provider.models — the answer', () => {
     expect(models[1]).toEqual({ id: 'b', supportsTools: true })
   })
 
+  it('keeps a first-request output cap, held to the output cap the row states', () => {
+    const { models } = parse([
+      { id: 'a', supportsTools: true, maxOutputTokens: 64000, defaultMaxOutputTokens: 48000.7 },
+      { id: 'b', supportsTools: true, maxOutputTokens: 8000, defaultMaxOutputTokens: 64000 },
+      { id: 'c', supportsTools: true, defaultMaxOutputTokens: 16000 },
+      { id: 'd', supportsTools: true, defaultMaxOutputTokens: '16000' },
+    ])
+    expect(models[0]).toEqual({ id: 'a', supportsTools: true, maxOutputTokens: 64000, defaultMaxOutputTokens: 48000 })
+    expect(models[1]).toEqual({ id: 'b', supportsTools: true, maxOutputTokens: 8000, defaultMaxOutputTokens: 8000 })
+    expect(models[2]).toEqual({ id: 'c', supportsTools: true, defaultMaxOutputTokens: 16000 })
+    expect(models[3]).toEqual({ id: 'd', supportsTools: true })
+  })
+
   it('keeps only the runtime tier vocabulary, in its order; an unknown tier is dropped', () => {
     const { models } = parse([
       { id: 'm', supportsTools: true, thinkingTiers: ['high', 'xhigh', 'low', 'turbo', 7, 'high', 'extra-high', 'none'], defaultThinkingTier: 'high' },

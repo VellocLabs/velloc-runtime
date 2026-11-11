@@ -133,6 +133,10 @@ export function parseModelsAnswer(
     if (contextWindow !== undefined) row.contextWindow = contextWindow
     const maxOutputTokens = figure(raw.maxOutputTokens)
     if (maxOutputTokens !== undefined) row.maxOutputTokens = maxOutputTokens
+    const defaultMaxOutputTokens = figure(raw.defaultMaxOutputTokens)
+    if (defaultMaxOutputTokens !== undefined) {
+      row.defaultMaxOutputTokens = Math.min(defaultMaxOutputTokens, maxOutputTokens ?? defaultMaxOutputTokens)
+    }
     if (typeof raw.supportsImageInput === 'boolean') row.supportsImageInput = raw.supportsImageInput
     if (typeof raw.supportsPdfInput === 'boolean') row.supportsPdfInput = raw.supportsPdfInput
     const thinkingTiers = tiers(providerId, id, raw.thinkingTiers)
