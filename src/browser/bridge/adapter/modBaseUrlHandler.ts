@@ -64,7 +64,7 @@ export async function handleSetModBaseUrl(payload: Payload, deps: ModBaseUrlDeps
       // Nowhere to keep the person's addition: nothing is stored.
       if (!pluginId || !providerKey) return { ok: false, reason: 'refused', problem: 'not-editable' }
       confirmed = { pluginId, providerKey, host: verdict.host }
-      // The record must take the host before the address is stored.
+      // Throws when the record file is unreadable or malformed, before the address is stored.
       await readUpdateStateFile({ homeDir: deps.homeDir }, deps.fs, true)
     }
     if (!sameUrl(verdict.url, mod.defaultBaseUrl)) next = verdict.url
