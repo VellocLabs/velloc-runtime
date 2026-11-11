@@ -7,6 +7,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { BrowserBridgeTransport } from '../browser/bridge/browserBridgeProtocol'
 import '../models/drivers/builtinDrivers'
 import { DriverStreamHost } from '../models/drivers/driverStreamHost'
+import { ResponseHead } from '../models/drivers/providerFailureFacts'
 import { createModelProvider } from '../models/drivers/modelProvider'
 import { registerProviderDriver } from '../models/drivers/driverRegistry'
 import type { DriverStreamEvent, ProviderDriver } from '../models/drivers/driverTypes'
@@ -48,7 +49,7 @@ import {
 } from '../runtime/testing/noopAdapters'
 import type { Message } from '../runtime/RuntimeTypes'
 import { withProviderApiErrorMetadata } from '../browser/webview/assistantUiAdapterMessage'
-import { providerDeclaredMessage } from '../components/assistant-ui/composer-logic'
+import { providerDeclaredMessage, showsProviderRetrySummary } from '../components/assistant-ui/composer-logic'
 
 const NOW = 1_800_000_000_000
 
@@ -209,6 +210,8 @@ describe('the verdict: a declared rule over the platform classification, then th
     expect(resetOf('rate_limit')).toBe(NOW + VERDICT_RESET_CEILING_MS)
     // A rate limit may wait as long as the response's own directive when that is longer.
     expect(resetOf('rate_limit', 2 * VERDICT_RESET_CEILING_MS)).toBe(NOW + 2 * VERDICT_RESET_CEILING_MS)
+    // ...but never past the longest ceiling, whatever the upstream directive says.
+    expect(resetOf('rate_limit', 400 * 24 * 60 * 60 * 1000)).toBe(NOW + VERDICT_QUOTA_RESET_CEILING_MS)
     expect(resetOf('service')).toBe(NOW + VERDICT_RESET_CEILING_MS)
     expect(resetOf('provider_policy')).toBe(NOW + VERDICT_RESET_CEILING_MS)
     expect(resetOf('model_unavailable')).toBe(NOW + VERDICT_RESET_CEILING_MS)
@@ -324,6 +327,13 @@ describe('policy.retry: the ladder under a declared policy', () => {
       ...over,
     })
   }
+
+  it('a test harness limit caps a declared maxRetries, and leaves the platform number alone', () => {
+    expect(retriesAllowed(PROVIDER_CONNECTIVITY_MAX_RETRIES, { maxRetries: 8 }, 0)).toBe(0)
+    expect(retriesAllowed(PROVIDER_CONNECTIVITY_MAX_RETRIES, { maxRetries: 2 }, 3)).toBe(2)
+    expect(retriesAllowed(3, undefined, 3)).toBe(3)
+    expect(retriesAllowed(PROVIDER_CONNECTIVITY_MAX_RETRIES, { maxRetries: 8 })).toBe(8)
+  })
 
   it('maxRetries: 0 sends once', () => {
     expect(retriesAllowed(PROVIDER_CONNECTIVITY_MAX_RETRIES, { maxRetries: 0 })).toBe(0)
@@ -620,6 +630,17 @@ describe('a provider\'s rules reach the failure where the response is read', () 
     const chunk = await errorChunkOf(host, host.start(provider(), { messages: [] }, 'big-1').streamId)
     expect(chunk.error.verdict).toEqual({ kind: 'service', code: 'in_body_error', anomaly: 'in_body_error' })
   })
+
+  it('the body head is read only when an event is an error', async () => {
+    registerProviderRequestSeam(PROVIDER_ID, { policy: FREE_TIER_POLICY })
+    const read = vi.spyOn(ResponseHead.prototype, 'text')
+    const body = `${JSON.stringify({ type: 'error', message: 'overloaded_now' })}\n`
+    const { transport } = serving(200, body, { 'content-type': 'text/event-stream' })
+    const host = new DriverStreamHost(transport)
+    await errorChunkOf(host, host.start(provider(), { messages: [] }, 'big-1').streamId)
+    expect(read).toHaveBeenCalledTimes(1)
+    read.mockRestore()
+  })
 })
 
 describe('acceptance: a declared 403 is sent once and shows the rule\'s message', () => {
@@ -723,6 +744,12 @@ describe('the error card shows the declared message', () => {
     expect(providerDeclaredMessage(FREE_TIER_MESSAGE, 'zh-CN')).toBe('免费层不能使用这个模型。')
     expect(providerDeclaredMessage(FREE_TIER_MESSAGE, 'zh')).toBe('免费层不能使用这个模型。')
     expect(providerDeclaredMessage(FREE_TIER_MESSAGE, 'de')).toBe('This model is not available on the free tier.')
+  })
+
+  it('a declared message stands alone unless the call was retried', () => {
+    expect(showsProviderRetrySummary('This model is not available on the free tier.', 0)).toBe(false)
+    expect(showsProviderRetrySummary('Acme is busy.', 10)).toBe(true)
+    expect(showsProviderRetrySummary('', 0)).toBe(true)
   })
 
   it('a failure without a declared message leaves the card its own summary', () => {

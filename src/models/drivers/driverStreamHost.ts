@@ -430,7 +430,7 @@ class DriverStream {
       // The start of the body is kept only for a provider that declared rules.
       const head = this.errorRules ? new ResponseHead() : undefined
       const judged = (events: DriverStreamEvent[]): DriverStreamEvent[] =>
-        head && this.raw
+        head && this.raw && events.some(event => event.type === 'error')
           ? declaredFailure(this.errorRules, events, { response: this.raw, bodyText: head.text(), model: this.model, inStream: true })
           : events
       for await (const bytes of this.raw.body) {

@@ -75,7 +75,8 @@ export type ProviderFailureFacts = {
   model: string
 }
 
-function headerValue(headers: Readonly<Record<string, string>>, name: string): string | undefined {
+/** A response header by name, compared without case. */
+export function headerValue(headers: Readonly<Record<string, string>>, name: string): string | undefined {
   const wanted = name.toLowerCase()
   for (const [key, value] of Object.entries(headers)) {
     if (key.toLowerCase() === wanted) return value

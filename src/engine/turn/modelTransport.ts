@@ -537,9 +537,12 @@ export function bridgeModelTransport(
     // The selected provider's declared retry policy; a provider without one
     // gets the platform's ladder.
     const policy = params.providerId ? providerRequestSeamFor(params.providerId)?.policy?.retry : undefined
+    const retryOverride = runtimeConfig?.getEnv('e2eProviderMaxRetries')
+    const platformMaxRetries = getProviderConnectivityMaxRetries(retryOverride)
     const maxRetries = retriesAllowed(
-      getProviderConnectivityMaxRetries(runtimeConfig?.getEnv('e2eProviderMaxRetries')),
+      platformMaxRetries,
       policy,
+      retryOverride?.trim() ? platformMaxRetries : undefined,
     )
     let waitedMs = 0
     for (let attempt = 1; attempt <= maxRetries + 1; attempt += 1) {

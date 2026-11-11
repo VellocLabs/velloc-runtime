@@ -100,9 +100,18 @@ export type DeclaredRetryPolicy = RetryBackoff & {
   on?: readonly ProviderConnectivityIssueKind[]
 }
 
-/** Retries a call may make: the provider's declared number, else the platform's. */
-export function retriesAllowed(platformMaxRetries: number, policy: DeclaredRetryPolicy | undefined): number {
-  return policy?.maxRetries ?? platformMaxRetries
+/**
+ * Retries a call may make: the provider's declared number, else the
+ * platform's. `cap`, when given, is a test harness limit that no declared
+ * number exceeds.
+ */
+export function retriesAllowed(
+  platformMaxRetries: number,
+  policy: DeclaredRetryPolicy | undefined,
+  cap?: number,
+): number {
+  const allowed = policy?.maxRetries ?? platformMaxRetries
+  return cap === undefined ? allowed : Math.min(allowed, cap)
 }
 
 /** A declared `on` never admits these kinds: resending cannot fix them. */

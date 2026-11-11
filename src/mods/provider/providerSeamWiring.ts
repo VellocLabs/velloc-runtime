@@ -33,10 +33,10 @@ export function seamForRegistration(
       // A provider that signs in keeps its token fresh (PM-7); others carry nothing.
       manifest.credentials?.methods?.includes('login') ? getProviderCredentials().seamCredentials(providerId) : undefined,
     )
+    if (manifest.policy) seam.policy = manifest.policy
     // The id mapper exists only for a provider that states `ids` rules; one
     // that states none pays nothing. Rules that cannot run must not be
     // skipped (the vendor's ids would go out unmapped): that is an error here.
-    if (manifest.policy) seam.policy = manifest.policy
     if (manifest.ids && Object.keys(manifest.ids).length > 0) {
       if (!ids) throw new Error('its id rules cannot run in this realm (no id key store)')
       seam.ids = new ProviderIdMapper({

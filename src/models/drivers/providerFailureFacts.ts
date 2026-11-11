@@ -8,6 +8,7 @@
 import type { DriverStreamEvent } from './driverTypes'
 import {
   ERROR_RULE_BODY_WINDOW_BYTES,
+  headerValue,
   isEventStreamResponse,
   matchErrorRule,
   type ProviderErrorRule,
@@ -47,8 +48,7 @@ export type FailureSource = {
 }
 
 function isJsonDocument(headers: Readonly<Record<string, string>>): boolean {
-  const type = Object.entries(headers).find(([name]) => name.toLowerCase() === 'content-type')?.[1] ?? ''
-  return type.toLowerCase().includes('json')
+  return (headerValue(headers, 'content-type') ?? '').toLowerCase().includes('json')
 }
 
 export function declaredFailure(

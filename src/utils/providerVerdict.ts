@@ -246,7 +246,8 @@ function resetCeiling(issue: ProviderConnectivityIssue, now: number): number | u
     case 'quota':
       return now + VERDICT_QUOTA_RESET_CEILING_MS
     case 'rate_limit':
-      return now + Math.max(issue.retryAfterMs ?? 0, VERDICT_RESET_CEILING_MS)
+      // The response's own directive may lengthen it, never past the longest ceiling.
+      return now + Math.min(Math.max(issue.retryAfterMs ?? 0, VERDICT_RESET_CEILING_MS), VERDICT_QUOTA_RESET_CEILING_MS)
     default:
       return now + VERDICT_RESET_CEILING_MS
   }

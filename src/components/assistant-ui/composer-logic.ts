@@ -70,6 +70,14 @@ export function providerDeclaredMessage(value: unknown, locale: string | undefin
 }
 
 /**
+ * Whether the card shows its own summary line: always without a declared
+ * message, and beside one when the call was retried, so the count stays visible.
+ */
+export function showsProviderRetrySummary(declaredMessage: string, retryCount: number): boolean {
+  return declaredMessage === "" || retryCount > 0;
+}
+
+/**
  * Why the composer offers "Continue" instead of "Send": maps `lastTerminalReason` to
  * the Continue button tooltip's catalog key. Unknown reasons fall back to the generic
  * "interrupted" line.

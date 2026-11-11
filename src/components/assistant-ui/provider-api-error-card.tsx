@@ -6,7 +6,7 @@ import { useLocale, useT } from "@/browser/webview/i18n";
 import { useMessageActionsContext } from "@/components/assistant-ui/message-actions-context";
 import { storedKeyProblemOf } from "@/utils/storedKeyProblem";
 import { maskingRefusalOf } from "@/utils/maskingRefusal";
-import { providerDeclaredMessage, providerErrorSummaryKey } from './composer-logic';
+import { providerDeclaredMessage, providerErrorSummaryKey, showsProviderRetrySummary } from './composer-logic';
 
 export const ProviderApiErrorCard: FC = () => {
   const t = useT();
@@ -95,11 +95,12 @@ export const ProviderApiErrorCard: FC = () => {
               >
                 {declaredMessage}
               </div>
-            ) : (
+            ) : null}
+            {showsProviderRetrySummary(declaredMessage, retryCount) ? (
               <div className="text-muted-foreground" data-testid="provider-api-error-retry-summary">
                 {retrySummary}
               </div>
-            )}
+            ) : null}
             <div className="text-xs text-muted-foreground">
               {t("thread.issueLabel", { kind: displayKind })}
             </div>
