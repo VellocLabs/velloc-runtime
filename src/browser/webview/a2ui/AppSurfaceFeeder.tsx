@@ -12,6 +12,14 @@ import type { AppSurfaceState } from '../../runtimeProtocol/modApps'
 import type { A2uiExpressCompiler } from '../../../toolkit/builtin/a2ui/express/a2uiExpressCompiler'
 import { A2UI_PROTOCOL_VERSION } from './toA2uiMessages'
 
+/** Each board carries the table anew over the wire: equal entries are the same text. */
+function sameText(a: Record<string, string> | undefined, b: Record<string, string> | undefined): boolean {
+  if (a === b) return true
+  if (!a || !b) return false
+  const keys = Object.keys(a)
+  return keys.length === Object.keys(b).length && keys.every(key => a[key] === b[key])
+}
+
 type Processor = MessageProcessor<ReactCatalogComponent>
 
 const deleteSurfaces = (processor: Processor, ids: readonly string[]): void => {
@@ -83,7 +91,7 @@ export function AppSurfaceFeeder({
       drawnRef.current = { hash: surface.hash, ids: surface.surfaceIds }
       redrawn = true
     }
-    if (board && (redrawn || board.text !== textRef.current)) {
+    if (board && (redrawn || !sameText(board.text, textRef.current))) {
       // The plugin's text: whole under `/text`; a surface drawn whole has none to remove.
       const had = textRef.current !== undefined
       textRef.current = board.text

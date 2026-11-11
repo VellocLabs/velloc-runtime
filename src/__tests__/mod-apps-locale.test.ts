@@ -8,7 +8,7 @@ import { cleanup, render } from '@testing-library/react'
 import { createElement as h } from 'react'
 import type { ReactCatalogComponent } from '@a2ui/react'
 import { MessageProcessor } from '@a2ui/web_core/v1_0'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { isAppSurfaceState, type AppSurfaceState } from '../browser/runtimeProtocol/modApps'
 import { AppSurfaceFeeder } from '../browser/webview/a2ui/AppSurfaceFeeder'
@@ -175,5 +175,17 @@ describe('the text on the surfaces', () => {
     rerender(view(board('h2', undefined, { count: 3 })))
     expect(at('/text')).toBeUndefined()
     expect(at('/data')).toEqual({ count: 3 })
+  })
+
+  it('is not written again for a board whose table reads the same', () => {
+    const processor = new MessageProcessor<ReactCatalogComponent>([vellocCatalog], () => {})
+    const compiler = createA2uiExpressCompiler(vellocCatalog)
+    const view = (state: AppSurfaceState) => h(AppSurfaceFeeder, { board: state, processor, compiler, epoch: 0 })
+    const { rerender } = render(view(board('h1', { title: '收款' }, { count: 1 })))
+    const writes = vi.spyOn(processor, 'processMessages')
+    rerender(view(board('h1', { title: '收款' }, { count: 2 })))
+    const paths = writes.mock.calls.map(([message]) => (message as { updateDataModel?: { path?: string } }).updateDataModel?.path)
+    expect(paths).not.toContain('/text')
+    expect(paths).toContain('/data')
   })
 })

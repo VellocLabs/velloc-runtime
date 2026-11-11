@@ -12,6 +12,7 @@ import {
   MCP_AUTH_CAPABILITY,
   MCP_AUTH_STATUS_TOPIC,
   readMcpAuthState,
+  mcpSignInDue,
   type McpAuthServerState,
   type McpAuthSignInPayload,
   type McpAuthState,
@@ -88,10 +89,7 @@ export function dueSignIns(
   urls: readonly string[] | undefined,
   serverState: (url: string) => McpAuthServerState | undefined,
 ): string[] {
-  return (urls ?? []).filter(url => {
-    const server = serverState(url)
-    return server?.phase === 'needs-sign-in' && server.needsCredentials !== true && server.needsClient !== true
-  })
+  return (urls ?? []).filter(url => mcpSignInDue(serverState(url)))
 }
 
 /** What an app press's sign-in reads at the press: the connection and the page's language. */
@@ -114,18 +112,24 @@ export function createAppSignIn(
   return urls => {
     const state = latest.current
     for (const url of dueSignIns(urls, each => serverStateIn(state, each))) {
-      const key = normalizeMcpServerUrl(url)
-      if (!key || asking.has(key)) continue
-      asking.add(key)
-      const { runtimeConnection, t } = context.current
-      const windowTitle = t('mcpAuth.windowTitle', { server: new URL(key).host })
-      void askMcpAuth(runtimeConnection, 'signIn', { url, windowTitle })
-        .catch(err => {
-          console.warn('[mcp] app sign-in failed:', err instanceof Error ? err.message : err)
-        })
-        .finally(() => asking.delete(key))
+      void askAppSignIn(asking, context.current, url)?.catch(err => {
+        console.warn('[mcp] app sign-in failed:', err instanceof Error ? err.message : err)
+      })
     }
   }
+}
+
+/**
+ * Sends `mcpAuth.signIn` for the server at `url`, its window titled by the
+ * server's host, unless `asking` holds a request for it not yet answered
+ * (null then): a second request would replace the open window.
+ */
+export function askAppSignIn(asking: Set<string>, context: AppSignInContext, url: string): Promise<void> | null {
+  const key = normalizeMcpServerUrl(url)
+  if (!key || asking.has(key)) return null
+  asking.add(key)
+  const windowTitle = context.t('mcpAuth.windowTitle', { server: new URL(key).host })
+  return askMcpAuth(context.runtimeConnection, 'signIn', { url, windowTitle }).finally(() => asking.delete(key))
 }
 
 /**

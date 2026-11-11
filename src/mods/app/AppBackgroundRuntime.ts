@@ -53,7 +53,7 @@ import {
   mcpPhasesByUrl,
   mcpServerSignInUrlsOf,
   mcpServerUrlsOf,
-  mcpSignInDue,
+  mcpSignInDueAt,
   type AppMcpStatusSource,
 } from './appMcpStatus'
 import { normalizeMcpServerUrl } from '../../mcp/oauth/oauthKeys'
@@ -294,8 +294,10 @@ export class AppBackgroundRuntime {
    * server a press may start one for.
    */
   async press(appId: string, trigger: AppPressTrigger, item: string | undefined, client: string): Promise<AppPressIntent | null> {
-    const offered = this.pressMenus.get(client)?.get(appId)
-    this.pressMenus.get(client)?.delete(appId)
+    const menus = this.pressMenus.get(client) ?? new Map<string, ReadonlySet<string>>()
+    this.pressMenus.set(client, menus)
+    const offered = menus.get(appId)
+    menus.delete(appId)
     if (trigger === 'menu' && (item === undefined || !offered?.has(item))) return null
     const module = this.modules.get(appId)
     if (!module || !module.loaded || module.viewsOpen !== module.loaded || !module.dispatcher.hasHooksFor('app.press')) return null
@@ -309,13 +311,12 @@ export class AppBackgroundRuntime {
     )
     if (raised === undefined) return null
     const intent = readAppPressAnswer(raised.result, trigger, module.ref.mcpOwner ? mcpServerSignInUrlsOf(module.ref.mcpOwner) : new Map())
-    if (intent?.kind === 'menu') {
-      const menus = this.pressMenus.get(client) ?? new Map<string, ReadonlySet<string>>()
+    // A client gone during the hook took its ledger with it: nothing is recorded for it.
+    if (intent?.kind === 'menu' && this.pressMenus.get(client) === menus) {
       menus.set(appId, new Set(intent.items.filter(each => each.disabled !== true).map(each => each.id)))
-      this.pressMenus.set(client, menus)
     }
     if (intent?.kind !== 'signIn') return intent
-    return mcpSignInDue(this.options.mcpStatus?.read() ?? null, normalizeMcpServerUrl(intent.url) ?? intent.url) ? intent : null
+    return mcpSignInDueAt(this.options.mcpStatus?.read() ?? null, normalizeMcpServerUrl(intent.url) ?? intent.url) ? intent : null
   }
 
   /**

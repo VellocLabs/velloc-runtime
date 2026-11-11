@@ -100,7 +100,7 @@ export function createAppBackgroundRuntime(
 }
 
 /** The realm's sign-in state, followed across the service being installed or replaced. */
-function realmMcpStatus(): AppMcpStatusSource {
+export function realmMcpStatus(): AppMcpStatusSource {
   return {
     read: () => currentMcpOAuthService()?.getState() ?? null,
     onChange: listener => {

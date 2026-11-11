@@ -200,6 +200,8 @@ describe('an app session\'s opener', () => {
     const info = await openAppFolder({ fs, homeDir: '/home', app: appTemplate })
     expect(info).toMatchObject({ appId: 'pay-board', plugin: 'pay', folder: APP, seed: { version: 1 } })
     expect(text(`${APP}/AGENTS.md`)).toBe('You run the payments board.')
+    const rooted = await openAppFolder({ fs, homeDir: '/home', app: { ...appTemplate, root: '/plugins/pay' } })
+    expect(rooted.root).toBe('/plugins/pay')
   })
 
   it('refuses the session with plugin_app_seed when there is no home or the seed fails', async () => {

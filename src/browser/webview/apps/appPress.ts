@@ -10,7 +10,8 @@ import type { RuntimeConnection } from '../../runtimeClient/RuntimeConnection'
 import type { RouteKey } from '../../runtimeProtocol'
 import { readAppPressIntent, type AppPressIntent, type AppPressMenuItem, type AppPressTrigger } from '../../runtimeProtocol/modApps'
 import type { TranslateFn } from '../i18n/translate'
-import { askMcpAuth, holdMcpAuthStatus, serverStateIn } from '../mcpAuthView'
+import { normalizeMcpServerUrl } from '../../../mcp/oauth/oauthKeys'
+import { askAppSignIn, askMcpAuth, holdMcpAuthStatus, serverStateIn } from '../mcpAuthView'
 
 export type AppPressPort = {
   /** The module's intent for the press, or null for none; never rejects. */
@@ -71,6 +72,9 @@ export type AppPressContext = {
 
 type PressConnection = Pick<RuntimeConnection, 'request' | 'subscribe'>
 
+/** How long a press waits on the runtime's answer before it goes on as one with none: the hook's budget and room for the wire. */
+export const APP_PRESS_ANSWER_TIMEOUT_MS = 2_000
+
 /**
  * The port over the page's runtime connection. An intent the page's grant
  * does not allow reads as none. A sign-in's `onSignedIn` waits on
@@ -79,6 +83,7 @@ type PressConnection = Pick<RuntimeConnection, 'request' | 'subscribe'>
  */
 export function createAppPressPort(context: { readonly current: AppPressContext }): AppPressPort {
   let dropPending: (() => void) | null = null
+  const asking = new Set<string>()
   const connect = async (): Promise<PressConnection> => {
     const { runtimeConnection } = context.current
     if (!runtimeConnection) throw new Error('no runtime connection')
@@ -89,7 +94,7 @@ export function createAppPressPort(context: { readonly current: AppPressContext 
       dropPending?.()
       try {
         const conn = await connect()
-        const answer = await conn.request('mods.appPress' as RouteKey, { appId, trigger, ...(item !== undefined ? { item } : {}) })
+        const answer = await conn.request('mods.appPress' as RouteKey, { appId, trigger, ...(item !== undefined ? { item } : {}) }, { timeoutMs: APP_PRESS_ANSWER_TIMEOUT_MS })
         const intent = readAppPressIntent(answer)
         if (intent?.kind === 'signIn' && !context.current.canSignIn) return null
         if (intent?.kind === 'signOut' && !context.current.canSignOut) return null
@@ -100,7 +105,6 @@ export function createAppPressPort(context: { readonly current: AppPressContext 
     },
     signIn(url, onSignedIn) {
       dropPending?.()
-      const { runtimeConnection, t } = context.current
       let release: (() => void) | null = null
       let live = onSignedIn !== undefined
       const drop = () => {
@@ -132,13 +136,9 @@ export function createAppPressPort(context: { readonly current: AppPressContext 
           () => drop(),
         )
       }
-      let host = url
-      try {
-        host = new URL(url).host
-      } catch {
-        // Not a URL the page can read a host from: the title names it whole.
-      }
-      void askMcpAuth(runtimeConnection, 'signIn', { url, windowTitle: t('mcpAuth.windowTitle', { server: host }) }).catch(err => {
+      const asked = askAppSignIn(asking, context.current, url)
+      if (!asked && !normalizeMcpServerUrl(url)) drop()
+      void asked?.catch(err => {
         drop()
         console.warn('[mcp] app sign-in failed:', err instanceof Error ? err.message : err)
       })

@@ -928,6 +928,36 @@ describe('mods.appAction', () => {
   })
 })
 
+describe('mods.appPress', () => {
+  it('control and not session-bound: refused under observe; the connection id is passed on; a sign-in intent reaches only a connection that may send it', async () => {
+    const pressed: unknown[] = []
+    const appPress = async (appId: string, trigger: string, item: string | undefined, client: string) => {
+      pressed.push([appId, trigger, item ?? null, client])
+      return trigger === 'context' ? { kind: 'menu' as const, items: [{ id: 'out', label: 'Sign out' }] } : { kind: 'signIn' as const, url: 'https://mcp.example.com/mcp', thenOpen: true }
+    }
+    const observe = makeRig({ appPress })
+    await observe.client.hello({ scopeCeiling: 'observe' })
+    const refused = await observe.client.request('mods.appPress', { appId: 'pay-board', trigger: 'primary' })
+    expect(!refused.ok && refused.error.code).toBe('forbidden_scope')
+    expect(pressed).toEqual([])
+
+    const control = makeRig({ appPress })
+    await control.client.hello({ scopeCeiling: 'control' })
+    const menu = await control.client.request('mods.appPress', { appId: 'pay-board', trigger: 'context' })
+    expect(menu.ok && menu.result).toEqual({ intent: { kind: 'menu', items: [{ id: 'out', label: 'Sign out' }] } })
+    const withheld = await control.client.request('mods.appPress', { appId: 'pay-board', trigger: 'primary' })
+    expect(withheld.ok && withheld.result).toEqual({})
+    const bad = await control.client.request('mods.appPress', { appId: 'pay-board', trigger: 'primary', item: 'out' })
+    expect(bad.ok).toBe(false)
+    expect(pressed).toEqual([['pay-board', 'context', null, control.hub.list()[0]!.connectionId], ['pay-board', 'primary', null, control.hub.list()[0]!.connectionId]])
+
+    const full = makeRig({ appPress })
+    await full.client.hello({ scopeCeiling: 'full' })
+    const signIn = await full.client.request('mods.appPress', { appId: 'pay-board', trigger: 'primary' })
+    expect(signIn.ok && signIn.result).toEqual({ intent: { kind: 'signIn', url: 'https://mcp.example.com/mcp', thenOpen: true } })
+  })
+})
+
 describe('mods.appView', () => {
   it("control: passes the session, the connection and the layout on; refused under observe; a bad layout is refused at the wire", async () => {
     const viewed: unknown[] = []

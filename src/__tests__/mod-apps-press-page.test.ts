@@ -12,7 +12,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { RuntimeConnection } from '../browser/runtimeClient/RuntimeConnection'
 import type { AppPressIntent } from '../browser/runtimeProtocol/modApps'
 import { EMPTY_MOD_CONTRIBUTIONS, type ModContributionsState } from '../browser/runtimeProtocol/modContributions'
-import { createAppPressPort, runAppPress, type AppPressContext, type AppPressPort, type AppPressTarget } from '../browser/webview/apps/appPress'
+import { APP_PRESS_ANSWER_TIMEOUT_MS, createAppPressPort, runAppPress, type AppPressContext, type AppPressPort, type AppPressTarget } from '../browser/webview/apps/appPress'
 import { I18nProvider } from '../browser/webview/i18n'
 import { setModContributions } from '../browser/webview/mods/modContributionsView'
 import { AppPressMenu } from '../browser/webview/topbar/AppPressMenu'
@@ -147,6 +147,8 @@ describe('the port over the runtime connection', () => {
     const asked = world({ intent: { kind: 'open' } })
     expect(await asked.made.ask('pay-board', 'menu', 'out')).toEqual({ kind: 'open' })
     expect(asked.requests).toEqual([['mods.appPress', { appId: 'pay-board', trigger: 'menu', item: 'out' }]])
+    const conn = await asked.context.current.runtimeConnection!()
+    expect(vi.mocked(conn.request).mock.calls[0]?.[2]).toEqual({ timeoutMs: APP_PRESS_ANSWER_TIMEOUT_MS })
     expect(await world({ intent: { kind: 'navigate' } }).made.ask('pay-board', 'primary')).toBeNull()
     const broken = world({})
     broken.context.current.runtimeConnection = undefined
@@ -195,6 +197,27 @@ describe('the port over the runtime connection', () => {
     await pressedAgain.made.ask('pay-board', 'primary')
     expect(pressedAgain.watching()).toBe(false)
     expect(then).not.toHaveBeenCalled()
+  })
+
+  it('sends no second sign-in for a server while the first is unanswered, so the open window stays', async () => {
+    const twice = world({})
+    let answer!: () => void
+    const held = new Promise<void>(resolve => (answer = resolve))
+    const conn = await twice.context.current.runtimeConnection!()
+    vi.mocked(conn.request).mockImplementation(async (route: unknown, payload: unknown) => {
+      twice.requests.push([route, payload])
+      if (route === 'mcpAuth.signIn') await held
+      return {}
+    })
+    twice.made.signIn(PAYPAL)
+    twice.made.signIn(PAYPAL)
+    await settle()
+    expect(twice.requests.filter(request => (request as unknown[])[0] === 'mcpAuth.signIn')).toHaveLength(1)
+    answer()
+    await settle()
+    twice.made.signIn(PAYPAL)
+    await settle()
+    expect(twice.requests.filter(request => (request as unknown[])[0] === 'mcpAuth.signIn')).toHaveLength(2)
   })
 
   it('signs a server out', async () => {
@@ -264,6 +287,21 @@ describe("an app's topbar icon with a module to ask", () => {
     fireEvent.click(screen.getByTestId('topbar-app-pay-board-menu-refresh'))
     await settle()
     expect(asked.calls.at(-1)).toEqual(['ask', 'pay-board', 'menu', 'refresh'])
+  })
+
+  it('gives focus back to the icon when the menu closes', async () => {
+    act(() => setModContributions(STATE))
+    const asked = port({ kind: 'menu', items: [{ id: 'refresh', label: 'Refresh now' }] })
+    renderBar({ onOpenApp: vi.fn(), appPress: asked.port })
+    const icon = screen.getByTestId('topbar-app-pay-board')
+    icon.focus()
+    fireEvent.contextMenu(icon)
+    await settle()
+    const menu = screen.getByTestId('topbar-app-pay-board-menu')
+    fireEvent.keyDown(menu, { key: 'Escape' })
+    await settle()
+    expect(screen.queryByTestId('topbar-app-pay-board-menu')).toBeNull()
+    expect(document.activeElement).toBe(icon)
   })
 
   it('a context press with no port draws nothing and opens nothing', async () => {

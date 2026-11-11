@@ -191,6 +191,14 @@ export function readAppPressMenuItem(value: unknown): AppPressMenuItem | null {
   return { id: value.id, label, ...(value.disabled === true ? { disabled: true } : {}) }
 }
 
+/** A menu's items, or null: 1 to `APP_PRESS_MENU_MAX_ITEMS` well-formed items with distinct ids. */
+export function readAppPressMenuItems(value: unknown): AppPressMenuItem[] | null {
+  if (!Array.isArray(value) || value.length === 0 || value.length > APP_PRESS_MENU_MAX_ITEMS) return null
+  const items = value.map(readAppPressMenuItem)
+  if (!items.every((item): item is AppPressMenuItem => item !== null)) return null
+  return new Set(items.map(item => item.id)).size === items.length ? items : null
+}
+
 /** The intent of a `mods.appPress` answer as a page reads it, or null for none or a shape it does not know. */
 export function readAppPressIntent(value: unknown): AppPressIntent | null {
   const intent = isRecord(value) ? value.intent : undefined
@@ -204,9 +212,8 @@ export function readAppPressIntent(value: unknown): AppPressIntent | null {
     case 'signOut':
       return typeof intent.url === 'string' && intent.url !== '' ? { kind: 'signOut', url: intent.url } : null
     case 'menu': {
-      if (!Array.isArray(intent.items) || intent.items.length === 0 || intent.items.length > APP_PRESS_MENU_MAX_ITEMS) return null
-      const items = intent.items.map(readAppPressMenuItem)
-      return items.every((item): item is AppPressMenuItem => item !== null) ? { kind: 'menu', items } : null
+      const items = readAppPressMenuItems(intent.items)
+      return items ? { kind: 'menu', items } : null
     }
     default:
       return null

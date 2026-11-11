@@ -5,7 +5,7 @@
  * key; no URL, token, client id or error text leaves this file.
  */
 
-import type { McpAuthPhase, McpAuthState } from '../../mcp/oauth/mcpAuthProtocol'
+import { mcpSignInDue, type McpAuthPhase, type McpAuthState } from '../../mcp/oauth/mcpAuthProtocol'
 import { normalizeMcpServerUrl } from '../../mcp/oauth/oauthKeys'
 import { pluginMcpServerListings } from '../../pluginHost/pluginMcpServerList'
 import type { AppBackgroundMcpOwner } from './appBackgroundMcp'
@@ -53,9 +53,8 @@ export function mcpPhasesByUrl(state: McpAuthState | null): Map<string, McpAuthP
  * key from the person. A server signed in, signing in, or not reported is
  * not one.
  */
-export function mcpSignInDue(state: McpAuthState | null, url: string): boolean {
-  const server = state?.servers.find(each => normalizeMcpServerUrl(each.url) === url)
-  return server?.phase === 'needs-sign-in' && server.needsClient !== true && server.needsCredentials !== true
+export function mcpSignInDueAt(state: McpAuthState | null, url: string): boolean {
+  return mcpSignInDue(state?.servers.find(each => normalizeMcpServerUrl(each.url) === url))
 }
 
 /**

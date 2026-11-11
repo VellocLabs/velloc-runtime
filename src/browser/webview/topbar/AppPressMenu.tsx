@@ -21,6 +21,12 @@ export function AppPressMenu({
 }) {
   const locale = useLocale();
   const menu = state?.menu;
+  const returnTo = React.useRef<HTMLElement | null>(null);
+  React.useLayoutEffect(() => {
+    if (!menu) return;
+    const held = document.activeElement;
+    returnTo.current = held instanceof HTMLElement && held !== document.body ? held : null;
+  }, [menu]);
   if (!state || !menu) return null;
   return (
     <DropdownMenuPrimitive.Root
@@ -32,7 +38,6 @@ export function AppPressMenu({
     >
       <DropdownMenuPrimitive.Trigger asChild>
         <span
-          aria-hidden="true"
           className="pointer-events-none fixed size-0"
           style={{ left: menu.at.x, top: menu.at.y }}
         />
@@ -42,6 +47,10 @@ export function AppPressMenu({
           align="start"
           sideOffset={6}
           aria-label={menu.title}
+          onCloseAutoFocus={event => {
+            event.preventDefault();
+            if (returnTo.current?.isConnected) returnTo.current.focus();
+          }}
           data-testid={`topbar-app-${menu.appId}-menu`}
           className={contentClassName}
         >

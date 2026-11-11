@@ -17,6 +17,9 @@ import { dispatchAppPress, setAppPressDispatch } from '../mods/app/appActionBus'
 import { refuseAppBackgroundRegistrations } from '../mods/app/appBackgroundEvents'
 import { AppMcpStatusLedger, mcpPhasesByUrl, mcpServerSignInUrlsOf, mcpServerUrlsOf } from '../mods/app/appMcpStatus'
 import { readAppPressAnswer } from '../mods/app/appPress'
+import { realmMcpStatus } from '../mods/app/appBackgroundRuntimeFactory'
+import { configureMcpOAuthService } from '../mcp/oauth/mcpOAuthHolder'
+import type { McpOAuthService } from '../mcp/oauth/McpOAuthService'
 import { resetAppStateBusForTests } from '../mods/app/appStateBus'
 
 const PAYPAL = 'https://mcp.example.com/mcp'
@@ -158,6 +161,43 @@ describe('AppBackgroundRuntime — mcp.status', () => {
     expect(seen()).toEqual(['needs-sign-in', 'signed-in'])
   })
 
+  it("follows the realm's sign-in service, across it being installed and replaced", () => {
+    const fake = (servers: Record<string, McpAuthPhase>) => {
+      const listeners = new Set<() => void>()
+      const service = {
+        getState: () => state(servers),
+        onStateChange: (listener: () => void) => {
+          listeners.add(listener)
+          return () => listeners.delete(listener)
+        },
+      } as unknown as McpOAuthService
+      return { service, change: () => listeners.forEach(listener => listener()), listening: () => listeners.size }
+    }
+    try {
+      configureMcpOAuthService(null)
+      const source = realmMcpStatus()
+      expect(source.read()).toBeNull()
+      const heard = vi.fn()
+      const stop = source.onChange(heard)
+      const first = fake({ [PAYPAL]: 'needs-sign-in' })
+      configureMcpOAuthService(first.service)
+      expect(heard).toHaveBeenCalledTimes(1)
+      expect(source.read()?.servers[0]?.phase).toBe('needs-sign-in')
+      first.change()
+      expect(heard).toHaveBeenCalledTimes(2)
+      const second = fake({ [PAYPAL]: 'signed-in' })
+      configureMcpOAuthService(second.service)
+      expect(first.listening()).toBe(0)
+      expect(source.read()?.servers[0]?.phase).toBe('signed-in')
+      stop()
+      expect(second.listening()).toBe(0)
+      second.change()
+      expect(heard).toHaveBeenCalledTimes(3)
+    } finally {
+      configureMcpOAuthService(null)
+    }
+  })
+
   it('stops following the sign-in state when it is disposed', async () => {
     const { runtime, listeners } = world(WATCHER)
     expect(listeners.size).toBe(1)
@@ -258,6 +298,25 @@ describe('AppBackgroundRuntime — app.press', () => {
     expect(await runtime.press('pay-board', 'menu', 'out', 'c1')).toEqual({ kind: 'signOut', url: PAYPAL })
   })
 
+  it('records no menu for a client whose connection closed while the hook ran', async () => {
+    const { runtime, ref } = world(`
+      export function register(on) {
+        on('app.press', async ($, e) => {
+          if (e.trigger === 'menu') return { handled: true }
+          await new Promise(resolve => setTimeout(resolve, 60))
+          return { menu: [{ id: 'out', label: 'Sign out' }] }
+        })
+      }`)
+    runtime.sync([ref])
+    await vi.waitFor(async () => expect(await runtime.press('pay-board', 'context', undefined, 'warm')).not.toBeNull())
+    const pending = runtime.press('pay-board', 'context', undefined, 'c1')
+    await new Promise(resolve => setTimeout(resolve, 10))
+    runtime.viewClientGone('c1')
+    expect(await pending).toEqual({ kind: 'menu', items: [{ id: 'out', label: 'Sign out' }] })
+    expect((runtime as unknown as { pressMenus: Map<string, unknown> }).pressMenus.has('c1')).toBe(false)
+    expect(await runtime.press('pay-board', 'menu', 'out', 'c1')).toBeNull()
+  })
+
   it('has no answer for an unknown app, a module without the hook, a hook that throws and a hook past its budget', async () => {
     const { runtime, ref, reports } = world(
       `export function register(on) {
@@ -345,11 +404,13 @@ describe('the wire', () => {
     expect(readAppPressIntent({ intent: { kind: 'navigate', url: PAYPAL } })).toBeNull()
   })
 
-  it('gives a sign-in or sign-out intent to a manager connection alone', () => {
+  it('gives a sign-in or sign-out intent only to a connection that may send that mcpAuth action', () => {
     const conn = (mode: string) => ({ scope: { mode, sessions: 'all' } }) as unknown as ConnectionInfo
     expect(appPressIntentFor({ kind: 'signIn', url: PAYPAL, thenOpen: false }, conn('control'))).toBe(false)
     expect(appPressIntentFor({ kind: 'signOut', url: PAYPAL }, conn('control'))).toBe(false)
-    expect(appPressIntentFor({ kind: 'signIn', url: PAYPAL, thenOpen: false }, conn('manager'))).toBe(true)
+    expect(appPressIntentFor({ kind: 'signIn', url: PAYPAL, thenOpen: false }, conn('manager'))).toBe(false)
+    expect(appPressIntentFor({ kind: 'signOut', url: PAYPAL }, conn('manager'))).toBe(true)
+    expect(appPressIntentFor({ kind: 'signIn', url: PAYPAL, thenOpen: false }, conn('full'))).toBe(true)
     expect(appPressIntentFor({ kind: 'open' }, conn('control'))).toBe(true)
     expect(appPressIntentFor({ kind: 'menu', items: [{ id: 'a', label: 'A' }] }, conn('control'))).toBe(true)
   })

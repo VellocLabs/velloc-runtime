@@ -6,13 +6,7 @@
  * set, so an answer can ask the page for nothing else.
  */
 
-import {
-  APP_PRESS_MENU_MAX_ITEMS,
-  readAppPressMenuItem,
-  type AppPressIntent,
-  type AppPressMenuItem,
-  type AppPressTrigger,
-} from '../../browser/runtimeProtocol/modApps'
+import { readAppPressMenuItems, type AppPressIntent, type AppPressTrigger } from '../../browser/runtimeProtocol/modApps'
 
 /** The budget of an `app.press` hook: the press waits on it. */
 export const APP_PRESS_TIMEOUT_MS = 500
@@ -40,11 +34,8 @@ export function readAppPressAnswer(answer: unknown, trigger: AppPressTrigger, ur
     return url === undefined || trigger !== 'menu' ? null : { kind: 'signOut', url }
   }
   if ('menu' in answer) {
-    const { menu } = answer
-    if (trigger === 'menu' || !Array.isArray(menu) || menu.length === 0 || menu.length > APP_PRESS_MENU_MAX_ITEMS) return null
-    const items = menu.map(readAppPressMenuItem)
-    if (!items.every((item): item is AppPressMenuItem => item !== null)) return null
-    return new Set(items.map(item => item.id)).size === items.length ? { kind: 'menu', items } : null
+    const items = trigger === 'menu' ? null : readAppPressMenuItems(answer.menu)
+    return items ? { kind: 'menu', items } : null
   }
   if ('handled' in answer) return answer.handled === true ? { kind: 'handled' } : null
   return null

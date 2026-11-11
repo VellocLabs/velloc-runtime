@@ -76,6 +76,7 @@ import {
 import { scopeAllows, type CapabilityRegistry } from './CapabilityRegistry'
 import { registerModsAppTopic } from './modsAppTopic'
 import { dispatchAppPress } from '../../mods/app/appActionBus'
+import { MCP_AUTH_ACTION_SCOPES } from '../../mcp/oauth/mcpAuthProtocol'
 import { buildRegisteredApp, runRegisteredAppAction, viewRegisteredApp } from '../../mods/app/appSurfaceRegistry'
 import {
   isModsAppActionPayload,
@@ -179,11 +180,12 @@ export function modsUiTopicProvider(
 
 /**
  * Security: a sign-in or sign-out intent names one of the person's servers
- * by URL, which a connection below `manager` is not shown (F-10); such a
- * connection gets no intent, and its press goes on as one with no answer.
+ * by URL, and the client carries it out with `mcpAuth`; a connection that
+ * may not send that `mcpAuth` action (F-10) gets no intent, and its press
+ * goes on as one with no answer.
  */
 export function appPressIntentFor(intent: AppPressIntent, conn: ConnectionInfo): boolean {
-  return (intent.kind !== 'signIn' && intent.kind !== 'signOut') || scopeAllows(conn.scope.mode, 'manager')
+  return (intent.kind !== 'signIn' && intent.kind !== 'signOut') || scopeAllows(conn.scope.mode, MCP_AUTH_ACTION_SCOPES[intent.kind])
 }
 
 /**
@@ -313,6 +315,8 @@ export function registerModsCapability(
         guard: isModsAppViewPayload,
         sessionOf: payload => (payload as ModsAppViewPayload).sessionId,
       },
+      // Security: an app's icon is not a session's, as `mods/contributions` is
+      // not, so a press is not session-bound (F-40).
       appPress: {
         scope: MODS_ACTION_SCOPES.appPress,
         guard: isModsAppPressPayload,

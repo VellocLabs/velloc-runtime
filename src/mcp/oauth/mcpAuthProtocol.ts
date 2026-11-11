@@ -39,6 +39,11 @@ export type McpAuthServerState = {
   lastError?: string
 }
 
+/** Whether a sign-in may start for `server`: it needs one, and waits on neither a client id nor a key from the person. */
+export function mcpSignInDue(server: McpAuthServerState | undefined): boolean {
+  return server?.phase === 'needs-sign-in' && server.needsClient !== true && server.needsCredentials !== true
+}
+
 /**
  * The whole state, published on every change. `available` is false while the
  * runtime cannot run a sign-in (no service, or a host without the window
