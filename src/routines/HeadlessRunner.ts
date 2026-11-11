@@ -251,8 +251,10 @@ async function persistLastRun(
   // Build the patch we'll merge into the routine record. `oneShot`
   // routines auto-disable on first success — the user shouldn't have
   // to delete them manually.
+  // A cron routine's lastRunAt is the scheduler's fire time, the anchor for its
+  // next slot; a queued run starts later and must not move it.
   const patch: Partial<Routine> = {
-    lastRunAt: startedAt,
+    ...(routine.kind === 'cron' ? {} : { lastRunAt: startedAt }),
     lastRunSessionId: sessionId,
     lastRunStatus: result.status,
     ...(result.signal ? { lastRunSignal: result.signal } : {}),

@@ -96,8 +96,8 @@ export class RoutineScheduler {
       // hidden turns to run back-to-back.
       if (this.dispatcher.prepare(r) === 'skip') continue
       // Set lastRunAt BEFORE the runner starts so a fast run or back-to-back tick
-      // cannot double-fire. For session delivery this is the only advance, so a
-      // dropped or skipped fire resumes at the next slot instead of retrying.
+      // cannot double-fire. This is the only advance of a cron routine's anchor, so
+      // a dropped or skipped fire resumes at the next slot instead of retrying.
       try {
         await registry.update(r.id, { lastRunAt: now })
       } catch (err) {
