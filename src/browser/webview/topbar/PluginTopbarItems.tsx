@@ -4,7 +4,7 @@
  * active session (`mods.pressTopbar`), and is not rendered for a connection
  * that may not press. An app's icon (F-40) opens the app's session, with or
  * without a session on screen, and reads as pressed while the app is on
- * screen.
+ * screen; its press is first offered to the app's background module.
  */
 import * as React from "react";
 
@@ -16,6 +16,8 @@ import { useLocale, useT } from "../i18n";
 import { useCan } from "../useCan";
 import { ModIconSlot, useModContributions } from "../mods/modContributionsView";
 import type { ModsPressTopbarResult } from "../../runtimeProtocol/modContributions";
+import type { AppPressMenuItem, AppPressTrigger } from "../../runtimeProtocol/modApps";
+import { runAppPress, type AppPressPort } from "../apps/appPress";
 import type { MessageKey } from "../i18n/messages/en";
 
 const REFUSAL: Record<Extract<ModsPressTopbarResult, { ok: false }>["reason"], MessageKey> = {
@@ -49,6 +51,27 @@ export type PluginTopbarItem = {
   testId: string;
   /** The test id in the More menu once folded. */
   foldedTestId: string;
+  /** An app's icon: its context menu is the app's own. */
+  isApp?: boolean;
+};
+
+/** Where a menu is drawn: a point of the page, in CSS pixels. */
+export type MenuPoint = { x: number; y: number };
+
+/** The point under the left end of `element`. */
+export function menuPointOf(element: Element): MenuPoint {
+  const rect = element.getBoundingClientRect();
+  return { x: rect.left, y: rect.bottom };
+}
+
+/** The menu an app's module answered a press with. */
+export type AppPressMenuState = {
+  itemId: string;
+  appId: string;
+  /** The app's title, as the menu's accessible name. */
+  title: string;
+  items: readonly AppPressMenuItem[];
+  at: MenuPoint;
 };
 
 /** The item id of app `type`, apart from the plugin's command items. */
@@ -56,8 +79,13 @@ export const appItemId = (type: string) => `app:${type}`;
 
 export type PluginTopbarState = {
   items: readonly PluginTopbarItem[];
-  /** Run an item for the active session; a refusal shows a notice beside the bar. */
-  press: (id: string) => void;
+  /** Run an item for the active session; a refusal shows a notice beside the bar. `at` is where an app's menu would be drawn. */
+  press: (id: string, at?: MenuPoint) => void;
+  /** The context menu of an app's icon was asked for. */
+  pressContext: (id: string, at: MenuPoint) => void;
+  menu: AppPressMenuState | null;
+  pickMenuItem: (item: string) => void;
+  closeMenu: () => void;
   notice: { id: string; key: MessageKey } | null;
   sessionReady: boolean;
 };
@@ -73,6 +101,8 @@ export function usePluginTopbarItems(
   shownAppType?: string,
   /** Starts the sign-ins an app's MCP servers wait on, at its press. Omitted: none is started. */
   onAppSignIn?: (urls: readonly string[]) => void,
+  /** Offers an app's press to its background module. Omitted: every press opens the app. */
+  appPress?: AppPressPort,
 ): PluginTopbarState | null {
   const t = useT();
   const locale = useLocale();
@@ -85,22 +115,52 @@ export function usePluginTopbarItems(
     return () => clearTimeout(timer);
   }, [notice]);
   const apps = contributions.apps ?? NO_APPS;
-  const press = React.useCallback(
-    (id: string) => {
+  const [menu, setMenu] = React.useState<AppPressMenuState | null>(null);
+  const pressSeq = React.useRef(0);
+  const pressApp = React.useCallback(
+    (id: string, trigger: AppPressTrigger, at: MenuPoint | undefined, item?: string): boolean => {
       const app = onOpenApp ? apps.find(entry => appItemId(entry.type) === id) : undefined;
-      if (app) {
-        setNotice(null);
-        onOpenApp!(app.type);
-        if (app.signInUrls?.length) onAppSignIn?.(app.signInUrls);
-        return;
-      }
+      if (!app) return false;
+      const seq = ++pressSeq.current;
+      setNotice(null);
+      setMenu(null);
+      runAppPress(
+        appPress,
+        app.appId,
+        {
+          open: () => onOpenApp!(app.type),
+          defaultSignIn: () => {
+            if (app.signInUrls?.length) onAppSignIn?.(app.signInUrls);
+          },
+          showMenu: items =>
+            setMenu({ itemId: id, appId: app.appId, title: resolveLocalizedText(app.title, locale), items, at: at ?? { x: 0, y: 0 } }),
+          isCurrent: () => seq === pressSeq.current,
+        },
+        trigger,
+        item,
+      );
+      return true;
+    },
+    [onOpenApp, onAppSignIn, appPress, apps, locale],
+  );
+  const pressContext = React.useCallback((id: string, at: MenuPoint) => void pressApp(id, "context", at), [pressApp]);
+  const closeMenu = React.useCallback(() => setMenu(null), []);
+  const pickMenuItem = React.useCallback(
+    (item: string) => {
+      if (menu) pressApp(menu.itemId, "menu", menu.at, item);
+    },
+    [menu, pressApp],
+  );
+  const press = React.useCallback(
+    (id: string, at?: MenuPoint) => {
+      if (pressApp(id, "primary", at)) return;
       if (!onPress || !activeSessionId) return;
       onPress(activeSessionId, id).then(
         result => setNotice(result.ok ? null : { id, key: REFUSAL[result.reason] }),
         () => setNotice({ id, key: "topbar.pluginItemUnavailable" }),
       );
     },
-    [onPress, onOpenApp, onAppSignIn, activeSessionId, apps],
+    [onPress, pressApp, activeSessionId],
   );
   const commands = onPress && canPress ? contributions.topbar : [];
   const appItems = onOpenApp ? apps : [];
@@ -128,6 +188,7 @@ export function usePluginTopbarItems(
           icon: <ModIconSlot icon={app.icon} icons={contributions.icons} className="size-4" />,
           needsSession: false,
           pressed: app.type === shownAppType,
+          isApp: true,
           ...(badge ? { badge } : {}),
           testId: `topbar-app-${app.appId}`,
           foldedTestId: `topbar-folded-app-${app.appId}`,
@@ -135,6 +196,10 @@ export function usePluginTopbarItems(
       }),
     ],
     press,
+    pressContext,
+    menu,
+    pickMenuItem,
+    closeMenu,
     notice,
     sessionReady: !!activeSessionId,
   };
@@ -170,7 +235,15 @@ export function PluginTopbarItems({
                   aria-label={item.label}
                   {...(item.pressed === undefined ? {} : { "aria-pressed": item.pressed })}
                   disabled={item.needsSession && !state.sessionReady}
-                  onClick={() => state.press(item.id)}
+                  onClick={event => state.press(item.id, menuPointOf(event.currentTarget))}
+                  {...(item.isApp
+                    ? {
+                        onContextMenu: (event: React.MouseEvent<HTMLButtonElement>) => {
+                          event.preventDefault();
+                          state.pressContext(item.id, menuPointOf(event.currentTarget));
+                        },
+                      }
+                    : {})}
                 >
                   {item.icon}
                   {item.badge ? (

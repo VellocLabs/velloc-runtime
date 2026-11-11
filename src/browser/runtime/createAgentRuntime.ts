@@ -433,7 +433,7 @@ export async function createBrowserRuntime(
   const appSurfaceModule = appSession && options.isSubAgent !== true && !appAgentRun ? await import('../../mods/app/appSurfaceHost') : undefined
   // A superseded build registers nothing: its host would take the session's entry from the newer one.
   const appSurface = appSurfaceModule && appSession && options.runtimeScopeSignal?.aborted !== true
-    ? appSurfaceModule.createAppSurfaceHost({ fs: installedFs, app: appSession, sessionId: resolvedSessionId })
+    ? appSurfaceModule.createAppSurfaceHost({ fs: installedFs, app: appSession, sessionId: resolvedSessionId, ...(options.locale !== undefined ? { locale: options.locale } : {}) })
     : undefined
   if (appSurface) undoWhenScopeEnds(() => appSurface.dispose(), options.runtimeScopeSignal)
   void appSurface?.start().catch(error => console.warn('[mods/app] board read failed', error))

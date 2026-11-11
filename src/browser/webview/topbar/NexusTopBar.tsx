@@ -42,11 +42,14 @@ import {
 } from "../remote/RemoteHostIndicator";
 import { RemoteFullscreenToggle } from "../remote/RemoteFullscreenToggle";
 import { NexusModelPicker } from "./NexusModelPicker";
+import { AppPressMenu } from "./AppPressMenu";
 import {
   PluginTopbarItems,
+  menuPointOf,
   pluginFoldKey,
   usePluginTopbarItems,
 } from "./PluginTopbarItems";
+import type { AppPressPort } from "../apps/appPress";
 import type { ModsPressTopbarResult } from "../../runtimeProtocol/modContributions";
 import { FOLD_ATTR, useTopbarFit } from "./useTopbarFit";
 import { useWindowDragRegions } from "./useWindowDragRegions";
@@ -174,6 +177,8 @@ export type NexusTopBarProps = {
   onOpenApp?: (type: string) => void;
   /** Starts the sign-ins an app's MCP servers wait on, at its icon's press (F-10). */
   onAppSignIn?: (urls: readonly string[]) => void;
+  /** Offers an app's press to its background module first (F-40). */
+  appPress?: AppPressPort;
   /** The template type of the app on screen: its icon reads as pressed. */
   shownAppType?: string;
   /** Not drawn and reports no drag map, but stays mounted so its controls
@@ -244,6 +249,7 @@ export function NexusTopBar({
   onPressPluginItem,
   onOpenApp,
   onAppSignIn,
+  appPress,
   shownAppType,
   hidden = false,
 }: NexusTopBarProps) {
@@ -262,7 +268,7 @@ export function NexusTopBar({
   const leftGroupRef = React.useRef<HTMLDivElement>(null);
   const rightGroupRef = React.useRef<HTMLDivElement>(null);
   const open = new Set(openPanes ?? []);
-  const plugins = usePluginTopbarItems(activeSessionId, onPressPluginItem, onOpenApp, shownAppType, onAppSignIn);
+  const plugins = usePluginTopbarItems(activeSessionId, onPressPluginItem, onOpenApp, shownAppType, onAppSignIn, appPress);
   const offered = (kind: SidePaneKind) => !paneKinds || paneKinds.includes(kind);
   const barPaneKinds = onTogglePane
     ? BAR_PANE_KINDS.filter(
@@ -489,6 +495,7 @@ export function NexusTopBar({
           </Tooltip>
         ) : null}
         <PluginTopbarItems state={plugins} folded={folded} />
+        <AppPressMenu state={plugins} contentClassName={MENU_CONTENT_CLASS} itemClassName={MENU_ITEM_CLASS} />
         {/* Transcript search, last and set apart: a hairline divider marks
             it as a different kind of control (it expands into a field)
             and keeps it from reading as one more toggle. */}
@@ -754,7 +761,7 @@ export function NexusTopBar({
                       <DropdownMenuPrimitive.Item
                         key={item.id}
                         disabled={item.needsSession && !plugins.sessionReady}
-                        onSelect={() => plugins.press(item.id)}
+                        onSelect={event => plugins.press(item.id, menuPointOf(event.currentTarget as Element))}
                         data-testid={item.foldedTestId}
                         {...(item.pressed === undefined
                           ? {}

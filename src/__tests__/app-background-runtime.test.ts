@@ -257,7 +257,7 @@ describe('AppBackgroundRuntime — admission', () => {
     })
     runtime.sync([ref('/plugins/pay/bg.js')])
     await vi.waitFor(() => expect(status()?.state).toBe('refused'))
-    expect(status()?.reason).toMatch(/hooks app\.start, app\.stop, app\.action, app\.show, app\.layout and app\.hide alone, and it hooks session\.start/)
+    expect(status()?.reason).toMatch(/hooks app\.start, app\.stop, app\.action, app\.show, app\.layout, app\.hide, app\.press and mcp\.status alone, and it hooks session\.start/)
     await expect(workers[0]!.closed).resolves.toEqual({ reason: 'closed' })
   })
 
@@ -614,6 +614,30 @@ describe('AppBackgroundRuntime — declared folders', () => {
     expect(document.value).toEqual({ folders: FOLDERS, read: 'csv', readOnly: 'NotAllowedError', outside: 'NotAllowedError' })
     expect(files.get('C:/home/Documents/invoices/2026/new.txt')).toBe('n')
     expect(files.has('C:/home/Downloads/out.txt')).toBe(false)
+  })
+
+  it("reads its plugin's language files and no other file of the plugin, and writes none", async () => {
+    const LOCALE_USER = `
+      export function register(on) {
+        on('app.start', async ($) => {
+          const out = {}
+          out.hello = JSON.parse(await $.fs.read($.plugin.root + '/locales/zh.json', 'text')).hello
+          try { await $.fs.write($.plugin.root + '/locales/zh.json', '{}') } catch (error) { out.write = error.name }
+          try { await $.fs.read($.plugin.root + '/plugin.json', 'text') } catch (error) { out.other = error.name }
+          await $.app.state.set(out)
+        })
+      }
+    `
+    const { runtime, ref, status, files } = world(
+      { '/plugins/pay/bg.js': LOCALE_USER },
+      { files: { '/plugins/pay/locales/zh.json': '{"hello":"你好"}', '/plugins/pay/plugin.json': '{}' } },
+    )
+    runtime.sync([ref('/plugins/pay/bg.js')])
+    await vi.waitFor(() => expect(status()?.state).toBe('ready'))
+    const document = runtime.document('pay-board')!
+    await vi.waitFor(() => expect(document.value).toHaveProperty('other'))
+    expect(document.value).toEqual({ hello: '你好', write: 'NotAllowedError', other: 'NotAllowedError' })
+    expect(files.get('/plugins/pay/locales/zh.json')).toBe('{"hello":"你好"}')
   })
 
   it('without approved folders the module stays in the app folder and app.start names none', async () => {

@@ -7,6 +7,7 @@
  * `app.layout`, `app.hide`).
  */
 
+import type { AppPressIntent, AppPressTrigger } from '../../browser/runtimeProtocol/modApps'
 import type { AppViewLayout } from './appViews'
 
 /** Offers an action to the app's module; resolves true when the module handled it. */
@@ -20,6 +21,19 @@ export function setAppActionDispatch(dispatch: AppActionDispatch | undefined): v
 
 export function dispatchAppAction(appId: string, action: string, context: unknown, sessionId: string): Promise<boolean> {
   return seated ? seated(appId, action, context, sessionId) : Promise.resolve(false)
+}
+
+/** Offers a press on an app's topbar icon to the app's module; resolves with its intent, or null for none. */
+export type AppPressDispatch = (appId: string, trigger: AppPressTrigger, item: string | undefined, client: string) => Promise<AppPressIntent | null>
+
+let seatedPress: AppPressDispatch | undefined
+
+export function setAppPressDispatch(dispatch: AppPressDispatch | undefined): void {
+  seatedPress = dispatch
+}
+
+export function dispatchAppPress(appId: string, trigger: AppPressTrigger, item: string | undefined, client: string): Promise<AppPressIntent | null> {
+  return seatedPress ? seatedPress(appId, trigger, item, client) : Promise.resolve(null)
 }
 
 /** Where the module runtime takes what each client shows of an app (`AppBackgroundRuntime.view`). */

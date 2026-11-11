@@ -251,7 +251,7 @@ describe('the host\'s app lookup', () => {
   it('a session of an app type learns its app; the seed folder is inside the plugin', async () => {
     const contributions = host({ '/plugins/pay/templates/board/template.md': TEMPLATE_MD.replace('TYPE', 'pay:board') })
     await contributions.sync({ enabled: [appPlugin('pay', 'board')] })
-    expect(contributions.appOf('pay:board')).toEqual({ appId: 'pay-board', plugin: 'pay', decl: APP_DECL, seedDir: '/plugins/pay/app' })
+    expect(contributions.appOf('pay:board')).toEqual({ appId: 'pay-board', plugin: 'pay', decl: APP_DECL, seedDir: '/plugins/pay/app', root: '/plugins/pay' })
     expect(contributions.appOf('pay:other')).toBeUndefined()
     const opened = await openPluginTemplate('pay:board', contributions)
     expect(opened.app?.appId).toBe('pay-board')

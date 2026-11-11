@@ -75,12 +75,17 @@ import {
 } from '../runtimeProtocol/modContributions'
 import { scopeAllows, type CapabilityRegistry } from './CapabilityRegistry'
 import { registerModsAppTopic } from './modsAppTopic'
+import { dispatchAppPress } from '../../mods/app/appActionBus'
 import { buildRegisteredApp, runRegisteredAppAction, viewRegisteredApp } from '../../mods/app/appSurfaceRegistry'
 import {
   isModsAppActionPayload,
+  isModsAppPressPayload,
   isModsAppViewPayload,
   isModsBuildAppPayload,
   type ModsAppActionPayload,
+  type AppPressIntent,
+  type ModsAppPressPayload,
+  type ModsAppPressResult,
   type ModsAppViewPayload,
   type ModsAppActionResult,
   type ModsBuildAppPayload,
@@ -173,6 +178,15 @@ export function modsUiTopicProvider(
 }
 
 /**
+ * Security: a sign-in or sign-out intent names one of the person's servers
+ * by URL, which a connection below `manager` is not shown (F-10); such a
+ * connection gets no intent, and its press goes on as one with no answer.
+ */
+export function appPressIntentFor(intent: AppPressIntent, conn: ConnectionInfo): boolean {
+  return (intent.kind !== 'signIn' && intent.kind !== 'signOut') || scopeAllows(conn.scope.mode, 'manager')
+}
+
+/**
  * The contributions as `conn` may see them: an app's `signInUrls` name the
  * person's servers, which `mcpAuth/status` shows from `manager` up, so a
  * connection below it gets the apps without them (F-10).
@@ -247,6 +261,8 @@ export function registerModsCapability(
     appAction?: (sessionId: string, action: string, context: unknown) => Promise<ModsAppActionResult> | undefined
     /** `mods.appView`: what a client shows of a session's app; defaults to the realm's registry. */
     appView?: (sessionId: string, client: string, layout: ModsAppViewPayload['layout']) => void
+    /** `mods.appPress`: offer a press on an app's icon to its module; defaults to the realm's seated dispatch. */
+    appPress?: (appId: string, trigger: ModsAppPressPayload['trigger'], item: string | undefined, client: string) => Promise<AppPressIntent | null>
   } = {},
 ): { publish(): void; dispose(): void } {
   const getState = options.getState ?? modsStatePayload
@@ -296,6 +312,10 @@ export function registerModsCapability(
         scope: MODS_ACTION_SCOPES.appView,
         guard: isModsAppViewPayload,
         sessionOf: payload => (payload as ModsAppViewPayload).sessionId,
+      },
+      appPress: {
+        scope: MODS_ACTION_SCOPES.appPress,
+        guard: isModsAppPressPayload,
       },
     },
     handle: async request => {
@@ -434,6 +454,11 @@ export function registerModsCapability(
           }
           ;(options.appView ?? viewRegisteredApp)(sessionId, request.conn.connectionId, layout)
           return {}
+        }
+        case 'appPress': {
+          const { appId, trigger, item } = request.payload as ModsAppPressPayload
+          const intent = await (options.appPress ?? dispatchAppPress)(appId, trigger, item, request.conn.connectionId)
+          return (intent && appPressIntentFor(intent, request.conn) ? { intent } : {}) satisfies ModsAppPressResult
         }
         case 'setOptions': {
           const payload = request.payload as ModsSetOptionsPayload

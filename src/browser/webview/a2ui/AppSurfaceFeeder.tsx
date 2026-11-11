@@ -39,6 +39,7 @@ export function AppSurfaceFeeder({
   const state = useMemo(() => compiler.stateFor(processor), [compiler, processor])
   const drawnRef = useRef<{ hash: string; ids: string[] } | null>(null)
   const dataRef = useRef<unknown>(undefined)
+  const textRef = useRef<Record<string, string> | undefined>(undefined)
   /** The `dataSeq` of the board whose data the surfaces hold. */
   const seqRef = useRef<number | undefined>(undefined)
   const epochRef = useRef(epoch)
@@ -81,6 +82,19 @@ export function AppSurfaceFeeder({
       }
       drawnRef.current = { hash: surface.hash, ids: surface.surfaceIds }
       redrawn = true
+    }
+    if (board && (redrawn || board.text !== textRef.current)) {
+      // The plugin's text: whole under `/text`; a surface drawn whole has none to remove.
+      const had = textRef.current !== undefined
+      textRef.current = board.text
+      if (board.text !== undefined || (had && !whole)) {
+        for (const surfaceId of surface.surfaceIds) {
+          processor.processMessages({
+            version: A2UI_PROTOCOL_VERSION,
+            updateDataModel: { surfaceId, path: '/text', ...(board.text !== undefined ? { value: board.text } : {}) },
+          } as never)
+        }
+      }
     }
     if (board && (redrawn || board.data !== dataRef.current)) {
       dataRef.current = board.data

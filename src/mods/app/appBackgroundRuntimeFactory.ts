@@ -21,6 +21,8 @@ import { providerModsDir, providerModuleLoaders } from '../provider/providerModu
 import { AppBackgroundRuntime } from './AppBackgroundRuntime'
 import type { AppBackgroundBootDeps } from './appBackgroundBoot'
 import { createAppBackgroundMcp } from './appBackgroundMcp'
+import type { AppMcpStatusSource } from './appMcpStatus'
+import { currentMcpOAuthService, onMcpOAuthServiceChanged } from '../../mcp/oauth/mcpOAuthHolder'
 
 export function createAppBackgroundRuntime(
   deps: AppBackgroundBootDeps & { report: (line: string) => void; onBadge?: (appId: string, count: number | null) => void },
@@ -89,9 +91,29 @@ export function createAppBackgroundRuntime(
         },
         report,
       }),
+    mcpStatus: realmMcpStatus(),
     report,
     ...(deps.locale ? { locale: deps.locale } : {}),
     ...(deps.onBadge ? { onBadge: deps.onBadge } : {}),
     ...(deps.runAgent ? { runAgent: deps.runAgent } : {}),
   })
+}
+
+/** The realm's sign-in state, followed across the service being installed or replaced. */
+function realmMcpStatus(): AppMcpStatusSource {
+  return {
+    read: () => currentMcpOAuthService()?.getState() ?? null,
+    onChange: listener => {
+      let stopState = currentMcpOAuthService()?.onStateChange(() => listener())
+      const stopHolder = onMcpOAuthServiceChanged(() => {
+        stopState?.()
+        stopState = currentMcpOAuthService()?.onStateChange(() => listener())
+        listener()
+      })
+      return () => {
+        stopState?.()
+        stopHolder()
+      }
+    },
+  }
 }

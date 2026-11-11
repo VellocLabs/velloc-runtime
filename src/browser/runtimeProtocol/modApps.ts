@@ -35,6 +35,8 @@ export type AppSurfaceState = {
   dataSeq?: number
   /** The patches that took the data of the board with `dataSeq === from` to this one; absent when the data was read whole. */
   dataPatches?: { from: number; patches: AppDataPatch[] }
+  /** The plugin's own text in the session's language, set under `/text` on each of the app's surfaces; absent when the plugin ships none. */
+  text?: Record<string, string>
   /** The app's background module is handling an action of the person's (`mods.appAction`). */
   refreshing: boolean
   /** The latest build failed, or the data file could not be read. */
@@ -62,6 +64,33 @@ export type AppViewLayout = 'full' | 'beside'
 
 /** `mods.appView`: this client shows the session's app in `layout`, or no longer shows it (null). */
 export type ModsAppViewPayload = { sessionId: string; layout: AppViewLayout | null }
+
+/** How the person pressed an app's topbar icon: the icon, its context menu, or an item of a menu the module answered with. */
+export const APP_PRESS_TRIGGERS = ['primary', 'context', 'menu'] as const
+export type AppPressTrigger = (typeof APP_PRESS_TRIGGERS)[number]
+
+/** `mods.appPress`: a press on an app's topbar icon, offered to the app's background module. `item` names the menu item of a `menu` press. */
+export type ModsAppPressPayload = { appId: string; trigger: AppPressTrigger; item?: string }
+
+/** A menu item's label: the plugin's own text, plain or one per locale tag. */
+export type AppPressMenuLabel = string | { readonly [locale: string]: string }
+
+export type AppPressMenuItem = { id: string; label: AppPressMenuLabel; disabled?: boolean }
+
+/** What the module wants done with a press; the page carries it out. `url` is one of the plugin's own MCP servers. */
+export type AppPressIntent =
+  | { kind: 'open' }
+  | { kind: 'signIn'; url: string; thenOpen: boolean }
+  | { kind: 'signOut'; url: string }
+  | { kind: 'menu'; items: AppPressMenuItem[] }
+  | { kind: 'handled' }
+
+/** No `intent`: the module gave no answer, and the press does what it does without a module. */
+export type ModsAppPressResult = { intent?: AppPressIntent }
+
+export const APP_PRESS_MENU_MAX_ITEMS = 12
+export const APP_PRESS_MENU_LABEL_MAX_CHARS = 80
+const APP_ID = /^[a-z0-9][a-z0-9-]{0,62}$/
 
 /** The bytes an action's context may take on the wire, as UTF-8 JSON. */
 export const APP_ACTION_CONTEXT_MAX_BYTES = 64 * 1024
@@ -94,6 +123,7 @@ export function isAppSurfaceState(value: unknown): value is AppSurfaceState {
     const ids = surface.surfaceIds
     if (!Array.isArray(ids) || ids.length === 0 || !ids.every(id => typeof id === 'string')) return false
   }
+  if (value.text !== undefined && !(isRecord(value.text) && Object.values(value.text).every(text => typeof text === 'string'))) return false
   if (value.dataAt !== undefined && typeof value.dataAt !== 'number') return false
   if (value.dataSeq !== undefined && typeof value.dataSeq !== 'number') return false
   if (value.dataPatches !== undefined) {
@@ -129,6 +159,57 @@ export function isModsAppActionPayload(value: unknown): value is ModsAppActionPa
     return json !== undefined && contextEncoder.encode(json).byteLength <= APP_ACTION_CONTEXT_MAX_BYTES
   } catch {
     return false
+  }
+}
+
+/** Security: the app id and the item have their declared forms; anything else is refused at the wire. */
+export function isModsAppPressPayload(value: unknown): value is ModsAppPressPayload {
+  if (!isRecord(value) || typeof value.appId !== 'string' || !APP_ID.test(value.appId)) return false
+  if (!(APP_PRESS_TRIGGERS as readonly unknown[]).includes(value.trigger)) return false
+  if (value.trigger === 'menu') return typeof value.item === 'string' && ACTION_NAME.test(value.item)
+  return value.item === undefined
+}
+
+const LOCALE_TAG = /^[A-Za-z]{2,3}(?:[-_][A-Za-z0-9]{2,8})*$/
+const isLabelText = (text: unknown): text is string =>
+  typeof text === 'string' && text.trim() !== '' && text.length <= APP_PRESS_MENU_LABEL_MAX_CHARS
+
+function readAppPressMenuLabel(value: unknown): AppPressMenuLabel | null {
+  if (typeof value === 'string') return isLabelText(value) ? value : null
+  if (!isRecord(value)) return null
+  const entries = Object.entries(value)
+  if (entries.length === 0 || !entries.every(([locale, text]) => LOCALE_TAG.test(locale) && isLabelText(text))) return null
+  return Object.fromEntries(entries) as { [locale: string]: string }
+}
+
+/** One menu item as a module may state it and a page may draw it, or null. */
+export function readAppPressMenuItem(value: unknown): AppPressMenuItem | null {
+  if (!isRecord(value) || typeof value.id !== 'string' || !ACTION_NAME.test(value.id)) return null
+  const label = readAppPressMenuLabel(value.label)
+  if (label === null) return null
+  if (value.disabled !== undefined && typeof value.disabled !== 'boolean') return null
+  return { id: value.id, label, ...(value.disabled === true ? { disabled: true } : {}) }
+}
+
+/** The intent of a `mods.appPress` answer as a page reads it, or null for none or a shape it does not know. */
+export function readAppPressIntent(value: unknown): AppPressIntent | null {
+  const intent = isRecord(value) ? value.intent : undefined
+  if (!isRecord(intent)) return null
+  switch (intent.kind) {
+    case 'open':
+    case 'handled':
+      return { kind: intent.kind }
+    case 'signIn':
+      return typeof intent.url === 'string' && intent.url !== '' ? { kind: 'signIn', url: intent.url, thenOpen: intent.thenOpen === true } : null
+    case 'signOut':
+      return typeof intent.url === 'string' && intent.url !== '' ? { kind: 'signOut', url: intent.url } : null
+    case 'menu': {
+      if (!Array.isArray(intent.items) || intent.items.length === 0 || intent.items.length > APP_PRESS_MENU_MAX_ITEMS) return null
+      const items = intent.items.map(readAppPressMenuItem)
+      return items.every((item): item is AppPressMenuItem => item !== null) ? { kind: 'menu', items } : null
+    }
+    default:
+      return null
   }
 }
 

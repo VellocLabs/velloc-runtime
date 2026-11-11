@@ -117,6 +117,7 @@ import { RemoteInstallTip } from './remote/RemoteInstallTip'
 import { RemoteOfflineOverlay } from './remote/RemoteOfflineOverlay'
 import { RuntimeCapabilitiesContext, useCapabilityQuery } from './useCan'
 import { createAppSignIn, useMcpAuthLatest, type AppSignInContext } from './mcpAuthView'
+import { createAppPressPort, type AppPressContext } from './apps/appPress'
 import { SessionAreaVisibleContext } from './sessionAreaVisibility'
 import { renderShellSessionThread, type ShellSessionThreadInputs } from './shellSessionThread'
 import { renderShellSidePane, type ShellSidePaneInputs } from './shellSidePane'
@@ -1879,6 +1880,15 @@ export function MultiSessionShell({
   const appSignInContextRef = useRef<AppSignInContext>({ runtimeConnection, t })
   appSignInContextRef.current = { runtimeConnection, t }
   const handleAppSignIn = useMemo(() => createAppSignIn(appMcpAuthLatest, appSignInContextRef), [appMcpAuthLatest])
+  // An app's press is first offered to its background module (F-40).
+  const appPressContextRef = useRef<AppPressContext>({ runtimeConnection, t, canSignIn: false, canSignOut: false })
+  appPressContextRef.current = {
+    runtimeConnection,
+    t,
+    canSignIn: runtimeCapabilities.can('mcpAuth', 'signIn'),
+    canSignOut: runtimeCapabilities.can('mcpAuth', 'signOut'),
+  }
+  const appPressPort = useMemo(() => createAppPressPort(appPressContextRef), [])
   /** Open `kind` for the person: placed, focused, and expanded in place of
    *  a pane that was expanded. */
   const openPaneFor = useMemo(
@@ -3866,6 +3876,7 @@ export function MultiSessionShell({
         onPressPluginItem={runtimeConnection ? handlePressPluginItem : undefined}
         onOpenApp={runtimeConnection ? handleOpenApp : undefined}
         onAppSignIn={runtimeConnection && runtimeCapabilities.can('mcpAuth', 'signIn') ? handleAppSignIn : undefined}
+        appPress={runtimeConnection && runtimeCapabilities.can('mods', 'appPress') ? appPressPort : undefined}
         shownAppType={shownAppType}
         sidebarCollapsed={sidebarCollapsed || sidebarHidden}
         onToggleSidebar={handleToggleSidebar}

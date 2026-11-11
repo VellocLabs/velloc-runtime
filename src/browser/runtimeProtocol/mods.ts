@@ -81,6 +81,10 @@ export const MODS_ACTION_SCOPES = {
    *  `app.layout` and `app.hide` — `control`, as it runs the plugin's own
    *  handlers. */
   appView: 'control',
+  /** A press on an app's topbar icon, offered to the app's background
+   *  module, which answers what the press should do: runs the plugin's own
+   *  handler — `control`. */
+  appPress: 'control',
 } as const satisfies Record<string, ScopeMode>
 export type ModsAction = keyof typeof MODS_ACTION_SCOPES
 

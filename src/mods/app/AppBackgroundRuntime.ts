@@ -43,9 +43,21 @@ import {
   whenKernelControlPortAttached,
 } from '../../browser/workerKernel/IsolatedWorkerKernel'
 import type { RuntimeFs } from '../../utils/fs/runtimeFs'
+import { joinRuntimePath } from '../../utils/runtimePaths'
 import { AppAgentRuns, readAnalyzeRequest, type AppAgentRunner, type AppAnalyzeResult } from './appAgentRun'
 import { APP_BACKGROUND_ABI, refuseAppBackgroundCall, refuseAppBackgroundRegistrations, refuseAppBackgroundUses } from './appBackgroundEvents'
 import { sameMcpOwner, type AppBackgroundMcp, type AppBackgroundMcpOwner } from './appBackgroundMcp'
+import type { AppPressIntent, AppPressTrigger } from '../../browser/runtimeProtocol/modApps'
+import {
+  AppMcpStatusLedger,
+  mcpPhasesByUrl,
+  mcpServerSignInUrlsOf,
+  mcpServerUrlsOf,
+  mcpSignInDue,
+  type AppMcpStatusSource,
+} from './appMcpStatus'
+import { normalizeMcpServerUrl } from '../../mcp/oauth/oauthKeys'
+import { APP_PRESS_TIMEOUT_MS, readAppPressAnswer } from './appPress'
 import { AppStateDocument, type AppStateDocumentFs } from './appStateDocument'
 import { AppViews, type AppViewEvent, type AppViewLayout } from './appViews'
 
@@ -89,6 +101,8 @@ export type AppBackgroundRuntimeOptions = {
   fs?: RuntimeFs
   /** `$.mcp`, one pool per module, built at its first call. Absent: refused at the call. */
   mcp?: (ref: AppBackgroundRef & { mcpOwner: AppBackgroundMcpOwner }) => AppBackgroundMcp
+  /** The sign-in phases `mcp.status` tells a module of. Absent: the event is never raised. */
+  mcpStatus?: AppMcpStatusSource
   report: (line: string) => void
   locale?: () => string | undefined
   onStatusChanged?: () => void
@@ -102,6 +116,8 @@ export type AppBackgroundRuntimeOptions = {
   stopTimeoutMs?: number
   /** The budget of an `app.action` hook; past it the action goes to the model. */
   actionTimeoutMs?: number
+  /** The budget of an `app.press` hook; past it the press has no answer. */
+  pressTimeoutMs?: number
   respawnBackoffMs?: readonly number[]
   persistDelayMs?: number
   now?: () => number
@@ -145,6 +161,8 @@ type Module = {
   viewChain?: Promise<unknown>
   /** The load whose `app.start` has finished; view events reach only it. */
   viewsOpen?: Loaded
+  /** The sign-in phases of the plugin's servers, told and to tell; absent without a manifest. */
+  status?: AppMcpStatusLedger
 }
 
 /** An `app.action` answer: `{handled}` read as given, anything else by its truth. */
@@ -181,7 +199,9 @@ const sameRef = (a: AppBackgroundRef, b: AppBackgroundRef): boolean =>
   a.agentType === b.agentType &&
   JSON.stringify(a.folders ?? null) === JSON.stringify(b.folders ?? null)
 
+/** Security: beyond the app's folder the module reads its plugin's language files, and the folders the person approved. */
 const extraRootsOf = (ref: AppBackgroundRef): Array<{ root: string; write: boolean }> => [
+  { root: joinRuntimePath(ref.root, 'locales'), write: false },
   ...(ref.folders?.read ?? []).map(root => ({ root, write: false })),
   ...(ref.folders?.write ?? []).map(root => ({ root, write: true })),
 ]
@@ -200,8 +220,12 @@ export class AppBackgroundRuntime {
   private readonly stopping = new Map<string, Promise<void>>()
   private disposed = false
   private readonly agentRuns: AppAgentRuns
+  /** The item ids of the menu last answered to each client, by client then app. */
+  private readonly pressMenus = new Map<string, Map<string, ReadonlySet<string>>>()
+  private readonly stopMcpStatus: (() => void) | undefined
 
   constructor(private readonly options: AppBackgroundRuntimeOptions) {
+    this.stopMcpStatus = options.mcpStatus?.onChange(() => this.noteMcpStatus())
     this.agentRuns = new AppAgentRuns({
       ...(options.runAgent ? { run: options.runAgent } : {}),
       report: options.report,
@@ -262,6 +286,39 @@ export class AppBackgroundRuntime {
   }
 
   /**
+   * Offers a press on the app's topbar icon to its module as `app.press`:
+   * the intent the hook answered with, or null (no module whose `app.start`
+   * has finished, no hook, no intent in the answer, a failure, a late hook).
+   * Security: a `menu` press reaches the module only with an item of the
+   * menu last answered to `client`, and a sign-in is answered only for a
+   * server a press may start one for.
+   */
+  async press(appId: string, trigger: AppPressTrigger, item: string | undefined, client: string): Promise<AppPressIntent | null> {
+    const offered = this.pressMenus.get(client)?.get(appId)
+    this.pressMenus.get(client)?.delete(appId)
+    if (trigger === 'menu' && (item === undefined || !offered?.has(item))) return null
+    const module = this.modules.get(appId)
+    if (!module || !module.loaded || module.viewsOpen !== module.loaded || !module.dispatcher.hasHooksFor('app.press')) return null
+    const raised = await this.raise(
+      module,
+      'app.press',
+      { appId, trigger, ...(item !== undefined ? { item } : {}) },
+      this.options.pressTimeoutMs ?? APP_PRESS_TIMEOUT_MS,
+      `app.press of ${appId}`,
+      '; the press goes on without it',
+    )
+    if (raised === undefined) return null
+    const intent = readAppPressAnswer(raised.result, trigger, module.ref.mcpOwner ? mcpServerSignInUrlsOf(module.ref.mcpOwner) : new Map())
+    if (intent?.kind === 'menu') {
+      const menus = this.pressMenus.get(client) ?? new Map<string, ReadonlySet<string>>()
+      menus.set(appId, new Set(intent.items.filter(each => each.disabled !== true).map(each => each.id)))
+      this.pressMenus.set(client, menus)
+    }
+    if (intent?.kind !== 'signIn') return intent
+    return mcpSignInDue(this.options.mcpStatus?.read() ?? null, normalizeMcpServerUrl(intent.url) ?? intent.url) ? intent : null
+  }
+
+  /**
    * `client` shows `sessionId` of app `appId` in `layout`, or no longer shows
    * it (null): raises `app.show`, `app.layout` or `app.hide` on the app's
    * module when what the people see of the app changed.
@@ -272,6 +329,7 @@ export class AppBackgroundRuntime {
 
   /** A client's connection closed: the apps it showed close unless another client shows them. */
   viewClientGone(client: string): void {
+    this.pressMenus.delete(client)
     this.raiseViews(this.views.clientGone(client))
   }
 
@@ -303,9 +361,35 @@ export class AppBackgroundRuntime {
     return next
   }
 
+  /** The sign-in state changed: each module whose server moved hears `mcp.status`. */
+  private noteMcpStatus(): void {
+    if (this.disposed) return
+    const phases = mcpPhasesByUrl(this.options.mcpStatus?.read() ?? null)
+    for (const module of this.modules.values()) {
+      for (const server of module.status?.note(phases) ?? []) this.raiseMcpStatus(module, server)
+    }
+  }
+
+  /**
+   * Raises `mcp.status` for one server after the events before it, with the
+   * phase as it is when its turn comes, so a module that is busy hears the
+   * newest phase once. Skipped as a view event is.
+   */
+  private raiseMcpStatus(module: Module, server: string): void {
+    const open = module.viewsOpen
+    const run = () => {
+      if (!open || module.loaded !== open || !module.dispatcher.hasHooksFor('mcp.status')) return undefined
+      const phase = module.status?.take(server)
+      if (!phase) return undefined
+      return this.raise(module, 'mcp.status', { server, phase }, this.options.actionTimeoutMs ?? APP_ACTION_TIMEOUT_MS, `mcp.status of ${module.ref.appId}`)
+    }
+    module.viewChain = (module.viewChain ?? Promise.resolve()).then(run, run)
+  }
+
   async dispose(): Promise<void> {
     if (this.disposed) return
     this.disposed = true
+    this.stopMcpStatus?.()
     await Promise.all([...this.modules.values()].map(module => this.stop(module, 'the realm is ending')))
   }
 
@@ -338,6 +422,7 @@ export class AppBackgroundRuntime {
       generation: 0,
       crashes: [],
       state: 'loading',
+      ...(ref.mcpOwner && this.options.mcpStatus ? { status: new AppMcpStatusLedger(mcpServerUrlsOf(ref.mcpOwner)) } : {}),
     }
     this.modules.set(ref.appId, module)
     this.options.onStatusChanged?.()
@@ -423,6 +508,10 @@ export class AppBackgroundRuntime {
       await this.raiseStart(module)
       if (module.loaded !== loaded) return
       module.viewsOpen = loaded
+      if (module.status) {
+        module.status.note(mcpPhasesByUrl(this.options.mcpStatus?.read() ?? null))
+        for (const server of module.status.restart()) this.raiseMcpStatus(module, server)
+      }
       const shown = this.views.current(ref.appId)
       if (shown) void this.raiseView(module, 'app.show', { appId: ref.appId, ...shown })
     } catch (error) {

@@ -24,6 +24,7 @@ import { hashOf, SEED_MAX_FILE_BYTES } from './appSeed'
 import type { AppSessionInfo } from './appSession'
 import { liveAppState, onAppState, type AppStateEvent, type AppStateSnapshot } from './appStateBus'
 import { setAppActor, setAppBuilder, setAppSurfaceState, type AppActor } from './appSurfaceRegistry'
+import { readAppText } from './appText'
 
 /** The app's live state, while its background module holds one. */
 export type AppLiveData = {
@@ -54,6 +55,8 @@ export type AppSurfaceHostOptions = {
   liveData?: AppLiveData
   /** Offers a local action to the app's background module; defaults to the realm bus. */
   dispatchAction?: AppActionDispatch
+  /** The session's language: the plugin's text for it is set under `/text`. */
+  locale?: string
   now?: () => number
 }
 
@@ -194,6 +197,8 @@ export function createAppSurfaceHost(options: AppSurfaceHostOptions): AppSurface
   let buildError: AppSurfaceError | undefined
   let data: { value: unknown; at: number; hash: string } | undefined
   let dataError: AppSurfaceError | undefined
+  /** The plugin's text in the session's language, read at each build. */
+  let text: Record<string, string> | undefined
   /** Counts the data values this host published. */
   let dataSeq = 0
   /** The patches from the last published data to the current one; one publish only. */
@@ -217,6 +222,7 @@ export function createAppSurfaceHost(options: AppSurfaceHostOptions): AppSurface
       surface: built,
       ...(data ? { data: data.value, dataAt: data.at, dataSeq } : {}),
       ...(data && dataPatches ? { dataPatches } : {}),
+      ...(text ? { text } : {}),
       refreshing: acting > 0,
       ...(list.length > 0 ? { errors: list } : {}),
       ...(app.seed.conflicts.length > 0 ? { seedConflicts: [...app.seed.conflicts] } : {}),
@@ -291,10 +297,23 @@ export function createAppSurfaceHost(options: AppSurfaceHostOptions): AppSurface
     return run
   }
 
+  const readTexts = async (): Promise<void> => {
+    if (app.root === undefined) return
+    text = await readAppText(
+      async path => {
+        const read = await readText(fs, path)
+        return 'text' in read ? read.text : undefined
+      },
+      app.root,
+      options.locale,
+    )
+  }
+
   const build = (): Promise<ModsBuildAppResult> =>
     enqueue(async () => {
       const result = await buildEntry()
       await readData()
+      await readTexts()
       emit()
       return result
     })
