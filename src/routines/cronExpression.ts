@@ -1,6 +1,6 @@
 /**
- * `cron-parser` wrapper: `validateCronExpression` and `computeNextFireAt`
- * (null when exhausted). Always in an explicit zone (the routine's
+ * `cron-parser` wrapper: `validateCronExpression`, `computeNextFireAt`
+ * (null when exhausted) and `computeNextFireSlots`. Always in an explicit zone (the routine's
  * `timezone`, else the host's), so DST is handled: a skipped time moves
  * forward, a repeated one fires once.
  */
@@ -35,14 +35,25 @@ export function computeNextFireAt(
   timezone: string | undefined,
   from: number = Date.now(),
 ): number | null {
+  return computeNextFireSlots(expr, timezone, from, 1)[0] ?? null
+}
+
+/** Up to `count` successive slots after `from`; fewer when the schedule runs out. */
+export function computeNextFireSlots(
+  expr: string,
+  timezone: string | undefined,
+  from: number,
+  count: number,
+): number[] {
+  const slots: number[] = []
   try {
     const it = cronParser.parseExpression(expr, {
       currentDate: new Date(from),
       tz: effectiveRoutineTimeZone(timezone),
     })
-    const next = it.next()
-    return next.getTime()
+    while (slots.length < count) slots.push(it.next().getTime())
   } catch {
-    return null
+    // Invalid or exhausted: return the slots found so far.
   }
+  return slots
 }

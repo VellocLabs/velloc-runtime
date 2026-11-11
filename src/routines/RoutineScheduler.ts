@@ -6,7 +6,7 @@
  * not polled. A fire may lag its slot by up to one tick.
  */
 
-import { computeRoutineFireAt } from './routineFireTime'
+import { ROUTINE_SCHEDULER_TICK_MS, computeRoutineFireAt } from './routineFireTime'
 import { getRoutineRegistry } from './RoutineRegistry'
 import type { RoutineFireDispatcher } from './RoutineFireDispatcher'
 import type { CronRoutine } from './routineTypes'
@@ -22,7 +22,7 @@ export type RoutineSchedulerOptions = {
   logEvent?: (event: string, data: Record<string, unknown>) => void
 }
 
-const DEFAULT_TICK_INTERVAL_MS = 30 * 1000
+const DEFAULT_TICK_INTERVAL_MS = ROUTINE_SCHEDULER_TICK_MS
 
 export class RoutineScheduler {
   private timerHandle: ReturnType<typeof setInterval> | null = null
