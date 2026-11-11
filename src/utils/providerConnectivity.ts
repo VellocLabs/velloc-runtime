@@ -6,6 +6,16 @@
 import type { MessageKey } from '../browser/webview/i18n/messages/en'
 import { storedKeyProblemOf } from './storedKeyProblem'
 import { maskingRefusalOf } from './maskingRefusal'
+import type { LocalizedText } from '../config/localizedText'
+import {
+  clampVerdict,
+  defaultVerdictScope,
+  overlayDeclaredVerdict,
+  readDeclaredVerdict,
+  type DeclaredVerdict,
+  type VerdictAnomaly,
+  type VerdictScope,
+} from './providerVerdict'
 
 export type ProviderApiErrorKind =
   | 'authentication_failed'
@@ -36,6 +46,10 @@ export type ProviderConnectivityIssueKind =
   | 'service'
   | 'provider_policy'
   | 'billing'
+  // The allowance is used up until it resets; waiting a moment does not help.
+  | 'quota'
+  // This model cannot be used; the provider itself is healthy.
+  | 'model_unavailable'
 
 export type ProviderConnectivityIssue = {
   kind: ProviderConnectivityIssueKind
@@ -70,6 +84,16 @@ export type ProviderConnectivityIssue = {
    * the exponential backoff.
    */
   retryAfterMs?: number
+  /** How much of the provider this failure rules out. */
+  scope: VerdictScope
+  /** Epoch ms at which the provider said the condition lifts. */
+  resetsAt?: number
+  /** The provider mod's own sub-code. Shown and logged; nothing decides on it. */
+  code?: string
+  /** Text from the provider's manifest, never the upstream response's. */
+  message?: LocalizedText
+  /** Set when the failure was not an HTTP error status. */
+  anomaly?: VerdictAnomaly
 }
 
 /**
@@ -82,6 +106,8 @@ export type ProviderErrorFields = {
   httpStatus?: number
   /** Server `Retry-After` directive, in milliseconds. */
   retryAfterMs?: number
+  /** What a rule of the provider's manifest said about this response. */
+  declared?: DeclaredVerdict
 }
 
 /**
@@ -92,17 +118,19 @@ export type ProviderErrorFields = {
 export class ProviderApiError extends Error {
   readonly httpStatus?: number
   readonly retryAfterMs?: number
+  readonly declared?: DeclaredVerdict
   constructor(message: string, fields: ProviderErrorFields = {}) {
     super(message)
     this.name = 'ProviderApiError'
     if (fields.httpStatus !== undefined) this.httpStatus = fields.httpStatus
     if (fields.retryAfterMs !== undefined) this.retryAfterMs = fields.retryAfterMs
+    if (fields.declared !== undefined) this.declared = fields.declared
   }
 }
 
 export function getProviderErrorFields(value: unknown): ProviderErrorFields {
   if (typeof value !== 'object' || value === null) return {}
-  const v = value as { httpStatus?: unknown; retryAfterMs?: unknown }
+  const v = value as { httpStatus?: unknown; retryAfterMs?: unknown; declared?: unknown }
   const out: ProviderErrorFields = {}
   if (
     typeof v.httpStatus === 'number' &&
@@ -119,6 +147,8 @@ export function getProviderErrorFields(value: unknown): ProviderErrorFields {
   ) {
     out.retryAfterMs = v.retryAfterMs
   }
+  const declared = readDeclaredVerdict(v.declared)
+  if (declared) out.declared = declared
   return out
 }
 
@@ -141,6 +171,7 @@ export const PROVIDER_CONNECTIVITY_MAX_ATTEMPTS =
   PROVIDER_CONNECTIVITY_MAX_RETRIES + 1
 export const PROVIDER_CONNECTIVITY_BASE_RETRY_DELAY_MS = 500
 export const PROVIDER_CONNECTIVITY_MAX_RETRY_DELAY_MS = 32_000
+export const PROVIDER_CONNECTIVITY_RETRY_JITTER_RATIO = 0.25
 // Ceiling on an honored `Retry-After`. Past it a rate limit is not retryable:
 // quota gateways send the window reset (hours or days), so the error is surfaced.
 export const PROVIDER_RETRY_AFTER_HONOR_CAP_MS = 300_000
@@ -218,9 +249,34 @@ function extractStatus(text: string): number | undefined {
   return status
 }
 
+/**
+ * The verdict on a failed provider call: the platform's own classification,
+ * then what a rule of the provider's manifest declared for the response (it
+ * rides the error as a typed field), then the platform's limits on that.
+ * Without a declared part the result is the platform's classification.
+ */
 export function classifyProviderConnectivityIssue(
   value: unknown,
+  now: number = Date.now(),
 ): ProviderConnectivityIssue | null {
+  const found = classifyPlatformIssue(value)
+  const platform = found ? { ...found, scope: defaultVerdictScope(found) } : null
+  const typed = getProviderErrorFields(value)
+  if (!typed.declared) return platform
+  const detail = cleanupDetail(getErrorText(value))
+  return clampVerdict(
+    overlayDeclaredVerdict(platform, typed.declared, {
+      detail,
+      status: typed.httpStatus ?? extractStatus(detail),
+      retryAfterMs: typed.retryAfterMs ?? parseRetryAfterMs(detail) ?? undefined,
+    }),
+    now,
+  )
+}
+
+type PlatformIssue = Omit<ProviderConnectivityIssue, 'scope'>
+
+function classifyPlatformIssue(value: unknown): PlatformIssue | null {
   const raw = getErrorText(value)
   const detail = cleanupDetail(raw)
   const text = detail.toLowerCase()
@@ -558,6 +614,13 @@ export function shouldRetryProviderConnectivityIssue(
   return issue?.retryable === true
 }
 
+/** The backoff curve a provider declared; an absent part is the platform's. */
+export type RetryBackoff = {
+  initialDelayMs?: number
+  maxDelayMs?: number
+  jitterRatio?: number
+}
+
 export function getProviderConnectivityRetryDelayMs(
   failedAttempt: number,
   message?: string,
@@ -567,6 +630,7 @@ export function getProviderConnectivityRetryDelayMs(
    * server directive is honoured even when the display string omits it.
    */
   retryAfterMsOverride?: number,
+  backoff?: RetryBackoff,
 ): number {
   // Server directives are honored, but never past the cap — an uncapped
   // directive is how a quota gateway's "retry-after: 352452s" parked a turn
@@ -583,10 +647,10 @@ export function getProviderConnectivityRetryDelayMs(
     return Math.min(retryAfterMs, PROVIDER_RETRY_AFTER_HONOR_CAP_MS)
   }
   const baseDelay = Math.min(
-    PROVIDER_CONNECTIVITY_BASE_RETRY_DELAY_MS * 2 ** Math.max(0, failedAttempt - 1),
-    PROVIDER_CONNECTIVITY_MAX_RETRY_DELAY_MS,
+    (backoff?.initialDelayMs ?? PROVIDER_CONNECTIVITY_BASE_RETRY_DELAY_MS) * 2 ** Math.max(0, failedAttempt - 1),
+    backoff?.maxDelayMs ?? PROVIDER_CONNECTIVITY_MAX_RETRY_DELAY_MS,
   )
-  const jitter = Math.random() * 0.25 * baseDelay
+  const jitter = Math.random() * (backoff?.jitterRatio ?? PROVIDER_CONNECTIVITY_RETRY_JITTER_RATIO) * baseDelay
   return baseDelay + jitter
 }
 

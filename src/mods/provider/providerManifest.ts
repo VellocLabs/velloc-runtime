@@ -9,6 +9,8 @@ import { isLocalizedText, resolveLocalizedText, whyNotLocalizedText, type Locali
 import type { PluginUserConfigField } from '../../pluginHost/pluginModel'
 import { readUserConfigFields } from '../../pluginHost/userConfigFields'
 import { joinRuntimePath } from '../../utils/runtimePaths'
+import type { ProviderPolicy } from '../../models/drivers/providerPolicy'
+import { checkPolicy } from './providerPolicyManifest'
 import {
   CHAIN_FIELDS,
   ID_ALPHABETS,
@@ -150,6 +152,7 @@ export type ProviderManifest = {
   updates?: { marketplace?: string; url?: string }
   /** The provider's own facts per model id or id prefix, beneath its listing. */
   modelFacts?: ProviderModelFacts
+  policy?: ProviderPolicy
   /** Package-relative module path, `./`-prefixed. */
   module: string
 }
@@ -857,6 +860,7 @@ function checkProvider(key: string, raw: unknown, errors: string[]): ProviderMan
   const ids = raw.ids === undefined ? undefined : checkIds(raw.ids, bad)
   const updates = raw.updates === undefined ? undefined : checkUpdates(raw.updates, bad)
   const modelFacts = raw.modelFacts === undefined ? undefined : checkModelFacts(raw.modelFacts, bad)
+  const policy = raw.policy === undefined ? undefined : checkPolicy(raw.policy, bad)
 
   if (failed || displayName === undefined || defaultBaseUrl === undefined || domains === undefined || format === undefined || credentials === undefined || moduleRef === undefined) {
     return undefined
@@ -876,6 +880,7 @@ function checkProvider(key: string, raw: unknown, errors: string[]): ProviderMan
     ...(ids ? { ids } : {}),
     ...(updates ? { updates } : {}),
     ...(modelFacts && Object.keys(modelFacts).length > 0 ? { modelFacts } : {}),
+    ...(policy && Object.keys(policy).length > 0 ? { policy } : {}),
     module: moduleRef,
   }
 }

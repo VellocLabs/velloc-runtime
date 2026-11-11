@@ -7,6 +7,7 @@
  */
 import type { BridgeModelRequestPayload } from '../../browser/bridge/browserBridgeProtocol'
 import type { CodecCompat } from '../../config/nexusModelConfig/providerDefinition'
+import type { DeclaredVerdict } from '../../utils/providerVerdict'
 
 /** Token usage, in the host's own units (`LlmUsage`). */
 export type DriverUsage = {
@@ -57,7 +58,7 @@ export type DriverStreamEvent =
    *  provider-error text), passed through unchanged — even `""` (the host's
    *  `error_message` is always engaged); the typed fields drive retry
    *  classification. */
-  | { type: 'error'; message: string; httpStatus?: number; retryAfterSeconds?: number }
+  | { type: 'error'; message: string; httpStatus?: number; retryAfterSeconds?: number; verdict?: DeclaredVerdict }
 
 /** One HTTP request, in the shape `openRawProviderStream` takes. Secrets
  *  appear only as `{{secret:NAME}}` in header / query values. */

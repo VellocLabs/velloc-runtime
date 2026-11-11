@@ -12,6 +12,7 @@
 import type { BridgeModelRequestContext } from '../../browser/bridge/browserBridgeProtocol'
 import type { DriverHttpRequest, DriverStreamEvent, ProviderDriver } from './driverTypes'
 import { mergeHeaders } from './modelProvider'
+import type { ProviderPolicy } from './providerPolicy'
 import {
   holdRequestBody,
   restoreRequestBody,
@@ -183,6 +184,9 @@ export interface ProviderRequestSeam {
   /** A provider that signs in (and whose module refreshes). Read when a
    *  request is about to go out; absent = no refresh, no 401 recovery. */
   readonly credentials?: ProviderSeamCredentials
+  /** The retry policy and error rules the provider declared. Absent = the
+   *  platform's ladder and classification, unchanged. */
+  policy?: ProviderPolicy
 }
 
 // ── registry ────────────────────────────────────────────────────────────────

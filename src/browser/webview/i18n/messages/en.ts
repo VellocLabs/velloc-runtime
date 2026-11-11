@@ -491,6 +491,15 @@ export const en = {
   'providerIssue.billing.title': 'Provider credits exhausted',
   'providerIssue.billing.summary':
     'The provider declined the request for lack of credit (HTTP 402): the account balance, or the API key\'s own credit limit, cannot cover it. No automatic retry can clear that, so {product} surfaces the error immediately.',
+  'providerIssue.quota.title': 'Provider usage allowance used up',
+  'providerIssue.quota.summary':
+    'The provider reports that the allowance for this account is used up until it resets. Retrying now cannot succeed, so {product} surfaces the error immediately.',
+  'providerIssue.modelUnavailable.title': 'Model not available',
+  'providerIssue.modelUnavailable.summary':
+    'The provider cannot serve this model right now, although the provider itself is working. Choose a different model and try again.',
+  'providerIssue.providerPolicy.title': 'Request declined by the provider',
+  'providerIssue.providerPolicy.summary':
+    'The provider declined this request under its own rules. Resending it unchanged would be declined again, so {product} surfaces the error immediately.',
   'providerIssue.rateLimit.title': 'Provider rate limit reached',
   'providerIssue.rateLimit.summary':
     'The provider is throttling requests. {product} retries automatically before surfacing the API error.',

@@ -462,6 +462,15 @@ export const de: Messages = {
   'providerIssue.billing.title': 'Guthaben beim Anbieter aufgebraucht',
   'providerIssue.billing.summary':
     'Der Anbieter hat die Anfrage mangels Guthaben abgelehnt (HTTP 402): Das Kontoguthaben oder das eigene Kreditlimit des API-Schlüssels reicht dafür nicht aus. Kein automatischer erneuter Versuch kann das beheben, deshalb zeigt {product} den Fehler sofort an.',
+  'providerIssue.quota.title': 'Nutzungskontingent beim Anbieter aufgebraucht',
+  'providerIssue.quota.summary':
+    'Der Anbieter meldet, dass das Kontingent dieses Kontos bis zur nächsten Zurücksetzung aufgebraucht ist. Ein erneuter Versuch kann jetzt nicht gelingen, daher zeigt {product} den Fehler sofort an.',
+  'providerIssue.modelUnavailable.title': 'Modell nicht verfügbar',
+  'providerIssue.modelUnavailable.summary':
+    'Der Anbieter kann dieses Modell derzeit nicht bereitstellen, obwohl der Anbieter selbst funktioniert. Wählen Sie ein anderes Modell und versuchen Sie es erneut.',
+  'providerIssue.providerPolicy.title': 'Anfrage vom Anbieter abgelehnt',
+  'providerIssue.providerPolicy.summary':
+    'Der Anbieter hat diese Anfrage aufgrund seiner eigenen Regeln abgelehnt. Eine unveränderte Wiederholung würde erneut abgelehnt, daher zeigt {product} den Fehler sofort an.',
   'providerIssue.rateLimit.title': 'Ratenlimit des Anbieters erreicht',
   'providerIssue.rateLimit.summary':
     'Der Anbieter drosselt Anfragen. {product} versucht es automatisch erneut, bevor der API-Fehler angezeigt wird.',

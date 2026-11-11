@@ -458,6 +458,15 @@ export const ja: Messages = {
   'providerIssue.billing.title': 'プロバイダのクレジットが不足',
   'providerIssue.billing.summary':
     'プロバイダはクレジット不足のためリクエストを拒否しました（HTTP 402）。アカウントの残高、または API キー自体のクレジット上限では、このリクエストを賄えません。自動再試行では解消できないため、{product} はすぐにエラーを表示します。',
+  'providerIssue.quota.title': 'プロバイダの利用枠を使い切りました',
+  'providerIssue.quota.summary':
+    'プロバイダによると、このアカウントの利用枠はリセットされるまで使い切られています。今再試行しても成功しないため、{product} はエラーをすぐに表示します。',
+  'providerIssue.modelUnavailable.title': 'モデルを利用できません',
+  'providerIssue.modelUnavailable.summary':
+    'プロバイダ自体は稼働していますが、現在このモデルは利用できません。別のモデルを選んでもう一度お試しください。',
+  'providerIssue.providerPolicy.title': 'プロバイダがリクエストを拒否しました',
+  'providerIssue.providerPolicy.summary':
+    'プロバイダは独自のルールに基づいてこのリクエストを拒否しました。同じ内容で再送しても再び拒否されるため、{product} はエラーをすぐに表示します。',
   'providerIssue.rateLimit.title': 'プロバイダのレート制限に到達',
   'providerIssue.rateLimit.summary':
     'プロバイダがリクエストにレート制限を適用しています。{product} は自動的に再試行してから、API エラーを表示します。',

@@ -69,6 +69,9 @@ export function makeProviderApiErrorAssistant(
     error: issue?.error ?? 'unknown',
     errorDetails: issue?.detail ?? (error instanceof Error ? error.message : String(error ?? '')),
     errorRetryCount: retryCount,
+    // What the provider's manifest says about this failure, when a rule of it matched.
+    ...(issue?.message !== undefined ? { errorMessage: issue.message } : {}),
+    ...(issue?.code !== undefined ? { errorCode: issue.code } : {}),
   }
 }
 

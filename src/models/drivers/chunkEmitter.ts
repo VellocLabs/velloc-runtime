@@ -176,6 +176,7 @@ export class DriverChunkEmitter {
         if (event.retryAfterSeconds !== undefined) {
           error.retryAfterSeconds = event.retryAfterSeconds
         }
+        if (event.verdict !== undefined) error.verdict = event.verdict
         chunks.push({ type: 'error', error })
         this.terminal = true
         return

@@ -460,6 +460,15 @@ export const fr: Messages = {
   'providerIssue.billing.title': 'Crédits du fournisseur épuisés',
   'providerIssue.billing.summary':
     'Le fournisseur a refusé la requête faute de crédit (HTTP 402) : le solde du compte, ou la limite de crédit propre à la clé d’API, ne suffit pas à la couvrir. Aucune nouvelle tentative automatique ne peut y remédier ; {product} affiche donc l’erreur immédiatement.',
+  'providerIssue.quota.title': 'Quota d’utilisation du fournisseur épuisé',
+  'providerIssue.quota.summary':
+    'Le fournisseur indique que le quota de ce compte est épuisé jusqu’à sa réinitialisation. Une nouvelle tentative ne peut pas aboutir maintenant ; {product} affiche donc l’erreur immédiatement.',
+  'providerIssue.modelUnavailable.title': 'Modèle indisponible',
+  'providerIssue.modelUnavailable.summary':
+    'Le fournisseur ne peut pas servir ce modèle pour le moment, bien que le fournisseur lui-même fonctionne. Choisissez un autre modèle et réessayez.',
+  'providerIssue.providerPolicy.title': 'Requête refusée par le fournisseur',
+  'providerIssue.providerPolicy.summary':
+    'Le fournisseur a refusé cette requête en vertu de ses propres règles. La renvoyer telle quelle serait de nouveau refusée ; {product} affiche donc l’erreur immédiatement.',
   'providerIssue.rateLimit.title': 'Limite de débit du fournisseur atteinte',
   'providerIssue.rateLimit.summary':
     'Le fournisseur limite le débit des requêtes. {product} réessaie automatiquement avant d’afficher l’erreur d’API.',

@@ -2,6 +2,7 @@ import { type ThreadRuntime } from "@assistant-ui/react";
 import type { MessageKey } from "@/browser/webview/i18n/messages/en";
 import { storedKeyProblemOf } from "@/utils/storedKeyProblem";
 import { maskingRefusalOf } from "@/utils/maskingRefusal";
+import { isLocalizedText, resolveLocalizedText } from "@/config/localizedText";
 
 /**
  * Whether the context ring's Compact session may run. Pure, so the gate is
@@ -58,6 +59,14 @@ export function providerErrorSummaryKey(params: {
   if (kind === "local_stream_limit") return "thread.providerLocalLimitNoRetrySummary";
   if (kind === "billing_error") return "thread.providerBillingNoRetrySummary";
   return "thread.providerNoRetrySummary";
+}
+
+/**
+ * The sentence a provider's manifest declares for a failure, in `locale`; ''
+ * when the failure carries none (the card then shows its own summary).
+ */
+export function providerDeclaredMessage(value: unknown, locale: string | undefined): string {
+  return isLocalizedText(value) ? resolveLocalizedText(value, locale) : "";
 }
 
 /**

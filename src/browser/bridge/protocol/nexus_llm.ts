@@ -1,5 +1,6 @@
 import type { NexusProviderConfig } from '../../../settings/settingsTypes'
 import type { LocalizedText } from '../../../config/localizedText'
+import type { DeclaredVerdict } from '../../../utils/providerVerdict'
 import type {
   CredentialPrompt,
   ProviderCredentialMethod,
@@ -349,6 +350,9 @@ export type BridgeModelStreamChunk = {
     message: string
     httpStatus?: number
     retryAfterSeconds?: number
+    /** What a rule of the provider's manifest said about the failure. Set
+     *  only by the in-runtime stream host. */
+    verdict?: DeclaredVerdict
   }
   [key: string]: unknown
 }

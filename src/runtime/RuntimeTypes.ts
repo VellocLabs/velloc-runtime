@@ -1,6 +1,7 @@
 import type { ChromiumCommandMetadata, ChromiumSkillSummary } from './CommandTypes'
 import type { RepeatedToolCallCut } from '../engine/turn/repeatedToolCallGuard'
 import type { RuleEdit } from '../permissions/ruleUpdates'
+import type { LocalizedText } from '../config/localizedText'
 import type {
   MSG_TYPE_ATTACHMENT,
   MSG_TYPE_USER,
@@ -370,6 +371,14 @@ export type ModelReplyRow = Message & {
    * so it only claims a retry when one happened.
    */
   errorRetryCount?: number
+  /**
+   * The explanation the provider's manifest declares for this failure, in the
+   * manifest's locales. The error card shows it in place of the generic
+   * summary. Never the upstream response's text.
+   */
+  errorMessage?: LocalizedText
+  /** The provider mod's own sub-code for this failure. Display and logs only. */
+  errorCode?: string
 }
 
 /**

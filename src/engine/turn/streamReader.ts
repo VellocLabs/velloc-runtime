@@ -15,6 +15,7 @@ import type {
 import { createBridgeRoute } from '../../browser/bridge/browserBridgeProtocol'
 import { NEXUS_MODEL_CONFIG } from '../../config/nexusModelConfig'
 import { ProviderApiError } from '../../utils/providerConnectivity'
+import { readDeclaredVerdict } from '../../utils/providerVerdict'
 import { traceLine } from '../../utils/debugLog'
 import {
   MSG_TYPE_ASSISTANT,
@@ -321,11 +322,12 @@ function foldErrorChunk(chunk: StreamChunk): ChunkOutcome {
   // current hosts, the HTTP status and Retry-After as typed fields so the
   // retry ladder can read structure before falling back to text.
   const error = (chunk as {
-    error?: { type?: string; message?: string; httpStatus?: unknown; retryAfterSeconds?: unknown }
+    error?: { type?: string; message?: string; httpStatus?: unknown; retryAfterSeconds?: unknown; verdict?: unknown }
   }).error
   const prefix = error?.type ? `${error.type}: ` : ''
   const status = error?.httpStatus
   const retryAfterS = error?.retryAfterSeconds
+  const declared = readDeclaredVerdict(error?.verdict)
   return {
     error: new ProviderApiError(
       `${prefix}${error?.message ?? 'Unknown model streaming error'}`,
@@ -334,6 +336,7 @@ function foldErrorChunk(chunk: StreamChunk): ChunkOutcome {
         ...(typeof retryAfterS === 'number' && retryAfterS >= 0
           ? { retryAfterMs: retryAfterS * 1000 }
           : {}),
+        ...(declared ? { declared } : {}),
       },
     ),
   }

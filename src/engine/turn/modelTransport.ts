@@ -21,6 +21,7 @@ import type {
 import { createBridgeRoute } from '../../browser/bridge/browserBridgeProtocol'
 import { resolveCustomProviderRequest } from '../../config/customProviderRegistry'
 import { withModelProviders } from '../../models/drivers/driverTransport'
+import { providerRequestSeamFor } from '../../models/drivers/providerRequestSeam'
 import { buildRequestContext } from '../../models/drivers/requestContext'
 import { getSupportsImageInputForModel } from '../contextWindow'
 import { emptyPermissionRuleSet } from '../../toolkit/permissionVerdict'
@@ -69,7 +70,14 @@ import {
   type ModelCall,
   type ModelRequestFacts,
 } from './streamReader'
-import { classifyModelFailure, decideRetry, waitRetry, type RetryDecision } from './retryLadder'
+import {
+  classifyModelFailure,
+  decideRetry,
+  retriesAllowed,
+  waitRetry,
+  type DeclaredRetryPolicy,
+  type RetryDecision,
+} from './retryLadder'
 import { raisesTurnRequest, requestThroughTurnRequest } from './requestThroughMods'
 import { raisesTurnRecover, recoverThroughMods } from './recoverThroughMods'
 
@@ -422,6 +430,15 @@ function createModelCall(setup: CallSetup, request: ModelRequest): ModelCall {
   }
 }
 
+/** Where one call stands on the ladder when an attempt fails. */
+type LadderPlace = {
+  attempt: number
+  maxRetries: number
+  attemptMs: number
+  policy?: DeclaredRetryPolicy
+  waitedMs: number
+}
+
 type AfterFailure =
   | { next: 'rethrow' }
   | { next: 'finish'; message: Message }
@@ -435,13 +452,12 @@ type AfterFailure =
 function afterFailedAttempt(
   call: ModelCall,
   error: unknown,
-  attempt: number,
-  maxRetries: number,
-  attemptMs: number,
+  place: LadderPlace,
   /** The decision `turn.recover` settled on, when a hook selects it. */
   recovered?: RetryDecision,
 ): AfterFailure {
   const { params, runtimeConfig, sessionTag } = call
+  const { attempt, maxRetries, attemptMs } = place
   const model = call.facts.effectiveModel
   const failure = classifyModelFailure(error)
   if (failure.kind === 'aborted') return { next: 'rethrow' }
@@ -460,6 +476,7 @@ function afterFailedAttempt(
     caller: params.querySource,
     attemptDurationMs: attemptMs,
     cancelled: params.callContext.cancelSource.signal.aborted,
+    ...(place.policy ? { policy: place.policy, waitedMs: place.waitedMs } : {}),
   })
   if (!decision.retry) {
     return {
@@ -517,7 +534,14 @@ export function bridgeModelTransport(
       : built
     const call = createModelCall({ send, params, runtimeConfig, traceLogger, sessionTag, callId }, request)
     const signal = params.callContext.cancelSource.signal
-    const maxRetries = getProviderConnectivityMaxRetries(runtimeConfig?.getEnv('e2eProviderMaxRetries'))
+    // The selected provider's declared retry policy; a provider without one
+    // gets the platform's ladder.
+    const policy = params.providerId ? providerRequestSeamFor(params.providerId)?.policy?.retry : undefined
+    const maxRetries = retriesAllowed(
+      getProviderConnectivityMaxRetries(runtimeConfig?.getEnv('e2eProviderMaxRetries')),
+      policy,
+    )
+    let waitedMs = 0
     for (let attempt = 1; attempt <= maxRetries + 1; attempt += 1) {
       const startedAt = Date.now()
       try {
@@ -526,16 +550,21 @@ export function bridgeModelTransport(
       } catch (error) {
         const attemptMs = Date.now() - startedAt
         const recovered = raisesTurnRecover(params)
-          ? await recoverThroughMods(params, error, { attempt, maxAttempts: maxRetries + 1, attemptDurationMs: attemptMs })
-              .catch(() => undefined)
+          ? await recoverThroughMods(params, error, {
+              attempt,
+              maxAttempts: maxRetries + 1,
+              attemptDurationMs: attemptMs,
+              ...(policy ? { policy, waitedMs } : {}),
+            }).catch(() => undefined)
           : undefined
-        const after = afterFailedAttempt(call, error, attempt, maxRetries, attemptMs, recovered)
+        const after = afterFailedAttempt(call, error, { attempt, maxRetries, attemptMs, waitedMs, ...(policy ? { policy } : {}) }, recovered)
         if (after.next === 'rethrow') throw error
         if (after.next === 'finish') {
           yield after.message
           return
         }
         if (after.notice) yield after.notice
+        waitedMs += after.delayMs
         await waitRetry(after.delayMs, signal)
         if (signal.aborted) return
       }

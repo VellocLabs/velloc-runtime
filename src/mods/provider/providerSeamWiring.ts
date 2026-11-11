@@ -36,6 +36,7 @@ export function seamForRegistration(
     // The id mapper exists only for a provider that states `ids` rules; one
     // that states none pays nothing. Rules that cannot run must not be
     // skipped (the vendor's ids would go out unmapped): that is an error here.
+    if (manifest.policy) seam.policy = manifest.policy
     if (manifest.ids && Object.keys(manifest.ids).length > 0) {
       if (!ids) throw new Error('its id rules cannot run in this realm (no id key store)')
       seam.ids = new ProviderIdMapper({

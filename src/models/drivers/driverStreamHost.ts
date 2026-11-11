@@ -31,6 +31,8 @@ import {
   type ProviderRequestSeam,
 } from './providerRequestSeam'
 import { sessionWorkingDirOf } from './sessionWorkingDirs'
+import { declaredFailure, ResponseHead } from './providerFailureFacts'
+import type { ProviderErrorRule } from './providerPolicy'
 import { modelMasking, withMaskedUserAgent, withMaskedValues, type MaskingStream } from '../masking/maskingHolder'
 import { MaskingResidualError, MaskingUnavailableError, MaskingUndecodableError } from '../masking/egressGuard'
 import { storedKeyProblemFromReason, withStoredKeyMarker } from '../../utils/storedKeyProblem'
@@ -198,6 +200,9 @@ class DriverStream {
     await this.raw?.cancel()
   }
 
+  /** The error rules of the provider's declared policy, when it has any. */
+  private errorRules: readonly ProviderErrorRule[] | undefined
+
   private push(events: readonly DriverStreamEvent[]): void {
     if (this.emitter.terminalEmitted || events.length === 0) return
     this.queue.push(...this.emitter.emit(events.map(withHostFinishUsage)))
@@ -258,6 +263,7 @@ class DriverStream {
       // Looked up once per stream: a provider without a seam runs the plain
       // path, with nothing built for the seam.
       const seam = providerRequestSeamFor(this.provider.id)
+      this.errorRules = seam?.policy?.errors
       if (seam) await this.sendThroughSeam(seam, request)
       else await this.send(request)
     } finally {
@@ -410,24 +416,30 @@ class DriverStream {
             return this.send(again.request, { flow: seamed.flow, prepared: again })
           }
         }
-        this.push(restored([
-          this.provider.errorFromResponse({
-            status: this.raw.status,
-            statusText: this.raw.statusText,
-            headers: this.raw.headers,
-            bodyText,
-          }),
-        ]))
+        const refused = this.provider.errorFromResponse({
+          status: this.raw.status,
+          statusText: this.raw.statusText,
+          headers: this.raw.headers,
+          bodyText,
+        })
+        this.push(restored(declaredFailure(this.errorRules, [refused], { response: this.raw, bodyText, model: this.model })))
         this.finishIfOpen()
         return
       }
       decoder = this.provider.createDecoder(this.model)
+      // The start of the body is kept only for a provider that declared rules.
+      const head = this.errorRules ? new ResponseHead() : undefined
+      const judged = (events: DriverStreamEvent[]): DriverStreamEvent[] =>
+        head && this.raw
+          ? declaredFailure(this.errorRules, events, { response: this.raw, bodyText: head.text(), model: this.model, inStream: true })
+          : events
       for await (const bytes of this.raw.body) {
         this.lastBytesAt = Date.now()
-        this.push(decoded(decoder.push(bytes)))
+        head?.add(bytes)
+        this.push(decoded(judged(decoder.push(bytes))))
         if (this.emitter.terminalEmitted) break
       }
-      this.push(decoded(decoder.end()))
+      this.push(decoded(judged(decoder.end())))
       flushRestore()
       this.finishIfOpen()
     } catch (error) {

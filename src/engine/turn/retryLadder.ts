@@ -13,6 +13,8 @@ import {
   isAbortLikeError,
   shouldRetryProviderConnectivityIssue,
   type ProviderConnectivityIssue,
+  type ProviderConnectivityIssueKind,
+  type RetryBackoff,
 } from '../../utils/providerConnectivity'
 
 /**
@@ -85,6 +87,31 @@ export function classifyModelFailure(error: unknown): ModelFailure {
   }
 }
 
+/** The most a call that follows a declared retry policy waits in all. */
+export const DECLARED_RETRY_TOTAL_WAIT_MS = 120_000
+
+/**
+ * The retry policy the selected provider declared. An absent part is the
+ * platform's: its backoff curve, its attempt limit, and every kind the
+ * verdict itself allows.
+ */
+export type DeclaredRetryPolicy = RetryBackoff & {
+  maxRetries?: number
+  on?: readonly ProviderConnectivityIssueKind[]
+}
+
+/** Retries a call may make: the provider's declared number, else the platform's. */
+export function retriesAllowed(platformMaxRetries: number, policy: DeclaredRetryPolicy | undefined): number {
+  return policy?.maxRetries ?? platformMaxRetries
+}
+
+/** A declared `on` never admits these kinds: resending cannot fix them. */
+function kindIsRetried(policy: DeclaredRetryPolicy, kind: ProviderConnectivityIssueKind): boolean {
+  if (policy.on === undefined) return true
+  if (kind === 'credentials' || kind === 'configuration') return false
+  return policy.on.includes(kind)
+}
+
 export type RetryInput = {
   /** 1-based number of the attempt that just failed. */
   attempt: number
@@ -96,6 +123,10 @@ export type RetryInput = {
   attemptDurationMs: number
   /** Whether the call has been cancelled meanwhile. */
   cancelled: boolean
+  /** The selected provider's declared policy, when it has one. */
+  policy?: DeclaredRetryPolicy
+  /** What the call has already waited between its attempts. */
+  waitedMs?: number
 }
 
 export type RetryDecision =
@@ -114,13 +145,19 @@ export type RetryDecision =
  * directive when there is one and otherwise grows with the attempt number.
  * The user is told once retries stop being invisible: from the fourth attempt,
  * or when the failed attempt or the coming wait is itself long.
+ *
+ * Under a declared policy the verdict still decides first; then its kind must
+ * be one the policy retries, and the wait must fit in what is left of the
+ * call's total.
  */
 export function decideRetry(input: RetryInput): RetryDecision {
   const { failure, attempt } = input
   if (failure.kind !== 'rate_limit' && failure.kind !== 'connectivity') {
     return { retry: false }
   }
+  const { policy } = input
   if (!shouldRetryProviderConnectivityIssue(failure.issue)) return { retry: false }
+  if (policy && !kindIsRetried(policy, failure.issue.kind)) return { retry: false }
   if (failure.kind === 'rate_limit' && isBackgroundCaller(input.caller)) {
     return { retry: false }
   }
@@ -130,7 +167,9 @@ export function decideRetry(input: RetryInput): RetryDecision {
     attempt,
     failure.message,
     failure.retryAfterMs,
+    policy,
   )
+  if (policy && (input.waitedMs ?? 0) + delayMs > DECLARED_RETRY_TOTAL_WAIT_MS) return { retry: false }
   const notify =
     attempt >= ALWAYS_NOTIFY_FROM_ATTEMPT
     || input.attemptDurationMs >= SLOW_ATTEMPT_NOTICE_MS

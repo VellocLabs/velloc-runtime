@@ -2,11 +2,11 @@ import { providerApiErrorKindLabel } from "@/components/assistant-ui/running-ind
 import { Button } from "@/components/ui/button";
 import { useAssistantState, useComposerRuntime } from "@assistant-ui/react";
 import { type FC, useCallback, useState } from "react";
-import { useT } from "@/browser/webview/i18n";
+import { useLocale, useT } from "@/browser/webview/i18n";
 import { useMessageActionsContext } from "@/components/assistant-ui/message-actions-context";
 import { storedKeyProblemOf } from "@/utils/storedKeyProblem";
 import { maskingRefusalOf } from "@/utils/maskingRefusal";
-import { providerErrorSummaryKey } from './composer-logic';
+import { providerDeclaredMessage, providerErrorSummaryKey } from './composer-logic';
 
 export const ProviderApiErrorCard: FC = () => {
   const t = useT();
@@ -42,6 +42,11 @@ export const ProviderApiErrorCard: FC = () => {
     providerErrorSummaryKey({ kind, details, retryCount }),
     { count: retryCount },
   );
+  // What the provider's own manifest says about this failure: shown in place
+  // of the generic summary, in the person's locale.
+  const locale = useLocale();
+  const declaredMessage = providerDeclaredMessage(custom.apiErrorMessage, locale);
+  const declaredCode = typeof custom.apiErrorCode === "string" ? custom.apiErrorCode : undefined;
   const loopGuardHint = kind === "repetitive_tool_calls";
   // A safety stop (`stop_reason: content_filter`): explain that the verdict
   // is about the request, not the transport, and name the provider's category
@@ -82,9 +87,19 @@ export const ProviderApiErrorCard: FC = () => {
             <div className="font-medium text-destructive">
               {t("thread.providerRequestFailed")}
             </div>
-            <div className="text-muted-foreground" data-testid="provider-api-error-retry-summary">
-              {retrySummary}
-            </div>
+            {declaredMessage ? (
+              <div
+                className="text-muted-foreground"
+                data-testid="provider-api-error-declared-message"
+                data-code={declaredCode}
+              >
+                {declaredMessage}
+              </div>
+            ) : (
+              <div className="text-muted-foreground" data-testid="provider-api-error-retry-summary">
+                {retrySummary}
+              </div>
+            )}
             <div className="text-xs text-muted-foreground">
               {t("thread.issueLabel", { kind: displayKind })}
             </div>

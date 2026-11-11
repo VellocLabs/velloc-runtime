@@ -455,6 +455,15 @@ export const ko: Messages = {
   'providerIssue.billing.title': '제공업체 크레딧 소진',
   'providerIssue.billing.summary':
     '제공업체가 크레딧 부족으로 요청을 거부했습니다(HTTP 402). 계정 잔액이나 API 키 자체의 크레딧 한도로는 이 요청을 처리할 수 없습니다. 자동 재시도로는 해결되지 않으므로 {product}은(는) 오류를 즉시 표시합니다.',
+  'providerIssue.quota.title': '제공업체 사용 한도 소진',
+  'providerIssue.quota.summary':
+    '제공업체에서 이 계정의 사용 한도가 재설정될 때까지 소진되었다고 알렸습니다. 지금 다시 시도해도 성공할 수 없으므로 {product}은(는) 오류를 즉시 표시합니다.',
+  'providerIssue.modelUnavailable.title': '모델을 사용할 수 없음',
+  'providerIssue.modelUnavailable.summary':
+    '제공업체 자체는 정상이지만 지금은 이 모델을 사용할 수 없습니다. 다른 모델을 선택한 후 다시 시도하세요.',
+  'providerIssue.providerPolicy.title': '제공업체가 요청을 거부함',
+  'providerIssue.providerPolicy.summary':
+    '제공업체가 자체 규정에 따라 이 요청을 거부했습니다. 그대로 다시 보내도 다시 거부되므로 {product}은(는) 오류를 즉시 표시합니다.',
   'providerIssue.rateLimit.title': '제공업체 사용량 제한에 도달',
   'providerIssue.rateLimit.summary':
     '제공업체가 요청 속도를 제한하고 있습니다. {product}은(는) 자동으로 재시도한 후 API 오류를 표시합니다.',

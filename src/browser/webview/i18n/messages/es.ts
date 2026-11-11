@@ -463,6 +463,15 @@ export const es: Messages = {
   'providerIssue.billing.title': 'Créditos del proveedor agotados',
   'providerIssue.billing.summary':
     'El proveedor rechazó la solicitud por falta de crédito (HTTP 402): el saldo de la cuenta, o el límite de crédito de la propia clave de API, no alcanza para cubrirla. Ningún reintento automático puede resolverlo, así que {product} muestra el error de inmediato.',
+  'providerIssue.quota.title': 'Cuota de uso del proveedor agotada',
+  'providerIssue.quota.summary':
+    'El proveedor indica que la cuota de esta cuenta está agotada hasta que se restablezca. Reintentar ahora no puede funcionar, por lo que {product} muestra el error de inmediato.',
+  'providerIssue.modelUnavailable.title': 'Modelo no disponible',
+  'providerIssue.modelUnavailable.summary':
+    'El proveedor no puede ofrecer este modelo en este momento, aunque el proveedor en sí funciona. Elige otro modelo e inténtalo de nuevo.',
+  'providerIssue.providerPolicy.title': 'Solicitud rechazada por el proveedor',
+  'providerIssue.providerPolicy.summary':
+    'El proveedor rechazó esta solicitud según sus propias reglas. Reenviarla sin cambios se rechazaría de nuevo, por lo que {product} muestra el error de inmediato.',
   'providerIssue.rateLimit.title': 'Límite de uso del proveedor alcanzado',
   'providerIssue.rateLimit.summary':
     'El proveedor está limitando la frecuencia de las solicitudes. {product} reintenta automáticamente antes de mostrar el error de API.',

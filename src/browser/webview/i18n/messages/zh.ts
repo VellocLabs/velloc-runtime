@@ -455,6 +455,15 @@ export const zh: Messages = {
   'providerIssue.billing.title': '服务商额度已用尽',
   'providerIssue.billing.summary':
     '服务商因额度不足拒绝了该请求（HTTP 402）：账户余额或该 API Key 自身的额度上限不足以支付本次请求。自动重试无法解决这一问题，因此 {product} 会立即显示该错误。',
+  'providerIssue.quota.title': '服务商用量额度已用完',
+  'providerIssue.quota.summary':
+    '服务商表示该账户的用量额度已用完，需等到额度重置。现在重试不会成功，因此 {product} 会立即显示该错误。',
+  'providerIssue.modelUnavailable.title': '模型不可用',
+  'providerIssue.modelUnavailable.summary':
+    '服务商本身运行正常，但目前无法提供这个模型。请换一个模型后重试。',
+  'providerIssue.providerPolicy.title': '服务商拒绝了该请求',
+  'providerIssue.providerPolicy.summary':
+    '服务商依据自身规则拒绝了该请求。原样重发仍会被拒绝，因此 {product} 会立即显示该错误。',
   'providerIssue.rateLimit.title': '已触发服务商限流',
   'providerIssue.rateLimit.summary':
     '服务商正在限流请求。{product} 会先自动重试，然后再显示该 API 错误。',

@@ -95,6 +95,8 @@ export function withProviderApiErrorMetadata(
         apiErrorKind: assistantMessage.error,
         apiErrorDetails: assistantMessage.errorDetails,
         apiErrorRetryCount: assistantMessage.errorRetryCount,
+        apiErrorMessage: assistantMessage.errorMessage,
+        apiErrorCode: assistantMessage.errorCode,
         // Safety-stop category (the provider's `stop_details.category`, e.g.
         // "cyber") so the card's refusal hint can name it. Absent for every
         // other error kind and for an uncategorized refusal.
