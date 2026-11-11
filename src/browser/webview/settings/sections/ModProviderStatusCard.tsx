@@ -52,7 +52,7 @@ function unit(locale: string, value: number, name: string, digits = 0): string {
 /** A length of time in the two largest units that say something. */
 export function formatStatusDuration(ms: number, locale: string): string {
   if (ms < 1000) return unit(locale, ms, "millisecond");
-  const seconds = ms / 1000;
+  const seconds = ms < 9_950 ? ms / 1000 : Math.round(ms / 1000);
   if (seconds < 60) return unit(locale, seconds, "second", seconds < 10 ? 1 : 0);
   const minutes = Math.floor(seconds / 60);
   if (minutes < 60) {
@@ -208,6 +208,8 @@ export function ModProviderStatusCard({ providerId }: { providerId: string }) {
       alive.current = false;
     };
   }, []);
+  const shownProvider = React.useRef(providerId);
+  shownProvider.current = providerId;
   React.useEffect(() => {
     setAnswer(null);
     setRunningJob(null);
@@ -219,7 +221,8 @@ export function ModProviderStatusCard({ providerId }: { providerId: string }) {
     setRunningJob(job);
     setAnswer(null);
     const result = await store.runJob(providerId, job);
-    if (!alive.current) return;
+    // The card may show another provider by now.
+    if (!alive.current || shownProvider.current !== providerId) return;
     setRunningJob(null);
     setAnswer({ job, answer: result });
   };

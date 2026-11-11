@@ -62,9 +62,9 @@ async function readOnce(providerId: string): Promise<ProviderStatusEntry | undef
   let entry: ProviderStatusEntry
   try {
     entry = shapeProviderStatus(subject.view, await sources.read(subject.plugin, subject.view.source.store), readAt)
-  } catch (error) {
+  } catch {
     const { empty: _empty, ...blank } = shapeProviderStatus(subject.view, undefined, readAt)
-    entry = { ...blank, error: (error instanceof Error ? error.message : String(error)).slice(0, 300) }
+    entry = { ...blank, error: true }
   }
   // The provider may have gone while the store was read.
   if (!subjectOf(providerId)) {
@@ -107,11 +107,12 @@ export function refreshProviderStatus(providerId: string): Promise<ProviderStatu
   return slot.task
 }
 
-/** Read every declared view, and drop the entries of providers that left. */
-export async function refreshAllProviderStatus(): Promise<ProviderStatusState> {
+/** The table with every declared view in it: a view not read yet is read
+ *  first, and the entries of providers that left are dropped. */
+export async function currentProviderStatus(): Promise<ProviderStatusState> {
   const ids = new Set((sources?.subjects() ?? []).map(subject => subject.providerId))
   for (const known of [...entries.keys()]) if (!ids.has(known)) forget(known)
-  await Promise.all([...ids].map(id => refreshProviderStatus(id)))
+  await Promise.all([...ids].filter(id => !entries.has(id)).map(id => refreshProviderStatus(id)))
   return providerStatusState()
 }
 

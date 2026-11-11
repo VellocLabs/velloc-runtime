@@ -117,9 +117,8 @@ describe('the status card of a provider mod', () => {
     const { publish } = mount({ ...ENTRY, empty: true })
     expect((await screen.findByTestId('mod-status-empty')).textContent).toBe('This provider hasn\'t reported anything yet.')
     expect(screen.queryByTestId('mod-status-row')).toBeNull()
-    await publish({ ...ENTRY, error: 'disk gone' })
+    await publish({ ...ENTRY, error: true })
     expect(screen.getByTestId('mod-status-read-failed').textContent).toBe('Couldn\'t read this provider\'s status.')
-    expect(screen.queryByText('disk gone')).toBeNull()
   })
 
   it('picks the plugin\'s label for the page locale', async () => {
@@ -151,6 +150,24 @@ describe('the status card of a provider mod', () => {
     expect((await screen.findByTestId('mod-status-action-answer')).getAttribute('data-answer')).toBe('failed')
   })
 
+  it('drops the answer of a job started for a provider the card no longer shows', async () => {
+    let answer!: (value: unknown) => void
+    const { request, view } = mount(ENTRY)
+    request.mockImplementationOnce(() => new Promise(resolve => (answer = resolve)))
+    fireEvent.click(await screen.findByTestId('mod-status-action'))
+    const OTHER = 'mod.acme.other'
+    const store = new ProviderStatusStore()
+    act(() => {
+      resetProviderStatusStoreForTests(store)
+    })
+    store.attach(async () => ({ subscribe: () => () => {}, request, can: () => true }) as unknown as RuntimeConnection)
+    act(() => store.replace({ [OTHER]: ENTRY }))
+    view.rerender(createElement(I18nProvider, { locale: 'en' }, createElement(ModProviderStatusCard, { providerId: OTHER })))
+    await screen.findByTestId('mod-status-action')
+    await act(async () => answer({ outcome: 'started' }))
+    expect(screen.queryByTestId('mod-status-action-answer')).toBeNull()
+  })
+
   it('a connection whose scope does not reach the actions gets the values but no buttons', async () => {
     mount(ENTRY, { can: false })
     await screen.findByTestId('mod-status-card')
@@ -165,6 +182,8 @@ describe('formatStatusDuration', () => {
     expect(formatStatusDuration(250, 'en')).toBe('250ms')
     expect(formatStatusDuration(1500, 'en')).toBe('1.5s')
     expect(formatStatusDuration(45_000, 'en')).toBe('45s')
+    expect(formatStatusDuration(59_800, 'en')).toBe('1m')
+    expect(formatStatusDuration(9_960, 'en')).toBe('10s')
     expect(formatStatusDuration(125_000, 'en')).toBe('2m 5s')
     expect(formatStatusDuration(3 * 3_600_000 + 60_000, 'en')).toBe('3h 1m')
     expect(formatStatusDuration(72 * 3_600_000, 'en')).toBe('3d')

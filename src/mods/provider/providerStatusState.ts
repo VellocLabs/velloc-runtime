@@ -7,7 +7,7 @@
  * Pure types and constants: safe for the runtime and the page alike.
  */
 import type { LocalizedText } from '../../config/localizedText'
-import type { ProviderStatusValueFormat } from './providerStatusManifest'
+import type { ProviderStatusColumn } from './providerStatusManifest'
 
 /** Snapshot + `state` deltas, each the whole `ProviderStatusState`. Readable
  *  at `observe`: it carries what the settings page shows, never a credential. */
@@ -36,11 +36,7 @@ export type ProviderStatusCell =
   | { format: 'percent'; value: number }
   | { format: 'badge'; text: string; tone: ProviderStatusTone }
 
-export type ProviderStatusListColumn = {
-  key: string
-  format: ProviderStatusValueFormat
-  label?: LocalizedText
-}
+export type ProviderStatusListColumn = ProviderStatusColumn
 
 export type ProviderStatusRow =
   | { key: string; label: LocalizedText; kind: 'value'; cell?: ProviderStatusCell }
@@ -64,8 +60,8 @@ export type ProviderStatusEntry = {
   readAt: number
   /** True when the store holds no object under the view's key yet. */
   empty?: boolean
-  /** The read's failure, when it failed; `rows` then carry no values. */
-  error?: string
+  /** The read failed; `rows` then carry no values. */
+  error?: true
 }
 
 export type ProviderStatusState = Record<string, ProviderStatusEntry>

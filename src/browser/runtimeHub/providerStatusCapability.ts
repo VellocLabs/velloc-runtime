@@ -2,7 +2,7 @@
  * Security: provider status views on the runtime protocol (F-27). The
  * `providers/status` topic is `observe`: shaped, clamped values a module chose
  * to show, never a credential. `providerStatus.refresh` is `control` (it has
- * the runtime read the host's disk again) and so is `providerStatus.runJob`
+ * the runtime read the plugin's store again) and so is `providerStatus.runJob`
  * (it runs the provider's module, which may send a request with the user's
  * key). A client names a provider and a job; the runtime checks both against
  * the provider's manifest.
@@ -18,8 +18,7 @@ import {
 import {
   ProviderStatusActionError,
   noteProviderStoreChange,
-  providerStatusState,
-  refreshAllProviderStatus,
+  currentProviderStatus,
   refreshProviderStatus,
   runProviderStatusJob,
   setProviderStatusPublisher,
@@ -72,10 +71,8 @@ function providerStatusTopicProvider(): TopicProvider {
   return {
     matches: (id: TopicId) => id === PROVIDER_STATUS_TOPIC,
     authorize: (_id, conn) => scopeAllows(conn.scope.mode, 'observe'),
-    // A subscriber starts from a fresh read of every view.
     async *snapshot(): AsyncIterable<SnapshotPage> {
-      await refreshAllProviderStatus()
-      yield { payload: providerStatusState(), type: 'state' }
+      yield { payload: await currentProviderStatus(), type: 'state' }
     },
   }
 }

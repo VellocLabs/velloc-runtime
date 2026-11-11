@@ -12,7 +12,7 @@ import { joinRuntimePath } from '../../utils/runtimePaths'
 import type { ProviderPolicy } from '../../models/drivers/providerPolicy'
 import { checkPolicy } from './providerPolicyManifest'
 import { checkProviderJobs, type ProviderJobDecl } from './providerJobsManifest'
-import { checkProviderStatus, type ProviderStatusView } from './providerStatusManifest'
+import { checkProviderStatus, onlyKeys, type ProviderStatusView } from './providerStatusManifest'
 import {
   CHAIN_FIELDS,
   ID_ALPHABETS,
@@ -223,10 +223,7 @@ function optionalLocalized(raw: Record<string, unknown>, field: string, label: s
   return raw[field] === undefined ? undefined : localized(raw[field], `${label}.${field}`, bad)
 }
 
-function unknownKeys(raw: Record<string, unknown>, allowed: readonly string[], label: string, bad: Problems): void {
-  const extra = Object.keys(raw).filter(key => !allowed.includes(key))
-  if (extra.length > 0) bad(`${label}: unknown ${extra.length === 1 ? 'property' : 'properties'} ${extra.map(k => `"${k}"`).join(', ')}`)
-}
+const unknownKeys = onlyKeys
 
 function checkDomains(value: unknown, bad: Problems): string[] | undefined {
   if (!isStringList(value) || value.length === 0) {

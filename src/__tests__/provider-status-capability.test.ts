@@ -150,7 +150,8 @@ describe('providerStatus on the runtime protocol', () => {
     const rig = makeRig()
     rig.read.mockRejectedValueOnce(new Error('disk gone'))
     const entry = await refreshProviderStatus(ID)
-    expect(entry).toMatchObject({ error: 'disk gone', rows: [{ key: 'state' }, { key: 'lastError' }] })
+    expect(entry).toMatchObject({ error: true, rows: [{ key: 'state' }, { key: 'lastError' }] })
+    expect(JSON.stringify(entry)).not.toContain('disk gone')
     expect(entry?.empty).toBeUndefined()
     expect(entry?.rows.every(row => row.kind === 'value' && row.cell === undefined)).toBe(true)
   })
@@ -184,6 +185,17 @@ describe('providerStatus on the runtime protocol', () => {
     expect(runner).toHaveBeenCalledTimes(1)
     runner.mockRejectedValueOnce(new Error('runner broke'))
     expect(await control.request('providerStatus.runJob', { providerId: ID, job: 'probe' })).toEqual({ outcome: 'unavailable' })
+  })
+
+  it('a later subscriber is served the table as it stands, without another read', async () => {
+    const rig = makeRig()
+    await rig.store('acme').set('status', { state: 'Healthy' })
+    const first = watch(await connect(rig, 'control'))
+    await vi.waitFor(() => expect(first.at(-1)?.[ID]).toBeDefined())
+    const reads = rig.read.mock.calls.length
+    const second = watch(await connect(rig, 'observe'))
+    await vi.waitFor(() => expect(second.at(-1)?.[ID]?.rows[0]).toMatchObject({ cell: { text: 'Healthy' } }))
+    expect(rig.read.mock.calls.length).toBe(reads)
   })
 
   it('a provider that declares no view has no entry', async () => {

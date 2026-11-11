@@ -53,7 +53,8 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
-function onlyKeys(raw: Record<string, unknown>, allowed: readonly string[], at: string, bad: Problems): void {
+/** Refuses, naming them, the properties of `raw` not in `allowed`. */
+export function onlyKeys(raw: Record<string, unknown>, allowed: readonly string[], at: string, bad: Problems): void {
   const extra = Object.keys(raw).filter(key => !allowed.includes(key))
   if (extra.length > 0) bad(`${at}: unknown ${extra.length === 1 ? 'property' : 'properties'} ${extra.map(k => `"${k}"`).join(', ')}`)
 }
