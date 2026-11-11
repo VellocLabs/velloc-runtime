@@ -221,6 +221,9 @@ export type ProviderSpec = {
   /** Codec switches for this spec (a model's `wire.compat`, merged by
    *  `resolveProviderSpec`). Absent = every codec's own behaviour. */
   compat?: CodecCompat
+  /** The wire's names for the runtime's tools (toolAliases.ts): applied to
+   *  every request and undone on every response. Absent = the tools' own names. */
+  toolAliases?: Record<string, string>
 }
 
 // The provider-neutral shapes a provider's own directory produces live with

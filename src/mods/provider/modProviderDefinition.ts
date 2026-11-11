@@ -106,7 +106,7 @@ export function modProviderDefinition(options: ModProviderDefinitionOptions): Pr
     // The person picks from the vendor's listing, as with a gateway.
     filterMode: 'passthrough',
     defaultBaseUrl: manifest.defaultBaseUrl,
-    wire: { format: manifest.format },
+    wire: { format: manifest.format, ...manifest.wire },
     models: [],
   }
   const tiers = manifest.modelsUi?.tierModels

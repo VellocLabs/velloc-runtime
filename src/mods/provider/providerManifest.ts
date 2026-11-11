@@ -21,6 +21,7 @@ import {
   type IdRuleShape,
 } from './ids/idRules'
 import { checkModelFacts, type ProviderModelFacts } from './providerModelFacts'
+import { checkProviderWire, type ProviderWireManifest } from './providerToolAliasesManifest'
 
 /** The `providerApi` values this Velloc serves. A manifest naming another is
  *  refused with a message that names it. */
@@ -30,6 +31,8 @@ export const SUPPORTED_PROVIDER_APIS: readonly number[] = Object.freeze([1])
  *  two short spellings the plan uses for them. */
 const WIRE_FORMATS = ['openai-chat', 'openai-responses', 'anthropic-messages', 'gemini'] as const
 export type ProviderWireFormat = (typeof WIRE_FORMATS)[number]
+/** The wire formats a manifest may name, in declaration order. */
+export const PROVIDER_WIRE_FORMATS: readonly ProviderWireFormat[] = WIRE_FORMATS
 const FORMAT_ALIASES: Readonly<Record<string, ProviderWireFormat>> = Object.freeze({
   anthropic: 'anthropic-messages',
   google: 'gemini',
@@ -149,6 +152,7 @@ export type ProviderManifest = {
   requestNeeds?: ProviderRequestNeed[]
   signNeeds?: ProviderSignNeed
   ids?: Partial<Record<ProviderIdKind, ProviderIdRule>>
+  wire?: ProviderWireManifest
   updates?: { marketplace?: string; url?: string }
   /** The provider's own facts per model id or id prefix, beneath its listing. */
   modelFacts?: ProviderModelFacts
@@ -861,6 +865,7 @@ function checkProvider(key: string, raw: unknown, errors: string[]): ProviderMan
   const updates = raw.updates === undefined ? undefined : checkUpdates(raw.updates, bad)
   const modelFacts = raw.modelFacts === undefined ? undefined : checkModelFacts(raw.modelFacts, bad)
   const policy = raw.policy === undefined ? undefined : checkPolicy(raw.policy, bad)
+  const wire = raw.wire === undefined ? undefined : checkProviderWire(raw.wire, bad)
 
   if (failed || displayName === undefined || defaultBaseUrl === undefined || domains === undefined || format === undefined || credentials === undefined || moduleRef === undefined) {
     return undefined
@@ -878,6 +883,7 @@ function checkProvider(key: string, raw: unknown, errors: string[]): ProviderMan
     ...(requestNeeds && requestNeeds.length > 0 ? { requestNeeds } : {}),
     ...(signNeeds !== undefined ? { signNeeds } : {}),
     ...(ids ? { ids } : {}),
+    ...(wire ? { wire } : {}),
     ...(updates ? { updates } : {}),
     ...(modelFacts && Object.keys(modelFacts).length > 0 ? { modelFacts } : {}),
     ...(policy && Object.keys(policy).length > 0 ? { policy } : {}),

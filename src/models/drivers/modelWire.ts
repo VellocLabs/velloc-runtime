@@ -7,6 +7,7 @@
 import { traceLine } from '../../utils/debugLog'
 import type { CodecCompat, ModelWire } from '../../config/nexusModelConfig/providerDefinition'
 import type { ProviderSpec } from './driverTypes'
+import { readToolAliases } from './toolAliases'
 
 /** The codec switches a wire may carry — the whole set. */
 export const COMPAT_KEYS: readonly (keyof CodecCompat)[] = [
@@ -183,6 +184,11 @@ export function parseModelWire(providerId: string, raw: unknown): ModelWire | un
   if (headers) wire.headers = headers
   const compat = parseCompat(providerId, raw.compat)
   if (compat) wire.compat = compat
+  if (raw.toolAliases !== undefined) {
+    const read = readToolAliases(raw.toolAliases)
+    if (read.problem) logOnce(providerId, `wire.toolAliases: ${read.problem}; the aliases are ignored`)
+    else if (read.aliases) wire.toolAliases = read.aliases
+  }
   return Object.keys(wire).length > 0 ? wire : undefined
 }
 
@@ -250,5 +256,6 @@ export function applyModelWire(spec: ProviderSpec, wire: ModelWire): ProviderSpe
     ...(path ? { path } : {}),
     ...(headers ? { headers } : {}),
     ...(compat ? { compat } : {}),
+    ...(wire.toolAliases ? { toolAliases: wire.toolAliases } : {}),
   }
 }

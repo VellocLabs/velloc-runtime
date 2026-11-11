@@ -15,6 +15,7 @@ import type {
   ProviderDriver,
   ProviderSpec,
 } from './driverTypes'
+import { hostToolNames, wireToolNames } from './toolAliases'
 
 export class ProviderConfigError extends Error {
   constructor(message: string) {
@@ -117,7 +118,7 @@ export class ModelProvider {
 
   /** The HTTP request for one model call, spec applied over the codec. */
   buildRequest(payload: BridgeModelRequestPayload, model: string): DriverHttpRequest {
-    const request = this.codec.buildRequest(payload, this.context(model))
+    const request = this.codec.buildRequest(wireToolNames(payload, this.spec.toolAliases), this.context(model))
     const url = this.spec.path
       ? withPath(`${this.baseUrl}/`, joinPath(this.baseUrl, this.spec.path))
       : request.url
@@ -152,7 +153,7 @@ export class ModelProvider {
   }
 
   createDecoder(model: string): DriverResponseDecoder {
-    return this.codec.createDecoder(this.context(model))
+    return hostToolNames(this.codec.createDecoder(this.context(model)), this.spec.toolAliases)
   }
 
   errorFromResponse(

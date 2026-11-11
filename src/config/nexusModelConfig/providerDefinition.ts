@@ -55,6 +55,9 @@ export type ModelWire = {
    *  a value may use `{{secret:NAME}}`. */
   headers?: Record<string, string>
   compat?: CodecCompat
+  /** The wire's names for the runtime's tools, `{ <wire name>: <tool name> }`,
+   *  one-to-one. Replaces the provider's own map for this model. */
+  toolAliases?: Record<string, string>
 }
 
 /**
