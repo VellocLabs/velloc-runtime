@@ -11,6 +11,7 @@ import { readUserConfigFields } from '../../pluginHost/userConfigFields'
 import { joinRuntimePath } from '../../utils/runtimePaths'
 import type { ProviderPolicy } from '../../models/drivers/providerPolicy'
 import { checkPolicy } from './providerPolicyManifest'
+import { checkProviderJobs, type ProviderJobDecl } from './providerJobsManifest'
 import {
   CHAIN_FIELDS,
   ID_ALPHABETS,
@@ -157,6 +158,7 @@ export type ProviderManifest = {
   /** The provider's own facts per model id or id prefix, beneath its listing. */
   modelFacts?: ProviderModelFacts
   policy?: ProviderPolicy
+  jobs?: ProviderJobDecl[]
   /** Package-relative module path, `./`-prefixed. */
   module: string
 }
@@ -866,6 +868,7 @@ function checkProvider(key: string, raw: unknown, errors: string[]): ProviderMan
   const modelFacts = raw.modelFacts === undefined ? undefined : checkModelFacts(raw.modelFacts, bad)
   const policy = raw.policy === undefined ? undefined : checkPolicy(raw.policy, bad)
   const wire = raw.wire === undefined ? undefined : checkProviderWire(raw.wire, bad)
+  const jobs = raw.jobs === undefined ? undefined : checkProviderJobs(raw.jobs, bad)
 
   if (failed || displayName === undefined || defaultBaseUrl === undefined || domains === undefined || format === undefined || credentials === undefined || moduleRef === undefined) {
     return undefined
@@ -887,6 +890,7 @@ function checkProvider(key: string, raw: unknown, errors: string[]): ProviderMan
     ...(updates ? { updates } : {}),
     ...(modelFacts && Object.keys(modelFacts).length > 0 ? { modelFacts } : {}),
     ...(policy && Object.keys(policy).length > 0 ? { policy } : {}),
+    ...(jobs && jobs.length > 0 ? { jobs } : {}),
     module: moduleRef,
   }
 }

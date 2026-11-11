@@ -13,7 +13,14 @@ import { fileModStore } from '../modStore'
 import { ProviderModRuntime } from './ProviderModRuntime'
 import { providerModsDir, providerModuleLoaders } from './providerModuleLoaders'
 import { startCatalogRelisting } from './catalogRelisting'
-import { isProviderSetUp, publishListingsChanged, refreshRuntimeProviderModels } from '../../models/drivers/runtimeProviders'
+import {
+  isProviderSetUp,
+  onRuntimeProviderConfigsChanged,
+  publishListingsChanged,
+  refreshRuntimeProviderModels,
+  runtimeProviderConfigsLoaded,
+} from '../../models/drivers/runtimeProviders'
+import { createProviderJobScheduler, setProviderJobScheduler, type ProviderJobEvent } from './providerJobScheduler'
 import { getRuntimeModelCatalog } from '../../catalog/runtimeModelCatalog'
 import { catalogReaderOf, createProviderCatalogNoun } from './nouns/providerCatalogNoun'
 import { createProviderModHttp, createProviderNounSet } from './nouns/providerNounDeps'
@@ -115,5 +122,47 @@ export function createProviderModRuntime(deps: ProviderModRuntimeFactoryDeps): P
       report,
     }),
   )
+
+  // The declared jobs: planned from the registrations and the set-up state,
+  // each run a `provider.job` call that loads the module on demand.
+  const jobs = createProviderJobScheduler({
+    providers: () =>
+      getProviderModHost()
+        .registered()
+        .map(entry => ({ providerId: entry.providerId, jobs: entry.manifest.jobs ?? [] })),
+    connected: isProviderSetUp,
+    ready: runtimeProviderConfigsLoaded,
+    run: (providerId, e, options) => raiseProviderJob(runtime, providerId, e, options),
+    report: line => report(`jobs: ${line}`),
+  })
+  setProviderJobScheduler(jobs)
+  onProviderModRegistered(() => {
+    jobs.sync()
+    return () => jobs.sync()
+  })
+  onRuntimeProviderConfigsChanged(() => jobs.sync())
   return runtime
+}
+
+/**
+ * One `provider.job` call. Resolves false when the module does not hook the
+ * event. A hook that threw, ran out of its budget or handed on with
+ * `next(e)` reaches the core, which is reported as a failed run.
+ */
+export async function raiseProviderJob(
+  runtime: Pick<ProviderModRuntime, 'call'>,
+  providerId: string,
+  e: ProviderJobEvent,
+  options: { budgetMs: number; signal: AbortSignal },
+): Promise<boolean> {
+  let unanswered = false
+  const outcome = await runtime.call<void>(providerId, 'provider.job', e, {
+    signal: options.signal,
+    budgetMs: options.budgetMs,
+    core: () => {
+      unanswered = true
+    },
+  })
+  if (unanswered) throw new Error('the provider.job hook failed or ran out of time')
+  return outcome.raised
 }

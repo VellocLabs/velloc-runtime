@@ -18,6 +18,7 @@ export type ProviderEventName =
   | 'provider.ids'
   | 'provider.sessionEnd'
   | 'provider.usage'
+  | 'provider.job'
 
 export type ProviderEventSpec = {
   /** The hook's OWN time per call (paused while its `$` calls are in
@@ -119,6 +120,14 @@ export const PROVIDER_EVENTS: Readonly<Record<ProviderEventName, ProviderEventSp
     failClosed: false,
     void: false,
     accepts: record,
+  },
+  // The most a run may take; each declared job runs under its own, lower
+  // budget. A job reports through `$.store`, so what the hook returns is unread.
+  'provider.job': {
+    budgetMs: 60_000,
+    failClosed: false,
+    void: true,
+    accepts: anything,
   },
 })
 

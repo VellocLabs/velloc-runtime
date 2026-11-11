@@ -158,6 +158,8 @@ export type ProviderCallOptions<R> = {
    *  hook that fails is replaced by it. Default: a void event answers
    *  nothing; any other rejects `ProviderHookUnansweredError`. */
   core?: (e: unknown) => R | Promise<R>
+  /** A lower own-time budget for this call; never above the event's own. */
+  budgetMs?: number
 }
 
 /** `raised: false` — the module has no hook on the event; nothing ran. */
@@ -588,7 +590,7 @@ export class ProviderModRuntime {
         : options.signal
       try {
         const value = await module.dispatcher.dispatch<R>(event, { locale: this.currentLocale(), ...e, provider: providerId }, core, {
-          budgetMs: this.options.budgetMs ?? spec.budgetMs,
+          budgetMs: this.options.budgetMs ?? Math.min(options.budgetMs ?? spec.budgetMs, spec.budgetMs),
           accepts: spec.accepts,
           scope: { provider: providerId },
           ...(signal ? { signal } : {}),

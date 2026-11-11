@@ -445,6 +445,30 @@ describe('ProviderModRuntime — routing and answers', () => {
     expect(reports).toContain('acme [info]: hello')
   })
 
+  it('provider.job: the hook gets the job, writes $.store, and runs under the call budget when that is lower', async () => {
+    const JOBS = `
+      export function register(on) {
+        on('provider.job', async ($, e) => {
+          if (e.job === 'slow') await new Promise(resolve => setTimeout(resolve, 400))
+          await $.store.set('status', { job: e.job, reason: e.reason, provider: e.provider })
+        })
+        on('provider.usage', async ($) => ({ status: await $.store.get('status') }))
+      }
+    `
+    const { runtime } = world({ 'acme/providers/zen.js': { source: JOBS, providers: ['mod.acme.zen'] } })
+    const e = { job: 'probe', reason: 'schedule', scheduledAt: 1 }
+    await expect(runtime.call('mod.acme.zen', 'provider.job', e)).resolves.toEqual({ raised: true, value: undefined })
+    await expect(runtime.call('mod.acme.zen', 'provider.usage', {})).resolves.toEqual({
+      raised: true,
+      value: { status: { job: 'probe', reason: 'schedule', provider: 'mod.acme.zen' } },
+    })
+    // Past the call's own budget the hook has not answered: the core runs.
+    let unanswered = false
+    await runtime.call('mod.acme.zen', 'provider.job', { ...e, job: 'slow' }, { budgetMs: 40, core: () => void (unanswered = true) })
+    expect(unanswered).toBe(true)
+    expect(PROVIDER_EVENTS['provider.job']).toMatchObject({ budgetMs: 60_000, failClosed: false, void: true })
+  })
+
   it('a provider id belongs to one plugin', () => {
     const { runtime } = world({
       'acme/providers/zen.js': { source: ECHO, providers: ['mod.acme.zen'] },
