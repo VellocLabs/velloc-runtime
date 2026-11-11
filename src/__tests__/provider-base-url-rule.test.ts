@@ -66,11 +66,13 @@ describe('judgeBaseUrl', () => {
     )
   })
 
-  it('refuses a host the person\'s record cannot hold: an IP literal other than loopback, a trailing dot, an underscore', () => {
-    for (const url of ['https://[fd00::5]/v1', 'https://acme.test./v1', 'https://my_gw.example/v1']) {
+  it('refuses a host outside the domains that the person\'s record cannot hold: an IPv6 literal, a trailing dot, an underscore', () => {
+    for (const url of ['https://[fd00::5]/v1', 'https://gateway.example./v1', 'https://my_gw.example/v1']) {
       expect(judgeBaseUrl(url, boundary), url).toEqual({ kind: 'refused', problem: 'not-a-url' })
     }
     expect(judgeBaseUrl('https://10.0.0.5/v1', boundary).kind).toBe('needs-confirmation')
+    // Inside the declared domains nothing is recorded, so the name is not held to that form.
+    expect(judgeBaseUrl('https://eu_gw.acme.test/v1', boundary).kind).toBe('accepted')
   })
 })
 

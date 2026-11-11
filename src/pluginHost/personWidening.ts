@@ -7,6 +7,7 @@
  */
 import type { RuntimeFs } from '../utils/fs/runtimeFs'
 import type { PluginInstallPathContext } from './pluginDirs'
+import { isPlainHostName } from '../mods/provider/providerBaseUrlRule'
 import { readUpdateStateFile, writeUpdateStateFile } from './providerModUpdateState'
 
 /** What the person added, by provider key. */
@@ -15,11 +16,9 @@ export type PersonAdded = {
 }
 
 type RecordWithPersonAdded = { personAdded?: PersonAdded }
-const HOST = /^(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)*$/
-
 function normalizedHost(host: string): string {
   const name = host.trim().toLowerCase()
-  if (!HOST.test(name) || name.length > 253) throw new Error(`"${host}" is not a plain host name`)
+  if (!isPlainHostName(name)) throw new Error(`"${host}" is not a plain host name`)
   return name
 }
 

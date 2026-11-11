@@ -40,7 +40,7 @@ import type { PluginSetupRecord } from './registryFormats'
 import type { ExtractedFile } from './extract'
 import { pluginGrantOf, widened, type Grant, type GrantDelta } from './providerGrant'
 import { addPersonHost, type PersonAdded } from './personWidening'
-import { readUpdateStateFile, writeUpdateStateFile } from './providerModUpdateState'
+import { readUpdateStateFile, writeUpdateStateFile, type UpdateStateFileOf } from './providerModUpdateState'
 
 // ── state ──
 
@@ -97,7 +97,7 @@ export type PluginUpdateRecord = {
   failure?: UpdateFailure
 }
 
-export type UpdateStateFile = { version: 1; plugins: Record<string, PluginUpdateRecord> }
+export type UpdateStateFile = UpdateStateFileOf<PluginUpdateRecord>
 
 export type ProviderModUpdateStatus = {
   /** `<name>@<catalog>` */

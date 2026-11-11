@@ -183,6 +183,13 @@ describe('providers.setModBaseUrl', () => {
     ).rejects.toThrow(/gateway/)
   })
 
+  it('a confirmed host outside the domains stores nothing while the record file cannot be written', async () => {
+    const w = world({ source: 'mod', baseUrl: 'https://eu.acme.test/v1' }, 'not json')
+    await expect(w.set('https://gateway.example/v1', 'gateway.example')).rejects.toThrow(/malformed/)
+    expect(w.stored().baseUrl).toBe('https://eu.acme.test/v1')
+    expect(w.reloadPluginsOnAllSessions).not.toHaveBeenCalled()
+  })
+
   it('a confirmed host is not kept when the address cannot be stored', async () => {
     const keepPersonHost = vi.fn(async () => {})
     const rewrite = vi.fn(async () => {

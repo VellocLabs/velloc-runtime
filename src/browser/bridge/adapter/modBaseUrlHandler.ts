@@ -15,6 +15,7 @@ import { isModProviderId, MOD_PROVIDER_ID_PREFIX } from '../../../mods/provider/
 import { boundSettingName } from '../../../mods/provider/providerSettingBinds'
 import { readPersonHosts, storePersonHost } from '../../../pluginHost/personWidening'
 import { acquireProviderModUpdateService } from '../../../pluginHost/providerModUpdateHolder'
+import { readUpdateStateFile } from '../../../pluginHost/providerModUpdateState'
 
 type Payload = ProvidersBridgeActionMap['setModBaseUrl']['payload']
 type Result = ProvidersBridgeActionMap['setModBaseUrl']['result']
@@ -63,6 +64,8 @@ export async function handleSetModBaseUrl(payload: Payload, deps: ModBaseUrlDeps
       // Nowhere to keep the person's addition: nothing is stored.
       if (!pluginId || !providerKey) return { ok: false, reason: 'refused', problem: 'not-editable' }
       confirmed = { pluginId, providerKey, host: verdict.host }
+      // The record must take the host before the address is stored.
+      await readUpdateStateFile({ homeDir: deps.homeDir }, deps.fs, true)
     }
     if (!sameUrl(verdict.url, mod.defaultBaseUrl)) next = verdict.url
   }
