@@ -2,10 +2,8 @@ import { routineRecursionDenial } from './routineRecursionGuard'
 import type { ToolContract, InputCheck } from '../toolContract'
 import type { ToolCallContext } from '../toolCallContext'
 import { declareTool } from '../toolContract'
-import {
-  computeNextFireAt,
-  validateCronExpression,
-} from '../../routines/cronExpression'
+import { validateCronExpression } from '../../routines/cronExpression'
+import { computeRoutineFireAt } from '../../routines/routineFireTime'
 import { newRoutineId } from '../../routines/routineId'
 import {
   isValidTimeZone,
@@ -275,11 +273,7 @@ export const ScheduleAddTool: ToolContract<CronCreateInput, CronCreateOutput> =
         return { data: `Failed to register routine: ${message}` }
       }
 
-      const nextFireAt = computeNextFireAt(
-        routine.schedule,
-        routine.timezone,
-        now,
-      )
+      const nextFireAt = computeRoutineFireAt(routine, now)
       const modeHint =
         routine.delivery?.mode === 'session'
           ? ' Runs in this conversation.'

@@ -1,11 +1,12 @@
 /**
  * RoutineScheduler: a fixed-interval tick (default 30s) in the SharedWorker
  * that hands each enabled `cron` routine whose `nextFireAt(lastRunAt ??
- * createdAt) <= now` to `RoutineFireDispatcher`. Remote-trigger routines are
+ * createdAt) <= now` to `RoutineFireDispatcher`; recurring routines fire a fixed
+ * per-routine delay after their slot (`routineFireTime`). Remote-trigger routines are
  * not polled. A fire may lag its slot by up to one tick.
  */
 
-import { computeNextFireAt } from './cronExpression'
+import { computeRoutineFireAt } from './routineFireTime'
 import { getRoutineRegistry } from './RoutineRegistry'
 import type { RoutineFireDispatcher } from './RoutineFireDispatcher'
 import type { CronRoutine } from './routineTypes'
@@ -117,7 +118,7 @@ function shouldFire(routine: CronRoutine, now: number): boolean {
   // for its first scheduled slot after creation.
   const anchor = routine.lastRunAt ?? routine.createdAt
   if (anchor >= now) return false
-  const next = computeNextFireAt(routine.schedule, routine.timezone, anchor)
+  const next = computeRoutineFireAt(routine, anchor)
   if (next === null) return false
   return next <= now
 }

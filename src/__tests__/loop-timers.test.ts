@@ -10,6 +10,7 @@ import type { RuntimeFs } from '../utils/fs/runtimeFs'
 import type { NexusTaskSummaryRow } from '../browser/bridge/protocol/ui'
 import { RoutineRegistry, setRoutineRegistry } from '../routines/RoutineRegistry'
 import { computeNextFireAt } from '../routines/cronExpression'
+import { recurringFireDelay } from '../routines/routineFireTime'
 import { listSessionTimers } from '../routines/sessionTimers'
 import type { CronRoutine, Routine } from '../routines/routineTypes'
 import { SharedWorkerSessionManager } from '../browser/worker/SharedWorkerSessionManager'
@@ -63,6 +64,11 @@ function cron(over: Partial<CronRoutine> = {}): CronRoutine {
 
 const t = createTranslate('en')
 
+/** The slot plus the routine's fixed delay: when the scheduler fires it. */
+function firesAt(routine: CronRoutine, slot: number): number {
+  return slot + recurringFireDelay(routine, slot)
+}
+
 beforeEach(() => setRoutineRegistry(null))
 afterEach(() => setRoutineRegistry(null))
 
@@ -82,16 +88,18 @@ describe('listSessionTimers', () => {
         name: 'loop-check-deploy',
         sessionId: 'S1',
         schedule: '* * * * *',
-        nextFireAt: Date.UTC(2026, 9, 31, 12, 1, 0),
+        nextFireAt: firesAt(loop, Date.UTC(2026, 9, 31, 12, 1, 0)),
       },
     ])
   })
 
   it('counts from the last run, so a held-back fire stays in the past', () => {
     const lastRunAt = Date.UTC(2026, 9, 31, 12, 5, 0)
-    const [timer] = listSessionTimers([cron({ schedule: '*/5 * * * *', lastRunAt })])
-    expect(timer!.nextFireAt).toBe(computeNextFireAt('*/5 * * * *', 'UTC', lastRunAt))
-    expect(timer!.nextFireAt).toBe(Date.UTC(2026, 9, 31, 12, 10, 0))
+    const routine = cron({ schedule: '*/5 * * * *', lastRunAt })
+    const [timer] = listSessionTimers([routine])
+    const slot = computeNextFireAt('*/5 * * * *', 'UTC', lastRunAt)!
+    expect(slot).toBe(Date.UTC(2026, 9, 31, 12, 10, 0))
+    expect(timer!.nextFireAt).toBe(firesAt(routine, slot))
   })
 })
 
@@ -153,7 +161,7 @@ describe('session summary feed', () => {
         type: 'local_timer',
         description: 'loop-check-deploy',
         schedule: '* * * * *',
-        nextFireAt: Date.UTC(2026, 9, 31, 12, 1, 0),
+        nextFireAt: firesAt(cron(), Date.UTC(2026, 9, 31, 12, 1, 0)),
       },
     ])
     // Scoped to its own session, never shown in another one.

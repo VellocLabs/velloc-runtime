@@ -1,4 +1,4 @@
-import { computeNextFireAt } from './cronExpression'
+import { computeRoutineFireAt } from './routineFireTime'
 import type { Routine } from './routineTypes'
 
 /** A recurring routine delivered into a session — what `/loop` registers (F-15). */
@@ -8,7 +8,7 @@ export type SessionTimer = {
   /** The session each fire is delivered to. */
   sessionId: string
   schedule: string
-  /** Unix ms of the slot the scheduler fires next. In the past while a fire is
+  /** Unix ms the scheduler fires next (slot plus the routine's fixed delay). In the past while a fire is
    *  due but held back (the session is busy); null when the cron has no slot. */
   nextFireAt: number | null
 }
@@ -30,7 +30,7 @@ export function listSessionTimers(routines: Iterable<Routine>): SessionTimer[] {
       name: routine.name,
       sessionId: delivery.sessionId,
       schedule: routine.schedule,
-      nextFireAt: computeNextFireAt(routine.schedule, routine.timezone, anchor),
+      nextFireAt: computeRoutineFireAt(routine, anchor),
     })
   }
   return timers
