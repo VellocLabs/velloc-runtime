@@ -163,9 +163,11 @@ describe('providerStatus on the runtime protocol', () => {
     const first = refreshProviderStatus(ID)
     const during = [refreshProviderStatus(ID), refreshProviderStatus(ID), refreshProviderStatus(ID)]
     expect(rig.read).toHaveBeenCalledTimes(1)
+    await rig.store('acme').set('status', { lastError: 'written during the read' })
     release()
-    await Promise.all([first, ...during])
+    const answers = await Promise.all([first, ...during])
     expect(rig.read).toHaveBeenCalledTimes(2)
+    for (const entry of answers) expect(entry?.rows[1]).toMatchObject({ cell: { text: 'written during the read' } })
   })
 
   it('a provider that leaves is dropped from the table', async () => {
