@@ -482,6 +482,10 @@ export const zh: Messages = {
   'providerIssue.localStreamLimit.title': '打开的模型请求过多',
   'providerIssue.localStreamLimit.summary':
     '{product} 没有发送这个请求，因为已打开的模型请求过多。这不是服务商的错误，切换服务商也无济于事。请结束或停止其他正在运行的会话，或等待一分钟，然后选择“重试”。',
+  'providerIssue.streamTimeout.summary':
+    '服务商沉默的时间超过了其插件允许的时长，因此 {product} 结束了这个请求。请选择“重试”；如果反复出现，服务商可能已过载。',
+  'providerIssue.streamIncomplete.summary':
+    '服务商的回复没有内容，或在完成前就结束了。请选择“重试”。',
   'providerIssue.maskingResidual.title': '已被替换拦截',
   'providerIssue.maskingResidual.summary':
     '替换后请求中仍含有替换规则 {rule} 的文本（位于 {where}），因此 {product} 没有发送。请用 /masking test 查看它出现在哪里，然后选择“重试”。',

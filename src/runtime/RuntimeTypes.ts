@@ -2,6 +2,7 @@ import type { ChromiumCommandMetadata, ChromiumSkillSummary } from './CommandTyp
 import type { RepeatedToolCallCut } from '../engine/turn/repeatedToolCallGuard'
 import type { RuleEdit } from '../permissions/ruleUpdates'
 import type { LocalizedText } from '../config/localizedText'
+import type { VerdictAnomaly } from '../utils/providerVerdict'
 import type {
   MSG_TYPE_ATTACHMENT,
   MSG_TYPE_USER,
@@ -379,6 +380,8 @@ export type ModelReplyRow = Message & {
   errorMessage?: LocalizedText
   /** The provider mod's own sub-code for this failure. Display and logs only. */
   errorCode?: string
+  /** Set when the failure was no HTTP error status: a timeout or an odd end (F-27). */
+  errorAnomaly?: VerdictAnomaly
 }
 
 /**

@@ -488,6 +488,10 @@ export const fr: Messages = {
   'providerIssue.localStreamLimit.title': 'Trop de requêtes au modèle ouvertes',
   'providerIssue.localStreamLimit.summary':
     '{product} n’a pas envoyé cette requête, car trop de requêtes au modèle sont déjà ouvertes. Ce n’est pas une erreur du fournisseur, et changer de fournisseur n’y changera rien. Terminez ou arrêtez d’autres sessions en cours, ou patientez une minute, puis choisissez « Réessayer ».',
+  'providerIssue.streamTimeout.summary':
+    'Le fournisseur est resté silencieux plus longtemps que ne l’autorise son extension, donc {product} a mis fin à la requête. Choisissez « Réessayer » ; si cela se reproduit, le fournisseur est peut-être surchargé.',
+  'providerIssue.streamIncomplete.summary':
+    'Le fournisseur a terminé sa réponse sans contenu ou avant qu’elle soit complète. Choisissez « Réessayer ».',
   'providerIssue.maskingResidual.title': 'Bloquée par le remplacement',
   'providerIssue.maskingResidual.summary':
     'Après le remplacement, la requête contenait encore le texte de la règle de remplacement {rule} (dans {where}) : {product} ne l’a donc pas envoyée. Vérifiez où il apparaît avec /masking test, puis choisissez « Réessayer ».',

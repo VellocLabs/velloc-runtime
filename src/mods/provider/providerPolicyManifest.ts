@@ -6,7 +6,8 @@
  * undefined. The block is strict: an unknown property, an unknown condition
  * or a value of the wrong type is a problem, named by its path, because a
  * rule that is silently dropped looks to the person like a policy that does
- * not work.
+ * not work. A figure above its range is not a problem: it is held to the
+ * range and reported through `warn`, and the provider loads.
  */
 import { isLocalizedText, whyNotLocalizedText } from '../../config/localizedText'
 import {
@@ -27,8 +28,11 @@ import {
   VERDICT_SCOPES,
 } from '../../utils/providerVerdict'
 import { checkPolicyMessages, checkTimeouts } from './providerTimeoutsManifest'
+import { traceLine } from '../../utils/debugLog'
 
 type Problems = (message: string) => void
+/** A figure that was held to its range; the provider still loads. */
+type Warnings = (message: string) => void
 
 const TEXT_MAX = 256
 const HEADER_NAME = /^[A-Za-z0-9!#$%&'*+.^_`|~-]{1,128}$/
@@ -50,6 +54,32 @@ function wholeNumber(value: unknown, min: number, max: number, label: string, ba
     return undefined
   }
   return value
+}
+
+/** A whole number from `min`; one above `max` is held to `max` and reported through `warn`. */
+function boundedWholeNumber(
+  value: unknown,
+  min: number,
+  max: number,
+  label: string,
+  bad: Problems,
+  warn: Warnings,
+): number | undefined {
+  if (typeof value !== 'number' || !Number.isInteger(value) || value < min) {
+    bad(`${label}: expected a whole number from ${min} to ${max}`)
+    return undefined
+  }
+  if (value > max) {
+    warn(`${label}: ${value} is above the most (${max}); ${max} is used`)
+    return max
+  }
+  return value
+}
+
+/** Logs a policy figure that was held to its range; the provider still loads. */
+export function reportPolicyClamp(message: string): void {
+  traceLine(`[provider-mods] ${message}`, { level: 'warn' })
+  console.warn(`[provider-mods] ${message}`)
 }
 
 function oneOf<T extends string>(value: unknown, list: readonly T[], label: string, bad: Problems): T | undefined {
@@ -84,7 +114,7 @@ function headerName(value: unknown, label: string, bad: Problems): string | unde
 
 const RETRY_KEYS = ['maxRetries', 'initialDelayMs', 'maxDelayMs', 'jitterRatio', 'on'] as const
 
-function checkRetry(value: unknown, label: string, bad: Problems): ProviderRetryPolicy | undefined {
+function checkRetry(value: unknown, label: string, bad: Problems, warn: Warnings): ProviderRetryPolicy | undefined {
   if (!isRecord(value)) {
     bad(`${label}: expected an object`)
     return undefined
@@ -93,21 +123,24 @@ function checkRetry(value: unknown, label: string, bad: Problems): ProviderRetry
   const out: ProviderRetryPolicy = {}
   const maxDelay = PROVIDER_CONNECTIVITY_MAX_RETRY_DELAY_MS
   if (value.maxRetries !== undefined) {
-    const n = wholeNumber(value.maxRetries, 0, PROVIDER_CONNECTIVITY_MAX_RETRIES, `${label}.maxRetries`, bad)
+    const n = boundedWholeNumber(value.maxRetries, 0, PROVIDER_CONNECTIVITY_MAX_RETRIES, `${label}.maxRetries`, bad, warn)
     if (n !== undefined) out.maxRetries = n
   }
   if (value.initialDelayMs !== undefined) {
-    const n = wholeNumber(value.initialDelayMs, 0, maxDelay, `${label}.initialDelayMs`, bad)
+    const n = boundedWholeNumber(value.initialDelayMs, 0, maxDelay, `${label}.initialDelayMs`, bad, warn)
     if (n !== undefined) out.initialDelayMs = n
   }
   if (value.maxDelayMs !== undefined) {
-    const n = wholeNumber(value.maxDelayMs, 0, maxDelay, `${label}.maxDelayMs`, bad)
+    const n = boundedWholeNumber(value.maxDelayMs, 0, maxDelay, `${label}.maxDelayMs`, bad, warn)
     if (n !== undefined) out.maxDelayMs = n
   }
   if (value.jitterRatio !== undefined) {
     const ratio = value.jitterRatio
-    if (typeof ratio !== 'number' || !Number.isFinite(ratio) || ratio < 0 || ratio > 1) {
+    if (typeof ratio !== 'number' || !Number.isFinite(ratio) || ratio < 0) {
       bad(`${label}.jitterRatio: expected a number from 0 to 1`)
+    } else if (ratio > 1) {
+      warn(`${label}.jitterRatio: ${ratio} is above the most (1); 1 is used`)
+      out.jitterRatio = 1
     } else out.jitterRatio = ratio
   }
   if (value.on !== undefined) {
@@ -255,6 +288,7 @@ export function checkPolicy(
   value: unknown,
   bad: Problems,
   wireFormats: readonly string[] = [],
+  warn: Warnings = reportPolicyClamp,
 ): ProviderPolicy | undefined {
   const label = 'policy'
   if (!isRecord(value)) {
@@ -264,7 +298,7 @@ export function checkPolicy(
   onlyKeys(value, POLICY_KEYS, label, bad)
   const out: ProviderPolicy = {}
   if (value.retry !== undefined) {
-    const retry = checkRetry(value.retry, `${label}.retry`, bad)
+    const retry = checkRetry(value.retry, `${label}.retry`, bad, warn)
     if (retry) out.retry = retry
   }
   if (value.errors !== undefined) {
@@ -272,7 +306,7 @@ export function checkPolicy(
     if (errors && errors.length > 0) out.errors = errors
   }
   if (value.timeouts !== undefined) {
-    const timeouts = checkTimeouts(value.timeouts, `${label}.timeouts`, bad, wireFormats)
+    const timeouts = checkTimeouts(value.timeouts, `${label}.timeouts`, bad, wireFormats, warn)
     if (timeouts && Object.keys(timeouts).length > 0) out.timeouts = timeouts
   }
   if (value.messages !== undefined) {

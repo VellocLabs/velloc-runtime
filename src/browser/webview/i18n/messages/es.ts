@@ -490,6 +490,10 @@ export const es: Messages = {
   'providerIssue.localStreamLimit.title': 'Demasiadas solicitudes al modelo abiertas',
   'providerIssue.localStreamLimit.summary':
     '{product} no envió esta solicitud porque ya hay demasiadas solicitudes al modelo abiertas. No es un error del proveedor y cambiar de proveedor no ayudará. Termina o detén otras sesiones en curso, o espera un minuto, y luego elige «Reintentar».',
+  'providerIssue.streamTimeout.summary':
+    'El proveedor estuvo en silencio más tiempo del que permite su complemento, así que {product} terminó la solicitud. Elige «Reintentar»; si vuelve a pasar, es posible que el proveedor esté sobrecargado.',
+  'providerIssue.streamIncomplete.summary':
+    'El proveedor terminó su respuesta sin contenido o antes de completarla. Elige «Reintentar».',
   'providerIssue.maskingResidual.title': 'Bloqueada por el reemplazo',
   'providerIssue.maskingResidual.summary':
     'La solicitud seguía conteniendo el texto de la regla de reemplazo {rule} (en {where}) después del reemplazo, así que {product} no la envió. Comprueba dónde aparece con /masking test y luego elige «Reintentar».',

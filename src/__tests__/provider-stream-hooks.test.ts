@@ -438,11 +438,24 @@ describe('provider.classify on a failed attempt', () => {
     expect(errorOf(chunks)).toBeUndefined()
   })
 
-  it('with no replay the retry hook is asked next, as before', async () => {
+  it('with no replay the retry hook is asked next', async () => {
     const calls = plug({ classify: () => ({ code: 'seen' }), retry: () => ({ retry: { headers: { 'x-retry': '1' } } }) })
     const { transport, opens } = scripted([{ status: 500, body: text('boom') }])
     const chunks = await run(transport)
     expect(calls.order).toEqual(['classify', 'retry'])
+    expect(opens[1]!.headers['x-retry']).toBe('1')
+    expect(textOf(chunks)).toBe('hi')
+  })
+
+  it('a replay that cannot be built leaves the re-send to the retry hook', async () => {
+    const calls = plug({
+      classify: () => ({ replay: { patch: [{ op: 'set', path: '/missing/deep', value: 1 }] } }),
+      retry: () => ({ retry: { headers: { 'x-retry': '1' } } }),
+    })
+    const { transport, opens } = scripted([{ status: 500, body: text('boom') }])
+    const chunks = await run(transport)
+    expect(calls.order).toEqual(['classify', 'retry'])
+    expect(opens).toHaveLength(2)
     expect(opens[1]!.headers['x-retry']).toBe('1')
     expect(textOf(chunks)).toBe('hi')
   })

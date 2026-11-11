@@ -518,6 +518,10 @@ export const en = {
   'providerIssue.localStreamLimit.title': 'Too many open model requests',
   'providerIssue.localStreamLimit.summary':
     '{product} did not send this request because too many model requests are already open. This is not a provider error, and switching providers will not help. Finish or stop other running sessions, or wait a minute, then choose Try again.',
+  'providerIssue.streamTimeout.summary':
+    'The provider stayed silent for longer than its plugin allows, so {product} ended the request. Choose Try again; if it keeps happening, the provider may be overloaded.',
+  'providerIssue.streamIncomplete.summary':
+    'The provider ended its reply with nothing in it, or before it was complete. Choose Try again.',
   'providerIssue.maskingResidual.title': 'Blocked by masking',
   'providerIssue.maskingResidual.summary':
     'The request still held the text of masking rule {rule} (in {where}) after masking, so {product} did not send it. Check where it appears with /masking test, then choose Try again.',

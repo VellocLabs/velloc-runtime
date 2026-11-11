@@ -780,11 +780,14 @@ export class ProviderRequestFlow {
    * The re-send a `classify` answer asked for: the request built again at
    * `effort` (and put to the `request` hook again, which maps the tier to the
    * wire), then `headers` and `patch`, then signed. Undefined when the
-   * re-send is spent or any step fails: the failure then goes on as it was.
+   * re-send is spent or any step fails: the failure then goes on as it was,
+   * and the re-send is left unspent.
    */
   async replayAfter(sent: PreparedProviderRequest, replay: ClassifyReplay): Promise<PreparedProviderRequest | undefined> {
     if (this.resent) return undefined
     this.resent = true
+    const facts = this.facts
+    const effort = this.replayEffort
     try {
       const context = this.nextContext()
       let applied: AppliedAnswer = { request: sent.unsigned, ...planned(sent) }
@@ -808,6 +811,10 @@ export class ProviderRequestFlow {
       return { request, unsigned, ...planned(applied), context }
     } catch (error) {
       if (isAbort(error) || this.signal.aborted) throw error
+      // Nothing was sent: the re-send is still the request's to spend.
+      this.resent = false
+      this.facts = facts
+      this.replayEffort = effort
       return undefined
     }
   }

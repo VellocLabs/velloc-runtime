@@ -71,9 +71,6 @@ export type RequestUsage = {
 /** What of the attempt has already been passed on to be shown. */
 export type Delivered = { reasoning: boolean; text: boolean; toolCalls: boolean }
 
-/** The response body a hook is shown: this many bytes of its start. */
-export const CLASSIFY_BODY_BYTES = 8 * 1024
-
 export type ProviderClassifyEvent = {
   provider: string
   stage: ClassifyStage
@@ -327,6 +324,12 @@ export function endAnomaly(tally: StreamTally): Extract<VerdictAnomaly, 'empty' 
  *  not a refused response or an error inside the stream. */
 export function anomalyRules(rules: readonly ProviderErrorRule[] | undefined): ProviderErrorRule[] | undefined {
   const stated = rules?.filter(rule => rule.match.anomaly !== undefined)
+  return stated && stated.length > 0 ? stated : undefined
+}
+
+/** The rules that state an anomaly of a reply's end (`empty`, `truncated`), or undefined when none does. */
+export function endAnomalyRules(rules: readonly ProviderErrorRule[] | undefined): ProviderErrorRule[] | undefined {
+  const stated = rules?.filter(rule => rule.match.anomaly === 'empty' || rule.match.anomaly === 'truncated')
   return stated && stated.length > 0 ? stated : undefined
 }
 

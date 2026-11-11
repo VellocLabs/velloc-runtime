@@ -6,7 +6,7 @@ import { useLocale, useT } from "@/browser/webview/i18n";
 import { useMessageActionsContext } from "@/components/assistant-ui/message-actions-context";
 import { storedKeyProblemOf } from "@/utils/storedKeyProblem";
 import { maskingRefusalOf } from "@/utils/maskingRefusal";
-import { providerDeclaredMessage, providerErrorSummaryKey, showsProviderRetrySummary } from './composer-logic';
+import { providerDeclaredMessage, providerErrorSummaryKey, showsProviderRetrySummary, streamAnomalyHintKey } from './composer-logic';
 
 export const ProviderApiErrorCard: FC = () => {
   const t = useT();
@@ -38,6 +38,9 @@ export const ProviderApiErrorCard: FC = () => {
   // so the card shows the localized reason instead of them.
   const maskingRefusal = maskingRefusalOf(details);
   const localLimitHint = kind === "local_stream_limit";
+  // A send that ran out of time or ended oddly (F-27): the details are the
+  // transport's English text, so the card adds the reason in the person's language.
+  const streamAnomalyHint = streamAnomalyHintKey(custom.apiErrorAnomaly);
   const retrySummary = t(
     providerErrorSummaryKey({ kind, details, retryCount }),
     { count: retryCount },
@@ -151,6 +154,14 @@ export const ProviderApiErrorCard: FC = () => {
                 data-testid="provider-api-error-local-limit-hint"
               >
                 {t("providerIssue.localStreamLimit.summary")}
+              </div>
+            ) : null}
+            {streamAnomalyHint ? (
+              <div
+                className="text-xs text-muted-foreground"
+                data-testid="provider-api-error-stream-anomaly-hint"
+              >
+                {t(streamAnomalyHint)}
               </div>
             ) : null}
             {billingHint ? (

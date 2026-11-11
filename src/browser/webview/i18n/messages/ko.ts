@@ -482,6 +482,10 @@ export const ko: Messages = {
   'providerIssue.localStreamLimit.title': '열린 모델 요청이 너무 많음',
   'providerIssue.localStreamLimit.summary':
     '이미 열린 모델 요청이 너무 많아 {product}이(가) 이 요청을 보내지 않았습니다. 제공업체 오류가 아니며, 제공업체를 바꿔도 해결되지 않습니다. 실행 중인 다른 세션을 끝내거나 중지하거나 1분 정도 기다린 뒤 "다시 시도"를 선택하세요.',
+  'providerIssue.streamTimeout.summary':
+    '제공업체가 플러그인이 허용하는 시간보다 오래 응답하지 않아 {product}이(가) 요청을 끝냈습니다. "다시 시도"를 선택하세요. 계속 발생하면 제공업체가 과부하 상태일 수 있습니다.',
+  'providerIssue.streamIncomplete.summary':
+    '제공업체가 내용 없이, 또는 완료되기 전에 응답을 마쳤습니다. "다시 시도"를 선택하세요.',
   'providerIssue.maskingResidual.title': '바꾸기로 차단됨',
   'providerIssue.maskingResidual.summary':
     '바꾼 뒤에도 요청에 바꾸기 규칙 {rule}의 텍스트가 남아 있어({where}) {product}이(가) 보내지 않았습니다. /masking test로 나타나는 위치를 확인한 뒤 "다시 시도"를 선택하세요.',

@@ -72,6 +72,7 @@ export function makeProviderApiErrorAssistant(
     // What the provider's manifest says about this failure, when a rule of it matched.
     ...(issue?.message !== undefined ? { errorMessage: issue.message } : {}),
     ...(issue?.code !== undefined ? { errorCode: issue.code } : {}),
+    ...(issue?.anomaly !== undefined ? { errorAnomaly: issue.anomaly } : {}),
   }
 }
 

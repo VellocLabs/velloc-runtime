@@ -485,6 +485,10 @@ export const ja: Messages = {
   'providerIssue.localStreamLimit.title': '開いているモデルリクエストが多すぎます',
   'providerIssue.localStreamLimit.summary':
     '開いているモデルリクエストが多すぎるため、{product} はこのリクエストを送信しませんでした。プロバイダのエラーではなく、プロバイダを切り替えても解決しません。実行中の他のセッションを完了または停止するか、1 分ほど待ってから「再試行」を選んでください。',
+  'providerIssue.streamTimeout.summary':
+    'プロバイダがプラグインの許容時間を超えて応答しなかったため、{product} はリクエストを終了しました。「再試行」を選んでください。繰り返し起こる場合は、プロバイダが混雑している可能性があります。',
+  'providerIssue.streamIncomplete.summary':
+    'プロバイダが内容のない応答、または完了前に途切れた応答を返しました。「再試行」を選んでください。',
   'providerIssue.maskingResidual.title': '置き換えによりブロックされました',
   'providerIssue.maskingResidual.summary':
     '置き換えの後も、リクエストに置き換えのルール {rule} のテキストが残っていたため({where})、{product} は送信しませんでした。/masking test で出現箇所を確認してから、「再試行」を選んでください。',

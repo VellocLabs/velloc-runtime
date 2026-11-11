@@ -62,6 +62,25 @@ export function providerErrorSummaryKey(params: {
 }
 
 /**
+ * The card's line for a send that ran out of time or ended oddly (F-27);
+ * undefined for every other failure.
+ */
+export function streamAnomalyHintKey(anomaly: unknown): MessageKey | undefined {
+  switch (anomaly) {
+    case "first_byte_timeout":
+    case "idle_timeout":
+    case "first_content_timeout":
+    case "stall_timeout":
+      return "providerIssue.streamTimeout.summary";
+    case "empty":
+    case "truncated":
+      return "providerIssue.streamIncomplete.summary";
+    default:
+      return undefined;
+  }
+}
+
+/**
  * The sentence a provider's manifest declares for a failure, in `locale`; ''
  * when the failure carries none (the card then shows its own summary).
  */

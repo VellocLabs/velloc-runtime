@@ -16,6 +16,7 @@
 import { NEXUS_MODEL_CONFIG } from '../../config/nexusModelConfig'
 import { findConfiguredModelIn } from '../../config/nexusModelConfig/findConfiguredModel'
 import { clampTimeouts, TIMEOUT_KEYS, type ProviderTimeouts } from './providerTimeouts'
+import { traceLine } from '../../utils/debugLog'
 
 export type ProviderRequestLimits = {
   maxOutputTokens?: number
@@ -98,6 +99,15 @@ function readTimeouts(value: unknown): ProviderTimeouts | undefined {
     }
   }
   const timeouts = clampTimeouts(value as ProviderTimeouts)
+  for (const key of TIMEOUT_KEYS) {
+    const stated = value[key]
+    if (stated !== undefined && timeouts[key] !== stated) {
+      traceLine(
+        `[providers] request timeouts.${key}: ${String(stated)} is outside the allowed range; ${timeouts[key] ?? 'the platform figure'} is used`,
+        { level: 'warn' },
+      )
+    }
+  }
   return Object.keys(timeouts).length > 0 ? timeouts : undefined
 }
 

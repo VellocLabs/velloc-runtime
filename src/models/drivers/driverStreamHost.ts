@@ -40,6 +40,7 @@ import {
   anomalyRules,
   endAnomaly,
   endAnomalyMessage,
+  endAnomalyRules,
   isContentEvent,
   refineDeclared,
   replayPermitted,
@@ -170,8 +171,8 @@ class DriverStream {
   private masking: MaskingStream | undefined
   /** When the provider last sent response bytes, ones that decode to nothing included. */
   private lastBytesAt = 0
-  /** A send is under declared timeouts: they, not a held read, end a silent stream. */
-  private watched = false
+  /** The watchdog of a send under declared timeouts: while it is live, it, not a held read, ends a silent stream. */
+  private watchdog: StreamWatchdog | undefined
   /** What the request passed on and how it ended; kept for a provider with a seam. */
   private tally: StreamTally | undefined
   /** The error the stream ended with. */
@@ -229,7 +230,7 @@ class DriverStream {
         // its place, and the read says `queued`.
         if (this.queued) return { chunks: [], done: false, status: 'queued' }
         // Bytes with no event in them are provider activity, not silence.
-        if (this.lastBytesAt >= heldSince || this.watched) return this.drain()
+        if (this.lastBytesAt >= heldSince || this.watchdog?.live) return this.drain()
         // As in the C++ host: a read that expires on its deadline cancels upstream.
         await this.cancel()
         return { chunks: [], done: false, status: 'timeout' }
@@ -508,12 +509,12 @@ class DriverStream {
       expired = expiry
       sendAbort.abort()
     })
-    this.watched = true
+    this.watchdog = watchdog
     try {
       return await this.exchange(sent, seamed, { signal: sendAbort.signal, expiry: () => expired, timeouts, watchdog })
     } finally {
       watchdog.stop()
-      this.watched = false
+      this.watchdog = undefined
       this.abort.signal.removeEventListener('abort', onCancel)
     }
   }
@@ -625,8 +626,8 @@ class DriverStream {
       }
       decoder = this.provider.createDecoder(this.model)
       // The reply's end is looked at only for a provider that can say
-      // something about it: a `classify` hook, or a rule that states an anomaly.
-      const watchEnd = seamed !== undefined && (classifies || anomalyRules(this.errorRules) !== undefined)
+      // something about it: a `classify` hook, or a rule that states `empty` or `truncated`.
+      const watchEnd = seamed !== undefined && (classifies || endAnomalyRules(this.errorRules) !== undefined)
       // The start of the body is kept only for a provider that declared rules or reads failures.
       head = this.errorRules || classifies ? new ResponseHead() : undefined
       const kept = head

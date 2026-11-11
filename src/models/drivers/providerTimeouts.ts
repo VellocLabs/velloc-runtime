@@ -5,8 +5,8 @@
  * Contract: `firstByteMs` and `idleMs` count bytes, so a keep-alive that
  * decodes to nothing keeps a stream alive; `firstContentMs` and `stallMs`
  * count decoded content only and are off unless stated. `resolveStreamTimeouts`
- * returns undefined when nothing is stated anywhere: the caller then sends as
- * it did before timeouts could be declared. `StreamWatchdog` fires at most
+ * returns undefined when nothing is stated anywhere: the caller then sends
+ * under the platform's single idle limit. `StreamWatchdog` fires at most
  * once, with the name of the threshold that ran out.
  *
  * Security: the figures are plugin input. Each is held to
@@ -166,6 +166,11 @@ export class StreamWatchdog {
       clearTimeout(this.stall)
       this.stall = this.arm('stall_timeout', this.timeouts.stallMs)
     }
+  }
+
+  /** Whether the send is still watched: false once it is over. */
+  get live(): boolean {
+    return !this.over
   }
 
   /** The send is over; nothing fires after this. */

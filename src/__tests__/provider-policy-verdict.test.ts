@@ -49,7 +49,8 @@ import {
 } from '../runtime/testing/noopAdapters'
 import type { Message } from '../runtime/RuntimeTypes'
 import { withProviderApiErrorMetadata } from '../browser/webview/assistantUiAdapterMessage'
-import { providerDeclaredMessage, showsProviderRetrySummary } from '../components/assistant-ui/composer-logic'
+import { providerDeclaredMessage, showsProviderRetrySummary, streamAnomalyHintKey } from '../components/assistant-ui/composer-logic'
+import { makeProviderApiErrorAssistant } from '../engine/turn/modelErrorMessages'
 
 const NOW = 1_800_000_000_000
 
@@ -469,6 +470,27 @@ describe('policy: manifest validation', () => {
     })
   })
 
+  it('a retry figure above its range is held to it with a warning, and the provider loads', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const policy = accepted({ retry: { maxRetries: 11, initialDelayMs: 40_000, maxDelayMs: 32_001, jitterRatio: 2 } })
+    expect(policy?.retry).toEqual({ maxRetries: 10, initialDelayMs: 32_000, maxDelayMs: 32_000, jitterRatio: 1 })
+    const lines = warn.mock.calls.map(call => String(call[0]))
+    expect(lines).toEqual([
+      '[provider-mods] providers.main.policy.retry.maxRetries: 11 is above the most (10); 10 is used',
+      '[provider-mods] providers.main.policy.retry.initialDelayMs: 40000 is above the most (32000); 32000 is used',
+      '[provider-mods] providers.main.policy.retry.maxDelayMs: 32001 is above the most (32000); 32000 is used',
+      '[provider-mods] providers.main.policy.retry.jitterRatio: 2 is above the most (1); 1 is used',
+    ])
+    warn.mockRestore()
+  })
+
+  it('a retry figure within range loads without a warning', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    accepted({ retry: { maxRetries: 10, maxDelayMs: 32_000, jitterRatio: 1 } })
+    expect(warn).not.toHaveBeenCalled()
+    warn.mockRestore()
+  })
+
   it('no policy, an empty policy and an empty rule list all mean "the platform\'s"', () => {
     expect(accepted(undefined)).toBeUndefined()
     expect(accepted({})).toBeUndefined()
@@ -479,11 +501,9 @@ describe('policy: manifest validation', () => {
   it.each([
     [{ retries: {} }, 'providers.main.policy.retries: not a known property'],
     [{ retry: { maxRetry: 1 } }, 'providers.main.policy.retry.maxRetry: not a known property'],
-    [{ retry: { maxRetries: 11 } }, 'providers.main.policy.retry.maxRetries: expected a whole number from 0 to 10'],
     [{ retry: { maxRetries: '3' } }, 'providers.main.policy.retry.maxRetries: expected a whole number'],
-    [{ retry: { maxDelayMs: 32001 } }, 'providers.main.policy.retry.maxDelayMs: expected a whole number from 0 to 32000'],
     [{ retry: { initialDelayMs: -1 } }, 'providers.main.policy.retry.initialDelayMs'],
-    [{ retry: { jitterRatio: 2 } }, 'providers.main.policy.retry.jitterRatio: expected a number from 0 to 1'],
+    [{ retry: { jitterRatio: -0.1 } }, 'providers.main.policy.retry.jitterRatio: expected a number from 0 to 1'],
     [{ retry: { on: 'service' } }, 'providers.main.policy.retry.on: expected a list'],
     [{ retry: { on: ['overloaded'] } }, 'providers.main.policy.retry.on[0]: expected one of'],
     [{ errors: {} }, 'providers.main.policy.errors: expected a list'],
@@ -750,6 +770,26 @@ describe('the error card shows the declared message', () => {
     expect(showsProviderRetrySummary('This model is not available on the free tier.', 0)).toBe(false)
     expect(showsProviderRetrySummary('Acme is busy.', 10)).toBe(true)
     expect(showsProviderRetrySummary('', 0)).toBe(true)
+  })
+
+  it('a timeout or an odd end carries its anomaly to the card, which adds a translated line', () => {
+    const timedOut = new ProviderApiError('Stream network error: timed out, the provider sent nothing for 120 s', {
+      declared: { kind: 'network', anomaly: 'idle_timeout' },
+    })
+    const row = makeProviderApiErrorAssistant(new DefaultRuntimeConfig(), 'm', timedOut, 0)
+    expect(row.errorAnomaly).toBe('idle_timeout')
+    const out = withProviderApiErrorMetadata({ role: 'assistant', content: [] } as never, row as never, 'hello')
+    expect(out.metadata?.custom).toMatchObject({ apiErrorAnomaly: 'idle_timeout' })
+    expect(streamAnomalyHintKey('idle_timeout')).toBe('providerIssue.streamTimeout.summary')
+    expect(streamAnomalyHintKey('first_byte_timeout')).toBe('providerIssue.streamTimeout.summary')
+    expect(streamAnomalyHintKey('truncated')).toBe('providerIssue.streamIncomplete.summary')
+    expect(streamAnomalyHintKey('in_body_error')).toBeUndefined()
+    expect(streamAnomalyHintKey(undefined)).toBeUndefined()
+  })
+
+  it('a failure with no anomaly carries none', () => {
+    const row = makeProviderApiErrorAssistant(new DefaultRuntimeConfig(), 'm', new ProviderApiError('HTTP 500', { httpStatus: 500 }), 0)
+    expect('errorAnomaly' in row).toBe(false)
   })
 
   it('a failure without a declared message leaves the card its own summary', () => {

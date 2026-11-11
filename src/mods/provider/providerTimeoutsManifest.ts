@@ -5,7 +5,7 @@
  * every problem through `bad` (which refuses the provider) and returns
  * undefined. Both are strict: an unknown property or a value of the wrong
  * type is a problem, named by its path. A threshold past the platform's
- * bounds is not a problem: it is held to them where it is applied.
+ * bounds is not a problem: it is held to them and reported through `warn`.
  */
 import { isLocalizedText, whyNotLocalizedText, type LocalizedText } from '../../config/localizedText'
 import {
@@ -31,6 +31,7 @@ function checkThresholds(
   allowed: readonly string[],
   label: string,
   bad: Problems,
+  warn: Problems,
 ): ProviderTimeouts {
   const out: ProviderTimeouts = {}
   for (const [key, raw] of Object.entries(value)) {
@@ -42,6 +43,7 @@ function checkThresholds(
         continue
       }
       const ms = clampTimeout(name, raw)
+      if (ms !== raw) warn(`${label}.${key}: ${raw} is outside the allowed range; ${ms} is used`)
       if (ms !== undefined) out[name] = ms
     } else if (!allowed.includes(key)) {
       bad(`${label}.${key}: not a known property (known: ${allowed.join(' / ')})`)
@@ -57,12 +59,13 @@ export function checkTimeouts(
   label: string,
   bad: Problems,
   formats: readonly string[],
+  warn: Problems,
 ): DeclaredTimeouts | undefined {
   if (!isRecord(value)) {
     bad(`${label}: expected an object`)
     return undefined
   }
-  const out: DeclaredTimeouts = checkThresholds(value, [...TIMEOUT_KEYS, ...formats], label, bad)
+  const out: DeclaredTimeouts = checkThresholds(value, [...TIMEOUT_KEYS, ...formats], label, bad, warn)
   for (const format of formats) {
     const raw = value[format]
     if (raw === undefined) continue
@@ -70,7 +73,7 @@ export function checkTimeouts(
       bad(`${label}.${format}: expected an object of thresholds`)
       continue
     }
-    const own = checkThresholds(raw, TIMEOUT_KEYS, `${label}.${format}`, bad)
+    const own = checkThresholds(raw, TIMEOUT_KEYS, `${label}.${format}`, bad, warn)
     if (Object.keys(own).length > 0) out[format] = own
   }
   return out

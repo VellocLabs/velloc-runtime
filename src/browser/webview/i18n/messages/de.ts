@@ -489,6 +489,10 @@ export const de: Messages = {
   'providerIssue.localStreamLimit.title': 'Zu viele offene Modellanfragen',
   'providerIssue.localStreamLimit.summary':
     '{product} hat diese Anfrage nicht gesendet, weil bereits zu viele Modellanfragen offen sind. Das ist kein Fehler des Anbieters, und ein Wechsel des Anbieters hilft nicht. Beenden oder stoppen Sie andere laufende Sitzungen oder warten Sie eine Minute, und wählen Sie dann „Erneut versuchen“.',
+  'providerIssue.streamTimeout.summary':
+    'Der Anbieter hat länger geschwiegen, als sein Plugin erlaubt, daher hat {product} die Anfrage beendet. Wähle „Erneut versuchen“; passiert das öfter, ist der Anbieter vielleicht überlastet.',
+  'providerIssue.streamIncomplete.summary':
+    'Der Anbieter hat seine Antwort ohne Inhalt oder vor ihrem Ende abgeschlossen. Wähle „Erneut versuchen“.',
   'providerIssue.maskingResidual.title': 'Durch Ersetzen blockiert',
   'providerIssue.maskingResidual.summary':
     'Die Anfrage enthielt nach dem Ersetzen noch den Text der Ersetzungsregel {rule} (in {where}), daher hat {product} sie nicht gesendet. Prüfen Sie mit /masking test, wo sie auftritt, und wählen Sie dann „Erneut versuchen“.',

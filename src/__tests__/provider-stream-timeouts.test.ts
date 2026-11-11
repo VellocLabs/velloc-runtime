@@ -35,10 +35,11 @@ import { POLICY_MESSAGES_MAX } from '../mods/provider/providerTimeoutsManifest'
 /** Three of the wire formats a manifest may name. */
 const [CHAT, RESPONSES, , OTHER] = PROVIDER_WIRE_FORMATS as readonly [string, string, string, string]
 
-function policyOf(raw: unknown): { policy: ProviderPolicy | undefined; problems: string[] } {
+function policyOf(raw: unknown): { policy: ProviderPolicy | undefined; problems: string[]; warnings: string[] } {
   const problems: string[] = []
-  const policy = checkPolicy(raw, message => problems.push(message), PROVIDER_WIRE_FORMATS)
-  return { policy, problems }
+  const warnings: string[] = []
+  const policy = checkPolicy(raw, message => problems.push(message), PROVIDER_WIRE_FORMATS, message => warnings.push(message))
+  return { policy, problems, warnings }
 }
 
 describe('policy.timeouts in a manifest', () => {
@@ -62,9 +63,14 @@ describe('policy.timeouts in a manifest', () => {
     })
   })
 
-  it('holds a threshold to the platform bounds instead of refusing it', () => {
-    const { policy, problems } = policyOf({ timeouts: { idleMs: 900_000, stallMs: 5_000, firstContentMs: 400_000 } })
+  it('holds a threshold to the platform bounds instead of refusing it, and warns of each', () => {
+    const { policy, problems, warnings } = policyOf({ timeouts: { idleMs: 900_000, stallMs: 5_000, firstContentMs: 400_000 } })
     expect(problems).toEqual([])
+    expect(warnings).toEqual([
+      'policy.timeouts.idleMs: 900000 is outside the allowed range; 300000 is used',
+      'policy.timeouts.stallMs: 5000 is outside the allowed range; 60000 is used',
+      'policy.timeouts.firstContentMs: 400000 is outside the allowed range; 300000 is used',
+    ])
     expect(policy?.timeouts).toEqual({
       idleMs: STREAM_TIMEOUT_CEILING_MS,
       stallMs: CONTENT_TIMEOUT_FLOOR_MS,
@@ -87,8 +93,12 @@ describe('policy.timeouts in a manifest', () => {
     expect(problems.some(line => line.startsWith(problem))).toBe(true)
   })
 
+  it('a figure within range is taken without a warning', () => {
+    expect(policyOf({ timeouts: { idleMs: 120_000, stallMs: 0 } }).warnings).toEqual([])
+  })
+
   it('an empty block states nothing', () => {
-    expect(policyOf({ timeouts: {} })).toEqual({ policy: {}, problems: [] })
+    expect(policyOf({ timeouts: {} })).toEqual({ policy: {}, problems: [], warnings: [] })
   })
 })
 
@@ -494,7 +504,7 @@ describe('a stream under declared timeouts', () => {
     expect(errorOf(reading.chunks).verdict).toEqual({ kind: 'service', retryable: false, code: 'gone_quiet', anomaly: 'idle_timeout' })
   })
 
-  it('a declared idle past the old ceiling reaches the host, up to the new one', async () => {
+  it('a declared idle above 90 s reaches the host, up to 300 s', async () => {
     vi.useFakeTimers()
     const live = liveHost()
     const reading = await started({ timeouts: { idleMs: 280_000, firstByteMs: 20_000 } }, live)
@@ -502,6 +512,45 @@ describe('a stream under declared timeouts', () => {
     live.end()
     await vi.advanceTimersByTimeAsync(0)
     await reading.finished
+  })
+})
+
+describe('a watched send whose watchdog has stopped', () => {
+  afterEach(() => {
+    resetProviderRequestSeams()
+    vi.useRealTimers()
+  })
+
+  it('falls back to the held read: a refresh that never answers does not hold the stream open', async () => {
+    vi.useFakeTimers()
+    const opens: Array<Record<string, any>> = []
+    const cancels: string[] = []
+    const transport: BrowserBridgeTransport = {
+      async request(req: any) {
+        const action = req.route.action
+        if (action === 'rawStreamOpen') {
+          opens.push(req.payload)
+          return { ok: true, result: { streamId: 'r1', status: 401, statusText: 'U', finalUrl: req.payload.url, headers: {} } } as any
+        }
+        if (action === 'rawStreamCancel') {
+          cancels.push(req.payload.streamId)
+          return { ok: true, result: { ok: true } } as any
+        }
+        return { ok: true, result: { done: true, chunk: new TextEncoder().encode('expired') } } as any
+      },
+    }
+    resetProviderRequestSeams()
+    registerProviderRequestSeam(PROVIDER_ID, {
+      policy: { timeouts: { idleMs: 120_000 } },
+      credentials: { tokenExpiresAt: () => undefined, epoch: () => 1, refresh: () => new Promise(() => {}) },
+    })
+    const host = new DriverStreamHost(transport)
+    const { streamId } = host.start(provider(), { messages: [] } as never, 'slow-1')
+    const reading = collect(host, streamId, 90_000)
+    await vi.advanceTimersByTimeAsync(90_000)
+    await reading.finished
+    expect(opens).toHaveLength(1)
+    expect(reading.state.status).toBe('timeout')
   })
 })
 
@@ -526,7 +575,7 @@ describe('a provider that declares no timeouts', () => {
     expect(errorOf(reading.chunks)).toBeUndefined()
   })
 
-  it('keep-alives keep it alive as before', async () => {
+  it('keep-alives keep it alive under the 90 s idle', async () => {
     vi.useFakeTimers()
     const live = liveHost()
     const reading = await started(undefined, live, 90_000)

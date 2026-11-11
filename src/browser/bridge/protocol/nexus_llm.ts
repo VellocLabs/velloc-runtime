@@ -559,7 +559,8 @@ export type ModelBridgeCapabilityMap = {
          *  redact them from the body (buffered, <= 1 MB). `secret` is not
          *  `api_key`. The final read carries the sealed copies. */
         captureSecrets?: Array<{ pointer: string; secret: string }>
-        /** Default 90_000; keep <= 90_000 (the `model` route fallback is 100s). */
+        /** Default 90_000. Up to 300_000 for a timeout a provider declared; the
+         *  guest's `model.rawStreamOpen` deadline is 310s. */
         idleTimeoutMs?: number
         maxResponseBytes?: number
         /** Caller-chosen id, 8-64 chars `[A-Za-z0-9_-]`. The host keys the
