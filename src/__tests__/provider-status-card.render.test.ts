@@ -151,7 +151,7 @@ describe('the status card of a provider mod', () => {
   })
 
   it('drops the answer of a job started for a provider the card no longer shows', async () => {
-    let answer!: (value: unknown) => void
+    let answer!: (value: { outcome: string }) => void
     const { request, view } = mount(ENTRY)
     request.mockImplementationOnce(() => new Promise(resolve => (answer = resolve)))
     fireEvent.click(await screen.findByTestId('mod-status-action'))
