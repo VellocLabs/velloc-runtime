@@ -2,10 +2,9 @@
  * When a cron routine actually fires (F-15). A recurring routine fires a delay
  * after each cron slot; a one-shot fires on the slot. The delay is the
  * routine's stable fraction (from its id) of half the gap to the following
- * slot less one scheduler tick, capped at `MAX_RECURRING_FIRE_DELAY_MS`. On an
- * evenly spaced schedule it is the same every slot. The tick of headroom keeps
- * a fire that lags its due time by one tick ahead of the following slot, so no
- * slot is skipped; a gap of a minute or less gets no delay.
+ * slot less one scheduler tick, capped at `MAX_RECURRING_FIRE_DELAY_MS`. The
+ * tick of headroom keeps a fire that lags its due time by one tick ahead of the
+ * following slot, so no slot is skipped.
  */
 
 import { computeNextFireSlots } from './cronExpression'
