@@ -144,6 +144,24 @@ export type ProvidersBridgeActionMap = {
     }
     result: { ok: true }
   }
+  /**
+   * Set a provider mod's base URL (`null`: back to the manifest's default).
+   * Only a provider whose manifest binds a settings field to `baseUrl` takes
+   * it. A host outside the manifest's domains is stored only when
+   * `confirmedHost` names it: the person's answer to the confirmation the
+   * `needs-confirmation` result asks for.
+   */
+  setModBaseUrl: {
+    payload: { id: string; baseUrl: string | null; confirmedHost?: string }
+    result:
+      | { ok: true; baseUrl: string; overridden: boolean }
+      | { ok: false; reason: 'needs-confirmation'; host: string }
+      | {
+          ok: false
+          reason: 'refused'
+          problem: 'not-a-url' | 'scheme' | 'credentials' | 'query-or-fragment' | 'not-editable'
+        }
+  }
   setOrder: {
     payload: { order: string[] }
     result: {

@@ -29,6 +29,7 @@ import {
 } from "../clients";
 import {
   API_KEY_PROMPT_KEY,
+  boundBaseUrlField,
   credentialMethodsOf,
   defaultKeyPrompt,
   isModProviderConnected,
@@ -38,6 +39,7 @@ import {
   modProviderConfig,
   modProviderOwnedOptions,
   modProviderResettable,
+  optionSettingNames,
   promptProblems,
   promptsTouched,
   settingsAsUserConfig,
@@ -52,6 +54,7 @@ import {
 import { draftOf, holdsStoredSecret, isMissingRequired, type OptionsDraft } from "../modOptionsDraft";
 import { mapErrorCode } from "../verifyErrorText";
 import { getProviderLoginStore, useProviderLogin } from "../../providerLoginStore";
+import { ModBaseUrlField } from "./ModBaseUrlField";
 import { MissingRequiredMark, OptionFieldControl, OptionRow, OptionRowList } from "./ModOptionRows";
 import { ProviderModelEntries } from "./ProviderModelEntries";
 import { ProviderSignInDialog } from "./ProviderSignInDialog";
@@ -294,6 +297,7 @@ function ReadyEditor({
         : null,
     [mod, options, locale],
   );
+  const baseUrlField = React.useMemo(() => boundBaseUrlField(mod, locale), [mod, locale]);
   const secretViews = React.useMemo<SecretRowView[]>(
     () =>
       (mod.secrets ?? []).map((secret) => ({
@@ -320,7 +324,7 @@ function ReadyEditor({
   // credentials, the options it owns) and the page reads as a fresh pick
   // from the Add menu.
   const ownedOptions = React.useMemo(
-    () => modProviderOwnedOptions(mod.prompts ?? [], Object.keys(mod.settings ?? {})),
+    () => modProviderOwnedOptions(mod.prompts ?? [], optionSettingNames(mod)),
     [mod.prompts, mod.settings],
   );
   const resettable = modProviderResettable(
@@ -521,6 +525,20 @@ function ReadyEditor({
         verifyKey={verifyKey}
         t={t}
       />
+      {baseUrlField && mod.defaultBaseUrl ? (
+        <ModBaseUrlField
+          providerId={providerId}
+          providerName={name}
+          fieldName={baseUrlField.name}
+          label={baseUrlField.label}
+          hint={baseUrlField.hint}
+          defaultBaseUrl={mod.defaultBaseUrl}
+          storedBaseUrl={saved?.baseUrl}
+          bridge={bridge}
+          onSaved={onChanged}
+          t={t}
+        />
+      ) : null}
       {optionsFailed ? (
         <span className="text-destructive text-xs" data-testid="mod-options-load-failed">
           {t("settings.models.mod.optionsLoadFailed")}

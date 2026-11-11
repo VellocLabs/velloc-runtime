@@ -135,6 +135,8 @@ export type BrowserLlmModProvider = {
   configId?: string
   displayName?: LocalizedText
   defaultBaseUrl?: string
+  /** The manifest's declared domains: the provider's boundary. */
+  domains?: string[]
   credentialMethods?: ProviderCredentialMethod[]
   /** Credentials beyond the API key. */
   secrets?: ProviderSecretDecl[]

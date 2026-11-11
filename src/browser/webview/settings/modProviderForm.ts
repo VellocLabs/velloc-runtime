@@ -232,6 +232,8 @@ export function settingsAsUserConfig(
   const fields: Record<string, ModsUserConfigField> = {}
   const values: Record<string, ModsUserConfig['values'][string]> = {}
   for (const [name, field] of Object.entries(mod.settings ?? {})) {
+    // A bound field's value is a platform slot's, not a plugin option.
+    if (field.binds !== undefined) continue
     fields[name] = {
       type: field.type,
       title: resolveLocalizedText(field.title, locale),
@@ -253,6 +255,41 @@ export function settingsAsUserConfig(
     else if (Array.isArray(value) && value.every(entry => typeof entry === 'string')) values[name] = value as string[]
   }
   return { fields, values }
+}
+
+/** The settings field bound to the base URL, with the vendor's text resolved. */
+export function boundBaseUrlField(
+  mod: BrowserLlmModProvider,
+  locale: string | undefined,
+): { name: string; label: string; hint?: string } | null {
+  for (const [name, field] of Object.entries(mod.settings ?? {})) {
+    if (field.binds !== 'baseUrl') continue
+    const hint = resolveLocalizedText(field.description, locale)
+    return { name, label: resolveLocalizedText(field.title, locale), ...(hint ? { hint } : {}) }
+  }
+  return null
+}
+
+/** The plugin options among the declared settings: every field but a bound one. */
+export function optionSettingNames(mod: BrowserLlmModProvider): string[] {
+  return Object.entries(mod.settings ?? {})
+    .filter(([, field]) => field.binds === undefined)
+    .map(([name]) => name)
+}
+
+export type BaseUrlRefusal = 'not-a-url' | 'scheme' | 'credentials' | 'query-or-fragment' | 'not-editable'
+
+const BASE_URL_PROBLEM_KEYS = {
+  'not-a-url': 'settings.models.mod.baseUrl.problem.notAUrl',
+  scheme: 'settings.models.mod.baseUrl.problem.scheme',
+  credentials: 'settings.models.mod.baseUrl.problem.credentials',
+  'query-or-fragment': 'settings.models.mod.baseUrl.problem.queryOrFragment',
+  'not-editable': 'settings.models.mod.baseUrl.problem.notEditable',
+} as const
+
+/** The catalog key of the sentence for a refused base URL. */
+export function baseUrlProblemKey(problem: BaseUrlRefusal): (typeof BASE_URL_PROBLEM_KEYS)[BaseUrlRefusal] {
+  return BASE_URL_PROBLEM_KEYS[problem]
 }
 
 /** A named credential as the form draws it: the vendor's text, resolved. */

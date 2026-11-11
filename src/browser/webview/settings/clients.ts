@@ -538,6 +538,14 @@ export function providersModOptions(
   return bridge.request(createBridgeRoute('providers', 'modOptions'), { plugin })
 }
 
+/** Set a provider mod's base URL; `null` returns to the manifest's default. */
+export function providersSetModBaseUrl(
+  bridge: NexusSettingsBridge,
+  payload: { id: string; baseUrl: string | null; confirmedHost?: string },
+): Promise<BrowserBridgeResult<'providers', 'setModBaseUrl'>> {
+  return bridge.request(createBridgeRoute('providers', 'setModBaseUrl'), payload)
+}
+
 /** Store the `owned` options of a provider mod's plugin; every session's
  *  plugins reload with them. */
 export function providersSetModOptions(

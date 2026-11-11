@@ -23,6 +23,7 @@ import {
 } from './ids/idRules'
 import { checkModelFacts, type ProviderModelFacts } from './providerModelFacts'
 import { checkProviderWire, type ProviderWireManifest } from './providerToolAliasesManifest'
+import { withSettingBinds, type SettingBinding } from './providerSettingBinds'
 
 /** The `providerApi` values this Velloc serves. A manifest naming another is
  *  refused with a message that names it. */
@@ -82,7 +83,7 @@ export type ProviderCredentials = {
 }
 
 /** A settings field: `PluginUserConfigField` with text a vendor may localize. */
-export type ProviderSettingField = Omit<PluginUserConfigField, 'title' | 'description'> & {
+export type ProviderSettingField = Omit<PluginUserConfigField, 'title' | 'description'> & SettingBinding & {
   title: LocalizedText
   description?: LocalizedText
 }
@@ -842,7 +843,7 @@ function checkProvider(key: string, raw: unknown, errors: string[]): ProviderMan
   } else moduleRef = raw.module
 
   let settings: Record<string, ProviderSettingField> | undefined
-  if (raw.settings !== undefined) settings = checkSettings(raw.settings, bad)
+  if (raw.settings !== undefined) settings = withSettingBinds(raw.settings, bad, plain => checkSettings(plain, bad))
 
   const modelsUi = raw.modelsUi === undefined ? undefined : checkModelsUi(raw.modelsUi, bad)
 

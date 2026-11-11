@@ -586,6 +586,7 @@ describe('the catalog rows', () => {
       configId: 'opencode@inline',
       displayName: { en: 'OpenCode Zen', 'zh-CN': 'OpenCode 禅' },
       defaultBaseUrl: 'https://opencode.ai/zen/v1',
+      domains: ['opencode.ai'],
       credentialMethods: ['apiKey', 'anonymous'],
       secrets: [{ name: 'access_token', label: { en: 'Access token' } }],
       settings: { region: { type: 'string', options: ['us', 'eu'], default: 'us', title: { en: 'Region' } } },

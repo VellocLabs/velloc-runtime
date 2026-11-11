@@ -139,6 +139,7 @@ export function modProviderDefinition(options: ModProviderDefinitionOptions): Pr
       ...(options.pluginId !== undefined ? { configId: options.pluginId } : {}),
       displayName: manifest.displayName,
       defaultBaseUrl: manifest.defaultBaseUrl,
+      domains: [...manifest.domains],
       credentialMethods: [...manifest.credentials.methods],
       secrets: secrets.map(secret => ({ ...secret })),
       settings: manifest.settings ?? {},

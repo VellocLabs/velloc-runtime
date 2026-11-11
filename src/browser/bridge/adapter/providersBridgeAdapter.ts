@@ -33,6 +33,7 @@ import { sanitizeUserModels } from '../../../config/nexusModelConfig/userModels'
 import { getProviderDefinition, modProviderDefinitions } from '../../../config/nexusModelConfig/providers'
 import { declaredSecretNames } from '../../../config/nexusModelConfig/providerDefinition'
 import { isModProviderId } from '../../../mods/provider/providerManifest'
+import { handleSetModBaseUrl } from './modBaseUrlHandler'
 import {
   entryForModelId,
   entryId,
@@ -485,10 +486,20 @@ async function handleUpsert(
   let keyBefore: string | undefined
   let secretsBefore: Readonly<Record<string, string>> = {}
   let ownerBefore: string | undefined
+  let baseUrlBefore: string | undefined
   const updated = await updateProvidersSettings(ctx.homeDir, ctx.fs, prev => {
     keyBefore = prev?.configs?.[payload.id]?.apiKey
     secretsBefore = prev?.configs?.[payload.id]?.secrets ?? {}
     ownerBefore = prev?.configs?.[payload.id]?.modOwner
+    baseUrlBefore = prev?.configs?.[payload.id]?.baseUrl
+    // Security: a provider mod's base URL has one writer, which holds it to
+    // the manifest's boundary; this write never changes it.
+    if (!derive && isModProviderId(payload.id)) {
+      const asked = sealedIncoming[payload.id]?.baseUrl
+      if (asked !== undefined && asked !== '' && asked !== baseUrlBefore) {
+        throw new Error('the base URL of a provider mod is set with `providers.setModBaseUrl`')
+      }
+    }
     const incoming = derive
       ? derive(prev?.configs?.[payload.id] ?? {})
       : sealedIncoming[payload.id]!
@@ -524,6 +535,10 @@ async function handleUpsert(
     }
     if (Object.keys(secrets).length > 0) merged.secrets = secrets
     else delete merged.secrets
+    if (!derive && isModProviderId(payload.id)) {
+      if (baseUrlBefore) merged.baseUrl = baseUrlBefore
+      else delete merged.baseUrl
+    }
     next.configs[payload.id] = merged
     return next
   })
@@ -549,7 +564,8 @@ async function handleUpsert(
     .some(name => secretsBefore[name] !== secretsAfter[name])
   const ownershipChanged = ownerBefore !== after?.modOwner
     && (!!keyBefore || !!after?.apiKey || Object.keys(secretsBefore).length > 0 || Object.keys(secretsAfter).length > 0)
-  if (isModProviderId(payload.id) && ((keyBefore ?? '') !== (after?.apiKey ?? '') || secretsChanged || ownershipChanged)) {
+  const baseUrlChanged = (baseUrlBefore ?? '') !== (after?.baseUrl ?? '')
+  if (isModProviderId(payload.id) && ((keyBefore ?? '') !== (after?.apiKey ?? '') || secretsChanged || ownershipChanged || baseUrlChanged)) {
     ctx.reloadPluginsOnAllSessions?.()
   }
   return { ok: true, configs: uiConfigs, activeProviderId }
@@ -946,6 +962,18 @@ export async function handleSetModOptions(
   return { ok: true }
 }
 
+function runSetModBaseUrl(
+  payload: ProvidersBridgeActionMap['setModBaseUrl']['payload'],
+  ctx: ProvidersAdapterContext,
+): Promise<ProvidersBridgeActionMap['setModBaseUrl']['result']> {
+  return handleSetModBaseUrl(payload, {
+    homeDir: ctx.homeDir,
+    fs: ctx.fs,
+    rewrite: (id, derive) => handleUpsert({ id, config: {} }, ctx, derive),
+    ...(ctx.freshModelIds ? { relist: ctx.freshModelIds } : {}),
+  })
+}
+
 export const providersHandlers = {
   list: handleList,
   upsert: handleUpsert,
@@ -960,6 +988,7 @@ export const providersHandlers = {
   freshModelIds: handleFreshModelIds,
   modOptions: handleModOptions,
   setModOptions: handleSetModOptions,
+  setModBaseUrl: runSetModBaseUrl,
 }
 
 export async function handleProvidersBridgeRequest(
@@ -1042,6 +1071,12 @@ export async function handleProvidersBridgeRequest(
       case 'setModOptions':
         result = await handleSetModOptions(
           request.payload as ProvidersBridgeActionMap['setModOptions']['payload'],
+          ctx,
+        )
+        break
+      case 'setModBaseUrl':
+        result = await runSetModBaseUrl(
+          request.payload as ProvidersBridgeActionMap['setModBaseUrl']['payload'],
           ctx,
         )
         break

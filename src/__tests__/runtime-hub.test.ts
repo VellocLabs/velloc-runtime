@@ -1300,7 +1300,7 @@ describe('legacy WebUI capabilities on the new hub', () => {
     const manager = registry.advertise({ mode: 'manager', sessions: 'all' })
     // A manager holds provider keys and MCP server configs — but installs no
     // code and names no host path outside the import sources (`full`).
-    expect(manager.find(a => a.cap === 'providers')?.acts).toEqual(['list', 'upsert', 'remove', 'setActive', 'setOrder', 'verify', 'modelFamilies', 'setModelEntries', 'setUserModels', 'dismissRemoved', 'freshModelIds', 'modOptions', 'setModOptions'])
+    expect(manager.find(a => a.cap === 'providers')?.acts).toEqual(['list', 'upsert', 'remove', 'setActive', 'setOrder', 'verify', 'modelFamilies', 'setModelEntries', 'setUserModels', 'dismissRemoved', 'freshModelIds', 'modOptions', 'setModOptions', 'setModBaseUrl'])
     // `testConnect` is the MCP page's pre-save probe (the worker MCP client),
     // a manager's like the upsert it precedes; a control client gets none.
     expect(manager.find(a => a.cap === 'mcpSettings')?.acts).toEqual(['list', 'upsert', 'remove', 'testConnect'])

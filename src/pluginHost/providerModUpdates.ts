@@ -40,6 +40,7 @@ import type { PluginSetupRecord } from './registryFormats'
 import type { ExtractedFile } from './extract'
 import { ensureDirRecursive } from './writeExtracted'
 import { pluginGrantOf, widened, type Grant, type GrantDelta } from './providerGrant'
+import { addPersonHost, type PersonAdded } from './personWidening'
 
 // ── state ──
 
@@ -82,6 +83,9 @@ export type PluginUpdateRecord = {
   lastCheckedAt?: string
   /** The grant the person agreed to, with the version it belongs to. */
   consent?: { version: string; grant: Grant; at: string }
+  /** Hosts the person added to a provider's boundary. Never part of `consent`:
+   *  an update is compared with the manifest's own grant. */
+  personAdded?: PersonAdded
   /** The version that ran before the last switch: the rollback target. */
   previous?: { version: string; installPath: string; grant: Grant }
   pending?: PendingUpdate
@@ -141,6 +145,9 @@ export interface ProviderModUpdateService {
   rollback(pluginId: string): Promise<ProviderModUpdateStatus>
   /** The enable flow consented to the grant of the version running now. */
   recordInitialConsent(pluginId: string): Promise<ProviderModUpdateStatus>
+  /** The person confirmed `host` for one provider's base URL: keep it on the
+   *  plugin's record. The plugin need not have a consent baseline. */
+  addPersonHost(pluginId: string, providerKey: string, host: string): Promise<void>
   /** A status changed. Returns the unsubscribe. */
   subscribe(listener: () => void): () => void
 }
@@ -743,6 +750,13 @@ export function createProviderModUpdateService(deps: ProviderModUpdateDeps): Pro
       }
       return status
     },
+
+    addPersonHost: (pluginId, providerKey, host) =>
+      exclusive(async () => {
+        const state = await readState(true)
+        const record = (state.plugins[pluginId] ??= {})
+        if (addPersonHost(record, providerKey, host)) await writeState(state)
+      }),
 
     subscribe: listener => {
       listeners.add(listener)

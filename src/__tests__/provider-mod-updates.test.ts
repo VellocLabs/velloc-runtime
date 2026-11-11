@@ -699,3 +699,34 @@ describe('a plugin whose apps declare folders and that carries no provider', () 
     await expect(service.recordInitialConsent(PID)).rejects.toThrow(/not an installed provider mod/)
   })
 })
+
+describe('a host the person added to a provider', () => {
+  const record = async (w: World) => JSON.parse(String(await w.fs.readFile(STATE, { encoding: 'utf-8' }))).plugins[ID]
+
+  it('is kept beside the consent baseline and survives an update', async () => {
+    const w = await world()
+    await w.service.addPersonHost(ID, 'main', 'Gateway.Example')
+    await w.service.addPersonHost(ID, 'main', 'gateway.example')
+    expect((await record(w)).personAdded).toEqual({ providers: { main: { domains: ['gateway.example'] } } })
+    expect((await record(w)).consent.grant.providers.main.domains).toEqual(['api.acme.test'])
+
+    await w.publish('1.1.0', { requestNeeds: [] })
+    expect((await w.service.checkNow())[0]).toMatchObject({ activeVersion: '1.1.0', applied: { silent: true } })
+    expect((await record(w)).personAdded).toEqual({ providers: { main: { domains: ['gateway.example'] } } })
+    expect((await record(w)).consent.grant.providers.main.domains).toEqual(['api.acme.test'])
+  })
+
+  it('does not count as declared: an update whose manifest adds that host still asks', async () => {
+    const w = await world()
+    await w.service.addPersonHost(ID, 'main', 'gateway.example')
+    await w.publish('1.1.0', { domains: ['api.acme.test', 'gateway.example'] })
+    const [status] = await w.service.checkNow()
+    expect(status).toMatchObject({ state: 'needs-consent', activeVersion: '1.0.0' })
+    expect(status!.pending!.delta.added.perProvider.main!.domains).toEqual(['gateway.example'])
+  })
+
+  it('refuses what is not a plain host name', async () => {
+    const w = await world()
+    await expect(w.service.addPersonHost(ID, 'main', 'https://gateway.example/v1')).rejects.toThrow(/plain host name/)
+  })
+})

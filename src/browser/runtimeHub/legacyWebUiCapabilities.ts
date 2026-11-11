@@ -133,6 +133,8 @@ export const LEGACY_WEBUI_CAPABILITIES = {
     // A provider mod's plugin options: the read shows values (sensitive ones
     // never), the write reloads every session's plugins — as `mods.setOptions`.
     modOptions: 'manager', setModOptions: 'manager',
+    // Where the provider's requests and its stored key are sent.
+    setModBaseUrl: 'manager',
   },
 } as const satisfies LegacyTable
 
