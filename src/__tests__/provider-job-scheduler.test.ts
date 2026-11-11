@@ -15,7 +15,8 @@ import {
   type ProviderJobSource,
 } from '../mods/provider/providerJobScheduler'
 import type { ProviderJobDecl } from '../mods/provider/providerJobsManifest'
-import { raiseProviderJob } from '../mods/provider/providerModRuntimeFactory'
+import { followProviderRegistrations, raiseProviderJob } from '../mods/provider/providerModRuntimeFactory'
+import { disposeProviderModBoot } from '../mods/provider/providerModBoot'
 
 const MIN = 60_000
 const START = 1_800_000_000_000
@@ -229,8 +230,10 @@ describe('the provider job scheduler', () => {
     expect(calls).toHaveLength(0)
     await expect(scheduler.runNow('mod.acme.zen', 'probe')).resolves.toEqual({ status: 'refused', reason: 'offline' })
     state.online = true
-    await vi.advanceTimersByTimeAsync(5 * MIN)
-    expect(calls).toHaveLength(1)
+    await vi.advanceTimersByTimeAsync(MIN)
+    expect(names(calls)).toEqual(['mod.acme.zen/probe/schedule'])
+    expect(calls[0]!.e.scheduledAt).toBe(START + 5 * MIN)
+    expect(scheduler.states('mod.acme.zen')[0]).toMatchObject({ nextRunAt: START + 11 * MIN })
   })
 
   it('a failed run is reported and pushes the next one back; a good run restores the interval', async () => {
@@ -312,6 +315,89 @@ describe('the provider job scheduler', () => {
     setProviderJobScheduler(undefined)
     await expect(runProviderJobNow('mod.acme.zen', 'probe')).resolves.toEqual({ status: 'refused', reason: 'unknown_job' })
     expect(providerJobStates('mod.acme.zen')).toEqual([])
+  })
+
+  it('a provider registered again keeps its jobs\' state, and a module found without the hook is tried again', async () => {
+    const decl: ProviderJobDecl = { id: 'probe', everyMs: 10 * MIN }
+    const { scheduler, sources, calls, state } = world({ 'mod.acme.zen': [decl] })
+    state.outcome = 'fail'
+    scheduler.sync()
+    await vi.advanceTimersByTimeAsync(10 * MIN)
+    expect(calls).toHaveLength(1)
+    const before = scheduler.states('mod.acme.zen')[0]
+    expect(before).toMatchObject({ lastResult: 'failed', nextRunAt: START + 30 * MIN })
+    sources.set('mod.acme.zen', [{ ...decl }])
+    scheduler.sync()
+    expect(scheduler.states('mod.acme.zen')[0]).toEqual(before)
+
+    state.outcome = 'no-hook'
+    await expect(scheduler.runNow('mod.acme.zen', 'probe')).resolves.toEqual({ status: 'refused', reason: 'no_hook' })
+    await vi.advanceTimersByTimeAsync(PROVIDER_JOB_MANUAL_GAP_MS)
+    await expect(scheduler.runNow('mod.acme.zen', 'probe')).resolves.toEqual({ status: 'refused', reason: 'no_hook' })
+    expect(calls).toHaveLength(2)
+    sources.set('mod.acme.zen', [{ ...decl }])
+    scheduler.sync()
+    state.outcome = 'ran'
+    await expect(scheduler.runNow('mod.acme.zen', 'probe')).resolves.toEqual({ status: 'ran' })
+  })
+
+  it('a job whose declaration changes while it runs stays busy until that run ends', async () => {
+    const { scheduler, sources, calls } = world({ 'mod.acme.zen': [{ id: 'probe', everyMs: 10 * MIN }] }, { hold: true })
+    scheduler.sync()
+    await vi.advanceTimersByTimeAsync(10 * MIN)
+    expect(calls).toHaveLength(1)
+    sources.set('mod.acme.zen', [{ id: 'probe', everyMs: 20 * MIN }])
+    scheduler.sync()
+    await expect(scheduler.runNow('mod.acme.zen', 'probe')).resolves.toEqual({ status: 'refused', reason: 'busy' })
+    calls[0]!.finish()
+    await flush()
+    expect(scheduler.states('mod.acme.zen')[0]).toMatchObject({ busy: false, lastResult: 'ran' })
+    expect(calls).toHaveLength(1)
+  })
+
+  it('disposing abandons a run that is still going', async () => {
+    const { scheduler, calls } = world({ 'mod.acme.zen': [{ id: 'probe', everyMs: 5 * MIN }] }, { hold: true })
+    scheduler.sync()
+    await vi.advanceTimersByTimeAsync(5 * MIN)
+    expect(calls[0]!.signal.aborted).toBe(false)
+    scheduler.dispose()
+    expect(calls[0]!.signal.aborted).toBe(true)
+  })
+
+  it('a plugin swapped in place keeps its jobs\' state; a removed one loses its jobs', async () => {
+    const decl: ProviderJobDecl = { id: 'probe', everyMs: 10 * MIN }
+    const { scheduler, sources, state } = world({ 'mod.acme.zen': [decl] })
+    let listener: (() => () => void) | undefined
+    followProviderRegistrations(scheduler, l => {
+      listener = l
+      return () => undefined
+    })
+    let cleanup = listener!()
+    state.outcome = 'fail'
+    await vi.advanceTimersByTimeAsync(10 * MIN)
+    const before = scheduler.states('mod.acme.zen')[0]
+    expect(before).toMatchObject({ lastResult: 'failed' })
+    // As the host swaps a plugin: detach, then attach, with no await between.
+    sources.delete('mod.acme.zen')
+    cleanup()
+    sources.set('mod.acme.zen', [{ ...decl }])
+    cleanup = listener!()
+    await flush()
+    expect(scheduler.states('mod.acme.zen')[0]).toEqual(before)
+    sources.delete('mod.acme.zen')
+    cleanup()
+    await flush()
+    expect(scheduler.states('mod.acme.zen')).toEqual([])
+  })
+
+  it('the boot going away disposes the installed scheduler', async () => {
+    const { scheduler, calls } = world({ 'mod.acme.zen': [{ id: 'probe', everyMs: 5 * MIN }] })
+    setProviderJobScheduler(scheduler)
+    scheduler.sync()
+    disposeProviderModBoot()
+    await vi.advanceTimersByTimeAsync(60 * MIN)
+    expect(calls).toHaveLength(0)
+    await expect(runProviderJobNow('mod.acme.zen', 'probe')).resolves.toEqual({ status: 'refused', reason: 'unknown_job' })
   })
 
   it('a disposed scheduler raises nothing more', async () => {

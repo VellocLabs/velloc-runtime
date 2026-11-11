@@ -1,7 +1,8 @@
 /**
  * Contract: runs the jobs a provider declares (`providers.<key>.jobs`) by
  * raising `provider.job` in its module (F-27). The platform wakes the module
- * for a due job; nothing here keeps a worker alive between runs. A job runs
+ * for a due job and holds nothing open between runs; the module's own idle
+ * exit decides when its worker closes. A job runs
  * only for a registered provider that is set up. One run at a time per
  * provider, at most `PROVIDER_JOB_PARALLEL` providers at once, never two runs
  * of one job. Nothing is persisted: a run missed while the app was closed is
@@ -23,6 +24,8 @@ export type ProviderJobEvent = {
   lastRunAt?: number
 }
 
+/** `jobs` is a new list for each registration of the provider: a new one
+ *  lifts the park on a module found without the hook. */
 export type ProviderJobSource = { providerId: string; jobs: readonly ProviderJobDecl[] }
 
 export type ProviderJobRefusal = 'unknown_job' | 'not_connected' | 'busy' | 'too_soon' | 'offline' | 'no_hook'
@@ -70,16 +73,20 @@ export const PROVIDER_JOB_JITTER = 0.1
 export const PROVIDER_JOB_MANUAL_GAP_MS = 10_000
 export const PROVIDER_JOB_WALL_MS = 5 * 60_000
 export const PROVIDER_JOB_MAX_BACKOFF_MS = 6 * 60 * 60_000
+/** How often a due job that needs the network looks for it again. */
+export const PROVIDER_JOB_OFFLINE_RETRY_MS = 60_000
 const LONGEST_TIMER_MS = 60 * 60_000
 
 type Entry = {
   readonly providerId: string
-  readonly decl: ProviderJobDecl
-  readonly shape: string
-  readonly everyMs: number
-  readonly budgetMs: number
+  decl: ProviderJobDecl
+  shape: string
+  everyMs: number
+  budgetMs: number
   /** Infinity: no run planned (not set up, or the module has no hook). */
   dueAt: number
+  /** When the run now waiting for the network was due. */
+  offlineSince?: number
   lastRunAt?: number
   lastResult?: 'ran' | 'failed'
   lastManualAt?: number
@@ -118,12 +125,21 @@ export function createProviderJobScheduler(deps: ProviderJobSchedulerDeps): Prov
   const seen = new Map<string, boolean>()
   const queue: Queued[] = []
   const active = new Set<string>()
+  const running = new Set<AbortController>()
+  /** Each provider's `jobs` list at the last sync. */
+  const sourceOf = new Map<string, readonly ProviderJobDecl[]>()
   let timer: ReturnType<typeof setTimeout> | undefined
   let disposed = false
 
   const nextDue = (entry: Entry, from: number): number => from + Math.round(entry.everyMs * (1 + PROVIDER_JOB_JITTER * random()))
   const label = (entry: Entry): string => `${entry.providerId}: job "${entry.decl.id}"`
   const isLive = (entry: Entry): boolean => entries.get(keyOf(entry.providerId, entry.decl.id)) === entry
+  const needsNetwork = (entry: Entry): boolean => entry.decl.requires?.includes('online') === true
+
+  function waitForNetwork(entry: Entry, dueAt: number, at: number): void {
+    entry.offlineSince ??= dueAt
+    if (entry.dueAt !== Infinity) entry.dueAt = Math.min(entry.dueAt, at + PROVIDER_JOB_OFFLINE_RETRY_MS)
+  }
 
   function arm(): void {
     if (timer !== undefined) clearTimeout(timer)
@@ -157,7 +173,13 @@ export function createProviderJobScheduler(deps: ProviderJobSchedulerDeps): Prov
         entry.dueAt = Infinity
         continue
       }
-      void enqueue(entry, 'schedule', dueAt)
+      if (needsNetwork(entry) && !online()) {
+        waitForNetwork(entry, dueAt, at)
+        continue
+      }
+      const scheduledAt = entry.offlineSince ?? dueAt
+      entry.offlineSince = undefined
+      void enqueue(entry, 'schedule', scheduledAt)
     }
     pump()
     arm()
@@ -181,8 +203,10 @@ export function createProviderJobScheduler(deps: ProviderJobSchedulerDeps): Prov
       if (disposed || !isLive(entry)) settle(item, { status: 'refused', reason: 'unknown_job' })
       else if (!deps.connected(entry.providerId)) settle(item, { status: 'refused', reason: 'not_connected' })
       else if (entry.noHook) settle(item, { status: 'refused', reason: 'no_hook' })
-      else if (entry.decl.requires?.includes('online') && !online()) settle(item, { status: 'refused', reason: 'offline' })
-      else void execute(item)
+      else if (needsNetwork(entry) && !online()) {
+        if (item.reason === 'schedule') waitForNetwork(entry, item.scheduledAt, now())
+        settle(item, { status: 'refused', reason: 'offline' })
+      } else void execute(item)
     }
   }
 
@@ -197,6 +221,7 @@ export function createProviderJobScheduler(deps: ProviderJobSchedulerDeps): Prov
     }
     entry.lastRunAt = now()
     const controller = new AbortController()
+    running.add(controller)
     let wall: ReturnType<typeof setTimeout> | undefined
     const expired = new Promise<never>((_, reject) => {
       wall = setTimeout(() => {
@@ -232,6 +257,7 @@ export function createProviderJobScheduler(deps: ProviderJobSchedulerDeps): Prov
     } finally {
       if (wall !== undefined) clearTimeout(wall)
       controller.abort()
+      running.delete(controller)
       active.delete(entry.providerId)
     }
     settle(item, result)
@@ -248,6 +274,8 @@ export function createProviderJobScheduler(deps: ProviderJobSchedulerDeps): Prov
       if (source.jobs.length === 0) continue
       providers.add(source.providerId)
       const connected = deps.connected(source.providerId)
+      const registeredAgain = sourceOf.has(source.providerId) && sourceOf.get(source.providerId) !== source.jobs
+      sourceOf.set(source.providerId, source.jobs)
       // Set up since the last look; a provider first seen set up waits for its period.
       const justConnected = seen.get(source.providerId) === false && connected
       seen.set(source.providerId, connected)
@@ -261,19 +289,25 @@ export function createProviderJobScheduler(deps: ProviderJobSchedulerDeps): Prov
           if (timing.clamped) {
             deps.report(`${source.providerId}: job "${decl.id}" runs every ${timing.everyMs} ms with a budget of ${timing.budgetMs} ms (the declared figures are outside the platform's range)`)
           }
-          entry = {
-            providerId: source.providerId,
-            decl,
-            shape,
-            everyMs: timing.everyMs,
-            budgetMs: timing.budgetMs,
-            dueAt: Infinity,
-            failures: 0,
-            pending: false,
-            noHook: false,
+          if (entry) {
+            // Changed in place: a run still going keeps the job busy.
+            Object.assign(entry, { decl, shape, everyMs: timing.everyMs, budgetMs: timing.budgetMs, dueAt: Infinity, failures: 0 })
+          } else {
+            entry = {
+              providerId: source.providerId,
+              decl,
+              shape,
+              everyMs: timing.everyMs,
+              budgetMs: timing.budgetMs,
+              dueAt: Infinity,
+              failures: 0,
+              pending: false,
+              noHook: false,
+            }
+            entries.set(key, entry)
           }
-          entries.set(key, entry)
         }
+        if (registeredAgain) entry.noHook = false
         if (!connected) entry.dueAt = Infinity
         else if (entry.dueAt === Infinity && !entry.noHook) entry.dueAt = nextDue(entry, at)
         if (justConnected && !entry.pending && !entry.noHook && decl.runOn?.includes('connect')) void enqueue(entry, 'connect', at)
@@ -281,6 +315,7 @@ export function createProviderJobScheduler(deps: ProviderJobSchedulerDeps): Prov
     }
     for (const key of [...entries.keys()]) if (!live.has(key)) entries.delete(key)
     for (const id of [...seen.keys()]) if (!providers.has(id)) seen.delete(id)
+    for (const id of [...sourceOf.keys()]) if (!providers.has(id)) sourceOf.delete(id)
     pump()
     arm()
   }
@@ -300,6 +335,7 @@ export function createProviderJobScheduler(deps: ProviderJobSchedulerDeps): Prov
     entry.lastManualAt = at
     const done = enqueue(entry, 'manual', at)
     pump()
+    arm()
     return done
   }
 
@@ -325,6 +361,8 @@ export function createProviderJobScheduler(deps: ProviderJobSchedulerDeps): Prov
     timer = undefined
     entries.clear()
     seen.clear()
+    sourceOf.clear()
+    for (const controller of running) controller.abort()
     for (const item of queue.splice(0)) settle(item, { status: 'refused', reason: 'unknown_job' })
   }
 

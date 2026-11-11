@@ -20,7 +20,12 @@ import {
   refreshRuntimeProviderModels,
   runtimeProviderConfigsLoaded,
 } from '../../models/drivers/runtimeProviders'
-import { createProviderJobScheduler, setProviderJobScheduler, type ProviderJobEvent } from './providerJobScheduler'
+import {
+  createProviderJobScheduler,
+  setProviderJobScheduler,
+  type ProviderJobEvent,
+  type ProviderJobScheduler,
+} from './providerJobScheduler'
 import { getRuntimeModelCatalog } from '../../catalog/runtimeModelCatalog'
 import { catalogReaderOf, createProviderCatalogNoun } from './nouns/providerCatalogNoun'
 import { createProviderModHttp, createProviderNounSet } from './nouns/providerNounDeps'
@@ -135,13 +140,30 @@ export function createProviderModRuntime(deps: ProviderModRuntimeFactoryDeps): P
     run: (providerId, e, options) => raiseProviderJob(runtime, providerId, e, options),
     report: line => report(`jobs: ${line}`),
   })
-  setProviderJobScheduler(jobs)
-  onProviderModRegistered(() => {
-    jobs.sync()
-    return () => jobs.sync()
+  const unfollow = [followProviderRegistrations(jobs), onRuntimeProviderConfigsChanged(() => jobs.sync())]
+  setProviderJobScheduler({
+    ...jobs,
+    dispose: () => {
+      for (const stop of unfollow) stop()
+      jobs.dispose()
+    },
   })
-  onRuntimeProviderConfigsChanged(() => jobs.sync())
   return runtime
+}
+
+/**
+ * Sync the jobs on every registration and removal. A removal syncs after the
+ * current task: a plugin registered again is detached and attached with no
+ * await between, so its jobs keep their state across the swap.
+ */
+export function followProviderRegistrations(
+  jobs: Pick<ProviderJobScheduler, 'sync'>,
+  subscribe: (listener: () => () => void) => () => void = onProviderModRegistered,
+): () => void {
+  return subscribe(() => {
+    jobs.sync()
+    return () => queueMicrotask(() => jobs.sync())
+  })
 }
 
 /**

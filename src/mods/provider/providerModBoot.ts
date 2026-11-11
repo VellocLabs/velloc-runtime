@@ -30,6 +30,7 @@ import {
   notifyProviderModUpdatesChanged,
 } from '../../pluginHost/providerModUpdateHolder'
 import { consentCovers } from '../../pluginHost/providerPluginConsent'
+import { setProviderJobScheduler } from './providerJobScheduler'
 import { manifestAsksAgent } from '../app/appAgentRun'
 import { folderScopesOf } from '../app/appFolderScopes'
 import {
@@ -185,6 +186,7 @@ export function providerUpdateScheduleRunning(): boolean {
 /** Stop the schedule and forget the boot (the realm going away; tests). */
 export function disposeProviderModBoot(): void {
   stopUpdateSchedule()
+  setProviderJobScheduler(undefined)
   configureProviderModUpdates(null)
   stopGateWatch?.()
   stopGateWatch = undefined
