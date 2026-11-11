@@ -19,6 +19,8 @@ export type ProviderEventName =
   | 'provider.sessionEnd'
   | 'provider.usage'
   | 'provider.job'
+  | 'provider.classify'
+  | 'provider.outcome'
 
 export type ProviderEventSpec = {
   /** The hook's OWN time per call (paused while its `$` calls are in
@@ -125,6 +127,22 @@ export const PROVIDER_EVENTS: Readonly<Record<ProviderEventName, ProviderEventSp
   // budget. A job reports through `$.store`, so what the hook returns is unread.
   'provider.job': {
     budgetMs: 60_000,
+    failClosed: false,
+    void: true,
+    accepts: anything,
+  },
+  // Reads a failed attempt. Nothing is an answer, and so is a hook that
+  // failed: the verdict then stands as it was. The answer's parts are checked
+  // where it is applied.
+  'provider.classify': {
+    budgetMs: 2_000,
+    failClosed: false,
+    void: false,
+    accepts: answer => answer === undefined || answer === null || isRecord(answer),
+  },
+  // An observer: told when a request is over, and what it returns is unread.
+  'provider.outcome': {
+    budgetMs: 1_000,
     failClosed: false,
     void: true,
     accepts: anything,

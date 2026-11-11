@@ -2,7 +2,8 @@
  * Security: maps the request seam's `request` / `sign` / `retry` onto a provider
  * module's events. Hooks the module is known not to have are not defined. Budgets
  * count from `whenReady`. `request` / `sign` that cannot be served or are unanswered
- * fail closed (`ProviderHookError`, not sent); `retry` never fails the request.
+ * fail closed (`ProviderHookError`, not sent); `retry`, `classify` and `outcome`
+ * never fail the request, and `outcome` is raised only for a module known to hook it.
  */
 import {
   ProviderHookError,
@@ -16,6 +17,8 @@ import {
   type ProviderSignAnswer,
   type ProviderSignEvent,
 } from '../../models/drivers/providerRequestSeam'
+import type { ProviderClassifyEvent } from '../../models/drivers/providerClassify'
+import type { ProviderOutcomeEvent } from '../../models/drivers/providerOutcome'
 import {
   ProviderHookUnansweredError,
   ProviderModUnavailableError,
@@ -43,6 +46,7 @@ const EVENT_OF: Record<Exclude<ProviderHookName, 'ids'>, ProviderEventName> = {
   request: 'provider.request',
   sign: 'provider.sign',
   retry: 'provider.retry',
+  classify: 'provider.classify',
 }
 
 /**
@@ -109,6 +113,14 @@ export function createProviderSeam(
   // A retry nobody answers is not an error: the response's error goes on.
   const retry = (e: ProviderRetryEvent, signal?: AbortSignal): Promise<ProviderRetryAnswer | undefined> =>
     raise<ProviderRetryAnswer | undefined>('retry', e, signal, { core: () => undefined })
+  // A hook that fails or hands on has said nothing: the verdict stands.
+  const classify = (e: ProviderClassifyEvent, signal?: AbortSignal): Promise<unknown> =>
+    raise<unknown>('classify', e, signal, { core: () => undefined })
+  // Raised only once the module is known to hook it: an observer never starts a worker's first load.
+  const outcome = async (e: ProviderOutcomeEvent): Promise<void> => {
+    if (runtime.hasHook(providerId, 'provider.outcome') !== true) return
+    await runtime.call<void>(providerId, 'provider.outcome', e, { core: () => undefined })
+  }
 
   // The stream host reads each hook when it is about to raise it, so the
   // answer of `hasHook` is looked up then: a hook that turned out absent once
@@ -123,6 +135,12 @@ export function createProviderSeam(
     },
     get retry() {
       return runtime.hasHook(providerId, 'provider.retry') === false ? undefined : retry
+    },
+    get classify() {
+      return runtime.hasHook(providerId, 'provider.classify') === false ? undefined : classify
+    },
+    get outcome() {
+      return runtime.hasHook(providerId, 'provider.outcome') === false ? undefined : outcome
     },
     get credentials() {
       return credentials && runtime.hasHook(providerId, 'provider.refresh') !== false ? credentials : undefined

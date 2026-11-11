@@ -203,6 +203,9 @@ const ROUTE_ACTION_TIMEOUT_OVERRIDES_MS: Record<string, number> = {
   // `MCP_HTTP_IDLE_TIMEOUT_MS` (600s); this sits 10s above it so the host's
   // `TIMEOUT` always wins the race over a bare `bridge_timeout`.
   'network.streamOpen': 610_000,
+  // `model.rawStreamOpen` resolves with the response HEAD, and a provider may
+  // declare an idle timeout of up to 300s (F-27) that runs from the start.
+  'model.rawStreamOpen': 310_000,
 }
 
 function getRouteTimeoutMs<

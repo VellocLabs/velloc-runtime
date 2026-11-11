@@ -55,14 +55,17 @@ describe('DirectPortBridgeTransport — model timeout override + orphan logging'
       .filter(m => m.includes('[bridge] orphan response'))
   }
 
-  it('resolves model routes to a 100s timeout, above the native 90s deadline', () => {
+  it('resolves model reads to a 100s timeout, above the native 90s deadline', () => {
     // Assert the override value directly (no real 100s wait). The contract:
     // model's timeout must sit ABOVE the native stream-idle deadline (default
     // 90s) so the native timeout — which cancels upstream and returns a typed
     // {status:'timeout'} — always wins the race; the JS transport is only the
     // fallback for a response that never arrives at all.
     expect(__test_only_getRouteTimeoutMs(makeRoute('model', 'rawStreamRead'), 30_000)).toBe(100_000)
-    expect(__test_only_getRouteTimeoutMs(makeRoute('model', 'rawStreamOpen'), 30_000)).toBe(100_000)
+  })
+
+  it('gives model.rawStreamOpen a 310s timeout, above the 300s ceiling of a declared idle timeout', () => {
+    expect(__test_only_getRouteTimeoutMs(makeRoute('model', 'rawStreamOpen'), 30_000)).toBe(310_000)
   })
 
   it('gives network.streamOpen its own 610s timeout, above the 600s MCP idle deadline', () => {

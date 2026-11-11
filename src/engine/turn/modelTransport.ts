@@ -80,6 +80,7 @@ import {
 } from './retryLadder'
 import { raisesTurnRequest, requestThroughTurnRequest } from './requestThroughMods'
 import { raisesTurnRecover, recoverThroughMods } from './recoverThroughMods'
+import { observeProviderCall, type CallEnding } from './providerOutcomeCall'
 
 /**
  * Whole-response budget for the blocking fallback. A blocking call streams
@@ -529,9 +530,12 @@ export function bridgeModelTransport(
     const tools = await serializeToolsForModel(params)
     const built = buildModelRequest(params, tools)
     // `turn.request`: once per call; every attempt sends what it settled on.
-    const request = raisesTurnRequest(params)
+    const settled = raisesTurnRequest(params)
       ? await requestThroughTurnRequest(built, params, rebuilt => buildModelRequest(rebuilt, tools))
       : built
+    // A provider whose module watches its requests is told when this call is over.
+    const observed = observeProviderCall(params.providerId, settled.facts.effectiveModel)
+    const request = observed ? { ...settled, payload: observed.mark(settled.payload) } : settled
     const call = createModelCall({ send, params, runtimeConfig, traceLogger, sessionTag, callId }, request)
     const signal = params.callContext.cancelSource.signal
     // The selected provider's declared retry policy; a provider without one
@@ -545,32 +549,42 @@ export function bridgeModelTransport(
       retryOverride?.trim() ? platformMaxRetries : undefined,
     )
     let waitedMs = 0
-    for (let attempt = 1; attempt <= maxRetries + 1; attempt += 1) {
-      const startedAt = Date.now()
-      try {
-        yield* performRequest(call)
-        return
-      } catch (error) {
-        const attemptMs = Date.now() - startedAt
-        const recovered = raisesTurnRecover(params)
-          ? await recoverThroughMods(params, error, {
-              attempt,
-              maxAttempts: maxRetries + 1,
-              attemptDurationMs: attemptMs,
-              ...(policy ? { policy, waitedMs } : {}),
-            }).catch(() => undefined)
-          : undefined
-        const after = afterFailedAttempt(call, error, { attempt, maxRetries, attemptMs, waitedMs, ...(policy ? { policy } : {}) }, recovered)
-        if (after.next === 'rethrow') throw error
-        if (after.next === 'finish') {
-          yield after.message
+    // How the call ended; unset when it was cancelled or its reader left.
+    let ending: CallEnding | undefined
+    let attempts = 0
+    try {
+      for (let attempt = 1; attempt <= maxRetries + 1; attempt += 1) {
+        const startedAt = Date.now()
+        attempts = attempt
+        try {
+          yield* performRequest(call)
+          ending = { ok: true, attempts }
           return
+        } catch (error) {
+          const attemptMs = Date.now() - startedAt
+          const recovered = raisesTurnRecover(params)
+            ? await recoverThroughMods(params, error, {
+                attempt,
+                maxAttempts: maxRetries + 1,
+                attemptDurationMs: attemptMs,
+                ...(policy ? { policy, waitedMs } : {}),
+              }).catch(() => undefined)
+            : undefined
+          const after = afterFailedAttempt(call, error, { attempt, maxRetries, attemptMs, waitedMs, ...(policy ? { policy } : {}) }, recovered)
+          if (after.next === 'rethrow') throw error
+          if (after.next === 'finish') {
+            ending = { ok: false, error, attempts }
+            yield after.message
+            return
+          }
+          if (after.notice) yield after.notice
+          waitedMs += after.delayMs
+          await waitRetry(after.delayMs, signal)
+          if (signal.aborted) return
         }
-        if (after.notice) yield after.notice
-        waitedMs += after.delayMs
-        await waitRetry(after.delayMs, signal)
-        if (signal.aborted) return
       }
+    } finally {
+      observed?.settle(ending ?? { ok: false, aborted: true, attempts })
     }
   }
 }

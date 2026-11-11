@@ -5,6 +5,7 @@
  * error and a rule matches the response it came from; then that event carries
  * the rule's verdict. A provider without rules costs nothing.
  */
+import type { VerdictAnomaly } from '../../utils/providerVerdict'
 import type { DriverStreamEvent } from './driverTypes'
 import {
   ERROR_RULE_BODY_WINDOW_BYTES,
@@ -40,12 +41,18 @@ export class ResponseHead {
 }
 
 export type FailureSource = {
-  response: { status: number; headers: Readonly<Record<string, string>> }
+  /** Absent when the failure came before any response. */
+  response?: { status: number; headers: Readonly<Record<string, string>> }
   bodyText: string
   model: string
   /** The response opened as a stream and failed inside it. */
   inStream?: boolean
+  /** What the failure is when it is not an HTTP error status or an error the
+   *  stream itself carried: a timeout, a reply that ended oddly. */
+  anomaly?: VerdictAnomaly
 }
+
+const NO_HEADERS: Readonly<Record<string, string>> = {}
 
 function isJsonDocument(headers: Readonly<Record<string, string>>): boolean {
   return (headerValue(headers, 'content-type') ?? '').toLowerCase().includes('json')
@@ -58,15 +65,17 @@ export function declaredFailure(
 ): DriverStreamEvent[] {
   if (!rules || rules.length === 0 || !events.some(event => event.type === 'error')) return events
   const { response, inStream } = source
+  const headers = response?.headers ?? NO_HEADERS
+  const anomaly: VerdictAnomaly | undefined = source.anomaly ?? (inStream ? 'in_body_error' : undefined)
   const verdict = matchErrorRule(rules, {
-    status: response.status,
-    headers: response.headers,
+    ...(response ? { status: response.status } : {}),
+    headers,
     bodyText: source.bodyText,
     // A body that opened as a stream is one JSON document only when the
     // response says so; a refused request's body is one unless it is an
     // event stream.
-    streamed: inStream ? !isJsonDocument(response.headers) : isEventStreamResponse(response.headers),
-    ...(inStream ? { anomaly: 'in_body_error' as const } : {}),
+    streamed: inStream ? !isJsonDocument(headers) : isEventStreamResponse(headers),
+    ...(anomaly !== undefined ? { anomaly } : {}),
     model: source.model,
   })
   if (!verdict) return events

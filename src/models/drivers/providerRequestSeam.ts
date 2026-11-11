@@ -8,11 +8,16 @@
  * re-sends once; a request is sent at most twice in all. Security: a `request` /
  * `sign` hook that throws, answers malformed or overruns its budget FAILS CLOSED
  * (not sent). What crosses to the hooks is opt-in (`requestNeeds`, `signNeeds`).
+ * `classify` reads a failed attempt and may ask for the one re-send (after a 401
+ * refresh, before `retry`); it and `outcome` never fail a request.
  */
 import type { BridgeModelRequestContext } from '../../browser/bridge/browserBridgeProtocol'
 import type { DriverHttpRequest, DriverStreamEvent, ProviderDriver } from './driverTypes'
 import { mergeHeaders } from './modelProvider'
 import type { ProviderPolicy } from './providerPolicy'
+import { readClassifyAnswer, type ClassifyAnswer, type ClassifyReplay, type ProviderClassifyEvent } from './providerClassify'
+import type { ProviderOutcomeEvent } from './providerOutcome'
+import { readRequestPlan, type ModelCeilings, type ProviderRequestPlan } from './providerRequestPlan'
 import {
   holdRequestBody,
   restoreRequestBody,
@@ -85,7 +90,14 @@ export type ProviderRequestAnswer = {
   /** The whole body — only from a provider that declared `body`; exclusive
    *  with `system`, `tools` and `patch`. Placeholders are restored. */
   body?: unknown
+  /** The same thing as `timeouts.idleMs`. */
   idleTimeoutMs?: number
+  /** This request's own figures, held to the model row's. */
+  limits?: { maxOutputTokens?: number; contextWindow?: number }
+  /** This request's own thresholds, held to the bounds of declared ones. */
+  timeouts?: { firstByteMs?: number; idleMs?: number; firstContentMs?: number; stallMs?: number }
+  /** The name of an egress the provider declared. */
+  route?: string
 }
 
 export type ProviderSignEvent = {
@@ -170,6 +182,10 @@ export interface ProviderRequestSeam {
   request?(e: ProviderRequestEvent, signal?: AbortSignal): Maybe<ProviderRequestAnswer>
   sign?(e: ProviderSignEvent, signal?: AbortSignal): Maybe<ProviderSignAnswer>
   retry?(e: ProviderRetryEvent, signal?: AbortSignal): Maybe<ProviderRetryAnswer>
+  /** Reads a failed or oddly ended attempt; its answer is checked by the flow. */
+  classify?(e: ProviderClassifyEvent, signal?: AbortSignal): Maybe<unknown>
+  /** Told when a request is over. Nothing waits for it. */
+  outcome?(e: ProviderOutcomeEvent): void | Promise<void>
   /** What `request` (and `retry`) ask to see beyond the small facts. */
   requestNeeds?: readonly ProviderRequestNeed[]
   /** `'body'`: `sign` gets the body bytes, not only their digest. */
@@ -332,7 +348,7 @@ export function patchBodyBytes(body: Uint8Array, ops: readonly ProviderBodyPatch
 
 // ── hook calls ──────────────────────────────────────────────────────────────
 
-export type ProviderHookName = 'request' | 'sign' | 'retry' | 'ids'
+export type ProviderHookName = 'request' | 'sign' | 'retry' | 'ids' | 'classify'
 
 /** A hook failed, overran or answered something unusable; the request is not sent. */
 export class ProviderHookError extends Error {
@@ -456,6 +472,8 @@ export type PreparedProviderRequest = {
   /** The request before `sign`: a re-send is signed afresh from here. */
   unsigned: DriverHttpRequest
   idleTimeoutMs?: number
+  /** The `limits` and `timeouts` the `request` hook answered, within bounds. */
+  plan?: ProviderRequestPlan
   context: ProviderRequestContext
 }
 
@@ -466,8 +484,9 @@ export type ProviderRequestParts = {
   system(): string
   /** The tool definitions as the codec sends them. */
   tools(): unknown[]
-  /** The request built again with these parts replaced. */
-  rebuild(over: { system?: string; tools?: unknown[] }): DriverHttpRequest
+  /** The request built again with these parts replaced. `effort` is a
+   *  thinking tier of the runtime's vocabulary. */
+  rebuild(over: { system?: string; tools?: unknown[]; maxOutputTokens?: number; effort?: string }): DriverHttpRequest
 }
 
 export type ProviderRequestFacts = {
@@ -484,6 +503,8 @@ export type ProviderRequestFacts = {
   parts?: ProviderRequestParts
   /** The codec's `idSites`: where the body carries ids, for the id mapper. */
   idSites?: ProviderDriver['idSites']
+  /** What the model's row states: the most a request's `limits` may ask for. */
+  ceilings?: ModelCeilings
 }
 
 /**
@@ -525,6 +546,17 @@ function editBody(body: Uint8Array, edit: BodyEdit, sawBody: boolean): Uint8Arra
   return new TextEncoder().encode(JSON.stringify(restoreRequestBody(applyBodyPatch(view, edit.patch), held)))
 }
 
+/** A request with the `request` hook's answer applied, and the answer's plan. */
+type AppliedAnswer = { request: DriverHttpRequest; idleTimeoutMs?: number; plan?: ProviderRequestPlan }
+
+/** The plan parts a re-send keeps from the send before it. */
+function planned(from: { idleTimeoutMs?: number; plan?: ProviderRequestPlan }): { idleTimeoutMs?: number; plan?: ProviderRequestPlan } {
+  return {
+    ...(from.idleTimeoutMs !== undefined ? { idleTimeoutMs: from.idleTimeoutMs } : {}),
+    ...(from.plan ? { plan: from.plan } : {}),
+  }
+}
+
 /** One stream's walk through a seam. `prepare` and `retryAfter` reject
  *  with `ProviderHookError` (fail closed) or, once `signal` aborts, with an
  *  abort the caller recognises by `signal.aborted`. */
@@ -538,9 +570,22 @@ export class ProviderRequestFlow {
 
   constructor(
     private readonly seam: ProviderRequestSeam,
-    private readonly facts: ProviderRequestFacts,
+    private facts: ProviderRequestFacts,
     private readonly signal: AbortSignal,
   ) {}
+
+  /** The tier a replay set; every later build of the request is at it. */
+  private replayEffort: string | undefined
+
+  /** The request's one re-send has been spent. */
+  get replayed(): boolean {
+    return this.resent
+  }
+
+  /** Whether the provider has a `classify` hook to raise. */
+  get classifies(): boolean {
+    return this.seam.classify !== undefined
+  }
 
   private nextContext(): ProviderRequestContext {
     this.attempt += 1
@@ -621,24 +666,24 @@ export class ProviderRequestFlow {
     // The id mapper runs first: the `request` hook sees the ids as they will
     // be sent, and `sign` signs them.
     built = await this.mapIds(built, context)
-    let unsigned = built
-    let idleTimeoutMs: number | undefined
+    const applied = await this.throughRequestHook(built, context)
+    const request = await this.signed(applied.request, context)
+    return { request, unsigned: applied.request, ...planned(applied), context }
+  }
+
+  /** The `request` hook's answer applied to `built`; `built` itself without a hook. */
+  private async throughRequestHook(built: DriverHttpRequest, context: ProviderRequestContext): Promise<AppliedAnswer> {
     const requestHook = this.seam.request
-    if (requestHook) {
-      const answer = await this.call('request', () =>
-        requestHook.call(this.seam, this.requestEvent(built, context), this.signal),
-      )
-      try {
-        const applied = await this.applyRequestAnswer(built, answer, context)
-        unsigned = applied.request
-        idleTimeoutMs = applied.idleTimeoutMs
-      } catch (error) {
-        if (error instanceof ProviderHookError || this.signal.aborted) throw error
-        throw new ProviderHookError('request', this.facts.provider, reasonOf(error))
-      }
+    if (!requestHook) return { request: built }
+    const answer = await this.call('request', () =>
+      requestHook.call(this.seam, this.requestEvent(built, context), this.signal),
+    )
+    try {
+      return await this.applyRequestAnswer(built, answer, context)
+    } catch (error) {
+      if (error instanceof ProviderHookError || this.signal.aborted) throw error
+      throw new ProviderHookError('request', this.facts.provider, reasonOf(error))
     }
-    const request = await this.signed(unsigned, context)
-    return { request, unsigned, ...(idleTimeoutMs !== undefined ? { idleTimeoutMs } : {}), context }
   }
 
   private requestEvent(built: DriverHttpRequest, context: ProviderRequestContext): ProviderRequestEvent {
@@ -690,20 +735,81 @@ export class ProviderRequestFlow {
     response: { status: number; headers: Record<string, string>; bodyText: string },
     sent: PreparedProviderRequest,
   ): Promise<PreparedProviderRequest | undefined> {
+    return (await this.refreshAfter(response, sent)) ?? this.retryAfter(response, sent)
+  }
+
+  /** The re-send after a 401 of a provider that refreshes; undefined when
+   *  that does not apply (another status, no refresh, the re-send is spent). */
+  async refreshAfter(
+    response: { status: number },
+    sent: PreparedProviderRequest,
+  ): Promise<PreparedProviderRequest | undefined> {
     const credentials = this.seam.credentials
-    if (response.status === 401 && credentials && !this.resent) {
-      const outcome = await credentials.refresh('unauthorized', this.sentEpoch, this.signal)
-      if (outcome === 'refreshed') {
-        this.resent = true
-        this.sentEpoch = credentials.epoch()
-        const context = this.nextContext()
-        // The ids are already mapped in `unsigned`; only the attempt's context is new.
-        await this.attachContextIds(context)
-        const request = await this.signed(sent.unsigned, context)
-        return { request, unsigned: sent.unsigned, ...(sent.idleTimeoutMs !== undefined ? { idleTimeoutMs: sent.idleTimeoutMs } : {}), context }
-      }
+    if (response.status !== 401 || !credentials || this.resent) return undefined
+    const outcome = await credentials.refresh('unauthorized', this.sentEpoch, this.signal)
+    if (outcome !== 'refreshed') return undefined
+    this.resent = true
+    this.sentEpoch = credentials.epoch()
+    const context = this.nextContext()
+    // The ids are already mapped in `unsigned`; only the attempt's context is new.
+    await this.attachContextIds(context)
+    const request = await this.signed(sent.unsigned, context)
+    return { request, unsigned: sent.unsigned, ...planned(sent), context }
+  }
+
+  /**
+   * The `classify` hook's answer about a failed attempt, checked. Undefined
+   * when there is no hook, or it threw, overran or answered something that is
+   * not of the stated shape: the caller keeps the verdict it had.
+   */
+  async classify(e: Omit<ProviderClassifyEvent, 'provider' | 'model' | 'replayed'>): Promise<ClassifyAnswer | undefined> {
+    const hook = this.seam.classify
+    if (!hook) return undefined
+    try {
+      const raw = await this.call('classify', () =>
+        hook.call(this.seam, { ...e, provider: this.facts.provider, model: this.facts.model, replayed: this.resent }, this.signal),
+      )
+      return readClassifyAnswer(raw, this.seam.policy?.messages)
+    } catch (error) {
+      if (isAbort(error)) throw error
+      return undefined
     }
-    return this.retryAfter(response, sent)
+  }
+
+  /**
+   * The re-send a `classify` answer asked for: the request built again at
+   * `effort` (and put to the `request` hook again, which maps the tier to the
+   * wire), then `headers` and `patch`, then signed. Undefined when the
+   * re-send is spent or any step fails: the failure then goes on as it was.
+   */
+  async replayAfter(sent: PreparedProviderRequest, replay: ClassifyReplay): Promise<PreparedProviderRequest | undefined> {
+    if (this.resent) return undefined
+    this.resent = true
+    try {
+      const context = this.nextContext()
+      let applied: AppliedAnswer = { request: sent.unsigned, ...planned(sent) }
+      if (replay.effort !== undefined) {
+        const parts = this.facts.parts
+        if (!parts) throw new Error('this request cannot be built again')
+        // `none` goes to the hook as it is: the tier that turns thinking off.
+        this.facts = { ...this.facts, thinkingTier: replay.effort }
+        this.replayEffort = replay.effort
+        applied = await this.throughRequestHook(await this.mapIds(parts.rebuild({ effort: replay.effort }), context), context)
+      } else {
+        await this.attachContextIds(context)
+      }
+      const sawBody = this.needs('body')
+      const unsigned: DriverHttpRequest = {
+        ...applied.request,
+        headers: mergeHeaders(applied.request.headers, stringRecord(replay.headers, 'replay.headers')),
+        body: editBody(applied.request.body, replay.patch ? { patch: replay.patch } : {}, sawBody),
+      }
+      const request = await this.signed(unsigned, context)
+      return { request, unsigned, ...planned(applied), context }
+    } catch (error) {
+      if (isAbort(error) || this.signal.aborted) throw error
+      return undefined
+    }
   }
 
   /**
@@ -756,7 +862,7 @@ export class ProviderRequestFlow {
       const context = this.nextContext()
       await this.attachContextIds(context)
       const request = await this.signed(unsigned, context)
-      return { request, unsigned, ...(sent.idleTimeoutMs !== undefined ? { idleTimeoutMs: sent.idleTimeoutMs } : {}), context }
+      return { request, unsigned, ...planned(sent), context }
     } catch (error) {
       if (isAbort(error)) throw error
       return undefined
@@ -767,7 +873,7 @@ export class ProviderRequestFlow {
     built: DriverHttpRequest,
     answer: ProviderRequestAnswer | undefined,
     context: ProviderRequestContext,
-  ): Promise<{ request: DriverHttpRequest; idleTimeoutMs?: number }> {
+  ): Promise<AppliedAnswer> {
     if (answer === undefined || answer === null) return { request: built }
     if (typeof answer !== 'object' || Array.isArray(answer)) throw new Error('the answer is not an object')
     const headers = stringRecord(answer.headers, 'headers')
@@ -781,11 +887,14 @@ export class ProviderRequestFlow {
     ) {
       throw new Error('idleTimeoutMs is not a positive number')
     }
+    const plan = readRequestPlan(answer as Record<string, unknown>, this.facts.ceilings)
+    const outputCap = plan?.limits?.maxOutputTokens
     const sawBody = this.needs('body')
     const replacesParts = answer.system !== undefined || answer.tools !== undefined
     if (answer.body !== undefined) {
       if (!sawBody) throw new Error('body is only for a provider that declared requestNeeds "body"')
       if (replacesParts || patch) throw new Error('body cannot be combined with system, tools or patch')
+      if (outputCap !== undefined) throw new Error('body cannot be combined with limits.maxOutputTokens')
     }
     if (replacesParts && patch && sawBody) {
       // The hook's patch paths address the body it was shown; the replaced
@@ -793,12 +902,14 @@ export class ProviderRequestFlow {
       throw new Error('patch cannot be combined with system or tools when the provider declared requestNeeds "body"')
     }
     let base = built
-    if (replacesParts) {
-      if (!this.facts.parts) throw new Error('this request cannot have its system prompt or tools replaced')
+    if (replacesParts || outputCap !== undefined) {
+      if (!this.facts.parts) throw new Error('this request cannot be built again with what the hook answered')
       base = await this.mapIds(
         this.facts.parts.rebuild({
           ...(answer.system !== undefined ? { system: answer.system } : {}),
           ...(answer.tools !== undefined ? { tools: answer.tools } : {}),
+          ...(outputCap !== undefined ? { maxOutputTokens: outputCap } : {}),
+          ...(this.replayEffort !== undefined ? { effort: this.replayEffort } : {}),
         }),
         context,
         true,
@@ -814,7 +925,11 @@ export class ProviderRequestFlow {
         sawBody,
       ),
     }
-    return { request, ...(answer.idleTimeoutMs !== undefined ? { idleTimeoutMs: answer.idleTimeoutMs } : {}) }
+    return {
+      request,
+      ...(answer.idleTimeoutMs !== undefined ? { idleTimeoutMs: answer.idleTimeoutMs } : {}),
+      ...(plan ? { plan } : {}),
+    }
   }
 
   /** `sign` over the final bytes; its headers are added. */

@@ -26,6 +26,7 @@ import {
   VERDICT_KINDS,
   VERDICT_SCOPES,
 } from '../../utils/providerVerdict'
+import { checkPolicyMessages, checkTimeouts } from './providerTimeoutsManifest'
 
 type Problems = (message: string) => void
 
@@ -247,10 +248,14 @@ function checkErrors(value: unknown, label: string, bad: Problems): ProviderErro
   return rules
 }
 
-const POLICY_KEYS = ['retry', 'errors'] as const
+const POLICY_KEYS = ['retry', 'errors', 'timeouts', 'messages'] as const
 
 /** Validate `providers.<key>.policy`. */
-export function checkPolicy(value: unknown, bad: Problems): ProviderPolicy | undefined {
+export function checkPolicy(
+  value: unknown,
+  bad: Problems,
+  wireFormats: readonly string[] = [],
+): ProviderPolicy | undefined {
   const label = 'policy'
   if (!isRecord(value)) {
     bad(`${label}: expected an object`)
@@ -265,6 +270,14 @@ export function checkPolicy(value: unknown, bad: Problems): ProviderPolicy | und
   if (value.errors !== undefined) {
     const errors = checkErrors(value.errors, `${label}.errors`, bad)
     if (errors && errors.length > 0) out.errors = errors
+  }
+  if (value.timeouts !== undefined) {
+    const timeouts = checkTimeouts(value.timeouts, `${label}.timeouts`, bad, wireFormats)
+    if (timeouts && Object.keys(timeouts).length > 0) out.timeouts = timeouts
+  }
+  if (value.messages !== undefined) {
+    const messages = checkPolicyMessages(value.messages, `${label}.messages`, bad)
+    if (messages && Object.keys(messages).length > 0) out.messages = messages
   }
   return out
 }

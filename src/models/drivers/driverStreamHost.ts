@@ -5,7 +5,9 @@
  * with no bytes from the provider `status: 'timeout'`, which also cancels upstream.
  * A window in which only bytes that decode to nothing arrived (an SSE keep-alive
  * while the model thinks with its reasoning hidden) answers `ok` with no chunks:
- * the connection is alive. streamCancel is idempotent.
+ * the connection is alive. streamCancel is idempotent. A provider that declares
+ * stream timeouts (F-27) is held to them here, and a held read then never
+ * cancels on its own: the declared thresholds decide when the provider is silent.
  */
 import type {
   BridgeModelRequestPayload,
@@ -19,6 +21,7 @@ import {
 } from '../../browser/bridge/rawProviderStream'
 import { DriverChunkEmitter } from './chunkEmitter'
 import { buildSystemInstruction } from './hostCallOptions'
+import { buildThinkingBodyExtension } from '../../config/nexusModelConfig/thinkingTierParams'
 import type { ModelProvider } from './modelProvider'
 import type { DriverHttpRequest, DriverStreamEvent } from './driverTypes'
 import {
@@ -32,7 +35,38 @@ import {
 } from './providerRequestSeam'
 import { sessionWorkingDirOf } from './sessionWorkingDirs'
 import { declaredFailure, ResponseHead } from './providerFailureFacts'
-import type { ProviderErrorRule } from './providerPolicy'
+import { bodyWindow, type ProviderErrorRule, type ProviderPolicy } from './providerPolicy'
+import {
+  anomalyRules,
+  endAnomaly,
+  endAnomalyMessage,
+  isContentEvent,
+  refineDeclared,
+  replayPermitted,
+  requestFinishReason,
+  requestUsage,
+  StreamTally,
+  verdictOfFailure,
+  type ClassifyStage,
+  type FailureEvent,
+} from './providerClassify'
+import {
+  outcomeCallKeyOf,
+  outcomeEvent,
+  raiseProviderOutcome,
+  reportStreamFacts,
+  type StreamFacts,
+} from './providerOutcome'
+import { modelCeilingsOf } from './providerRequestPlan'
+import {
+  hostIdleTimeoutMs,
+  resolveStreamTimeouts,
+  StreamWatchdog,
+  timeoutMessage,
+  type StreamExpiry,
+  type StreamTimeouts,
+} from './providerTimeouts'
+import { traceLine } from '../../utils/debugLog'
 import { modelMasking, withMaskedUserAgent, withMaskedValues, type MaskingStream } from '../masking/maskingHolder'
 import { MaskingResidualError, MaskingUnavailableError, MaskingUndecodableError } from '../masking/egressGuard'
 import { storedKeyProblemFromReason, withStoredKeyMarker } from '../../utils/storedKeyProblem'
@@ -136,13 +170,28 @@ class DriverStream {
   private masking: MaskingStream | undefined
   /** When the provider last sent response bytes, ones that decode to nothing included. */
   private lastBytesAt = 0
+  /** A send is under declared timeouts: they, not a held read, end a silent stream. */
+  private watched = false
+  /** What the request passed on and how it ended; kept for a provider with a seam. */
+  private tally: StreamTally | undefined
+  /** The error the stream ended with. */
+  private failure: FailureEvent | undefined
+  private sends = 0
+  private status: number | undefined
+  private firstByteMs: number | undefined
+  private lastContext: PreparedProviderRequest['context'] | undefined
+  private readonly startedAt = Date.now()
+  /** The caller's open outcome call, when it counts the request's streams itself. */
+  private readonly outcomeCall: string | undefined
 
   constructor(
     private readonly transport: BrowserBridgeTransport,
     private readonly provider: ModelProvider,
     private payload: BridgeModelRequestPayload,
     private readonly model: string,
-  ) {}
+  ) {
+    this.outcomeCall = outcomeCallKeyOf(payload)
+  }
 
   start(): void {
     void this.pump().finally(() => this.masking?.close())
@@ -180,7 +229,7 @@ class DriverStream {
         // its place, and the read says `queued`.
         if (this.queued) return { chunks: [], done: false, status: 'queued' }
         // Bytes with no event in them are provider activity, not silence.
-        if (this.lastBytesAt >= heldSince) return this.drain()
+        if (this.lastBytesAt >= heldSince || this.watched) return this.drain()
         // As in the C++ host: a read that expires on its deadline cancels upstream.
         await this.cancel()
         return { chunks: [], done: false, status: 'timeout' }
@@ -200,13 +249,21 @@ class DriverStream {
     await this.raw?.cancel()
   }
 
-  /** The error rules of the provider's declared policy, when it has any. */
+  /** The provider's declared policy, when it has one, and its error rules. */
+  private policy: ProviderPolicy | undefined
   private errorRules: readonly ProviderErrorRule[] | undefined
 
   private push(events: readonly DriverStreamEvent[]): void {
     if (this.emitter.terminalEmitted || events.length === 0) return
+    if (this.tally) {
+      this.tally.note(events)
+      this.failure = events.find((event): event is FailureEvent => event.type === 'error') ?? this.failure
+    }
     this.queue.push(...this.emitter.emit(events.map(withHostFinishUsage)))
-    if (this.emitter.terminalEmitted) this.done = true
+    if (this.emitter.terminalEmitted) {
+      this.done = true
+      this.reportOutcome()
+    }
     this.wake?.()
   }
 
@@ -215,6 +272,7 @@ class DriverStream {
       this.queue.push(...this.emitter.finalizeIfOpen())
     }
     this.done = true
+    this.reportOutcome()
     this.wake?.()
   }
 
@@ -259,15 +317,68 @@ class DriverStream {
       this.finishIfOpen()
       return
     }
+    // Looked up once per stream: a provider without a seam runs the plain
+    // path, with nothing built for the seam.
+    const seam = providerRequestSeamFor(this.provider.id)
     try {
-      // Looked up once per stream: a provider without a seam runs the plain
-      // path, with nothing built for the seam.
-      const seam = providerRequestSeamFor(this.provider.id)
+      this.policy = seam?.policy
       this.errorRules = seam?.policy?.errors
-      if (seam) await this.sendThroughSeam(seam, request)
-      else await this.send(request)
+      if (seam) {
+        this.seam = seam
+        this.tally = new StreamTally()
+        await this.sendThroughSeam(seam, request)
+      } else await this.send(request)
     } finally {
       pool?.release()
+      this.reportOutcome()
+    }
+  }
+
+  /** The provider's seam, once the request reached it. */
+  private seam: ProviderRequestSeam | undefined
+  private outcomeReported = false
+
+  /**
+   * What the stream learned goes to the caller's open outcome call; without
+   * one the provider's `outcome` hook is told here. Once, and before the
+   * stream's end can be read: the caller closes its call as soon as it reads it.
+   */
+  private reportOutcome(): void {
+    const { tally, seam } = this
+    if (!tally || !seam || this.outcomeReported) return
+    this.outcomeReported = true
+    try {
+      if (this.outcomeCall === undefined && !seam.outcome) return
+      const usage = requestUsage(tally.usage)
+      const facts: StreamFacts = {
+        sends: this.sends,
+        ...(this.lastContext ? { context: this.lastContext } : {}),
+        ...(this.status !== undefined ? { status: this.status } : {}),
+        ...(this.firstByteMs !== undefined ? { firstByteMs: this.firstByteMs } : {}),
+        ...(tally.finished ? { finishReason: requestFinishReason(tally.finishReason) } : {}),
+        ...(usage ? { usage } : {}),
+        hadReasoning: tally.delivered.reasoning,
+        hadOutput: tally.delivered.text || tally.delivered.toolCalls,
+      }
+      if (reportStreamFacts(this.outcomeCall, facts)) return
+      const aborted = this.abort.signal.aborted
+      const verdict = this.failure ? verdictOfFailure(this.failure) : null
+      raiseProviderOutcome(
+        seam,
+        outcomeEvent(
+          this.provider.id,
+          this.model,
+          {
+            ok: !this.failure && !aborted,
+            ...(verdict ? { verdict } : {}),
+            ...(aborted && !this.failure ? { aborted } : {}),
+            durationMs: Date.now() - this.startedAt,
+          },
+          { sends: this.sends, last: facts },
+        ),
+      )
+    } catch (error) {
+      traceLine(`[providers] ${this.provider.id}: the outcome of a request could not be reported: ${errorText(error)}`, { level: 'warn' })
     }
   }
 
@@ -296,6 +407,7 @@ class DriverStream {
         ...(cwd !== undefined ? { cwd } : {}),
         parts: this.requestParts(),
         ...(this.provider.idSites ? { idSites: this.provider.idSites } : {}),
+        ceilings: modelCeilingsOf(this.provider.id, this.model),
       },
       this.abort.signal,
     )
@@ -325,6 +437,10 @@ class DriverStream {
           ...(over.system !== undefined ? rest : payload),
           ...(over.system !== undefined ? { systemPrompt: over.system } : {}),
           ...(over.tools !== undefined ? { tools: over.tools as BridgeModelRequestPayload['tools'] } : {}),
+          ...(over.maxOutputTokens !== undefined ? { maxOutputTokens: over.maxOutputTokens } : {}),
+          ...(over.effort !== undefined
+            ? thinkingFieldsAt(this.provider.id, over.effort, over.maxOutputTokens ?? payload.maxOutputTokens)
+            : {}),
         }
         return this.withMaskedValues(this.provider.buildRequest(next, this.model))
       },
@@ -364,13 +480,73 @@ class DriverStream {
     })
   }
 
+  /** Sends the request, and again each time a send ends in the one re-send. */
   private async send(sent: DriverHttpRequest, seamed?: SeamedSend): Promise<void> {
-    const idleTimeoutMs = seamed?.prepared.idleTimeoutMs ?? this.provider.spec.idleTimeoutMs
+    let next = await this.sendUnderTimeouts(sent, seamed)
+    while (next) {
+      this.tally?.restart()
+      next = await this.sendUnderTimeouts(next.prepared.request, next)
+    }
+  }
+
+  /** One send, held to the provider's declared timeouts when it has any. */
+  private async sendUnderTimeouts(sent: DriverHttpRequest, seamed?: SeamedSend): Promise<SeamedSend | undefined> {
+    const timeouts = resolveStreamTimeouts({
+      ...(this.policy?.timeouts ? { declared: this.policy.timeouts } : {}),
+      format: this.provider.format,
+      ...(seamed?.prepared.plan?.timeouts ? { request: seamed.prepared.plan.timeouts } : {}),
+      ...(seamed?.prepared.idleTimeoutMs !== undefined ? { requestIdleMs: seamed.prepared.idleTimeoutMs } : {}),
+      ...(this.provider.spec.idleTimeoutMs !== undefined ? { specIdleMs: this.provider.spec.idleTimeoutMs } : {}),
+    })
+    if (!timeouts) return this.exchange(sent, seamed, { signal: this.abort.signal, expiry: () => undefined })
+    // A threshold that runs out ends this send alone; the stream's own abort ends it too.
+    const sendAbort = new AbortController()
+    const onCancel = (): void => sendAbort.abort()
+    this.abort.signal.addEventListener('abort', onCancel, { once: true })
+    let expired: StreamExpiry | undefined
+    const watchdog = new StreamWatchdog(timeouts, expiry => {
+      expired = expiry
+      sendAbort.abort()
+    })
+    this.watched = true
+    try {
+      return await this.exchange(sent, seamed, { signal: sendAbort.signal, expiry: () => expired, timeouts, watchdog })
+    } finally {
+      watchdog.stop()
+      this.watched = false
+      this.abort.signal.removeEventListener('abort', onCancel)
+    }
+  }
+
+  /** The error event of a send that broke: the threshold that ran out, else the transport's error. */
+  private brokenSend(error: unknown, guard: SendGuard, headSeen: boolean): FailureEvent {
+    // The host has one idle timer of its own; when it is the first to fire,
+    // it stands for the threshold it was given.
+    const expiry = guard.expiry() ?? (
+      guard.timeouts && error instanceof RawProviderStreamError && error.code === 'TIMEOUT'
+        ? headSeen
+          ? { anomaly: 'idle_timeout' as const, afterMs: guard.timeouts.idleMs }
+          : { anomaly: 'first_byte_timeout' as const, afterMs: guard.timeouts.firstByteMs }
+        : undefined
+    )
+    if (expiry) return { type: 'error', message: timeoutMessage(expiry), verdict: { kind: 'network', anomaly: expiry.anomaly } }
+    return { type: 'error', message: errorText(error), ...signInFailure(error) }
+  }
+
+  /** One send and its response. Resolves the re-send to make, or undefined
+   *  once the stream has its end (a finish, an error, or the caller's abort). */
+  private async exchange(sent: DriverHttpRequest, seamed: SeamedSend | undefined, guard: SendGuard): Promise<SeamedSend | undefined> {
+    const idleTimeoutMs = guard.timeouts ? hostIdleTimeoutMs(guard.timeouts) : this.provider.spec.idleTimeoutMs
     const request = this.withMaskedUserAgent(sent)
+    const sentAt = Date.now()
     try {
       // The stream's own table guards its request, whatever the realm's
       // table has become since it opened.
       this.masking?.checkEgress(request)
+      this.sends += 1
+      this.status = undefined
+      if (seamed) this.lastContext = seamed.prepared.context
+      guard.watchdog?.start()
       this.raw = await openRawProviderStream(this.transport, {
         providerId: this.provider.id,
         url: request.url,
@@ -379,13 +555,23 @@ class DriverStream {
         ...(request.queryParams ? { queryParams: request.queryParams } : {}),
         body: request.body,
         ...(idleTimeoutMs !== undefined ? { idleTimeoutMs } : {}),
-        signal: this.abort.signal,
+        ...(guard.timeouts ? { declaredIdle: true } : {}),
+        signal: guard.signal,
         ...(this.masking ? { masking: 'stream' as const } : {}),
       })
+      guard.watchdog?.head()
+      this.status = this.raw.status
+      this.firstByteMs = Date.now() - sentAt
     } catch (error) {
-      if (this.abort.signal.aborted) return this.finishIfOpen()
-      this.fail(errorText(error), maskingRefusal(error))
-      return
+      guard.watchdog?.stop()
+      if (this.abort.signal.aborted) return this.ended()
+      const refusal = maskingRefusal(error)
+      if (refusal.httpStatus !== undefined || !seamed) {
+        const broken = this.brokenSend(error, guard, false)
+        this.push([{ ...broken, ...refusal }])
+        return this.ended()
+      }
+      return this.settleFailure(this.ruledByAnomaly(this.brokenSend(error, guard, false), undefined, ''), { stage: 'connect', seamed })
     }
 
     // The ids the provider's id mapper changed on the way out are put back
@@ -399,58 +585,257 @@ class DriverStream {
     const flushRestore = (): void => {
       if (masking) this.push(masking.restore.flush())
     }
+    const raw = this.raw
+    // Read once per send: the answer is exact from the module's first load on.
+    const classifies = seamed?.flow.classifies === true
     let decoder: ReturnType<ModelProvider['createDecoder']> | undefined
+    let head: ResponseHead | undefined
     try {
-      if (!this.provider.isStreamStatus(this.raw.status)) {
-        const bodyText = await readText(this.raw.body, MAX_ERROR_BODY_BYTES)
+      if (!this.provider.isStreamStatus(raw.status)) {
+        const bodyText = await readText(raw.body, MAX_ERROR_BODY_BYTES)
+        guard.watchdog?.stop()
+        const response = { status: raw.status, headers: raw.headers, bodyText }
         if (seamed) {
           // At most one re-send in all: after a refresh (a 401 of a signed-in
-          // provider) or the `retry` the provider's seam asked for.
-          const again = await seamed.flow.recoverAfter(
-            { status: this.raw.status, headers: this.raw.headers, bodyText },
-            seamed.prepared,
-          )
-          if (this.abort.signal.aborted) return this.finishIfOpen()
+          // provider), the replay `classify` asked for, or the `retry` the
+          // provider's seam asked for. With a `classify` hook the last two
+          // are settled below, once the failure has its verdict.
+          const again = classifies
+            ? await seamed.flow.refreshAfter(response, seamed.prepared)
+            : await seamed.flow.recoverAfter(response, seamed.prepared)
+          if (this.abort.signal.aborted) return this.ended()
           if (again) {
-            await this.raw.cancel()
-            return this.send(again.request, { flow: seamed.flow, prepared: again })
+            await raw.cancel()
+            return { flow: seamed.flow, prepared: again }
           }
         }
         const refused = this.provider.errorFromResponse({
-          status: this.raw.status,
-          statusText: this.raw.statusText,
-          headers: this.raw.headers,
+          status: raw.status,
+          statusText: raw.statusText,
+          headers: raw.headers,
           bodyText,
         })
-        this.push(restored(declaredFailure(this.errorRules, [refused], { response: this.raw, bodyText, model: this.model })))
-        this.finishIfOpen()
-        return
+        const judged = restored(declaredFailure(this.errorRules, [refused], { response: raw, bodyText, model: this.model }))
+        const failure = judged.find((event): event is FailureEvent => event.type === 'error')
+        if (seamed && classifies && failure) {
+          return this.settleFailure(failure, { stage: 'response', seamed, response: raw, bodyText, retry: true })
+        }
+        this.push(judged)
+        return this.ended()
       }
       decoder = this.provider.createDecoder(this.model)
-      // The start of the body is kept only for a provider that declared rules.
-      const head = this.errorRules ? new ResponseHead() : undefined
+      // The reply's end is looked at only for a provider that can say
+      // something about it: a `classify` hook, or a rule that states an anomaly.
+      const watchEnd = seamed !== undefined && (classifies || anomalyRules(this.errorRules) !== undefined)
+      // The start of the body is kept only for a provider that declared rules or reads failures.
+      head = this.errorRules || classifies ? new ResponseHead() : undefined
+      const kept = head
+      // Read when the reply reaches its end, and once: nothing follows a terminal event.
+      let endText: string | undefined
+      const bodyHead = (): string => (endText ??= kept?.text() ?? '')
       const judged = (events: DriverStreamEvent[]): DriverStreamEvent[] =>
-        head && this.raw && events.some(event => event.type === 'error')
-          ? declaredFailure(this.errorRules, events, { response: this.raw, bodyText: head.text(), model: this.model, inStream: true })
+        kept && events.some(event => event.type === 'error')
+          ? declaredFailure(this.errorRules, events, { response: raw, bodyText: bodyHead(), model: this.model, inStream: true })
           : events
-      for await (const bytes of this.raw.body) {
+      const site = (): StreamSite => ({ stage: 'stream', seamed: seamed!, response: raw, bodyText: bodyHead(), guard })
+      for await (const bytes of raw.body) {
         this.lastBytesAt = Date.now()
+        guard.watchdog?.bytes()
         head?.add(bytes)
-        this.push(decoded(judged(decoder.push(bytes))))
+        const events = decoded(judged(decoder.push(bytes)))
+        if (guard.watchdog && events.some(isContentEvent)) guard.watchdog.content()
+        if (watchEnd) {
+          const again = await this.settleEvents(events, site)
+          if (again) return again
+        } else this.push(events)
         if (this.emitter.terminalEmitted) break
       }
-      this.push(decoded(judged(decoder.end())))
-      flushRestore()
-      this.finishIfOpen()
+      const tail = decoded(judged(decoder.end()))
+      if (watchEnd && !this.emitter.terminalEmitted) {
+        const again = await this.settleEvents(tail, site, flushRestore)
+        if (again) return again
+      } else {
+        this.push(tail)
+        flushRestore()
+      }
+      return this.ended()
     } catch (error) {
-      if (this.abort.signal.aborted) return this.finishIfOpen()
+      guard.watchdog?.stop()
+      if (this.abort.signal.aborted) return this.ended()
       // The response broke off. C++ OnStreamComplete(success=false) may still
       // emit a buffered finish first; when it does, the stream is over and the
       // transport error is dropped by the host's terminal guard.
       if (decoder?.abort) this.push(decoded(decoder.abort()))
       flushRestore()
-      if (!this.emitter.terminalEmitted) this.fail(errorText(error), signInFailure(error))
-      else this.finishIfOpen()
+      if (this.emitter.terminalEmitted) return this.ended()
+      const broken = this.brokenSend(error, guard, true)
+      if (!seamed || broken.httpStatus !== undefined) {
+        this.push([broken])
+        return this.ended()
+      }
+      const bodyText = head?.text() ?? ''
+      return this.settleFailure(this.ruledByAnomaly(broken, raw, bodyText), {
+        stage: decoder ? 'stream' : 'response',
+        seamed,
+        response: raw,
+        bodyText,
+      })
+    }
+  }
+
+  /** The stream has its end; nothing is sent again. */
+  private ended(): undefined {
+    this.finishIfOpen()
+    return undefined
+  }
+
+  /** A failure that is no refused response: only a rule that states an anomaly speaks to it. */
+  private ruledByAnomaly(failure: FailureEvent, response: RawProviderStream | undefined, bodyText: string): FailureEvent {
+    const anomaly = failure.verdict?.anomaly
+    if (anomaly === undefined) return failure
+    const [ruled] = declaredFailure(anomalyRules(this.errorRules), [failure], {
+      ...(response ? { response } : {}),
+      bodyText,
+      model: this.model,
+      inStream: response !== undefined,
+      anomaly,
+    })
+    return (ruled as FailureEvent | undefined) ?? failure
+  }
+
+  /**
+   * Decoded events of a provider whose reply's end is looked at: everything
+   * before a terminal event is passed on, then the terminal is settled.
+   * `atEnd` is given for the decoder's last events: with no terminal among
+   * them the reply broke off, which is settled as an odd end.
+   */
+  private async settleEvents(events: DriverStreamEvent[], site: () => StreamSite, atEnd?: () => void): Promise<SeamedSend | undefined> {
+    const at = events.findIndex(event => event.type === 'finish' || event.type === 'error')
+    if (at < 0) {
+      this.push(events)
+      if (!atEnd) return undefined
+      atEnd()
+      return this.settleEnd(undefined, site)
+    }
+    this.push(events.slice(0, at))
+    const terminal = events[at]!
+    if (terminal.type === 'error') return this.settleFailure(terminal, site())
+    return this.settleEnd(terminal as FinishEvent, site)
+  }
+
+  /**
+   * A reply that ended without an error. An ordinary end is passed on. An
+   * odd one (nothing answered, or cut short) is put to the rules that state
+   * that anomaly and to `classify`: it may be replayed, or become an error
+   * when either gives it a verdict; otherwise it is passed on as it came.
+   */
+  private async settleEnd(finish: FinishEvent | undefined, at: () => StreamSite): Promise<SeamedSend | undefined> {
+    const tally = this.tally!
+    if (finish) tally.note([finish])
+    const anomaly = endAnomaly(tally)
+    if (!anomaly) {
+      if (finish) this.push([finish])
+      return undefined
+    }
+    const site = at()
+    site.guard.watchdog?.stop()
+    const base: FailureEvent = { type: 'error', message: endAnomalyMessage(anomaly) }
+    const [ruled] = declaredFailure(anomalyRules(this.errorRules), [base], {
+      response: site.response,
+      bodyText: site.bodyText,
+      model: this.model,
+      inStream: true,
+      anomaly,
+    })
+    const judged = await this.classified((ruled as FailureEvent | undefined) ?? base, { ...site, stage: 'end' })
+    if (judged === 'aborted') return this.ended()
+    if (judged.again) return judged.again
+    if (judged.failure.verdict) {
+      this.push([{ ...judged.failure, verdict: { ...judged.failure.verdict, anomaly } }])
+      return this.ended()
+    }
+    if (finish) this.push([finish])
+    return undefined
+  }
+
+  /**
+   * A failed attempt of a provider with a seam: `classify` may refine its
+   * verdict and ask for the replay; a refused response then gets the `retry`
+   * hook. Resolves the re-send, or undefined once the error is passed on.
+   */
+  private async settleFailure(failure: FailureEvent, site: FailureSite): Promise<SeamedSend | undefined> {
+    const { flow, prepared } = site.seamed
+    const judged = await this.classified(failure, site)
+    if (judged === 'aborted') return this.ended()
+    let again = judged.again
+    if (!again && site.retry && site.response) {
+      try {
+        const resend = await flow.retryAfter(
+          { status: site.response.status, headers: site.response.headers, bodyText: site.bodyText ?? '' },
+          prepared,
+        )
+        if (resend) again = { flow, prepared: resend }
+      } catch {
+        if (this.abort.signal.aborted) return this.ended()
+      }
+    }
+    if (again) {
+      await this.raw?.cancel()
+      return again
+    }
+    this.push([judged.failure])
+    return this.ended()
+  }
+
+  /** Raises `classify` for a failure and applies its answer: the refined
+   *  failure, and the replay when one was asked for and is still allowed. */
+  private async classified(
+    current: FailureEvent,
+    site: FailureSite,
+  ): Promise<{ failure: FailureEvent; again?: SeamedSend } | 'aborted'> {
+    const { flow, prepared } = site.seamed
+    const tally = this.tally!
+    site.guard?.watchdog?.stop()
+    const { verdict: declared, ...bare } = current
+    if (!flow.classifies) return { failure: current }
+    try {
+      // A reply that merely ended oddly has no verdict until a rule gives it one.
+      const soFar = declared || site.stage !== 'end' ? verdictOfFailure(current) : null
+      const finishReason = site.stage === 'end'
+        ? tally.finished ? requestFinishReason(tally.finishReason) : undefined
+        : site.stage === 'stream' ? ('error' as const) : undefined
+      const usage = requestUsage(tally.usage)
+      const answer = await flow.classify({
+        stage: site.stage,
+        ...(site.response ? { status: site.response.status, headers: { ...site.response.headers } } : {}),
+        ...(site.bodyText !== undefined ? { bodyText: bodyWindow(site.bodyText) } : {}),
+        ...(finishReason ? { finishReason } : {}),
+        ...(usage ? { usage } : {}),
+        delivered: { ...tally.delivered },
+        ...(soFar ? { verdict: soFar } : {}),
+        attempt: prepared.context.attempt,
+        context: prepared.context,
+      })
+      if (this.abort.signal.aborted) return 'aborted'
+      if (!answer) return { failure: current }
+      const refined = refineDeclared(soFar, declared, answer.refinement)
+      const next: FailureEvent = refined ? { ...bare, verdict: refined } : current
+      if (!answer.replay) return { failure: next }
+      if (flow.replayed || !replayPermitted(tally.delivered)) {
+        traceLine(
+          `[providers] ${this.provider.id}: provider.classify asked for a replay that is not allowed ` +
+            `(${flow.replayed ? 'the request was already sent again' : 'part of the reply was already shown'}); ignored`,
+          { level: 'warn' },
+        )
+        return { failure: next }
+      }
+      const resend = await flow.replayAfter(prepared, answer.replay)
+      if (this.abort.signal.aborted) return 'aborted'
+      return resend ? { failure: next, again: { flow, prepared: resend } } : { failure: next }
+    } catch (error) {
+      if (this.abort.signal.aborted) return 'aborted'
+      traceLine(`[providers] ${this.provider.id}: provider.classify was not applied: ${errorText(error)}`, { level: 'warn' })
+      return { failure: current }
     }
   }
 }
@@ -473,6 +858,38 @@ function signInFailure(error: unknown): { httpStatus?: number } {
 
 /** A send that went through the provider's seam: what a `retry` re-send needs. */
 type SeamedSend = { flow: ProviderRequestFlow; prepared: PreparedProviderRequest }
+
+type FinishEvent = Extract<DriverStreamEvent, { type: 'finish' }>
+
+/** What one send runs under: the signal that ends it, and its declared timeouts when it has any. */
+type SendGuard = {
+  signal: AbortSignal
+  /** The threshold that ran out, once one has. */
+  expiry: () => StreamExpiry | undefined
+  timeouts?: StreamTimeouts
+  watchdog?: StreamWatchdog
+}
+
+/** Where a failure of a seamed send showed, and what of the response there is to show a hook. */
+type FailureSite = {
+  stage: ClassifyStage
+  seamed: SeamedSend
+  response?: { status: number; headers: Record<string, string> }
+  bodyText?: string
+  guard?: SendGuard
+  /** A refused response read whole: the `retry` hook is still owed. */
+  retry?: boolean
+}
+
+type StreamSite = FailureSite & { response: RawProviderStream; bodyText: string; guard: SendGuard }
+
+/** The payload fields of a thinking tier: what the request is built from at `effort`. */
+function thinkingFieldsAt(providerId: string, effort: string, maxOutputTokens: number | undefined): Record<string, unknown> {
+  return {
+    thinkingTier: effort,
+    providerBodyExtension: buildThinkingBodyExtension(providerId, effort, maxOutputTokens ?? 0),
+  }
+}
 
 const ZERO_USAGE = { promptTokens: 0, completionTokens: 0 } as const
 

@@ -20,8 +20,10 @@ export type RawProviderStreamRequest = {
   body?: Uint8Array
   /** Capture these JSON response fields as provider secrets (see protocol). */
   captureSecrets?: Array<{ pointer: string; secret: string }>
-  /** No-bytes abort, ms. Clamped to 90_000 (the `model` route's 100s fallback). */
+  /** No-bytes abort, ms. Clamped to 90_000, or to 300_000 with `declaredIdle`. */
   idleTimeoutMs?: number
+  /** The idle timeout is one a provider declared (F-27): the higher ceiling applies. */
+  declaredIdle?: boolean
   maxResponseBytes?: number
   signal?: AbortSignal
   /** `stream`: a driver stream already checked this request against its own
@@ -55,6 +57,8 @@ export class RawProviderStreamError extends Error {
 }
 
 export const RAW_STREAM_MAX_IDLE_TIMEOUT_MS = 90_000
+/** The ceiling of a declared idle timeout; the transport's `model.rawStreamOpen` deadline sits above it. */
+export const RAW_STREAM_DECLARED_MAX_IDLE_TIMEOUT_MS = 300_000
 // Below the host's 30s hold cap and the transport's 100s `model` fallback.
 const READ_WAIT_MS = 25_000
 
@@ -131,7 +135,7 @@ export async function openRawProviderStream(
   const request = egressCheck?.(input) ?? input
   const idleTimeoutMs = Math.min(
     request.idleTimeoutMs ?? RAW_STREAM_MAX_IDLE_TIMEOUT_MS,
-    RAW_STREAM_MAX_IDLE_TIMEOUT_MS,
+    request.declaredIdle ? RAW_STREAM_DECLARED_MAX_IDLE_TIMEOUT_MS : RAW_STREAM_MAX_IDLE_TIMEOUT_MS,
   )
   const clientId = mintStreamId()
   // One cancel per id, ever: the early one by `clientId` and — against an

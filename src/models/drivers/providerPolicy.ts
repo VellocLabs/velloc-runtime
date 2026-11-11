@@ -14,6 +14,7 @@
 import type { LocalizedText } from '../../config/localizedText'
 import type { ProviderConnectivityIssueKind } from '../../utils/providerConnectivity'
 import type { DeclaredVerdict, VerdictAnomaly, VerdictScope } from '../../utils/providerVerdict'
+import type { DeclaredTimeouts } from './providerTimeouts'
 
 export const ERROR_RULES_MAX = 64
 /** `bodyContains` reads this much of the response body, counted in UTF-8 bytes. */
@@ -61,6 +62,9 @@ export type ProviderRetryPolicy = {
 export type ProviderPolicy = {
   retry?: ProviderRetryPolicy
   errors?: ProviderErrorRule[]
+  timeouts?: DeclaredTimeouts
+  /** The texts a `provider.classify` answer may name with `messageKey`. */
+  messages?: Record<string, LocalizedText>
 }
 
 /** What a rule is matched against: one failed response, or one failed stream. */

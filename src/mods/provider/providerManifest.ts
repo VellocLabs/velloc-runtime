@@ -865,7 +865,7 @@ function checkProvider(key: string, raw: unknown, errors: string[]): ProviderMan
   const ids = raw.ids === undefined ? undefined : checkIds(raw.ids, bad)
   const updates = raw.updates === undefined ? undefined : checkUpdates(raw.updates, bad)
   const modelFacts = raw.modelFacts === undefined ? undefined : checkModelFacts(raw.modelFacts, bad)
-  const policy = raw.policy === undefined ? undefined : checkPolicy(raw.policy, bad)
+  const policy = raw.policy === undefined ? undefined : checkPolicy(raw.policy, bad, PROVIDER_WIRE_FORMATS)
   const wire = raw.wire === undefined ? undefined : checkProviderWire(raw.wire, bad)
   const jobs = raw.jobs === undefined ? undefined : checkProviderJobs(raw.jobs, bad)
 
