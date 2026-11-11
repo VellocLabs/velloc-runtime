@@ -114,7 +114,7 @@ export function userModelToInfo(def: UserModelDef, facts: UserModelWires = {}): 
     ...(def.contextWindow ? { contextWindow: def.contextWindow } : {}),
     ...(def.maxOutputTokens ? { maxOutputTokens: def.maxOutputTokens } : {}),
     ...(def.supportsImageInput !== undefined ? { supportsImageInput: def.supportsImageInput } : {}),
-    ...(def.reasoning ? { thinkingTiers: ['low', 'medium', 'high'] } : {}),
+    ...(def.reasoning ? { thinkingTiers: ['low', 'medium', 'high'] } : def.reasoning === false ? { thinkingTiers: [] } : {}),
     group: USER_MODEL_GROUP,
     tags: [USER_MODEL_GROUP],
     ...(wire ? { wire } : {}),

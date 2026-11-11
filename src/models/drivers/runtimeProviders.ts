@@ -33,7 +33,7 @@ import {
   recordListedFigures,
   resetListedFigures,
 } from '../../config/nexusModelConfig/familyRows'
-import { withProviderModelFacts } from '../../config/nexusModelConfig/modelFacts'
+import { modelFactsFor, withModelFacts, withProviderModelFacts } from '../../config/nexusModelConfig/modelFacts'
 import { publishListedModelPool, resetProviderModelPool } from '../../config/nexusModelConfig/providerModelPool'
 import type { NexusProviderConfig } from '../../settings/settingsTypes'
 import { holdsModSignIn } from '../../settings/providerSignIn'
@@ -224,7 +224,8 @@ function mayRefreshInBackground(providerId: string): boolean {
 /** What the cached listing states about one model — a provider mod reads the
  *  family and version of an id from it instead of from a rule of its own. */
 export function listedModelInfo(providerId: string, modelId: string): ProviderModelInfo | undefined {
-  return mergedModels(providerId).find(model => model.id === modelId)
+  const model = withHandAdded(providerId, listings.get(providerId)?.models ?? []).find(row => row.id === modelId)
+  return model && withModelFacts(model, modelFactsFor(getProviderDefinition(providerId)?.modelFacts, modelId))
 }
 
 /** The cached listing plus the models the person added by hand (a provider

@@ -215,6 +215,11 @@ describe('hand-added models', () => {
     })
   })
 
+  it('a model marked as not reasoning states an empty tier list, so no layer beneath fills one', () => {
+    expect(userModelToInfo({ id: 'm', reasoning: false }).thinkingTiers).toEqual([])
+    expect(userModelToInfo({ id: 'm' })).not.toHaveProperty('thinkingTiers')
+  })
+
   it('a wire with baseUrlTrim follows the base the person set', () => {
     const wires = { 'gemini': { baseUrlTrim: '/v1' } }
     const def = { id: 'm', format: 'gemini' } as const

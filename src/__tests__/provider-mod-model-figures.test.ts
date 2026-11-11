@@ -189,6 +189,23 @@ describe('modelFacts, beneath the listed row', () => {
     expect(contextWindowOf('other', ID)).toBe(200_000)
   })
 
+  it('a hand-added model marked as not reasoning takes no tiers from the facts', async () => {
+    await provider([{ id: 'listed-1', supportsTools: true }], { 'hand-*': { thinkingTiers: ['low', 'high'], defaultThinkingTier: 'high', contextWindow: 50_000 } })
+    setRuntimeProviderConfigs({
+      [ID]: {
+        source: 'mod',
+        modVersion: '1.0.0',
+        apiKey: 'sealed',
+        userModels: [{ id: 'hand-plain' }, { id: 'hand-off', reasoning: false }],
+      },
+    })
+    await refreshRuntimeProviderModels(transport, ID)
+
+    expect(contextWindowOf('hand-off', ID)).toBe(50_000)
+    expect(getAvailableThinkingTiersForModel('hand-off', ID) ?? []).not.toContain('high')
+    expect(getAvailableThinkingTiersForModel('hand-plain', ID)).toEqual(['low', 'high'])
+  })
+
   it('a filled output cap is held to the window the row states', async () => {
     await provider([{ id: 'small-1', supportsTools: true, contextWindow: 16_000 }], {
       'small-*': { maxOutputTokens: 64_000 },
@@ -246,5 +263,16 @@ describe('defaultMaxOutputTokens: the output cap of the first request', () => {
     expect(firstRequestOutput('facts-1')).toBe(60_000)
     expect(firstRequestOutput('facts-2')).toBe(50_000)
     expect(firstRequestOutput('facts-3')).toBe(20_000)
+  })
+
+  it('a model reached through a family entry sends the allowance its row states', async () => {
+    const MODEL = 'vendor/wide-9.1-flash'
+    await provider(
+      [{ id: MODEL, supportsTools: true, contextWindow: 300_000, maxOutputTokens: 64_000, defaultMaxOutputTokens: 60_000 }],
+      undefined,
+      [{ family: 'vendor/wide-*-flash', version: 'latest', id: MODEL }],
+    )
+
+    expect(firstRequestOutput(MODEL)).toBe(60_000)
   })
 })

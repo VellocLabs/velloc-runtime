@@ -135,7 +135,7 @@ export function parseModelsAnswer(
     if (maxOutputTokens !== undefined) row.maxOutputTokens = maxOutputTokens
     const defaultMaxOutputTokens = figure(raw.defaultMaxOutputTokens)
     if (defaultMaxOutputTokens !== undefined) {
-      row.defaultMaxOutputTokens = Math.min(defaultMaxOutputTokens, maxOutputTokens ?? defaultMaxOutputTokens)
+      row.defaultMaxOutputTokens = Math.min(defaultMaxOutputTokens, maxOutputTokens ?? contextWindow ?? defaultMaxOutputTokens)
     }
     if (typeof raw.supportsImageInput === 'boolean') row.supportsImageInput = raw.supportsImageInput
     if (typeof raw.supportsPdfInput === 'boolean') row.supportsPdfInput = raw.supportsPdfInput
