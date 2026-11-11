@@ -187,7 +187,7 @@ export function parseModelWire(providerId: string, raw: unknown): ModelWire | un
   if (raw.toolAliases !== undefined) {
     const read = readToolAliases(raw.toolAliases)
     if (read.problem) logOnce(providerId, `wire.toolAliases: ${read.problem}; the aliases are ignored`)
-    else if (read.aliases) wire.toolAliases = read.aliases
+    else wire.toolAliases = read.aliases ?? {}
   }
   return Object.keys(wire).length > 0 ? wire : undefined
 }
@@ -247,8 +247,9 @@ export function applyModelWire(spec: ProviderSpec, wire: ModelWire): ProviderSpe
   const headers = mergeSpecHeaders(spec.headers, wire.headers)
   const compat: CodecCompat | undefined =
     spec.compat || wire.compat ? { ...spec.compat, ...wire.compat } : undefined
-  const { path: providerPath, ...rest } = spec
+  const { path: providerPath, toolAliases: providerAliases, ...rest } = spec
   const path = wire.path ?? (format === spec.format ? providerPath : undefined)
+  const toolAliases = wire.toolAliases ?? providerAliases
   return {
     ...rest,
     format,
@@ -256,6 +257,6 @@ export function applyModelWire(spec: ProviderSpec, wire: ModelWire): ProviderSpe
     ...(path ? { path } : {}),
     ...(headers ? { headers } : {}),
     ...(compat ? { compat } : {}),
-    ...(wire.toolAliases ? { toolAliases: wire.toolAliases } : {}),
+    ...(toolAliases && Object.keys(toolAliases).length > 0 ? { toolAliases } : {}),
   }
 }

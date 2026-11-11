@@ -97,11 +97,18 @@ function renameExtension(extension: Record<string, unknown>, byTool: Map<string,
   return out
 }
 
-function renameParts(content: unknown, byTool: Map<string, string>): unknown {
+function collision(wireName: string, aliases: ToolAliases, where: string): Error {
+  return new Error(`tool alias "${wireName}" (for ${aliases[wireName]}) is also the name of a tool ${where}`)
+}
+
+function renameParts(content: unknown, byTool: Map<string, string>, aliases: ToolAliases): unknown {
   if (!Array.isArray(content)) return content
   let changed = false
   const parts = content.map((part: unknown) => {
     if (!isRecord(part) || (part.type !== 'tool-call' && part.type !== 'tool-result')) return part
+    if (typeof part.toolName === 'string' && has(aliases, part.toolName)) {
+      throw collision(part.toolName, aliases, 'in the conversation')
+    }
     const wireName = typeof part.toolName === 'string' ? byTool.get(part.toolName) : undefined
     if (wireName === undefined) return part
     changed = true
@@ -112,8 +119,9 @@ function renameParts(content: unknown, byTool: Map<string, string>): unknown {
 
 /**
  * `payload` as the provider's wire names its tools. The payload itself is never
- * changed. Throws when a tool on offer has, as its own name, the wire name of
- * another tool: the provider's answer could not be told apart.
+ * changed. Throws when a tool on offer, or a tool call or result replayed from
+ * the conversation, has as its own name the wire name of another tool: the
+ * provider's answer could not be told apart.
  */
 export function wireToolNames(
   payload: BridgeModelRequestPayload,
@@ -125,7 +133,7 @@ export function wireToolNames(
   if (Array.isArray(payload.tools)) {
     out.tools = payload.tools.map(tool => {
       if (has(aliases, tool.name)) {
-        throw new Error(`tool alias "${tool.name}" (for ${aliases[tool.name]}) is also the name of a tool in this request`)
+        throw collision(tool.name, aliases, 'in this request')
       }
       const wireName = byTool.get(tool.name)
       return wireName === undefined ? tool : { ...tool, name: wireName }
@@ -134,7 +142,7 @@ export function wireToolNames(
   if (Array.isArray(payload.messages)) {
     out.messages = payload.messages.map(message => {
       if (!isRecord(message)) return message
-      const content = renameParts(message.content, byTool)
+      const content = renameParts(message.content, byTool, aliases)
       return content === message.content ? message : { ...message, content: content as typeof message.content }
     })
   }

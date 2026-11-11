@@ -15,7 +15,7 @@ import type {
   ProviderDriver,
   ProviderSpec,
 } from './driverTypes'
-import { hostToolNames, wireToolNames } from './toolAliases'
+import { hostToolNames, readToolAliases, wireToolNames } from './toolAliases'
 
 export class ProviderConfigError extends Error {
   constructor(message: string) {
@@ -205,10 +205,20 @@ function joinPath(baseUrl: string, path: string): string {
   return `${basePath}${path.startsWith('/') ? path : `/${path}`}`
 }
 
+/** Security: a spec reaches here from paths that do not all read its alias map
+ *  (a session override), so the map is read again; an unusable one refuses the spec. */
+function withCheckedToolAliases(spec: ProviderSpec): ProviderSpec {
+  if (spec.toolAliases === undefined) return spec
+  const { toolAliases, ...rest } = spec
+  const read = readToolAliases(toolAliases)
+  if (read.problem) throw new ProviderConfigError(`toolAliases for ${spec.id}: ${read.problem}`)
+  return read.aliases ? { ...rest, toolAliases: { ...read.aliases } } : rest
+}
+
 export function createModelProvider(spec: ProviderSpec): ModelProvider {
   const codec = getProviderDriver(spec.format)
   if (!codec) throw new ProviderConfigError(`unknown wire format "${spec.format}" for ${spec.id}`)
   const baseUrl = (spec.baseUrl?.trim().replace(/\/+$/, '') || resolveDriverBaseUrl(spec.id))
   if (!baseUrl) throw new ProviderConfigError(`provider ${spec.id} has no base URL`)
-  return new ModelProvider(spec, codec, baseUrl)
+  return new ModelProvider(withCheckedToolAliases(spec), codec, baseUrl)
 }

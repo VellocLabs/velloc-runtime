@@ -165,7 +165,7 @@ describe('a model row\'s wire.toolAliases', () => {
 
   it('is kept when well formed', () => {
     expect(parseModelWire('p', { toolAliases: ALIASES })).toEqual({ toolAliases: ALIASES })
-    expect(parseModelWire('p', { toolAliases: {} })).toBeUndefined()
+    expect(parseModelWire('p', { toolAliases: {} })).toEqual({ toolAliases: {} })
     expect(warnings()).toEqual([])
   })
 
@@ -182,6 +182,11 @@ describe('a model row\'s wire.toolAliases', () => {
     const spec: ProviderSpec = { id: 'p', format: CHAT, toolAliases: ALIASES }
     expect(applyModelWire(spec, { toolAliases: { bash: 'Shell' } }).toolAliases).toEqual({ bash: 'Shell' })
     expect(applyModelWire(spec, { path: '/x' }).toolAliases).toEqual(ALIASES)
+  })
+
+  it('an empty map clears the provider\'s for that model', () => {
+    const spec: ProviderSpec = { id: 'p', format: CHAT, toolAliases: ALIASES }
+    expect(applyModelWire(spec, { toolAliases: {} })).not.toHaveProperty('toolAliases')
   })
 
   it('reaches the spec a request is built from', () => {
@@ -362,6 +367,28 @@ describe('wireToolNames / hostToolNames', () => {
   it('refuses a request offering a tool whose own name is another tool\'s wire name', () => {
     const payload = { ...payloadWith(), tools: [TOOL('Shell'), TOOL('shell')] } as unknown as BridgeModelRequestPayload
     expect(() => wireToolNames(payload, ALIASES)).toThrow('tool alias "shell" (for Shell) is also the name of a tool in this request')
+  })
+
+  it('refuses a request replaying a call of a tool whose own name is another tool\'s wire name', () => {
+    const base = payloadWith()
+    const payload = {
+      ...base,
+      messages: [
+        ...base.messages,
+        { role: 'assistant', content: [{ type: 'tool-call', toolCallId: 'tc-2', toolName: 'shell', args: {} }] },
+      ],
+    } as unknown as BridgeModelRequestPayload
+    expect(() => wireToolNames(payload, ALIASES)).toThrow('tool alias "shell" (for Shell) is also the name of a tool in the conversation')
+  })
+
+  it('a spec\'s map is read again when its provider is made: an unusable one refuses the spec', () => {
+    const spec = (toolAliases: unknown) =>
+      ({ id: 'p', format: CHAT, baseUrl: `${ORIGIN}/v1`, toolAliases }) as unknown as ProviderSpec
+    expect(() => createModelProvider(spec({ shell: 5 }))).toThrow('toolAliases for p: "shell": expected a tool name')
+    expect(() => createModelProvider(spec({ a: 'Shell', b: 'Shell' }))).toThrow('both name the tool "Shell"')
+    expect(() => createModelProvider(spec({ Shell: 'Read', Read: 'Shell' }))).toThrow('is both a wire name and a tool name')
+    expect(createModelProvider(spec({})).spec).not.toHaveProperty('toolAliases')
+    expect(createModelProvider(spec(ALIASES)).spec.toolAliases).toEqual(ALIASES)
   })
 
   it('maps start, delta and whole-call events; other names and other events pass', () => {
