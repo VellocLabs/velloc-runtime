@@ -36,6 +36,9 @@ import { providerSeamListener } from './providerSeamWiring'
 import { fileModBuildStore } from '../modBuildStore'
 import { pluginOwnFileReader } from './pluginOwnFiles'
 import { wireProviderStatus } from './providerStatusWiring'
+import { providerJobRunnerOf } from './providerJobRunnerAdapter'
+import { setProviderJobRunner } from './providerJobSeam'
+import { noteProviderStatusSubjectChange } from './providerStatusService'
 
 export type ProviderModRuntimeFactoryDeps = {
   homeDir: string
@@ -146,10 +149,12 @@ export function createProviderModRuntime(deps: ProviderModRuntimeFactoryDeps): P
   setProviderJobScheduler({
     ...jobs,
     dispose: () => {
+      setProviderJobRunner(undefined)
       for (const stop of unfollow) stop()
       jobs.dispose()
     },
   })
+  setProviderJobRunner(providerJobRunnerOf(jobs, noteProviderStatusSubjectChange))
   return runtime
 }
 
