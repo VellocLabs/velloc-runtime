@@ -223,8 +223,6 @@ function optionalLocalized(raw: Record<string, unknown>, field: string, label: s
   return raw[field] === undefined ? undefined : localized(raw[field], `${label}.${field}`, bad)
 }
 
-const unknownKeys = onlyKeys
-
 function checkDomains(value: unknown, bad: Problems): string[] | undefined {
   if (!isStringList(value) || value.length === 0) {
     bad('domains: expected a non-empty list of host names')
@@ -298,7 +296,7 @@ function checkRule(value: unknown, at: string, bad: Problems): CredentialRule | 
     bad(`${at}: expected { key, op, value }`)
     return undefined
   }
-  unknownKeys(value, ['key', 'op', 'value'], at, bad)
+  onlyKeys(value, ['key', 'op', 'value'], at, bad)
   if (typeof value.key !== 'string' || !PROMPT_KEY.test(value.key)) {
     bad(`${at}.key: expected a prompt key`)
     return undefined
@@ -327,7 +325,7 @@ function checkSecrets(value: unknown, bad: Problems): ProviderSecretDecl[] | und
       bad(`${at}: expected an object with a "name"`)
       return undefined
     }
-    unknownKeys(raw, ['name', 'label', 'hint'], at, bad)
+    onlyKeys(raw, ['name', 'label', 'hint'], at, bad)
     if (typeof raw.name !== 'string' || !SECRET_NAME.test(raw.name)) {
       bad(`${at}.name: must be 1-64 characters of letters, digits, "_", "." and "-"`)
       return undefined
@@ -389,7 +387,7 @@ function checkPrompts(value: unknown, secretNames: ReadonlySet<string>, bad: Pro
       }
     }
     if (raw.type === 'text') {
-      unknownKeys(raw, ['type', 'key', 'message', 'placeholder', 'secret', 'pattern', 'when'], at, bad)
+      onlyKeys(raw, ['type', 'key', 'message', 'placeholder', 'secret', 'pattern', 'when'], at, bad)
       const placeholder = optionalLocalized(raw, 'placeholder', at, bad)
       if (raw.placeholder !== undefined && placeholder === undefined) return undefined
       if (raw.secret !== undefined && typeof raw.secret !== 'boolean') {
@@ -424,7 +422,7 @@ function checkPrompts(value: unknown, secretNames: ReadonlySet<string>, bad: Pro
       })
       continue
     }
-    unknownKeys(raw, ['type', 'key', 'message', 'options', 'when'], at, bad)
+    onlyKeys(raw, ['type', 'key', 'message', 'options', 'when'], at, bad)
     if (!Array.isArray(raw.options) || raw.options.length === 0) {
       bad(`${at}.options: expected a non-empty list`)
       return undefined
@@ -437,7 +435,7 @@ function checkPrompts(value: unknown, secretNames: ReadonlySet<string>, bad: Pro
         bad(`${oat}: expected { label, value }`)
         return undefined
       }
-      unknownKeys(option, ['label', 'value', 'hint'], oat, bad)
+      onlyKeys(option, ['label', 'value', 'hint'], oat, bad)
       const label = localized(option.label, `${oat}.label`, bad)
       if (label === undefined) return undefined
       if (typeof option.value !== 'string' || option.value === '') {
@@ -472,7 +470,7 @@ function checkCredentials(value: unknown, bad: Problems): ProviderCredentials | 
     bad('credentials: required and must be an object')
     return undefined
   }
-  unknownKeys(value, ['methods', 'secrets', 'prompts', 'readsSecrets'], 'credentials', bad)
+  onlyKeys(value, ['methods', 'secrets', 'prompts', 'readsSecrets'], 'credentials', bad)
   const { methods } = value
   if (!Array.isArray(methods) || methods.length === 0) {
     bad(`credentials.methods: expected a non-empty list of ${PROVIDER_CREDENTIAL_METHODS.join(' / ')}`)
@@ -525,7 +523,7 @@ function checkModelsUi(value: unknown, bad: Problems): ProviderModelsUi | undefi
     bad('modelsUi: expected an object')
     return undefined
   }
-  unknownKeys(value, ['intro', 'empty', 'links', 'groups', 'tags', 'filters', 'starterModels', 'tierModels', 'customModels'], 'modelsUi', bad)
+  onlyKeys(value, ['intro', 'empty', 'links', 'groups', 'tags', 'filters', 'starterModels', 'tierModels', 'customModels'], 'modelsUi', bad)
   const out: ProviderModelsUi = {}
   const intro = optionalLocalized(value, 'intro', 'modelsUi', bad)
   if (intro !== undefined) out.intro = intro
@@ -605,7 +603,7 @@ function checkModelsUi(value: unknown, bad: Problems): ProviderModelsUi | undefi
     const raw = value.tierModels
     if (!isRecord(raw)) bad('modelsUi.tierModels: expected an object keyed by best / balanced / fast')
     else {
-      unknownKeys(raw, MODEL_TIERS, 'modelsUi.tierModels', bad)
+      onlyKeys(raw, MODEL_TIERS, 'modelsUi.tierModels', bad)
       const tiers: Partial<Record<ProviderModelTier, string>> = {}
       for (const tier of MODEL_TIERS) {
         const id = raw[tier]
@@ -622,7 +620,7 @@ function checkModelsUi(value: unknown, bad: Problems): ProviderModelsUi | undefi
     const raw = value.customModels
     if (!isRecord(raw)) bad('modelsUi.customModels: expected an object')
     else {
-      unknownKeys(raw, ['formats', 'wires'], 'modelsUi.customModels', bad)
+      onlyKeys(raw, ['formats', 'wires'], 'modelsUi.customModels', bad)
       const formats = raw.formats === undefined ? [...WIRE_FORMATS] : raw.formats
       if (!isStringList(formats) || formats.length === 0 || !formats.every(f => (WIRE_FORMATS as readonly string[]).includes(f))) {
         bad(`modelsUi.customModels.formats: expected a non-empty list of ${WIRE_FORMATS.join(' / ')}`)
@@ -637,7 +635,7 @@ function checkModelsUi(value: unknown, bad: Problems): ProviderModelsUi | undefi
               if (!(WIRE_FORMATS as readonly string[]).includes(format)) bad(`${at}: not a wire format`)
               else if (!isRecord(wire)) bad(`${at}: expected an object`)
               else {
-                unknownKeys(wire, ['baseUrl', 'baseUrlTrim', 'path', 'headers', 'compat'], at, bad)
+                onlyKeys(wire, ['baseUrl', 'baseUrlTrim', 'path', 'headers', 'compat'], at, bad)
                 if (wire.baseUrlTrim !== undefined && (typeof wire.baseUrlTrim !== 'string' || !wire.baseUrlTrim.startsWith('/'))) {
                   bad(`${at}.baseUrlTrim: expected a path suffix starting with '/'`)
                 } else if (wire.baseUrlTrim !== undefined && wire.baseUrl !== undefined) {
@@ -711,7 +709,7 @@ function checkIds(value: unknown, bad: Problems): ProviderManifest['ids'] | unde
       bad(`${at}: expected a rule object`)
       return undefined
     }
-    unknownKeys(raw, ['derive', 'prefix', 'alphabet', 'length', 'template', 'over'], at, bad)
+    onlyKeys(raw, ['derive', 'prefix', 'alphabet', 'length', 'template', 'over'], at, bad)
     if (!ID_DERIVES_LIST.includes(raw.derive as string)) {
       bad(`${at}.derive: expected one of ${ID_DERIVES_LIST.join(' / ')}`)
       return undefined
@@ -775,7 +773,7 @@ function checkUpdates(value: unknown, bad: Problems): ProviderManifest['updates'
     bad('updates: expected an object with a "marketplace" or a "url"')
     return undefined
   }
-  unknownKeys(value, ['marketplace', 'url'], 'updates', bad)
+  onlyKeys(value, ['marketplace', 'url'], 'updates', bad)
   const out: NonNullable<ProviderManifest['updates']> = {}
   if (value.marketplace !== undefined) {
     if (typeof value.marketplace !== 'string' || value.marketplace.trim() === '') {
