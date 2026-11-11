@@ -156,6 +156,18 @@ describe('providerStatus on the runtime protocol', () => {
     expect(entry?.rows.every(row => row.kind === 'value' && row.cell === undefined)).toBe(true)
   })
 
+  it('one read per provider at a time; requests made during it share exactly one more read', async () => {
+    const rig = makeRig()
+    let release!: () => void
+    rig.read.mockImplementationOnce(() => new Promise(resolve => (release = () => resolve(undefined))))
+    const first = refreshProviderStatus(ID)
+    const during = [refreshProviderStatus(ID), refreshProviderStatus(ID), refreshProviderStatus(ID)]
+    expect(rig.read).toHaveBeenCalledTimes(1)
+    release()
+    await Promise.all([first, ...during])
+    expect(rig.read).toHaveBeenCalledTimes(2)
+  })
+
   it('a provider that leaves is dropped from the table', async () => {
     const rig = makeRig()
     await refreshProviderStatus(ID)
