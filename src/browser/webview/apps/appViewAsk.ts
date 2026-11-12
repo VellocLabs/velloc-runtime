@@ -1,12 +1,10 @@
 /**
  * What an app's background module asked of the pages (F-40, `$.app.view`):
- * the app opened, or its pane closed. The ask rides the app's published
- * entry; this page carries out one it has not seen, when it is meant for
- * every page or for this page's connection.
- * Contract: the runtime withholds from a connection every ask made before
- * that connection was made or resumed, and an ask already there when the
- * page first reads the apps is not carried out, so a page never carries out
- * an ask from before it loaded or while its link was down.
+ * the app opened, or its pane closed. This page carries out an ask it has
+ * not seen, meant for every page or for its own connection.
+ * Contract: an ask from before the page loaded or while its link was down
+ * is never carried out: the runtime withholds it, and one already there at
+ * the first read is skipped.
  */
 
 import { useEffect, useRef } from 'react'
