@@ -4352,6 +4352,42 @@ describe('SharedWorkerSessionManager', () => {
       expect(commands.some(c => c.includes('worktree remove'))).toBe(true)
     })
 
+    it('the archive stop interrupts only a running turn, and always stops tasks, teammates and terminals (F-36)', async () => {
+      const closed: string[] = []
+      const local = new SharedWorkerSessionManager({
+        createWorker: workerFactory.factory,
+        closeTerminalsForSession: id => closed.push(id),
+      })
+      const port = createMockPort()
+      local.handleConnect(port)
+      for (const id of ['busy', 'idle']) {
+        port._simulateMessage({ type: 'worker.init', sessionId: id, payload: { cwd: '/workspace', sessionId: id } })
+      }
+      await new Promise(resolve => setTimeout(resolve, 20))
+      const internalsOf = local as unknown as {
+        sessions: Map<string, { worker: MockRuntimeWorker }>
+        stopSessionForArchive(id: string): Promise<void>
+        taskControl: { stopRunningForParent(id: string): void }
+        teams: { abortTeammatesOf(id: string): Promise<void> }
+      }
+      const tasksStopped: string[] = []
+      const teammatesStopped: string[] = []
+      internalsOf.taskControl.stopRunningForParent = id => { tasksStopped.push(id) }
+      internalsOf.teams.abortTeammatesOf = async id => { teammatesStopped.push(id) }
+      const workerOf = (id: string) => internalsOf.sessions.get(id)!.worker
+      workerOf('busy').setPhase({ kind: 'running', sub: { type: 'streaming' } })
+      await internalsOf.stopSessionForArchive('busy')
+      await internalsOf.stopSessionForArchive('idle')
+      await internalsOf.stopSessionForArchive('never-opened')
+      const interrupts = (id: string) => workerOf(id).receivedMessages.filter(m => m.type === 'worker.interrupt').length
+      expect(interrupts('busy')).toBe(1)
+      expect(interrupts('idle')).toBe(0)
+      expect(internalsOf.sessions.has('never-opened')).toBe(false)
+      expect(tasksStopped).toEqual(['busy', 'idle', 'never-opened'])
+      expect(teammatesStopped).toEqual(['busy', 'idle', 'never-opened'])
+      expect(closed).toEqual(['busy', 'idle', 'never-opened'])
+    })
+
     it('the person archive stops the session first, then settles its worktree; a repeat or a refusal does neither (F-36)', async () => {
       installStorage()
       await (manager as unknown as { summaryRepo: { refreshFsSummary(id: string): Promise<void> } })
