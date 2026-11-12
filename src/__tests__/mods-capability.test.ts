@@ -39,6 +39,7 @@ import {
   type ModSlotStatus,
 } from '../mods/modSlotRegistry'
 import { modsContributionsTopicProvider, modsUiTopicProvider, projectModContributions } from '../browser/runtimeHub/modsCapability'
+import type { ModContributionsState } from '../browser/runtimeProtocol/modContributions'
 import {
   resetModContributionsState,
   setModContributionsSyncGate,
@@ -794,6 +795,29 @@ describe('mods/contributions: an app\'s sign-in URLs by scope', () => {
     expect((pages[0] as typeof WITH_APP).apps[0]).not.toHaveProperty('signInUrls')
     const delta = provider.project!('mods/contributions' as never, at('observe'), { payload: WITH_APP }) as typeof WITH_APP
     expect(delta.apps[0]).not.toHaveProperty('signInUrls')
+  })
+})
+
+describe('mods/contributions: an app\'s ask of the pages by connection', () => {
+  const withAsk = (seq: number): ModContributionsState => ({
+    templates: [],
+    topbar: [],
+    apps: [{ type: 'pay:board', appId: 'pay-board', plugin: 'pay', title: 'Payments', signInUrls: ['https://mcp.example.com/mcp'], view: { seq, want: 'open' } }],
+    icons: {},
+    waiting: [],
+  })
+  const since = (connectedAt: number, mode = 'full') => ({ connectedAt, scope: { mode, sessions: 'all' } }) as unknown as ConnectionInfo
+
+  it('a connection made or resumed after an ask does not get it; one made before it does, the sign-in URLs by scope as before', () => {
+    const fresh = withAsk(2_000)
+    expect(projectModContributions(fresh, since(1_000))).toBe(fresh)
+    const old = projectModContributions(withAsk(2_000), since(3_000)).apps![0]!
+    expect(old).not.toHaveProperty('view')
+    expect(old.signInUrls).toEqual(['https://mcp.example.com/mcp'])
+    const observe = projectModContributions(withAsk(2_000), since(1_000, 'observe')).apps![0]!
+    expect(observe.view).toEqual({ seq: 2_000, want: 'open' })
+    expect(observe).not.toHaveProperty('signInUrls')
+    expect(projectModContributions(withAsk(2_000), since(3_000, 'observe')).apps![0]).toEqual({ type: 'pay:board', appId: 'pay-board', plugin: 'pay', title: 'Payments' })
   })
 })
 

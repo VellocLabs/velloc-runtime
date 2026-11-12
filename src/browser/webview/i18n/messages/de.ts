@@ -817,6 +817,8 @@ export const de: Messages = {
   'topbar.appAttention': '{title}. Braucht deine Aufmerksamkeit: {count}',
   'topbar.openAppBusy': '{title} öffnen. Arbeitet …',
   'topbar.appBusy': '{title}. Arbeitet …',
+  'topbar.openAppBusyAttention': '{title} öffnen. Arbeitet … Braucht deine Aufmerksamkeit: {count}',
+  'topbar.appBusyAttention': '{title}. Arbeitet … Braucht deine Aufmerksamkeit: {count}',
   'apps.buildFailed': 'Die App konnte nicht gebaut werden.',
   'apps.dataFileError': 'Die Datendatei der App konnte nicht gelesen werden, daher werden die letzten Daten angezeigt.',
   'apps.reload': 'App neu laden',

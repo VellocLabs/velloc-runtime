@@ -18,19 +18,14 @@ import { fileModBuildStore } from '../modBuildStore'
 import { fileModStore } from '../modStore'
 import { createProviderModHttp } from '../provider/nouns/providerNounDeps'
 import { providerModsDir, providerModuleLoaders } from '../provider/providerModuleLoaders'
-import { AppBackgroundRuntime } from './AppBackgroundRuntime'
+import { AppBackgroundRuntime, type AppBackgroundRuntimeOptions } from './AppBackgroundRuntime'
 import type { AppBackgroundBootDeps } from './appBackgroundBoot'
 import { createAppBackgroundMcp } from './appBackgroundMcp'
 import type { AppMcpStatusSource } from './appMcpStatus'
 import { currentMcpOAuthService, onMcpOAuthServiceChanged } from '../../mcp/oauth/mcpOAuthHolder'
 
 export function createAppBackgroundRuntime(
-  deps: AppBackgroundBootDeps & {
-    report: (line: string) => void
-    onBadge?: (appId: string, count: number | null) => void
-    onBusy?: (appId: string, busy: boolean) => void
-    onView?: (appId: string, want: 'open' | 'closed', client: string | undefined) => void
-  },
+  deps: AppBackgroundBootDeps & { report: (line: string) => void } & Pick<AppBackgroundRuntimeOptions, 'onBadge' | 'onBusy' | 'onView'>,
 ): AppBackgroundRuntime {
   const { fs, homeDir, report } = deps
   const modsDir = providerModsDir(homeDir)

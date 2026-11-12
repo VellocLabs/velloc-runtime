@@ -806,6 +806,8 @@ export const zh: Messages = {
   'topbar.appAttention': '{title}。需要你处理：{count}',
   'topbar.openAppBusy': '打开 {title}。正在处理…',
   'topbar.appBusy': '{title}。正在处理…',
+  'topbar.openAppBusyAttention': '打开 {title}。正在处理…需要你处理：{count}',
+  'topbar.appBusyAttention': '{title}。正在处理…需要你处理：{count}',
   'apps.buildFailed': '应用构建失败。',
   'apps.dataFileError': '无法读取应用的数据文件，正在显示上一次的数据。',
   'apps.reload': '重新加载应用',

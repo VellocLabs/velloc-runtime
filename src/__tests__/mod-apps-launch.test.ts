@@ -258,7 +258,7 @@ describe('an app\'s topbar icon', () => {
     expect(ring.className).toContain('animate-spin')
     expect(ring.className).toContain('motion-reduce:animate-none')
     expect(icon().getAttribute('aria-busy')).toBe('true')
-    expect(icon().getAttribute('aria-label')).toBe('Open Payments. Working…')
+    expect(icon().getAttribute('aria-label')).toBe('Open Payments. Working… Needs attention: 2')
     expect(icon().hasAttribute('disabled')).toBe(false)
     expect(screen.getByTestId('topbar-app-pay-board-badge').textContent).toBe('2')
     act(() => setModContributions(working(false, 2)))

@@ -492,6 +492,30 @@ describe('AppBackgroundRuntime — $.app.badge', () => {
   })
 })
 
+describe('AppBackgroundRuntime — $.app.busy at a crash', () => {
+  const BUSY = `
+    export function register(on) {
+      on('app.start', async ($) => { await $.app.busy(true) })
+    }`
+
+  it('every crash ends the busy, not only the last; the restarted module says it again', async () => {
+    const busy: boolean[] = []
+    const { runtime, ref, status, workers, opened } = world({ '/plugins/pay/bg.js': BUSY }, { onBusy: (_appId, on) => busy.push(on) })
+    runtime.sync([ref('/plugins/pay/bg.js')])
+    await vi.waitFor(() => expect(busy).toEqual([true]))
+    workers[0]!.crash('boom')
+    await vi.waitFor(() => expect(opened()).toBe(2))
+    await vi.waitFor(() => expect(status()?.state).toBe('ready'))
+    await vi.waitFor(() => expect(busy).toEqual([true, false, true]))
+    for (let crash = 2; crash <= 4; crash++) {
+      workers[crash - 1]!.crash('boom')
+      if (crash < 4) await vi.waitFor(() => expect(busy.filter(on => on)).toHaveLength(crash + 1))
+    }
+    await vi.waitFor(() => expect(status()?.state).toBe('dead'))
+    expect(busy.at(-1)).toBe(false)
+  })
+})
+
 describe('AppBackgroundRuntime — $.mcp', () => {
   const OWNER: AppBackgroundMcpOwner = {
     name: 'pay',

@@ -3,8 +3,10 @@
  * the app opened, or its pane closed. The ask rides the app's published
  * entry; this page carries out one it has not seen, when it is meant for
  * every page or for this page's connection.
- * Contract: an ask already published when the page first reads the apps is
- * not carried out, so a page that loads does not replay an old one.
+ * Contract: the runtime withholds from a connection every ask made before
+ * that connection was made or resumed, and an ask already there when the
+ * page first reads the apps is not carried out, so a page never carries out
+ * an ask from before it loaded or while its link was down.
  */
 
 import { useEffect, useRef } from 'react'
@@ -31,6 +33,11 @@ export class AppViewAsks {
       if (!first) out.push({ type: app.type, want: view.want, ...(view.client !== undefined ? { client: view.client } : {}) })
     }
     return out
+  }
+
+  /** The link dropped: what comes after it is compared afresh, so a runtime whose clock went back is still heard. */
+  forget(): void {
+    this.seen?.clear()
   }
 }
 
@@ -64,6 +71,25 @@ export function useAppViewAsks(args: {
   const latest = useRef(args)
   latest.current = args
   const asks = useRef<AppViewAsks | null>(null)
+  const { runtimeConnection } = args
+  useEffect(() => {
+    if (!runtimeConnection) return
+    let live = true
+    let unwatch: (() => void) | undefined
+    void runtimeConnection().then(
+      conn => {
+        if (!live) return
+        unwatch = conn.watchLinkState(state => {
+          if (state.status !== 'ready') asks.current?.forget()
+        })
+      },
+      () => {},
+    )
+    return () => {
+      live = false
+      unwatch?.()
+    }
+  }, [runtimeConnection])
   useEffect(() => {
     if (!snapshot) return
     for (const ask of (asks.current ??= new AppViewAsks()).take(snapshot.apps ?? [])) {

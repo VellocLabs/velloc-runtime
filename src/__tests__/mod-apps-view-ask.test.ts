@@ -65,7 +65,7 @@ function world(source: string, options: { busyMaxMs?: number } = {}) {
   return { runtime, ref, asked, said, busy }
 }
 
-// `app.action` carries the value given to `$.app.busy`; the action `crash` ends the worker's hook in a throw.
+// `app.action` carries the value given to `$.app.busy`.
 const WORKER = `
   export function register(on) {
     on('app.start', async ($) => { await $.app.state.set({ said: [] }) })
@@ -217,6 +217,14 @@ describe('the asks a page has seen', () => {
     expect(asks.take([app('board', { seq: 4, want: 'open' })])).toEqual([])
   })
 
+  it('after forget, carry out the next ask even with a lower seq, and still not one there at the first read', () => {
+    const asks = new AppViewAsks()
+    asks.forget()
+    expect(asks.take([app('board', { seq: 9, want: 'open' })])).toEqual([])
+    asks.forget()
+    expect(asks.take([app('board', { seq: 3, want: 'closed' })])).toEqual([{ type: 'pay:board', want: 'closed' }])
+  })
+
   it('include the first ask of an app, and of an app published later', () => {
     const asks = new AppViewAsks()
     expect(asks.take([app('board')])).toEqual([])
@@ -245,7 +253,20 @@ describe('a page carrying out the asks', () => {
     waiting: [],
     apps: [{ appId: 'pay-board', type: 'pay:board', plugin: 'pay', title: 'Board', ...(view ? { view } : {}) }],
   })
-  const connection = async () => ({ welcome: { connectionId: 'c1' } }) as never
+  const linkListeners = new Set<(state: { status: string }) => void>()
+  const connection = async () =>
+    ({
+      welcome: { connectionId: 'c1' },
+      watchLinkState: (listener: (state: { status: string }) => void) => {
+        linkListeners.add(listener)
+        return () => linkListeners.delete(listener)
+      },
+    }) as never
+  const link = (status: string) => {
+    for (const listener of [...linkListeners]) listener({ status })
+  }
+
+  afterEach(() => linkListeners.clear())
 
   function page(shownAppType: string | undefined) {
     const openApp = vi.fn()
@@ -284,5 +305,20 @@ describe('a page carrying out the asks', () => {
     expect(hasPane(open.layout, 'a2ui')).toBe(true)
     expect(hasPane(updatePaneRecord.mock.calls[0]![0](open).layout, 'a2ui')).toBe(false)
     expect(openApp).not.toHaveBeenCalled()
+  })
+
+  it('after the link drops, an ask with a lower seq (a runtime whose clock went back) is still carried out', async () => {
+    setModContributions(state())
+    const { openApp } = page(undefined)
+    await vi.waitFor(() => expect(linkListeners.size).toBe(1))
+    setModContributions(state({ seq: 5_000, want: 'open' }))
+    await vi.waitFor(() => expect(openApp).toHaveBeenCalledTimes(1))
+    setModContributions(state({ seq: 4_000, want: 'open' }))
+    await new Promise(resolve => setTimeout(resolve, 0))
+    expect(openApp).toHaveBeenCalledTimes(1)
+    link('reconnecting')
+    link('ready')
+    setModContributions(state({ seq: 4_500, want: 'open' }))
+    await vi.waitFor(() => expect(openApp).toHaveBeenCalledTimes(2))
   })
 })

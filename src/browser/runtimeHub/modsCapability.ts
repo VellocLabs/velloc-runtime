@@ -69,6 +69,7 @@ import {
   MODS_CONTRIBUTIONS_EVENT,
   MODS_CONTRIBUTIONS_TOPIC,
   isModsPressTopbarPayload,
+  type ContributedApp,
   type ModContributionsState,
   type ModsPressTopbarPayload,
   type ModsPressTopbarResult,
@@ -191,11 +192,26 @@ export function appPressIntentFor(intent: AppPressIntent, conn: ConnectionInfo):
 /**
  * The contributions as `conn` may see them: an app's `signInUrls` name the
  * person's servers, which `mcpAuth/status` shows from `manager` up, so a
- * connection below it gets the apps without them (F-10).
+ * connection below it gets the apps without them (F-10). An app's `view` ask
+ * made before `conn` was made or resumed is left out, so a page that loads
+ * or comes back does not carry out an ask it was not there for (F-40).
  */
 export function projectModContributions(state: ModContributionsState, conn: ConnectionInfo): ModContributionsState {
-  if (!state.apps || scopeAllows(conn.scope.mode, 'manager')) return state
-  return { ...state, apps: state.apps.map(({ signInUrls: _signInUrls, ...app }) => app) }
+  if (!state.apps) return state
+  const withSignIn = scopeAllows(conn.scope.mode, 'manager')
+  const stale = (app: ContributedApp): boolean => app.view !== undefined && app.view.seq < conn.connectedAt
+  if (withSignIn && !state.apps.some(stale)) return state
+  return {
+    ...state,
+    apps: state.apps.map(app => {
+      const { signInUrls, view, ...rest } = app
+      return {
+        ...rest,
+        ...(withSignIn && signInUrls ? { signInUrls } : {}),
+        ...(view && !stale(app) ? { view } : {}),
+      }
+    }),
+  }
 }
 
 /**

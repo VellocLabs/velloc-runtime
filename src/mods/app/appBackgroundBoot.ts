@@ -16,7 +16,7 @@ import { getModUiContributionsHost, type AppBackgroundTemplate } from '../ui/con
 import { setAppActionDispatch, setAppPressDispatch, setAppViewDispatch } from './appActionBus'
 import { replayAppViews } from './appSurfaceRegistry'
 import type { AppAgentRunner } from './appAgentRun'
-import type { AppBackgroundRef, AppBackgroundRuntime } from './AppBackgroundRuntime'
+import type { AppBackgroundRef, AppBackgroundRuntime, AppBackgroundRuntimeOptions } from './AppBackgroundRuntime'
 import { coversFolderScopes, expandScopeFolder, type FolderScopes } from './appFolderScopes'
 
 /** Where an app with a `background` and no `data` file keeps its state, under the app's folder. */
@@ -42,17 +42,15 @@ export type AppBackgroundBootSeams = {
   /** Builds the runtime; default the factory. */
   createRuntime?: (deps: AppBackgroundBootDeps & AppIconSinks) => Promise<AppBackgroundRuntime>
   /** Where a module's badge goes; default the contributions host's app entry. */
-  badge?: (appId: string, count: number | null) => void
+  badge?: AppIconSinks['onBadge']
   /** Where a module's at-work mark goes; default the contributions host's app entry. */
-  busy?: (appId: string, busy: boolean) => void
+  busy?: AppIconSinks['onBusy']
   /** Where a module's `$.app.view` goes; default the contributions host's app entry. */
-  view?: AppViewAsk
+  view?: AppIconSinks['onView']
 }
 
-type AppViewAsk = (appId: string, want: 'open' | 'closed', client: string | undefined) => void
-
 /** Where a module's badge, at-work mark and asks of the pages go. */
-type AppIconSinks = { onBadge: (appId: string, count: number | null) => void; onBusy: (appId: string, busy: boolean) => void; onView: AppViewAsk }
+type AppIconSinks = Required<Pick<AppBackgroundRuntimeOptions, 'onBadge' | 'onBusy' | 'onView'>>
 
 /** The folders the person approved for a plugin; `'exempt'` for a hand-placed one. */
 export type ApprovedFolders = FolderScopes | 'exempt' | undefined
@@ -138,7 +136,7 @@ export async function bootAppBackground(deps: AppBackgroundBootDeps, seams: AppB
   const unapproved = new Set<string>()
   const onBadge = seams.badge ?? ((appId: string, count: number | null) => host.setAppBadge(appId, count))
   const onBusy = seams.busy ?? ((appId: string, busy: boolean) => host.setAppBusy(appId, busy))
-  const onView: AppViewAsk = seams.view ?? ((appId, want, client) => host.setAppView(appId, want, client))
+  const onView: AppIconSinks['onView'] = seams.view ?? ((appId, want, client) => host.setAppView(appId, want, client))
   const createRuntime =
     seams.createRuntime ??
     (async (bootDeps: AppBackgroundBootDeps & AppIconSinks) => {

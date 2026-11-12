@@ -150,8 +150,7 @@ export class ModUiContributionsHost {
   setAppBadge(appId: string, count: number | null): void {
     if (count === null) this.badges.delete(appId)
     else this.badges.set(appId, count)
-    if (!this.current.apps?.some(app => app.appId === appId)) return
-    this.commit({ ...this.current, apps: this.current.apps.map(app => this.badged(app)) })
+    this.republishApp(appId)
   }
 
   /**
@@ -162,19 +161,24 @@ export class ModUiContributionsHost {
   setAppView(appId: string, want: ContributedAppView['want'], client: string | undefined): void {
     this.viewSeq = Math.max(Date.now(), this.viewSeq + 1)
     this.views.set(appId, { seq: this.viewSeq, want, ...(client !== undefined ? { client } : {}) })
-    if (!this.current.apps?.some(app => app.appId === appId)) return
-    this.commit({ ...this.current, apps: this.current.apps.map(app => this.badged(app)) })
+    this.republishApp(appId)
   }
 
   /** Whether app `appId`'s module is at work: published on its entry, now and after each scan. */
   setAppBusy(appId: string, busy: boolean): void {
     if (busy) this.busy.add(appId)
     else this.busy.delete(appId)
-    if (!this.current.apps?.some(app => app.appId === appId)) return
-    this.commit({ ...this.current, apps: this.current.apps.map(app => this.badged(app)) })
+    this.republishApp(appId)
   }
 
-  private badged(app: ContributedApp): ContributedApp {
+  /** Publishes app `appId`'s entry again with its module's overlays, when the app is listed. */
+  private republishApp(appId: string): void {
+    if (!this.current.apps?.some(app => app.appId === appId)) return
+    this.commit({ ...this.current, apps: this.current.apps.map(app => this.withModuleState(app)) })
+  }
+
+  /** An app's entry with what its background module set on it: the badge, the at-work mark, the last ask. */
+  private withModuleState(app: ContributedApp): ContributedApp {
     const { badge: _dropped, view: _asked, busy: _working, ...rest } = app
     const badge = this.badges.get(app.appId)
     const view = this.views.get(app.appId)
@@ -481,7 +485,7 @@ export class ModUiContributionsHost {
     const next: ModContributionsState = {
       templates,
       topbar,
-      ...(apps.length > 0 ? { apps: apps.map(app => this.badged(app)) } : {}),
+      ...(apps.length > 0 ? { apps: apps.map(app => this.withModuleState(app)) } : {}),
       icons: Object.fromEntries([...used].sort().map(hash => [hash, this.iconTexts.get(hash)!])),
       waiting: waiting.map(({ plugin, unmet }) => {
         const unknown = unmet.flatMap(entry => (entry.kind === 'unknown' ? [entry.word] : []))

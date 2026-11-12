@@ -186,11 +186,19 @@ export function usePluginTopbarItems(
         return {
           id: appItemId(app.type),
           label: app.busy
-            ? t("topbar.openAppBusy", { title })
+            ? badge
+              ? t("topbar.openAppBusyAttention", { title, count: badge })
+              : t("topbar.openAppBusy", { title })
             : badge
               ? t("topbar.openAppAttention", { title, count: badge })
               : t("topbar.openApp", { title }),
-          tooltip: app.busy ? t("topbar.appBusy", { title }) : badge ? t("topbar.appAttention", { title, count: badge }) : title,
+          tooltip: app.busy
+            ? badge
+              ? t("topbar.appBusyAttention", { title, count: badge })
+              : t("topbar.appBusy", { title })
+            : badge
+              ? t("topbar.appAttention", { title, count: badge })
+              : title,
           icon: <ModIconSlot icon={app.icon} icons={contributions.icons} className="size-4" />,
           needsSession: false,
           pressed: app.type === shownAppType,

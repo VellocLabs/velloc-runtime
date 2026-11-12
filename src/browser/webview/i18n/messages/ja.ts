@@ -811,6 +811,8 @@ export const ja: Messages = {
   'topbar.appAttention': '{title}。対応待ち：{count}',
   'topbar.openAppBusy': '{title} を開く。処理中…',
   'topbar.appBusy': '{title}。処理中…',
+  'topbar.openAppBusyAttention': '{title} を開く。処理中…対応待ち：{count}',
+  'topbar.appBusyAttention': '{title}。処理中…対応待ち：{count}',
   'apps.buildFailed': 'アプリのビルドに失敗しました。',
   'apps.dataFileError': 'アプリのデータファイルを読み込めなかったため、前回のデータを表示しています。',
   'apps.reload': 'アプリを再読み込み',
