@@ -279,7 +279,9 @@ export const SESSION_MANAGER_ACTION_SCOPES = {
   pin: 'control',
   // Takes a child out from under its parent: one metadata flag, like `pin` (F-36).
   detachLineage: 'control',
-  // The person's archive / unarchive: one flag, refused while the session works. (F-36)
+  // The person's archive / unarchive: stops the session, then one flag; its
+  // clean runtime-made worktree is removed and comes back on unarchive, like
+  // `delete`'s own cleanup. (F-36)
   archive: 'control',
   fork: 'control',
   delete: 'control',

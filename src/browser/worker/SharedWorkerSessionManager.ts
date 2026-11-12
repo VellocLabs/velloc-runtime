@@ -210,7 +210,7 @@ import {
 import { currentRenderCachePolicy } from '../../renderCache/runtimeRenderCache'
 import {
   archivedWorktreeLogLine,
-  sameFolder,
+  insideFolder,
   settleWorktreeOnArchive,
   settleWorktreeOnUnarchive,
   worktreeRecordOf,
@@ -306,6 +306,7 @@ export class SharedWorkerSessionManager {
   private readonly initOrchestrator: SessionInitOrchestrator
   private readonly taskControl: TaskControlSurface
   private readonly sessions = new Map<string, SessionEntry>()
+  private readonly worktreeSettles = new Map<string, Promise<void>>()
   /** Which panel opened each session — where its boot progress is published. */
   private readonly panelOfSession = new Map<string, string>()
   /** Sessions whose in-memory counters changed during the current turn. */
@@ -807,7 +808,6 @@ export class SharedWorkerSessionManager {
     patchSessionRecord: (sessionId, patch, opts) => this.patchSessionRecord(sessionId, patch, opts),
     cliConversationStore: () => this.cliConversationStore(),
     sessionTerminalCwd: sessionId => this.sessionTerminalCwd(sessionId),
-    settleArchivedWorktree: (sessionId, archived) => this.settleArchivedWorktree(sessionId, archived),
   })
 
   /**
@@ -1623,6 +1623,7 @@ export class SharedWorkerSessionManager {
       },
       interrupt: (sessionId, by) => this.interruptSessionTurn(sessionId, by),
       stopForArchive: sessionId => this.stopSessionForArchive(sessionId),
+      settleWorktree: (sessionId, archived) => this.settleArchivedWorktree(sessionId, archived),
       // Security: the prompt is the fixed built-in command, submitted as the
       // session's own input so it runs as a command; a peer message never would.
       clearConversation: sessionId => {
@@ -2942,8 +2943,20 @@ export class SharedWorkerSessionManager {
     }
   }
 
-  /** The person's archive / unarchive, for the session's own worktree (F-36): best-effort, logged. */
-  private async settleArchivedWorktree(sessionId: string, archived: boolean): Promise<void> {
+  /** The archive / unarchive of a session, for its own worktree (F-36):
+   *  best-effort, logged, one at a time per session so an unarchive sent
+   *  during an archive's removal sees the removal. */
+  private settleArchivedWorktree(sessionId: string, archived: boolean): Promise<void> {
+    const previous = this.worktreeSettles.get(sessionId) ?? Promise.resolve()
+    const run = previous.then(() => this.settleArchivedWorktreeNow(sessionId, archived))
+    this.worktreeSettles.set(sessionId, run)
+    void run.then(() => {
+      if (this.worktreeSettles.get(sessionId) === run) this.worktreeSettles.delete(sessionId)
+    })
+    return run
+  }
+
+  private async settleArchivedWorktreeNow(sessionId: string, archived: boolean): Promise<void> {
     const deps: ArchivedWorktreeDeps = {
       readWorktree: async id => worktreeRecordOf((await this.storage?.readSessionMeta(id))?.metadata?.worktree),
       writeWorktree: (id, record) => this.patchSessionRecord(id, { worktree: record }),
@@ -2951,17 +2964,22 @@ export class SharedWorkerSessionManager {
         for (const other of this.sessions.keys()) {
           if (other === id || this.fsSummaries.peek(other)?.archived) continue
           const cwd = this.sessionTerminalCwd(other)
-          if (cwd && sameFolder(cwd, dir)) return true
+          if (cwd && insideFolder(cwd, dir)) return true
+        }
+        for (const other of this.fsSummaries.keys()) {
+          const summary = this.fsSummaries.peek(other)
+          if (other !== id && summary?.parentSessionId === id && !summary.archived) return true
         }
         return false
       },
-      run: id =>
+      run: (id, cwd) =>
         managerHostCommand(
           {
             getTransport: () => this.bridgeRouter.getDirectTransport(),
             createRequestId: () => this.generateBridgeRequestId(),
           },
           id,
+          cwd,
         ),
       now: () => Date.now(),
     }

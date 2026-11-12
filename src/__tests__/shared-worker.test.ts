@@ -4283,6 +4283,46 @@ describe('SharedWorkerSessionManager', () => {
       expect(metas.get('s')!.metadata.archived).toBe(false)
     })
 
+    it('an unarchive sent while the archive still removes the checkout waits for it, then restores it (F-36)', async () => {
+      installStorage()
+      await (manager as unknown as { summaryRepo: { refreshFsSummary(id: string): Promise<void> } })
+        .summaryRepo.refreshFsSummary('s')
+      metas.get('s')!.metadata.worktree = { dir: 'D:/repo/.velloc/worktrees/s', branch: 'session/s', repoRoot: 'D:/repo' }
+      const commands: string[] = []
+      let releaseRemove: () => void = () => {}
+      const removeHeld = new Promise<void>(resolve => {
+        releaseRemove = resolve
+      })
+      const transport = {
+        request: vi.fn(async (req: { payload: { command: string; cwd: string } }) => {
+          commands.push(`${req.payload.cwd} | ${req.payload.command}`)
+          if (req.payload.command.includes('worktree remove')) await removeHeld
+          return { ok: true, result: '(no output)' }
+        }),
+      }
+      const internalsOf = manager as unknown as {
+        bridgeRouter: { getDirectTransport(): unknown }
+        stopSessionForArchive(id: string): Promise<void>
+      }
+      internalsOf.bridgeRouter.getDirectTransport = () => transport
+      internalsOf.stopSessionForArchive = async () => {}
+      const port = createMockPort()
+      manager.handleConnect(port)
+      port._simulateMessage({ type: 'session.archive', sessionId: 's', archived: true, requestId: 'a' })
+      await vi.waitFor(() => expect(commands.some(c => c.includes('worktree remove'))).toBe(true))
+      port._simulateMessage({ type: 'session.archive', sessionId: 's', archived: false, requestId: 'b' })
+      await new Promise(resolve => setTimeout(resolve, 10))
+      expect(commands.some(c => c.includes('worktree add'))).toBe(false)
+      releaseRemove()
+      await vi.waitFor(() => expect(commands.some(c => c.includes('worktree add'))).toBe(true))
+      // Git runs in the repository root, never in the checkout it removes or restores.
+      expect(commands.every(c => c.startsWith('D:/repo | '))).toBe(true)
+      await vi.waitFor(() => expect(metas.get('s')!.metadata.worktree).toEqual({
+        dir: 'D:/repo/.velloc/worktrees/s', branch: 'session/s', repoRoot: 'D:/repo',
+      }))
+      expect(metas.get('s')!.metadata.archived).toBe(false)
+    })
+
     it('the person archive stops the session first, then settles its worktree; a repeat or a refusal does neither (F-36)', async () => {
       installStorage()
       await (manager as unknown as { summaryRepo: { refreshFsSummary(id: string): Promise<void> } })

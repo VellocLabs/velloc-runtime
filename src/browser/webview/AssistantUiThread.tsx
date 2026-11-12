@@ -514,15 +514,16 @@ function InteractiveAssistantUiThread({
       onForkFromMessage: readOnly ? undefined : onForkFromMessage,
       resolveForkAfterResponse: readOnly || !onForkAfterMessage ? undefined : resolveForkAfterResponse,
       onForkAfterResponse: readOnly ? undefined : onForkAfterMessage,
-      onRewindToMessage: readOnly ? undefined : onRewindToMessage,
+      onRewindToMessage: readOnly || onUnarchive ? undefined : onRewindToMessage,
       onStartSideChat: readOnly ? undefined : onStartSideChat,
-      onRetryProviderApiError: readOnly ? undefined : handleRetryProviderApiError,
+      onRetryProviderApiError: readOnly || onUnarchive ? undefined : handleRetryProviderApiError,
       onRequestContinueInCode:
         readOnly || !onContinueInCode ? undefined : handleRequestContinueInCode,
       continuedInCode,
     }),
     [
       readOnly,
+      onUnarchive,
       onForkFromMessage,
       onForkAfterMessage,
       resolveForkAfterResponse,
@@ -1235,7 +1236,7 @@ function InteractiveAssistantUiThread({
                     state.snapshot?.isBusy === true
                   }
                 >
-                <SnapshotNeedsAnswerProvider value={snapshotNeedsAnswer(state.snapshot)}>
+                <SnapshotNeedsAnswerProvider value={snapshotNeedsAnswer(state.snapshot) || !!onUnarchive}>
                 <ArchivedSessionProvider value={onUnarchive ? { onUnarchive } : null}>
                 <SnapshotBlocksComposerInputProvider
                   value={

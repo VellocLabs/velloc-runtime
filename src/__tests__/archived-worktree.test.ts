@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   archivedWorktreeLogLine,
+  insideFolder,
   sameFolder,
   settleWorktreeOnArchive,
   settleWorktreeOnUnarchive,
@@ -38,7 +39,8 @@ function harness(opts: {
       record = next
     },
     inUseElsewhere: () => opts.inUse === true,
-    run: () => async command => {
+    run: (_id, cwd) => async command => {
+      expect(cwd).toBe(RECORD.repoRoot)
       commands.push(command)
       return answer(command)
     },
@@ -132,6 +134,13 @@ describe('helpers', () => {
     expect(worktreeRecordOf({ dir: 'x', branch: '' , repoRoot: 'y' })).toBeUndefined()
     expect(worktreeRecordOf('x')).toBeUndefined()
     expect(worktreeRecordOf(undefined)).toBeUndefined()
+  })
+
+  it('a folder below the checkout is inside it; a sibling with the same prefix is not', () => {
+    expect(insideFolder('D:\\repo\\wt\\src', 'd:/repo/wt')).toBe(true)
+    expect(insideFolder('D:/repo/wt/', 'D:/repo/wt')).toBe(true)
+    expect(insideFolder('D:/repo/wt2', 'D:/repo/wt')).toBe(false)
+    expect(insideFolder('D:/repo', 'D:/repo/wt')).toBe(false)
   })
 
   it('compares folders across slashes, a trailing slash and drive-letter case', () => {

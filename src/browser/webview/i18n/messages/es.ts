@@ -327,7 +327,7 @@ export const es: Messages = {
   'composer.inputAria': 'Entrada de mensaje',
   'composer.historyPosition': 'Historial {index}/{total}',
   'composer.nextMessage': 'Mensaje siguiente',
-  'composer.archivedNotice': 'Esta sesión está archivada. Desarchívala para volver a enviar mensajes aquí.',
+  'composer.archivedNotice': 'Esta sesión está archivada. Desarchívela para volver a enviar mensajes aquí.',
   'composer.removeNextMessage': 'Quitar el mensaje siguiente',
   'composer.nextMessagePosition': 'Mensaje {index} de {count} en cola',
   'composer.injectPending': 'Se enviará después del paso actual',

@@ -49,8 +49,6 @@ export type SessionListMutationsDeps = {
   patchSessionRecord: Manager['patchSessionRecord']
   cliConversationStore: Manager['cliConversationStore']
   sessionTerminalCwd: Manager['sessionTerminalCwd']
-  /** Remove or keep (archive) / check out again (unarchive) the session's own worktree. */
-  settleArchivedWorktree: (sessionId: string, archived: boolean) => Promise<void>
 }
 
 /**
@@ -589,9 +587,8 @@ export class SessionListMutations {
 
   /**
    * The person archives or unarchives a session from the list (F-36). The
-   * family coordinator stops the session's work and writes the flag; the list
-   * learns it from the summary refresh; then the session's own worktree is
-   * removed or kept (archive) or checked out again (unarchive). A refusal
+   * family coordinator stops the session's work, writes the flag and settles
+   * its worktree; the list learns it from the summary refresh. A refusal
    * leaves the row where it is; the asking port gets the unchanged card back.
    */
   async handleSessionArchive(
@@ -605,7 +602,6 @@ export class SessionListMutations {
     try {
       const outcome = await this.family.setArchivedByUser(sessionId, archived)
       if (!outcome.ok) refused = `${outcome.code}: ${outcome.reason}`
-      else if (outcome.changed) await this.deps.settleArchivedWorktree(sessionId, archived)
     } catch (error) {
       refused = error instanceof Error ? error.message : String(error)
     }

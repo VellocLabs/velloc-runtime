@@ -39,6 +39,7 @@ class FakeHost implements SessionFamilyHost {
   readonly turns: Array<{ sessionId: string; prompt: string }> = []
   readonly interrupted: string[] = []
   readonly stoppedForArchive: string[] = []
+  readonly settled: string[] = []
   readonly cleared: string[] = []
   readonly stoppedBy: string[] = []
   readonly events: string[] = []
@@ -110,6 +111,9 @@ class FakeHost implements SessionFamilyHost {
   }
   async stopForArchive(id: string) {
     this.stoppedForArchive.push(id)
+  }
+  async settleWorktree(id: string, archived: boolean) {
+    this.settled.push(`${id}:${archived}:${String(this.sessions.get(id)?.metadata.archived)}`)
   }
   interrupt(id: string, by: string) {
     this.interrupted.push(id)
@@ -598,6 +602,19 @@ describe('ArchiveSession / UnarchiveSession', () => {
     expect(host.sessions.get('c2')!.metadata.archived).toBeUndefined()
     // An unarchive stops nothing; an archive of an archived session stops nothing either.
     expect(host.stoppedForArchive).toEqual(['p', 'x', 'c1'])
+    // The worktree is settled after the flag is written, only when it changed.
+    expect(host.settled).toEqual(['p:true:true', 'x:true:true', 'x:false:false', 'c1:true:true'])
+  })
+
+  it('a model unarchive also checks a removed worktree out again; its archive leaves the worktree alone (F-36)', async () => {
+    const host = family()
+    const coord = new SessionFamilyCoordinator(host)
+    expect(await coord.setArchived('p', 'a', false)).toEqual({ ok: true, changed: true })
+    expect(host.settled).toEqual(['a:false:false'])
+    expect(await coord.setArchived('p', 'c1', true)).toEqual({ ok: true, changed: true })
+    expect(await coord.setArchived('p', 'c1', true)).toEqual({ ok: true, changed: false })
+    expect(host.settled).toEqual(['a:false:false'])
+    expect(host.stoppedForArchive).toEqual([])
   })
 
   it('archiving and unarchiving need delegation: never self, a parent, a sibling or an unrelated session', async () => {

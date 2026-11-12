@@ -95,6 +95,9 @@ export interface SessionFamilyHost {
    *  sub-agents, shells, teammates and terminals. Never builds an idle
    *  session's runtime. */
   stopForArchive(sessionId: string): Promise<void>
+  /** After the flag changed: remove or keep (archive) or check out again
+   *  (unarchive) the session's own worktree; best-effort, never throws. */
+  settleWorktree(sessionId: string, archived: boolean): Promise<void>
   /** Task results or team frames are queued for the session's next turn. */
   hasQueuedInput(sessionId: string): boolean
   /** Start the session's conversation over the way the user's `/clear`
@@ -496,8 +499,8 @@ export class SessionFamilyCoordinator implements SessionDirectory {
   /**
    * The person's archive / unarchive from the session list: no delegation
    * check (the person controls every session). Unlike the tool's archive, a
-   * running, waiting or working session is stopped and then archived; only a
-   * starting one is refused.
+   * running, waiting or working session is stopped and then archived, and
+   * its worktree settled; only a starting one is refused.
    */
   async setArchivedByUser(
     target: string,
@@ -516,6 +519,7 @@ export class SessionFamilyCoordinator implements SessionDirectory {
     if (!decision.changed) return { ok: true, changed: false }
     await this.host.stopForArchive(target)
     await this.host.patchMeta(target, { archived: true, archivedAt: Date.now() })
+    await this.host.settleWorktree(target, true)
     return { ok: true, changed: true }
   }
 
@@ -527,6 +531,8 @@ export class SessionFamilyCoordinator implements SessionDirectory {
     if (!archived) {
       if (!current) return { ok: true, changed: false }
       await this.host.patchMeta(target, { archived: false })
+      // A model's unarchive too: a checkout a person's archive removed comes back.
+      await this.host.settleWorktree(target, false)
       return { ok: true, changed: true }
     }
     const decision = archiveDecision({

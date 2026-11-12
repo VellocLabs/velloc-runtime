@@ -5,7 +5,8 @@
  * live session works in is kept. On unarchive a removed checkout is checked
  * out again from its branch. Never throws; the outcome says what happened.
  * Security: the record's paths and branch come from the runtime's own
- * session record; git runs with each as one quoted word.
+ * session record; git runs with each as one quoted word, in the repository
+ * root.
  */
 import type { SessionWorktreeRecord } from '../../sessions/sessionRecords'
 import {
@@ -18,9 +19,12 @@ import {
 export type ArchivedWorktreeDeps = {
   readWorktree(sessionId: string): Promise<SessionWorktreeRecord | undefined>
   writeWorktree(sessionId: string, record: SessionWorktreeRecord): Promise<void>
-  /** Another live, unarchived session works in `dir`. */
+  /** Another live, unarchived session works in `dir` or below it, or an
+   *  unarchived session listed under this one may (its folder is not on
+   *  record). */
   inUseElsewhere(sessionId: string, dir: string): boolean
-  run(sessionId: string): HostCommandRunner
+  /** Git for `sessionId`, run in `cwd`. */
+  run(sessionId: string, cwd: string): HostCommandRunner
   now(): number
 }
 
@@ -39,7 +43,7 @@ export async function settleWorktreeOnArchive(
   if (!record || record.removedAt !== undefined) return { action: 'none' }
   const dir = record.dir
   if (deps.inUseElsewhere(sessionId, dir)) return { action: 'kept', dir, reason: 'in_use' }
-  const run = deps.run(sessionId)
+  const run = deps.run(sessionId, record.repoRoot)
   const state = await readCheckoutState(run, dir)
   if (state.state === 'unknown') return { action: 'kept', dir, reason: 'unreadable' }
   if (state.state === 'dirty') return { action: 'kept', dir, reason: 'changes', changes: state.changes }
@@ -56,7 +60,7 @@ export async function settleWorktreeOnUnarchive(
 ): Promise<ArchivedWorktreeOutcome> {
   const record = await deps.readWorktree(sessionId).catch(() => undefined)
   if (!record || record.removedAt === undefined) return { action: 'none' }
-  const restored = await restoreCheckout(deps.run(sessionId), record.repoRoot, record.dir, record.branch)
+  const restored = await restoreCheckout(deps.run(sessionId, record.repoRoot), record.repoRoot, record.dir, record.branch)
   if (!restored.ok) return { action: 'restore_failed', dir: record.dir, reason: restored.reason }
   const { removedAt: _removedAt, ...kept } = record
   await deps.writeWorktree(sessionId, kept).catch(() => {})
@@ -81,13 +85,21 @@ export function archivedWorktreeLogLine(sessionId: string, outcome: ArchivedWork
   }
 }
 
+function folderKey(p: string): string {
+  const s = p.replace(/\\/g, '/').replace(/\/+$/, '')
+  return /^[A-Za-z]:/.test(s) ? s.toLowerCase() : s
+}
+
 /** Two paths name the same folder: slashes, a trailing slash and (on a drive path) case aside. */
 export function sameFolder(a: string, b: string): boolean {
-  const norm = (p: string) => {
-    const s = p.replace(/\\/g, '/').replace(/\/+$/, '')
-    return /^[A-Za-z]:/.test(s) ? s.toLowerCase() : s
-  }
-  return norm(a) === norm(b)
+  return folderKey(a) === folderKey(b)
+}
+
+/** `path` is `dir` or a folder below it, compared as `sameFolder` does. */
+export function insideFolder(path: string, dir: string): boolean {
+  const p = folderKey(path)
+  const d = folderKey(dir)
+  return p === d || p.startsWith(`${d}/`)
 }
 
 /** A stored worktree record, or undefined when the value is not one. */
