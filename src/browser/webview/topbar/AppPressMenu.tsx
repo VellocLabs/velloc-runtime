@@ -1,7 +1,8 @@
 /**
  * The menu an app's background module answered a press with (F-40), drawn
- * at the icon that was pressed. The labels are the plugin's own text; a pick
- * goes back to the module as a new press.
+ * at the icon that was pressed, its top on the icon's bottom edge. The
+ * labels are the plugin's own text; a pick goes back to the module as a new
+ * press.
  */
 import * as React from "react";
 import { DropdownMenu as DropdownMenuPrimitive } from "radix-ui";
@@ -45,7 +46,7 @@ export function AppPressMenu({
       <DropdownMenuPrimitive.Portal>
         <DropdownMenuPrimitive.Content
           align="start"
-          sideOffset={6}
+          sideOffset={0}
           aria-label={menu.title}
           onCloseAutoFocus={event => {
             event.preventDefault();
