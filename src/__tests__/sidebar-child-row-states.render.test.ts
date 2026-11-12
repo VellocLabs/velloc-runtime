@@ -177,7 +177,7 @@ describe('an archived child', () => {
     expect(slot('p', 'session-row-archived-parent')).toBeNull()
   })
 
-  it('is unarchived from its menu, which offers no pin, rename or fork', async () => {
+  it('is unarchived from its menu, which offers no pin, rename, fork or archive', async () => {
     const onArchiveThread = vi.fn()
     renderSidebar(sessions(), { onArchiveThread, onDeleteThread: vi.fn() })
     fireEvent.click(screen.getByTestId('sidebar-archived-toggle'))
@@ -188,6 +188,7 @@ describe('an archived child', () => {
     expect(screen.queryByTestId('sidebar-pin-thread')).toBeNull()
     expect(screen.queryByTestId('sidebar-rename-thread')).toBeNull()
     expect(screen.queryByTestId('sidebar-fork-thread')).toBeNull()
+    expect(screen.queryByTestId('sidebar-archive-thread')).toBeNull()
     expect(screen.getByTestId('sidebar-delete-thread')).toBeTruthy()
     fireEvent.click(screen.getByTestId('sidebar-unarchive-thread'))
     expect(onArchiveThread).toHaveBeenCalledWith('c', false)

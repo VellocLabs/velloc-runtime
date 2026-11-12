@@ -5,6 +5,7 @@
  * A child session's row sits under its parent's, one indent level per depth. (F-36)
  */
 import {
+  ArchiveIcon,
   ArchiveRestoreIcon,
   GitForkIcon,
   Loader2Icon,
@@ -492,7 +493,11 @@ function SessionRow({
   const canFork = !!onForkThread && session.messageCount !== 0
   const canDelete = !!onDeleteThread
   const canUnarchive = !!session.archived && !!onArchiveThread
-  const hasRowActions = canPin || canRename || canFork || canUnarchive || canDelete
+  // A starting row offers no archive; a working or waiting one shows it disabled (the runtime refuses it). (F-36)
+  const canArchive = !session.archived && !session.starting && !!onArchiveThread
+  const archiveBusy = canArchive && !!(session.running || session.needsAnswer)
+  const hasLeadingActions = canPin || canRename || canFork || canUnarchive
+  const hasRowActions = hasLeadingActions || canArchive || canDelete
   // A failed start is dismissed by archiving it: the record stays, under Archived.
   const canDismissStart = !!session.startFailed && !session.archived && !!onArchiveThread
   const startFailedLine = session.startFailed
@@ -911,11 +916,31 @@ function SessionRow({
                       </button>
                     </DropdownMenuPrimitive.Item>
                   )}
-                  {canDelete && (canPin || canRename || canFork || canUnarchive) && (
+                  {(canArchive || canDelete) && hasLeadingActions && (
                     <DropdownMenuPrimitive.Separator
                       data-testid="sidebar-row-actions-separator"
                       className="-mx-1 my-1 h-px bg-border"
                     />
+                  )}
+                  {canArchive && (
+                    <DropdownMenuPrimitive.Item
+                      asChild
+                      disabled={archiveBusy}
+                      onSelect={() => onArchiveThread?.(session.sessionId, true)}
+                    >
+                      <button
+                        type="button"
+                        data-testid="sidebar-archive-thread"
+                        aria-label={t('sidebar.archiveThreadAria', {
+                          title: session.title,
+                        })}
+                        title={archiveBusy ? t('sidebar.archiveBusy') : undefined}
+                        className="flex w-full cursor-default items-center gap-2 rounded-sm px-2 py-1.5 text-start text-body outline-none hover:bg-muted focus:bg-muted data-[highlighted]:bg-muted data-[disabled]:opacity-50"
+                      >
+                        <ArchiveIcon className="size-4" />
+                        {t('sidebar.archive')}
+                      </button>
+                    </DropdownMenuPrimitive.Item>
                   )}
                   {canDelete && (
                     <DropdownMenuPrimitive.Item

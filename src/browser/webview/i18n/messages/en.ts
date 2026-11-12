@@ -261,6 +261,9 @@ export const en = {
   'sidebar.archivedFrom': 'from {title}',
   'sidebar.unarchive': 'Unarchive',
   'sidebar.unarchiveThreadAria': 'Unarchive {title}',
+  'sidebar.archive': 'Archive',
+  'sidebar.archiveThreadAria': 'Archive {title}',
+  'sidebar.archiveBusy': 'Archive once it stops working or waiting for you',
   // Child sessions nested under their parent's row (F-36).
   'sidebar.forkOf': 'Fork of {title}',
   'sidebar.collapseChildrenAria': 'Hide the sessions under {title} ({count})',

@@ -136,6 +136,52 @@ describe('session row menu', () => {
     expect(handlers.onForkThread).toHaveBeenCalledWith('middle')
   })
 
+  it('lists Archive after the separator, before Delete, and archives the row', async () => {
+    const onArchiveThread = vi.fn()
+    renderList({ onArchiveThread })
+    const menu = await openMenu('middle')
+    expect(menuEntries(menu)).toEqual([
+      'sidebar-pin-thread',
+      'sidebar-rename-thread',
+      'sidebar-fork-thread',
+      'separator',
+      'sidebar-archive-thread',
+      'sidebar-delete-thread',
+    ])
+    const archive = screen.getByTestId('sidebar-archive-thread')
+    expect(archive.getAttribute('aria-label')).toBe('Archive Middle')
+    fireEvent.click(archive)
+    expect(onArchiveThread).toHaveBeenCalledWith('middle', true)
+  })
+
+  it.each([
+    ['running', { running: true }],
+    ['waiting on the person', { needsAnswer: true }],
+  ])('offers Archive disabled while the session is %s', async (_label, state) => {
+    const onArchiveThread = vi.fn()
+    renderList({
+      onArchiveThread,
+      groups: [{ key: 'all', sessions: [{ sessionId: 'busy', title: 'Busy', previewText: '', updatedAt: NOW, ...state }] }],
+      activeSessionId: 'other',
+    })
+    await openMenu('busy')
+    const archive = screen.getByTestId('sidebar-archive-thread')
+    expect(archive.closest('[role="menuitem"]')?.getAttribute('data-disabled')).not.toBeNull()
+    expect(archive.title).toBe('Archive once it stops working or waiting for you')
+    fireEvent.click(archive)
+    expect(onArchiveThread).not.toHaveBeenCalled()
+  })
+
+  it('offers no Archive on a starting session', async () => {
+    renderList({
+      onArchiveThread: vi.fn(),
+      groups: [{ key: 'all', sessions: [{ sessionId: 'boot', title: 'Boot', previewText: '', updatedAt: NOW, starting: true }] }],
+      activeSessionId: 'other',
+    })
+    const menu = await openMenu('boot')
+    expect(menuEntries(menu)).not.toContain('sidebar-archive-thread')
+  })
+
   it('omits the separator when Delete is the only action', async () => {
     renderList({
       onRenameThread: undefined,
