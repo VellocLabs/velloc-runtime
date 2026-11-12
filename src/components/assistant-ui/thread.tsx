@@ -64,6 +64,7 @@ import { CurrentProjectFolderChip } from './project-folder-chip';
 import { ThreadSuggestions } from './thread-welcome';
 import { continueReasonMessageKey } from './composer-logic';
 import { Composer, ComposerContextUsage } from './composer';
+import { ArchivedSessionNotice } from './archived-session-notice';
 import { ReplySelectionToolbar } from './selection-reply';
 import { TRANSCRIPT_MESSAGE_COMPONENTS } from './transcript-rows';
 
@@ -71,6 +72,7 @@ export {
   ComposerCancelStateProvider,
   SnapshotNeedsAnswerProvider,
   SnapshotBlocksComposerInputProvider,
+  ArchivedSessionProvider,
   SessionPhaseProvider,
   ContinueConversationProvider,
   IsResumableProvider,
@@ -607,6 +609,8 @@ export const Thread: FC<{
               the session will receive more (task-notification) messages, so
               it must not read as fully done. */}
           <BackgroundTasksFooterControl />
+          {/* An archived session: why the composer is held, and Unarchive. */}
+          <ArchivedSessionNotice />
           {/* The mods' panes (F-25 `$.ui.open`, drawn by `ui.render` on
               `Pane`) and the band they draw above the prompt (`AbovePrompt`).
               Velloc seats them inline here, the LAST rows before the

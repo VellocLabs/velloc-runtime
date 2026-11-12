@@ -38,6 +38,7 @@ class FakeHost implements SessionFamilyHost {
   readonly sessions = new Map<string, FakeSession>()
   readonly turns: Array<{ sessionId: string; prompt: string }> = []
   readonly interrupted: string[] = []
+  readonly stoppedForArchive: string[] = []
   readonly cleared: string[] = []
   readonly stoppedBy: string[] = []
   readonly events: string[] = []
@@ -106,6 +107,9 @@ class FakeHost implements SessionFamilyHost {
     if (!this.isLive(id)) return false
     this.turns.push({ sessionId: id, prompt })
     return true
+  }
+  async stopForArchive(id: string) {
+    this.stoppedForArchive.push(id)
   }
   interrupt(id: string, by: string) {
     this.interrupted.push(id)
@@ -573,7 +577,7 @@ describe('ArchiveSession / UnarchiveSession', () => {
     expect(await coord.setArchived('p', 'nope', true)).toMatchObject({ ok: false, code: 'unknown' })
   })
 
-  it('the person archives any session from the list, with no delegation, under the same state rule (F-36)', async () => {
+  it('the person archives any session from the list, with no delegation; a busy one is stopped first, a starting one refused (F-36)', async () => {
     const host = family()
     const coord = new SessionFamilyCoordinator(host)
     // A top-level session, a parent and an unrelated one: no delegation asked.
@@ -583,13 +587,17 @@ describe('ArchiveSession / UnarchiveSession', () => {
     expect(await coord.setArchivedByUser('x', true)).toEqual({ ok: true, changed: false })
     expect(await coord.setArchivedByUser('x', false)).toEqual({ ok: true, changed: true })
     expect(host.sessions.get('x')!.metadata.archived).toBe(false)
+    expect(host.stoppedForArchive).toEqual(['p', 'x'])
     host.sessions.get('c1')!.busy = true
-    expect(await coord.setArchivedByUser('c1', true)).toMatchObject({ ok: false, code: 'running' })
-    host.sessions.get('c1')!.busy = false
+    expect(await coord.setArchivedByUser('c1', true)).toEqual({ ok: true, changed: true })
+    expect(host.stoppedForArchive).toEqual(['p', 'x', 'c1'])
+    expect(host.sessions.get('c1')!.metadata.archived).toBe(true)
     host.sessions.get('c2')!.starting = true
     expect(await coord.setArchivedByUser('c2', true)).toMatchObject({ ok: false, code: 'starting' })
     expect(await coord.setArchivedByUser('nope', true)).toMatchObject({ ok: false, code: 'unknown' })
-    for (const id of ['c1', 'c2']) expect(host.sessions.get(id)!.metadata.archived).toBeUndefined()
+    expect(host.sessions.get('c2')!.metadata.archived).toBeUndefined()
+    // An unarchive stops nothing; an archive of an archived session stops nothing either.
+    expect(host.stoppedForArchive).toEqual(['p', 'x', 'c1'])
   })
 
   it('archiving and unarchiving need delegation: never self, a parent, a sibling or an unrelated session', async () => {

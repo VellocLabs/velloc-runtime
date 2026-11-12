@@ -3805,7 +3805,7 @@ export function MultiSessionShell({
     submitComposerMessage, pickComposerAttachmentFiles, submitToolResult,
     loadToolCallDetail, loadTurnDiffDetail, interrupt, setPermissionMode,
     setSkipDangerousMode, clearPendingMessage, removeInjectMessage, resolveToolUseConfirm,
-    clearPlanApproval, sessionItems, handleOpenBackgroundTasks, subAgentRowsForSession,
+    clearPlanApproval, sessionItems, handleArchiveThread, handleOpenBackgroundTasks, subAgentRowsForSession,
     handleStopBackgroundTask, handleOpenBackgroundTasksList, openPaneFor, openFile,
     openTerminalInPanel, statFilePaths, openDiffInPanel, openSkillInPanel, focusSession,
     handleDeleteThread, retitleSession, handlePendingQuestionsChange, openNewSession,

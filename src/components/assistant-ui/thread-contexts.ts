@@ -38,6 +38,12 @@ export const SnapshotNeedsAnswerProvider = SnapshotNeedsAnswerContext.Provider;
 export const SnapshotBlocksComposerInputContext = createContext<boolean>(false);
 export const SnapshotBlocksComposerInputProvider = SnapshotBlocksComposerInputContext.Provider;
 
+// Set while the session is archived: the composer is held, and the notice
+// above it offers Unarchive. Null for every other session. (F-36)
+export type ArchivedSessionControls = { onUnarchive: () => void };
+export const ArchivedSessionContext = createContext<ArchivedSessionControls | null>(null);
+export const ArchivedSessionProvider = ArchivedSessionContext.Provider;
+
 // Unified execution-phase enum from the SharedWorkerSessionManager broadcast.
 // The composer gate reads this (input allowed only when `kind === 'idle'`).
 // Provided by Thread (which has sessionId + bridge access); consumed by

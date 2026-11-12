@@ -430,7 +430,7 @@ describe('ChildSessionCoordinator — model selection', () => {
       request: request({ isolation: 'worktree' }),
       prepareWorktree: async () => {
         Object.assign(live, { providerId: 'later-provider', modelId: 'later-model', thinkingTier: 'low' })
-        return { ok: true, cwd: '/repo/worktree', repoRoot: '/repo' }
+        return { ok: true, cwd: '/repo/worktree', repoRoot: '/repo', branch: 'session/wt' }
       },
     })
     if (!result?.ok) throw new Error('expected a child')
@@ -588,23 +588,28 @@ describe('ChildSessionCoordinator — a start that fails', () => {
       request: request({ name: 'API docs', isolation: 'worktree', isolationRequested: true }),
       prepareWorktree: async name => {
         seen.push(name)
-        return { ok: true, cwd: `/repo/.velloc/worktrees/${name}`, repoRoot: '/repo' }
+        return { ok: true, cwd: `/repo/.velloc/worktrees/${name}`, repoRoot: '/repo', branch: `session/${name}` }
       },
     })
     expect(outcome).toMatchObject({ ok: true, name: 'api-docs-2', cwd: '/repo/.velloc/worktrees/api-docs-2' })
     expect(seen).toEqual(['api-docs-2'])
   })
 
-  it('a worktree that was made moves the working directory and keeps storage on the repository root', async () => {
+  it('a worktree that was made moves the working directory, keeps storage on the repository root and is on record', async () => {
     const fake = fakeHost()
     const outcome = await new ChildSessionCoordinator(fake.host).spawn({
       parentSessionId: 'parent-1',
       request: request({ isolation: 'worktree', isolationRequested: true }),
-      prepareWorktree: async () => ({ ok: true, cwd: '/repo/.velloc/worktrees/wt', repoRoot: '/repo' }),
+      prepareWorktree: async () => ({ ok: true, cwd: '/repo/.velloc/worktrees/wt', repoRoot: '/repo', branch: 'session/wt' }),
     })
     expect(outcome).toMatchObject({ ok: true, sharedCheckout: false, cwd: '/repo/.velloc/worktrees/wt' })
     await settled()
     expect(fake.inits[0]).toMatchObject({ projectRoot: '/repo', cwdOverride: '/repo/.velloc/worktrees/wt' })
+    if (!outcome?.ok) return
+    expect(fake.patches).toContainEqual({
+      sessionId: outcome.sessionId,
+      patch: { worktree: { dir: '/repo/.velloc/worktrees/wt', branch: 'session/wt', repoRoot: '/repo' } },
+    })
   })
 
   it('an init that throws releases the registered entry and marks the start failed', async () => {

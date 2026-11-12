@@ -263,7 +263,6 @@ export const en = {
   'sidebar.unarchiveThreadAria': 'Unarchive {title}',
   'sidebar.archive': 'Archive',
   'sidebar.archiveThreadAria': 'Archive {title}',
-  'sidebar.archiveBusy': 'Archive once it stops working or waiting for you',
   // Child sessions nested under their parent's row (F-36).
   'sidebar.forkOf': 'Fork of {title}',
   'sidebar.collapseChildrenAria': 'Hide the sessions under {title} ({count})',
@@ -334,6 +333,7 @@ export const en = {
   'composer.inputAria': 'Message input',
   'composer.historyPosition': 'History {index}/{total}',
   'composer.nextMessage': 'Next message',
+  'composer.archivedNotice': 'This session is archived. Unarchive it to send messages here again.',
   'composer.removeNextMessage': 'Remove next message',
   // The strip shows ONE queued message at a time and rotates through them on a
   // timer. `{index}` is the 1-based position of the shown message, `{count}`

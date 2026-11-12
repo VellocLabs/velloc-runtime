@@ -27,6 +27,8 @@ import type { SessionListItem } from './Sidebar'
 export type AssistantUiThreadProps = {
   state: BrowserRuntimeClientState
   readOnly?: boolean
+  /** Set only while the session is archived: the composer is held and offers this. (F-36) */
+  onUnarchive?: () => void
   /** The session this thread shows, for reads that must work without a snapshot (a read-only thread has none). */
   threadSessionId?: string
   submitPrompt: (prompt: string) => Promise<void>

@@ -47,6 +47,14 @@ export type BrowserConversationRecord = {
   metadata?: BrowserSessionMetadata
 }
 
+/** A runtime-made git worktree a session works in. (F-36) */
+export type SessionWorktreeRecord = {
+  dir: string
+  branch: string
+  repoRoot: string
+  removedAt?: number
+}
+
 export type BrowserSessionMetadata = Record<string, unknown> & {
   firstPrompt?: string
   previewText?: string
@@ -88,9 +96,12 @@ export type BrowserSessionMetadata = Record<string, unknown> & {
   /** Set when another session started this one and it never started: the
    *  reason, kept for the row and the detail view. (F-36) */
   startFailed?: ChildStartFailure
-  /** Out of the active list, by a person or a model; nothing else changes. (F-36) */
+  /** Out of the active list, by a person or a model. (F-36) */
   archived?: boolean
   archivedAt?: number
+  /** The git worktree the runtime made for this session; `removedAt` once a
+   *  person's archive removed the clean checkout (the branch stays). (F-36) */
+  worktree?: SessionWorktreeRecord
   /** Messages sent to this session while it had no runtime to take them. (F-36) */
   peerInbox?: PeerInboxEntry[]
   spawnerSessionId?: string

@@ -45,6 +45,8 @@ export interface ShellSessionThreadInputs {
   resolveToolUseConfirm: ThreadProps['resolveToolUseConfirm']
   clearPlanApproval: ThreadProps['clearPlanApproval']
   sessionItems: ThreadProps['sessions']
+  /** Archive (`true`) or unarchive a session. (F-36) */
+  handleArchiveThread: (sessionId: string, archived: boolean) => void
   handleOpenBackgroundTasks: ThreadProps['onOpenBackgroundTasks']
   subAgentRowsForSession: (sessionId: string) => NexusTaskSummaryRow[]
   handleStopBackgroundTask: ThreadProps['onStopBackgroundTask']
@@ -96,7 +98,7 @@ export function renderShellSessionThread(
     submitComposerMessage, pickComposerAttachmentFiles, submitToolResult,
     loadToolCallDetail, loadTurnDiffDetail, interrupt, setPermissionMode,
     setSkipDangerousMode, clearPendingMessage, removeInjectMessage, resolveToolUseConfirm,
-    clearPlanApproval, sessionItems, handleOpenBackgroundTasks, subAgentRowsForSession,
+    clearPlanApproval, sessionItems, handleArchiveThread, handleOpenBackgroundTasks, subAgentRowsForSession,
     handleStopBackgroundTask, handleOpenBackgroundTasksList, openPaneFor, openFile,
     openTerminalInPanel, statFilePaths, openDiffInPanel, openSkillInPanel, focusSession,
     handleDeleteThread, retitleSession, handlePendingQuestionsChange, openNewSession,
@@ -147,6 +149,11 @@ export function renderShellSessionThread(
                 state={state}
                 readOnly={shutdownSessionIds.has(sessionId)}
                 threadSessionId={sessionId}
+                onUnarchive={
+                  sessionItems?.find(item => item.sessionId === sessionId)?.archived
+                    ? () => handleArchiveThread(sessionId, false)
+                    : undefined
+                }
                 submitPrompt={bound?.submitPrompt ?? submitPrompt}
                 submitActionMessage={bound?.submitActionMessage ?? submitActionMessage}
                 continueConversation={bound?.continueConversation ?? continueConversation}

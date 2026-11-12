@@ -113,6 +113,14 @@ describe('AssistantUiThread read-only gating (shutdown tab)', () => {
     ).toBe(true)
   })
 
+  it('holds the composer of an archived session and hands the notice its Unarchive (F-36)', () => {
+    expect(THREAD).toMatch(/snapshotBlocksComposerInput\(state\.snapshot\)\s*\|\|\s*!!onUnarchive/)
+    expect(THREAD).toContain('<ArchivedSessionProvider value={onUnarchive ? { onUnarchive } : null}>')
+    expect(interactivePropsBlock()).toContain('onUnarchive={readOnly ? undefined : onUnarchive}')
+    const SHELL = readFileSync(join(SRC, 'browser', 'webview', 'shellSessionThread.tsx'), 'utf8')
+    expect(SHELL).toMatch(/\?\.archived\s*\?\s*\(\) => handleArchiveThread\(sessionId, false\)\s*:\s*undefined/)
+  })
+
   it('gates the provider-error retry handler behind readOnly', () => {
     // The retry path calls submitPrompt directly, so the guard must be inside
     // the handler, not only at the props boundary.

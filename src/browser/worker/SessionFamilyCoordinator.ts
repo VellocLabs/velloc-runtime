@@ -91,6 +91,10 @@ export interface SessionFamilyHost {
   /** Stop the session's current turn the way the user's Stop does; `by` is
    *  the session whose model asked. */
   interrupt(sessionId: string, by: string): void
+  /** Stop everything the session runs before a person's archive: its turn,
+   *  sub-agents, shells, teammates and terminals. Never builds an idle
+   *  session's runtime. */
+  stopForArchive(sessionId: string): Promise<void>
   /** Task results or team frames are queued for the session's next turn. */
   hasQueuedInput(sessionId: string): boolean
   /** Start the session's conversation over the way the user's `/clear`
@@ -491,15 +495,28 @@ export class SessionFamilyCoordinator implements SessionDirectory {
 
   /**
    * The person's archive / unarchive from the session list: no delegation
-   * check (the person controls every session), the same state rule as the
-   * tool's.
+   * check (the person controls every session). Unlike the tool's archive, a
+   * running, waiting or working session is stopped and then archived; only a
+   * starting one is refused.
    */
   async setArchivedByUser(
     target: string,
     archived: boolean,
   ): Promise<FamilyOutcome<{ changed: boolean }>> {
     if (!this.knows(target)) return { ok: false, code: 'unknown', reason: 'no session with that id in this runtime.' }
-    return this.applyArchived(target, archived)
+    if (!archived) return this.applyArchived(target, false)
+    const decision = archiveDecision({
+      archived: await this.isArchived(target),
+      running: false,
+      liveWork: false,
+      waitingForUser: false,
+      starting: this.host.isStarting(target),
+    })
+    if (!decision.ok) return decision
+    if (!decision.changed) return { ok: true, changed: false }
+    await this.host.stopForArchive(target)
+    await this.host.patchMeta(target, { archived: true, archivedAt: Date.now() })
+    return { ok: true, changed: true }
   }
 
   private async applyArchived(

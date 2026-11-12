@@ -158,6 +158,7 @@ import {
   SlashCommandsProvider,
   SnapshotNeedsAnswerProvider,
   SnapshotBlocksComposerInputProvider,
+  ArchivedSessionProvider,
   Thread,
   ThreadWelcome,
 } from '@/components/assistant-ui/thread'
@@ -287,11 +288,13 @@ export const AssistantUiThread = memo(function AssistantUiThread({
   composerInsert,
   onComposerEdit,
   onPendingQuestionsChange,
+  onUnarchive,
 }: AssistantUiThreadProps) {
   return (
     <InteractiveAssistantUiThread
       state={state}
       readOnly={readOnly}
+      onUnarchive={readOnly ? undefined : onUnarchive}
       threadSessionId={threadSessionId}
       submitPrompt={readOnly ? readOnlyNoop : submitPrompt}
       submitActionMessage={readOnly ? undefined : submitActionMessage}
@@ -356,6 +359,7 @@ export const AssistantUiThread = memo(function AssistantUiThread({
 function InteractiveAssistantUiThread({
   state,
   readOnly = false,
+  onUnarchive,
   threadSessionId,
   submitPrompt,
   submitActionMessage,
@@ -1232,9 +1236,10 @@ function InteractiveAssistantUiThread({
                   }
                 >
                 <SnapshotNeedsAnswerProvider value={snapshotNeedsAnswer(state.snapshot)}>
+                <ArchivedSessionProvider value={onUnarchive ? { onUnarchive } : null}>
                 <SnapshotBlocksComposerInputProvider
                   value={
-                    readOnly || snapshotBlocksComposerInput(state.snapshot)
+                    readOnly || snapshotBlocksComposerInput(state.snapshot) || !!onUnarchive
                   }
                 >
                   <PermissionModeProvider
@@ -1327,6 +1332,7 @@ function InteractiveAssistantUiThread({
                   </ProjectFolderProvider>
                   </PermissionModeProvider>
                 </SnapshotBlocksComposerInputProvider>
+                </ArchivedSessionProvider>
                 </SnapshotNeedsAnswerProvider>
                 </SessionBusyProvider>
 </ComposerCancelStateProvider>

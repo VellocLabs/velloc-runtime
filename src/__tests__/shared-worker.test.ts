@@ -4283,6 +4283,40 @@ describe('SharedWorkerSessionManager', () => {
       expect(metas.get('s')!.metadata.archived).toBe(false)
     })
 
+    it('the person archive stops the session first, then settles its worktree; a repeat or a refusal does neither (F-36)', async () => {
+      installStorage()
+      await (manager as unknown as { summaryRepo: { refreshFsSummary(id: string): Promise<void> } })
+        .summaryRepo.refreshFsSummary('s')
+      const order: string[] = []
+      const hooks = manager as unknown as {
+        stopSessionForArchive(id: string): Promise<void>
+        settleArchivedWorktree(id: string, archived: boolean): Promise<void>
+      }
+      hooks.stopSessionForArchive = async id => {
+        order.push(`stop:${id}:${String(metas.get(id)!.metadata.archived ?? 'unset')}`)
+      }
+      hooks.settleArchivedWorktree = async (id, archived) => {
+        order.push(`worktree:${id}:${archived}`)
+      }
+      const port = createMockPort()
+      manager.handleConnect(port)
+      const send = async (archived: boolean) => {
+        port._simulateMessage({ type: 'session.archive', sessionId: 's', archived, requestId: `r-${order.length}` })
+        await new Promise(resolve => setTimeout(resolve, 10))
+      }
+      await send(true)
+      expect(order).toEqual(['stop:s:unset', 'worktree:s:true'])
+      await send(true)
+      expect(order).toHaveLength(2)
+      await send(false)
+      expect(order).toEqual(['stop:s:unset', 'worktree:s:true', 'worktree:s:false'])
+      const starts = (manager as unknown as { startStates: Map<string, { state: string }> }).startStates
+      starts.set('s', { state: 'starting' })
+      await send(true)
+      expect(order).toHaveLength(3)
+      starts.delete('s')
+    })
+
     it('a pin through the bound store supersedes the pre-bind stash', async () => {
       installStorage()
       // The fake entry leaves before the summary refresh reads its runtime.

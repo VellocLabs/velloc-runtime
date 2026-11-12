@@ -13,7 +13,7 @@ import type { SessionMode } from '../permissions/sessionModes'
  *  name the runtime allocated (the default branch and directory carry it), so
  *  a failure leaves the session on record as not started. */
 export type ChildWorktreePrepare = (name: string) => Promise<
-  | { ok: true; cwd: string; repoRoot: string }
+  | { ok: true; cwd: string; repoRoot: string; branch: string }
   | { ok: false; reason: string }
 >
 

@@ -228,7 +228,7 @@ function worktreePreparer(
       base,
     })
     if (!made.ok) return made
-    return { ok: true, cwd: made.worktree.checkoutDir, repoRoot }
+    return { ok: true, cwd: made.worktree.checkoutDir, repoRoot, branch: made.worktree.branch }
   }
 }
 

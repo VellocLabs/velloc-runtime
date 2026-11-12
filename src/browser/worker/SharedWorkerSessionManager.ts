@@ -208,6 +208,15 @@ import {
   isTeammateSessionId,
 } from './taskProjection'
 import { currentRenderCachePolicy } from '../../renderCache/runtimeRenderCache'
+import {
+  archivedWorktreeLogLine,
+  sameFolder,
+  settleWorktreeOnArchive,
+  settleWorktreeOnUnarchive,
+  worktreeRecordOf,
+  type ArchivedWorktreeDeps,
+} from './archivedWorktree'
+import { managerHostCommand } from './managerHostCommand'
 
 const TOOL_DETAIL_CACHE_MAX = 64
 
@@ -798,6 +807,7 @@ export class SharedWorkerSessionManager {
     patchSessionRecord: (sessionId, patch, opts) => this.patchSessionRecord(sessionId, patch, opts),
     cliConversationStore: () => this.cliConversationStore(),
     sessionTerminalCwd: sessionId => this.sessionTerminalCwd(sessionId),
+    settleArchivedWorktree: (sessionId, archived) => this.settleArchivedWorktree(sessionId, archived),
   })
 
   /**
@@ -1612,6 +1622,7 @@ export class SharedWorkerSessionManager {
         return true
       },
       interrupt: (sessionId, by) => this.interruptSessionTurn(sessionId, by),
+      stopForArchive: sessionId => this.stopSessionForArchive(sessionId),
       // Security: the prompt is the fixed built-in command, submitted as the
       // session's own input so it runs as a command; a peer message never would.
       clearConversation: sessionId => {
@@ -2911,6 +2922,58 @@ export class SharedWorkerSessionManager {
       .receiveFrame({ type: 'worker.interrupt', sessionId } as SessionWorkerInboundMessage)
       .catch(() => {})
     this.interruptCascade(sessionId, by)
+  }
+
+  /** Stop a session's turn (only when one runs: an interrupt builds an idle
+   *  runtime), its sub-agents, shells, teammates and terminals. (F-36) */
+  private async stopSessionForArchive(sessionId: string): Promise<void> {
+    const session = this.sessions.get(sessionId)
+    if (session?.worker.isBusy()) this.interruptSessionTurn(sessionId)
+    else this.stopRunningSubAgentsForParent(sessionId)
+    try {
+      await this.teams.abortTeammatesOf(sessionId)
+    } catch (err) {
+      console.warn(`[SharedWorkerSessionManager] teammates of ${sessionId} did not stop`, err)
+    }
+    try {
+      this.closeTerminalsForSession(sessionId)
+    } catch (err) {
+      console.warn(`[SharedWorkerSessionManager] terminals of ${sessionId} did not close`, err)
+    }
+  }
+
+  /** The person's archive / unarchive, for the session's own worktree (F-36): best-effort, logged. */
+  private async settleArchivedWorktree(sessionId: string, archived: boolean): Promise<void> {
+    const deps: ArchivedWorktreeDeps = {
+      readWorktree: async id => worktreeRecordOf((await this.storage?.readSessionMeta(id))?.metadata?.worktree),
+      writeWorktree: (id, record) => this.patchSessionRecord(id, { worktree: record }),
+      inUseElsewhere: (id, dir) => {
+        for (const other of this.sessions.keys()) {
+          if (other === id || this.fsSummaries.peek(other)?.archived) continue
+          const cwd = this.sessionTerminalCwd(other)
+          if (cwd && sameFolder(cwd, dir)) return true
+        }
+        return false
+      },
+      run: id =>
+        managerHostCommand(
+          {
+            getTransport: () => this.bridgeRouter.getDirectTransport(),
+            createRequestId: () => this.generateBridgeRequestId(),
+          },
+          id,
+        ),
+      now: () => Date.now(),
+    }
+    try {
+      const outcome = archived
+        ? await settleWorktreeOnArchive(deps, sessionId)
+        : await settleWorktreeOnUnarchive(deps, sessionId)
+      const line = archivedWorktreeLogLine(sessionId, outcome)
+      if (line) console.info(`[SharedWorkerSessionManager] ${line}`)
+    } catch (err) {
+      console.warn(`[SharedWorkerSessionManager] worktree of ${sessionId} not settled`, err)
+    }
   }
 
   /** A sub-agent, shell or other task the session started is still running. */

@@ -257,6 +257,10 @@ export class ChildSessionCoordinator {
       }
       cwd = made.cwd
       worktreeRepoRoot = made.repoRoot
+      // On record, so an archive can find the checkout after a restart. (F-36)
+      await this.host
+        .patchSessionMeta(sessionId, { worktree: { dir: made.cwd, branch: made.branch, repoRoot: made.repoRoot } })
+        .catch(err => console.warn(`[ChildSessionCoordinator] worktree of ${sessionId} not recorded`, err))
     }
 
     const payload = deriveChildInitPayload(template, {

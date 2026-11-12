@@ -493,9 +493,8 @@ function SessionRow({
   const canFork = !!onForkThread && session.messageCount !== 0
   const canDelete = !!onDeleteThread
   const canUnarchive = !!session.archived && !!onArchiveThread
-  // A starting row offers no archive; a working or waiting one shows it disabled (the runtime refuses it). (F-36)
+  // A starting row offers no archive; a working one is stopped by it. (F-36)
   const canArchive = !session.archived && !session.starting && !!onArchiveThread
-  const archiveBusy = canArchive && !!(session.running || session.needsAnswer)
   const hasLeadingActions = canPin || canRename || canFork || canUnarchive
   const hasRowActions = hasLeadingActions || canArchive || canDelete
   // A failed start is dismissed by archiving it: the record stays, under Archived.
@@ -925,7 +924,6 @@ function SessionRow({
                   {canArchive && (
                     <DropdownMenuPrimitive.Item
                       asChild
-                      disabled={archiveBusy}
                       onSelect={() => onArchiveThread?.(session.sessionId, true)}
                     >
                       <button
@@ -934,8 +932,7 @@ function SessionRow({
                         aria-label={t('sidebar.archiveThreadAria', {
                           title: session.title,
                         })}
-                        title={archiveBusy ? t('sidebar.archiveBusy') : undefined}
-                        className="flex w-full cursor-default items-center gap-2 rounded-sm px-2 py-1.5 text-start text-body outline-none hover:bg-muted focus:bg-muted data-[highlighted]:bg-muted data-[disabled]:opacity-50"
+                        className="flex w-full cursor-default items-center gap-2 rounded-sm px-2 py-1.5 text-start text-body outline-none hover:bg-muted focus:bg-muted data-[highlighted]:bg-muted"
                       >
                         <ArchiveIcon className="size-4" />
                         {t('sidebar.archive')}

@@ -49,7 +49,7 @@ function agentSlug(agentId: string): string {
  * in toolkit/builtin/host/hostTools.ts is module-private. A successful Bash call
  * answers with the host's structured result; its stdout is the command's output.
  */
-function unwrapToString(raw: unknown): string {
+export function unwrapToString(raw: unknown): string {
   let value: unknown = raw
   if (
     raw &&
@@ -276,4 +276,39 @@ export async function closeAgentCheckout(
     context,
     `git -C ${shellPath(repoRoot)} branch -D ${worktree.branch}`,
   )
+}
+
+/** Runs one shell command on the host; a non-zero exit is `ok: false`. */
+export type HostCommandRunner = (command: string) => Promise<GitRunResult>
+
+/** A checkout's working state: `unknown` when git cannot read it, a missing
+ *  directory included. `changes` counts the changed and untracked paths. */
+export type CheckoutState = { state: 'clean' | 'dirty' | 'unknown'; changes: number }
+
+export async function readCheckoutState(run: HostCommandRunner, dir: string): Promise<CheckoutState> {
+  const status = await run(`git -C ${shellPath(dir)} status --porcelain`)
+  if (!status.ok) return { state: 'unknown', changes: 0 }
+  const changes = status.stdout.split(/\r?\n/).filter(line => line.trim() !== '').length
+  return changes > 0 ? { state: 'dirty', changes } : { state: 'clean', changes: 0 }
+}
+
+/** Remove a checkout and keep its branch. Without `--force`: git itself
+ *  refuses a checkout with changes. */
+export async function removeCheckoutKeepBranch(
+  run: HostCommandRunner,
+  repoRoot: string,
+  dir: string,
+): Promise<boolean> {
+  return (await run(`git -C ${shellPath(repoRoot)} worktree remove ${shellPath(dir)}`)).ok
+}
+
+/** Check `branch` out again at `dir`, the checkout a removal left behind. */
+export async function restoreCheckout(
+  run: HostCommandRunner,
+  repoRoot: string,
+  dir: string,
+  branch: string,
+): Promise<{ ok: true } | { ok: false; reason: string }> {
+  const add = await run(`git -C ${shellPath(repoRoot)} worktree add ${shellPath(dir)} ${shellWord(branch)}`)
+  return add.ok ? { ok: true } : { ok: false, reason: add.stdout.trim() || 'git worktree add failed' }
 }

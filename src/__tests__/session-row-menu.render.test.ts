@@ -157,7 +157,7 @@ describe('session row menu', () => {
   it.each([
     ['running', { running: true }],
     ['waiting on the person', { needsAnswer: true }],
-  ])('offers Archive disabled while the session is %s', async (_label, state) => {
+  ])('offers Archive, enabled, while the session is %s: the archive stops it', async (_label, state) => {
     const onArchiveThread = vi.fn()
     renderList({
       onArchiveThread,
@@ -166,10 +166,9 @@ describe('session row menu', () => {
     })
     await openMenu('busy')
     const archive = screen.getByTestId('sidebar-archive-thread')
-    expect(archive.closest('[role="menuitem"]')?.getAttribute('data-disabled')).not.toBeNull()
-    expect(archive.title).toBe('Archive once it stops working or waiting for you')
+    expect(archive.closest('[role="menuitem"]')?.getAttribute('data-disabled')).toBeNull()
     fireEvent.click(archive)
-    expect(onArchiveThread).not.toHaveBeenCalled()
+    expect(onArchiveThread).toHaveBeenCalledWith('busy', true)
   })
 
   it('offers no Archive on a starting session', async () => {
