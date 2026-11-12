@@ -52,6 +52,14 @@ export type ContributedTopbarItem = {
   icon?: ContributionIcon
 }
 
+/**
+ * A background module's last `$.app.view` call: the app opened or its pane
+ * closed. `seq` grows with each call; a page carries out one it has not
+ * seen, and only one made after the page first read the apps. `client` is
+ * the connection it is meant for; absent, every page.
+ */
+export type ContributedAppView = { seq: number; want: 'open' | 'closed'; client?: string }
+
 /** An app (F-40, beta only): a topbar icon that opens its template's session. */
 export type ContributedApp = {
   /** `<plugin>:<key>` — the app session's `templateType`. */
@@ -62,6 +70,10 @@ export type ContributedApp = {
   title: ContributionText
   /** A count the app's background module set on its icon (`$.app.badge`); absent when none is set. */
   badge?: number
+  /** Its background module said it is at work (`$.app.busy`): the icon shows it; absent when it is not. */
+  busy?: true
+  /** What the app's background module asked of the pages last (`$.app.view`); absent when it asked nothing. */
+  view?: ContributedAppView
   /** The http MCP server URLs its plugin declares, for a sign-in at the press (F-10); absent when none. */
   signInUrls?: string[]
   icon?: ContributionIcon

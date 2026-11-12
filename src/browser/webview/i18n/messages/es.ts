@@ -816,6 +816,8 @@ export const es: Messages = {
   'topbar.openApp': 'Abrir {title}',
   'topbar.openAppAttention': 'Abrir {title}. Requiere su atención: {count}',
   'topbar.appAttention': '{title}. Requiere su atención: {count}',
+  'topbar.openAppBusy': 'Abrir {title}. Trabajando…',
+  'topbar.appBusy': '{title}. Trabajando…',
   'apps.buildFailed': 'No se pudo compilar la aplicación.',
   'apps.dataFileError': 'No se pudo leer el archivo de datos de la aplicación, así que se muestran los últimos datos.',
   'apps.reload': 'Recargar la aplicación',

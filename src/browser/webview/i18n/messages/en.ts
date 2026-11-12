@@ -846,6 +846,8 @@ export const en = {
   'topbar.openApp': 'Open {title}',
   'topbar.openAppAttention': 'Open {title}. Needs attention: {count}',
   'topbar.appAttention': '{title}. Needs attention: {count}',
+  'topbar.openAppBusy': 'Open {title}. Working…',
+  'topbar.appBusy': '{title}. Working…',
   'apps.buildFailed': 'The app did not build.',
   'apps.dataFileError': "The app's data file could not be read, so its last data is shown.",
   'apps.reload': 'Reload app',

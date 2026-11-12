@@ -70,7 +70,14 @@ export function makeWorkerAppNoun(call: WorkerAppCall): unknown {
       }),
     /** A count on the app's topbar icon; `null` clears it. Checked by the runtime. */
     badge: (count: unknown) => call('badge', [count]),
+    /** Whether the module is at work: the app's topbar icon shows it while true. Checked by the runtime. */
+    busy: (on: unknown) => call('busy', [on]),
     /** A headless agent run in the app's folder: `{ ok: true, text }` or `{ ok: false, reason }`. Not serialized with the state. */
     analyze: (request: unknown) => call('analyze', [request]),
+    /** The app on the pages: `open` shows it, `close` closes its pane; `{ client }` names one page. Resolves once asked. */
+    view: Object.freeze({
+      open: (options?: unknown) => call('view', ['open', options]),
+      close: (options?: unknown) => call('view', ['closed', options]),
+    }),
   })
 }

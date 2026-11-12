@@ -806,6 +806,8 @@ export const ko: Messages = {
   'topbar.openApp': '{title} 열기',
   'topbar.openAppAttention': '{title} 열기. 응답 필요: {count}',
   'topbar.appAttention': '{title}. 응답 필요: {count}',
+  'topbar.openAppBusy': '{title} 열기. 작업 중…',
+  'topbar.appBusy': '{title}. 작업 중…',
   'apps.buildFailed': '앱을 빌드하지 못했습니다.',
   'apps.dataFileError': '앱의 데이터 파일을 읽을 수 없어 마지막 데이터를 표시합니다.',
   'apps.reload': '앱 다시 불러오기',

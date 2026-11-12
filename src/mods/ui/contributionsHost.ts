@@ -8,6 +8,7 @@
 
 import type {
   ContributedApp,
+  ContributedAppView,
   ContributedTemplate,
   ContributedTopbarItem,
   ContributionIcon,
@@ -120,6 +121,11 @@ export class ModUiContributionsHost {
   private readonly reported = new Set<string>()
   /** The badge each app's background module set, by app id; kept across a scan, cleared by the module. */
   private readonly badges = new Map<string, number>()
+  /** What each app's background module asked of the pages last, by app id; kept across a scan. */
+  private readonly views = new Map<string, ContributedAppView>()
+  private viewSeq = 0
+  /** The apps whose background module said it is at work, by app id; kept across a scan, cleared by the module. */
+  private readonly busy = new Set<string>()
 
   configure(options: ContributionsHostOptions): void {
     this.options = options
@@ -148,10 +154,31 @@ export class ModUiContributionsHost {
     this.commit({ ...this.current, apps: this.current.apps.map(app => this.badged(app)) })
   }
 
+  /**
+   * `$.app.view` of app `appId`: published on its entry with a `seq` above
+   * every one before it, in this realm or an earlier one, so a page that
+   * outlives the realm still reads it as new.
+   */
+  setAppView(appId: string, want: ContributedAppView['want'], client: string | undefined): void {
+    this.viewSeq = Math.max(Date.now(), this.viewSeq + 1)
+    this.views.set(appId, { seq: this.viewSeq, want, ...(client !== undefined ? { client } : {}) })
+    if (!this.current.apps?.some(app => app.appId === appId)) return
+    this.commit({ ...this.current, apps: this.current.apps.map(app => this.badged(app)) })
+  }
+
+  /** Whether app `appId`'s module is at work: published on its entry, now and after each scan. */
+  setAppBusy(appId: string, busy: boolean): void {
+    if (busy) this.busy.add(appId)
+    else this.busy.delete(appId)
+    if (!this.current.apps?.some(app => app.appId === appId)) return
+    this.commit({ ...this.current, apps: this.current.apps.map(app => this.badged(app)) })
+  }
+
   private badged(app: ContributedApp): ContributedApp {
-    const { badge: _dropped, ...rest } = app
+    const { badge: _dropped, view: _asked, busy: _working, ...rest } = app
     const badge = this.badges.get(app.appId)
-    return badge === undefined ? rest : { ...rest, badge }
+    const view = this.views.get(app.appId)
+    return { ...rest, ...(badge !== undefined ? { badge } : {}), ...(this.busy.has(app.appId) ? { busy: true as const } : {}), ...(view ? { view } : {}) }
   }
 
   /** Publishes `next` when it differs from the current state. */
@@ -449,6 +476,8 @@ export class ModUiContributionsHost {
         topbar.push({ id: modUiId(plugin.name, key), plugin: plugin.name, title: item.title, ...(icon ? { icon } : {}) })
       }
     }
+    // An app that is gone takes its module's last ask with it, so the app coming back does not replay it.
+    for (const appId of [...this.views.keys()]) if (!apps.some(app => app.appId === appId)) this.views.delete(appId)
     const next: ModContributionsState = {
       templates,
       topbar,

@@ -100,6 +100,7 @@ import {
 } from './sessionVisibility'
 import { createOpenApp, unlistedAppSessionIds, unlistedAppSessionKey, unlistedAppSessionSet } from './apps/appLaunch'
 import { useShownApp } from './apps/appView'
+import { useAppViewAsks } from './apps/appViewAsk'
 import { subscribeTeammateJump } from './teammateJumpRequests'
 import { publishSessionStatuses } from './sessionStatusStore'
 import {
@@ -3151,6 +3152,8 @@ export function MultiSessionShell({
     runtimeConnection,
     linkReady: isRuntimeReady(connectionState),
   })
+  // What an app's background module asks of the pages: the app opened, or its pane closed.
+  useAppViewAsks({ runtimeConnection, openApp: handleOpenApp, shownAppType, updatePaneRecord })
 
   // THE one place teammates and channel-hidden sessions are dropped.
   // Everything the sidebar, the search corpus and the thread list read is this

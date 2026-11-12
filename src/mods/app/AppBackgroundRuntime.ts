@@ -108,6 +108,12 @@ export type AppBackgroundRuntimeOptions = {
   onStatusChanged?: () => void
   /** `$.app.badge`: the count the app's icon shows, or null for none; also null when the module stops, fails to load or is off after its crashes. */
   onBadge?: (appId: string, count: number | null) => void
+  /** `$.app.busy`: whether the app's icon shows the module at work; false too when the module stops, crashes or fails to load, and once a busy runs past its limit. */
+  onBusy?: (appId: string, busy: boolean) => void
+  /** How long a busy lasts unless the module says it again. */
+  busyMaxMs?: number
+  /** `$.app.view`: the pages are asked to open the app or close its pane; `client` undefined is every page. */
+  onView?: (appId: string, want: 'open' | 'closed', client: string | undefined) => void
   /** `$.app.analyze`: the realm's headless spawn. Absent: a run fails as unavailable. */
   runAgent?: AppAgentRunner
   agentDailyLimit?: number
@@ -122,6 +128,12 @@ export type AppBackgroundRuntimeOptions = {
   persistDelayMs?: number
   now?: () => number
 }
+
+/** How long `$.app.busy(true)` lasts unless said again, so a module that forgets leaves no icon at work for good. */
+export const APP_BUSY_MAX_MS = 120_000
+
+/** The longest `client` a `$.app.view` call may name. */
+const APP_VIEW_CLIENT_MAX = 200
 
 /** The budget of one `app.action` hook. */
 export const APP_ACTION_TIMEOUT_MS = 10_000
@@ -157,6 +169,8 @@ type Module = {
   unreadable?: boolean
   /** The badge the module set last; cleared at its stop. */
   badge?: number
+  /** The module said it is at work: the timer that ends it at the limit. */
+  busy?: ReturnType<typeof setTimeout>
   /** The view events raised so far, so each waits for the one before. */
   viewChain?: Promise<unknown>
   /** The load whose `app.start` has finished; view events reach only it. */
@@ -222,6 +236,8 @@ export class AppBackgroundRuntime {
   private readonly agentRuns: AppAgentRuns
   /** The item ids of the menu last answered to each client, by client then app. */
   private readonly pressMenus = new Map<string, Map<string, ReadonlySet<string>>>()
+  /** The client whose press each app's module was offered last, by app. */
+  private readonly lastPress = new Map<string, string>()
   private readonly stopMcpStatus: (() => void) | undefined
 
   constructor(private readonly options: AppBackgroundRuntimeOptions) {
@@ -301,10 +317,11 @@ export class AppBackgroundRuntime {
     if (trigger === 'menu' && (item === undefined || !offered?.has(item))) return null
     const module = this.modules.get(appId)
     if (!module || !module.loaded || module.viewsOpen !== module.loaded || !module.dispatcher.hasHooksFor('app.press')) return null
+    this.lastPress.set(appId, client)
     const raised = await this.raise(
       module,
       'app.press',
-      { appId, trigger, ...(item !== undefined ? { item } : {}) },
+      { appId, trigger, client, ...(item !== undefined ? { item } : {}) },
       this.options.pressTimeoutMs ?? APP_PRESS_TIMEOUT_MS,
       `app.press of ${appId}`,
       '; the press goes on without it',
@@ -331,6 +348,7 @@ export class AppBackgroundRuntime {
   /** A client's connection closed: the apps it showed close unless another client shows them. */
   viewClientGone(client: string): void {
     this.pressMenus.delete(client)
+    for (const [appId, pressed] of [...this.lastPress]) if (pressed === client) this.lastPress.delete(appId)
     this.raiseViews(this.views.clientGone(client))
   }
 
@@ -633,6 +651,7 @@ export class AppBackgroundRuntime {
       loaded.worker.close()
     }
     this.clearBadge(module)
+    this.clearBusy(module)
     this.note(module, 'stopped', reason)
     await Promise.all([module.document.dispose(), this.closeMcp(module)])
   }
@@ -646,6 +665,48 @@ export class AppBackgroundRuntime {
     if (module.badge === next) return undefined
     module.badge = next
     this.options.onBadge?.(module.ref.appId, count)
+    return undefined
+  }
+
+  /** `$.app.busy(on)`: true starts or renews the icon's at-work mark, false ends it. */
+  private setBusy(module: Module, on: unknown): undefined {
+    if (typeof on !== 'boolean') throw named('TypeError', '$.app.busy(on): on is true or false')
+    if (!on) {
+      this.clearBusy(module)
+      return undefined
+    }
+    const was = module.busy !== undefined
+    if (was) clearTimeout(module.busy)
+    module.busy = setTimeout(() => this.clearBusy(module), this.options.busyMaxMs ?? APP_BUSY_MAX_MS)
+    if (!was) this.options.onBusy?.(module.ref.appId, true)
+    return undefined
+  }
+
+  private clearBusy(module: Module): void {
+    if (module.busy === undefined) return
+    clearTimeout(module.busy)
+    module.busy = undefined
+    this.options.onBusy?.(module.ref.appId, false)
+  }
+
+  /**
+   * `$.app.view.open(options)` and `.close(options)`: the pages are asked to
+   * show the app or close its pane. `options.client` names one page, as
+   * `app.press` gave it; without it an `open` goes to the page whose press
+   * the module was offered last, or to every page when there is none, and a
+   * `close` to every page.
+   */
+  private askView(module: Module, want: unknown, options: unknown): undefined {
+    const name = want === 'open' ? 'open' : 'close'
+    if (options !== undefined && (typeof options !== 'object' || options === null || Array.isArray(options))) {
+      throw named('TypeError', `$.app.view.${name}(options): options is an object`)
+    }
+    const client = (options as { client?: unknown } | undefined)?.client
+    if (client !== undefined && (typeof client !== 'string' || client.length === 0 || client.length > APP_VIEW_CLIENT_MAX)) {
+      throw named('TypeError', `$.app.view.${name}({ client }): client is the text app.press gave`)
+    }
+    const appId = module.ref.appId
+    this.options.onView?.(appId, want === 'open' ? 'open' : 'closed', client ?? (want === 'open' ? this.lastPress.get(appId) : undefined))
     return undefined
   }
 
@@ -683,6 +744,7 @@ export class AppBackgroundRuntime {
     this.note(module, refused.state, refused.message)
     this.options.report(`${module.ref.plugin}: the background module of ${module.ref.appId} did not load — ${refused.message}`)
     this.clearBadge(module)
+    this.clearBusy(module)
     void this.closeMcp(module)
   }
 
@@ -690,6 +752,7 @@ export class AppBackgroundRuntime {
   private crashed(module: Module, reason: string): void {
     if (module.gone.signal.aborted) return
     void this.closeMcp(module)
+    this.clearBusy(module)
     const now = this.now()
     const recent = module.crashes.filter(at => now - at < MOD_RESPAWN_WINDOW_MS)
     if (recent.length >= MOD_RESPAWN_LIMIT) {
@@ -723,7 +786,9 @@ export class AppBackgroundRuntime {
     if (call.noun === 'app') {
       if (call.method === 'state') return { value: module.document.value, version: module.document.version }
       if (call.method === 'badge') return this.setBadge(module, call.args[0])
+      if (call.method === 'busy') return this.setBusy(module, call.args[0])
       if (call.method === 'analyze') return await this.analyze(module, call.args[0])
+      if (call.method === 'view') return this.askView(module, call.args[0], call.args[1])
       return module.document.apply(call.args[0])
     }
     if (call.noun === 'log') {

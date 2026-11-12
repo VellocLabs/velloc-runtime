@@ -40,10 +40,19 @@ export type AppBackgroundBootSeams = {
   /** Runs `listener` when the published apps changed; default the contributions host's. */
   onChanged?: (listener: () => void) => () => void
   /** Builds the runtime; default the factory. */
-  createRuntime?: (deps: AppBackgroundBootDeps & { onBadge: (appId: string, count: number | null) => void }) => Promise<AppBackgroundRuntime>
+  createRuntime?: (deps: AppBackgroundBootDeps & AppIconSinks) => Promise<AppBackgroundRuntime>
   /** Where a module's badge goes; default the contributions host's app entry. */
   badge?: (appId: string, count: number | null) => void
+  /** Where a module's at-work mark goes; default the contributions host's app entry. */
+  busy?: (appId: string, busy: boolean) => void
+  /** Where a module's `$.app.view` goes; default the contributions host's app entry. */
+  view?: AppViewAsk
 }
+
+type AppViewAsk = (appId: string, want: 'open' | 'closed', client: string | undefined) => void
+
+/** Where a module's badge, at-work mark and asks of the pages go. */
+type AppIconSinks = { onBadge: (appId: string, count: number | null) => void; onBusy: (appId: string, busy: boolean) => void; onView: AppViewAsk }
 
 /** The folders the person approved for a plugin; `'exempt'` for a hand-placed one. */
 export type ApprovedFolders = FolderScopes | 'exempt' | undefined
@@ -128,9 +137,11 @@ export async function bootAppBackground(deps: AppBackgroundBootDeps, seams: AppB
     })
   const unapproved = new Set<string>()
   const onBadge = seams.badge ?? ((appId: string, count: number | null) => host.setAppBadge(appId, count))
+  const onBusy = seams.busy ?? ((appId: string, busy: boolean) => host.setAppBusy(appId, busy))
+  const onView: AppViewAsk = seams.view ?? ((appId, want, client) => host.setAppView(appId, want, client))
   const createRuntime =
     seams.createRuntime ??
-    (async (bootDeps: AppBackgroundBootDeps & { onBadge: typeof onBadge }) => {
+    (async (bootDeps: AppBackgroundBootDeps & AppIconSinks) => {
       const { createAppBackgroundRuntime } = await import('./appBackgroundRuntimeFactory')
       return createAppBackgroundRuntime({ ...bootDeps, report })
     })
@@ -165,7 +176,7 @@ export async function bootAppBackground(deps: AppBackgroundBootDeps, seams: AppB
       const refs = await refsOf()
       if (refs.length === 0 && !state.runtime && !state.creating) return
       if (!state.runtime) {
-        state.creating ??= createRuntime({ ...deps, onBadge })
+        state.creating ??= createRuntime({ ...deps, onBadge, onBusy, onView })
         try {
           state.runtime = await state.creating
         } catch (error) {

@@ -245,6 +245,32 @@ describe('an app\'s topbar icon', () => {
     expect(screen.getByTestId('topbar-plugin-item-pay--sync')).not.toBeNull()
   })
 
+  it("turns a ring around the icon of an app whose module is at work, says so in its name, keeps the badge, and drops both when it is done", () => {
+    const working = (busy: boolean, badge?: number): ModContributionsState => ({
+      ...STATE,
+      apps: [{ ...STATE.apps![0]!, ...(busy ? { busy: true as const } : {}), ...(badge === undefined ? {} : { badge }) }],
+    })
+    act(() => setModContributions(working(true, 2)))
+    renderBar({ session: undefined, onPress: vi.fn(), onOpenApp: vi.fn() })
+    const icon = () => screen.getByTestId('topbar-app-pay-board')
+    const ring = screen.getByTestId('topbar-app-pay-board-busy')
+    expect(ring.getAttribute('aria-hidden')).toBe('true')
+    expect(ring.className).toContain('animate-spin')
+    expect(ring.className).toContain('motion-reduce:animate-none')
+    expect(icon().getAttribute('aria-busy')).toBe('true')
+    expect(icon().getAttribute('aria-label')).toBe('Open Payments. Working…')
+    expect(icon().hasAttribute('disabled')).toBe(false)
+    expect(screen.getByTestId('topbar-app-pay-board-badge').textContent).toBe('2')
+    act(() => setModContributions(working(false, 2)))
+    expect(screen.queryByTestId('topbar-app-pay-board-busy')).toBeNull()
+    expect(icon().hasAttribute('aria-busy')).toBe(false)
+    expect(icon().getAttribute('aria-label')).toBe('Open Payments. Needs attention: 2')
+    cleanup()
+    act(() => setModContributions(working(true)))
+    render(h(I18nProvider, { locale: 'zh' }, h(RuntimeCapabilitiesContext.Provider, { value: { can: () => true } }, h(TooltipProvider, null, h(Bar, { session: undefined, onPress: vi.fn(), onOpenApp: vi.fn() })))))
+    expect(icon().getAttribute('aria-label')).toBe('打开 收付款。正在处理…')
+  })
+
   it("draws the module's badge as a pill with the count in the label and tooltip, capped at 99+; none for 0 or no badge", () => {
     const withBadge = (badge: number | undefined): ModContributionsState => ({
       ...STATE,

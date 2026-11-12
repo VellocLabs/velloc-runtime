@@ -17,7 +17,7 @@ export const APP_BACKGROUND_EVENTS: readonly string[] = Object.freeze(['app.star
 export const APP_BACKGROUND_NOUNS: readonly string[] = Object.freeze(['app', 'store', 'http', 'log', 'clock', 'fs', 'mcp', 'plugin'])
 
 const ONLY_METHODS: Readonly<Record<string, readonly string[]>> = Object.freeze({
-  app: Object.freeze(['state', 'publish', 'badge', 'analyze']),
+  app: Object.freeze(['state', 'publish', 'badge', 'busy', 'analyze', 'view']),
   http: Object.freeze(['fetch']),
   log: Object.freeze(['debug', 'info', 'warn', 'error']),
   mcp: Object.freeze(['call', 'connect']),

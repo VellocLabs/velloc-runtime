@@ -259,6 +259,37 @@ describe('the apps the contributions host publishes', () => {
     expect(contributions.state().apps?.[0]).toMatchObject({ appId: 'later-app', badge: 9 })
   })
 
+  it("a background module at work is published on its app's entry, kept across a scan, and gone when it is done", async () => {
+    const { contributions } = host()
+    await contributions.sync({ enabled: [appPlugin('pay', 'board')] })
+    expect('busy' in contributions.state().apps![0]!).toBe(false)
+    contributions.setAppBusy('pay-board', true)
+    expect(contributions.state().apps![0]!.busy).toBe(true)
+    await contributions.sync({ enabled: [appPlugin('pay', 'board'), appPlugin('notes', 'list')] })
+    expect(contributions.state().apps?.map(app => app.busy)).toEqual([true, undefined])
+    contributions.setAppBusy('pay-board', false)
+    expect('busy' in contributions.state().apps![0]!).toBe(false)
+  })
+
+  it("a background module's ask of the pages is published on its app's entry with a growing seq, kept across a scan, and gone with the app", async () => {
+    const { contributions } = host()
+    await contributions.sync({ enabled: [appPlugin('pay', 'board')] })
+    expect('view' in contributions.state().apps![0]!).toBe(false)
+    contributions.setAppView('pay-board', 'open', 'c1')
+    const first = contributions.state().apps![0]!.view!
+    expect(first).toMatchObject({ want: 'open', client: 'c1' })
+    contributions.setAppView('pay-board', 'closed', undefined)
+    const second = contributions.state().apps![0]!.view!
+    expect(second.want).toBe('closed')
+    expect('client' in second).toBe(false)
+    expect(second.seq).toBeGreaterThan(first.seq)
+    await contributions.sync({ enabled: [appPlugin('pay', 'board'), appPlugin('notes', 'list')] })
+    expect(contributions.state().apps?.map(app => app.view)).toEqual([second, undefined])
+    await contributions.sync({ enabled: [appPlugin('notes', 'list')] })
+    await contributions.sync({ enabled: [appPlugin('pay', 'board')] })
+    expect('view' in contributions.state().apps![0]!).toBe(false)
+  })
+
   it("an app's entry carries its plugin's http MCP server URLs for a sign-in, once per server; none when no URL is plain http(s)", async () => {
     const { contributions } = host()
     const mcpServers = {

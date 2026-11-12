@@ -48,6 +48,8 @@ export type PluginTopbarItem = {
   pressed?: boolean;
   /** The pill on an app's icon, as drawn (`appBadgeText`); absent when none. */
   badge?: string;
+  /** An app whose background module is at work: a ring turns around its icon. */
+  busy?: boolean;
   testId: string;
   /** The test id in the More menu once folded. */
   foldedTestId: string;
@@ -183,13 +185,18 @@ export function usePluginTopbarItems(
         const badge = appBadgeText(app.badge);
         return {
           id: appItemId(app.type),
-          label: badge ? t("topbar.openAppAttention", { title, count: badge }) : t("topbar.openApp", { title }),
-          tooltip: badge ? t("topbar.appAttention", { title, count: badge }) : title,
+          label: app.busy
+            ? t("topbar.openAppBusy", { title })
+            : badge
+              ? t("topbar.openAppAttention", { title, count: badge })
+              : t("topbar.openApp", { title }),
+          tooltip: app.busy ? t("topbar.appBusy", { title }) : badge ? t("topbar.appAttention", { title, count: badge }) : title,
           icon: <ModIconSlot icon={app.icon} icons={contributions.icons} className="size-4" />,
           needsSession: false,
           pressed: app.type === shownAppType,
           isApp: true,
           ...(badge ? { badge } : {}),
+          ...(app.busy ? { busy: true } : {}),
           testId: `topbar-app-${app.appId}`,
           foldedTestId: `topbar-folded-app-${app.appId}`,
         };
@@ -229,7 +236,8 @@ export function PluginTopbarItems({
                   type="button"
                   variant="ghost"
                   size="icon-sm"
-                  className={item.badge ? "relative" : undefined}
+                  className={item.badge || item.busy ? "relative" : undefined}
+                  {...(item.busy ? { "aria-busy": true } : {})}
                   data-testid={item.testId}
                   data-topbar-fold={pluginFoldKey(item.id)}
                   aria-label={item.label}
@@ -245,7 +253,14 @@ export function PluginTopbarItems({
                       }
                     : {})}
                 >
-                  {item.icon}
+                  {item.busy ? <span className="opacity-50">{item.icon}</span> : item.icon}
+                  {item.busy ? (
+                    <span
+                      aria-hidden="true"
+                      data-testid={`${item.testId}-busy`}
+                      className="pointer-events-none absolute inset-0.5 animate-spin rounded-full border-2 border-muted-foreground/30 border-t-foreground motion-reduce:animate-none"
+                    />
+                  ) : null}
                   {item.badge ? (
                     <span
                       aria-hidden="true"

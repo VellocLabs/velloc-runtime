@@ -25,7 +25,12 @@ import type { AppMcpStatusSource } from './appMcpStatus'
 import { currentMcpOAuthService, onMcpOAuthServiceChanged } from '../../mcp/oauth/mcpOAuthHolder'
 
 export function createAppBackgroundRuntime(
-  deps: AppBackgroundBootDeps & { report: (line: string) => void; onBadge?: (appId: string, count: number | null) => void },
+  deps: AppBackgroundBootDeps & {
+    report: (line: string) => void
+    onBadge?: (appId: string, count: number | null) => void
+    onBusy?: (appId: string, busy: boolean) => void
+    onView?: (appId: string, want: 'open' | 'closed', client: string | undefined) => void
+  },
 ): AppBackgroundRuntime {
   const { fs, homeDir, report } = deps
   const modsDir = providerModsDir(homeDir)
@@ -95,6 +100,8 @@ export function createAppBackgroundRuntime(
     report,
     ...(deps.locale ? { locale: deps.locale } : {}),
     ...(deps.onBadge ? { onBadge: deps.onBadge } : {}),
+    ...(deps.onBusy ? { onBusy: deps.onBusy } : {}),
+    ...(deps.onView ? { onView: deps.onView } : {}),
     ...(deps.runAgent ? { runAgent: deps.runAgent } : {}),
   })
 }
