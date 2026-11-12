@@ -275,9 +275,11 @@ describe('the apps the contributions host publishes', () => {
     const { contributions } = host()
     await contributions.sync({ enabled: [appPlugin('pay', 'board')] })
     expect('view' in contributions.state().apps![0]!).toBe(false)
+    const before = Date.now()
     contributions.setAppView('pay-board', 'open', 'c1')
     const first = contributions.state().apps![0]!.view!
     expect(first).toMatchObject({ want: 'open', client: 'c1' })
+    expect(first.seq, 'a seq from the clock, comparable with a connection\'s connectedAt').toBeGreaterThanOrEqual(before)
     contributions.setAppView('pay-board', 'closed', undefined)
     const second = contributions.state().apps![0]!.view!
     expect(second.want).toBe('closed')
