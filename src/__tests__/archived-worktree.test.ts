@@ -12,8 +12,8 @@ import type { SessionWorktreeRecord } from '../sessions/sessionRecords'
 import type { GitRunResult } from '../utils/agentWorktree'
 
 // A person's archive removes a clean session worktree and keeps its branch;
-// one with changes, one git cannot read, or one another live session uses
-// stays. Unarchive checks a removed one out again. (F-36)
+// one with changes or ignored files, one git cannot read, or one another live
+// session uses stays. Unarchive checks a removed one out again. (F-36)
 
 const RECORD: SessionWorktreeRecord = {
   dir: 'D:/repo/.velloc/worktrees/parser',
@@ -55,6 +55,7 @@ describe('archive', () => {
     expect(await settleWorktreeOnArchive(h.deps, 's1')).toEqual({ action: 'removed', dir: RECORD.dir })
     expect(h.commands).toEqual([
       'git -C "D:/repo/.velloc/worktrees/parser" status --porcelain',
+      'git -C "D:/repo/.velloc/worktrees/parser" status --porcelain --ignored',
       'git -C "D:/repo" worktree remove "D:/repo/.velloc/worktrees/parser"',
     ])
     expect(h.commands.some(c => c.includes('--force') || c.includes('branch -D'))).toBe(false)
@@ -71,6 +72,25 @@ describe('archive', () => {
     })
     expect(h.commands).toHaveLength(1)
     expect(h.writes).toEqual([])
+  })
+
+  it('keeps a worktree holding only ignored files, which a removal would delete', async () => {
+    const h = harness({
+      record: RECORD,
+      answer: c => (c.endsWith('--ignored') ? { ok: true, stdout: '!! .env\n!! node_modules/\n' } : { ok: true, stdout: '' }),
+    })
+    expect(await settleWorktreeOnArchive(h.deps, 's1')).toEqual({ action: 'kept', dir: RECORD.dir, reason: 'ignored_files' })
+    expect(h.commands.some(c => c.includes('worktree remove'))).toBe(false)
+    expect(h.writes).toEqual([])
+  })
+
+  it('keeps a worktree when git cannot list its ignored files', async () => {
+    const h = harness({
+      record: RECORD,
+      answer: c => (c.endsWith('--ignored') ? { ok: false, stdout: 'fatal' } : { ok: true, stdout: '' }),
+    })
+    expect(await settleWorktreeOnArchive(h.deps, 's1')).toMatchObject({ action: 'kept', reason: 'unreadable' })
+    expect(h.commands.some(c => c.includes('worktree remove'))).toBe(false)
   })
 
   it('keeps a worktree git cannot read', async () => {
@@ -154,5 +174,8 @@ describe('helpers', () => {
     expect(
       archivedWorktreeLogLine('s1', { action: 'kept', dir: 'D:/wt', reason: 'changes', changes: 3 }),
     ).toContain('3 changed path(s)')
+    expect(
+      archivedWorktreeLogLine('s1', { action: 'kept', dir: 'D:/wt', reason: 'ignored_files' }),
+    ).toContain('has ignored files')
   })
 })

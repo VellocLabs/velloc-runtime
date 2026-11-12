@@ -1,8 +1,8 @@
 /**
  * Contract: what a person's archive and unarchive do to the git worktree the
  * runtime made for a session (F-36). On archive a clean checkout is removed
- * and its branch kept; one with changes, one git cannot read, or one another
- * live session works in is kept. On unarchive a removed checkout is checked
+ * and its branch kept; one with changes, one holding gitignored files, one git
+ * cannot read, or one another live session works in is kept. On unarchive a removed checkout is checked
  * out again from its branch. Never throws; the outcome says what happened.
  * Security: the record's paths and branch come from the runtime's own
  * session record; git runs with each as one quoted word, in the repository
@@ -10,6 +10,7 @@
  */
 import type { SessionWorktreeRecord } from '../../sessions/sessionRecords'
 import {
+  checkoutHasIgnoredFiles,
   readCheckoutState,
   removeCheckoutKeepBranch,
   restoreCheckout,
@@ -31,7 +32,7 @@ export type ArchivedWorktreeDeps = {
 export type ArchivedWorktreeOutcome =
   | { action: 'none' }
   | { action: 'removed'; dir: string }
-  | { action: 'kept'; dir: string; reason: 'changes' | 'unreadable' | 'in_use' | 'remove_failed'; changes?: number }
+  | { action: 'kept'; dir: string; reason: 'changes' | 'ignored_files' | 'unreadable' | 'in_use' | 'remove_failed'; changes?: number }
   | { action: 'restored'; dir: string }
   | { action: 'restore_failed'; dir: string; reason: string }
 
@@ -47,6 +48,9 @@ export async function settleWorktreeOnArchive(
   const state = await readCheckoutState(run, dir)
   if (state.state === 'unknown') return { action: 'kept', dir, reason: 'unreadable' }
   if (state.state === 'dirty') return { action: 'kept', dir, reason: 'changes', changes: state.changes }
+  const ignored = await checkoutHasIgnoredFiles(run, dir)
+  if (ignored === undefined) return { action: 'kept', dir, reason: 'unreadable' }
+  if (ignored) return { action: 'kept', dir, reason: 'ignored_files' }
   if (!(await removeCheckoutKeepBranch(run, record.repoRoot, dir))) {
     return { action: 'kept', dir, reason: 'remove_failed' }
   }
@@ -75,9 +79,13 @@ export function archivedWorktreeLogLine(sessionId: string, outcome: ArchivedWork
     case 'removed':
       return `archive of ${sessionId}: removed the clean worktree ${outcome.dir}; its branch stays`
     case 'kept':
-      return outcome.reason === 'changes'
-        ? `archive of ${sessionId}: kept the worktree ${outcome.dir}, ${outcome.changes} changed path(s); unarchive to work in it again, or remove it by hand`
-        : `archive of ${sessionId}: kept the worktree ${outcome.dir} (${outcome.reason})`
+      if (outcome.reason === 'changes') {
+        return `archive of ${sessionId}: kept the worktree ${outcome.dir}, ${outcome.changes} changed path(s); unarchive to work in it again, or remove it by hand`
+      }
+      if (outcome.reason === 'ignored_files') {
+        return `archive of ${sessionId}: kept the worktree ${outcome.dir}, it has ignored files; remove it by hand if they are not needed`
+      }
+      return `archive of ${sessionId}: kept the worktree ${outcome.dir} (${outcome.reason})`
     case 'restored':
       return `unarchive of ${sessionId}: checked the worktree ${outcome.dir} out again`
     case 'restore_failed':

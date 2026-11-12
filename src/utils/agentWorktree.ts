@@ -292,6 +292,15 @@ export async function readCheckoutState(run: HostCommandRunner, dir: string): Pr
   return changes > 0 ? { state: 'dirty', changes } : { state: 'clean', changes: 0 }
 }
 
+/** Whether a checkout holds gitignored files: `git worktree remove` deletes
+ *  them with the folder, so a checkout holding any is kept. `undefined` when
+ *  git cannot read it. */
+export async function checkoutHasIgnoredFiles(run: HostCommandRunner, dir: string): Promise<boolean | undefined> {
+  const status = await run(`git -C ${shellPath(dir)} status --porcelain --ignored`)
+  if (!status.ok) return undefined
+  return status.stdout.split(/\r?\n/).some(line => line.startsWith('!! '))
+}
+
 /** Remove a checkout and keep its branch. Without `--force`: git itself
  *  refuses a checkout with changes. */
 export async function removeCheckoutKeepBranch(
