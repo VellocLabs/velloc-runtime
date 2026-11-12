@@ -54,8 +54,8 @@ describe('archive', () => {
     const h = harness({ record: RECORD })
     expect(await settleWorktreeOnArchive(h.deps, 's1')).toEqual({ action: 'removed', dir: RECORD.dir })
     expect(h.commands).toEqual([
-      'git -C "D:/repo/.velloc/worktrees/parser" status --porcelain',
-      'git -C "D:/repo/.velloc/worktrees/parser" status --porcelain --ignored',
+      'git -C "D:/repo/.velloc/worktrees/parser" status --porcelain --untracked-files=normal',
+      'git -C "D:/repo/.velloc/worktrees/parser" status --porcelain --untracked-files=normal --ignored',
       'git -C "D:/repo" worktree remove "D:/repo/.velloc/worktrees/parser"',
     ])
     expect(h.commands.some(c => c.includes('--force') || c.includes('branch -D'))).toBe(false)

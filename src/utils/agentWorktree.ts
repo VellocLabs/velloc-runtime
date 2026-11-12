@@ -282,11 +282,14 @@ export async function closeAgentCheckout(
 export type HostCommandRunner = (command: string) => Promise<GitRunResult>
 
 /** A checkout's working state: `unknown` when git cannot read it, a missing
- *  directory included. `changes` counts the changed and untracked paths. */
+ *  directory included. `changes` counts the changed and untracked paths.
+ *  Both status reads pass `--untracked-files=normal`: with
+ *  `status.showUntrackedFiles=no` in the person's config, git would list
+ *  neither untracked nor ignored files. */
 export type CheckoutState = { state: 'clean' | 'dirty' | 'unknown'; changes: number }
 
 export async function readCheckoutState(run: HostCommandRunner, dir: string): Promise<CheckoutState> {
-  const status = await run(`git -C ${shellPath(dir)} status --porcelain`)
+  const status = await run(`git -C ${shellPath(dir)} status --porcelain --untracked-files=normal`)
   if (!status.ok) return { state: 'unknown', changes: 0 }
   const changes = status.stdout.split(/\r?\n/).filter(line => line.trim() !== '').length
   return changes > 0 ? { state: 'dirty', changes } : { state: 'clean', changes: 0 }
@@ -296,7 +299,7 @@ export async function readCheckoutState(run: HostCommandRunner, dir: string): Pr
  *  them with the folder, so a checkout holding any is kept. `undefined` when
  *  git cannot read it. */
 export async function checkoutHasIgnoredFiles(run: HostCommandRunner, dir: string): Promise<boolean | undefined> {
-  const status = await run(`git -C ${shellPath(dir)} status --porcelain --ignored`)
+  const status = await run(`git -C ${shellPath(dir)} status --porcelain --untracked-files=normal --ignored`)
   if (!status.ok) return undefined
   return status.stdout.split(/\r?\n/).some(line => line.startsWith('!! '))
 }
