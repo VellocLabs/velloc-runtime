@@ -117,8 +117,9 @@ describe('AssistantUiThread read-only gating (shutdown tab)', () => {
     expect(THREAD).toMatch(/snapshotBlocksComposerInput\(state\.snapshot\)\s*\|\|\s*!!onUnarchive/)
     // Send, Continue and Compact read the needs-answer gate, not the input one: the hold must reach it too.
     expect(THREAD).toMatch(/SnapshotNeedsAnswerProvider value=\{snapshotNeedsAnswer\(state\.snapshot\)\s*\|\|\s*!!onUnarchive\}/)
-    expect(THREAD).toContain('onRewindToMessage: readOnly || onUnarchive ? undefined : onRewindToMessage')
-    expect(THREAD).toContain('onRetryProviderApiError: readOnly || onUnarchive ? undefined : handleRetryProviderApiError')
+    expect(THREAD).toContain('onRewindToMessage: readOnly || archived ? undefined : onRewindToMessage')
+    expect(THREAD).toContain('onRetryProviderApiError: readOnly || archived ? undefined : handleRetryProviderApiError')
+    expect(THREAD).toContain('submitActionMessage={onUnarchive ? undefined : submitActionMessage}')
     expect(THREAD).toContain('<ArchivedSessionProvider value={onUnarchive ? { onUnarchive } : null}>')
     expect(interactivePropsBlock()).toContain('onUnarchive={readOnly ? undefined : onUnarchive}')
     const SHELL = readFileSync(join(SRC, 'browser', 'webview', 'shellSessionThread.tsx'), 'utf8')

@@ -509,21 +509,22 @@ function InteractiveAssistantUiThread({
   }, [])
   const liveEventsRef = useRef(state.liveEvents)
   liveEventsRef.current = state.liveEvents
+  const archived = !!onUnarchive
   const messageActionsValue = useMemo(
     () => ({
       onForkFromMessage: readOnly ? undefined : onForkFromMessage,
       resolveForkAfterResponse: readOnly || !onForkAfterMessage ? undefined : resolveForkAfterResponse,
       onForkAfterResponse: readOnly ? undefined : onForkAfterMessage,
-      onRewindToMessage: readOnly || onUnarchive ? undefined : onRewindToMessage,
+      onRewindToMessage: readOnly || archived ? undefined : onRewindToMessage,
       onStartSideChat: readOnly ? undefined : onStartSideChat,
-      onRetryProviderApiError: readOnly || onUnarchive ? undefined : handleRetryProviderApiError,
+      onRetryProviderApiError: readOnly || archived ? undefined : handleRetryProviderApiError,
       onRequestContinueInCode:
         readOnly || !onContinueInCode ? undefined : handleRequestContinueInCode,
       continuedInCode,
     }),
     [
       readOnly,
-      onUnarchive,
+      archived,
       onForkFromMessage,
       onForkAfterMessage,
       resolveForkAfterResponse,
@@ -1297,7 +1298,7 @@ function InteractiveAssistantUiThread({
                         <A2uiProviderHost
                           sessionId={sessionId}
                           messages={state.transcriptMessages}
-                          submitActionMessage={submitActionMessage}
+                          submitActionMessage={onUnarchive ? undefined : submitActionMessage}
                           busy={state.status === 'submitting'}
                           appBoard={appBoard}
                         >

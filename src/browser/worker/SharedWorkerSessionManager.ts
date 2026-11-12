@@ -2960,15 +2960,19 @@ export class SharedWorkerSessionManager {
     const deps: ArchivedWorktreeDeps = {
       readWorktree: async id => worktreeRecordOf((await this.storage?.readSessionMeta(id))?.metadata?.worktree),
       writeWorktree: (id, record) => this.patchSessionRecord(id, { worktree: record }),
-      inUseElsewhere: (id, dir) => {
+      inUseElsewhere: async (id, dir) => {
         for (const other of this.sessions.keys()) {
           if (other === id || this.fsSummaries.peek(other)?.archived) continue
           const cwd = this.sessionTerminalCwd(other)
           if (cwd && insideFolder(cwd, dir)) return true
         }
-        for (const other of this.fsSummaries.keys()) {
+        // A teammate was shut down by this archive; a child with its own
+        // worktree works there, not here.
+        for (const other of [...this.fsSummaries.keys()]) {
           const summary = this.fsSummaries.peek(other)
-          if (other !== id && summary?.parentSessionId === id && !summary.archived) return true
+          if (other === id || summary?.parentSessionId !== id || summary.archived || isTeammateSessionId(other)) continue
+          const meta = await this.storage?.readSessionMeta(other)
+          if (!worktreeRecordOf(meta?.metadata?.worktree)) return true
         }
         return false
       },

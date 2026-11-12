@@ -4323,6 +4323,35 @@ describe('SharedWorkerSessionManager', () => {
       expect(metas.get('s')!.metadata.archived).toBe(false)
     })
 
+    it('a child with no worktree of its own keeps the parent checkout; one with its own, or an archived one, does not (F-36)', async () => {
+      installStorage()
+      const tree = { dir: 'D:/repo/.velloc/worktrees/s', branch: 'session/s', repoRoot: 'D:/repo' }
+      metas.get('s')!.metadata.worktree = tree
+      metas.set('k', { schemaVersion: 1, sessionId: 'k', updatedAt: 11, metadata: {
+        spawnedFrom: { sessionId: 's', taskId: 't', kind: 'side_session', initiator: 'model', name: 'k' },
+      } })
+      const summaries = manager as unknown as { summaryRepo: { refreshFsSummary(id: string): Promise<void> } }
+      await summaries.summaryRepo.refreshFsSummary('s')
+      await summaries.summaryRepo.refreshFsSummary('k')
+      const commands: string[] = []
+      const internalsOf = manager as unknown as {
+        bridgeRouter: { getDirectTransport(): unknown }
+        stopSessionForArchive(id: string): Promise<void>
+        settleArchivedWorktree(id: string, archived: boolean): Promise<void>
+      }
+      internalsOf.bridgeRouter.getDirectTransport = () => ({
+        request: async (req: { payload: { command: string } }) => {
+          commands.push(req.payload.command)
+          return { ok: true, result: '(no output)' }
+        },
+      })
+      await internalsOf.settleArchivedWorktree('s', true)
+      expect(commands).toEqual([])
+      metas.get('k')!.metadata.worktree = { dir: 'D:/repo/.velloc/worktrees/k', branch: 'session/k', repoRoot: 'D:/repo' }
+      await internalsOf.settleArchivedWorktree('s', true)
+      expect(commands.some(c => c.includes('worktree remove'))).toBe(true)
+    })
+
     it('the person archive stops the session first, then settles its worktree; a repeat or a refusal does neither (F-36)', async () => {
       installStorage()
       await (manager as unknown as { summaryRepo: { refreshFsSummary(id: string): Promise<void> } })

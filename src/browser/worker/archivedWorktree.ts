@@ -20,9 +20,9 @@ export type ArchivedWorktreeDeps = {
   readWorktree(sessionId: string): Promise<SessionWorktreeRecord | undefined>
   writeWorktree(sessionId: string, record: SessionWorktreeRecord): Promise<void>
   /** Another live, unarchived session works in `dir` or below it, or an
-   *  unarchived session listed under this one may (its folder is not on
-   *  record). */
-  inUseElsewhere(sessionId: string, dir: string): boolean
+   *  unarchived session listed under this one, with no worktree of its own
+   *  and not a teammate, may (its folder is not on record). */
+  inUseElsewhere(sessionId: string, dir: string): Promise<boolean>
   /** Git for `sessionId`, run in `cwd`. */
   run(sessionId: string, cwd: string): HostCommandRunner
   now(): number
@@ -42,7 +42,7 @@ export async function settleWorktreeOnArchive(
   const record = await deps.readWorktree(sessionId).catch(() => undefined)
   if (!record || record.removedAt !== undefined) return { action: 'none' }
   const dir = record.dir
-  if (deps.inUseElsewhere(sessionId, dir)) return { action: 'kept', dir, reason: 'in_use' }
+  if (await deps.inUseElsewhere(sessionId, dir).catch(() => true)) return { action: 'kept', dir, reason: 'in_use' }
   const run = deps.run(sessionId, record.repoRoot)
   const state = await readCheckoutState(run, dir)
   if (state.state === 'unknown') return { action: 'kept', dir, reason: 'unreadable' }

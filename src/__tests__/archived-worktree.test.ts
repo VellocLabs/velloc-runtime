@@ -38,7 +38,7 @@ function harness(opts: {
       writes.push(next)
       record = next
     },
-    inUseElsewhere: () => opts.inUse === true,
+    inUseElsewhere: async () => opts.inUse === true,
     run: (_id, cwd) => async command => {
       expect(cwd).toBe(RECORD.repoRoot)
       commands.push(command)
