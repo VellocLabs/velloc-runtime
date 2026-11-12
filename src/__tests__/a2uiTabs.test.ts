@@ -133,6 +133,15 @@ describe('Tabs in the Velloc catalog', () => {
     expect(view.panel()).toBe('Archive list')
   })
 
+  it('the tab strip scrolls sideways only: no tab hangs below it and it never scrolls down', async () => {
+    const view = await draw(tabsBody(`root = Tabs(${THREE})`))
+    const strip = view.container.querySelector('[role="tablist"]')!.className.split(/\s+/)
+    expect(strip).toContain('overflow-x-auto')
+    expect(strip).toContain('overflow-y-hidden')
+    expect(strip.some(name => /^border(-b)?$/.test(name)), 'the rule adds no height to the strip').toBe(false)
+    for (const tab of view.tabs()) expect(tab.className.split(/\s+/).some(name => /^-m[by]?-/.test(name))).toBe(false)
+  })
+
   it('a list shrinking under the selected tab shows the first tab', async () => {
     const view = await draw(tabsBody(`root = Tabs(${THREE})`))
     await view.click(2)

@@ -94,7 +94,12 @@ function TabsView({ tabs: items, open, buildChild }: TabsProps & { buildChild: (
   const child = tabs[active]?.child
   return (
     <div data-slot="a2ui-tabs" className="flex w-full min-w-0 flex-col">
-      <div role="tablist" onKeyDown={onKeyDown} className="flex min-w-0 gap-1 overflow-x-auto border-b">
+      {/* The rule is an inset shadow and the tabs stay inside the strip: a tab hanging below it would make the strip scroll down. */}
+      <div
+        role="tablist"
+        onKeyDown={onKeyDown}
+        className="flex min-w-0 gap-1 overflow-x-auto overflow-y-hidden shadow-[inset_0_-1px_0_var(--border)]"
+      >
         {tabs.map((tab, index) => {
           const selected = index === active
           const count = tabBadgeText(tab.badge)
@@ -110,7 +115,7 @@ function TabsView({ tabs: items, open, buildChild }: TabsProps & { buildChild: (
               tabIndex={selected ? 0 : -1}
               onClick={() => setPicked(index)}
               className={cn(
-                '-mb-px inline-flex shrink-0 items-center gap-1.5 border-b-2 px-3 py-1.5 text-sm font-medium outline-none transition-colors focus-visible:ring-1 focus-visible:ring-ring',
+                'inline-flex shrink-0 items-center gap-1.5 border-b-2 px-3 py-1.5 text-sm font-medium outline-none transition-colors focus-visible:ring-1 focus-visible:ring-ring',
                 selected ? 'border-primary text-foreground' : 'border-transparent text-muted-foreground hover:text-foreground',
               )}
             >
