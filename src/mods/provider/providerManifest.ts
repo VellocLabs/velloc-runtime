@@ -9,7 +9,7 @@ import { isLocalizedText, resolveLocalizedText, whyNotLocalizedText, type Locali
 import type { PluginUserConfigField } from '../../pluginHost/pluginModel'
 import { readUserConfigFields } from '../../pluginHost/userConfigFields'
 import { joinRuntimePath } from '../../utils/runtimePaths'
-import type { ProviderEgressTable } from '../../models/drivers/providerEgress'
+import type { ProviderEgressPools, ProviderEgressTable } from '../../models/drivers/providerEgress'
 import type { ProviderPolicy } from '../../models/drivers/providerPolicy'
 import { HOST_NAME, checkProviderEgress } from './providerEgressManifest'
 import { checkPolicy, reportPolicyClamp } from './providerPolicyManifest'
@@ -165,6 +165,8 @@ export type ProviderManifest = {
   policy?: ProviderPolicy
   /** The proxies a request may leave through, by the name `route` answers. */
   egress?: ProviderEgressTable
+  /** The pools of proxies its module registers while it runs, by name. */
+  egressPools?: ProviderEgressPools
   jobs?: ProviderJobDecl[]
   /** Package-relative module path, `./`-prefixed. */
   module: string
@@ -897,7 +899,8 @@ function checkProvider(key: string, raw: unknown, errors: string[]): ProviderMan
     ...(updates ? { updates } : {}),
     ...(modelFacts && Object.keys(modelFacts).length > 0 ? { modelFacts } : {}),
     ...(policy && Object.keys(policy).length > 0 ? { policy } : {}),
-    ...(egress && Object.keys(egress).length > 0 ? { egress } : {}),
+    ...(egress && Object.keys(egress.proxies).length > 0 ? { egress: egress.proxies } : {}),
+    ...(egress && Object.keys(egress.pools).length > 0 ? { egressPools: egress.pools } : {}),
     ...(jobs && jobs.length > 0 ? { jobs } : {}),
     module: moduleRef,
   }

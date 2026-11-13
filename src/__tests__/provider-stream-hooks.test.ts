@@ -152,6 +152,7 @@ const stops = (chunks: any[]) => chunks.filter(c => c.type === 'message_stop').l
 type Script = {
   policy?: ProviderPolicy
   egress?: ProviderEgressTable
+  egressMember?: ProviderRequestSeam['egressMember']
   request?: (e: ProviderRequestEvent) => unknown
   classify?: (e: ProviderClassifyEvent) => unknown
   retry?: (e: ProviderRetryEvent) => unknown
@@ -171,6 +172,7 @@ function plug(script: Script) {
   const seam: ProviderRequestSeam = {
     ...(script.policy ? { policy: script.policy } : {}),
     ...(script.egress ? { egress: script.egress } : {}),
+    ...(script.egressMember ? { egressMember: script.egressMember } : {}),
     ...(script.budgetMs !== undefined ? { budgetMs: script.budgetMs } : {}),
     ...(script.credentials ? { credentials: script.credentials } : {}),
     ...(script.request
@@ -223,6 +225,9 @@ afterEach(() => {
 const EGRESS: ProviderEgressTable = {
   'pool-a': { url: '{{secret:proxy_a}}', hosts: ['proxy-a.example.com'] },
 }
+
+const MEMBER: NonNullable<ProviderRequestSeam['egressMember']> = (pool, member) =>
+  pool === 'pool' && member === 'p0' ? { url: 'http://203.0.113.7:8080', hosts: ['203.0.113.7'] } : undefined
 
 // ── request-plan fields ─────────────────────────────────────────────────────
 
@@ -340,6 +345,44 @@ describe('the plan fields of a request answer', () => {
     for (const open of opens) {
       expect(open.egress).toEqual({ url: '{{secret:proxy_a}}', hosts: ['proxy-a.example.com'] })
     }
+  })
+
+  it('a route to a pool member sends an https request through that member', async () => {
+    setHostPrimitives([RAW_STREAM_EGRESS_PRIMITIVE])
+    plug({ egressMember: MEMBER, request: () => ({ route: { egress: 'pool', member: 'p0' } }) })
+    const { transport, opens } = scripted([])
+    await run(transport)
+    expect(opens[0]!.url.startsWith('https://')).toBe(true)
+    expect(opens[0]!.egress).toEqual({ url: 'http://203.0.113.7:8080', hosts: ['203.0.113.7'] })
+  })
+
+  it('a pool member does not carry a request that is not https', async () => {
+    setHostPrimitives([RAW_STREAM_EGRESS_PRIMITIVE])
+    plug({
+      egressMember: MEMBER,
+      request: e => ({ route: { egress: 'pool', member: 'p0' }, url: e.url }),
+    })
+    const { transport, opens } = scripted([])
+    const host = new DriverStreamHost(transport)
+    const plain = createModelProvider({ id: PROVIDER_ID, format: 'stream-hooks-lines', baseUrl: 'http://api.acme.example' })
+    const { streamId } = host.start(plain, { messages: [], maxOutputTokens: 1000 } as never, 'big-1')
+    const chunks: any[] = []
+    for (let i = 0; i < 50; i += 1) {
+      const read = await host.read(streamId, 5000)
+      chunks.push(...read.chunks)
+      if (read.done) break
+    }
+    expect(opens).toEqual([])
+    expect(JSON.stringify(errorOf(chunks))).toContain('carries https requests only')
+  })
+
+  it('a member nobody registered is not sent at all', async () => {
+    setHostPrimitives([RAW_STREAM_EGRESS_PRIMITIVE])
+    plug({ egressMember: MEMBER, request: () => ({ route: { egress: 'pool', member: 'gone' } }) })
+    const { transport, opens } = scripted([])
+    const chunks = await run(transport)
+    expect(opens).toEqual([])
+    expect(JSON.stringify(errorOf(chunks))).toContain('is not a registered member')
   })
 
   it('limits.maxOutputTokens builds the request again under the cap; a patch still applies', async () => {

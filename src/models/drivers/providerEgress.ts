@@ -27,6 +27,19 @@ export type ProviderEgress = {
   hosts: readonly string[]
 }
 
+/** A pool whose members the provider's module registers while it runs. */
+export type ProviderEgressPool = {
+  /** The most members the pool may hold. */
+  max: number
+  /** Members may be on this machine or a private network. */
+  local: boolean
+}
+
+export type ProviderEgressPools = Readonly<Record<string, ProviderEgressPool>>
+
+/** The registered member `member` of the pool `pool`, or undefined. */
+export type ProviderEgressMemberLookup = (pool: string, member: string) => ProviderEgress | undefined
+
 /** A provider's egresses by the name its `request` hook answers. */
 export type ProviderEgressTable = Readonly<Record<string, ProviderEgress>>
 

@@ -2200,6 +2200,10 @@ export const en = {
   'settings.plugins.providers.consent.noDomains': 'Declares no domains to contact.',
   'settings.plugins.providers.consent.proxies':
     'Sends your requests through these proxy servers instead of your own proxy setting: {hosts}',
+  'settings.plugins.providers.consent.proxyPools':
+    'Sends your requests through proxy servers its code chooses, instead of your own proxy setting. Their addresses are not shown here.',
+  'settings.plugins.providers.consent.proxyPoolsLocal':
+    'Sends your requests through proxy servers its code chooses, including ones on this computer or your local network, instead of your own proxy setting. Their addresses are not shown here.',
   'settings.plugins.providers.consent.secrets': 'Stores secrets named: {secrets}',
   'settings.plugins.providers.consent.noSecrets': 'Stores no secrets of its own.',
   'settings.plugins.providers.consent.readsSecrets': 'Reads its saved secrets in plain text, for example to sign requests.',
@@ -2260,6 +2264,10 @@ export const en = {
   'settings.plugins.providers.updates.addedDomains': '{id} may now contact: {domains}',
   'settings.plugins.providers.updates.addedProxies':
     '{id} may now send requests through: {hosts}',
+  'settings.plugins.providers.updates.addedProxyPools':
+    '{id} may now send requests through proxy servers its code chooses',
+  'settings.plugins.providers.updates.addedProxyPoolsLocal':
+    '{id} may now send requests through proxy servers its code chooses, including ones on this computer or your local network',
   'settings.plugins.providers.updates.addedSecrets': '{id} now stores secrets named: {secrets}',
   'settings.plugins.providers.updates.addedReadsSecrets': '{id} now reads its saved secrets in plain text.',
   'settings.plugins.providers.updates.addedNeeds': '{id}\'s code is now also shown: {needs}',

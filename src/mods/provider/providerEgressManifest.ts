@@ -13,7 +13,12 @@
  * only. An address is either a declared secret (the usual case: it carries
  * a password) or a literal the manifest shows in full.
  */
-import type { ProviderEgress, ProviderEgressTable } from '../../models/drivers/providerEgress'
+import type {
+  ProviderEgress,
+  ProviderEgressPool,
+  ProviderEgressPools,
+  ProviderEgressTable,
+} from '../../models/drivers/providerEgress'
 import { onlyKeys } from './providerStatusManifest'
 
 type Problems = (message: string) => void
@@ -21,6 +26,14 @@ type Problems = (message: string) => void
 export const EGRESS_MAX = 8
 export const EGRESS_HOSTS_MAX = 8
 export const EGRESS_URL_MAX_LENGTH = 512
+export const EGRESS_POOL_MAX_MEMBERS = 64
+
+/** What a manifest's `egress` declares: proxies with a stated address, and
+ *  pools the module fills while it runs. A name is one or the other. */
+export type ProviderEgressDeclaration = {
+  proxies: ProviderEgressTable
+  pools: ProviderEgressPools
+}
 
 const EGRESS_NAME = /^[A-Za-z0-9][A-Za-z0-9_-]{0,31}$/
 export const HOST_NAME = /^(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)*$/
@@ -115,13 +128,36 @@ function checkUrl(value: unknown, label: string, secrets: ReadonlySet<string>, b
   return ok ? url : undefined
 }
 
+function checkPool(raw: Record<string, unknown>, label: string, bad: Problems): ProviderEgressPool | undefined {
+  let ok = true
+  const unknown = Object.keys(raw).filter(key => key !== 'dynamic' && key !== 'max' && key !== 'local')
+  if (unknown.length > 0) {
+    bad(`${label}.${unknown[0]}: not a known property of a dynamic pool (known: dynamic / max / local)`)
+    ok = false
+  }
+  if (raw.dynamic !== true) {
+    bad(`${label}.dynamic: expected true`)
+    ok = false
+  }
+  const max = raw.max
+  if (max !== undefined && !(typeof max === 'number' && Number.isInteger(max) && max >= 1 && max <= EGRESS_POOL_MAX_MEMBERS)) {
+    bad(`${label}.max: expected a whole number from 1 to ${EGRESS_POOL_MAX_MEMBERS}`)
+    ok = false
+  }
+  if (raw.local !== undefined && typeof raw.local !== 'boolean') {
+    bad(`${label}.local: expected true or false`)
+    ok = false
+  }
+  return ok ? { max: (max as number | undefined) ?? EGRESS_POOL_MAX_MEMBERS, local: raw.local === true } : undefined
+}
+
 /** Validate `providers.<key>.egress`. `secrets` are the names the provider
  *  declares in `credentials.secrets`. */
 export function checkProviderEgress(
   value: unknown,
   secrets: ReadonlySet<string>,
   bad: Problems,
-): ProviderEgressTable | undefined {
+): ProviderEgressDeclaration | undefined {
   if (!isRecord(value)) {
     bad('egress: expected an object of named proxies')
     return undefined
@@ -132,6 +168,7 @@ export function checkProviderEgress(
     return undefined
   }
   const out: Record<string, ProviderEgress> = {}
+  const pools: Record<string, ProviderEgressPool> = {}
   let failed = false
   for (const name of names) {
     const label = `egress.${name}`
@@ -144,6 +181,12 @@ export function checkProviderEgress(
     if (!isRecord(raw)) {
       bad(`${label}: expected an object with url and hosts`)
       failed = true
+      continue
+    }
+    if (raw.dynamic !== undefined) {
+      const pool = checkPool(raw, label, bad)
+      if (pool) pools[name] = pool
+      else failed = true
       continue
     }
     onlyKeys(raw, ['url', 'hosts'], label, message => {
@@ -171,7 +214,7 @@ export function checkProviderEgress(
     }
     out[name] = { url, hosts }
   }
-  return failed ? undefined : out
+  return failed ? undefined : { proxies: out, pools }
 }
 
 /** Every proxy host a table names: lower case, sorted, unique. Also reads a

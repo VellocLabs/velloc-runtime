@@ -23,7 +23,7 @@ const SECRETS = new Set(['proxy_a', 'proxy_pass'])
 
 function check(value: unknown) {
   const problems: string[] = []
-  const table = checkProviderEgress(value, SECRETS, message => problems.push(message))
+  const table = checkProviderEgress(value, SECRETS, message => problems.push(message))?.proxies
   return { table, problems }
 }
 

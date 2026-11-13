@@ -17,7 +17,7 @@ import { mergeHeaders } from './modelProvider'
 import type { ProviderPolicy } from './providerPolicy'
 import { readClassifyAnswer, type ClassifyAnswer, type ClassifyReplay, type ProviderClassifyEvent } from './providerClassify'
 import type { ProviderOutcomeEvent } from './providerOutcome'
-import type { ProviderEgressTable } from './providerEgress'
+import type { ProviderEgressMemberLookup, ProviderEgressTable } from './providerEgress'
 import { readRequestPlan, type ModelCeilings, type ProviderRequestPlan } from './providerRequestPlan'
 import {
   holdRequestBody,
@@ -97,9 +97,10 @@ export type ProviderRequestAnswer = {
   limits?: { maxOutputTokens?: number; contextWindow?: number }
   /** This request's own thresholds, held to the bounds of declared ones. */
   timeouts?: { firstByteMs?: number; idleMs?: number; firstContentMs?: number; stallMs?: number }
-  /** The name of an egress the provider declared: this request leaves
-   *  through that proxy. Absent: it follows the host's proxy setting. */
-  route?: string
+  /** The name of an egress the provider declared, or a member of one of its
+   *  pools: this request leaves through that proxy. Absent: it follows the
+   *  host's proxy setting. */
+  route?: string | { egress: string; member: string }
 }
 
 export type ProviderSignEvent = {
@@ -208,6 +209,9 @@ export interface ProviderRequestSeam {
   /** The egresses the provider declared, by the name `route` answers.
    *  Absent = none: any `route` is refused. */
   egress?: ProviderEgressTable
+  /** The members its module registered in its dynamic pools. Absent = it
+   *  declares no pool: a `route` naming a member is refused. */
+  egressMember?: ProviderEgressMemberLookup
 }
 
 // ── registry ────────────────────────────────────────────────────────────────
@@ -899,7 +903,7 @@ export class ProviderRequestFlow {
     ) {
       throw new Error('idleTimeoutMs is not a positive number')
     }
-    const plan = readRequestPlan(answer as Record<string, unknown>, this.facts.ceilings, this.seam.egress)
+    const plan = readRequestPlan(answer as Record<string, unknown>, this.facts.ceilings, this.seam.egress, this.seam.egressMember)
     const outputCap = plan?.limits?.maxOutputTokens
     const sawBody = this.needs('body')
     const replacesParts = answer.system !== undefined || answer.tools !== undefined

@@ -12,6 +12,7 @@ import { ProviderIdMapper } from './ids/idMapper'
 import type { ProviderIdDeps } from './nouns/providerNounDeps'
 import { createIdsHook, createProviderSeam } from './providerSeamAdapter'
 import { getProviderCredentials } from './login/credentialDeps'
+import { providerEgressPools } from './providerEgressPools'
 
 /** The seam for a registration: the adapter's, or — when the adapter refuses
  *  the provider's declaration — one that fails every request closed. */
@@ -35,6 +36,11 @@ export function seamForRegistration(
     )
     if (manifest.policy) seam.policy = manifest.policy
     if (manifest.egress) seam.egress = manifest.egress
+    const pools = manifest.egressPools
+    if (pools) {
+      seam.egressMember = (pool, member) =>
+        Object.prototype.hasOwnProperty.call(pools, pool) ? providerEgressPools.member(providerId, pool, member) : undefined
+    }
     // The id mapper exists only for a provider that states `ids` rules; one
     // that states none pays nothing. Rules that cannot run must not be
     // skipped (the vendor's ids would go out unmapped): that is an error here.
@@ -63,5 +69,13 @@ export function seamForRegistration(
 /** The listener for `onProviderModRegistered`: plug the seam in, and take it
  *  out when the provider is replaced or removed. */
 export function providerSeamListener(report: (line: string) => void, ids?: ProviderIdDeps): ProviderRegisteredListener {
-  return registration => registerProviderRequestSeam(registration.providerId, seamForRegistration(registration, report, ids))
+  return registration => {
+    const unplug = registerProviderRequestSeam(registration.providerId, seamForRegistration(registration, report, ids))
+    // A replaced or removed provider's pools go with its seam: the next
+    // version declares its own, and fills them again.
+    return () => {
+      providerEgressPools.clear(registration.providerId)
+      unplug()
+    }
+  }
 }

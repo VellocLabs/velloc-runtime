@@ -12,6 +12,8 @@ import { isKeyName, type ProviderKeyVault } from './keyVault'
 import { publicKeyOf, signWith } from './keypair'
 import { isSessionId, isSessionKey, type SessionStoreBackend } from './sessionStore'
 import type { IdMapStores } from '../ids/idMapStore'
+import type { ProviderEgressPools } from '../../../models/drivers/providerEgress'
+import type { ProviderEgressPoolRegistry } from '../providerEgressPools'
 
 export const MAX_SECRET_CHARS = 16 * 1024
 
@@ -28,6 +30,12 @@ export type ProviderNounDeps = {
   /** The settings write path, sealed host-side: name by name, `''` removes
    *  (`providers.upsert` semantics). PM-3 owns it. */
   writeProviderSecrets: (providerId: string, record: Readonly<Record<string, string>>) => Promise<void>
+  /** The dynamic egress pools a provider declared, and where their members
+   *  are kept. Absent: no pool can be filled in this realm. */
+  egress?: {
+    declaredPools: (providerId: string) => ProviderEgressPools | undefined
+    registry: ProviderEgressPoolRegistry
+  }
 }
 
 function refusal(message: string): Error {
@@ -148,6 +156,28 @@ export function createProviderNouns(deps: ProviderNounDeps): ProviderNouns {
       }
       if (Object.keys(write).length === 0) return
       await deps.writeProviderSecrets(providerId, write)
+    },
+
+    // Security: only a pool the provider declared can be filled; the
+    // registry checks each member and its messages never quote an address.
+    setEgress: async call => {
+      const pool = call.args[0]
+      const providerId = providerOf(call, call.args[2])
+      if (typeof pool !== 'string') throw new TypeError('$.provider.setEgress takes the name of a pool and its members')
+      const declared = deps.egress?.declaredPools(providerId)
+      const decl = declared && Object.prototype.hasOwnProperty.call(declared, pool) ? declared[pool] : undefined
+      if (!deps.egress || !decl) {
+        const names = Object.keys(declared ?? {})
+        throw refusal(
+          `$.provider.setEgress: ${pool.slice(0, 64)} is not a dynamic pool ${providerId} declares` +
+            (names.length > 0 ? ` (it declares ${names.join(', ')})` : ''),
+        )
+      }
+      try {
+        deps.egress.registry.set(providerId, pool, decl, call.args[1])
+      } catch (error) {
+        throw new TypeError(`$.provider.setEgress: ${error instanceof Error ? error.message : 'the members are refused'}`)
+      }
     },
   }
 

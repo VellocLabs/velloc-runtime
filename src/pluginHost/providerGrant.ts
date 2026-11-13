@@ -28,7 +28,12 @@ export type ProviderGrant = {
   /** The proxy hosts its requests may be sent through: lower case, sorted,
    *  unique. Absent: it declares no proxy. */
   proxies?: string[]
+  /** It sends requests through proxies its code chooses while it runs:
+   *  `public` ones only, or `local` ones too. Absent: it has no such pool. */
+  proxyPools?: ProxyPoolReach
 }
+
+export type ProxyPoolReach = 'public' | 'local'
 
 /** A plugin's grant: its providers' grants, by provider key, and the folders its background modules reach. */
 export type Grant = {
@@ -49,6 +54,8 @@ export type ProviderGrantAddition = {
   signNeeds?: ProviderSignNeed
   /** Proxy hosts not consented to. Absent: none. */
   proxies?: string[]
+  /** The new, wider reach of its proxy pools. */
+  proxyPools?: ProxyPoolReach
 }
 
 export type GrantDelta = {
@@ -70,6 +77,7 @@ export type GrantDelta = {
 
 const REQUEST_NEED_ORDER: readonly ProviderRequestNeed[] = ['system', 'tools', 'body', 'cwd']
 const SIGN_RANK: Readonly<Record<ProviderSignNeed, number>> = { digest: 1, body: 2 }
+const POOL_RANK: Readonly<Record<ProxyPoolReach, number>> = { public: 1, local: 2 }
 
 const sortedUnique = (values: readonly string[]): string[] => [...new Set(values)].sort()
 
@@ -77,6 +85,9 @@ const sortedUnique = (values: readonly string[]): string[] => [...new Set(values
 export function providerGrantOf(manifest: ProviderManifest): ProviderGrant {
   const needs = new Set(manifest.requestNeeds ?? [])
   const proxies = egressHostsOf(manifest.egress)
+  const pools = Object.values(manifest.egressPools ?? {})
+  const proxyPools: ProxyPoolReach | undefined =
+    pools.length === 0 ? undefined : pools.some(pool => pool.local) ? 'local' : 'public'
   return {
     domains: sortedUnique(manifest.domains.map(domain => domain.trim().toLowerCase())),
     secrets: sortedUnique((manifest.credentials.secrets ?? []).map(secret => secret.name)),
@@ -84,6 +95,7 @@ export function providerGrantOf(manifest: ProviderManifest): ProviderGrant {
     requestNeeds: REQUEST_NEED_ORDER.filter(need => needs.has(need)),
     ...(manifest.signNeeds !== undefined ? { signNeeds: manifest.signNeeds } : {}),
     ...(proxies.length > 0 ? { proxies } : {}),
+    ...(proxyPools ? { proxyPools } : {}),
   }
 }
 
@@ -113,7 +125,9 @@ function additionOf(consented: ProviderGrant | undefined, next: ProviderGrant): 
   const wider =
     next.signNeeds !== undefined && SIGN_RANK[next.signNeeds] > (consented?.signNeeds ? SIGN_RANK[consented.signNeeds] : 0)
   const proxies = (next.proxies ?? []).filter(host => !had(consented?.proxies, host))
-  if (domains.length === 0 && secrets.length === 0 && !readsSecrets && requestNeeds.length === 0 && !wider && proxies.length === 0) {
+  const widerPools =
+    next.proxyPools !== undefined && POOL_RANK[next.proxyPools] > (consented?.proxyPools ? POOL_RANK[consented.proxyPools] : 0)
+  if (domains.length === 0 && secrets.length === 0 && !readsSecrets && requestNeeds.length === 0 && !wider && proxies.length === 0 && !widerPools) {
     return undefined
   }
   return {
@@ -123,13 +137,15 @@ function additionOf(consented: ProviderGrant | undefined, next: ProviderGrant): 
     requestNeeds,
     ...(wider ? { signNeeds: next.signNeeds } : {}),
     ...(proxies.length > 0 ? { proxies } : {}),
+    ...(widerPools ? { proxyPools: next.proxyPools } : {}),
   }
 }
 
 /**
  * Whether `next` asks for more than `consented`. A new provider key, a new
  * domain, a new secret name, `readsSecrets` turned on, a new `requestNeeds`
- * value, a new proxy host, or a larger `signNeeds` (none < digest < body) is wider, as is a
+ * value, a new proxy host, a wider proxy pool (none < public < local), or a larger `signNeeds`
+ * (none < digest < body) is wider, as is a
  * folder not consented to, a read-only one asked for writing, or agent runs
  * not consented to. Dropping or
  * reducing any of them, or dropping a provider, is not.

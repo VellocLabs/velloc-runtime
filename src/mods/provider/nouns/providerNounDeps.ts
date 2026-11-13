@@ -25,6 +25,7 @@ import { queueProviderEntryWrite } from '../login/providerEntryWrites'
 import { createLoginNouns } from '../login/providerLoginNouns'
 import { createProviderFetch, type ProviderFetchTarget } from './providerFetchNoun'
 import { createProviderNouns, type ProviderNounDeps, type ProviderNouns } from './providerNounTable'
+import { providerEgressPools } from '../providerEgressPools'
 import { createProviderSettings } from './providerSettingsNoun'
 import {
   IndexedDbKeyRecords,
@@ -243,6 +244,10 @@ export function createProviderNounDeps(options: ProviderNounSetOptions): Provide
     device: options.device ?? createDeviceSource({ sources: options.sources }),
     declaredSecrets: providerId => declaredSecretNames(options.registrationOf(providerId)?.manifest),
     writeProviderSecrets: createSecretWriter(options),
+    egress: {
+      declaredPools: providerId => options.registrationOf(providerId)?.manifest.egressPools,
+      registry: providerEgressPools,
+    },
   }
 }
 

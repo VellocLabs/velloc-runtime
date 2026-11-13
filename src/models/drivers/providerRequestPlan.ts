@@ -15,7 +15,12 @@
  */
 import { NEXUS_MODEL_CONFIG } from '../../config/nexusModelConfig'
 import { findConfiguredModelIn } from '../../config/nexusModelConfig/findConfiguredModel'
-import { egressNamed, type ProviderEgress, type ProviderEgressTable } from './providerEgress'
+import {
+  egressNamed,
+  type ProviderEgress,
+  type ProviderEgressMemberLookup,
+  type ProviderEgressTable,
+} from './providerEgress'
 import { clampTimeouts, TIMEOUT_KEYS, type ProviderTimeouts } from './providerTimeouts'
 import { traceLine } from '../../utils/debugLog'
 
@@ -30,7 +35,12 @@ export type ProviderRequestPlan = {
   timeouts?: ProviderTimeouts
   /** The declared egress the hook named in `route`. Absent: the request
    *  follows the host's own proxy setting. */
-  egress?: ProviderEgress & { name: string }
+  egress?: ProviderEgress & {
+    name: string
+    /** A member of a pool the module filled: its address is not one the
+     *  person saw, so it carries `https` requests only. */
+    dynamic?: true
+  }
 }
 
 /** What the model's row states, when it states it. */
@@ -115,8 +125,24 @@ function readTimeouts(value: unknown): ProviderTimeouts | undefined {
   return Object.keys(timeouts).length > 0 ? timeouts : undefined
 }
 
-function readRoute(value: unknown, declared: ProviderEgressTable | undefined): ProviderRequestPlan['egress'] {
+function readRoute(
+  value: unknown,
+  declared: ProviderEgressTable | undefined,
+  memberOf: ProviderEgressMemberLookup | undefined,
+): ProviderRequestPlan['egress'] {
   if (value === undefined) return undefined
+  if (isRecord(value)) {
+    onlyKeys(value, ['egress', 'member'], 'route')
+    const { egress: pool, member } = value
+    if (typeof pool !== 'string' || pool === '' || typeof member !== 'string' || member === '') {
+      throw new Error('route is not { egress, member }, the names of a pool and one of its members')
+    }
+    const found = memberOf?.(pool, member)
+    if (!found) {
+      throw new Error(`route: "${member.slice(0, 64)}" is not a registered member of the pool "${pool.slice(0, 64)}"`)
+    }
+    return { name: `${pool}/${member}`, url: found.url, hosts: found.hosts, dynamic: true }
+  }
   if (typeof value !== 'string' || value === '') throw new Error('route is not the name of an egress')
   const egress = egressNamed(declared, value)
   if (!egress) throw new Error(`route "${value.slice(0, 64)}" is not an egress this provider declares`)
@@ -127,8 +153,9 @@ export function readRequestPlan(
   answer: Record<string, unknown>,
   ceilings: ModelCeilings = {},
   declaredEgress?: ProviderEgressTable,
+  egressMember?: ProviderEgressMemberLookup,
 ): ProviderRequestPlan | undefined {
-  const egress = readRoute(answer.route, declaredEgress)
+  const egress = readRoute(answer.route, declaredEgress, egressMember)
   const limits = readLimits(answer.limits, ceilings)
   const timeouts = readTimeouts(answer.timeouts)
   if (!limits && !timeouts && !egress) return undefined
