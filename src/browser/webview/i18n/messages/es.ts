@@ -512,6 +512,24 @@ export const es: Messages = {
   'providerIssue.egressUnsupported.title': 'Proxy del proveedor no compatible',
   'providerIssue.egressUnsupported.summary':
     'Este proveedor envía sus solicitudes a través de un proxy que declara, y esta versión de {product} no puede hacerlo, así que la solicitud no se envió. Actualiza {product} o elige otro proveedor.',
+  'providerIssue.rawStream.egressInvalid.summary':
+    'Este proveedor envía la solicitud a través de un proxy que {product} no puede usar aquí, así que la solicitud no se envió. Elige otro proxy en los ajustes del proveedor o actualiza {product}.',
+  'providerIssue.rawStream.egressUnavailable.summary':
+    'Ya hay demasiados proxies distintos transportando solicitudes, así que {product} no envió esta. Inténtalo de nuevo en un momento.',
+  'providerIssue.rawStream.egressBlocked.summary':
+    'La solicitud no se envió: su destino está en tu equipo o en tu red local, o una política de red lo rechazó. Comprueba la dirección del proveedor; un proveedor que debería ser público no debe resolverse a una dirección privada.',
+  'providerIssue.rawStream.targetNotAllowed.summary':
+    'La dirección de la solicitud está fuera del dominio para el que está configurado este proveedor, así que {product} no la envió. Comprueba la URL base del proveedor en los ajustes.',
+  'providerIssue.rawStream.responseTooLarge.summary':
+    'La respuesta del proveedor superó el límite de una respuesta de modelo, así que {product} dejó de leerla. Elige Reintentar o usa un modelo que devuelva menos.',
+  'providerIssue.rawStream.protocol.summary':
+    'La respuesta del proveedor no siguió el protocolo que {product} espera, así que no se pudo leer. Comprueba los ajustes y el endpoint del proveedor.',
+  'providerIssue.rawStream.network.summary':
+    'La conexión con el proveedor falló o se interrumpió, así que no se pudo leer la respuesta. Elige Reintentar.',
+  'providerIssue.rawStream.cancelled.summary':
+    'La solicitud se canceló antes de terminar.',
+  'providerIssue.rawStream.signInRequired.summary':
+    'Inicia sesión en este proveedor en los ajustes y luego elige Reintentar.',
   'providerIssue.network.title': 'Problema de conexión de red',
   'providerIssue.network.summary':
     '{product} no pudo comunicarse de forma fiable con el proveedor. {product} reintenta automáticamente antes de mostrar el error de API.',

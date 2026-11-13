@@ -511,6 +511,24 @@ export const de: Messages = {
   'providerIssue.egressUnsupported.title': 'Proxy des Anbieters nicht unterstützt',
   'providerIssue.egressUnsupported.summary':
     'Dieser Anbieter sendet seine Anfragen über einen von ihm angegebenen Proxy, und diese Version von {product} kann das nicht. Die Anfrage wurde daher nicht gesendet. Aktualisieren Sie {product} oder wählen Sie einen anderen Anbieter.',
+  'providerIssue.rawStream.egressInvalid.summary':
+    'Dieser Anbieter leitet die Anfrage über einen Proxy, den {product} hier nicht verwenden kann. Die Anfrage wurde daher nicht gesendet. Wählen Sie in den Einstellungen des Anbieters einen anderen Proxy oder aktualisieren Sie {product}.',
+  'providerIssue.rawStream.egressUnavailable.summary':
+    'Es tragen bereits zu viele verschiedene Proxys Anfragen, daher hat {product} diese Anfrage nicht gesendet. Versuchen Sie es gleich noch einmal.',
+  'providerIssue.rawStream.egressBlocked.summary':
+    'Die Anfrage wurde nicht gesendet: Ihr Ziel liegt auf Ihrem Computer oder in Ihrem lokalen Netzwerk, oder eine Netzwerkrichtlinie hat es abgelehnt. Prüfen Sie die Adresse des Anbieters; ein Anbieter, der öffentlich sein soll, darf nicht auf eine private Adresse auflösen.',
+  'providerIssue.rawStream.targetNotAllowed.summary':
+    'Die Adresse der Anfrage liegt außerhalb der Domain, für die dieser Anbieter konfiguriert ist, daher hat {product} sie nicht gesendet. Prüfen Sie die Basis-URL des Anbieters in den Einstellungen.',
+  'providerIssue.rawStream.responseTooLarge.summary':
+    'Die Antwort des Anbieters war größer als das Limit für eine Modellantwort, daher hat {product} das Lesen beendet. Wählen Sie „Erneut versuchen“, oder verwenden Sie ein Modell, das weniger zurückgibt.',
+  'providerIssue.rawStream.protocol.summary':
+    'Die Antwort des Anbieters folgte nicht dem Protokoll, das {product} erwartet, und konnte daher nicht gelesen werden. Prüfen Sie die Einstellungen und den Endpunkt des Anbieters.',
+  'providerIssue.rawStream.network.summary':
+    'Die Verbindung zum Anbieter ist fehlgeschlagen oder wurde unterbrochen, daher konnte die Antwort nicht gelesen werden. Wählen Sie „Erneut versuchen“.',
+  'providerIssue.rawStream.cancelled.summary':
+    'Die Anfrage wurde abgebrochen, bevor sie abgeschlossen war.',
+  'providerIssue.rawStream.signInRequired.summary':
+    'Melden Sie sich in den Einstellungen bei diesem Anbieter an und wählen Sie dann „Erneut versuchen“.',
   'providerIssue.network.title': 'Problem mit der Netzwerkverbindung',
   'providerIssue.network.summary':
     '{product} konnte den Anbieter nicht zuverlässig erreichen. {product} versucht es automatisch erneut, bevor der API-Fehler angezeigt wird.',

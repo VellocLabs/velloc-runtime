@@ -504,6 +504,24 @@ export const ko: Messages = {
   'providerIssue.egressUnsupported.title': '제공업체 프록시를 지원하지 않음',
   'providerIssue.egressUnsupported.summary':
     '이 제공업체는 직접 선언한 프록시를 통해 요청을 보내는데, 이 버전의 {product}은(는) 이를 지원하지 않아 요청을 보내지 않았습니다. {product}을(를) 업데이트하거나 다른 제공업체를 선택하세요.',
+  'providerIssue.rawStream.egressInvalid.summary':
+    '이 제공업체가 {product}에서 사용할 수 없는 프록시로 요청을 보내므로 요청을 보내지 않았습니다. 제공업체 설정에서 다른 프록시를 선택하거나 {product}을(를) 업데이트하세요.',
+  'providerIssue.rawStream.egressUnavailable.summary':
+    '이미 너무 많은 서로 다른 프록시가 요청을 나르고 있어 {product}이(가) 이 요청을 보내지 않았습니다. 잠시 후 다시 시도하세요.',
+  'providerIssue.rawStream.egressBlocked.summary':
+    '요청을 보내지 않았습니다. 대상이 컴퓨터나 로컬 네트워크에 있거나 네트워크 정책이 이를 거부했습니다. 제공업체 주소를 확인하세요. 공개되어야 하는 제공업체가 사설 주소로 확인되어서는 안 됩니다.',
+  'providerIssue.rawStream.targetNotAllowed.summary':
+    '요청 주소가 이 제공업체에 설정된 도메인 밖에 있어 {product}이(가) 보내지 않았습니다. 설정에서 제공업체의 기본 URL을 확인하세요.',
+  'providerIssue.rawStream.responseTooLarge.summary':
+    '제공업체의 응답이 모델 응답 한도를 넘어 {product}이(가) 읽기를 중단했습니다. 다시 시도를 선택하거나 응답이 더 적은 모델을 사용하세요.',
+  'providerIssue.rawStream.protocol.summary':
+    '제공업체의 응답이 {product}이(가) 기대하는 프로토콜을 따르지 않아 읽을 수 없었습니다. 제공업체 설정과 엔드포인트를 확인하세요.',
+  'providerIssue.rawStream.network.summary':
+    '제공업체와의 연결이 실패하거나 끊겨 응답을 읽을 수 없었습니다. 다시 시도를 선택하세요.',
+  'providerIssue.rawStream.cancelled.summary':
+    '요청이 완료되기 전에 취소되었습니다.',
+  'providerIssue.rawStream.signInRequired.summary':
+    '설정에서 이 제공업체에 로그인한 다음 다시 시도를 선택하세요.',
   'providerIssue.network.title': '네트워크 연결 문제',
   'providerIssue.network.summary':
     '{product}이(가) 제공업체에 안정적으로 연결하지 못했습니다. {product}은(는) 자동으로 재시도한 후 API 오류를 표시합니다.',

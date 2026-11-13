@@ -507,6 +507,24 @@ export const ja: Messages = {
   'providerIssue.egressUnsupported.title': 'プロバイダのプロキシに対応していません',
   'providerIssue.egressUnsupported.summary':
     'このプロバイダは自身が宣言したプロキシ経由でリクエストを送りますが、このバージョンの {product} はそれに対応していないため、リクエストは送信されませんでした。{product} を更新するか、別のプロバイダを選んでください。',
+  'providerIssue.rawStream.egressInvalid.summary':
+    'このプロバイダは、{product} がここでは使えないプロキシ経由でリクエストを送るため、リクエストは送信されませんでした。プロバイダの設定で別のプロキシを選ぶか、{product} を更新してください。',
+  'providerIssue.rawStream.egressUnavailable.summary':
+    'すでに多くの異なるプロキシがリクエストを中継しているため、{product} はこのリクエストを送信しませんでした。しばらくしてからもう一度お試しください。',
+  'providerIssue.rawStream.egressBlocked.summary':
+    'リクエストは送信されませんでした。宛先がお使いのコンピューターまたはローカルネットワーク上にあるか、ネットワークポリシーによって拒否されました。プロバイダのアドレスを確認してください。公開されているはずのプロバイダがプライベートアドレスに解決されてはいけません。',
+  'providerIssue.rawStream.targetNotAllowed.summary':
+    'リクエストのアドレスが、このプロバイダに設定されたドメインの外にあるため、{product} は送信しませんでした。設定でプロバイダのベース URL を確認してください。',
+  'providerIssue.rawStream.responseTooLarge.summary':
+    'プロバイダの応答がモデル応答の上限を超えたため、{product} は読み取りを中止しました。[再試行] を選ぶか、より少ない応答を返すモデルを使用してください。',
+  'providerIssue.rawStream.protocol.summary':
+    'プロバイダの応答が {product} の想定するプロトコルに従っていないため、読み取れませんでした。プロバイダの設定とエンドポイントを確認してください。',
+  'providerIssue.rawStream.network.summary':
+    'プロバイダへの接続に失敗したか中断されたため、応答を読み取れませんでした。[再試行] を選んでください。',
+  'providerIssue.rawStream.cancelled.summary':
+    'リクエストは完了前にキャンセルされました。',
+  'providerIssue.rawStream.signInRequired.summary':
+    '設定でこのプロバイダにサインインしてから、[再試行] を選んでください。',
   'providerIssue.network.title': 'ネットワーク接続の問題',
   'providerIssue.network.summary':
     '{product} はプロバイダに安定して接続できませんでした。{product} は自動的に再試行してから、API エラーを表示します。',

@@ -540,6 +540,24 @@ export const en = {
   'providerIssue.egressUnsupported.title': 'Provider proxy not supported',
   'providerIssue.egressUnsupported.summary':
     'This provider sends its requests through a proxy it declares, and this version of {product} cannot do that, so the request was not sent. Update {product}, or choose another provider.',
+  'providerIssue.rawStream.egressInvalid.summary':
+    'The provider sends this request through a proxy that {product} cannot use here, so the request was not sent. Choose a different proxy in the provider settings, or update {product}.',
+  'providerIssue.rawStream.egressUnavailable.summary':
+    'Too many different proxies are already carrying requests, so {product} did not send this one. Try again in a moment.',
+  'providerIssue.rawStream.egressBlocked.summary':
+    'The request was not sent: its destination is on your computer or local network, or a network policy refused it. Check the provider address; a provider that should be public must not resolve to a private address.',
+  'providerIssue.rawStream.targetNotAllowed.summary':
+    'The address in this request is outside the domain this provider is configured for, so {product} did not send it. Check the provider base URL in Settings.',
+  'providerIssue.rawStream.responseTooLarge.summary':
+    'The provider reply was larger than the limit for a model response, so {product} stopped reading it. Choose Try again, or use a model that returns less.',
+  'providerIssue.rawStream.protocol.summary':
+    'The provider reply did not follow the protocol {product} expects, so it could not be read. Check the provider settings and endpoint.',
+  'providerIssue.rawStream.network.summary':
+    'The connection to the provider failed or was interrupted, so the reply could not be read. Choose Try again.',
+  'providerIssue.rawStream.cancelled.summary':
+    'The request was cancelled before it finished.',
+  'providerIssue.rawStream.signInRequired.summary':
+    'Sign in to this provider in Settings, then choose Try again.',
   'providerIssue.network.title': 'Network connection issue',
   'providerIssue.network.summary':
     '{product} could not reliably reach the provider. {product} retries automatically before surfacing the API error.',

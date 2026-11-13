@@ -6,6 +6,7 @@ import { useLocale, useT } from "@/browser/webview/i18n";
 import { useMessageActionsContext } from "@/components/assistant-ui/message-actions-context";
 import { storedKeyProblemOf } from "@/utils/storedKeyProblem";
 import { maskingRefusalOf } from "@/utils/maskingRefusal";
+import { rawStreamProblemOf, rawStreamProblemSummaryKey } from "@/utils/rawStreamProblem";
 import { providerDeclaredMessage, providerErrorSummaryKey, showsProviderRetrySummary, streamAnomalyHintKey } from './composer-logic';
 
 export const ProviderApiErrorCard: FC = () => {
@@ -37,6 +38,12 @@ export const ProviderApiErrorCard: FC = () => {
   // Model egress masking refused to send (F-39): the details are a marker,
   // so the card shows the localized reason instead of them.
   const maskingRefusal = maskingRefusalOf(details);
+  // A failure the raw provider stream named by code: its detail is the
+  // transport's English text, so the card shows the localized reason instead.
+  const rawStreamProblem = rawStreamProblemOf(details);
+  const rawStreamHint = rawStreamProblem
+    ? t(rawStreamProblemSummaryKey(rawStreamProblem))
+    : undefined;
   const localLimitHint = kind === "local_stream_limit";
   // A send that ran out of time or ended oddly (F-27): the details are the
   // transport's English text, so the card adds the reason in the person's language.
@@ -148,6 +155,15 @@ export const ProviderApiErrorCard: FC = () => {
                     )}
               </div>
             ) : null}
+            {rawStreamHint && !streamAnomalyHint && !localLimitHint ? (
+              <div
+                className="text-xs text-muted-foreground"
+                data-testid="provider-api-error-raw-stream-hint"
+                data-problem={rawStreamProblem}
+              >
+                {rawStreamHint}
+              </div>
+            ) : null}
             {localLimitHint ? (
               <div
                 className="text-xs text-muted-foreground"
@@ -182,7 +198,7 @@ export const ProviderApiErrorCard: FC = () => {
                   : t("thread.providerRefusalHintUncategorized")}
               </div>
             ) : null}
-            {details && !maskingRefusal ? (
+            {details && !maskingRefusal && !rawStreamProblem ? (
               <pre className="mt-2 max-h-32 overflow-auto whitespace-pre-wrap rounded-md bg-background/70 p-2 text-xs text-muted-foreground">
                 {details}
               </pre>

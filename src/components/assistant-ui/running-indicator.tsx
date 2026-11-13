@@ -10,6 +10,7 @@ import { useAssistantState } from "@assistant-ui/react";
 import { cn } from "@/lib/utils";
 import { isRunStatusRowInView, publishRunStatusRow } from "./run-status-row";
 import { compactCount } from "@/utils/humanize/compactCount";
+import { rawStreamProblemOf, rawStreamProblemSummaryKey } from "@/utils/rawStreamProblem";
 import { useTurnTimer } from "@/hooks/useTurnTimer";
 import { isMessageKey, useT, type TranslateFn } from "@/browser/webview/i18n";
 import type { MessageKey } from "@/browser/webview/i18n/messages/en";
@@ -132,8 +133,14 @@ export function retryReasonText(
     retry.errorTitle?.trim() ||
     (retry.errorKind ? providerApiErrorKindLabel(t, retry.errorKind) : "");
   // The provider text is multi-line often enough (stack traces, JSON) that it
-  // has to be flattened before it can share a one-line status row.
-  const detail = (retry.errorDetail ?? "").replace(/\s+/g, " ").trim();
+  // has to be flattened before it can share a one-line status row. A raw-stream
+  // code is the transport's own wording, so it is replaced by the catalog
+  // sentence rather than shown in English.
+  const detailText = (retry.errorDetail ?? "").trim();
+  const rawStreamProblem = rawStreamProblemOf(detailText);
+  const detail = rawStreamProblem
+    ? t(rawStreamProblemSummaryKey(rawStreamProblem))
+    : detailText.replace(/\s+/g, " ");
   const short =
     detail.length > MAX_RETRY_DETAIL_CHARS
       ? `${detail.slice(0, MAX_RETRY_DETAIL_CHARS - 1).trimEnd()}…`

@@ -504,6 +504,24 @@ export const zh: Messages = {
   'providerIssue.egressUnsupported.title': '不支持服务商的代理',
   'providerIssue.egressUnsupported.summary':
     '此服务商通过其声明的代理发送请求，而此版本的 {product} 不支持，因此请求未发送。请更新 {product}，或选择其他服务商。',
+  'providerIssue.rawStream.egressInvalid.summary':
+    '此服务商通过 {product} 在此无法使用的代理发送请求，因此请求未发送。请在服务商设置中选择其他代理，或更新 {product}。',
+  'providerIssue.rawStream.egressUnavailable.summary':
+    '已有太多不同的代理在承载请求，因此 {product} 未发送此请求。请稍后重试。',
+  'providerIssue.rawStream.egressBlocked.summary':
+    '请求未发送：目标位于你的计算机或本地网络上，或被网络策略拒绝。请检查服务商地址；本应公开的服务商不应解析到私有地址。',
+  'providerIssue.rawStream.targetNotAllowed.summary':
+    '请求地址超出此服务商配置的域名，因此 {product} 未发送。请在设置中检查服务商的基址 URL。',
+  'providerIssue.rawStream.responseTooLarge.summary':
+    '服务商的回复超过了模型回复大小上限，因此 {product} 已停止读取。请选择“重试”，或改用返回内容更少的模型。',
+  'providerIssue.rawStream.protocol.summary':
+    '服务商的回复不符合 {product} 期望的协议，因此无法读取。请检查服务商的设置和端点。',
+  'providerIssue.rawStream.network.summary':
+    '与服务商的连接失败或中断，因此无法读取回复。请选择“重试”。',
+  'providerIssue.rawStream.cancelled.summary':
+    '请求在完成前被取消。',
+  'providerIssue.rawStream.signInRequired.summary':
+    '请在设置中登录此服务商，然后选择“重试”。',
   'providerIssue.network.title': '网络连接问题',
   'providerIssue.network.summary':
     '{product} 无法稳定地连接到服务商。{product} 会先自动重试，然后再显示该 API 错误。',

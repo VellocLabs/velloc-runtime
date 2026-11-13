@@ -510,6 +510,24 @@ export const fr: Messages = {
   'providerIssue.egressUnsupported.title': 'Proxy du fournisseur non pris en charge',
   'providerIssue.egressUnsupported.summary':
     'Ce fournisseur envoie ses requêtes par un proxy qu’il déclare, et cette version de {product} ne sait pas le faire : la requête n’a donc pas été envoyée. Mettez à jour {product} ou choisissez un autre fournisseur.',
+  'providerIssue.rawStream.egressInvalid.summary':
+    'Ce fournisseur fait passer la requête par un proxy que {product} ne peut pas utiliser ici : la requête n’a donc pas été envoyée. Choisissez un autre proxy dans les réglages du fournisseur ou mettez à jour {product}.',
+  'providerIssue.rawStream.egressUnavailable.summary':
+    'Trop de proxys différents transportent déjà des requêtes : {product} n’a donc pas envoyé celle-ci. Réessayez dans un instant.',
+  'providerIssue.rawStream.egressBlocked.summary':
+    'La requête n’a pas été envoyée : sa destination se trouve sur votre ordinateur ou votre réseau local, ou une politique réseau l’a refusée. Vérifiez l’adresse du fournisseur ; un fournisseur censé être public ne doit pas se résoudre vers une adresse privée.',
+  'providerIssue.rawStream.targetNotAllowed.summary':
+    'L’adresse de la requête sort du domaine pour lequel ce fournisseur est configuré : {product} ne l’a donc pas envoyée. Vérifiez l’URL de base du fournisseur dans les réglages.',
+  'providerIssue.rawStream.responseTooLarge.summary':
+    'La réponse du fournisseur dépassait la limite d’une réponse de modèle : {product} a arrêté de la lire. Choisissez Réessayer, ou un modèle qui renvoie moins.',
+  'providerIssue.rawStream.protocol.summary':
+    'La réponse du fournisseur ne suivait pas le protocole attendu par {product} : elle n’a donc pas pu être lue. Vérifiez les réglages et le point de terminaison du fournisseur.',
+  'providerIssue.rawStream.network.summary':
+    'La connexion au fournisseur a échoué ou été interrompue : la réponse n’a donc pas pu être lue. Choisissez Réessayer.',
+  'providerIssue.rawStream.cancelled.summary':
+    'La requête a été annulée avant d’aboutir.',
+  'providerIssue.rawStream.signInRequired.summary':
+    'Connectez-vous à ce fournisseur dans les réglages, puis choisissez Réessayer.',
   'providerIssue.network.title': 'Problème de connexion réseau',
   'providerIssue.network.summary':
     '{product} n’a pas pu joindre le fournisseur de manière fiable. {product} réessaie automatiquement avant d’afficher l’erreur d’API.',
