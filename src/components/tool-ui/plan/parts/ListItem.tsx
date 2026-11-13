@@ -149,6 +149,9 @@ export const PlanListItem = memo(function PlanListItem({
       className={cn(
         "text-sm leading-6 font-medium break-words",
         labelClassesForStatus(status),
+        // Block, not inline: a text-clipped background on an inline box is not
+        // painted behind a block-level label, which then draws transparent.
+        flat && "block",
         sheen && "nexus-sheen",
       )}
     >

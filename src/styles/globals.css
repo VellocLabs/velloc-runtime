@@ -847,14 +847,14 @@
   .motion-safe\:animate-pulse {
     animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite !important;
   }
-  /* Conversation running-indicator (gooey orbit trio) — re-assert each
-   * animation with !important so the release WebUI's spurious `reduce` can't
-   * freeze this functional "agent is working" indicator. */
   /* The sheen is the only sign that a tool group or one of its rows is
    * running, so it is functional too. */
   .nexus-sheen {
     animation: nexus-sheen-sweep 2s linear infinite !important;
   }
+  /* Conversation running-indicator (gooey orbit trio) — re-assert each
+   * animation with !important so the release WebUI's spurious `reduce` can't
+   * freeze this functional "agent is working" indicator. */
   .nexus-blob-orbit {
     animation: nexus-blob-spin 3s linear infinite !important;
   }

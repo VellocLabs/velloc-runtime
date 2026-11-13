@@ -1015,6 +1015,11 @@ describe('ToolPlanStream unified header', () => {
     )
     expect(rows.length).toBe(1)
     expect(rows[0]!.className).toContain('nexus-sheen')
+    // The tool label inside is a flex box; an inline sheen box would not
+    // paint behind it and the label would draw transparent.
+    expect(rows[0]!.className).toMatch(/\bblock\b/)
+    // A long running target must shrink so its ellipsis can show.
+    expect(headerTitle(root).className).not.toContain('shrink-0')
     expect(root.querySelector('.animate-spin, .motion-safe\\:animate-spin')).toBeNull()
   })
 

@@ -136,12 +136,8 @@ type ToolPlanStreamSnapshot = {
   activeCount: number;
   concurrentBatchSize: number;
   callTotal: number;
-  completedCount: number;
   cancelledCount: number;
   errorCount: number;
-  /** Tools that reached a terminal state (complete or incomplete). Drives the
-   *  settled-only progress bar. */
-  settledCount: number;
   /**
    * File-operation tallies across the run, mirroring the todo header chips.
    * Kept as three flat primitives (NOT a nested object) so `useShallow`'s
@@ -156,7 +152,7 @@ type ToolPlanStreamSnapshot = {
    *  final chip, mirroring the todo `currentOrLastTarget`. */
   currentOrLastTarget: string | undefined;
   /** Latest non-empty preamble text OR reasoning in the run — the header's
-   *  second line (shimmer, active only), mirroring the todo current-update
+   *  second line (active only), mirroring the todo current-update
    *  text. A reasoning part contributes its latest paragraph. */
   currentUpdateText: string | undefined;
   /** `currentUpdateText` came from a reasoning part (the line wears the
@@ -306,10 +302,8 @@ const ToolPlanStreamImpl: FC<ToolPlanStreamProps> = ({
       let runningToolLabel: string | undefined;
       let activeCount = 0;
       let concurrentBatchSize = 0;
-      let completed = 0;
       let cancelled = 0;
       let errored = 0;
-      let settled = 0;
       let fileReadCount = 0;
       let fileEditedCount = 0;
       let fileDeletedCount = 0;
@@ -382,11 +376,8 @@ const ToolPlanStreamImpl: FC<ToolPlanStreamProps> = ({
           if (target) runningTarget = target;
           activeCount++;
         } else if (part.status?.type === "complete") {
-          completed++;
-          settled++;
           if (part.isError) errored++;
         } else if (part.status?.type === "incomplete") {
-          settled++;
           if (part.status.reason === "cancelled") cancelled++;
           else errored++;
         }
@@ -409,10 +400,8 @@ const ToolPlanStreamImpl: FC<ToolPlanStreamProps> = ({
         activeCount,
         concurrentBatchSize,
         callTotal,
-        completedCount: completed,
         cancelledCount: cancelled,
         errorCount: errored,
-        settledCount: settled,
         fileReadCount,
         fileEditedCount,
         fileDeletedCount,
@@ -576,7 +565,7 @@ const ToolPlanStreamImpl: FC<ToolPlanStreamProps> = ({
       <span
         data-slot="tool-plan-stream-title"
         className={cn(
-          "min-w-0 shrink-0 truncate font-medium",
+          "min-w-0 truncate font-medium",
           headerState === "running"
             ? "nexus-sheen"
             : "text-muted-foreground group-hover/trigger:text-foreground",
