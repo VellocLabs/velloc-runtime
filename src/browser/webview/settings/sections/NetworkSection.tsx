@@ -250,7 +250,7 @@ export function NetworkSection({
                 )
               : null}
           </SettingsCard>
-          {form.mode === "fixed" || form.mode === "pac" ? (
+          {form.mode === "fixed" || form.mode === "pac" || form.mode === "autoDetect" ? (
             <SettingsNotice testId="network-proxy-private-network">
               {t("settings.network.privateNetworkNote")}
             </SettingsNotice>
