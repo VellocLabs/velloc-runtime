@@ -1,6 +1,7 @@
 import {
   memo,
   useCallback,
+  useContext,
   useEffect,
   useState,
   type FC,
@@ -11,12 +12,11 @@ import {
   type ToolCallMessagePartStatus,
 } from "@assistant-ui/react";
 import { useShallow } from "zustand/react/shallow";
-import { BrainIcon } from "lucide-react";
+import { Ban, BrainIcon, CircleAlert } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { rememberBounded } from "@/components/assistant-ui/boundedUiMemory";
 import { PlanCard, usePlanCardOpen } from "./plan-card";
-import { PlanProgressBar } from "../tool-ui/plan/parts/ProgressBar";
-import { PlanListItem } from "../tool-ui/plan/parts/ListItem";
+import { PlanListItem, PlanRowLookContext } from "../tool-ui/plan/parts/ListItem";
 import {
   PartLineProvider,
   useIsPartRevealTarget,
@@ -24,9 +24,7 @@ import {
   usePartLineAttrs,
   useRevealSelf,
 } from "./part-line-context";
-import { StepGlyph as PlanStatusIcon } from "../tool-ui/plan/parts/StatusIcon";
 import type { PlanTodoStatus } from "../tool-ui/plan/types";
-import { calculatePlanProgress } from "../tool-ui/plan/progress";
 import {
   classifyTodoSectionFileOperation,
   getTodoSectionToolTarget,
@@ -476,12 +474,6 @@ const ToolPlanStreamImpl: FC<ToolPlanStreamProps> = ({
     snapshot.cancelledCount > 0 &&
     snapshot.cancelledCount === snapshot.callTotal;
   const hasError = snapshot.errorCount > 0;
-  const allComplete =
-    !isRunning &&
-    snapshot.callTotal > 0 &&
-    snapshot.settledCount === snapshot.callTotal &&
-    !allCancelled &&
-    !hasError;
 
   // Remember the freshest narration for this message. Render-phase write on
   // purpose: an idempotent set of a string derived from store state (safe
@@ -494,26 +486,21 @@ const ToolPlanStreamImpl: FC<ToolPlanStreamProps> = ({
     });
   }
 
-  // Unified header, identical in FORMAT to the todo card (see PlanCard /
-  // TodoSection): a leading status disc + a "Working"/"Done"/"Cancelled" verb
-  // + `·`-separated chips + a done/total counter, and a second narration line
-  // (shimmer, active only). Only the VALUES differ between the two card kinds
-  // — the tool card has no "N tasks" chip, and the running tool's name lives in
-  // the narration fallback rather than the title.
+  // Header: one text line. The state word is spoken but not drawn, except
+  // "Cancelled", which leads the line. A running card leads with its current
+  // target under a sheen; a settled one leads with the tool count.
   const verb = isActive
     ? t("plan.verbWorking")
     : allCancelled
       ? t("plan.verbCancelled")
       : t("plan.verbDone");
-  const discStatus: PlanTodoStatus = isActive
-    ? "in_progress"
+  const headerState: "running" | "cancelled" | "failed" | "settled" = isActive
+    ? "running"
     : allCancelled
       ? "cancelled"
       : hasError
         ? "failed"
-        : allComplete
-          ? "completed"
-          : "pending";
+        : "settled";
 
   const summaryChips: string[] = [];
   if (snapshot.callTotal > 0) {
@@ -562,35 +549,56 @@ const ToolPlanStreamImpl: FC<ToolPlanStreamProps> = ({
   const narration = narrationSource?.text;
   const narrationIsReasoning = narrationSource?.isReasoning === true;
 
+  const target = snapshot.currentOrLastTarget;
+  const leadsWithTarget = headerState === "running" && Boolean(target);
+  const leadText =
+    headerState === "cancelled"
+      ? verb
+      : leadsWithTarget
+        ? target
+        : (summaryChips[0] ?? verb);
+  const trailingChips =
+    headerState === "cancelled"
+      ? summaryChips
+      : leadsWithTarget
+        ? summaryChips.filter((chip) => chip !== target)
+        : summaryChips.slice(1);
+
   const header = (
     <span
       data-slot="tool-plan-stream-trigger-label"
+      data-state={headerState}
       className={cn(
-        "aui-tool-plan-stream-trigger-label-wrapper relative flex min-w-0 grow flex-col gap-1 overflow-hidden text-left leading-none",
+        "aui-tool-plan-stream-trigger-label-wrapper relative flex min-w-0 items-baseline gap-2 overflow-hidden text-left leading-6",
       )}
     >
-      <span className="flex min-w-0 items-baseline gap-2 overflow-hidden leading-6">
-        <span className="shrink-0 font-medium">{verb}</span>
-        {summaryChips.map((chip) => (
-          <span key={chip} className="min-w-0 truncate text-muted-foreground">
-            <span className="mr-2 text-muted-foreground">·</span>
-            {chip}
-          </span>
-        ))}
-        {/* Settled count only, no "/total": the card covers the run as far as it
-            has streamed, so the total is not a promise of work still to come. Once
-            settled it always equalled the total ("3/3"), and mid-run it moves as new
-            calls arrive. A bare N reads as "3 done" without implying a plan length
-            the card never knew. */}
-        {snapshot.callTotal > 0 ? (
-          <span
-            data-slot="tool-plan-stream-counter"
-            className="ml-auto shrink-0 tabular-nums text-muted-foreground"
-          >
-            {snapshot.settledCount}
-          </span>
-        ) : null}
+      {leadText === verb ? null : <span className="sr-only">{verb}</span>}
+      <span
+        data-slot="tool-plan-stream-title"
+        className={cn(
+          "min-w-0 shrink-0 truncate font-medium",
+          headerState === "running"
+            ? "nexus-sheen"
+            : "text-muted-foreground group-hover/trigger:text-foreground",
+        )}
+      >
+        {leadText}
       </span>
+      {trailingChips.map((chip) => (
+        <span key={chip} className="min-w-0 truncate text-muted-foreground">
+          <span className="mr-2 text-muted-foreground">·</span>
+          {chip}
+        </span>
+      ))}
+      {hasError ? (
+        <span
+          data-slot="tool-plan-stream-failed-count"
+          className="text-destructive shrink-0"
+        >
+          <span className="mr-2 text-muted-foreground">·</span>
+          {t("plan.countFailed", { count: snapshot.errorCount })}
+        </span>
+      ) : null}
     </span>
   );
 
@@ -611,23 +619,6 @@ const ToolPlanStreamImpl: FC<ToolPlanStreamProps> = ({
     </span>
   ) : undefined;
 
-  // Settled-only progress bar: while the card is active the final tool total
-  // is unknown (more calls may still stream in), so a bar would jump
-  // 100%→partial and read as janky. Once settled the total is fixed and the
-  // bar is an honest completion affordance, matching the todo card. Gating on
-  // isActive (not isRunning) also stops the bar flashing in during the
-  // between-tools gap of a live turn.
-  const beforeBody =
-    !isActive && snapshot.callTotal > 0 ? (
-      <PlanProgressBar
-        progress={calculatePlanProgress({
-          completedCount: snapshot.settledCount,
-          totalCount: snapshot.callTotal,
-        })}
-        isCelebrating={false}
-      />
-    ) : undefined;
-
   // Render one child per absolute index in [startIndex..endIndex]. The
   // child decides whether it's a preamble text or a tool-call row by
   // selecting its own part. Each child uses a small per-row selector,
@@ -647,19 +638,32 @@ const ToolPlanStreamImpl: FC<ToolPlanStreamProps> = ({
       open={rewrite?.isExpanded ?? open}
       onOpenChange={setOpen}
       persistKey={snapshot.persistKey}
-      // Collapsed by default, live or settled; the header carries the verb, label and
-      // chips. PlanCard persists user toggles across the remount.
-      align="start"
+      // Collapsed by default, live or settled. PlanCard persists user toggles
+      // across the remount.
+      look="line"
       leadingIcon={
-        <PlanStatusIcon status={discStatus} animated={isActive} />
+        headerState === "failed" ? (
+          <CircleAlert
+            data-slot="tool-plan-stream-state-icon"
+            data-state="failed"
+            aria-hidden
+            className="size-4 shrink-0 text-destructive"
+          />
+        ) : headerState === "cancelled" ? (
+          <Ban
+            data-slot="tool-plan-stream-state-icon"
+            data-state="cancelled"
+            aria-hidden
+            className="size-4 shrink-0 text-muted-foreground"
+          />
+        ) : undefined
       }
       header={header}
       headerDescription={narration ? (
         <span
           data-slot="tool-plan-stream-current-update"
           className={cn(
-            "aui-tool-plan-stream-current-update line-clamp-4 min-w-0 text-foreground leading-5",
-            "shimmer",
+            "aui-tool-plan-stream-current-update line-clamp-4 min-w-0 text-muted-foreground leading-5",
           )}
         >
           {narrationIsReasoning ? (
@@ -673,11 +677,6 @@ const ToolPlanStreamImpl: FC<ToolPlanStreamProps> = ({
         </span>
       ) : undefined}
       headerAdornment={headerAdornment}
-      showCompletionCheck={!isActive && !allCancelled && !hasError}
-      cardClassName={cn(
-        allCancelled && "border-muted-foreground/30 bg-muted/30",
-      )}
-      beforeBody={beforeBody}
     >
       {childIndices.map((absoluteIndex, k) => (
         <ToolPlanStreamPart
@@ -798,6 +797,7 @@ const ToolPlanStreamPart = memo(function ToolPlanStreamPart({
   }, [isNew]);
 
   const preambleRef = useRevealSelf<HTMLLIElement>();
+  const flat = useContext(PlanRowLookContext) === "flat";
   if (row.kind === "unknown") return null;
 
   if (row.kind === "text") {
@@ -807,24 +807,22 @@ const ToolPlanStreamPart = memo(function ToolPlanStreamPart({
         data-slot="tool-plan-stream-preamble"
         data-line-ordinal={partLine === null ? undefined : String(partLine)}
         data-search-hit={isRevealTarget ? "true" : undefined}
-        // `-mx-2` matches the PlanListItem siblings (tool-call rows) so
-        // BOTH the connector `<div left-5>` and the `pl-11` text content
-        // land on the same x as the tool-call connector + label. Without
-        // it, the preamble is 8px to the right of every other row and
-        // both rails (line + label) appear as two staircased columns.
+        // On the rail the text sits in the label column (`pl-11`) with the
+        // connector running past it, so line and label stay on one x.
         className={cn(
-          "relative -mx-2 text-muted-foreground text-sm leading-5 py-1 pl-11 pr-2",
+          "relative text-muted-foreground text-sm leading-5",
+          flat ? "px-3 py-2" : "-mx-2 py-1 pl-11 pr-2",
           isNew &&
             "motion-safe:animate-in motion-safe:fade-in motion-safe:duration-300",
         )}
       >
-        {/* Connector drawn inside the preamble li, which paints over the previous
-            call's overflowing line; extends 0.25rem to bridge the `space-y-1` gap. */}
-        <div
-          className="bg-border absolute top-0 left-5 w-px"
-          style={{ height: "calc(100% + 0.25rem)" }}
-          aria-hidden="true"
-        />
+        {flat ? null : (
+          <div
+            className="bg-border absolute top-0 left-5 w-px"
+            style={{ height: "calc(100% + 0.25rem)" }}
+            aria-hidden="true"
+          />
+        )}
         <PartLineProvider line={partLine} isRevealTarget={isRevealTarget}>
           <MessagePrimitive.PartByIndex
             index={absoluteIndex}

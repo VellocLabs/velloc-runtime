@@ -1338,6 +1338,7 @@ export const ko: Messages = {
   'plan.verbCancelled': '취소됨',
   'plan.countTools': '도구 {count}개',
   'plan.countToolsOne': '도구 {count}개',
+  'plan.countFailed': '{count}개 실패',
   'plan.fileRead': '{count}개 읽음',
   'plan.fileEdited': '{count}개 편집함',
   'plan.fileDeleted': '{count}개 삭제함',

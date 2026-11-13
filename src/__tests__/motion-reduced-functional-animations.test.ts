@@ -165,4 +165,21 @@ describe('reduced-motion functional-animation exemption (globals.css)', () => {
       ).toBe(true)
     })
   }
+
+  // A running tool group has no spinner: the sheen on its title is the whole
+  // signal, so it is a functional indicator like the ones above.
+  it('re-enables .nexus-sheen (running tool group title) under reduced-motion', () => {
+    const reenabled = reducedMotionBlocks(GLOBALS_CSS).some(
+      body =>
+        body.includes('.nexus-sheen') &&
+        /animation:\s*nexus-sheen-sweep\b/.test(body) &&
+        body.includes('!important'),
+    )
+    expect(
+      reenabled,
+      'globals.css must re-enable `.nexus-sheen` with `animation: ' +
+        'nexus-sheen-sweep ... !important` inside a prefers-reduced-motion:reduce ' +
+        'block so a running tool group still reads as running in the release WebUI.',
+    ).toBe(true)
+  })
 })

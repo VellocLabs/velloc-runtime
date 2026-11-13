@@ -1353,6 +1353,7 @@ export const de: Messages = {
   'plan.verbCancelled': 'Abgebrochen',
   'plan.countTools': '{count} Tools',
   'plan.countToolsOne': '{count} Tool',
+  'plan.countFailed': '{count} fehlgeschlagen',
   'plan.fileRead': '{count} gelesen',
   'plan.fileEdited': '{count} bearbeitet',
   'plan.fileDeleted': '{count} gelöscht',

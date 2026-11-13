@@ -801,6 +801,32 @@
   }
 }
 
+/* Running-state text sheen: a highlight band sweeps across the glyphs. The
+ * element keeps its own text for assistive tech; only the paint changes. */
+.nexus-sheen {
+  background-image: linear-gradient(
+    90deg,
+    var(--muted-foreground) 0%,
+    var(--muted-foreground) 35%,
+    var(--foreground) 50%,
+    var(--muted-foreground) 65%,
+    var(--muted-foreground) 100%
+  );
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: nexus-sheen-sweep 2s linear infinite;
+}
+@keyframes nexus-sheen-sweep {
+  from {
+    background-position: 100% 0;
+  }
+  to {
+    background-position: -100% 0;
+  }
+}
+
 /* Functional status indicators (blob, ripple, `animate-spin`) keep animating
  * under reduced-motion: the release WebUI derives `reduce` from the native-UI
  * animation setting, not the user's web preference. Decorative motion still
@@ -824,6 +850,11 @@
   /* Conversation running-indicator (gooey orbit trio) — re-assert each
    * animation with !important so the release WebUI's spurious `reduce` can't
    * freeze this functional "agent is working" indicator. */
+  /* The sheen is the only sign that a tool group or one of its rows is
+   * running, so it is functional too. */
+  .nexus-sheen {
+    animation: nexus-sheen-sweep 2s linear infinite !important;
+  }
   .nexus-blob-orbit {
     animation: nexus-blob-spin 3s linear infinite !important;
   }

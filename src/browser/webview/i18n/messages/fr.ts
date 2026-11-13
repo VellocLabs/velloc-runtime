@@ -1356,6 +1356,7 @@ export const fr: Messages = {
   'plan.verbCancelled': 'Annulé',
   'plan.countTools': '{count} outils',
   'plan.countToolsOne': '{count} outil',
+  'plan.countFailed': '{count} en échec',
   'plan.fileRead': 'Lus {count}',
   'plan.fileEdited': 'Modifiés {count}',
   'plan.fileDeleted': 'Supprimés {count}',

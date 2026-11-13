@@ -359,10 +359,9 @@ function openPlanCards(root: ParentNode = document): void {
     .forEach((el) => fireEvent.click(el))
 }
 
-/** The header counter (right-aligned, tabular figures). */
-function counterText(root: Element): string {
-  const el = root.querySelector('[data-slot="tool-plan-stream-counter"]')
-  return (el?.textContent ?? '').trim()
+/** The header's lead segment: the one that carries the running sheen. */
+function headerTitle(root: Element): HTMLElement {
+  return root.querySelector<HTMLElement>('[data-slot="tool-plan-stream-title"]')!
 }
 
 afterEach(() => {
@@ -818,7 +817,7 @@ describe('ToolPlanStream tool-call row label truncation', () => {
 })
 
 describe('ToolPlanStream unified header', () => {
-  it('a settled run reads "Done" with a tools chip + counter, and no narration line', () => {
+  it('a settled run speaks "Done", leads with the tools count, and has no narration line', () => {
     const Harness = makeHarness(
       SETTLED_TWO_TOOLS,
       { startIndex: 0, endIndex: 1, callTotal: 2 },
@@ -835,8 +834,12 @@ describe('ToolPlanStream unified header', () => {
     expect(text).toContain('Done')
     expect(text).not.toContain('Used')
     expect(text).toContain('2 tools')
-    // Counter is the settled count alone — no "/total" tail.
-    expect(counterText(root)).toBe('2')
+    // The state word is spoken, not drawn; the count leads the line.
+    expect(label.querySelector('.sr-only')!.textContent).toBe('Done')
+    expect(headerTitle(root).textContent).toBe('2 tools')
+    expect(label.getAttribute('data-state')).toBe('settled')
+    // The count is said once: no separate counter beside the chevron.
+    expect(root.querySelector('[data-slot="tool-plan-stream-counter"]')).toBeNull()
     expect(text).not.toContain('2/2')
     // No second line once settled.
     expect(
@@ -858,7 +861,6 @@ describe('ToolPlanStream unified header', () => {
     const text = (label.textContent ?? '').replace(/\s+/g, ' ')
     expect(text).toContain('完成')
     expect(text).toContain('2 个工具')
-    expect(counterText(root)).toBe('2')
     expect(text).not.toContain('2/2')
     expect(text).not.toContain('Done')
     expect(text).not.toContain('tools')
@@ -948,11 +950,45 @@ describe('ToolPlanStream unified header', () => {
     expect(update!.textContent).not.toContain('Running')
   })
 
-  it('shows the settled count alone mid-run, never a "settled/total" pair', () => {
-    // Regression: the counter used to read "1/2" while a second tool was still
-    // running. The total is only what has streamed so far, so it never told the
-    // reader how much work remained - and once the run settled it always equalled
-    // the left number. The card now shows the current count only.
+  it('a settled run draws no state mark: no leading icon, no completion check, no sheen', () => {
+    const Harness = makeHarness(
+      SETTLED_TWO_TOOLS,
+      { startIndex: 0, endIndex: 1, callTotal: 2 },
+      false,
+    )
+    render(createElement(Harness))
+    const root = document.querySelector('[data-slot="tool-plan-stream-root"]')!
+    expect(root.querySelector('[data-slot="tool-plan-stream-state-icon"]')).toBeNull()
+    expect(root.querySelector('.text-success')).toBeNull()
+    expect(root.querySelector('.animate-spin, .motion-safe\\:animate-spin')).toBeNull()
+    expect(root.querySelector('.nexus-sheen')).toBeNull()
+  })
+
+  it('draws the header as a text line, and borders only the opened body', () => {
+    const Harness = makeHarness(
+      SETTLED_TWO_TOOLS,
+      { startIndex: 0, endIndex: 1, callTotal: 2 },
+      false,
+    )
+    render(createElement(Harness))
+    const root = document.querySelector('[data-slot="tool-plan-stream-root"]')!
+    const shell = root.querySelector('[data-slot="tool-plan-stream-card"]')!
+    expect(shell.getAttribute('data-look')).toBe('line')
+    expect(shell.className).not.toMatch(/\bborder\b/)
+    // The chevron follows the title inside the trigger.
+    const trigger = root.querySelector('[data-slot="tool-plan-stream-trigger"]')!
+    expect(
+      trigger.querySelector('[data-slot="tool-plan-stream-trigger-chevron"]'),
+    ).not.toBeNull()
+    openPlanCards()
+    const body = root.querySelector('[data-slot="tool-plan-stream-content"] ul')!
+    expect(body.className).toContain('divide-y')
+    expect(body.parentElement!.className).toMatch(/\bborder\b/)
+    // Settled rows carry no status glyph.
+    expect(body.querySelector('[data-slot="plan-list-item-glyph"]')).toBeNull()
+  })
+
+  it('a running run sweeps a sheen over its title and over the running row only', () => {
     const Harness = makeHarness(
       RUNNING_WITH_PREAMBLE,
       { startIndex: 0, endIndex: 2, callTotal: 2 },
@@ -961,12 +997,68 @@ describe('ToolPlanStream unified header', () => {
     render(createElement(Harness))
     openPlanCards()
     const root = document.querySelector('[data-slot="tool-plan-stream-root"]')!
-    expect(counterText(root)).toBe('1')
     const label = root.querySelector(
       '[data-slot="tool-plan-stream-trigger-label"]',
     )!
+    expect(label.getAttribute('data-state')).toBe('running')
+    expect(headerTitle(root).className).toContain('nexus-sheen')
     const text = (label.textContent ?? '').replace(/\s+/g, ' ')
     expect(text).not.toContain('1/2')
+    // The narration is reading text: it stays still.
+    const update = root.querySelector(
+      '[data-slot="tool-plan-stream-current-update"]',
+    )!
+    expect(update.className).not.toMatch(/sheen|shimmer/)
+    // One settled row, one running row: only the running label sweeps.
+    const rows = root.querySelectorAll(
+      '[data-slot="tool-plan-stream-content"] [data-running="true"]',
+    )
+    expect(rows.length).toBe(1)
+    expect(rows[0]!.className).toContain('nexus-sheen')
+    expect(root.querySelector('.animate-spin, .motion-safe\\:animate-spin')).toBeNull()
+  })
+
+  it('a run with a failed call is marked: an icon, a failed count, and a glyph on that row', () => {
+    const Harness = makeHarness(
+      {
+        role: 'assistant',
+        content: [
+          {
+            type: 'tool-call',
+            toolCallId: 'bad',
+            toolName: 'Bash',
+            args: { command: 'exit 3' },
+            result: 'exit code 3',
+            isError: true,
+          },
+          {
+            type: 'tool-call',
+            toolCallId: 'ok',
+            toolName: 'Read',
+            args: { file_path: '/repo/a.ts' },
+            result: 'contents',
+          },
+        ],
+      },
+      { startIndex: 0, endIndex: 1, callTotal: 2 },
+      false,
+    )
+    render(createElement(Harness))
+    openPlanCards()
+    const root = document.querySelector('[data-slot="tool-plan-stream-root"]')!
+    const label = root.querySelector(
+      '[data-slot="tool-plan-stream-trigger-label"]',
+    )!
+    expect(label.getAttribute('data-state')).toBe('failed')
+    const icon = root.querySelector('[data-slot="tool-plan-stream-state-icon"]')!
+    expect(icon.getAttribute('data-state')).toBe('failed')
+    expect(
+      root.querySelector('[data-slot="tool-plan-stream-failed-count"]')!.textContent,
+    ).toContain('1 failed')
+    const glyphs = root.querySelectorAll('[data-slot="plan-list-item-glyph"]')
+    expect(glyphs.length).toBe(1)
+    expect(glyphs[0]!.getAttribute('data-status')).toBe('failed')
+    expect(root.querySelector('.nexus-sheen')).toBeNull()
   })
 
   it('a running run reads "Working" and surfaces the model narration on the second line', () => {

@@ -1342,6 +1342,7 @@ export const ja: Messages = {
   'plan.verbCancelled': 'キャンセル済み',
   'plan.countTools': 'ツール {count} 件',
   'plan.countToolsOne': 'ツール {count} 件',
+  'plan.countFailed': '{count} 件が失敗',
   'plan.fileRead': '{count} 件を読み取り',
   'plan.fileEdited': '{count} 件を編集',
   'plan.fileDeleted': '{count} 件を削除',

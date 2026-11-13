@@ -1,8 +1,6 @@
 import { useState, type FC } from "react";
 import {
-  CheckCircle2Icon,
   ChevronRightIcon,
-  TerminalSquareIcon,
   XCircleIcon,
 } from "lucide-react";
 
@@ -11,7 +9,6 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
-import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { StaticMarkdown } from "@/components/assistant-ui/static-markdown";
 import { cn } from "@/lib/utils";
 import { useT, type TranslateFn } from "@/browser/webview/i18n";
@@ -112,9 +109,7 @@ export const NotificationEntry: FC<{ notification: ParsedNotification }> = ({
 
   return (
     <div className="flex gap-2.5 py-2.5 first:pt-0 last:pb-0">
-      {isCompleted ? (
-        <CheckCircle2Icon className="mt-0.5 size-4 shrink-0 text-success" aria-hidden="true" />
-      ) : (
+      {isCompleted ? null : (
         <XCircleIcon className="mt-0.5 size-4 shrink-0 text-destructive" aria-hidden="true" />
       )}
       <div className="min-w-0 flex-1 space-y-1">
@@ -166,43 +161,35 @@ export const BackgroundResultsCard: FC<BackgroundResultsCardProps> = ({
       data-role="background-results-card"
       data-kind={kind}
     >
-      <Card className="w-full gap-0 py-0">
-        <CardHeader className="px-4 py-3">
-          <CollapsibleTrigger className="group flex w-full min-w-0 items-center gap-2 text-left text-body">
-            {kind === "shell" ? (
-              <TerminalSquareIcon
-                className="size-4 shrink-0 text-muted-foreground"
-                aria-hidden="true"
-              />
-            ) : (
-              <CheckCircle2Icon
-                className="size-4 shrink-0 text-muted-foreground"
-                aria-hidden="true"
-              />
-            )}
-            <span className="min-w-0 flex-1 truncate">
-              <span className="font-medium">{title}</span>
-              <span className="ml-2 text-muted-foreground">{detail}</span>
-            </span>
-            <ChevronRightIcon
-              className={cn(
-                "size-4 shrink-0 text-muted-foreground transition-transform duration-200",
-                open && "rotate-90",
-              )}
-              aria-hidden="true"
-            />
-          </CollapsibleTrigger>
-        </CardHeader>
-        <CollapsibleContent className="overflow-hidden data-[state=closed]:animate-collapsible-up data-[state=open]:animate-collapsible-down">
-          <CardContent className="px-4 pb-4 pt-0">
-            <div className="divide-y divide-border/50">
-              {notifications.map((n, i) => (
-                <NotificationEntry key={`${n.taskId}-${i}`} notification={n} />
-              ))}
-            </div>
-          </CardContent>
-        </CollapsibleContent>
-      </Card>
+      <CollapsibleTrigger
+        data-slot="background-results-trigger"
+        className="group flex w-full min-w-0 items-center gap-1.5 py-1 text-left text-body"
+      >
+        <span className="min-w-0 truncate text-muted-foreground">
+          <span className="font-medium group-hover:text-foreground">{title}</span>
+          <span className="ml-2">
+            <span className="mr-2">·</span>
+            {detail}
+          </span>
+        </span>
+        <ChevronRightIcon
+          className={cn(
+            "size-4 shrink-0 text-muted-foreground transition-transform duration-200",
+            open && "rotate-90",
+          )}
+          aria-hidden="true"
+        />
+      </CollapsibleTrigger>
+      <CollapsibleContent className="overflow-hidden data-[state=closed]:animate-collapsible-up data-[state=open]:animate-collapsible-down">
+        <div
+          data-slot="background-results-body"
+          className="bg-card mt-1.5 divide-y divide-border rounded-xl border px-3 py-2.5"
+        >
+          {notifications.map((n, i) => (
+            <NotificationEntry key={`${n.taskId}-${i}`} notification={n} />
+          ))}
+        </div>
+      </CollapsibleContent>
     </Collapsible>
   );
 };

@@ -28,6 +28,38 @@ describe('BackgroundResultsCard', () => {
     expect(html).not.toContain('LONG_OUTPUT')
   })
 
+  it('draws the summary as a text line with no state icon, and borders only the body', () => {
+    const html = renderToStaticMarkup(
+      createElement(BackgroundResultsCard, {
+        kind: 'subagent',
+        text:
+          '<task-notification>\n<task-id>a-1</task-id>\n<task-type>local_agent</task-type>\n<status>completed</status>\n<summary>Review (general-purpose): ok</summary>\n</task-notification>',
+      }),
+    )
+    const trigger = html.slice(
+      html.indexOf('data-slot="background-results-trigger"'),
+      html.indexOf('</button>'),
+    )
+    expect(trigger).toContain('lucide-chevron-right')
+    expect(trigger).not.toMatch(/lucide-(circle-check|check|square-terminal|terminal)/)
+    expect(trigger).not.toMatch(/\bborder\b/)
+  })
+
+  it('marks only a failed entry with an icon', () => {
+    const [done] = parseTaskNotifications(
+      '<task-notification>\n<task-id>ok-1</task-id>\n<task-type>local_bash</task-type>\n<status>completed</status>\n<summary>Background command "a" completed</summary>\n</task-notification>',
+    )
+    const [failed] = parseTaskNotifications(
+      '<task-notification>\n<task-id>bad-1</task-id>\n<task-type>local_bash</task-type>\n<status>failed</status>\n<summary>Background command "b" failed</summary>\n</task-notification>',
+    )
+    expect(
+      renderToStaticMarkup(createElement(NotificationEntry, { notification: done })),
+    ).not.toContain('<svg')
+    expect(
+      renderToStaticMarkup(createElement(NotificationEntry, { notification: failed })),
+    ).toContain('text-destructive')
+  })
+
   it('parses task-notification XML into structured entries (no raw tags leak)', () => {
     const parsed = parseTaskNotifications(
       '<task-notification>\n<task-id>aklbwjdwg</task-id>\n<task-type>local_agent</task-type>\n<status>completed</status>\n<summary>Review Wexond adblock changes (general-purpose): ## Findings\n\nNo blocking findings.</summary>\n</task-notification>',

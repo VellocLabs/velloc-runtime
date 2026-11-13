@@ -1406,6 +1406,7 @@ export const en = {
   'plan.verbCancelled': 'Cancelled',
   'plan.countTools': '{count} tools',
   'plan.countToolsOne': '{count} tool',
+  'plan.countFailed': '{count} failed',
   'plan.fileRead': 'Read {count}',
   'plan.fileEdited': 'Edited {count}',
   'plan.fileDeleted': 'Deleted {count}',

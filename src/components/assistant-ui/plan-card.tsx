@@ -18,6 +18,7 @@ import {
 import { Card, CardContent, CardHeader } from "../ui/card";
 import { cn } from "../../lib/utils";
 import { ToolGroupContextProvider } from "./tool-group-context";
+import { PlanRowLookContext } from "../tool-ui/plan/parts/ListItem";
 
 /**
  * Shared collapsible card shell for `TodoSection` and `ToolPlanStream`. `slotPrefix`
@@ -118,6 +119,12 @@ export type PlanCardProps = {
   headerDescription?: ReactNode;
   /** Green completion check shown outside the trigger when true. */
   showCompletionCheck?: boolean;
+  /**
+   * `card` keeps the header inside a bordered card. `line` draws the header
+   * as a plain text line with the chevron after it, and borders only the
+   * opened body, whose rows are flat and divided.
+   */
+  look?: "card" | "line";
   /** Extra classes on the inner `Card` (e.g. the cancelled variant). */
   cardClassName?: string;
   /** Rendered inside the muted body panel above the rows (e.g. progress bar). */
@@ -141,6 +148,7 @@ const PlanCardImpl: FC<PlanCardProps> = ({
   headerAdornment,
   headerDescription,
   showCompletionCheck = false,
+  look = "card",
   cardClassName,
   beforeBody,
   children,
@@ -166,6 +174,123 @@ const PlanCardImpl: FC<PlanCardProps> = ({
     [lockScroll, setOpen],
   );
 
+  const chevron = (
+    <ChevronDownIcon
+      data-slot={`${slotPrefix}-trigger-chevron`}
+      className={cn(
+        `aui-${slotPrefix}-trigger-chevron size-4 shrink-0 text-muted-foreground`,
+        "transition-transform duration-(--animation-duration) ease-out",
+        "group-data-[state=closed]/trigger:-rotate-90",
+        "group-data-[state=open]/trigger:rotate-0",
+        look === "card" && align === "start" && "mt-1",
+      )}
+    />
+  );
+  const contentClassName = cn(
+    `aui-${slotPrefix}-content relative overflow-hidden text-body outline-none`,
+    "group/collapsible-content ease-out",
+    "data-[state=closed]:animate-collapsible-up",
+    "data-[state=open]:animate-collapsible-down",
+    "data-[state=closed]:fill-mode-forwards",
+    "data-[state=closed]:pointer-events-none",
+    "data-[state=open]:duration-(--animation-duration)",
+    "data-[state=closed]:duration-(--animation-duration)",
+  );
+
+  const cardLook = (
+    <Card
+      data-slot={`${slotPrefix}-card`}
+      className={cn("isolate w-full gap-3 py-4", cardClassName)}
+    >
+      <CardHeader
+        className={cn(
+          "flex flex-row justify-between gap-3 px-4",
+          align === "start" ? "items-start" : "items-center",
+        )}
+      >
+        <CollapsibleTrigger
+          data-slot={`${slotPrefix}-trigger`}
+          className={cn(
+            `aui-${slotPrefix}-trigger group/trigger flex min-w-0 flex-1 gap-2`,
+            "text-left text-body transition-colors",
+            headerDescription && "grid grid-cols-[auto_minmax(0,1fr)_auto_auto] gap-y-1",
+            align === "start" ? "items-start" : "items-center",
+          )}
+        >
+          {leadingIcon}
+          {header}
+          {headerAdornment}
+          {chevron}
+          {headerDescription && (
+            <span className="col-span-full min-w-0 text-left">
+              {headerDescription}
+            </span>
+          )}
+        </CollapsibleTrigger>
+        {showCompletionCheck && (
+          <Check
+            className={cn(
+              "size-5 shrink-0 text-success",
+              align === "start" && "mt-0.5",
+            )}
+          />
+        )}
+      </CardHeader>
+      <CollapsibleContent
+        data-slot={`${slotPrefix}-content`}
+        className={contentClassName}
+      >
+        <CardContent className="px-4">
+          <div className="bg-muted/70 min-w-0 rounded-lg px-6 py-4">
+            {beforeBody}
+            <ToolGroupContextProvider>
+              <ul className="min-w-0 space-y-1">{children}</ul>
+            </ToolGroupContextProvider>
+          </div>
+        </CardContent>
+      </CollapsibleContent>
+    </Card>
+  );
+
+  const lineLook = (
+    <div
+      data-slot={`${slotPrefix}-card`}
+      data-look="line"
+      className={cn("isolate flex w-full min-w-0 flex-col", cardClassName)}
+    >
+      <CollapsibleTrigger
+        data-slot={`${slotPrefix}-trigger`}
+        className={cn(
+          `aui-${slotPrefix}-trigger group/trigger flex w-full min-w-0 flex-col gap-1 py-1`,
+          "text-left text-body",
+        )}
+      >
+        <span className="flex max-w-full min-w-0 items-center gap-1.5">
+          {leadingIcon}
+          {header}
+          {headerAdornment}
+          {chevron}
+        </span>
+        {headerDescription && (
+          <span className="min-w-0 text-left">{headerDescription}</span>
+        )}
+      </CollapsibleTrigger>
+      <CollapsibleContent
+        data-slot={`${slotPrefix}-content`}
+        className={contentClassName}
+      >
+        <div className="bg-card mt-1.5 min-w-0 overflow-hidden rounded-xl border">
+          {beforeBody}
+          <ToolGroupContextProvider>
+            <PlanRowLookContext.Provider value="flat">
+              <ul className="divide-border min-w-0 divide-y">{children}</ul>
+            </PlanRowLookContext.Provider>
+          </ToolGroupContextProvider>
+        </div>
+      </CollapsibleContent>
+    </div>
+  );
+
   return (
     <Collapsible
       ref={collapsibleRef}
@@ -181,76 +306,7 @@ const PlanCardImpl: FC<PlanCardProps> = ({
         } as React.CSSProperties
       }
     >
-      <Card
-        data-slot={`${slotPrefix}-card`}
-        className={cn("isolate w-full gap-3 py-4", cardClassName)}
-      >
-        <CardHeader
-          className={cn(
-            "flex flex-row justify-between gap-3 px-4",
-            align === "start" ? "items-start" : "items-center",
-          )}
-        >
-          <CollapsibleTrigger
-            data-slot={`${slotPrefix}-trigger`}
-            className={cn(
-              `aui-${slotPrefix}-trigger group/trigger flex min-w-0 flex-1 gap-2`,
-              "text-left text-body transition-colors",
-              headerDescription && "grid grid-cols-[auto_minmax(0,1fr)_auto_auto] gap-y-1",
-              align === "start" ? "items-start" : "items-center",
-            )}
-          >
-            {leadingIcon}
-            {header}
-            {headerAdornment}
-            <ChevronDownIcon
-              data-slot={`${slotPrefix}-trigger-chevron`}
-              className={cn(
-                `aui-${slotPrefix}-trigger-chevron size-4 shrink-0 text-muted-foreground`,
-                "transition-transform duration-(--animation-duration) ease-out",
-                "group-data-[state=closed]/trigger:-rotate-90",
-                "group-data-[state=open]/trigger:rotate-0",
-                align === "start" && "mt-1",
-              )}
-            />
-            {headerDescription && (
-              <span className="col-span-full min-w-0 text-left">
-                {headerDescription}
-              </span>
-            )}
-          </CollapsibleTrigger>
-          {showCompletionCheck && (
-            <Check
-              className={cn(
-                "size-5 shrink-0 text-success",
-                align === "start" && "mt-0.5",
-              )}
-            />
-          )}
-        </CardHeader>
-        <CollapsibleContent
-          data-slot={`${slotPrefix}-content`}
-          className={cn(
-            `aui-${slotPrefix}-content relative overflow-hidden text-body outline-none`,
-            "group/collapsible-content ease-out",
-            "data-[state=closed]:animate-collapsible-up",
-            "data-[state=open]:animate-collapsible-down",
-            "data-[state=closed]:fill-mode-forwards",
-            "data-[state=closed]:pointer-events-none",
-            "data-[state=open]:duration-(--animation-duration)",
-            "data-[state=closed]:duration-(--animation-duration)",
-          )}
-        >
-          <CardContent className="px-4">
-            <div className="bg-muted/70 min-w-0 rounded-lg px-6 py-4">
-              {beforeBody}
-              <ToolGroupContextProvider>
-                <ul className="min-w-0 space-y-1">{children}</ul>
-              </ToolGroupContextProvider>
-            </div>
-          </CardContent>
-        </CollapsibleContent>
-      </Card>
+      {look === "line" ? lineLook : cardLook}
     </Collapsible>
   );
 };

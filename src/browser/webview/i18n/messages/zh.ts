@@ -1330,6 +1330,7 @@ export const zh: Messages = {
   'plan.verbCancelled': '已取消',
   'plan.countTools': '{count} 个工具',
   'plan.countToolsOne': '{count} 个工具',
+  'plan.countFailed': '{count} 个失败',
   'plan.fileRead': '已读取 {count} 个',
   'plan.fileEdited': '已编辑 {count} 个',
   'plan.fileDeleted': '已删除 {count} 个',
