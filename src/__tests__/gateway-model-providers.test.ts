@@ -967,9 +967,38 @@ describe('runtime provider listing, entries and catalog rows', () => {
     await opened
     setRuntimeProviderConfigs({ openrouter: { apiKey: 'NEXUSENC1:sealed' } })
     const listing = scriptedHost({ [`GET ${OR}/models`]: json(OPENROUTER_LISTING) })
-    const keyed = refreshRuntimeProviderModels(listing.transport, 'openrouter', { now: NOW + 1_000 })
+    expect(await refreshRuntimeProviderModels(listing.transport, 'openrouter', { now: NOW + 1_000 }))
+      .toMatchObject({ ok: true })
+    expect(listing.opens).toHaveLength(1)
     release()
     expect(await keyless).toMatchObject({ ok: false })
+    // The discarded keyless outcome leaves no back-off behind.
+    expect(await refreshRuntimeProviderModels(listing.transport, 'openrouter', { now: NOW + 2_000 }))
+      .toMatchObject({ ok: true })
+  })
+
+  it('a listing that succeeds under a key replaced while it ran is neither applied nor served', async () => {
+    recordingHost()
+    setRuntimeProviderConfigs({ openrouter: { apiKey: 'NEXUSENC1:old' } })
+    let release!: () => void
+    const gate = new Promise<void>(resolve => { release = resolve })
+    const earlier = scriptedHost({ [`GET ${OR}/models`]: json(OPENROUTER_LISTING) })
+    let asked!: () => void
+    const opened = new Promise<void>(resolve => { asked = resolve })
+    const held = {
+      async request(req: any) {
+        asked()
+        await gate
+        return earlier.transport.request(req)
+      },
+    } as unknown as BrowserBridgeTransport
+    const stale = refreshRuntimeProviderModels(held, 'openrouter', { now: NOW })
+    await opened
+    setRuntimeProviderConfigs({ openrouter: { apiKey: 'NEXUSENC1:new' } })
+    const listing = scriptedHost({ [`GET ${OR}/models`]: json(OPENROUTER_LISTING) })
+    const keyed = refreshRuntimeProviderModels(listing.transport, 'openrouter', { now: NOW + 1_000 })
+    release()
+    expect(await stale).toMatchObject({ ok: false })
     expect(await keyed).toMatchObject({ ok: true })
     expect(listing.opens).toHaveLength(1)
   })

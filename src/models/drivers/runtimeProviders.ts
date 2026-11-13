@@ -129,12 +129,10 @@ function starterModelIds(providerId: string): readonly string[] {
     ?? []
 }
 
-/**
- * The provider configs as settings.json holds them. Called where the
- * custom-provider records are (worker boot, every `providers.*` write).
- */
 /** What a listing is asked with: the credentials and the base URL. A listing
- *  that failed under one says nothing about the next (a key just saved). */
+ *  that failed under one says nothing about the next (a key just saved).
+ *  Security: holds sealed secrets; compared in memory only, never logged or
+ *  stored. */
 function listingAccess(config: NexusProviderConfig | undefined): string {
   return JSON.stringify([
     config?.apiKey ?? '',
@@ -147,6 +145,10 @@ function listingAccess(config: NexusProviderConfig | undefined): string {
   ])
 }
 
+/**
+ * The provider configs as settings.json holds them. Called where the
+ * custom-provider records are (worker boot, every `providers.*` write).
+ */
 export function setRuntimeProviderConfigs(next: Record<string, NexusProviderConfig> | undefined): void {
   const before = configs
   configs = next ?? {}
@@ -527,12 +529,13 @@ export async function refreshRuntimeProviderModels(
   }
   const access = listingAccess(configs[providerId])
   const running = inFlight.get(providerId)
-  if (running) {
+  // One asked with other credentials discards its own result, so this caller
+  // neither takes it nor waits for it.
+  if (running && running.access === access) {
     // A forced caller (verify, with `pickDefaults`) must not take an earlier
     // caller's outcome: that task reconciled without its options, and left a
     // listing fresh enough that nothing would reconcile again for an hour.
-    // Nor may any caller take one asked with other credentials.
-    if (!options.force && running.access === access) return running.task
+    if (!options.force) return running.task
     await running.task
     return refreshRuntimeProviderModels(transport, providerId, options)
   }
@@ -543,6 +546,11 @@ export async function refreshRuntimeProviderModels(
   const task = (async (): Promise<RefreshOutcome> => {
     try {
       const models = await listProviderModels(transport, providerId, { now })
+      // A listing asked with credentials replaced since is neither applied nor
+      // remembered: the caller that waited on it lists again.
+      if (listingAccess(configs[providerId]) !== access) {
+        return { ok: false, error: 'the provider credentials changed during the listing' }
+      }
       // An empty listing says nothing about the user's models: keep them.
       if (models.length === 0) return fail('the provider listed no models')
       // Nor does one with no tool-capable model: that is a listing whose shape
