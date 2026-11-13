@@ -220,7 +220,7 @@ describe('local review runtime gateway', () => {
       await vi.waitFor(() => expect(budget).toBeDefined())
       await vi.advanceTimersByTimeAsync(120 * 60_000)
       const report = await h.service.wait(runId)
-      expect(budget).toEqual({ concurrency: 4, maxTurns: 64 })
+      expect(budget).toEqual({ concurrency: 4, maxTurns: 64, readSteps: 48 })
       expect(report.run.progress.status).toBe('finished')
       expect(report.coverage.angles).toHaveLength(10)
     } finally { vi.useRealTimers() }
@@ -259,7 +259,7 @@ describe('local review runtime gateway', () => {
     })
     const { runId } = await h.service.startUser('medium')
     const report = await h.service.wait(runId)
-    expect(read).toEqual({ data: { source: 'r1', startLine: 1, text: content } })
+    expect(read).toEqual({ data: { source: 'r1', startLine: 1, text: content, readStepsLeft: 47 } })
     expect(report.run.progress.status).toBe('finished')
   })
   it('reviews test and fixture files at low when they are the only changes, with a notice', async () => {

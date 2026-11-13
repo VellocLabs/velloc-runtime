@@ -13,7 +13,7 @@ export interface ReviewToolBindings {
   actions?: boolean
   actionEpoch?: string
   independentAssessments?: boolean
-  /** A worker's read budget in model steps: a ReviewRead from a later step fails with `review-step-budget`. */
+  /** A read budget in model steps: a ReviewRead from a later step fails with `review-step-budget`, and each read result carries `readStepsLeft`. */
   readSteps?: number
   /** The run reads patches only: ReviewRead offers neither context nor search. */
   diffOnly?: boolean
@@ -94,12 +94,13 @@ export function createReviewTools(bindings: ReviewToolBindings): ToolContract[] 
   })
   // One model step is one assistant row: its uuid, or the row itself when it has none.
   const readRows = new Set<string | Message>()
-  const read = (input: Record<string, unknown>, row: Message) => {
-    if (bindings.readSteps !== undefined) {
-      readRows.add(row.uuid ?? row)
-      if (readRows.size > bindings.readSteps) throw new Error('review-step-budget')
-    }
-    return bindings.read(input)
+  const read = async (input: Record<string, unknown>, row: Message) => {
+    if (bindings.readSteps === undefined) return bindings.read(input)
+    readRows.add(row.uuid ?? row)
+    if (readRows.size > bindings.readSteps) throw new Error('review-step-budget')
+    const readStepsLeft = bindings.readSteps - readRows.size
+    const result = await bindings.read(input)
+    return result && typeof result === 'object' && !Array.isArray(result) ? { ...result, readStepsLeft } : result
   }
   const candidates = { type: 'array', maxItems: 32, items: REVIEW_CANDIDATE_SCHEMA }
   const tools: ToolContract[] = [

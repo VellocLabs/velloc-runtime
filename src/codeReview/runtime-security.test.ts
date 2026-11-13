@@ -549,8 +549,8 @@ describe('actual review runtime security boundaries', () => {
     const service = await getOrCreateReviewService(h.context, h.permission)
     const { runId } = await service.startUser('high main..HEAD')
     await service.wait(runId)
-    expect(searched).toEqual({ data: { matches: [expect.objectContaining({ path: 'a.ts', line: 1, text: 'export const a = 2' })], truncated: false } })
-    expect(missing).toEqual({ data: { matches: [], truncated: false } })
+    expect(searched).toEqual({ data: { matches: [expect.objectContaining({ path: 'a.ts', line: 1, text: 'export const a = 2' })], truncated: false, readStepsLeft: expect.any(Number) } })
+    expect(missing).toEqual({ data: { matches: [], truncated: false, readStepsLeft: expect.any(Number) } })
     expect(context).toMatchObject({ code: 'review-context-unavailable' })
     const grep = h.spawn.mock.calls.map(([spec]) => spec.args).find(args => args.includes('grep'))!
     expect(grep).toEqual(expect.arrayContaining(['-I', '-F', head]))
@@ -574,9 +574,9 @@ describe('actual review runtime security boundaries', () => {
     const { runId } = await service.startUser('high main..HEAD')
     await service.wait(runId)
     const hit = expect.objectContaining({ path: 'pkg1/file2499.ts', line: 1, text: 'needle & "quoted" | text' })
-    expect(everywhere).toEqual({ data: { matches: [hit], truncated: false } })
-    expect(scoped).toEqual({ data: { matches: [hit], truncated: false } })
-    expect(elsewhere).toEqual({ data: { matches: [], truncated: false } })
+    expect(everywhere).toEqual({ data: { matches: [hit], truncated: false, readStepsLeft: expect.any(Number) } })
+    expect(scoped).toEqual({ data: { matches: [hit], truncated: false, readStepsLeft: expect.any(Number) } })
+    expect(elsewhere).toEqual({ data: { matches: [], truncated: false, readStepsLeft: expect.any(Number) } })
     for (const [spec] of h.spawn.mock.calls) expect(spec.args.some(arg => arg.includes('needle'))).toBe(false)
   })
 
@@ -654,7 +654,7 @@ describe('actual review runtime security boundaries', () => {
     const { runId } = await service.startUser('high')
     await service.wait(runId)
     expect(first).toBe('permission bridge unavailable')
-    expect(second).toEqual({ data: { matches: [expect.objectContaining({ path: 'b.ts', line: 1 })], truncated: false } })
+    expect(second).toEqual({ data: { matches: [expect.objectContaining({ path: 'b.ts', line: 1 })], truncated: false, readStepsLeft: expect.any(Number) } })
   })
 
   it('drops search matches from a path the read policy denies', async () => {
@@ -668,7 +668,7 @@ describe('actual review runtime security boundaries', () => {
     const service = await getOrCreateReviewService(h.context, h.permission)
     const { runId } = await service.startUser('high')
     await service.wait(runId)
-    expect(searched).toEqual({ data: { matches: [expect.objectContaining({ path: 'a.ts', line: 1, text: 'export const a = 2' })], truncated: false } })
+    expect(searched).toEqual({ data: { matches: [expect.objectContaining({ path: 'a.ts', line: 1, text: 'export const a = 2' })], truncated: false, readStepsLeft: expect.any(Number) } })
   })
 
   it('caches working-copy context within a run and re-reads it after a repair edit', async () => {

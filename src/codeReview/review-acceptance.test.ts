@@ -1002,10 +1002,32 @@ describe('single-context step limit', () => {
     expect(snapshot.run.policy.recipe).toBe('local-eight')
     expect(requests).toHaveLength(2)
     expect(requests[0]!.maxTurns).toBe(64)
-    expect(requests[1]!).toMatchObject({ seedRows: transcript, maxTurns: 3 })
+    expect(requests[1]!).toMatchObject({ seedRows: transcript, maxTurns: 5 })
     expect(requests[1]!.tools.map(tool => tool.name)).toEqual(['ReviewLedger'])
     expect(snapshot.run.progress.status).toBe(status)
     expect(snapshot.coverage.limitations).toContain('review-step-limit')
+  })
+  it('stops a single-context review reading after its read steps, counts them down, and lets it finish from the ledger', async () => {
+    const outcomes: string[] = [], left: unknown[] = []
+    let budget: unknown
+    const f = fixture({ resolveScope: async () => ({ manifest: manifest(), trustedGuidance: '', read: async () => ({ files: [] }) }), runModel: async request => {
+      budget = JSON.parse(request.blocks.find(block => block.source === 'budget')!.text)
+      const tool = request.tools.find(t => t.name === 'ReviewRead')!
+      const readAt = (row: Message) => tool.call({ operation: 'diff' }, {} as ToolCallContext, vi.fn() as unknown as PermissionDecider, row)
+        .then(result => { left.push((result.data as { readStepsLeft?: number }).readStepsLeft); return 'ok' }, (error: Error) => error.message)
+      const shared = { uuid: crypto.randomUUID(), type: 'assistant', message: { content: [] } } as unknown as Message
+      outcomes.push(await readAt(shared), await readAt(shared))
+      for (let step = 0; step < 48; step++) outcomes.push(await readAt({ uuid: crypto.randomUUID(), type: 'assistant', message: { content: [] } } as unknown as Message))
+      await invoke(request, 'ReviewLedger', { operation: 'coverage', coverage: { angles: anglesOf(request), limitations: [], complete: true } })
+      return { text: 'Reviewed src/a.ts.', interrupted: false, end: { kind: 'completed' as const } }
+    } })
+    const snapshot = await f.service.wait((await f.service.startUser('high')).runId)
+    expect(budget).toEqual({ concurrency: 4, maxTurns: 64, readSteps: 48 })
+    expect(outcomes).toEqual([...Array(49).fill('ok'), 'review-step-budget'])
+    expect(left.slice(0, 3)).toEqual([47, 47, 46])
+    expect(left.at(-1)).toBe(0)
+    expect(snapshot.run.progress.status).toBe('finished')
+    expect(snapshot.coverage.limitations).not.toContain('review-step-limit')
   })
   it('stays partial when the wrap-up turn itself stops short', async () => {
     let calls = 0
