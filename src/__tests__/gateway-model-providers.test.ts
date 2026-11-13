@@ -931,6 +931,49 @@ describe('runtime provider listing, entries and catalog rows', () => {
     expect(opens).toHaveLength(3)
   })
 
+  it('a listing that failed before the key was saved is asked again with the key, unforced', async () => {
+    recordingHost()
+    setRuntimeProviderConfigs({ openrouter: {} })
+    const failing = scriptedHost({ [`GET ${OR}/models`]: { status: 401, body: '' } })
+    expect(await refreshRuntimeProviderModels(failing.transport, 'openrouter', { now: NOW })).toMatchObject({ ok: false })
+    // Another write that leaves the credentials alone keeps the retry delay.
+    setRuntimeProviderConfigs({ openrouter: { userModels: [] } })
+    const listing = scriptedHost({ [`GET ${OR}/models`]: json(OPENROUTER_LISTING) })
+    expect(await refreshRuntimeProviderModels(listing.transport, 'openrouter', { now: NOW + 1_000 }))
+      .toMatchObject({ ok: false })
+    expect(listing.opens).toHaveLength(0)
+    setRuntimeProviderConfigs({ openrouter: { userModels: [], apiKey: 'NEXUSENC1:sealed' } })
+    expect(await refreshRuntimeProviderModels(listing.transport, 'openrouter', { now: NOW + 2_000 }))
+      .toMatchObject({ ok: true })
+    expect(listing.opens).toHaveLength(1)
+  })
+
+  it('a keyless listing still running when the key is saved neither answers nor blocks the next caller', async () => {
+    recordingHost()
+    setRuntimeProviderConfigs({ openrouter: {} })
+    let release!: () => void
+    const gate = new Promise<void>(resolve => { release = resolve })
+    const failing = scriptedHost({ [`GET ${OR}/models`]: { status: 401, body: '' } })
+    let asked!: () => void
+    const opened = new Promise<void>(resolve => { asked = resolve })
+    const held = {
+      async request(req: any) {
+        asked()
+        await gate
+        return failing.transport.request(req)
+      },
+    } as unknown as BrowserBridgeTransport
+    const keyless = refreshRuntimeProviderModels(held, 'openrouter', { now: NOW })
+    await opened
+    setRuntimeProviderConfigs({ openrouter: { apiKey: 'NEXUSENC1:sealed' } })
+    const listing = scriptedHost({ [`GET ${OR}/models`]: json(OPENROUTER_LISTING) })
+    const keyed = refreshRuntimeProviderModels(listing.transport, 'openrouter', { now: NOW + 1_000 })
+    release()
+    expect(await keyless).toMatchObject({ ok: false })
+    expect(await keyed).toMatchObject({ ok: true })
+    expect(listing.opens).toHaveLength(1)
+  })
+
   it('a stale cached listing serves the catalog: the refresh is not waited for', async () => {
     recordingHost({ openrouter: JSON.stringify({ models: listed, fetchedAt: 0 }) })
     setRuntimeProviderConfigs({ openrouter: { hasApiKey: true, enabledModels: ['anthropic/claude-sonnet-5.5'] } })

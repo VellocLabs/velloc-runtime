@@ -102,8 +102,9 @@ type Listing = {
 }
 
 const listings = new Map<string, Listing>()
-const inFlight = new Map<string, Promise<RefreshOutcome>>()
-/** The last failed listing fetch per provider, cleared by a success. */
+const inFlight = new Map<string, { task: Promise<RefreshOutcome>; access: string }>()
+/** The last failed listing fetch per provider, cleared by a success or by a
+ *  change to what the listing is asked with (`listingAccess`). */
 const failures = new Map<string, { at: number; error: string }>()
 const cacheLoaded = new Set<string>()
 let configs: Record<string, NexusProviderConfig> = {}
@@ -132,9 +133,26 @@ function starterModelIds(providerId: string): readonly string[] {
  * The provider configs as settings.json holds them. Called where the
  * custom-provider records are (worker boot, every `providers.*` write).
  */
+/** What a listing is asked with: the credentials and the base URL. A listing
+ *  that failed under one says nothing about the next (a key just saved). */
+function listingAccess(config: NexusProviderConfig | undefined): string {
+  return JSON.stringify([
+    config?.apiKey ?? '',
+    config?.hasApiKey === true,
+    config?.secrets ?? {},
+    config?.account ?? '',
+    config?.signedIn === true,
+    config?.credentialMode ?? '',
+    config?.baseUrl ?? '',
+  ])
+}
+
 export function setRuntimeProviderConfigs(next: Record<string, NexusProviderConfig> | undefined): void {
   const before = configs
   configs = next ?? {}
+  for (const id of [...failures.keys()]) {
+    if (listingAccess(before[id]) !== listingAccess(configs[id])) failures.delete(id)
+  }
   // A change to the hand-added models changes what the listing reads as.
   for (const id of listings.keys()) {
     if (JSON.stringify(before[id]?.userModels) !== JSON.stringify(configs[id]?.userModels)) reapplyListing(id)
@@ -507,17 +525,19 @@ export async function refreshRuntimeProviderModels(
   if (!options.force && failed && now - failed.at < LISTING_RETRY_MS) {
     return { ok: false, error: failed.error }
   }
+  const access = listingAccess(configs[providerId])
   const running = inFlight.get(providerId)
   if (running) {
     // A forced caller (verify, with `pickDefaults`) must not take an earlier
     // caller's outcome: that task reconciled without its options, and left a
     // listing fresh enough that nothing would reconcile again for an hour.
-    if (!options.force) return running
-    await running
+    // Nor may any caller take one asked with other credentials.
+    if (!options.force && running.access === access) return running.task
+    await running.task
     return refreshRuntimeProviderModels(transport, providerId, options)
   }
   const fail = (error: string): RefreshOutcome => {
-    failures.set(providerId, { at: now, error })
+    if (listingAccess(configs[providerId]) === access) failures.set(providerId, { at: now, error })
     return { ok: false, error }
   }
   const task = (async (): Promise<RefreshOutcome> => {
@@ -567,9 +587,9 @@ export async function refreshRuntimeProviderModels(
   // Registered first, cleared when it settles: clearing inside the task could
   // run before the set (a throw ahead of the first await) and pin a finished
   // task as "running" forever.
-  inFlight.set(providerId, task)
+  inFlight.set(providerId, { task, access })
   const clear = () => {
-    if (inFlight.get(providerId) === task) inFlight.delete(providerId)
+    if (inFlight.get(providerId)?.task === task) inFlight.delete(providerId)
   }
   task.then(clear, clear)
   return task
