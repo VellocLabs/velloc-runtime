@@ -40,6 +40,7 @@ function mount(fake: ReturnType<typeof fakeConnection>, initial: string) {
         focusSession: id => calls.push(`focus ${id}`),
         showSubagent: id => calls.push(`show ${id}`),
         leaveSubagent: () => calls.push('leave'),
+        returnToSubagent: id => calls.push(`return ${id}`),
       }),
     { initialProps: { active: initial } },
   )
@@ -147,6 +148,25 @@ describe('useModAgentView', () => {
     await waitFor(() => expect(fake.has('a')).toBe(true))
     act(() => fake.state('a', { seq: 1, agentId: 'a1', kind: 'subagent', sessionId: 'a1' }))
     act(() => fake.state('a', { seq: 3 }))
-    expect(calls).toEqual(['show a1', 'leave'])
+    expect(calls).toEqual(['show a1', 'return a1', 'leave'])
+  })
+
+  it('a session whose subagent is shown opens it again when it comes back; one gone back from does not', async () => {
+    const fake = fakeConnection()
+    const { calls, hook } = mount(fake, 'a')
+    await waitFor(() => expect(fake.has('a')).toBe(true))
+    act(() => fake.state('a'))
+    act(() => fake.state('a', { seq: 1, agentId: 'a1', kind: 'subagent', sessionId: 'a1' }))
+    hook.rerender({ active: 'b' })
+    expect(calls).toEqual(['show a1'])
+    hook.rerender({ active: 'a' })
+    expect(calls).toEqual(['show a1', 'return a1'])
+    await waitFor(() => expect(fake.has('a')).toBe(true))
+    act(() => fake.state('a', { seq: 1 }))
+    act(() => fake.state('a', { seq: 2 }))
+    expect(calls).toEqual(['show a1', 'return a1', 'leave'])
+    hook.rerender({ active: 'b' })
+    hook.rerender({ active: 'a' })
+    expect(calls).toEqual(['show a1', 'return a1', 'leave'])
   })
 })

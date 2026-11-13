@@ -19,6 +19,9 @@ export type ModAgentViewActions = {
   /** Take the active session's subagent transcript down again, back to what
    *  it showed before. */
   leaveSubagent(): void
+  /** The active session became the foreground one again while its subagent
+   *  transcript is still shown: open that transcript again. */
+  returnToSubagent(taskId: string): void
 }
 
 /** The teammate a lead's mod showed; `arrived` once it became the active
@@ -35,8 +38,9 @@ export function useModAgentView(
   const watched = lead ?? activeSessionId
   const ui = useModsUiView(runtimeConnection, watched)
   const seen = React.useRef<{ sessionId: string; seq: number } | undefined>(undefined)
-  // Sessions whose subagent transcript is shown over their conversation.
-  const subagentShown = React.useRef(new Set<string>())
+  // Sessions whose subagent transcript is shown over their conversation, with
+  // that subagent's task id.
+  const subagentShown = React.useRef(new Map<string, string>())
   // A subagent asked for while a teammate is shown: shown once the lead is back.
   const pendingSubagent = React.useRef<{ lead: string; taskId: string } | undefined>(undefined)
   const actionsRef = React.useRef(actions)
@@ -78,7 +82,7 @@ export function useModAgentView(
         return
       }
       setShown(undefined)
-      subagentShown.current.add(watched)
+      subagentShown.current.set(watched, view.sessionId)
       act.showSubagent(view.sessionId)
       return
     }
@@ -92,10 +96,15 @@ export function useModAgentView(
   }, [watched, seq])
 
   React.useEffect(() => {
+    if (activeSessionId === undefined) return
     const pending = pendingSubagent.current
-    if (!pending || activeSessionId !== pending.lead) return
-    pendingSubagent.current = undefined
-    subagentShown.current.add(pending.lead)
-    actionsRef.current.showSubagent(pending.taskId)
+    if (pending && activeSessionId === pending.lead) {
+      pendingSubagent.current = undefined
+      subagentShown.current.set(pending.lead, pending.taskId)
+      actionsRef.current.showSubagent(pending.taskId)
+      return
+    }
+    const taskId = subagentShown.current.get(activeSessionId)
+    if (taskId !== undefined) actionsRef.current.returnToSubagent(taskId)
   }, [activeSessionId])
 }

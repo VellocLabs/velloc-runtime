@@ -2218,6 +2218,12 @@ export function MultiSessionShell({
       handleOpenBackgroundTasks(taskId)
       updatePaneRecord(r => setMaximized(r, 'tasks'))
     },
+    returnToSubagent: taskId => {
+      const sessionId = activeSessionIdRef.current
+      if (sessionId && readPaneRecord(sessionId).maximized === 'tasks') {
+        setBackgroundTaskFocusSessionId(taskId)
+      }
+    },
     leaveSubagent: () => {
       const sessionId = activeSessionIdRef.current
       const before = sessionId ? panesBeforeAgentView.current.get(sessionId) : undefined
