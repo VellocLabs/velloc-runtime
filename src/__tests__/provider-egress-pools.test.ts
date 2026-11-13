@@ -334,4 +334,14 @@ describe('a pool in the grant', () => {
     expect(widened(one, grant({ a: {}, b: { max: 2 } })).widened).toBe(false)
     expect(widened(one, none).widened).toBe(false)
   })
+
+  it('a stored grant that holds a reach instead of true is asked again, not taken as consent', () => {
+    const one = grant({ a: {} })
+    for (const reach of ['public', 'local']) {
+      const stored = { providers: { main: { ...one.providers.main, proxyPools: reach } } } as unknown as Grant
+      const result = widened(stored, one)
+      expect(result.widened).toBe(true)
+      expect(result.added.perProvider.main).toMatchObject({ proxyPools: true })
+    }
+  })
 })
