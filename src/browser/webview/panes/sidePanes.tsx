@@ -73,11 +73,13 @@ type SidePaneBodyProps = SidePaneContentProps & { kind: SidePaneBodyKind }
  * own (`FilesPane`, `ModsPane`, `TerminalPane`) and the browser pane's body
  * is the native view's placeholder (`WebviewArea`).
  *
- * Contract: a body's own view state (the open detail, a draft, a pending
- * load) belongs to the session it was opened in. Another session becoming
- * the foreground one starts the body fresh; none of that state is carried
- * across. The A2UI body holds no such state and stays mounted, so the
- * element its session draws into is kept.
+ * Contract: a body's own view state (the open detail, a pending load)
+ * belongs to the session it was opened in. Another session becoming the
+ * foreground one starts the body fresh; none of that state is carried
+ * across. The Plan feedback draft is the plan's, not the body's: it lives in
+ * `planFeedbackDrafts` under the plan's tool call id. The A2UI body holds no
+ * such state and stays mounted, so the element its session draws into is
+ * kept.
  */
 export function SidePaneBody(props: SidePaneBodyProps): ReactElement {
   const scope = props.kind === 'a2ui' ? 'a2ui' : `${props.kind}:${props.activeSessionId ?? ''}`
@@ -103,6 +105,7 @@ function SessionPaneBody({ kind, ...props }: SidePaneBodyProps): ReactElement {
     case 'plan':
       return props.planEntry ? (
         <PlanDetailsPanel
+          key={props.planEntry.toolCallId}
           entry={props.planEntry}
           onResolve={props.onPlanResolve}
           onClose={props.onClosePlan}

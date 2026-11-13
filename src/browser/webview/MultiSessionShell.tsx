@@ -29,6 +29,7 @@ import { SidebarPeek } from './SidebarPeek'
 import { resolveShellLayout, rightPanelWantWidth } from './layout/shellLayout'
 import { initialRightPanelPresence, stepRightPanelPresence } from './layout/rightPanelPresence'
 import { useSessionCardPrefs } from '@/components/assistant-ui/session-card-stack'
+import { dropPlanFeedbackDraft } from '@/components/assistant-ui/planFeedbackDrafts'
 import {
   PANE_GUTTER_PX,
   RIGHT_PANEL_MIN_WIDTH_PX,
@@ -2294,7 +2295,7 @@ export function MultiSessionShell({
     ],
   )
   // The Plan pane closes once its approval resolves (a plan gives way to
-  // none in the same session); a session restored with a Plan pane and no
+  // none in the same session), and that plan's feedback draft goes with it; a session restored with a Plan pane and no
   // plan keeps it. The close is DEFERRED a tick: a session switch / snapshot
   // refetch can make `activePlanEntry` momentarily null and resolve back to
   // a real plan on the next render — the cleanup cancels the pending close.
@@ -2307,7 +2308,9 @@ export function MultiSessionShell({
     const toolCallId = activePlanEntry?.toolCallId ?? null
     lastPlanRef.current = { sessionId: activeSessionId, toolCallId }
     if (toolCallId !== null || last.sessionId !== activeSessionId || last.toolCallId === null) return
+    const goneToolCallId = last.toolCallId
     const id = window.setTimeout(() => {
+      dropPlanFeedbackDraft(goneToolCallId)
       updatePaneRecord(r => {
         if (!hasPane(r.layout, 'plan')) return r
         const next = closePane(r, 'plan')

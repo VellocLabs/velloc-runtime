@@ -30,17 +30,13 @@ export function PlanDetailsPanel({
 }) {
   const t = useT()
   // The draft lives in the per-plan store, so it survives this body's remount
-  // on a session switch and never shows under another plan.
+  // on a session switch; the mount is keyed by plan, so it never shows under
+  // another plan.
   const draftKey = entry.toolCallId
-  const [draft, setDraft] = useState(() => ({
-    key: draftKey,
-    text: readPlanFeedbackDraft(draftKey),
-  }))
-  const feedback =
-    draft.key === draftKey ? draft.text : readPlanFeedbackDraft(draftKey)
+  const [feedback, setDraft] = useState(() => readPlanFeedbackDraft(draftKey))
   const setFeedback = (text: string) => {
     writePlanFeedbackDraft(draftKey, text)
-    setDraft({ key: draftKey, text })
+    setDraft(text)
   }
   const [busy, setBusy] = useState(false)
 
