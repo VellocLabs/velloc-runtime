@@ -284,8 +284,8 @@ function renderRange(
   // When ToolPlanStream owns a tool-group range, it renders parts directly
   // from the assistant-ui store and never reads `children`. Skip the
   // children build entirely for card runs in that path — a lone tool call
-  // with no reasoning still needs the children list (it unwraps to a bare
-  // ToolFallback). Reasoning absorbed into the run is a row of the card, so
+  // with no reasoning still needs the children list (it renders as a
+  // ToolCallLine around its ToolFallback). Reasoning absorbed into the run is a row of the card, so
   // any reasoning makes it a card even around a single call.
   const skipChildren =
     range.kind === "tool-group" &&
@@ -371,8 +371,8 @@ function renderRange(
   if (range.kind === "tool-group") {
     // Card runs (≥2 tools, or any reasoning) are already handled by the early
     // return above (skipChildren=true). Single-tool ranges fall through here:
-    // when USE_TOOL_PLAN_STREAM is on, they unwrap to a bare ToolFallback
-    // so a one-shot tool call doesn't get wrapped in a Plan card.
+    // when USE_TOOL_PLAN_STREAM is on, the children already hold the call's
+    // ToolCallLine, so they render without a group shell.
     // Keyed Fragment: this is returned as one element of `renderSliceWithGrouping`'s
     // `ranges.map(...)` array, so it MUST carry a key — otherwise React reconciles
     // these single-tool ranges by position and reuses the wrong instance across

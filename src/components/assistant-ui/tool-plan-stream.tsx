@@ -30,6 +30,7 @@ import {
 } from "../../utils/todoSections";
 import {
   classifyToolGroupWork,
+  isFailedToolCall,
   describeToolGroupWork,
   emptyToolGroupWorkTally,
 } from "../../utils/toolGroupSummary";
@@ -381,16 +382,17 @@ const ToolPlanStreamImpl: FC<ToolPlanStreamProps> = ({
           runningToolLabel = formatToolLabel(part.toolName ?? "", part.args);
           if (target) runningTarget = target;
           activeCount++;
-        } else if (part.status?.type === "complete") {
-          if (part.isError) {
+        } else if (
+          part.status?.type === "complete" ||
+          part.status?.type === "incomplete"
+        ) {
+          const reason =
+            part.status.type === "incomplete" ? part.status.reason : undefined;
+          if (isFailedToolCall(part.status.type, reason, part.isError)) {
             errored++;
             kindCount.failed++;
-          }
-        } else if (part.status?.type === "incomplete") {
-          if (part.status.reason === "cancelled") cancelled++;
-          else {
-            errored++;
-            kindCount.failed++;
+          } else if (part.status.type === "incomplete") {
+            cancelled++;
           }
         }
       }

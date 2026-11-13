@@ -1,4 +1,5 @@
 import type { Locale, TranslateFn } from '../browser/webview/i18n/translate'
+import { TOOL_GROUPS } from '../toolkit/builtin/toolGroups'
 import { classifyTodoSectionFileOperation } from './todoSections'
 
 /** The kinds of work a tool group's one-line summary names, in sentence order. */
@@ -17,11 +18,25 @@ export type ToolGroupWorkCount = { total: number; failed: number }
 export type ToolGroupWorkTally = Record<ToolGroupWorkKind, ToolGroupWorkCount>
 
 const COMMAND_TOOL_NAMES: ReadonlySet<string> = new Set([
-  'Bash',
-  'PowerShell',
-  'SuperShell',
-  'Exec',
+  ...TOOL_GROUPS.shell,
+  ...TOOL_GROUPS.supershell,
+  ...TOOL_GROUPS.exec,
 ])
+
+/**
+ * Whether a settled tool call counts as failed in a tool group's summary: it
+ * completed with an error result, or stopped for any reason but a cancel.
+ */
+export function isFailedToolCall(
+  statusType: string | undefined,
+  reason: string | undefined,
+  isError: boolean | undefined,
+): boolean {
+  return (
+    (statusType === 'complete' && isError === true) ||
+    (statusType === 'incomplete' && reason !== 'cancelled')
+  )
+}
 
 const WORK_KEYS = {
   command: { many: 'plan.workCommands', one: 'plan.workCommandsOne' },

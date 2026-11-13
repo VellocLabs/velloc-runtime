@@ -4,6 +4,7 @@ import {
   classifyToolGroupWork,
   describeToolGroupWork,
   emptyToolGroupWorkTally,
+  isFailedToolCall,
   type ToolGroupWorkTally,
 } from '../utils/toolGroupSummary'
 
@@ -29,6 +30,7 @@ describe('classifyToolGroupWork', () => {
     expect(classifyToolGroupWork('Bash')).toBe('command')
     expect(classifyToolGroupWork('PowerShell')).toBe('command')
     expect(classifyToolGroupWork('SuperShell')).toBe('command')
+    expect(classifyToolGroupWork('Exec')).toBe('command')
     expect(classifyToolGroupWork('Read')).toBe('read')
     expect(classifyToolGroupWork('Edit')).toBe('edited')
     expect(classifyToolGroupWork('Write')).toBe('edited')
@@ -36,6 +38,17 @@ describe('classifyToolGroupWork', () => {
     expect(classifyToolGroupWork('Grep')).toBe('other')
     expect(classifyToolGroupWork('mcp__server__anything')).toBe('other')
     expect(classifyToolGroupWork(undefined)).toBe('other')
+  })
+})
+
+describe('isFailedToolCall', () => {
+  it('counts an error result or a non-cancel stop as failed', () => {
+    expect(isFailedToolCall('complete', undefined, true)).toBe(true)
+    expect(isFailedToolCall('incomplete', 'error', undefined)).toBe(true)
+    expect(isFailedToolCall('incomplete', 'cancelled', undefined)).toBe(false)
+    expect(isFailedToolCall('complete', undefined, false)).toBe(false)
+    expect(isFailedToolCall('running', undefined, true)).toBe(false)
+    expect(isFailedToolCall(undefined, undefined, undefined)).toBe(false)
   })
 })
 

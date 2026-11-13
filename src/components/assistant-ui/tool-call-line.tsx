@@ -1,4 +1,4 @@
-import { memo, type FC, type ReactNode } from "react";
+import type { FC, ReactNode } from "react";
 import { useAssistantState } from "@assistant-ui/react";
 import { useShallow } from "zustand/react/shallow";
 import { Ban } from "lucide-react";
@@ -9,6 +9,7 @@ import {
   classifyToolGroupWork,
   describeToolGroupWork,
   emptyToolGroupWorkTally,
+  isFailedToolCall,
 } from "../../utils/toolGroupSummary";
 
 type ToolCallLineSnapshot = {
@@ -35,7 +36,7 @@ export type ToolCallLineProps = {
  * work ("Ran a command") with the chevron after it; opened, the call's own
  * card sits in the bordered body.
  */
-const ToolCallLineImpl: FC<ToolCallLineProps> = ({
+export const ToolCallLine: FC<ToolCallLineProps> = ({
   index,
   forceOpen = false,
   "data-line-from": lineFrom,
@@ -63,9 +64,11 @@ const ToolCallLineImpl: FC<ToolCallLineProps> = ({
         toolCallId: part?.toolCallId,
         statusType,
         cancelled,
-        failed:
-          (statusType === "complete" && part?.isError === true) ||
-          (statusType === "incomplete" && !cancelled),
+        failed: isFailedToolCall(
+          statusType,
+          part?.status?.reason,
+          part?.isError,
+        ),
       };
     }),
   );
@@ -135,4 +138,3 @@ const ToolCallLineImpl: FC<ToolCallLineProps> = ({
   );
 };
 
-export const ToolCallLine = memo(ToolCallLineImpl);

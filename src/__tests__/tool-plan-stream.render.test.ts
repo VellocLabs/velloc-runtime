@@ -1006,7 +1006,8 @@ describe('ToolPlanStream unified header', () => {
     expect(text).not.toContain('1/2')
     // The sentence follows the running target, still and muted.
     const summary = root.querySelector('[data-slot="tool-plan-stream-summary"]')
-    if (summary) expect(summary.className).not.toMatch(/sheen/)
+    expect(summary).not.toBeNull()
+    expect(summary!.className).not.toMatch(/sheen/)
     // The narration is reading text: it stays still.
     const update = root.querySelector(
       '[data-slot="tool-plan-stream-current-update"]',
