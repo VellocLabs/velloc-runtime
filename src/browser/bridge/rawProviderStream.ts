@@ -8,7 +8,7 @@ import {
   createBridgeRoute,
   type BrowserBridgeTransport,
 } from './browserBridgeProtocol'
-import { hostServesPrimitive } from '../../models/drivers/driverRegistry'
+import { hostServesPrimitive } from '../../models/drivers/hostPrimitives'
 import { EGRESS_UNSUPPORTED, RAW_STREAM_EGRESS_PRIMITIVE } from '../../models/drivers/providerEgress'
 
 export type RawProviderStreamRequest = {
