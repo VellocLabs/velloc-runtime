@@ -38,7 +38,8 @@ export type ProviderEgressDeclaration = {
 const EGRESS_NAME = /^[A-Za-z0-9][A-Za-z0-9_-]{0,31}$/
 export const HOST_NAME = /^(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)*$/
 const SECRET_REF = /\{\{secret:([^{}]*)\}\}/g
-const SCHEMES = ['http', 'https', 'socks5'] as const
+export const SCHEMES = ['http', 'https', 'socks5'] as const
+export const SOCKS5_NO_CREDENTIALS = 'a socks5 proxy cannot take a user name and password; use an http or https proxy for one that needs them'
 
 const isRecord = (v: unknown): v is Record<string, unknown> =>
   typeof v === 'object' && v !== null && !Array.isArray(v)
@@ -121,7 +122,7 @@ function checkUrl(value: unknown, label: string, secrets: ReadonlySet<string>, b
       bad(`${label}: expected an address starting with ${SCHEMES.map(s => `${s}://`).join(', ')}`)
       ok = false
     } else if (scheme === 'socks5' && url.includes('@')) {
-      bad(`${label}: a socks5 proxy cannot take a user name and password; use an http or https proxy for one that needs them`)
+      bad(`${label}: ${SOCKS5_NO_CREDENTIALS}`)
       ok = false
     }
   }

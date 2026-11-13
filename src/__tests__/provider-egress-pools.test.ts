@@ -105,6 +105,24 @@ describe('a member address', () => {
     },
   )
 
+  it.each([
+    ['http://2130706433:8080', '127.0.0.1'],
+    ['http://0x7f.1:8080', '127.0.0.1'],
+    ['http://127.1:8080', '127.0.0.1'],
+    ['http://012.0.0.1:8080', '10.0.0.1'],
+    ['http://[::ffff:7f00:1]:8080', '::ffff:7f00:1'],
+    ['http://[::ffff:127.0.0.1]:8080', '::ffff:7f00:1'],
+    ['http://[::FFFF:a00:1]:8080', '::ffff:a00:1'],
+  ])('%s is judged in its canonical form', (url, canonical) => {
+    expect(() => proxyHostOfMember(url, PUBLIC)).toThrow('did not declare')
+    expect(proxyHostOfMember(url, LOCAL)).toBe(canonical)
+  })
+
+  it('a public address in another spelling stays public', () => {
+    expect(proxyHostOfMember('http://[::ffff:808:808]:8080', PUBLIC)).toBe('::ffff:808:808')
+    expect(proxyHostOfMember('http://134744072:8080', PUBLIC)).toBe('8.8.8.8')
+  })
+
   it('a local address needs a pool that declared local', () => {
     expect(() => proxyHostOfMember('http://127.0.0.1:8080', PUBLIC)).toThrow('did not declare')
     expect(() => proxyHostOfMember('http://[::1]:8080', PUBLIC)).toThrow('did not declare')
@@ -122,10 +140,10 @@ describe('the registry of members', () => {
     const registry = new ProviderEgressPoolRegistry()
     registry.set(ID, 'pool', PUBLIC, members)
     expect(registry.ids(ID, 'pool')).toEqual(['p0', 'p1'])
-    expect(registry.member(ID, 'pool', 'p1')).toEqual({ url: 'https://user:secret-pass@gate.example.com', hosts: ['gate.example.com'] })
-    expect(registry.member(ID, 'pool', 'p9')).toBeUndefined()
-    expect(registry.member(ID, 'other', 'p0')).toBeUndefined()
-    expect(registry.member('mod.acme.other', 'pool', 'p0')).toBeUndefined()
+    expect(registry.member(ID, 'pool', 'p1', PUBLIC)).toEqual({ url: 'https://user:secret-pass@gate.example.com', hosts: ['gate.example.com'] })
+    expect(registry.member(ID, 'pool', 'p9', PUBLIC)).toBeUndefined()
+    expect(registry.member(ID, 'other', 'p0', PUBLIC)).toBeUndefined()
+    expect(registry.member('mod.acme.other', 'pool', 'p0', PUBLIC)).toBeUndefined()
   })
 
   it('a set replaces the pool whole; an empty list empties it', () => {
@@ -264,12 +282,40 @@ describe('the seam of a provider with a pool', () => {
     expect(seamForRegistration({ providerId: ID, manifest: manifestOf({}), runtime }, () => {}).egressMember).toBeUndefined()
   })
 
-  it('taking the provider out forgets its members', () => {
+  it('taking the provider out forgets its members', async () => {
     const manifest = manifestOf({ egress: { pool: { dynamic: true } } })
     const unplug = providerSeamListener(() => {})({ providerId: ID, manifest, runtime } as never)
     providerEgressPools.set(ID, 'pool', PUBLIC, [{ id: 'p0', url: 'http://203.0.113.7' }])
     ;(unplug as () => void)()
+    await Promise.resolve()
     expect(providerEgressPools.ids(ID, 'pool')).toEqual([])
+  })
+
+  it('an update keeps the members its new module already registered', async () => {
+    const manifest = manifestOf({ egress: { pool: { dynamic: true } } })
+    const listener = providerSeamListener(() => {})
+    const unplugOld = listener({ providerId: ID, manifest, runtime } as never)
+    const unplugNew = listener({ providerId: ID, manifest, runtime } as never)
+    providerEgressPools.set(ID, 'pool', PUBLIC, [{ id: 'p0', url: 'http://203.0.113.7' }])
+    ;(unplugOld as () => void)()
+    await Promise.resolve()
+    expect(providerEgressPools.ids(ID, 'pool')).toEqual(['p0'])
+    ;(unplugNew as () => void)()
+    await Promise.resolve()
+    expect(providerEgressPools.ids(ID, 'pool')).toEqual([])
+  })
+
+  it('a member is answered only while it meets the pool as declared now', () => {
+    const manifest = manifestOf({ egress: { pool: { dynamic: true, max: 1 } } })
+    const seam = seamForRegistration({ providerId: ID, manifest, runtime }, () => {})
+    providerEgressPools.set(ID, 'pool', { max: 64, local: true }, [
+      { id: 'p0', url: 'http://203.0.113.7' },
+      { id: 'p1', url: 'http://203.0.113.8' },
+      { id: 'home', url: 'http://192.168.1.1' },
+    ])
+    expect(seam.egressMember?.('pool', 'p0')).toEqual({ url: 'http://203.0.113.7', hosts: ['203.0.113.7'] })
+    expect(seam.egressMember?.('pool', 'p1')).toBeUndefined()
+    expect(seam.egressMember?.('pool', 'home')).toBeUndefined()
   })
 })
 

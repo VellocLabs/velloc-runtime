@@ -6,7 +6,9 @@
  * a bad member refuses the call and leaves the pool as it was. `member`
  * answers a registered member as the egress a request is sent with. Members
  * live in this realm's memory only: a module registers them again after a
- * restart, and `clear` forgets a provider's pools when it is taken out.
+ * restart, and `clear` forgets a provider's pools when it is taken out. A
+ * member is answered only while it meets the pool as declared now: a new
+ * version that narrows the pool hides the members the old one admitted.
  *
  * Security: a member's address is plugin input that reaches the host's
  * network stack. It is one of the three proxy schemes, a `socks5` member
@@ -17,11 +19,10 @@
  * a password.
  */
 import type { ProviderEgress, ProviderEgressPool } from '../../models/drivers/providerEgress'
+import { HOST_NAME, SCHEMES, SOCKS5_NO_CREDENTIALS } from './providerEgressManifest'
 
 export const POOL_MEMBER_URL_MAX_LENGTH = 512
 const MEMBER_ID = /^[A-Za-z0-9_.-]{1,64}$/
-const HOST_NAME = /^(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)*$/
-const SCHEMES = ['http', 'https', 'socks5']
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -51,14 +52,30 @@ export function isLocalProxyHost(host: string): boolean {
   if (host.includes(':')) {
     const mapped = /^::ffff:(\d{1,3}(?:\.\d{1,3}){3})$/.exec(host)
     if (mapped) return isLocalProxyHost(mapped[1]!)
+    const mappedHex = /^::ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})$/.exec(host)
+    if (mappedHex) {
+      const high = parseInt(mappedHex[1]!, 16)
+      const low = parseInt(mappedHex[2]!, 16)
+      return isLocalProxyHost(`${high >> 8}.${high & 255}.${low >> 8}.${low & 255}`)
+    }
     // Loopback, unspecified, unique-local (fc00::/7) and link-local (fe80::/10).
     return host === '::1' || host === '::' || /^f[cd]/.test(host) || /^fe[89ab]/.test(host)
   }
   return false
 }
 
+function canonicalHost(written: string, bracketed: boolean): string {
+  let hostname: string
+  try {
+    hostname = new URL(`http://${bracketed ? `[${written}]` : written}/`).hostname
+  } catch {
+    throw new TypeError('url has a host that is not a host name or an IP address')
+  }
+  return hostname.startsWith('[') ? hostname.slice(1, -1) : hostname
+}
+
 /**
- * The host of a member's address, lower case, IPv6 without its brackets.
+ * The host of a member's address in canonical form, IPv6 without its brackets.
  * Throws a `TypeError` that says what is wrong and never quotes the address.
  */
 export function proxyHostOfMember(url: unknown, pool: ProviderEgressPool): string {
@@ -74,14 +91,15 @@ export function proxyHostOfMember(url: unknown, pool: ProviderEgressPool): strin
   const parts = /^([A-Za-z][A-Za-z0-9+.-]*):\/\/(?:([^@/\s]*)@)?(\[[0-9A-Fa-f:.]+\]|[^:@/\s[\]]+)(?::(\d{1,5}))?\/?$/.exec(url)
   if (!parts) throw new TypeError('url is not scheme://[user:pass@]host[:port]')
   const scheme = parts[1]!.toLowerCase()
-  if (!SCHEMES.includes(scheme)) throw new TypeError('url must start with http://, https:// or socks5://')
-  if (scheme === 'socks5' && parts[2] !== undefined) {
-    throw new TypeError('a socks5 proxy cannot take a user name and password; use an http or https proxy for one that needs them')
-  }
+  if (!(SCHEMES as readonly string[]).includes(scheme)) throw new TypeError('url must start with http://, https:// or socks5://')
+  if (scheme === 'socks5' && parts[2] !== undefined) throw new TypeError(SOCKS5_NO_CREDENTIALS)
   if (parts[4] !== undefined && (Number(parts[4]) < 1 || Number(parts[4]) > 65535)) throw new TypeError('url has a port outside 1-65535')
   const bracketed = parts[3]!.startsWith('[')
-  const host = (bracketed ? parts[3]!.slice(1, -1) : parts[3]!).toLowerCase()
-  if (!bracketed && !HOST_NAME.test(host)) throw new TypeError('url has a host that is not a host name or an IP address')
+  const written = (bracketed ? parts[3]!.slice(1, -1) : parts[3]!).toLowerCase()
+  if (!bracketed && !HOST_NAME.test(written)) throw new TypeError('url has a host that is not a host name or an IP address')
+  // Judged in the form the network stack reads: `2130706433`, `127.1` and
+  // `[::ffff:127.0.0.1]` all name 127.0.0.1.
+  const host = canonicalHost(written, bracketed)
   if (!pool.local && isLocalProxyHost(host)) {
     throw new TypeError('the proxy is on this machine or a private network, which this pool did not declare ("local": true)')
   }
@@ -118,9 +136,12 @@ export class ProviderEgressPoolRegistry {
     else this.pools.set(this.key(providerId, pool), next)
   }
 
-  member(providerId: string, pool: string, id: string): ProviderEgress | undefined {
-    const member = this.pools.get(this.key(providerId, pool))?.get(id)
-    return member ? { url: member.url, hosts: [member.host] } : undefined
+  member(providerId: string, pool: string, id: string, declared: ProviderEgressPool): ProviderEgress | undefined {
+    const members = this.pools.get(this.key(providerId, pool))
+    const member = members?.get(id)
+    if (!member || [...members!.keys()].indexOf(id) >= declared.max) return undefined
+    if (!declared.local && isLocalProxyHost(member.host)) return undefined
+    return { url: member.url, hosts: [member.host] }
   }
 
   /** The ids registered in `pool`, in the order they were given. */

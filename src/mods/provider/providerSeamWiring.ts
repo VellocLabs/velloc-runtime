@@ -4,6 +4,7 @@
  * out without the vendor's transformation.
  */
 import {
+  providerRequestSeamFor,
   registerProviderRequestSeam,
   type ProviderRequestSeam,
 } from '../../models/drivers/providerRequestSeam'
@@ -39,7 +40,7 @@ export function seamForRegistration(
     const pools = manifest.egressPools
     if (pools) {
       seam.egressMember = (pool, member) =>
-        Object.prototype.hasOwnProperty.call(pools, pool) ? providerEgressPools.member(providerId, pool, member) : undefined
+        Object.prototype.hasOwnProperty.call(pools, pool) ? providerEgressPools.member(providerId, pool, member, pools[pool]!) : undefined
     }
     // The id mapper exists only for a provider that states `ids` rules; one
     // that states none pays nothing. Rules that cannot run must not be
@@ -71,11 +72,14 @@ export function seamForRegistration(
 export function providerSeamListener(report: (line: string) => void, ids?: ProviderIdDeps): ProviderRegisteredListener {
   return registration => {
     const unplug = registerProviderRequestSeam(registration.providerId, seamForRegistration(registration, report, ids))
-    // A replaced or removed provider's pools go with its seam: the next
-    // version declares its own, and fills them again.
+    // A removed provider's pools go with it. A replaced one is attached again
+    // in the same task, and keeps them: its new module may already have
+    // filled them while the old registration was still attached.
     return () => {
-      providerEgressPools.clear(registration.providerId)
       unplug()
+      queueMicrotask(() => {
+        if (!providerRequestSeamFor(registration.providerId)) providerEgressPools.clear(registration.providerId)
+      })
     }
   }
 }
