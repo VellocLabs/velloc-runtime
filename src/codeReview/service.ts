@@ -68,8 +68,7 @@ const newLive = (base: Omit<LiveRun, 'completedAngles' | 'finderTasks' | 'verifi
 const endCode = (end: ReviewRunEnd): string => `review-${end.kind}`
 /** A worker's step limit, and the steps it may spend reading before it must answer. */
 const WORKER_STEPS = 18, WORKER_READ_STEPS = 14
-/** Turn limits of the main review run: a team coordinator delegates its reads, a single-context review makes them all. */
-/** A single-context review may read in its first SINGLE_CONTEXT_READ_STEPS steps; the rest are for the ledger. */
+/** Turn limits of the main review run: a team coordinator delegates its reads; a single-context review makes them all, reading only in its first SINGLE_CONTEXT_READ_STEPS steps and keeping the rest for the ledger. */
 const COORDINATOR_STEPS = 32, SINGLE_CONTEXT_STEPS = 64, SINGLE_CONTEXT_READ_STEPS = 48, WRAP_UP_STEPS = 5
 const WRAP_UP_TEXT = 'Your step limit is reached and no more reads are available. Using only what you have already read, record any remaining candidates with ReviewLedger, then record coverage: list only the angles you fully covered, name every angle or included file you did not finish as a limitation, and set complete=false if any is left. Then end with the short summary the output contract asks for.'
 const whenAborted = (signal: AbortSignal): Promise<never> => new Promise((_, reject) => {
