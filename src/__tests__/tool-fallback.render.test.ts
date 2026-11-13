@@ -255,6 +255,41 @@ describe('Agent (sub-agent) tool card', () => {
     expect(html).toContain('data-slot="tool-fallback-trigger-chevron"')
   })
 
+  it("shows a background Agent run's tool count and token figures on its header", () => {
+    const card = (taskRows: unknown[]) =>
+      renderToStaticMarkup(
+        createElement(
+          BackgroundTasksContext.Provider,
+          { value: { openTasksDrawer: () => {}, taskRows } as never },
+          createElement(Tool, {
+            toolCallId: 'tc-agent-bg-stats',
+            toolName: 'Agent',
+            args: { description: 'probe', subagent_type: 'Explore', prompt: 'go' },
+            result: 'Launched background sub-agent (task id aabc12345).',
+            status: { type: 'complete' },
+          }),
+        ),
+      )
+    const html = card([
+      {
+        sessionId: 'aabc12345',
+        spawnerSessionId: 'P',
+        status: 'running',
+        type: 'local_agent',
+        description: 'probe',
+        stats: { toolUses: 7, inputTokens: 12_000, outputTokens: 800, cacheReadTokens: 64_000, cacheWriteTokens: 0 },
+      },
+    ])
+    expect(html).toContain('data-testid="task-run-stats"')
+    expect(html).toMatch(/data-testid="task-run-stats-tools"[^>]*>.*?7</)
+    expect(html).toContain('12k')
+    expect(html).toContain('800')
+    expect(html).toContain('64k')
+    expect(html).toContain('data-testid="agent-jump-to-background-tasks"')
+    // Another run's row does not leak onto this card.
+    expect(card([{ sessionId: 'aother', spawnerSessionId: 'P', status: 'running', stats: { toolUses: 3, inputTokens: 1, outputTokens: 1, cacheReadTokens: 0, cacheWriteTokens: 0 } }])).not.toContain('task-run-stats')
+  })
+
   it('keeps a live background Agent launch collapsed (pinned complete, no spinner) and defers the prompt to expand, with no jump until the ack id arrives', () => {
     const html = renderToStaticMarkup(
       createElement(

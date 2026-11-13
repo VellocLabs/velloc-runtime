@@ -45,12 +45,7 @@ import {
 } from '../../models/usage/planUsage'
 import { amountLabelKey, balanceNoteKey, useFormatAmount, windowLabelKey } from './planUsageLabels'
 
-function compactTokenCount(n: number): string {
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(2)}M`
-  if (n >= 10_000) return `${Math.round(n / 1000)}k`
-  if (n >= 1000) return `${(n / 1000).toFixed(1)}k`
-  return String(n)
-}
+import { compactTokenCount } from '../../utils/taskRunStats'
 
 function asRecord(value: unknown): Record<string, unknown> | undefined {
   return value && typeof value === 'object'

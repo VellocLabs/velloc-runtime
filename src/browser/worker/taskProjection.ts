@@ -2,7 +2,7 @@
  * Pure projections for background tasks: transcript text/entries, finished-record snapshots, drawer
  * labels and `<task-notification>` formatting.
  */
-import type { NexusTaskTranscriptEntry } from '../bridge/protocol/ui'
+import type { NexusTaskRunStats, NexusTaskTranscriptEntry } from '../bridge/protocol/ui'
 import type { SubAgentSnapshot } from '../../team/subAgentController'
 import type { ForkTaskStart } from '../../backgroundTasks/sideTaskSink'
 import type { FinishedSubAgentRecord, NexusTaskDeliveryResult } from './taskTypes'
@@ -124,6 +124,89 @@ export function projectSubAgentTranscript(
     out.push({ role: m.type, text, tools })
   }
   return out
+}
+
+type UsageFigures = Omit<NexusTaskRunStats, 'toolUses'>
+
+type RunStatsScan = {
+  scanned: number
+  toolIds: Set<string>
+  anonymousTools: number
+  /** Usage per response id; a response split over several messages repeats it. */
+  usageById: Map<string, UsageFigures>
+  anonymousUsage: UsageFigures
+}
+
+const runStatsScans = new WeakMap<readonly unknown[], RunStatsScan>()
+
+function tokenCount(value: unknown): number {
+  return typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : 0
+}
+
+function usageFigures(usage: Record<string, unknown>): UsageFigures {
+  return {
+    inputTokens: tokenCount(usage.input_tokens),
+    outputTokens: tokenCount(usage.output_tokens),
+    cacheReadTokens: tokenCount(usage.cache_read_input_tokens),
+    cacheWriteTokens: tokenCount(usage.cache_creation_input_tokens),
+  }
+}
+
+function addFigures(into: UsageFigures, from: UsageFigures): void {
+  into.inputTokens += from.inputTokens
+  into.outputTokens += from.outputTokens
+  into.cacheReadTokens += from.cacheReadTokens
+  into.cacheWriteTokens += from.cacheWriteTokens
+}
+
+/**
+ * Tool calls and token usage summed over a run's assistant messages (stream
+ * records or persisted messages). A tool call counts once per block id and a
+ * response's usage once per response id. Contract: `messages` is append-only;
+ * each call scans only the messages added since the previous call on the same
+ * array.
+ */
+export function computeRunStats(messages: readonly unknown[]): NexusTaskRunStats {
+  let scan = runStatsScans.get(messages)
+  if (!scan || scan.scanned > messages.length) {
+    scan = {
+      scanned: 0,
+      toolIds: new Set(),
+      anonymousTools: 0,
+      usageById: new Map(),
+      anonymousUsage: { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 },
+    }
+    runStatsScans.set(messages, scan)
+  }
+  for (let i = scan.scanned; i < messages.length; i += 1) {
+    const m = messages[i] as { type?: string; message?: unknown; content?: unknown } | undefined
+    if (!m || m.type !== 'assistant') continue
+    const inner = (m.message && typeof m.message === 'object' ? m.message : undefined) as
+      | { id?: unknown; content?: unknown; usage?: unknown }
+      | undefined
+    const blocks = Array.isArray(inner?.content)
+      ? (inner!.content as unknown[])
+      : Array.isArray(m.content)
+        ? (m.content as unknown[])
+        : []
+    for (const b of blocks) {
+      const block = b as { type?: string; id?: unknown; toolCallId?: unknown } | undefined
+      if (block?.type !== 'tool_use' && block?.type !== 'tool-call') continue
+      const id = typeof block.id === 'string' ? block.id : typeof block.toolCallId === 'string' ? block.toolCallId : undefined
+      if (id) scan.toolIds.add(id)
+      else scan.anonymousTools += 1
+    }
+    const usage = inner?.usage
+    if (usage && typeof usage === 'object') {
+      const figures = usageFigures(usage as Record<string, unknown>)
+      if (typeof inner?.id === 'string' && inner.id) scan.usageById.set(inner.id, figures)
+      else addFigures(scan.anonymousUsage, figures)
+    }
+  }
+  scan.scanned = messages.length
+  const total: UsageFigures = { ...scan.anonymousUsage }
+  for (const figures of scan.usageById.values()) addFigures(total, figures)
+  return { toolUses: scan.toolIds.size + scan.anonymousTools, ...total }
 }
 
 export function finishedRecordToSnapshot(rec: FinishedSubAgentRecord): SubAgentSnapshot {

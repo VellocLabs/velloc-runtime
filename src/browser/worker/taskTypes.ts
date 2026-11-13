@@ -8,7 +8,7 @@ import type {
   getConversationStore,
 } from '../../sessions/sessionStore'
 import type { getActiveSidechainStore } from '../../utils/sidechainTranscripts'
-import type { NexusTaskTranscriptEntry } from '../bridge/protocol/ui'
+import type { NexusTaskRunStats, NexusTaskTranscriptEntry } from '../bridge/protocol/ui'
 import type { HeadlessRunResult } from '../../routines/HeadlessRunner'
 import type { TurnFullDiff } from '../../utils/turnDiffs'
 import type {
@@ -170,6 +170,8 @@ export type FinishedSubAgentRecord = {
    *  session. Held in-memory so it survives reaping + a reload (SharedWorker
    *  lives across the page reload). */
   transcript?: NexusTaskTranscriptEntry[]
+  /** Tool calls and tokens the run used, captured at finish. */
+  stats?: NexusTaskRunStats
   /** The directive that drove this run — retained for the detail view's "Task"
    *  line (the live run's `prompt`; lost without this since the spawn args are
    *  gone once the run is reaped). */
@@ -276,6 +278,8 @@ export type FinishedForkRecord = {
   /** Projected at finish from the live `messages` (see FinishedSubAgentRecord
    *  — the live state is reaped on terminal transition). */
   transcript?: NexusTaskTranscriptEntry[]
+  /** Tool calls and tokens the fork used, captured at finish. */
+  stats?: NexusTaskRunStats
   startedAt: number
   finishedAt: number
 }

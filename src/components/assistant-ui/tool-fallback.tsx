@@ -20,6 +20,7 @@ import {
 import { cn } from "@/lib/utils";
 import { ToolDetailTree } from "@/components/assistant-ui/tool-detail-tree";
 import { BackgroundTaskJumpButton } from "@/components/assistant-ui/background-task-jump";
+import { TaskRunStats } from "@/browser/webview/TaskRunStats";
 import { PanelJumpChevron } from "@/components/assistant-ui/panel-jump-chevron";
 import { useToolCallDetailContext } from "@/components/assistant-ui/tool-call-detail-context";
 import { toolLineRange } from "@/browser/webview/assistantUiAdapter";
@@ -773,7 +774,7 @@ const ToolFallbackImpl: ToolCallMessagePartComponent = ({
   );
 
   const { openFile, openDiff, openWorkspaceDiff } = useRightPanelContent();
-  const { openTasksDrawer } = useBackgroundTasksContext();
+  const { openTasksDrawer, taskRows } = useBackgroundTasksContext();
 
   // A run_js call's task is keyed in the drawer by its tool call id (== the
   // public task id — see SideTaskCoordinator.registerRunJs), so the card can
@@ -829,6 +830,9 @@ const ToolFallbackImpl: ToolCallMessagePartComponent = ({
   // launch, a background shell (running OR completed), or a Super Edit run.
   const backgroundTaskId =
     agentBackgroundTaskId ?? shellBackgroundTaskId ?? null;
+  const agentTaskRow = agentBackgroundTaskId
+    ? taskRows?.find((row) => row.sessionId === agentBackgroundTaskId)
+    : undefined;
   // "Launch" cards merely kicked off work whose full detail lives in the drawer,
   // so their expandable body shows ONLY the call args (prompt / command /
   // description) — never a result. A COMPLETED shell is NOT a launch card: it is
@@ -990,7 +994,21 @@ const ToolFallbackImpl: ToolCallMessagePartComponent = ({
                 ? handleOpenWorkspaceDiff
                 : undefined
         }
-        trailingAction={jumpTrailingAction}
+        trailingAction={
+          agentTaskRow?.stats ? (
+            <>
+              <TaskRunStats
+                stats={agentTaskRow.stats}
+                variant="strip"
+                running={agentTaskRow.status === "running"}
+                className="hidden shrink-0 sm:flex"
+              />
+              {jumpTrailingAction}
+            </>
+          ) : (
+            jumpTrailingAction
+          )
+        }
       />
       {/* Outside the collapsible on purpose: Radix unmounts closed content, so a failed
           or cancelled call states its reason on the collapsed card. Renders nothing

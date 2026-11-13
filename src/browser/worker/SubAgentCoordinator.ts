@@ -43,6 +43,7 @@ import {
   type NexusTaskDeliveryResult,
 } from './taskTypes'
 import {
+  computeRunStats,
   extractFinalAssistantText,
   isSubAgentSessionId,
   projectSubAgentTranscript,
@@ -767,6 +768,7 @@ export class SubAgentCoordinator {
       // Capture the full projected transcript before the run is reaped so the
       // detail view stays readable when finished (not just while running).
       transcript: projectSubAgentTranscript(state.messages),
+      stats: computeRunStats(state.messages),
       prompt: state.prompt,
       startedAt: state.startedAt,
       finishedAt: Date.now(),
@@ -865,6 +867,7 @@ export class SubAgentCoordinator {
         : 'Stopped by request (no output produced yet).',
       // Keep the partial transcript readable after the run is reaped.
       transcript: projectSubAgentTranscript(run.messages),
+      stats: computeRunStats(run.messages),
       prompt: run.prompt,
       startedAt: run.startedAt,
       finishedAt: Date.now(),

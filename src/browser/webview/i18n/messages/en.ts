@@ -1298,6 +1298,19 @@ export const en = {
   'backgroundTasks.taskLabel': 'Task',
   'backgroundTasks.subAgentFallbackTitle': 'Sub-agent …{id}',
   'backgroundTasks.startedAt': 'started {when}',
+  // Sub-agent run usage (F-2). `{n}`, `{read}`, `{write}` are formatted numbers;
+  // the *Label keys follow a short figure ("12 tools", "45k in").
+  'taskStats.groupLabel': 'Run usage',
+  'taskStats.toolsTitle': 'Tool calls: {n}',
+  'taskStats.inputTitle': 'Input tokens: {n}',
+  'taskStats.outputTitle': 'Output tokens: {n}',
+  'taskStats.cacheTitle': 'Cache read: {read} · Cache write: {write}',
+  'taskStats.toolsLabel': 'tools',
+  'taskStats.toolsLabelOne': 'tool',
+  'taskStats.inputLabel': 'in',
+  'taskStats.outputLabel': 'out',
+  'taskStats.cacheReadLabel': 'cache read',
+  'taskStats.cacheWriteLabel': 'cache write',
   'backgroundTasks.resumeDefaultText': 'Continue.',
   // Kind categories (Sub-agents / Shell / Super Shell / Super Edit / Running).
   // "Super Shell" and "Super Edit" are coined tool labels — verbatim in every

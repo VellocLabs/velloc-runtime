@@ -32,7 +32,9 @@ import {
   type NexusFinishedTaskRecord,
   type NexusTaskState,
 } from './taskTypes'
+import { runStatsEqual } from '../../utils/taskRunStats'
 import {
+  computeRunStats,
   fastCallDisplayLabel,
   isSubAgentSessionId,
   resolveTaskOrigin,
@@ -440,6 +442,7 @@ export class SessionFeedPublisher {
         description: run.description,
         agentType: run.agentType,
         updates: run.messages.length,
+        stats: computeRunStats(run.messages),
         startedAt: run.startedAt,
         lastActivityAt: run.lastActivityAt,
       })
@@ -455,6 +458,7 @@ export class SessionFeedPublisher {
         type: 'local_agent',
         description: rec.description,
         agentType: rec.agentType,
+        stats: rec.stats,
         startedAt: rec.startedAt,
         finishedAt: rec.finishedAt,
       })
@@ -542,6 +546,7 @@ export class SessionFeedPublisher {
         agentType: run.agentType,
         querySource: run.querySource,
         updates: run.messages.length,
+        stats: computeRunStats(run.messages),
         startedAt: run.startedAt,
         lastActivityAt: run.lastActivityAt,
       })
@@ -558,6 +563,7 @@ export class SessionFeedPublisher {
         description: rec.description,
         agentType: rec.agentType,
         querySource: rec.querySource,
+        stats: rec.stats,
         startedAt: rec.startedAt,
         finishedAt: rec.finishedAt,
       })
@@ -946,6 +952,7 @@ function summariesEqual(
       x.agentType !== y.agentType ||
       x.querySource !== y.querySource ||
       x.updates !== y.updates ||
+      !runStatsEqual(x.stats, y.stats) ||
       x.startedAt !== y.startedAt ||
       x.lastActivityAt !== y.lastActivityAt ||
       x.schedule !== y.schedule ||

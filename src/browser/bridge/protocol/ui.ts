@@ -227,6 +227,18 @@ export type NexusAgentChangeSection = {
 }
 
 /**
+ * Running totals for one sub-agent or fork run: tool calls its model made and
+ * the tokens its model requests reported, summed over every response.
+ */
+export type NexusTaskRunStats = {
+  toolUses: number
+  inputTokens: number
+  outputTokens: number
+  cacheReadTokens: number
+  cacheWriteTokens: number
+}
+
+/**
  * A background TASK row for the human-facing surface (G2/G5) — today an `Agent`
  * sub-agent (`run_in_background`) or a background shell. Carried on the sessions
  * summary so the webview can show, per launching session, what is running in the
@@ -268,6 +280,9 @@ export type NexusTaskSummaryRow = {
    *  while it runs but files it under its invocation — never under Shell — once
    *  it settles. Absent for every other shell. Additive + ignore-if-absent. */
   superShellTaskId?: string
+  /** A sub-agent or fork's work so far: tool calls made and tokens used (F-2).
+   *  Absent for other task kinds and for runs restored from disk. */
+  stats?: NexusTaskRunStats
   /** Liveness (G5): stream-update count while running. */
   updates?: number
   /** Unix ms when the (current) run started — drives the "running for …" age. */

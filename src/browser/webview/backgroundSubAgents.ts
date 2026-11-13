@@ -24,6 +24,7 @@ import {
 import type { NexusTaskKind, NexusTaskSummaryRow } from '../bridge/protocol/ui'
 
 import type { MessageKey } from './i18n/messages/en'
+import { runStatsEqual } from '../../utils/taskRunStats'
 
 /** Shallow per-field equality so the shell skips re-renders when an unrelated
  *  summary flush (e.g. a counter bump) carries an unchanged sub-agent set. */
@@ -51,6 +52,7 @@ export function subAgentsEqual(
       x.agentType !== y.agentType ||
       x.querySource !== y.querySource ||
       x.updates !== y.updates ||
+      !runStatsEqual(x.stats, y.stats) ||
       x.schedule !== y.schedule ||
       x.nextFireAt !== y.nextFireAt
     ) {

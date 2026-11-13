@@ -51,6 +51,7 @@ import {
 } from './backgroundSubAgents'
 import { loopTimerCountdown, loopTimerScheduleText } from './loopTimers'
 import { useT } from "./i18n";
+import { TaskRunStats } from "./TaskRunStats";
 import { reviewTaskSummaryMessage } from '@/codeReview/messages'
 import { useSessionAreaVisible } from './sessionAreaVisibility'
 
@@ -685,6 +686,12 @@ export function BackgroundTasksDrawer({
                   ? ` · ${t('backgroundTasks.viaAgent', { name: taskRowOriginName(detailRow)! })}`
                   : ''}
               </div>
+              <TaskRunStats
+                stats={detailRow?.stats}
+                variant="badges"
+                running={detailStatus === 'running'}
+                className="mt-1.5"
+              />
             </div>
             {/* Reload only makes sense for a RUNNING task (streaming transcript
                 / live shell output). A terminal task — including a shell/run_js
@@ -1107,6 +1114,7 @@ export function BackgroundTasksDrawer({
                             <div className="truncate text-[11px] tabular-nums text-muted-foreground">
                               {meta.join(' · ')}
                             </div>
+                            <TaskRunStats stats={item.stats} variant="strip" running={isRunning} className="mt-1" />
                           </button>
                           <DropdownMenuPrimitive.Root>
                             <DropdownMenuPrimitive.Trigger asChild>

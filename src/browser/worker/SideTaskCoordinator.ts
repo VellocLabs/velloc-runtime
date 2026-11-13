@@ -6,6 +6,7 @@
  */
 import type { TaskRegistry } from './TaskRegistry'
 import { REVIEW_FORK_LABEL } from '../../backgroundTasks/sideTaskSink'
+import { computeRunStats } from './taskProjection'
 
 // --- Host interface (Manager provides these) ---
 
@@ -144,6 +145,7 @@ export class SideTaskCoordinator {
           : this.host.extractFinalAssistantText(run.messages) ||
             (status === 'stopped' ? 'Stopped.' : ''),
       transcript: this.host.projectSubAgentTranscript(run.messages),
+      stats: computeRunStats(run.messages),
       startedAt: run.startedAt,
       finishedAt: finish.finishedAt,
     }
