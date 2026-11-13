@@ -60,6 +60,7 @@ const REFUSAL_HINTS: Record<string, string> = {
   'invalid-text': 'every text field must be a nonempty string',
   'invalid-integer': 'line numbers are integers from 1',
   'invalid-array': 'candidates, support, angles and limitations are arrays',
+  'invalid-completeness': 'coverage.complete is the JSON boolean true or false, inside the coverage object beside angles and limitations',
   'invalid-object': 'location, statement, assessment and every support item are objects',
   'unknown-field': 'remove fields the schema does not list',
   'worker-candidate-limit': 'more candidates than this task allows; keep the strongest',
@@ -70,15 +71,32 @@ const REFUSAL_HINTS: Record<string, string> = {
 /** A refused item as a worker reads it: its code and how to correct it. */
 export const withRefusalHint = <T extends { code: string }>(item: T): T & { hint?: string } => ({ ...item, ...(REFUSAL_HINTS[item.code] ? { hint: REFUSAL_HINTS[item.code] } : {}) })
 
-/** A coverage call as the ledger takes it: the statement under `coverage`, also when its fields came beside `operation` or `operation` was repeated inside it. */
+/** The value a field spells when it arrived as JSON text of the wanted kind; any other value is returned unchanged. */
+function spelled(value: unknown, kind: 'object' | 'array' | 'boolean'): unknown {
+  if (typeof value !== 'string') return value
+  let parsed: unknown
+  try { parsed = JSON.parse(value) } catch { return value }
+  const found = Array.isArray(parsed) ? 'array' : parsed === null ? 'null' : typeof parsed
+  return found === kind ? parsed : value
+}
+/** A coverage statement with each field that arrived as JSON text read as the value it spells. */
+function coverageStatement(fields: Record<string, unknown>): Record<string, unknown> {
+  const statement = { ...fields }
+  if ('angles' in statement) statement.angles = spelled(statement.angles, 'array')
+  if ('limitations' in statement) statement.limitations = spelled(statement.limitations, 'array')
+  if ('complete' in statement) statement.complete = spelled(statement.complete, 'boolean')
+  return statement
+}
+/** A coverage call as the ledger takes it: the statement under `coverage`, also when its fields came beside `operation`, `operation` was repeated inside it, or the statement or its fields came as JSON text. */
 function coverageCall(input: Record<string, unknown>): Record<string, unknown> {
-  const { coverage, angles, limitations, complete, ...rest } = input
+  const { coverage: sent, angles, limitations, complete, ...rest } = input
+  const coverage = spelled(sent, 'object')
   if (coverage && typeof coverage === 'object' && !Array.isArray(coverage)) {
     const { operation: _operation, ...statement } = coverage as Record<string, unknown>
-    return { ...rest, coverage: statement }
+    return { ...rest, coverage: coverageStatement(statement) }
   }
   if (coverage !== undefined || (angles === undefined && limitations === undefined && complete === undefined)) return input
-  return { ...rest, coverage: { ...(angles !== undefined ? { angles } : {}), ...(limitations !== undefined ? { limitations } : {}), ...(complete !== undefined ? { complete } : {}) } }
+  return { ...rest, coverage: coverageStatement({ ...(angles !== undefined ? { angles } : {}), ...(limitations !== undefined ? { limitations } : {}), ...(complete !== undefined ? { complete } : {}) }) }
 }
 export function createReviewTools(bindings: ReviewToolBindings): ToolContract[] {
   const tool = (name: string, description: string, properties: Record<string, unknown>, required: string[], invoke: (input: Record<string, unknown>, id: string, row: Message) => Promise<unknown>) => declareTool({
@@ -120,7 +138,12 @@ export function createReviewTools(bindings: ReviewToolBindings): ToolContract[] 
       if (field && input[field] === undefined) throw new Error(`missing-${field}: operation "${String(input.operation)}" takes "${field}" in the same call`)
       if (bindings.independentAssessments && input.operation === 'assess') throw new Error('independent-verifier-required')
       if (bindings.independentAssessments && input.operation === 'append-candidates' && Array.isArray(input.candidates) && input.candidates.some(candidate => candidate?.assessment?.disposition === 'dismissed' || candidate?.assessment?.disposition === 'proven')) throw new Error('independent-verifier-required')
-      return bindings.store.submitLedger(bindings.runId, id, input)
+      const written = bindings.store.submitLedger(bindings.runId, id, input)
+      // A refused coverage statement names how to correct it, as a refused item does.
+      return input.operation !== 'coverage' ? written : written.catch((error: unknown) => {
+        const code = error instanceof Error ? error.message : ''
+        throw REFUSAL_HINTS[code] ? new Error(`${code}: ${REFUSAL_HINTS[code]}`) : error
+      })
     }),
   ]
   if (bindings.submit) tools.push(bindings.submit.role === 'verifier'

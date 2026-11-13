@@ -1101,6 +1101,19 @@ describe('explicit semantic duplicate merges', () => {
     expect((await h.store.getSnapshot(h.id)).coverage.limitations).toEqual(expect.arrayContaining(['Sent beside the operation.', 'Operation repeated inside.']))
     await expect(invoke({ operation: 'coverage' }, 'empty')).rejects.toThrow('missing-coverage')
   })
+  it('reads a coverage statement whose fields or whole came as JSON text, and says how to correct a completeness it cannot read', async () => {
+    const h = await pair()
+    const tool = createReviewTools({ runId: h.id, store: h.store, signal: new AbortController().signal, read: async () => ({}), changed: () => {}, allowOutput: true }).find(tool => tool.name === 'ReviewLedger')!
+    const invoke = (input: Record<string, unknown>, id: string) => tool.call(input, undefined as never, undefined as never, { type: 'assistant', message: { content: [{ type: 'tool_use', id, name: 'ReviewLedger', input }] } } as unknown as Message)
+    expect((await invoke({ operation: 'coverage', angles: '[]', limitations: '["Fields as text beside the operation."]', complete: 'false' }, 'flat-text')).data).toMatchObject({ coverageRecorded: true })
+    expect((await invoke({ operation: 'coverage', coverage: { angles: '[]', limitations: '["Fields as text inside."]', complete: 'false' } }, 'nested-text')).data).toMatchObject({ coverageRecorded: true })
+    expect((await invoke({ operation: 'coverage', coverage: '{"angles": [], "limitations": ["Whole statement as text."], "complete": false}' }, 'whole-text')).data).toMatchObject({ coverageRecorded: true })
+    expect((await h.store.getSnapshot(h.id)).coverage.limitations).toEqual(expect.arrayContaining(['Fields as text beside the operation.', 'Fields as text inside.', 'Whole statement as text.']))
+    expect((await invoke({ operation: 'coverage', angles: '["lines"]', limitations: '[]', complete: 'true' }, 'complete-text')).data).toMatchObject({ coverageRecorded: true })
+    expect((await h.store.getSnapshot(h.id)).coverage.complete).toBe(true)
+    await expect(invoke({ operation: 'coverage', angles: '[]', limitations: '[]', complete: 'partial' }, 'not-boolean')).rejects.toThrow(/^invalid-completeness: coverage\.complete is the JSON boolean/)
+    await expect(invoke({ operation: 'coverage', angles: 'lines', limitations: '[]', complete: 'true' }, 'not-array')).rejects.toThrow(/^invalid-array: /)
+  })
   it('names the field an operation is missing, says a coverage write was recorded, and asks a finder for its angles', async () => {
     const h = await pair()
     const launch = vi.fn(async () => ({}))
