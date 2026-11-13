@@ -16,7 +16,6 @@ describe('rawStreamProblemOf', () => {
     ['TOO_MANY_STREAMS: too many open streams', 'too_many_streams'],
     ['RESPONSE_TOO_LARGE: Response exceeded the 1048576-byte cap.', 'response_too_large'],
     ['PROTOCOL: rawStreamRead answered without `done`.', 'protocol'],
-    ['Stream network error: Request failed: net::ERR_CONNECTION_RESET', 'network'],
     ['NETWORK_ERROR: Request failed: net::ERR_CONNECTION_RESET', 'network'],
     ['TIMEOUT: Stream was idle for 90000ms.', 'timeout'],
     ['CANCELLED: Stream was cancelled.', 'cancelled'],
@@ -49,6 +48,16 @@ describe('rawStreamProblemOf', () => {
     expect(rawStreamProblemOf('')).toBeUndefined()
   })
 
+  it('leaves a plain stream network error to the card, while the transport code still maps', () => {
+    expect(
+      rawStreamProblemOf('Stream network error: Request failed: net::ERR_INTERNET_DISCONNECTED'),
+    ).toBeUndefined()
+    expect(
+      rawStreamProblemOf('provider_error: Stream network error: Request failed: net::ERR_CONNECTION_RESET'),
+    ).toBeUndefined()
+    expect(rawStreamProblemOf('NETWORK_ERROR: Request failed: net::ERR_CONNECTION_RESET')).toBe('network')
+  })
+
   it('maps every problem to a catalog key that resolves', () => {
     for (const detail of [
       'EGRESS_UNSUPPORTED: x',
@@ -59,7 +68,7 @@ describe('rawStreamProblemOf', () => {
       'TOO_MANY_STREAMS: x',
       'RESPONSE_TOO_LARGE: x',
       'PROTOCOL: x',
-      'Stream network error: x',
+      'NETWORK_ERROR: x',
       'TIMEOUT: x',
       'CANCELLED: x',
       'Sign in to this provider in Settings to continue',

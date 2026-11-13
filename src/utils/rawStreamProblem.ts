@@ -37,9 +37,8 @@ const CODE_PROBLEMS: Readonly<Record<string, RawStreamProblem>> = {
   CANCELLED: 'cancelled',
 }
 
-// `errorText` (models/drivers/driverStreamHost.ts) rewrites NETWORK_ERROR to
-// the native stream's wording before the detail is stored.
-const STREAM_NETWORK_ERROR = /^Stream network error:/i
+// `Stream network error:` is not matched: built-in providers word their own
+// network drops that way, and the card keeps that detail as it is.
 const CODE_PREFIX = /^([A-Z][A-Z0-9_]*):/
 // The sign-in refusal is stored as its sentence, not as OAUTH_UNAVAILABLE.
 const SIGN_IN_REQUIRED = /^Sign in to this provider in Settings to continue$/
@@ -64,7 +63,6 @@ export function rawStreamProblemOf(detail: string): RawStreamProblem | undefined
   // A failure no classifier branch claimed reaches the card as the raw error
   // message, which still carries the wire's `provider_error: ` prefix.
   const text = cleanupDetail(detail)
-  if (STREAM_NETWORK_ERROR.test(text)) return 'network'
   if (SIGN_IN_REQUIRED.test(text)) return 'sign_in_required'
   const match = CODE_PREFIX.exec(text)
   return match ? CODE_PROBLEMS[match[1]!] : undefined
