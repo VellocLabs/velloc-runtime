@@ -15,8 +15,9 @@ import {
 /**
  * Network page: the first proxy read waits for the runtime grant, Enter sends
  * only what Apply would, a PAC address with the wrong scheme gets its own
- * hint, and the private-network note shows for every mode that can put a
- * proxy in the path.
+ * hint, and the private-network note shows for each mode that picks a proxy
+ * source on the page (fixed, pac, autoDetect); an OS proxy under `system`
+ * cannot be known in advance and carries none.
  */
 
 const getProxySettings = vi.fn<(transport: unknown) => Promise<BridgeProxySettings>>()
