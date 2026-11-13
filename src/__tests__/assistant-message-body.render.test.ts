@@ -9,6 +9,7 @@ import {
   type ThreadMessageLike,
 } from '@assistant-ui/react'
 import { AssistantMessageBody } from '../components/assistant-ui/assistant-message-body'
+import { descendToOrdinal } from '../browser/webview/revealThreadMessage'
 
 /**
  * A standalone part (an AskUserQuestion here) lands in the same place in the rendered message body at every
@@ -744,5 +745,39 @@ describe('AssistantMessageBody — a lone tool call reads as a one-line tool gro
     expect(
       container.querySelector('[data-slot="tool-call-line-title"]')!.textContent,
     ).toBe('Read a file')
+  })
+})
+
+describe('AssistantMessageBody — a search reveal reaches a lone tool call', () => {
+  afterEach(cleanup)
+
+  it('opens the closed line, then the call\'s own card', async () => {
+    const Harness = makeHarness(
+      {
+        role: 'assistant',
+        status: { type: 'complete', reason: 'stop' },
+        content: [
+          { type: 'text', text: 'Checking.', sourceLine: 3 },
+          { ...BASH, toolCallId: 'reveal-lone', sourceLine: 4 },
+          { type: 'text', text: 'All good.', sourceLine: 5 },
+        ],
+      } as unknown as ThreadMessageLike,
+      false,
+    )
+    const { container } = render(createElement(Harness))
+    await waitFor(() => {
+      expect(container.querySelector('[data-slot="tool-call-line-root"]')).not.toBeNull()
+    })
+    const row = container.querySelector<HTMLElement>('[data-slot="assistant-message-body"]')!
+    expect(container.querySelector('[data-slot="tool-fallback-root"]')).toBeNull()
+
+    const found = await descendToOrdinal(row, 4)
+
+    await waitFor(() => {
+      expect(
+        container.querySelector('[data-slot="tool-fallback-root"][data-state="open"]'),
+      ).not.toBeNull()
+    })
+    expect(found?.closest('[data-slot="tool-call-line-content"]')).not.toBeNull()
   })
 })

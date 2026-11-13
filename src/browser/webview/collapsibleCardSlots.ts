@@ -7,6 +7,7 @@ export const COLLAPSIBLE_CARD_TRIGGER_SLOTS = [
   'tool-fallback-trigger',
   'tool-group-trigger',
   'tool-plan-stream-trigger',
+  'tool-call-line-trigger',
   'todo-section-trigger',
   'plan-list-item-trigger',
   'reasoning-trigger',
