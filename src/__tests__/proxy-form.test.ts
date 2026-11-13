@@ -4,6 +4,7 @@ import type { BridgeProxySettings } from '../browser/bridge/protocol/network'
 import { HOST_PROXY_TABLE } from '../browser/runtimeHub/hostProxyTable'
 import {
   MAX_BYPASS_LIST_CHARS,
+  MAX_PROXY_SIGN_IN_CHARS,
   checkProxyForm,
   formFromSettings,
   isProxyFormChanged,
@@ -12,7 +13,7 @@ import {
 } from '../browser/webview/settings/proxyForm'
 
 function form(patch: Partial<ProxyForm>): ProxyForm {
-  return { mode: 'system', server: '', bypassList: '', pacUrl: '', ...patch }
+  return { mode: 'system', server: '', bypassList: '', pacUrl: '', username: '', password: '', ...patch }
 }
 
 function settings(patch: Partial<BridgeProxySettings>): BridgeProxySettings {
@@ -105,6 +106,8 @@ describe('proxy form', () => {
       server: 'http://proxy.example.com:3128',
       bypassList: '',
       pacUrl: '',
+      username: '',
+      password: '',
     })
     expect(isProxyFormChanged(shown, current)).toBe(false)
     expect(isProxyFormChanged({ ...shown, pacUrl: 'https://example.com/p.pac' }, current)).toBe(
@@ -113,6 +116,54 @@ describe('proxy form', () => {
     expect(isProxyFormChanged({ ...shown, server: `${shown.server} ` }, current)).toBe(false)
     expect(isProxyFormChanged({ ...shown, bypassList: 'localhost' }, current)).toBe(true)
     expect(isProxyFormChanged({ ...shown, mode: 'direct' }, current)).toBe(true)
+  })
+})
+
+describe('proxy sign-in', () => {
+  const HTTP = 'http://proxy.example.com:3128'
+  const problem = (patch: Partial<ProxyForm>, current?: BridgeProxySettings) => {
+    const found = checkProxyForm(form({ mode: 'fixed', server: HTTP, ...patch }), current)
+    return found ? `${found.field}:${found.reason}` : null
+  }
+  const stored = settings({ mode: 'fixed', server: HTTP, username: 'me', hasPassword: true, source: 'user' })
+
+  it('needs both halves, on an http or https proxy only', () => {
+    expect(problem({})).toBeNull()
+    expect(problem({ username: 'me', password: 'pw' })).toBeNull()
+    expect(problem({ server: 'HTTPS://proxy.example.com', username: 'me', password: 'pw' })).toBeNull()
+    expect(problem({ password: 'pw' })).toBe('username:required')
+    expect(problem({ username: 'me' })).toBe('password:required')
+    expect(problem({ server: 'socks5://proxy.example.com', username: 'me', password: 'pw' })).toBe('username:scheme')
+    expect(problem({ username: 'a:b', password: 'pw' })).toBe('username:malformed')
+    expect(problem({ username: 'a'.repeat(MAX_PROXY_SIGN_IN_CHARS + 1), password: 'pw' })).toBe('username:tooLong')
+    expect(problem({ username: 'me', password: 'a'.repeat(MAX_PROXY_SIGN_IN_CHARS + 1) })).toBe('password:tooLong')
+  })
+
+  it('an empty password keeps the stored one only for the same server and user name', () => {
+    expect(problem({ username: 'me' }, stored)).toBeNull()
+    expect(problem({ server: `${HTTP}/`, username: ' me ' }, stored)).toBeNull()
+    expect(problem({ username: 'you' }, stored)).toBe('password:required')
+    expect(problem({ server: 'http://other.example.com:3128', username: 'me' }, stored)).toBe('password:required')
+    expect(problem({ username: 'me' }, settings({ mode: 'fixed', server: HTTP, username: 'me' }))).toBe('password:required')
+  })
+
+  it('never shows a stored password and sends one only when typed', () => {
+    expect(formFromSettings(stored)).toMatchObject({ username: 'me', password: '' })
+    expect(payloadFromForm(form({ mode: 'fixed', server: HTTP, username: ' me ' }))).toEqual({
+      mode: 'fixed', server: HTTP, username: 'me',
+    })
+    expect(payloadFromForm(form({ mode: 'fixed', server: HTTP, username: 'me', password: ' p w ' }))).toEqual({
+      mode: 'fixed', server: HTTP, username: 'me', password: ' p w ',
+    })
+    expect(payloadFromForm(form({ mode: 'fixed', server: HTTP, password: 'pw' }))).toEqual({ mode: 'fixed', server: HTTP })
+    expect(payloadFromForm(form({ mode: 'direct', username: 'me', password: 'pw' }))).toEqual({ mode: 'direct' })
+  })
+
+  it('is a change when the user name differs or a password was typed', () => {
+    const same = form({ mode: 'fixed', server: HTTP, username: 'me' })
+    expect(isProxyFormChanged(same, stored)).toBe(false)
+    expect(isProxyFormChanged({ ...same, password: 'new' }, stored)).toBe(true)
+    expect(isProxyFormChanged({ ...same, username: '' }, stored)).toBe(true)
   })
 })
 

@@ -2471,9 +2471,28 @@ export const zh: Messages = {
   'settings.network.problem.required': '请输入地址。',
   'settings.network.problem.malformed': '这不是有效的地址。',
   'settings.network.problem.scheme': '地址需以 http://、https://、socks4:// 或 socks5:// 开头。',
-  'settings.network.problem.credentials': '地址中不能包含用户名和密码。',
+  'settings.network.problem.credentials':
+    '地址中不能包含用户名和密码，请在下方的输入框中填写。',
   'settings.network.problem.tooLong': '列表过长。',
   'settings.network.problem.pacScheme': '地址需以 http:// 或 https:// 开头。',
+  'settings.network.username':
+    '用户名',
+  'settings.network.password':
+    '密码',
+  'settings.network.signInDescription':
+    '仅在代理要求登录时填写。适用于 http:// 和 https:// 代理。',
+  'settings.network.passwordSaved':
+    '已保存。留空即可保留。',
+  'settings.network.problem.usernameRequired':
+    '请输入用户名。',
+  'settings.network.problem.passwordRequired':
+    '请输入密码。',
+  'settings.network.problem.signInScheme':
+    'SOCKS 代理不支持用户名和密码，请使用 http:// 或 https:// 代理。',
+  'settings.network.problem.username':
+    '用户名不能包含冒号。',
+  'settings.network.problem.signInTooLong':
+    '内容过长。',
   'settings.network.privateNetworkNote':
     '经过代理时，宿主无法再判断网页工具的请求是否发往你的本地网络，因此不再拦截这类地址。能访问到哪里由代理决定。',
   'settings.network.overridden.policy': '此设置由你的组织管理。',

@@ -573,9 +573,10 @@ export type ModelBridgeCapabilityMap = {
          *  setting (manifest primitive `model.rawStreamOpen.egress`; a host
          *  without it ignores the field, so the caller must check first).
          *  `url` is `scheme://[user:pass@]host[:port]` with scheme http, https
-         *  or socks5 and may contain `{{secret:NAME}}`; credentials are for
-         *  http and https only. The proxy's host must be one of `hosts`.
-         *  Errors: `EGRESS_INVALID`, `SECRET_UNAVAILABLE`, `EGRESS_UNAVAILABLE`. */
+         *  or socks5, used as written: a `{{…}}` placeholder is refused and
+         *  no stored secret is filled in. Credentials are for http and
+         *  https only. The proxy's host must be one of `hosts`.
+         *  Errors: `EGRESS_INVALID`, `EGRESS_UNAVAILABLE`. */
         egress?: { url: string; hosts: string[] }
       }
       result: {

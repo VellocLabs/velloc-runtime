@@ -48,7 +48,18 @@ const PROBLEM_LABELS: Record<ProxyFormProblem["reason"], MessageKey> = {
   tooLong: "settings.network.problem.tooLong",
 };
 
+const SIGN_IN_PROBLEM_LABELS: Partial<Record<string, MessageKey>> = {
+  "username:required": "settings.network.problem.usernameRequired",
+  "username:scheme": "settings.network.problem.signInScheme",
+  "username:malformed": "settings.network.problem.username",
+  "username:tooLong": "settings.network.problem.signInTooLong",
+  "password:required": "settings.network.problem.passwordRequired",
+  "password:tooLong": "settings.network.problem.signInTooLong",
+};
+
 function problemLabel(problem: ProxyFormProblem): MessageKey {
+  const signIn = SIGN_IN_PROBLEM_LABELS[`${problem.field}:${problem.reason}`];
+  if (signIn) return signIn;
   if (problem.field === "pacUrl" && problem.reason === "scheme") {
     return "settings.network.problem.pacScheme";
   }
@@ -69,7 +80,9 @@ const OVERRIDE_LABELS: Partial<Record<BridgeProxySettings["source"], MessageKey>
  * `network` capability; a write takes effect at once.
  *
  * Security: both actions are `full`. The form never accepts credentials in
- * the server address, and the host refuses them again.
+ * the server address, and the host refuses them again. A proxy's password
+ * is typed into its own field, sent once, sealed by the host and never read
+ * back: the page only learns that one is stored.
  */
 export function NetworkSection({
   transport,
@@ -133,7 +146,7 @@ export function NetworkSection({
   }
 
   const locked = !settings.editable || saving;
-  const problem = checkProxyForm(form);
+  const problem = checkProxyForm(form, settings);
   const shownProblem = attempted ? problem : null;
   const changed = isProxyFormChanged(form, settings);
   const overrideKey = settings.editable ? undefined : OVERRIDE_LABELS[settings.source];
@@ -176,10 +189,12 @@ export function NetworkSection({
     label: string,
     placeholder: string,
     description?: string,
+    secret = false,
   ) => (
     <SettingsRow bare stacked label={label} description={description}>
       <Input
         value={form[field]}
+        type={secret ? "password" : "text"}
         placeholder={placeholder}
         disabled={locked}
         spellCheck={false}
@@ -239,6 +254,21 @@ export function NetworkSection({
                   t("settings.network.bypass"),
                   t("settings.network.bypassPlaceholder"),
                   t("settings.network.bypassDescription"),
+                )}
+                {textField(
+                  "username",
+                  t("settings.network.username"),
+                  "",
+                  t("settings.network.signInDescription"),
+                )}
+                {textField(
+                  "password",
+                  t("settings.network.password"),
+                  settings.hasPassword && settings.username === form.username.trim()
+                    ? t("settings.network.passwordSaved")
+                    : "",
+                  undefined,
+                  true,
                 )}
               </>
             ) : null}

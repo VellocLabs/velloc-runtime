@@ -136,6 +136,11 @@ export type BridgeProxySettings = {
   bypassList?: string
   /** `pac` only. */
   pacUrl?: string
+  /** `fixed` only: the user name of the stored proxy sign-in. */
+  username?: string
+  /** True when a password is stored with `username`. The password itself
+   *  is never returned. */
+  hasPassword?: boolean
   source: 'default' | 'user' | 'commandLine' | 'extension' | 'policy'
   editable: boolean
 }
@@ -148,7 +153,8 @@ export type NetworkBridgeActionMap = {
   }
   /** Applies at once to every request the host's network stack sends, page
    *  loads included; processes the host spawns are not covered. Errors:
-   *  `PROXY_INVALID` (a `server` with credentials is refused),
+   *  `PROXY_INVALID` (a `server` with credentials is refused; the sign-in
+   *  goes in `username` and `password`, http and https proxies only),
    *  `PROXY_OVERRIDDEN` when the setting is not `editable`. */
   proxySet: {
     payload: {
@@ -156,6 +162,11 @@ export type NetworkBridgeActionMap = {
       server?: string
       bypassList?: string
       pacUrl?: string
+      /** Absent or empty removes the stored sign-in. */
+      username?: string
+      /** Absent keeps the password stored for the same server and user
+       *  name; the host seals it and never returns it. */
+      password?: string
     }
     result: BridgeProxySettings
   }

@@ -2527,9 +2527,28 @@ export const ja: Messages = {
   'settings.network.problem.required': 'アドレスを入力してください。',
   'settings.network.problem.malformed': '有効なアドレスではありません。',
   'settings.network.problem.scheme': 'アドレスは http://、https://、socks4://、socks5:// のいずれかで始めてください。',
-  'settings.network.problem.credentials': 'アドレスにユーザー名とパスワードを含めることはできません。',
+  'settings.network.problem.credentials':
+    'アドレスにユーザー名とパスワードを含めることはできません。下の欄に入力してください。',
   'settings.network.problem.tooLong': 'このリストは長すぎます。',
   'settings.network.problem.pacScheme': 'アドレスは http:// または https:// で始めてください。',
+  'settings.network.username':
+    'ユーザー名',
+  'settings.network.password':
+    'パスワード',
+  'settings.network.signInDescription':
+    'プロキシがサインインを求める場合のみ入力します。http:// と https:// のプロキシで使えます。',
+  'settings.network.passwordSaved':
+    '保存済みです。空のままにすると保持されます。',
+  'settings.network.problem.usernameRequired':
+    'ユーザー名を入力してください。',
+  'settings.network.problem.passwordRequired':
+    'パスワードを入力してください。',
+  'settings.network.problem.signInScheme':
+    'SOCKS プロキシではユーザー名とパスワードを使えません。http:// または https:// のプロキシを使用してください。',
+  'settings.network.problem.username':
+    'ユーザー名にコロンは使えません。',
+  'settings.network.problem.signInTooLong':
+    '長すぎます。',
   'settings.network.privateNetworkNote':
     'プロキシを経由すると、Web ツールのリクエストがローカルネットワーク宛てかどうかをホストが判断できなくなるため、そうしたアドレスはブロックされなくなります。到達先はプロキシ側で決まります。',
   'settings.network.overridden.policy': 'この設定は組織によって管理されています。',

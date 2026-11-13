@@ -2577,9 +2577,27 @@ export const de: Messages = {
   'settings.network.problem.scheme':
     'Beginne die Adresse mit http://, https://, socks4:// oder socks5://.',
   'settings.network.problem.credentials':
-    'Benutzername und Passwort dürfen nicht Teil der Adresse sein.',
+    'Benutzername und Passwort dürfen nicht Teil der Adresse sein. Gib sie in den Feldern darunter ein.',
   'settings.network.problem.tooLong': 'Diese Liste ist zu lang.',
   'settings.network.problem.pacScheme': 'Beginne die Adresse mit http:// oder https://.',
+  'settings.network.username':
+    'Benutzername',
+  'settings.network.password':
+    'Passwort',
+  'settings.network.signInDescription':
+    'Nur wenn dein Proxy eine Anmeldung verlangt. Funktioniert mit http://- und https://-Proxys.',
+  'settings.network.passwordSaved':
+    'Gespeichert. Leer lassen, um es zu behalten.',
+  'settings.network.problem.usernameRequired':
+    'Gib den Benutzernamen ein.',
+  'settings.network.problem.passwordRequired':
+    'Gib das Passwort ein.',
+  'settings.network.problem.signInScheme':
+    'Ein SOCKS-Proxy kann keinen Benutzernamen und kein Passwort annehmen. Verwende einen http://- oder https://-Proxy.',
+  'settings.network.problem.username':
+    'Ein Benutzername darf keinen Doppelpunkt enthalten.',
+  'settings.network.problem.signInTooLong':
+    'Das ist zu lang.',
   'settings.network.privateNetworkNote':
     'Über einen Proxy kann der Host nicht mehr erkennen, ob eine Anfrage eines Web-Tools in dein lokales Netzwerk geht, und blockiert solche Adressen daher nicht mehr. Was erreicht wird, entscheidet der Proxy.',
   'settings.network.overridden.policy': 'Deine Organisation verwaltet diese Einstellung.',

@@ -75,6 +75,39 @@ describe('NetworkSection', () => {
     expect(setProxySettings).not.toHaveBeenCalled()
   })
 
+  it('sends a typed sign-in, masks the password, and never shows a stored one', async () => {
+    const stored = settings({
+      mode: 'fixed', server: 'http://proxy.example.com:3128', username: 'me', hasPassword: true, source: 'user',
+    })
+    getProxySettings.mockResolvedValue(stored)
+    setProxySettings.mockResolvedValue(stored)
+    render(page(ALLOW_ALL))
+    const password = (await screen.findByTestId('network-proxy-password')) as HTMLInputElement
+    expect(password.type).toBe('password')
+    expect(password.value).toBe('')
+    expect(password.placeholder).toBe('Saved. Leave empty to keep it.')
+    expect((screen.getByTestId('network-proxy-username') as HTMLInputElement).value).toBe('me')
+
+    fireEvent.change(password, { target: { value: 'n3w-pass' } })
+    fireEvent.click(screen.getByTestId('network-proxy-apply'))
+    await waitFor(() => expect(setProxySettings).toHaveBeenCalledTimes(1))
+    expect(setProxySettings.mock.calls[0]![1]).toEqual({
+      mode: 'fixed', server: 'http://proxy.example.com:3128', username: 'me', password: 'n3w-pass',
+    })
+    await waitFor(() => expect((screen.getByTestId('network-proxy-password') as HTMLInputElement).value).toBe(''))
+  })
+
+  it('asks for the password again when the user name changes', async () => {
+    getProxySettings.mockResolvedValue(
+      settings({ mode: 'fixed', server: 'http://proxy.example.com:3128', username: 'me', hasPassword: true, source: 'user' }),
+    )
+    render(page(ALLOW_ALL))
+    fireEvent.change(await screen.findByTestId('network-proxy-username'), { target: { value: 'you' } })
+    fireEvent.click(screen.getByTestId('network-proxy-apply'))
+    expect((await screen.findByTestId('network-proxy-problem-password')).textContent).toBe('Enter the password.')
+    expect(setProxySettings).not.toHaveBeenCalled()
+  })
+
   it('names the PAC schemes, not the proxy server ones, for a PAC address', async () => {
     getProxySettings.mockResolvedValue(settings({ mode: 'pac', pacUrl: '', source: 'user' }))
     render(page(ALLOW_ALL))

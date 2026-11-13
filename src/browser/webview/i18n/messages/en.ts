@@ -2617,9 +2617,28 @@ export const en = {
   'settings.network.problem.malformed': 'This isn’t a valid address.',
   'settings.network.problem.scheme':
     'Start the address with http://, https://, socks4:// or socks5://.',
-  'settings.network.problem.credentials': 'A user name and password can’t be part of the address.',
+  'settings.network.problem.credentials':
+    'A user name and password can’t be part of the address. Enter them in the fields below.',
   'settings.network.problem.tooLong': 'This list is too long.',
   'settings.network.problem.pacScheme': 'Start the address with http:// or https://.',
+  'settings.network.username':
+    'User name',
+  'settings.network.password':
+    'Password',
+  'settings.network.signInDescription':
+    'Only if your proxy asks you to sign in. Works with http:// and https:// proxies.',
+  'settings.network.passwordSaved':
+    'Saved. Leave empty to keep it.',
+  'settings.network.problem.usernameRequired':
+    'Enter the user name.',
+  'settings.network.problem.passwordRequired':
+    'Enter the password.',
+  'settings.network.problem.signInScheme':
+    'A SOCKS proxy can’t take a user name and password. Use an http:// or https:// proxy.',
+  'settings.network.problem.username':
+    'A user name can’t contain a colon.',
+  'settings.network.problem.signInTooLong':
+    'This is too long.',
   'settings.network.privateNetworkNote':
     'Through a proxy, the host can no longer tell whether a web tool request is headed for your local network, so it no longer blocks those addresses. The proxy decides what it reaches.',
   'settings.network.overridden.policy': 'Your organization manages this setting.',

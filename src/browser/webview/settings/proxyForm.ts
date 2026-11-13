@@ -16,10 +16,14 @@ export type ProxyForm = {
   server: string
   bypassList: string
   pacUrl: string
+  /** The sign-in an http or https proxy asks for. An empty password keeps
+   *  the stored one. */
+  username: string
+  password: string
 }
 
 export type ProxyFormProblem = {
-  field: 'server' | 'bypassList' | 'pacUrl'
+  field: 'server' | 'bypassList' | 'pacUrl' | 'username' | 'password'
   reason: 'required' | 'malformed' | 'scheme' | 'credentials' | 'tooLong'
 }
 
@@ -32,6 +36,7 @@ export const PROXY_MODES: readonly BridgeProxyMode[] = [
 ]
 
 export const MAX_BYPASS_LIST_CHARS = 4096
+export const MAX_PROXY_SIGN_IN_CHARS = 255
 
 const SERVER_SCHEMES = new Set(['http', 'https', 'socks4', 'socks5'])
 const PAC_SCHEMES = new Set(['http:', 'https:'])
@@ -43,7 +48,38 @@ export function formFromSettings(settings: BridgeProxySettings): ProxyForm {
     server: settings.server ?? '',
     bypassList: settings.bypassList ?? '',
     pacUrl: settings.pacUrl ?? '',
+    username: settings.username ?? '',
+    // Security: a stored password is never read back into the page.
+    password: '',
   }
+}
+
+function serverKey(text: string): string {
+  return text.trim().replace(/\/$/, '').toLowerCase()
+}
+
+/** Whether the host still holds a password for this server and user name. */
+function keepsStoredPassword(form: ProxyForm, settings: BridgeProxySettings | undefined): boolean {
+  return (
+    settings?.hasPassword === true &&
+    settings.username === form.username.trim() &&
+    serverKey(settings.server ?? '') === serverKey(form.server)
+  )
+}
+
+function checkSignIn(form: ProxyForm, settings: BridgeProxySettings | undefined): ProxyFormProblem | null {
+  const username = form.username.trim()
+  if (username === '') {
+    return form.password === '' ? null : { field: 'username', reason: 'required' }
+  }
+  if (!/^https?:\/\//i.test(form.server.trim())) return { field: 'username', reason: 'scheme' }
+  if (username.length > MAX_PROXY_SIGN_IN_CHARS) return { field: 'username', reason: 'tooLong' }
+  if (username.includes(':')) return { field: 'username', reason: 'malformed' }
+  if (form.password === '') {
+    return keepsStoredPassword(form, settings) ? null : { field: 'password', reason: 'required' }
+  }
+  if (form.password.length > MAX_PROXY_SIGN_IN_CHARS) return { field: 'password', reason: 'tooLong' }
+  return null
 }
 
 function checkServer(text: string): ProxyFormProblem['reason'] | null {
@@ -75,14 +111,21 @@ function checkPacUrl(text: string): ProxyFormProblem['reason'] | null {
   return null
 }
 
-/** The first field the host would refuse, or null when the form may be sent. */
-export function checkProxyForm(form: ProxyForm): ProxyFormProblem | null {
+/** The first field the host would refuse, or null when the form may be sent.
+ *  `settings` is the setting in force: it decides whether an empty password
+ *  keeps a stored one. */
+export function checkProxyForm(
+  form: ProxyForm,
+  settings?: BridgeProxySettings,
+): ProxyFormProblem | null {
   if (form.mode === 'fixed') {
     const reason = checkServer(form.server.trim())
     if (reason) return { field: 'server', reason }
     if (form.bypassList.trim().length > MAX_BYPASS_LIST_CHARS) {
       return { field: 'bypassList', reason: 'tooLong' }
     }
+    const signIn = checkSignIn(form, settings)
+    if (signIn) return signIn
   }
   if (form.mode === 'pac') {
     const reason = checkPacUrl(form.pacUrl.trim())
@@ -97,10 +140,13 @@ export function payloadFromForm(
 ): BrowserBridgeRequestPayload<'network', 'proxySet'> {
   if (form.mode === 'fixed') {
     const bypassList = form.bypassList.trim()
+    const username = form.username.trim()
     return {
       mode: 'fixed',
       server: form.server.trim(),
       ...(bypassList ? { bypassList } : {}),
+      ...(username ? { username } : {}),
+      ...(username && form.password ? { password: form.password } : {}),
     }
   }
   if (form.mode === 'pac') return { mode: 'pac', pacUrl: form.pacUrl.trim() }
@@ -118,6 +164,8 @@ export function isProxyFormChanged(
     next.mode !== current.mode ||
     (next.server ?? '') !== (current.server ?? '') ||
     (next.bypassList ?? '') !== (current.bypassList ?? '') ||
+    (next.username ?? '') !== (current.username ?? '') ||
+    next.password !== undefined ||
     (next.pacUrl ?? '') !== (current.pacUrl ?? '')
   )
 }

@@ -2518,9 +2518,28 @@ export const ko: Messages = {
   'settings.network.problem.required': '주소를 입력하세요.',
   'settings.network.problem.malformed': '올바른 주소가 아닙니다.',
   'settings.network.problem.scheme': '주소는 http://, https://, socks4:// 또는 socks5://로 시작해야 합니다.',
-  'settings.network.problem.credentials': '주소에 사용자 이름과 비밀번호를 포함할 수 없습니다.',
+  'settings.network.problem.credentials':
+    '주소에 사용자 이름과 비밀번호를 포함할 수 없습니다. 아래 입력란에 입력하세요.',
   'settings.network.problem.tooLong': '목록이 너무 깁니다.',
   'settings.network.problem.pacScheme': '주소는 http:// 또는 https://로 시작해야 합니다.',
+  'settings.network.username':
+    '사용자 이름',
+  'settings.network.password':
+    '비밀번호',
+  'settings.network.signInDescription':
+    '프록시가 로그인을 요구할 때만 입력합니다. http:// 및 https:// 프록시에서 사용할 수 있습니다.',
+  'settings.network.passwordSaved':
+    '저장됨. 비워 두면 그대로 유지됩니다.',
+  'settings.network.problem.usernameRequired':
+    '사용자 이름을 입력하세요.',
+  'settings.network.problem.passwordRequired':
+    '비밀번호를 입력하세요.',
+  'settings.network.problem.signInScheme':
+    'SOCKS 프록시는 사용자 이름과 비밀번호를 사용할 수 없습니다. http:// 또는 https:// 프록시를 사용하세요.',
+  'settings.network.problem.username':
+    '사용자 이름에는 콜론을 사용할 수 없습니다.',
+  'settings.network.problem.signInTooLong':
+    '너무 깁니다.',
   'settings.network.privateNetworkNote':
     '프록시를 거치면 웹 도구 요청이 로컬 네트워크로 향하는지 호스트가 판단할 수 없으므로 이러한 주소를 더 이상 차단하지 않습니다. 어디에 도달할지는 프록시가 결정합니다.',
   'settings.network.overridden.policy': '조직에서 이 설정을 관리합니다.',

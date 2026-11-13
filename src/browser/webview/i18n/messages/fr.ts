@@ -2586,9 +2586,27 @@ export const fr: Messages = {
   'settings.network.problem.scheme':
     'L’adresse doit commencer par http://, https://, socks4:// ou socks5://.',
   'settings.network.problem.credentials':
-    'L’adresse ne peut pas contenir de nom d’utilisateur ni de mot de passe.',
+    'L’adresse ne peut pas contenir de nom d’utilisateur ni de mot de passe. Saisissez-les dans les champs ci-dessous.',
   'settings.network.problem.tooLong': 'Cette liste est trop longue.',
   'settings.network.problem.pacScheme': 'L’adresse doit commencer par http:// ou https://.',
+  'settings.network.username':
+    'Nom d’utilisateur',
+  'settings.network.password':
+    'Mot de passe',
+  'settings.network.signInDescription':
+    'Uniquement si votre proxy demande une connexion. Fonctionne avec les proxys http:// et https://.',
+  'settings.network.passwordSaved':
+    'Enregistré. Laissez vide pour le conserver.',
+  'settings.network.problem.usernameRequired':
+    'Saisissez le nom d’utilisateur.',
+  'settings.network.problem.passwordRequired':
+    'Saisissez le mot de passe.',
+  'settings.network.problem.signInScheme':
+    'Un proxy SOCKS n’accepte pas de nom d’utilisateur ni de mot de passe. Utilisez un proxy http:// ou https://.',
+  'settings.network.problem.username':
+    'Un nom d’utilisateur ne peut pas contenir de deux-points.',
+  'settings.network.problem.signInTooLong':
+    'C’est trop long.',
   'settings.network.privateNetworkNote':
     'À travers un proxy, l’hôte ne peut plus savoir si une requête d’un outil web vise votre réseau local ; il ne bloque donc plus ces adresses. C’est le proxy qui décide de ce qu’il atteint.',
   'settings.network.overridden.policy': 'Votre organisation gère ce paramètre.',

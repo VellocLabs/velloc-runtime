@@ -2584,9 +2584,27 @@ export const es: Messages = {
   'settings.network.problem.scheme':
     'La dirección debe empezar por http://, https://, socks4:// o socks5://.',
   'settings.network.problem.credentials':
-    'La dirección no puede incluir un nombre de usuario ni una contraseña.',
+    'La dirección no puede incluir un nombre de usuario ni una contraseña. Escríbelos en los campos de abajo.',
   'settings.network.problem.tooLong': 'Esta lista es demasiado larga.',
   'settings.network.problem.pacScheme': 'La dirección debe empezar por http:// o https://.',
+  'settings.network.username':
+    'Nombre de usuario',
+  'settings.network.password':
+    'Contraseña',
+  'settings.network.signInDescription':
+    'Solo si tu proxy pide iniciar sesión. Funciona con proxies http:// y https://.',
+  'settings.network.passwordSaved':
+    'Guardada. Déjala vacía para conservarla.',
+  'settings.network.problem.usernameRequired':
+    'Escribe el nombre de usuario.',
+  'settings.network.problem.passwordRequired':
+    'Escribe la contraseña.',
+  'settings.network.problem.signInScheme':
+    'Un proxy SOCKS no admite nombre de usuario ni contraseña. Usa un proxy http:// o https://.',
+  'settings.network.problem.username':
+    'Un nombre de usuario no puede contener dos puntos.',
+  'settings.network.problem.signInTooLong':
+    'Es demasiado largo.',
   'settings.network.privateNetworkNote':
     'A través de un proxy, el host ya no puede saber si una solicitud de una herramienta web va a tu red local, así que deja de bloquear esas direcciones. Lo que se alcanza lo decide el proxy.',
   'settings.network.overridden.policy': 'Tu organización administra esta configuración.',
