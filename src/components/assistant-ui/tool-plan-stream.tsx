@@ -5,6 +5,7 @@ import {
   useEffect,
   useState,
   type FC,
+  type ReactNode,
 } from "react";
 import {
   MessagePrimitive,
@@ -16,6 +17,7 @@ import { Ban, BrainIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { rememberBounded } from "@/components/assistant-ui/boundedUiMemory";
 import { PlanCard, usePlanCardOpen } from "./plan-card";
+import { isCompactNarration } from "../../utils/narrationLead";
 import { PlanListItem, PlanRowLookContext } from "../tool-ui/plan/parts/ListItem";
 import {
   PartLineProvider,
@@ -281,6 +283,13 @@ export type ToolPlanStreamProps = {
   forceOpen?: boolean;
   /** Number of tool-call parts in [startIndex..endIndex]. */
   callTotal: number;
+  /**
+   * The text that introduces this run, already rendered, and its part index
+   * (outside the run's range). Short narration becomes the run's line, with
+   * the chevron after it; longer narration stays prose above the summary line.
+   */
+  narration?: ReactNode;
+  narrationIndex?: number;
 };
 
 /** A run's calls when no `ToolGroup` hook asks for them. */
@@ -304,9 +313,18 @@ const ToolPlanStreamImpl: FC<ToolPlanStreamProps> = ({
   partLines,
   revealPart,
   forceOpen = false,
+  narration: narrationLead,
+  narrationIndex,
 }) => {
   const t = useT();
   const locale = useLocale();
+  const compactNarration = useAssistantState(({ message }) => {
+    if (narrationIndex === undefined) return false;
+    const part = message.parts[narrationIndex] as { text?: unknown } | undefined;
+    return isCompactNarration(
+      typeof part?.text === "string" ? part.text : undefined,
+    );
+  });
   const snapshot = useAssistantState(
     useShallow(({ message }): ToolPlanStreamSnapshot => {
       let runningToolName: string | undefined;
@@ -556,6 +574,18 @@ const ToolPlanStreamImpl: FC<ToolPlanStreamProps> = ({
             : undefined));
   const narration = narrationSource?.text;
   const narrationIsReasoning = narrationSource?.isReasoning === true;
+  // A failed or cancelled run keeps its summary line: that line is where the
+  // outcome is written.
+  const asLead =
+    narrationLead !== undefined &&
+    compactNarration &&
+    (headerState === "running" || headerState === "settled");
+  // Under a narration line the sentence is not drawn, so the running call is
+  // named below it, and carries the sheen.
+  const runningLine =
+    asLead && snapshot.runningToolLabel
+      ? t("plan.runningTarget", { target: snapshot.runningToolLabel })
+      : undefined;
 
   const target = snapshot.currentOrLastTarget;
   const leadsWithTarget = headerState === "running" && Boolean(target);
@@ -654,7 +684,15 @@ const ToolPlanStreamImpl: FC<ToolPlanStreamProps> = ({
         ) : undefined
       }
       header={header}
-      headerDescription={narration ? (
+      lead={asLead ? narrationLead : undefined}
+      headerDescription={runningLine ? (
+        <span
+          data-slot="tool-plan-stream-running"
+          className="nexus-sheen min-w-0 truncate"
+        >
+          {runningLine}
+        </span>
+      ) : narration ? (
         <span
           data-slot="tool-plan-stream-current-update"
           className={cn(
@@ -686,13 +724,16 @@ const ToolPlanStreamImpl: FC<ToolPlanStreamProps> = ({
   );
 
   return (
-    <ModToolGroupSite
-      requestId={snapshot.persistKey}
-      calls={groupCalls}
-      isActive={isActive}
-      isExpanded={open}
-      drawEngine={drawCard}
-    />
+    <>
+      {narrationLead !== undefined && !asLead ? narrationLead : null}
+      <ModToolGroupSite
+        requestId={snapshot.persistKey}
+        calls={groupCalls}
+        isActive={isActive}
+        isExpanded={open}
+        drawEngine={drawCard}
+      />
+    </>
   );
 };
 

@@ -491,7 +491,7 @@ describe('AssistantMessageBody — a turn\'s closing reply renders top-level', (
     })
   })
 
-  it('an unmarked preamble between two tool calls still folds into the run', async () => {
+  it('an unmarked text between two tool calls is the second call\'s line, in the open', async () => {
     const Harness = makeHarness(
       {
         role: 'assistant',
@@ -501,12 +501,134 @@ describe('AssistantMessageBody — a turn\'s closing reply renders top-level', (
       false,
     )
     const { container } = render(createElement(Harness))
+    // The text ends the first run: two lines of one call each, not one card.
+    await waitFor(() => {
+      expect(
+        container.querySelectorAll('[data-slot="tool-call-line-root"]').length,
+      ).toBe(2)
+    })
+    expect(container.querySelector('[data-slot="tool-plan-stream-root"]')).toBeNull()
+    // It is drawn once, as the lead of the second line, outside the toggle.
+    const leads = container.querySelectorAll('[data-slot="tool-call-line-lead"]')
+    expect(leads.length).toBe(1)
+    expect(leads[0]!.textContent).toContain(REPLY)
+    const roots = container.querySelectorAll('[data-slot="tool-call-line-root"]')
+    expect(roots[1]!.contains(leads[0]!)).toBe(true)
+    expect(leads[0]!.closest('[data-slot="tool-call-line-trigger"]')).toBeNull()
+    const occurrences = (container.textContent ?? '').split(REPLY).length - 1
+    expect(occurrences).toBe(1)
+  })
+
+  it('a long text in front of a tool run stays prose above the run\'s summary line', async () => {
+    const LONG = 'First finding.\n\nSecond paragraph with the detail.'
+    const Harness = makeHarness(
+      {
+        role: 'assistant',
+        status: { type: 'complete', reason: 'stop' },
+        content: [
+          { type: 'text', text: LONG },
+          BASH,
+          { ...BASH, toolCallId: 'b2' },
+        ],
+      },
+      false,
+    )
+    const { container } = render(createElement(Harness))
     await waitFor(() => {
       expect(container.querySelector('[data-slot="tool-plan-stream-root"]')).not.toBeNull()
     })
-    const placement = await readReply(container)
-    // Absent (collapsed) or shown as the card's caption — never top-level.
-    expect(!placement.rendered || placement.insideToolGroup).toBe(true)
+    expect(container.querySelector('[data-slot="tool-plan-stream-lead"]')).toBeNull()
+    expect(container.textContent).toContain('Second paragraph with the detail.')
+    // The summary sentence is drawn, not hidden behind the text.
+    const label = container.querySelector(
+      '[data-slot="tool-plan-stream-trigger-label"]',
+    )!
+    expect(label.closest('.sr-only')).toBeNull()
+  })
+
+  it('a short text in front of a tool run is the run\'s line; only the chevron toggles', async () => {
+    const Harness = makeHarness(
+      {
+        role: 'assistant',
+        status: { type: 'complete', reason: 'stop' },
+        content: [
+          { type: 'text', text: 'Claiming the handoff first.' },
+          { ...BASH, toolCallId: 'lead-1' },
+          { ...BASH, toolCallId: 'lead-2' },
+        ],
+      },
+      false,
+    )
+    const { container } = render(createElement(Harness))
+    await waitFor(() => {
+      expect(container.querySelector('[data-slot="tool-plan-stream-lead"]')).not.toBeNull()
+    })
+    const lead = container.querySelector('[data-slot="tool-plan-stream-lead"]')!
+    expect(lead.textContent).toContain('Claiming the handoff first.')
+    const trigger = container.querySelector<HTMLElement>(
+      '[data-slot="tool-plan-stream-trigger"]',
+    )!
+    expect(trigger.contains(lead)).toBe(false)
+    // The work sentence names the toggle without being drawn.
+    const label = trigger.querySelector(
+      '[data-slot="tool-plan-stream-trigger-label"]',
+    )!
+    expect(label.closest('.sr-only')).not.toBeNull()
+    expect(trigger.getAttribute('data-state')).toBe('closed')
+    fireEvent.click(lead)
+    expect(trigger.getAttribute('data-state')).toBe('closed')
+    fireEvent.click(trigger)
+    expect(trigger.getAttribute('data-state')).toBe('open')
+  })
+
+  it('under a narration line, the running call is named below it and carries the sheen', async () => {
+    const Harness = makeHarness(
+      {
+        role: 'assistant',
+        content: [
+          { type: 'text', text: 'Checking the branch tips.' },
+          { ...BASH, toolCallId: 'run-1' },
+          { type: 'tool-call', toolCallId: 'run-2', toolName: 'Bash', args: { command: 'git status' } },
+        ],
+      } as ThreadMessageLike,
+      true,
+    )
+    const { container } = render(createElement(Harness))
+    await waitFor(() => {
+      expect(container.querySelector('[data-slot="tool-plan-stream-running"]')).not.toBeNull()
+    })
+    const running = container.querySelector('[data-slot="tool-plan-stream-running"]')!
+    expect(running.className).toContain('nexus-sheen')
+    expect(running.textContent).toContain('Running')
+    // The narration itself is reading text: it does not sweep.
+    const lead = container.querySelector('[data-slot="tool-plan-stream-lead"]')!
+    expect(lead.querySelector('.nexus-sheen')).toBeNull()
+  })
+
+  it('a run with a failed call keeps its summary line under the narration', async () => {
+    const Harness = makeHarness(
+      {
+        role: 'assistant',
+        status: { type: 'complete', reason: 'stop' },
+        content: [
+          { type: 'text', text: 'Running the two checks.' },
+          { ...BASH, toolCallId: 'fail-1', result: 'exit code 3', isError: true },
+          { ...BASH, toolCallId: 'fail-2' },
+        ],
+      } as ThreadMessageLike,
+      false,
+    )
+    const { container } = render(createElement(Harness))
+    await waitFor(() => {
+      expect(container.querySelector('[data-slot="tool-plan-stream-root"]')).not.toBeNull()
+    })
+    expect(container.querySelector('[data-slot="tool-plan-stream-lead"]')).toBeNull()
+    expect(container.textContent).toContain('Running the two checks.')
+    const label = container.querySelector(
+      '[data-slot="tool-plan-stream-trigger-label"]',
+    )!
+    expect(label.closest('.sr-only')).toBeNull()
+    expect(label.textContent).toContain('1 failed')
   })
 })
 

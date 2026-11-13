@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { isValidElement } from 'react'
-import { groupSliceByPartType } from '../messages/partGrouping'
+import { BLANK_TEXT_PART, groupSliceByPartType } from '../messages/partGrouping'
 import { renderSliceWithGrouping } from '../components/assistant-ui/assistant-message-body'
 
 describe('groupSliceByPartType', () => {
@@ -44,12 +44,11 @@ describe('groupSliceByPartType', () => {
   })
 
   it('breaks runs across mixed types', () => {
-    // The tool-call run absorbs the immediately-preceding text since the run
-    // has 2 tool-calls; the reply text after it stays separate, and so does
-    // the reasoning after the reply (no tool-call beside it).
+    // The text in front of the run narrates it; the reply text after it
+    // stays separate, and so does the reasoning after the reply.
     const types = ['text', 'tool-call', 'tool-call', 'text', 'reasoning']
     expect(groupSliceByPartType(types, [0, 1, 2, 3, 4])).toEqual([
-      { kind: 'tool-group', startIndex: 0, endIndex: 2, toolCallCount: 2, reasoningCount: 0 },
+      { kind: 'tool-group', startIndex: 1, endIndex: 2, toolCallCount: 2, reasoningCount: 0, narrationIndex: 0 },
       { kind: 'single', index: 3 },
       { kind: 'reasoning-group', startIndex: 4, endIndex: 4 },
     ])
@@ -97,11 +96,14 @@ describe('groupSliceByPartType', () => {
     ])
   })
 
-  it('absorbs a mixed text/reasoning stretch between two calls', () => {
-    // Interleaved thinking: [thinking, text, tool_use] per step, flattened.
+  it('splits at the text inside a mixed text/reasoning stretch', () => {
+    // [call, thought, text, thought, call]: the first thought trails the
+    // first run; the text narrates the second, which takes the thought
+    // between the text and its call.
     const types = ['tool-call', 'reasoning', 'text', 'reasoning', 'tool-call']
     expect(groupSliceByPartType(types, [0, 1, 2, 3, 4])).toEqual([
-      { kind: 'tool-group', startIndex: 0, endIndex: 4, toolCallCount: 2, reasoningCount: 2 },
+      { kind: 'tool-group', startIndex: 0, endIndex: 1, toolCallCount: 1, reasoningCount: 1 },
+      { kind: 'tool-group', startIndex: 3, endIndex: 4, toolCallCount: 1, reasoningCount: 1, narrationIndex: 2 },
     ])
   })
 
@@ -125,11 +127,18 @@ describe('groupSliceByPartType', () => {
     ])
   })
 
-  it('absorbs leading reasoning (and the text after it) even for a single call', () => {
-    // Any reasoning makes the run a card, so the leading stretch joins it.
+  it('takes the text in front of a call as narration, and leaves a thought before that text alone', () => {
     const types = ['reasoning', 'text', 'tool-call']
     expect(groupSliceByPartType(types, [0, 1, 2])).toEqual([
-      { kind: 'tool-group', startIndex: 0, endIndex: 2, toolCallCount: 1, reasoningCount: 1 },
+      { kind: 'reasoning-group', startIndex: 0, endIndex: 0 },
+      { kind: 'tool-group', startIndex: 2, endIndex: 2, toolCallCount: 1, reasoningCount: 0, narrationIndex: 1 },
+    ])
+  })
+
+  it('absorbs a thought between the narration and the first call', () => {
+    const types = ['text', 'reasoning', 'tool-call']
+    expect(groupSliceByPartType(types, [0, 1, 2])).toEqual([
+      { kind: 'tool-group', startIndex: 1, endIndex: 2, toolCallCount: 1, reasoningCount: 1, narrationIndex: 0 },
     ])
   })
 
@@ -154,71 +163,95 @@ describe('groupSliceByPartType', () => {
 
   // --- Anthropic bundled-preamble absorption ---
 
-  it('absorbs interstitial text between adjacent tool-calls', () => {
-    // The shape Anthropic emits after `mergeConsecutiveAssistantMessages`
-    // flattens multiple [text, tool-call] turns: text breaks the run by
-    // type, but the next-after-text is itself an adjacent tool-call so it
-    // should be absorbed.
+  it('text between two tool-calls ends the first run and narrates the second', () => {
     const types = ['tool-call', 'text', 'tool-call']
     expect(groupSliceByPartType(types, [0, 1, 2])).toEqual([
-      { kind: 'tool-group', startIndex: 0, endIndex: 2, toolCallCount: 2, reasoningCount: 0 },
+      { kind: 'tool-group', startIndex: 0, endIndex: 0, toolCallCount: 1, reasoningCount: 0 },
+      { kind: 'tool-group', startIndex: 2, endIndex: 2, toolCallCount: 1, reasoningCount: 0, narrationIndex: 1 },
     ])
   })
 
-  it('absorbs leading text in front of a multi-tool run', () => {
-    // [text, tool-call, text, tool-call] is the canonical merged-Anthropic
-    // shape. The leading text is absorbed because the run has ≥2 tool-calls.
+  it('each narrated call is its own run', () => {
     const types = ['text', 'tool-call', 'text', 'tool-call']
     expect(groupSliceByPartType(types, [0, 1, 2, 3])).toEqual([
-      { kind: 'tool-group', startIndex: 0, endIndex: 3, toolCallCount: 2, reasoningCount: 0 },
+      { kind: 'tool-group', startIndex: 1, endIndex: 1, toolCallCount: 1, reasoningCount: 0, narrationIndex: 0 },
+      { kind: 'tool-group', startIndex: 3, endIndex: 3, toolCallCount: 1, reasoningCount: 0, narrationIndex: 2 },
     ])
   })
 
-  it('does NOT absorb leading text for a single-tool run', () => {
-    // A single tool call (the bundle from one Anthropic turn) keeps the
-    // text as a separate `single` so the existing "text + bare tool card"
-    // visual stays intact. ToolGroupImpl unwraps the size-1 group.
+  it('calls with no text between them stay one run under one narration', () => {
+    const types = ['text', 'tool-call', 'tool-call', 'tool-call']
+    expect(groupSliceByPartType(types, [0, 1, 2, 3])).toEqual([
+      { kind: 'tool-group', startIndex: 1, endIndex: 3, toolCallCount: 3, reasoningCount: 0, narrationIndex: 0 },
+    ])
+  })
+
+  it('a single call takes the text in front of it as narration', () => {
     const types = ['text', 'tool-call']
     expect(groupSliceByPartType(types, [0, 1])).toEqual([
+      { kind: 'tool-group', startIndex: 1, endIndex: 1, toolCallCount: 1, reasoningCount: 0, narrationIndex: 0 },
+    ])
+  })
+
+  it('trailing text with no call after it stays a single', () => {
+    const types = ['text', 'tool-call', 'text', 'tool-call', 'text']
+    expect(groupSliceByPartType(types, [0, 1, 2, 3, 4])).toEqual([
+      { kind: 'tool-group', startIndex: 1, endIndex: 1, toolCallCount: 1, reasoningCount: 0, narrationIndex: 0 },
+      { kind: 'tool-group', startIndex: 3, endIndex: 3, toolCallCount: 1, reasoningCount: 0, narrationIndex: 2 },
+      { kind: 'single', index: 4 },
+    ])
+  })
+
+  it('a long narrated run is one run per narration', () => {
+    const types = [
+      'text', 'tool-call',
+      'text', 'tool-call', 'tool-call',
+      'text', 'tool-call',
+    ]
+    expect(groupSliceByPartType(types, [0, 1, 2, 3, 4, 5, 6])).toEqual([
+      { kind: 'tool-group', startIndex: 1, endIndex: 1, toolCallCount: 1, reasoningCount: 0, narrationIndex: 0 },
+      { kind: 'tool-group', startIndex: 3, endIndex: 4, toolCallCount: 2, reasoningCount: 0, narrationIndex: 2 },
+      { kind: 'tool-group', startIndex: 6, endIndex: 6, toolCallCount: 1, reasoningCount: 0, narrationIndex: 5 },
+    ])
+  })
+
+  it('blank text neither ends a run nor narrates one', () => {
+    expect(
+      groupSliceByPartType(['tool-call', BLANK_TEXT_PART, 'tool-call'], [0, 1, 2]),
+    ).toEqual([
+      { kind: 'tool-group', startIndex: 0, endIndex: 2, toolCallCount: 2, reasoningCount: 0 },
+    ])
+    // Walking back from the call: the thought and the blank join the run,
+    // the real text in front of them narrates it.
+    expect(
+      groupSliceByPartType(
+        ['text', BLANK_TEXT_PART, 'reasoning', 'tool-call'],
+        [0, 1, 2, 3],
+      ),
+    ).toEqual([
+      { kind: 'tool-group', startIndex: 1, endIndex: 3, toolCallCount: 1, reasoningCount: 1, narrationIndex: 0 },
+    ])
+    expect(groupSliceByPartType([BLANK_TEXT_PART, 'tool-call'], [0, 1])).toEqual([
+      { kind: 'tool-group', startIndex: 0, endIndex: 1, toolCallCount: 1, reasoningCount: 0 },
+    ])
+  })
+
+  it('a text under another label never narrates', () => {
+    expect(groupSliceByPartType(['text-end-turn', 'tool-call'], [0, 1])).toEqual([
       { kind: 'single', index: 0 },
       { kind: 'tool-group', startIndex: 1, endIndex: 1, toolCallCount: 1, reasoningCount: 0 },
     ])
   })
 
-  it('does NOT absorb trailing real-prose text (stop_reason: end_turn)', () => {
-    // The sample-log shape: a multi-turn tool run followed by a final
-    // assistant message with prose only. The trailing text has no
-    // following tool-call so the algorithm must leave it as a `single`.
-    const types = ['text', 'tool-call', 'text', 'tool-call', 'text']
-    expect(groupSliceByPartType(types, [0, 1, 2, 3, 4])).toEqual([
-      { kind: 'tool-group', startIndex: 0, endIndex: 3, toolCallCount: 2, reasoningCount: 0 },
-      { kind: 'single', index: 4 },
-    ])
-  })
-
-  it('absorbs multiple interstitial texts across a long run', () => {
-    // Continuous N-turn agent run, fully bundled.
-    const types = [
-      'text', 'tool-call',
-      'text', 'tool-call',
-      'text', 'tool-call',
-      'text', 'tool-call',
-    ]
-    expect(groupSliceByPartType(types, [0, 1, 2, 3, 4, 5, 6, 7])).toEqual([
-      { kind: 'tool-group', startIndex: 0, endIndex: 7, toolCallCount: 4, reasoningCount: 0 },
-    ])
-  })
-
-  it('does not absorb a non-adjacent leading text outside the slice', () => {
-    // Underlying parts: [text (0), other (1), tool-call (2), text (3), tool-call (4)]
-    // Slice excludes index 1; even though candidate=1 is text-adjacent to
-    // the run, sliceContains[1] is false. With leading-absorb skipped, the
-    // text at index 0 is also non-adjacent to the run start (2) so it
-    // stays as a single. The interstitial text at 3 still absorbs.
+  it('does not take a non-adjacent text as narration', () => {
+    // Underlying parts: [text (0), other (1), tool-call (2), text (3), tool-call (4)].
+    // The slice excludes index 1, so the text at 0 is not adjacent to the
+    // call at 2. The text at 3 narrates the call at 4.
     const types = ['text', 'other', 'tool-call', 'text', 'tool-call']
     expect(groupSliceByPartType(types, [0, 2, 3, 4])).toEqual([
       { kind: 'single', index: 0 },
-      { kind: 'tool-group', startIndex: 2, endIndex: 4, toolCallCount: 2, reasoningCount: 0 },
+      { kind: 'tool-group', startIndex: 2, endIndex: 2, toolCallCount: 1, reasoningCount: 0 },
+      { kind: 'tool-group', startIndex: 4, endIndex: 4, toolCallCount: 1, reasoningCount: 0, narrationIndex: 3 },
     ])
   })
 
@@ -238,11 +271,7 @@ describe('groupSliceByPartType', () => {
     ])
   })
 
-  it('does not absorb interstitial text across an isolated tool sentinel', () => {
-    // [tool, text, isolated, text, tool] — without the rewrite this would
-    // be one big group; with the sentinel the run breaks at the isolated
-    // tool and the surrounding texts also stay separate (no following
-    // adjacent tool-call after each one).
+  it('an isolated tool sentinel breaks the run; the text after it narrates the next call', () => {
     const types = [
       'tool-call',
       'text',
@@ -254,8 +283,7 @@ describe('groupSliceByPartType', () => {
       { kind: 'tool-group', startIndex: 0, endIndex: 0, toolCallCount: 1, reasoningCount: 0 },
       { kind: 'single', index: 1 },
       { kind: 'single', index: 2 },
-      { kind: 'single', index: 3 },
-      { kind: 'tool-group', startIndex: 4, endIndex: 4, toolCallCount: 1, reasoningCount: 0 },
+      { kind: 'tool-group', startIndex: 4, endIndex: 4, toolCallCount: 1, reasoningCount: 0, narrationIndex: 3 },
     ])
   })
 

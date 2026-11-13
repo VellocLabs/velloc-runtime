@@ -30,6 +30,7 @@ import {
   type TodoSectionSegment,
 } from "../../utils/todoSections";
 import {
+  BLANK_TEXT_PART,
   groupSliceByPartType,
   type SliceRange,
 } from "../../messages/partGrouping";
@@ -298,10 +299,31 @@ function renderRange(
     revealPart >= range.startIndex &&
     revealPart <= range.endIndex;
 
+  // The text that introduces the run, drawn by the run: as its line when it
+  // is short, above its summary line otherwise.
+  const narrationIndex =
+    range.kind === "tool-group" && USE_TOOL_PLAN_STREAM
+      ? range.narrationIndex
+      : undefined;
+  const narration =
+    narrationIndex === undefined ? undefined : (
+      <PartLineProvider
+        line={lineAt(partLines, narrationIndex)}
+        isRevealTarget={revealPart === narrationIndex}
+      >
+        <MessagePrimitive.PartByIndex
+          index={narrationIndex}
+          components={PART_COMPONENTS}
+        />
+      </PartLineProvider>
+    );
+
   const children: ReactNode[] = [];
   if (skipChildren) {
     return (
       <ToolPlanStream
+        narration={narration}
+        narrationIndex={narrationIndex}
         key={`tps-${range.startIndex}`}
         startIndex={range.startIndex}
         endIndex={range.endIndex}
@@ -356,6 +378,8 @@ function renderRange(
           <ToolCallLine
             key={k}
             index={k}
+            narration={narration}
+            narrationIndex={narrationIndex}
             forceOpen={revealPart === k}
             {...spanOf(partLines, k, k)}
           >
@@ -850,7 +874,9 @@ const AssistantMessageBodyImpl: FC = () => {
         ? UNGROUPABLE_TOOL_TYPE
         : isEndTurnText(v)
           ? END_TURN_TEXT_TYPE
-          : v.type,
+          : v.type === "text" && !isNonEmptyText(v.text)
+            ? BLANK_TEXT_PART
+            : v.type,
     );
     // The SAME parts are lifted out of an enclosing plan step: a collapsed
     // container unmounts its content, so a question or a spawn nested in a

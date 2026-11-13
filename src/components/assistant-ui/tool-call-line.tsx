@@ -5,6 +5,7 @@ import { Ban } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useLocale, useT } from "@/browser/webview/i18n";
 import { PlanCard } from "./plan-card";
+import { isCompactNarration } from "../../utils/narrationLead";
 import {
   classifyToolGroupWork,
   describeToolGroupWork,
@@ -18,6 +19,8 @@ type ToolCallLineSnapshot = {
   statusType: string | undefined;
   cancelled: boolean;
   failed: boolean;
+  /** The narration is short enough to be the line itself. */
+  compactNarration: boolean;
 };
 
 export type ToolCallLineProps = {
@@ -27,6 +30,13 @@ export type ToolCallLineProps = {
   forceOpen?: boolean;
   "data-line-from"?: string;
   "data-line-to"?: string;
+  /**
+   * The text that introduces this call, already rendered, and its part
+   * index. Short narration becomes the line, with the chevron after it;
+   * longer narration stays prose above the summary line.
+   */
+  narration?: ReactNode;
+  narrationIndex?: number;
   /** The call's own card, drawn inside the opened body. */
   children: ReactNode;
 };
@@ -41,6 +51,8 @@ export const ToolCallLine: FC<ToolCallLineProps> = ({
   forceOpen = false,
   "data-line-from": lineFrom,
   "data-line-to": lineTo,
+  narration,
+  narrationIndex,
   children,
 }) => {
   const t = useT();
@@ -59,7 +71,16 @@ export const ToolCallLine: FC<ToolCallLineProps> = ({
       const statusType = part?.status?.type;
       const cancelled =
         statusType === "incomplete" && part?.status?.reason === "cancelled";
+      const narrationPart =
+        narrationIndex === undefined
+          ? undefined
+          : (message.parts[narrationIndex] as { text?: unknown } | undefined);
       return {
+        compactNarration: isCompactNarration(
+          typeof narrationPart?.text === "string"
+            ? narrationPart.text
+            : undefined,
+        ),
         toolName: part?.toolName,
         toolCallId: part?.toolCallId,
         statusType,
@@ -95,10 +116,30 @@ export const ToolCallLine: FC<ToolCallLineProps> = ({
   const title =
     state === "cancelled" ? verb : describeToolGroupWork(tally, t, locale);
 
+  // A failed or cancelled call keeps its summary line: that line is where
+  // the outcome is written.
+  const asLead =
+    narration !== undefined &&
+    snapshot.compactNarration &&
+    (state === "running" || state === "settled");
+
   return (
+    <>
+    {narration !== undefined && !asLead ? narration : null}
     <PlanCard
       slotPrefix="tool-call-line"
       look="line"
+      lead={asLead ? narration : undefined}
+      headerDescription={
+        asLead && state === "running" ? (
+          <span
+            data-slot="tool-call-line-running"
+            className="nexus-sheen min-w-0 truncate"
+          >
+            {title}
+          </span>
+        ) : undefined
+      }
       data-line-from={lineFrom}
       data-line-to={lineTo}
       persistKey={
@@ -135,6 +176,7 @@ export const ToolCallLine: FC<ToolCallLineProps> = ({
     >
       <li className="min-w-0">{children}</li>
     </PlanCard>
+    </>
   );
 };
 

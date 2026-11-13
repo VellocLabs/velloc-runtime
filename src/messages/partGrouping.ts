@@ -1,10 +1,17 @@
 /**
- * Slice-grouping for message parts, as assistant-ui groups whole messages:
- * consecutive tool-calls fold into one ToolGroup, reasoning into one
- * ReasoningGroup. A tool-call run also absorbs interstitial text/reasoning that
- * leads to the next call, a leading stretch when the run is a card, and
- * trailing reasoning; a trailing text (the reply) is never absorbed.
+ * Slice-grouping for message parts: consecutive tool-calls fold into one
+ * tool group, reasoning into one ReasoningGroup. Text ends a tool group: a
+ * run absorbs only the reasoning (and blank text) between its calls, the
+ * reasoning in front of its first call, and trailing reasoning. The text
+ * directly in front of a run is that run's narration: it is not part of the
+ * run's range, and is named by `narrationIndex` instead of standing alone.
  */
+
+/**
+ * Type label for a text part with nothing to show. It neither ends a run nor
+ * narrates one. The caller assigns it; a part's own type is still `text`.
+ */
+export const BLANK_TEXT_PART = 'text-blank'
 
 export type SliceRange =
   | {
@@ -19,6 +26,9 @@ export type SliceRange =
       /** Count of absorbed `reasoning` parts. Any reasoning makes the run a
        *  card even with one tool-call: the thought is a row of its own. */
       reasoningCount: number
+      /** The text part that introduces this run, when one sits directly in
+       *  front of it. Outside [startIndex..endIndex]; rendered with the run. */
+      narrationIndex?: number
     }
   | { kind: 'reasoning-group'; startIndex: number; endIndex: number }
   | { kind: 'single'; index: number }
@@ -54,15 +64,14 @@ export function groupSliceByPartType(
       let toolCallCount = 1
       let reasoningCount = 0
       while (j + 1 < indices.length) {
-        // Scan the adjacent interstitial stretch of text/reasoning after the
-        // last absorbed part. If it leads to an adjacent tool-call, the whole
-        // stretch is part of the run (bundled preambles and between-call
-        // thinking). Without that lookahead we'd absorb a trailing
-        // real-reply paragraph (the stop_reason='end_turn' case) by accident.
+        // Scan the adjacent stretch of reasoning / blank text after the last
+        // absorbed part. If it leads to an adjacent tool-call, the stretch is
+        // part of the run (between-call thinking). Text is not interstitial:
+        // it ends the run, and narrates the next one if a call follows it.
         let k = j + 1
         let stretchReasoning = 0
-        let leadingReasoningEnd = j
-        let sawText = false
+        let trailingReasoningEnd = j
+        let sawBlank = false
         while (
           k < indices.length &&
           indices[k]! === indices[k - 1]! + 1 &&
@@ -70,9 +79,9 @@ export function groupSliceByPartType(
         ) {
           if (types[indices[k]!] === 'reasoning') {
             stretchReasoning++
-            if (!sawText) leadingReasoningEnd = k
+            if (!sawBlank) trailingReasoningEnd = k
           } else {
-            sawText = true
+            sawBlank = true
           }
           k++
         }
@@ -89,9 +98,9 @@ export function groupSliceByPartType(
         // No tool-call follows: keep only the reasoning that directly trails
         // the run (the model thinking about its next step — it streams before
         // the next call exists, so absorbing it now keeps the card from
-        // re-laying out when that call lands). Text stops it: that is prose.
-        reasoningCount += leadingReasoningEnd - j
-        j = leadingReasoningEnd
+        // re-laying out when that call lands).
+        reasoningCount += trailingReasoningEnd - j
+        j = trailingReasoningEnd
         break
       }
 
@@ -99,33 +108,38 @@ export function groupSliceByPartType(
       const runEnd = indices[j]!
 
       // Leading absorption. The parts in front of the first call were
-      // already visited and emitted as `single` text / `reasoning-group`
-      // ranges; collect the adjacent stretch of them (they are in the slice
-      // by construction) and pop it into the run when the run is a card —
-      // ≥2 tool-calls, or any reasoning (a single call with no thought keeps
-      // its "text + bare tool card" shape).
+      // already visited and emitted as `single` / `reasoning-group` ranges
+      // (they are in the slice by construction). Reasoning and blank text
+      // adjacent to the run join it; the first real text met going backwards
+      // becomes the run's narration and the walk stops there.
       let back = ranges.length
       let leadingReasoning = 0
       let expectedEnd = runStart - 1
+      let narrationIndex: number | undefined
       while (back > 0) {
         const prior = ranges[back - 1]!
-        if (prior.kind === 'single') {
-          if (prior.index !== expectedEnd || types[prior.index] !== 'text') break
-          expectedEnd = prior.index - 1
-        } else if (prior.kind === 'reasoning-group') {
+        if (prior.kind === 'reasoning-group') {
           if (prior.endIndex !== expectedEnd) break
           leadingReasoning += prior.endIndex - prior.startIndex + 1
           expectedEnd = prior.startIndex - 1
-        } else {
-          break
+          back--
+          continue
         }
-        back--
+        if (prior.kind !== 'single' || prior.index !== expectedEnd) break
+        if (types[prior.index] === BLANK_TEXT_PART) {
+          expectedEnd = prior.index - 1
+          back--
+          continue
+        }
+        if (types[prior.index] === 'text') {
+          narrationIndex = prior.index
+          back--
+        }
+        break
       }
-      if (
-        back < ranges.length &&
-        (toolCallCount >= 2 || reasoningCount + leadingReasoning > 0)
-      ) {
-        runStart = expectedEnd + 1
+      if (back < ranges.length) {
+        runStart =
+          narrationIndex === undefined ? expectedEnd + 1 : narrationIndex + 1
         reasoningCount += leadingReasoning
         ranges.length = back
       }
@@ -136,6 +150,7 @@ export function groupSliceByPartType(
         endIndex: runEnd,
         toolCallCount,
         reasoningCount,
+        ...(narrationIndex === undefined ? {} : { narrationIndex }),
       })
       i = j + 1
       continue
@@ -167,5 +182,5 @@ export function groupSliceByPartType(
 
 /** A part that may sit between two tool-calls of one run. */
 function isInterstitial(type: string | undefined): boolean {
-  return type === 'text' || type === 'reasoning'
+  return type === 'reasoning' || type === BLANK_TEXT_PART
 }
