@@ -9,7 +9,6 @@ import { createNativePrimitives } from '../browser/bridge/nativePrimitives'
 import type { BrowserHostManifest } from '../browser/bridge/protocol/manifest'
 import {
   RENDER_CACHE_PURGE_LEVEL,
-  RENDER_CACHE_PURGE_TARGETS,
   RenderCachePolicy,
   type RenderCachePolicyDeps,
 } from './RenderCachePolicy'
@@ -53,7 +52,7 @@ export function installRuntimeRenderCache(deps: RuntimeRenderCacheDeps): string 
   const next = new RenderCachePolicy({
     isAnyBusy: deps.isAnyBusy,
     idlePurgeEnabled: deps.idlePurgeEnabled,
-    purge: async () => {
+    purge: async (targets, trimWorkingSet) => {
       const transport = deps.transport()
       if (!transport) throw new Error('render cache purge: no host port')
       const primitives = createNativePrimitives({
@@ -62,8 +61,9 @@ export function installRuntimeRenderCache(deps: RuntimeRenderCacheDeps): string 
         manifest: deps.manifest() ?? undefined,
       })
       return primitives.appInfo.purgeRenderCaches({
-        targets: [...RENDER_CACHE_PURGE_TARGETS],
+        targets: [...targets],
         level: RENDER_CACHE_PURGE_LEVEL,
+        ...(trimWorkingSet ? { trimWorkingSet: true } : {}),
       })
     },
   })

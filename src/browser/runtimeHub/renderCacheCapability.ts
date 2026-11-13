@@ -1,7 +1,8 @@
 /**
  * Render-cache purge on the runtime protocol: the `renderCache/status` topic and
  * `renderCache.purgeNow`; shapes and scope in `renderCache/renderCacheProtocol.ts`
- * (P-3). Client activity reported through presence re-arms the idle purge.
+ * (P-3). Client activity reported through presence re-arms the idle purge; the
+ * last visible page going hidden purges the GPU process.
  */
 import { wireError, type TopicId } from '../runtimeProtocol'
 import {
@@ -79,6 +80,7 @@ export function registerRenderCacheCapability(
     // The policy publishes its own state; visibility is ours to publish. A
     // closed connection changes visibility but is nobody using a page.
     const policy = getPolicy()
+    policy?.noteVisibility(presence.anyVisible())
     if (policy && activity === 'used') policy.noteActivity()
     else publish()
   })

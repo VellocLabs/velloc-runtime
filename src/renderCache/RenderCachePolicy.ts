@@ -1,12 +1,12 @@
 /**
  * When the runtime asks the host to purge the desktop's render caches (P-3).
- *
- * Rule: once no session is running a turn and no client has reported activity
- * for `RENDER_CACHE_IDLE_PURGE_MS`, purge once; the next activity or turn end
- * re-arms it. Never while a turn runs. Purging costs one re-decode and repaint;
- * nothing is terminated, so sessions and workers are untouched.
+ * Idle: no turn running and no client activity for `RENDER_CACHE_IDLE_PURGE_MS`
+ * purges once; the next activity or turn end re-arms it. Hidden: the last
+ * visible client page becoming hidden purges the GPU process at once, or when
+ * a running turn ends with no page shown since. Never while a turn runs.
+ * A purge with no page visible also asks the host to trim working sets.
  */
-import type { RenderCacheTarget } from '../browser/bridge/protocol/appInfo'
+import type { RenderCacheTarget, WorkingSetTrimOutcome } from '../browser/bridge/protocol/appInfo'
 import type {
   RenderCachePurgeReason,
   RenderCachePurgeRecord,
@@ -15,8 +15,9 @@ import type {
 
 export const RENDER_CACHE_IDLE_PURGE_MS = 5 * 60_000
 export const RENDER_CACHE_PURGE_TARGETS: readonly RenderCacheTarget[] = ['guest', 'gpu']
+export const RENDER_CACHE_HIDDEN_PURGE_TARGETS: readonly RenderCacheTarget[] = ['gpu']
 export const RENDER_CACHE_PURGE_LEVEL = 'critical'
-/** settings.json `features` key; `false` turns the idle purge off. */
+/** settings.json `features` key; `false` turns the idle and hidden purges off. */
 export const RENDER_CACHE_IDLE_PURGE_FLAG = 'renderCache.idlePurge'
 
 export type RenderCachePurgeOutcome = {
@@ -24,11 +25,12 @@ export type RenderCachePurgeOutcome = {
   throttled: RenderCacheTarget[]
   guestProcesses: number
   gpuProcesses: number
+  workingSetTrim?: WorkingSetTrimOutcome
 }
 
 export type RenderCachePolicyDeps = {
-  /** One host purge of `RENDER_CACHE_PURGE_TARGETS` at `RENDER_CACHE_PURGE_LEVEL`. */
-  purge(): Promise<RenderCachePurgeOutcome>
+  /** One host purge of `targets` at `RENDER_CACHE_PURGE_LEVEL`. */
+  purge(targets: readonly RenderCacheTarget[], trimWorkingSet: boolean): Promise<RenderCachePurgeOutcome>
   isAnyBusy(): boolean
   /** The settings flag, read fresh; a failed read counts as on. */
   idlePurgeEnabled(): Promise<boolean>
@@ -47,6 +49,9 @@ export class RenderCachePolicy {
   private timer: unknown = null
   private busy = false
   private purgedSinceActivity = false
+  /** Null until a client has reported. */
+  private visible: boolean | null = null
+  private hiddenPurgeWaiting = false
   private idlePurge = true
   private purges = 0
   private last: RenderCachePurgeRecord | undefined
@@ -78,6 +83,19 @@ export class RenderCachePolicy {
     this.publish()
   }
 
+  /** Whether any client page is visible now; only a visible-to-hidden change purges. */
+  noteVisibility(anyVisible: boolean): void {
+    const was = this.visible
+    this.visible = anyVisible
+    if (anyVisible) {
+      this.hiddenPurgeWaiting = false
+      return
+    }
+    if (was !== true) return
+    this.hiddenPurgeWaiting = true
+    void this.fireHidden()
+  }
+
   /** Some session's turn state may have changed; only a transition counts. */
   noteBusyChanged(): void {
     const busy = this.deps.isAnyBusy()
@@ -90,11 +108,12 @@ export class RenderCachePolicy {
     // A finished turn grew the transcript: a fresh idle period starts.
     this.purgedSinceActivity = false
     this.arm()
+    void this.fireHidden()
   }
 
   /** Purge now, whatever the timer says. Rejects with the host's error. */
   purgeNow(): Promise<RenderCachePurgeRecord> {
-    return this.runPurge('manual')
+    return this.runPurge('manual', RENDER_CACHE_PURGE_TARGETS, false)
   }
 
   getState(): RenderCacheState {
@@ -149,7 +168,21 @@ export class RenderCachePolicy {
     const enabled = await this.refreshIdlePurgeFlag()
     // A turn may have started while the flag was read.
     if (!enabled || this.disposed || this.deps.isAnyBusy()) return
-    await this.runPurge('idle').catch(() => {})
+    await this.runPurge('idle', RENDER_CACHE_PURGE_TARGETS, this.visible === false).catch(() => {})
+  }
+
+  private async fireHidden(): Promise<void> {
+    // A running turn keeps the purge waiting for noteBusyChanged.
+    if (this.disposed || !this.hiddenPurgeWaiting || this.deps.isAnyBusy()) return
+    this.hiddenPurgeWaiting = false
+    const enabled = await this.refreshIdlePurgeFlag()
+    // A page may have been shown, or a turn started, while the flag was read.
+    if (!enabled || this.disposed || this.visible !== false) return
+    if (this.deps.isAnyBusy()) {
+      this.hiddenPurgeWaiting = true
+      return
+    }
+    await this.runPurge('hidden', RENDER_CACHE_HIDDEN_PURGE_TARGETS, true).catch(() => {})
   }
 
   private async refreshIdlePurgeFlag(): Promise<boolean> {
@@ -161,9 +194,13 @@ export class RenderCachePolicy {
     return enabled
   }
 
-  private async runPurge(reason: RenderCachePurgeReason): Promise<RenderCachePurgeRecord> {
+  private async runPurge(
+    reason: RenderCachePurgeReason,
+    targets: readonly RenderCacheTarget[],
+    trimWorkingSet: boolean,
+  ): Promise<RenderCachePurgeRecord> {
     try {
-      const outcome = await this.deps.purge()
+      const outcome = await this.deps.purge(targets, trimWorkingSet)
       const record: RenderCachePurgeRecord = {
         at: this.now(),
         reason,
@@ -172,6 +209,7 @@ export class RenderCachePolicy {
         guestProcesses: outcome.guestProcesses,
         gpuProcesses: outcome.gpuProcesses,
       }
+      if (outcome.workingSetTrim) record.workingSetTrim = outcome.workingSetTrim
       this.purges += 1
       this.last = record
       this.lastError = undefined

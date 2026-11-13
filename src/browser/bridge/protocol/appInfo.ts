@@ -6,6 +6,9 @@
 /** A process group `purgeRenderCaches` can address. */
 export type RenderCacheTarget = 'guest' | 'gpu' | 'agentTabs'
 
+/** What the host did with a `trimWorkingSet` request. */
+export type WorkingSetTrimOutcome = 'scheduled' | 'below_spec' | 'unsupported'
+
 export type AppInfoBridgeActionMap = {
   getVersionInfo: {
     payload: Record<string, never>
@@ -50,16 +53,19 @@ export type AppInfoBridgeActionMap = {
    * `guest` = the Nexus page's renderers (all windows), `agentTabs` = renderers
    * of session-tagged tabs; default `['guest', 'gpu']` at `critical`. A target
    * the host rate-limited is in `throttled`. Unknown values are `INVALID_ARGS`;
-   * an older host answers `NOT_IMPLEMENTED`.
+   * an older host answers `NOT_IMPLEMENTED`. `trimWorkingSet` asks the host
+   * to empty its processes' working sets 5 s later; `workingSetTrim` is its
+   * answer, absent when not asked or on a host without it.
    */
   purgeRenderCaches: {
-    payload: { targets?: RenderCacheTarget[]; level?: 'moderate' | 'critical' }
+    payload: { targets?: RenderCacheTarget[]; level?: 'moderate' | 'critical'; trimWorkingSet?: boolean }
     result: {
       purged: RenderCacheTarget[]
       throttled: RenderCacheTarget[]
       guestProcesses: number
       agentTabProcesses: number
       gpuProcesses: number
+      workingSetTrim?: WorkingSetTrimOutcome
     }
   }
 }

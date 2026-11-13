@@ -2,6 +2,8 @@
  * The render-cache purge policy (P-3): one purge per quiet period with no turn
  * running, re-armed by client activity and by a turn ending; never during a
  * turn; the settings flag turns the idle purge off; a manual purge always runs.
+ * The last visible page going hidden purges the GPU process at once, or at the
+ * end of a running turn.
  */
 import { describe, expect, it } from 'vitest'
 import {
@@ -17,13 +19,18 @@ function harness(options: { busy?: boolean; enabled?: boolean; fail?: string } =
   let now = 1_000
   const timers: Array<{ fn: () => void; ms: number; cleared: boolean }> = []
   const purges: number[] = []
+  const targets: string[][] = []
+  const trims: boolean[] = []
   const states: RenderCacheState[] = []
   const outcome: RenderCachePurgeOutcome = { purged: ['guest', 'gpu'], throttled: [], guestProcesses: 2, gpuProcesses: 1 }
   const policy = new RenderCachePolicy({
     isAnyBusy: () => busy,
     idlePurgeEnabled: async () => enabled,
-    purge: async () => {
+    purge: async (asked, trimWorkingSet) => {
       purges.push(now)
+      targets.push([...asked])
+      trims.push(trimWorkingSet)
+      if (trimWorkingSet) return { ...outcome, workingSetTrim: 'scheduled' as const }
       if (options.fail) throw new Error(options.fail)
       return outcome
     },
@@ -48,9 +55,15 @@ function harness(options: { busy?: boolean; enabled?: boolean; fail?: string } =
     armed[0].fn()
     for (let i = 0; i < 5; i += 1) await Promise.resolve()
   }
+  const settle = async () => {
+    for (let i = 0; i < 5; i += 1) await Promise.resolve()
+  }
   return {
     policy,
     purges,
+    targets,
+    trims,
+    settle,
     states,
     live,
     elapse,
@@ -184,6 +197,102 @@ describe('RenderCachePolicy', () => {
     await h.elapse()
     expect(h.policy.getState().lastError).toBe('host gone')
     await expect(h.policy.purgeNow()).rejects.toThrow('host gone')
+  })
+
+  it('the last visible page going hidden purges the GPU process at once, once', async () => {
+    const h = harness()
+    h.policy.start()
+    h.policy.noteVisibility(true)
+    h.policy.noteVisibility(false)
+    await h.settle()
+    expect(h.targets).toEqual([['gpu']])
+    expect(h.policy.getState().last?.reason).toBe('hidden')
+
+    h.policy.noteVisibility(false)
+    await h.settle()
+    expect(h.purges).toHaveLength(1)
+
+    h.policy.noteVisibility(true)
+    h.policy.noteVisibility(false)
+    await h.settle()
+    expect(h.purges).toHaveLength(2)
+  })
+
+  it('a first report of hidden, with no page seen visible, does not purge', async () => {
+    const h = harness()
+    h.policy.start()
+    h.policy.noteVisibility(false)
+    await h.settle()
+    expect(h.purges).toHaveLength(0)
+  })
+
+  it('hidden during a turn purges when the turn ends', async () => {
+    const h = harness({ busy: true })
+    h.policy.start()
+    h.policy.noteVisibility(true)
+    h.policy.noteVisibility(false)
+    await h.settle()
+    expect(h.purges).toHaveLength(0)
+
+    h.setBusy(false)
+    h.policy.noteBusyChanged()
+    await h.settle()
+    expect(h.targets).toEqual([['gpu']])
+  })
+
+  it('a page shown again before the turn ends cancels the waiting hidden purge', async () => {
+    const h = harness({ busy: true })
+    h.policy.start()
+    h.policy.noteVisibility(true)
+    h.policy.noteVisibility(false)
+    h.policy.noteVisibility(true)
+    h.setBusy(false)
+    h.policy.noteBusyChanged()
+    await h.settle()
+    expect(h.purges).toHaveLength(0)
+  })
+
+  it('the settings flag off skips the hidden purge', async () => {
+    const h = harness({ enabled: false })
+    h.policy.start()
+    h.policy.noteVisibility(true)
+    h.policy.noteVisibility(false)
+    await h.settle()
+    expect(h.purges).toHaveLength(0)
+  })
+
+  it('the hidden purge leaves the idle purge armed for all targets', async () => {
+    const h = harness()
+    h.policy.start()
+    h.policy.noteVisibility(true)
+    h.policy.noteVisibility(false)
+    await h.settle()
+    await h.elapse()
+    expect(h.targets).toEqual([['gpu'], ['guest', 'gpu']])
+  })
+
+  it('a purge asks for a working-set trim only while no page is visible', async () => {
+    const h = harness()
+    h.policy.start()
+    await h.elapse()
+    await h.policy.purgeNow()
+    h.policy.noteVisibility(true)
+    h.policy.noteActivity()
+    await h.elapse()
+    expect(h.trims).toEqual([false, false, false])
+    expect(h.policy.getState().last?.workingSetTrim).toBeUndefined()
+
+    h.policy.noteVisibility(false)
+    await h.settle()
+    expect(h.trims.at(-1)).toBe(true)
+    expect(h.policy.getState().last).toMatchObject({ reason: 'hidden', workingSetTrim: 'scheduled' })
+
+    h.policy.noteActivity()
+    await h.elapse()
+    expect(h.targets.at(-1)).toEqual(['guest', 'gpu'])
+    expect(h.trims.at(-1)).toBe(true)
+    await h.policy.purgeNow()
+    expect(h.trims.at(-1)).toBe(false)
   })
 
   it('dispose stops the timer and the listeners', () => {

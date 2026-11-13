@@ -79,12 +79,12 @@ function rig(policy: RenderCachePolicy | null) {
 }
 
 function fakePolicy() {
-  const purge = vi.fn(async () => ({ purged: ['guest', 'gpu'] as const, throttled: [] as const, guestProcesses: 1, gpuProcesses: 1 }))
+  const purge = vi.fn(async (_targets: readonly string[]) => ({ purged: ['guest', 'gpu'] as const, throttled: [] as const, guestProcesses: 1, gpuProcesses: 1 }))
   const policy = new RenderCachePolicy({
     isAnyBusy: () => false,
     idlePurgeEnabled: async () => true,
-    purge: async () => {
-      const outcome = await purge()
+    purge: async targets => {
+      const outcome = await purge(targets)
       return { ...outcome, purged: [...outcome.purged], throttled: [...outcome.throttled] }
     },
     setTimer: () => ({}),
@@ -145,6 +145,34 @@ describe('renderCache capability over a connection', () => {
     // A connection going away is nobody using a page.
     expect(noteActivity).toHaveBeenCalledTimes(1)
   })
+
+  it('the only visible page reporting hidden purges the GPU process; a second visible page holds it back', async () => {
+    const { policy, purge } = fakePolicy()
+    const { connect } = rig(policy)
+    const desktop = await connect('observe')
+    const phone = await connect('observe')
+    await desktop.request('presence.reportActivity', { visible: true })
+    await phone.request('presence.reportActivity', { visible: true })
+
+    await desktop.request('presence.reportActivity', { visible: false })
+    await new Promise(resolve => setTimeout(resolve, 10))
+    expect(purge).not.toHaveBeenCalled()
+
+    await phone.request('presence.reportActivity', { visible: false })
+    await until(() => purge.mock.calls.length === 1, 'the hidden purge')
+    expect(purge.mock.calls[0][0]).toEqual(['gpu'])
+    expect(policy.getState().last?.reason).toBe('hidden')
+  })
+
+  it('the last visible connection going away purges the GPU process', async () => {
+    const { policy, purge } = fakePolicy()
+    const { connect } = rig(policy)
+    const desktop = await connect('observe')
+    await desktop.request('presence.reportActivity', { visible: true })
+    desktop.close()
+    await until(() => purge.mock.calls.length === 1, 'the hidden purge')
+    expect(purge.mock.calls[0][0]).toEqual(['gpu'])
+  })
 })
 
 describe('installRuntimeRenderCache', () => {
@@ -201,5 +229,10 @@ describe('installRuntimeRenderCache', () => {
     expect(requests).toHaveLength(1)
     expect(requests[0].route).toMatchObject({ capability: 'appInfo', action: 'purgeRenderCaches' })
     expect(requests[0].payload).toEqual({ targets: ['guest', 'gpu'], level: 'critical' })
+
+    policy!.noteVisibility(true)
+    policy!.noteVisibility(false)
+    for (let i = 0; i < 200 && requests.length < 2; i += 1) await new Promise(resolve => setTimeout(resolve, 2))
+    expect(requests[1].payload).toEqual({ targets: ['gpu'], level: 'critical', trimWorkingSet: true })
   })
 })

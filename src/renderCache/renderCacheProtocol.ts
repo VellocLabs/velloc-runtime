@@ -5,7 +5,7 @@
  * and GPU process re-decode and re-upload, a cost a viewer must not impose.
  */
 import type { ScopeMode } from '../browser/runtimeProtocol'
-import type { RenderCacheTarget } from '../browser/bridge/protocol/appInfo'
+import type { RenderCacheTarget, WorkingSetTrimOutcome } from '../browser/bridge/protocol/appInfo'
 
 export const RENDER_CACHE_CAPABILITY = 'renderCache'
 export const RENDER_CACHE_STATUS_TOPIC = 'renderCache/status'
@@ -16,7 +16,8 @@ export const RENDER_CACHE_ACTION_SCOPES = {
   purgeNow: 'manager',
 } as const satisfies Record<string, ScopeMode>
 
-export type RenderCachePurgeReason = 'idle' | 'manual'
+/** `hidden`: the last visible client page was hidden; the GPU process only. */
+export type RenderCachePurgeReason = 'idle' | 'hidden' | 'manual'
 
 export type RenderCachePurgeRecord = {
   at: number
@@ -25,6 +26,8 @@ export type RenderCachePurgeRecord = {
   throttled: RenderCacheTarget[]
   guestProcesses: number
   gpuProcesses: number
+  /** Present when this purge also asked the host to trim working sets. */
+  workingSetTrim?: WorkingSetTrimOutcome
 }
 
 /**
@@ -33,7 +36,7 @@ export type RenderCachePurgeRecord = {
  */
 export type RenderCacheState = {
   available: boolean
-  /** The idle purge is on (settings `features`); a manual purge works either way. */
+  /** The idle and hidden purges are on (settings `features`); a manual purge works either way. */
   idlePurge?: boolean
   /** Quiet time, in ms, before the idle purge. */
   idleMs?: number
