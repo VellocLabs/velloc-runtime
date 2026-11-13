@@ -1300,7 +1300,6 @@ export const en = {
   'backgroundTasks.promptLabel': 'Prompt',
   'backgroundTasks.taskLabel': 'Task',
   'backgroundTasks.subAgentFallbackTitle': 'Sub-agent …{id}',
-  'backgroundTasks.startedAt': 'started {when}',
   // Sub-agent run usage (F-2). `{n}`, `{read}`, `{write}` are formatted numbers;
   // the *Label keys follow a short figure ("12 tools", "45k in").
   'taskStats.groupLabel': 'Run usage',
@@ -1314,6 +1313,16 @@ export const en = {
   'taskStats.outputLabel': 'out',
   'taskStats.cacheReadLabel': 'cache read',
   'taskStats.cacheWriteLabel': 'cache write',
+  // Task meta line (F-2). `{span}`/`{age}` are durations ("1m 35s"), `{when}` a
+  // clock time, `{type}` an agent type name, the rest formatted numbers.
+  'backgroundTasks.meta.agentTypeTitle': 'Agent type: {type}',
+  'backgroundTasks.meta.elapsedTitle': 'Running for {span}',
+  'backgroundTasks.meta.updatedTitle': 'Last update {age} ago',
+  'backgroundTasks.meta.ago': '{age} ago',
+  'backgroundTasks.meta.startedTitle': 'Started {when}',
+  'backgroundTasks.meta.tookTitle': 'Took {span}',
+  'taskStats.totalTokens': '{n} tokens',
+  'taskStats.totalTitle': 'Input {input} · Output {output} · Cache read {read} · Cache write {write}',
   'backgroundTasks.resumeDefaultText': 'Continue.',
   // Kind categories (Sub-agents / Shell / Super Shell / Super Edit / Running).
   // "Super Shell" and "Super Edit" are coined tool labels — verbatim in every

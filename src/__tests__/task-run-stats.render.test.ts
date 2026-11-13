@@ -30,6 +30,7 @@ function agentRow(overrides: Partial<NexusTaskSummaryRow> = {}): NexusTaskSummar
     status: 'running',
     type: 'local_agent',
     description: 'Explore the repo',
+    agentType: 'general-purpose',
     startedAt: Date.now() - 5_000,
     lastActivityAt: Date.now() - 1_000,
     stats: STATS,
@@ -155,18 +156,19 @@ describe('Background Tasks drawer shows a sub-agent run usage', () => {
     })
   }
 
-  it('the running row carries a stats strip separate from its meta line', () => {
+  it('the running row ends its meta line with the tool count and total tokens', () => {
     render(drawer([agentRow()]))
     const strip = document.querySelector<HTMLElement>('li [data-testid="task-run-stats"]')!
     expect(strip).not.toBeNull()
     expect(strip.dataset.variant).toBe('strip')
     const text = (id: string) => strip.querySelector(`[data-testid="${id}"]`)!.textContent
+    expect(strip.closest('[data-testid="task-meta-line"]')).not.toBeNull()
     expect(text('task-run-stats-tools')).toBe('12')
-    expect(text('task-run-stats-input')).toBe('45k')
-    expect(text('task-run-stats-output')).toBe('3.1k')
-    expect(text('task-run-stats-cache')).toBe('120k')
-    expect(strip.querySelector('[data-testid="task-run-stats-cache"]')!.getAttribute('title')).toBe(
-      `Cache read: ${(120_000).toLocaleString('en')} · Cache write: ${(4_000).toLocaleString('en')}`,
+    expect(text('task-run-stats-total')).toBe('172k tokens')
+    expect(strip.querySelector('[data-testid="task-run-stats-input"]')).toBeNull()
+    const n = (v: number) => v.toLocaleString('en')
+    expect(strip.querySelector('[data-testid="task-run-stats-total"]')!.getAttribute('title')).toBe(
+      `Input ${n(45_200)} · Output ${n(3_100)} · Cache read ${n(120_000)} · Cache write ${n(4_000)}`,
     )
     expect(strip.querySelector('[data-testid="task-run-stats-live"]')).not.toBeNull()
   })
@@ -179,6 +181,13 @@ describe('Background Tasks drawer shows a sub-agent run usage', () => {
     const badges = document.querySelector<HTMLElement>('[data-testid="task-run-stats"][data-variant="badges"]')!
     expect(badges).not.toBeNull()
     expect(badges.querySelector('[data-testid="task-run-stats-tools"]')!.textContent).toBe('12tools')
+    const header = document.querySelector<HTMLElement>('[data-testid="background-tasks-detail-back"]')!.parentElement!
+    const pill = header.querySelector('[data-testid="task-agent-type"]')
+    expect(pill?.textContent).toBe('general-purpose')
+    const metaLine = header.querySelector<HTMLElement>('[data-testid="task-meta-line"]')!
+    expect(metaLine.querySelector('[data-testid="task-meta-status"]')!.textContent).toBe('running')
+    expect(metaLine.querySelector('[data-testid="task-meta-elapsed"]')).not.toBeNull()
+    expect(metaLine.querySelector('[data-testid="task-run-stats"]')).toBeNull()
     expect(badges.querySelector('[data-testid="task-run-stats-input"]')!.textContent).toBe('45kin')
     expect(badges.querySelector('[data-testid="task-run-stats-output"]')!.textContent).toBe('3.1kout')
     expect(badges.querySelector('[data-testid="task-run-stats-cache"]')!.textContent).toBe('120kcache read')

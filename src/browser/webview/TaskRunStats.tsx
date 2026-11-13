@@ -1,9 +1,9 @@
 /**
  * A sub-agent or fork run's tool calls and token usage (F-2).
  *
- * `strip`: one quiet line of icon + figure pairs, for a list row or a
- * conversation card. `badges`: labelled chips for the detail header, the tool
- * count set apart from the token figures.
+ * `strip`: the tool count and total tokens as two meta items, for a list row
+ * or a conversation card, tinted only while the run works. `badges`: labelled
+ * chips for the detail header, the tool count set apart from the token figures.
  */
 import type { ComponentType, ReactNode } from 'react'
 import { ArrowDownIcon, ArrowUpIcon, DatabaseIcon, PencilLineIcon, WrenchIcon } from 'lucide-react'
@@ -12,7 +12,7 @@ import type { NexusTaskRunStats } from '../bridge/protocol/ui'
 import { compactTokenCount, hasRunStats } from '../../utils/taskRunStats'
 import { useLocale, useT } from './i18n'
 
-type IconType = ComponentType<{ className?: string; 'data-testid'?: string }>
+export type IconType = ComponentType<{ className?: string; 'data-testid'?: string }>
 
 const TOOL_TINT = 'text-foreground/60'
 const INPUT_TINT = 'text-info'
@@ -43,37 +43,32 @@ export function TaskRunStats({ stats, variant, running = false, className }: Tas
   })
 
   if (variant === 'strip') {
+    const total = stats.inputTokens + stats.outputTokens + stats.cacheReadTokens + stats.cacheWriteTokens
+    const totalTitle = t('taskStats.totalTitle', {
+      input: exact(stats.inputTokens),
+      output: exact(stats.outputTokens),
+      read: exact(stats.cacheReadTokens),
+      write: exact(stats.cacheWriteTokens),
+    })
     return (
-      <div
+      <span
         role="group"
         aria-label={t('taskStats.groupLabel')}
         data-testid="task-run-stats"
         data-variant="strip"
-        className={cn(
-          'flex min-w-0 items-center gap-2 text-[11px] leading-none tabular-nums text-muted-foreground',
-          className,
-        )}
+        className={cn('inline-flex min-w-0 items-center gap-2.5', className)}
       >
-        <StripItem icon={WrenchIcon} tint={TOOL_TINT} title={toolsTitle} testId="task-run-stats-tools" live={running}>
+        <MetaItem icon={WrenchIcon} tint={running ? TOOL_TINT : undefined} title={toolsTitle}
+          testId="task-run-stats-tools" live={running}>
           {stats.toolUses}
-        </StripItem>
+        </MetaItem>
         {hasTokens ? (
-          <>
-            <span aria-hidden className="h-2.5 w-px shrink-0 bg-border" />
-            <StripItem icon={ArrowUpIcon} tint={INPUT_TINT} title={inputTitle} testId="task-run-stats-input">
-              {compactTokenCount(stats.inputTokens)}
-            </StripItem>
-            <StripItem icon={ArrowDownIcon} tint={OUTPUT_TINT} title={outputTitle} testId="task-run-stats-output">
-              {compactTokenCount(stats.outputTokens)}
-            </StripItem>
-            {hasCacheRead ? (
-              <StripItem icon={DatabaseIcon} tint={CACHE_TINT} title={cacheTitle} testId="task-run-stats-cache">
-                {compactTokenCount(stats.cacheReadTokens)}
-              </StripItem>
-            ) : null}
-          </>
+          <MetaItem title={totalTitle} testId="task-run-stats-total"
+            className={running ? 'text-foreground/80' : undefined}>
+            {t('taskStats.totalTokens', { n: compactTokenCount(total) })}
+          </MetaItem>
         ) : null}
-      </div>
+      </span>
     )
   }
 
@@ -118,18 +113,28 @@ function LiveIcon({ icon: Icon, tint, live }: { icon: IconType; tint: string; li
   )
 }
 
-function StripItem(props: {
-  icon: IconType
-  tint: string
+/**
+ * One value of a row's meta line, with an optional leading icon; the shared unit of the run's
+ * time, origin and usage figures. Untinted icons take the line's muted colour.
+ */
+export function MetaItem(props: {
+  icon?: IconType
+  tint?: string
   title: string
-  testId: string
+  testId?: string
   live?: boolean
+  className?: string
   children: ReactNode
 }) {
   return (
-    <span title={props.title} aria-label={props.title} data-testid={props.testId} className="inline-flex shrink-0 items-center gap-0.5">
-      <LiveIcon icon={props.icon} tint={props.tint} live={props.live} />
-      <span aria-hidden>{props.children}</span>
+    <span
+      title={props.title}
+      aria-label={props.title}
+      data-testid={props.testId}
+      className={cn('inline-flex shrink-0 items-center gap-1', props.className)}
+    >
+      {props.icon ? <LiveIcon icon={props.icon} tint={props.tint ?? 'opacity-70'} live={props.live} /> : null}
+      <span aria-hidden className="min-w-0 truncate">{props.children}</span>
     </span>
   )
 }

@@ -246,7 +246,7 @@ describe('BackgroundTasksDrawer focus consumption', () => {
 })
 
 describe('BackgroundTasksDrawer row meta', () => {
-  it('every row shows its started date; a finished row shows the span it took', () => {
+  it('a running row shows its elapsed time and last update; a finished row its start and span, as icon items with no status word', () => {
     const rows: NexusTaskSummaryRow[] = [
       runningRow(), // running → Running section (expanded)
       {
@@ -272,12 +272,23 @@ describe('BackgroundTasksDrawer row meta', () => {
     )
     const running = rowButtons.find(b => b.title.includes('b-run'))!
     const finished = rowButtons.find(b => b.title.includes('b-done'))!
-    // Started stamp on both rows (running + finished).
-    expect(running.textContent).toContain('started ')
-    expect(finished.textContent).toContain('started ')
-    // The finished row shows its total span; the running row does not.
-    expect(finished.textContent).toContain('took 2m 5s')
-    expect(running.textContent).not.toContain('took ')
+    const item = (row: HTMLElement, id: string) =>
+      row.querySelector<HTMLElement>(`[data-testid="${id}"]`)
+    // Running: elapsed + last update; no start stamp, no span.
+    expect(item(running, 'task-meta-elapsed')?.textContent).toBe('5s')
+    expect(item(running, 'task-meta-updated')?.textContent).toBe('1s ago')
+    expect(item(running, 'task-meta-started')).toBeNull()
+    expect(item(running, 'task-meta-took')).toBeNull()
+    // Finished: a 24-hour start stamp and the span it took.
+    expect(item(finished, 'task-meta-started')?.textContent).toMatch(/^\d{2}:\d{2}$/)
+    expect(item(finished, 'task-meta-took')?.textContent).toBe('2m 5s')
+    expect(item(finished, 'task-meta-took')?.getAttribute('title')).toBe('Took 2m 5s')
+    expect(item(finished, 'task-meta-elapsed')).toBeNull()
+    // The status is the row's icon; its words are for assistive tech only.
+    const metaLine = item(finished, 'task-meta-line')!
+    const srOnly = metaLine.querySelector('.sr-only')
+    expect(srOnly?.textContent).toBeTruthy()
+    expect(metaLine.textContent!.replace(srOnly!.textContent!, '')).not.toMatch(/failed|error|done/i)
   })
 })
 
@@ -321,15 +332,20 @@ describe('BackgroundTasksDrawer row label truncation', () => {
     expect(labelDiv).not.toBeNull()
     expect(labelDiv.className).toContain('flex')
     expect(labelDiv.className).toContain('min-w-0')
+    // The agent type is a fixed pill BEFORE the title, so a long title
+    // truncates without pushing it out.
+    const pill = labelDiv.querySelector<HTMLElement>('[data-testid="task-agent-type"]')!
+    expect(pill.textContent).toBe('general-purpose')
+    expect(pill.className).toContain('shrink-0')
     // The description itself still truncates (ellipsis) rather than wrapping.
-    const labelSpan = labelDiv.querySelector<HTMLElement>('span.truncate')!
+    const labelSpan = labelDiv.querySelector<HTMLElement>('span.truncate:not([data-testid])')!
     expect(labelSpan).not.toBeNull()
     expect(labelSpan.textContent).toBe(longDescription)
-    // The meta line (·status ·started ·age ·type) also truncates inside the row.
+    expect(pill.compareDocumentPosition(labelSpan) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    // The meta line follows the label line and stays inside the row.
     const metaDiv = labelDiv.nextElementSibling as HTMLElement
-    expect(metaDiv).not.toBeNull()
-    expect(metaDiv.className).toContain('truncate')
-    expect(metaDiv.textContent).toContain('general-purpose')
+    expect(metaDiv.dataset.testid).toBe('task-meta-line')
+    expect(metaDiv.className).toContain('min-w-0')
     // The status icon and the dropdown trigger stay put (shrink-0, never clipped).
     const menuBtn = document.querySelector<HTMLElement>(
       '[data-testid="subagent-row-menu"]',

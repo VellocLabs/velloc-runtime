@@ -46,12 +46,12 @@ import {
   groupSubAgentsByCategory,
   isReviewTaskRow,
   taskRowLabelKey,
-  taskRowOriginName,
   type SubAgentCategory,
 } from './backgroundSubAgents'
 import { loopTimerCountdown, loopTimerScheduleText } from './loopTimers'
 import { useT } from "./i18n";
 import { TaskRunStats } from "./TaskRunStats";
+import { AgentTypePill, TaskMetaLine } from "./TaskRowMeta";
 import { reviewTaskSummaryMessage } from '@/codeReview/messages'
 import { useSessionAreaVisible } from './sessionAreaVisibility'
 
@@ -248,23 +248,6 @@ function RunJsParamsBlock({
       ) : null}
     </div>
   )
-}
-
-/** Compact single-unit elapsed string, e.g. "5s" / "2m" / "1h" — the shared
- *  `durationLabel` (clamped so clock skew can't show a negative age). */
-function formatAge(ms: number): string {
-  return durationLabel(Math.max(0, ms), 'largest')
-}
-
-/** Compact absolute start stamp: time-of-day for today ("14:32"), short date +
- *  time otherwise ("Jun 30 14:32"). */
-function formatStartedDate(ms: number): string {
-  const d = new Date(ms)
-  const now = new Date()
-  const time = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-  return d.toDateString() === now.toDateString()
-    ? time
-    : `${d.toLocaleDateString([], { month: 'short', day: 'numeric' })} ${time}`
 }
 
 /**
@@ -655,9 +638,11 @@ export function BackgroundTasksDrawer({
             </Button>
             <div className="min-w-0 flex-1">
               <div
-                className="truncate text-sm font-medium"
+                className="flex min-w-0 items-center gap-1.5 text-sm font-medium"
                 title={view.sessionId}
               >
+                {detailRow?.agentType ? <AgentTypePill type={detailRow.agentType} /> : null}
+                <span className="truncate">
                 {detailRowLabel ??
                   // A row-less detail (reloaded session — recovered from the
                   // tool-detail sidecar) must not fall back to the SUB-AGENT
@@ -676,16 +661,29 @@ export function BackgroundTasksDrawer({
                       : t('backgroundTasks.subAgentFallbackTitle', {
                           id: view.sessionId.slice(-6),
                         }))}
+                </span>
               </div>
-              <div className="truncate text-[11px] text-muted-foreground">
-                {detailRow
-                  ? t(SUB_AGENT_STATUS_LABEL_KEY[detailRow.status])
-                  : t('backgroundTasks.status.unknown')}
-                {detailRow?.agentType ? ` · ${detailRow.agentType}` : ''}
-                {detailRow && taskRowOriginName(detailRow)
-                  ? ` · ${t('backgroundTasks.viaAgent', { name: taskRowOriginName(detailRow)! })}`
-                  : ''}
-              </div>
+              {detailRow ? (
+                <TaskMetaLine
+                  row={detailRow}
+                  now={now}
+                  usage={false}
+                  leading={
+                    <span
+                      data-testid="task-meta-status"
+                      className="inline-flex shrink-0 items-center gap-1 font-medium text-foreground/80"
+                    >
+                      <StatusIcon status={detailRow.status} />
+                      {t(SUB_AGENT_STATUS_LABEL_KEY[detailRow.status])}
+                    </span>
+                  }
+                  className="mt-1"
+                />
+              ) : (
+                <div className="mt-1 text-[11px] text-muted-foreground">
+                  {t('backgroundTasks.status.unknown')}
+                </div>
+              )}
               <TaskRunStats
                 stats={detailRow?.stats}
                 variant="badges"
@@ -1023,34 +1021,6 @@ export function BackgroundTasksDrawer({
                           />
                         )
                       }
-                      const meta: string[] = [
-                        t(SUB_AGENT_STATUS_LABEL_KEY[item.status]),
-                      ]
-                      const originName = taskRowOriginName(item)
-                      if (originName) meta.push(t('backgroundTasks.viaAgent', { name: originName }))
-                      // Every row shows WHEN it started; a running row adds the
-                      // live age + last-activity hint, a finished row adds the
-                      // total span it took.
-                      if (item.startedAt) {
-                        meta.push(
-                          t('backgroundTasks.startedAt', {
-                            when: formatStartedDate(item.startedAt),
-                          }),
-                        )
-                      }
-                      if (isRunning) {
-                        if (item.startedAt) meta.push(formatAge(now - item.startedAt))
-                        if (item.lastActivityAt) {
-                          meta.push(`updated ${formatAge(now - item.lastActivityAt)} ago`)
-                        }
-                      } else if (item.startedAt && item.finishedAt) {
-                        meta.push(
-                          `took ${durationLabel(
-                            Math.max(0, item.finishedAt - item.startedAt),
-                          )}`,
-                        )
-                      }
-                      if (item.agentType) meta.push(item.agentType)
                       // A background shell (local_bash) shows its COMMAND (mono,
                       // terminal glyph) in place of the agent description; agent
                       // rows are unchanged. Absent type ⇒ local_agent. Forks /
@@ -1102,19 +1072,22 @@ export function BackgroundTasksDrawer({
                                 // the row to the label's content width and let a long
                                 // description overflow the <li> (hard-clipped by the
                                 // parent scroll container) instead of truncating.
-                                'flex min-w-0 items-center gap-1 truncate font-medium text-foreground/90',
+                                'flex min-w-0 items-center gap-1.5 truncate font-medium text-foreground/90',
                                 isBash && 'font-mono',
                               )}
                             >
                               {KindGlyph ? (
                                 <KindGlyph className="size-3 shrink-0 text-muted-foreground" />
                               ) : null}
+                              {item.agentType ? <AgentTypePill type={item.agentType} /> : null}
                               <span className="truncate">{primaryLabel}</span>
                             </div>
-                            <div className="truncate text-[11px] tabular-nums text-muted-foreground">
-                              {meta.join(' · ')}
-                            </div>
-                            <TaskRunStats stats={item.stats} variant="strip" running={isRunning} className="mt-1" />
+                            <TaskMetaLine
+                              row={item}
+                              now={now}
+                              srStatus={t(SUB_AGENT_STATUS_LABEL_KEY[item.status])}
+                              className="mt-1"
+                            />
                           </button>
                           <DropdownMenuPrimitive.Root>
                             <DropdownMenuPrimitive.Trigger asChild>
