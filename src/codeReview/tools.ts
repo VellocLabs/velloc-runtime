@@ -13,7 +13,7 @@ export interface ReviewToolBindings {
   actions?: boolean
   actionEpoch?: string
   independentAssessments?: boolean
-  /** A read budget in model steps: a ReviewRead from a later step fails with `review-step-budget`, and each read result carries `readStepsLeft`. */
+  /** A read budget in model steps: at most `readSteps` distinct steps may call ReviewRead, a further step fails with `review-step-budget`, and each object a read returns carries `readStepsLeft`. A read that fails still spends its step. */
   readSteps?: number
   /** The run reads patches only: ReviewRead offers neither context nor search. */
   diffOnly?: boolean

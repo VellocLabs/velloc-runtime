@@ -1029,6 +1029,21 @@ describe('single-context step limit', () => {
     expect(snapshot.run.progress.status).toBe('finished')
     expect(snapshot.coverage.limitations).not.toContain('review-step-limit')
   })
+  it('spends a read step on a read that fails', async () => {
+    const left: unknown[] = []
+    let reads = 0
+    const f = fixture({ resolveScope: async () => ({ manifest: manifest(), trustedGuidance: '', read: async () => { if (++reads === 1) throw new Error('review-context-unavailable'); return { files: [] } } }), runModel: async request => {
+      const tool = request.tools.find(t => t.name === 'ReviewRead')!
+      const readAt = () => tool.call({ operation: 'diff' }, {} as ToolCallContext, vi.fn() as unknown as PermissionDecider, { uuid: crypto.randomUUID(), type: 'assistant', message: { content: [] } } as unknown as Message)
+        .then(result => { left.push((result.data as { readStepsLeft?: number }).readStepsLeft) }, (error: Error) => { left.push(error.message) })
+      await readAt()
+      await readAt()
+      await invoke(request, 'ReviewLedger', { operation: 'coverage', coverage: { angles: anglesOf(request), limitations: [], complete: true } })
+      return { text: 'Reviewed src/a.ts.', interrupted: false, end: { kind: 'completed' as const } }
+    } })
+    await f.service.wait((await f.service.startUser('high')).runId)
+    expect(left).toEqual(['review-context-unavailable', 46])
+  })
   it('stays partial when the wrap-up turn itself stops short', async () => {
     let calls = 0
     const f = fixture({ runModel: async request => {
