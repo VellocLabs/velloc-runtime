@@ -465,3 +465,72 @@ describe('reset connection', () => {
     expect(screen.getByTestId('mod-prompt-api_key-saved')).toBeTruthy()
   })
 })
+
+const keyOnly = () =>
+  modRow({
+    credentialMethods: ['apiKey'],
+    secrets: [],
+    settings: undefined,
+    prompts: [{ type: 'text', key: 'api_key', message: { en: 'Acme key' }, placeholder: { en: 'Paste the Acme key' }, secret: true }],
+  })
+
+describe('a provider whose form is only its key', () => {
+  it('draws the key as the built-in providers do: "API key" above one field, the vendor placeholder until one is stored', async () => {
+    const h = harness({ [ID]: { source: 'mod', account: 'zed' } }, withRow(keyOnly()))
+    mount(h)
+    fireEvent.click(await screen.findByTestId(`models-provider-settings-${ID}`))
+    const row = await screen.findByTestId('mod-prompt-api_key-row')
+    expect(row.textContent).toContain('API key')
+    expect(row.textContent).not.toContain('Acme key')
+    // Not a card row: no label beside the field, the label row above it.
+    expect(screen.getByTestId('mod-prompt-form').querySelector('label[for="mod-prompt-api_key"]')).toBeNull()
+    const input = screen.getByTestId('mod-prompt-api_key') as HTMLInputElement
+    expect(input.getAttribute('aria-label')).toBe('API key')
+    expect(input.placeholder).toBe('Paste the Acme key')
+    expect(screen.queryByTestId('mod-prompt-api_key-saved')).toBeNull()
+    fireEvent.change(input, { target: { value: 'sk-1' } })
+    fireEvent.click(screen.getByTestId('mod-credentials-save'))
+    await waitFor(() => expect(h.upserts).toHaveLength(1))
+    expect(h.upserts[0]).toMatchObject({ source: 'mod', apiKey: 'sk-1' })
+  })
+
+  it('a stored key reads Saved, with the replace placeholder', async () => {
+    const h = harness({ [ID]: { source: 'mod', hasApiKey: true } }, withRow(keyOnly()))
+    mount(h)
+    fireEvent.click(await screen.findByTestId(`models-provider-settings-${ID}`))
+    expect((await screen.findByTestId('mod-prompt-api_key-saved')).textContent).toContain('Saved')
+    expect((screen.getByTestId('mod-prompt-api_key') as HTMLInputElement).placeholder)
+      .toBe('Enter a new key to replace the saved key')
+  })
+})
+
+describe('status card', () => {
+  it('sits after the form, with the model count and the plugin it comes from', async () => {
+    const h = harness(
+      { [ID]: { source: 'mod', modVersion: '1.2.0', hasApiKey: true, modelEntries: [{ id: 'a' }, { id: 'b' }] } as never },
+      withRow(modRow()),
+    )
+    mount(h)
+    fireEvent.click(await screen.findByTestId(`models-provider-settings-${ID}`))
+    const card = await screen.findByTestId('mod-provider-status-card')
+    const form = screen.getByTestId('mod-prompt-form')
+    expect(form.compareDocumentPosition(card) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(card.contains(screen.getByTestId('mod-provider-status'))).toBe(true)
+    expect(screen.getByTestId('mod-provider-status').textContent).toBe('Connected')
+    expect(screen.getByTestId('mod-provider-model-count').textContent).toBe('2 models available')
+    expect(card.contains(screen.getByTestId('mod-provider-origin'))).toBe(true)
+    expect(screen.getByTestId('mod-provider-origin').textContent).toBe('From the plugin acme (version 1.2.0)')
+  })
+
+  it('a key that fails the check shows the failure in the card, and no model count', async () => {
+    const h = harness({ [ID]: { source: 'mod', account: 'zed' } }, withRow(keyOnly()), {}, { ok: false, errorCode: 'auth_unauthorized', message: 'no' })
+    mount(h)
+    fireEvent.click(await screen.findByTestId(`models-provider-settings-${ID}`))
+    fireEvent.change(await screen.findByTestId('mod-prompt-api_key'), { target: { value: 'sk-bad' } })
+    fireEvent.click(screen.getByTestId('mod-credentials-save'))
+    const failed = await screen.findByTestId('mod-verify-failed')
+    expect(screen.getByTestId('mod-provider-status-card').contains(failed)).toBe(true)
+    expect(screen.getByTestId('mod-provider-status').textContent).toBe('Failed')
+    expect(screen.queryByTestId('mod-provider-model-count')).toBeNull()
+  })
+})

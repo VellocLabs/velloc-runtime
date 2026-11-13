@@ -55,6 +55,7 @@ import { draftOf, holdsStoredSecret, isMissingRequired, type OptionsDraft } from
 import { mapErrorCode } from "../verifyErrorText";
 import { getProviderLoginStore, useProviderLogin } from "../../providerLoginStore";
 import { ModBaseUrlField } from "./ModBaseUrlField";
+import { ApiKeyLabel } from "./models/ApiKeyLabel";
 import { MissingRequiredMark, OptionFieldControl, OptionRow, OptionRowList } from "./ModOptionRows";
 import { ModProviderStatusCard } from "./ModProviderStatusCard";
 import { ProviderModelEntries } from "./ProviderModelEntries";
@@ -263,6 +264,7 @@ function ReadyEditor({
     (saved?.storedSecrets ?? []).some((secretName) => declaredSecrets.includes(secretName));
   const signInEnded = holdsModSignIn(saved) && (signedOut !== undefined || !holdsToken);
   const connected = isModProviderConnected(saved) && !signInEnded && !verifyFailed;
+  const modelCount = saved?.modelEntries?.length ?? saved?.enabledModels?.length ?? provider.models.length;
   const [loginError, setLoginError] = React.useState<string | null>(null);
   const [signOutBusy, setSignOutBusy] = React.useState(false);
   // A finished sign-in changed the stored entry (account, secrets): read it again.
@@ -381,33 +383,6 @@ function ReadyEditor({
       data-testid="mod-provider-editor"
       data-provider={providerId}
     >
-      <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-        <Badge
-          variant={verifyFailed ? "destructive" : connected ? "success" : "muted"}
-          size="sm"
-          data-testid="mod-provider-status"
-        >
-          {verifyFailed
-            ? t("settings.models.chipFailed")
-            : connected
-              ? t("settings.models.connected")
-              : t("settings.models.notConnected")}
-        </Badge>
-        {mod.plugin ? (
-          <span data-testid="mod-provider-origin">
-            {mod.version
-              ? t("settings.models.mod.providedByVersion", { plugin: mod.plugin, version: mod.version })
-              : t("settings.models.mod.providedBy", { plugin: mod.plugin })}
-          </span>
-        ) : null}
-      </div>
-
-      {verifyFailed ? (
-        <span className="text-destructive text-xs" data-testid="mod-verify-failed">
-          {mapErrorCode(t, verifyFailed)}
-        </span>
-      ) : null}
-
       {methods.length > 1 ? (
         <div
           role="radiogroup"
@@ -564,6 +539,46 @@ function ReadyEditor({
           connected={isModProviderConnected(saved)}
         />
       ) : null}
+      <div
+        className="flex flex-col gap-1 rounded-md border bg-muted/30 p-3"
+        data-testid="mod-provider-status-card"
+      >
+        <div className="flex flex-wrap items-center gap-2">
+          <Badge
+            variant={verifyFailed ? "destructive" : connected ? "success" : "muted"}
+            size="sm"
+            data-testid="mod-provider-status"
+          >
+            {verifyFailed
+              ? t("settings.models.chipFailed")
+              : connected
+                ? t("settings.models.connected")
+                : t("settings.models.notConnected")}
+          </Badge>
+          {connected ? (
+            <span className="text-muted-foreground text-xs" data-testid="mod-provider-model-count">
+              {modelCount > 0
+                ? t("settings.models.modelsFound", {
+                    count: modelCount,
+                    unit: t(modelCount === 1 ? "settings.models.unitModel" : "settings.models.unitModels"),
+                  })
+                : t("settings.models.detailReady")}
+            </span>
+          ) : null}
+        </div>
+        {verifyFailed ? (
+          <span className="text-destructive text-xs" data-testid="mod-verify-failed">
+            {mapErrorCode(t, verifyFailed)}
+          </span>
+        ) : null}
+        {mod.plugin ? (
+          <span className="text-muted-foreground text-xs" data-testid="mod-provider-origin">
+            {mod.version
+              ? t("settings.models.mod.providedByVersion", { plugin: mod.plugin, version: mod.version })
+              : t("settings.models.mod.providedBy", { plugin: mod.plugin })}
+          </span>
+        ) : null}
+      </div>
       {resettable || resetError ? (
         <div className="flex items-center justify-end gap-2" data-testid="mod-reset-row">
           {resetError ? (
@@ -710,6 +725,13 @@ function ModProviderForm({
 
   const rows = modFormRows(shown, settingsConfig, secretViews);
   if (rows.length === 0) return null;
+  // A form that is only the provider's key is drawn as the built-in
+  // providers draw theirs: "API key" above one full-width field.
+  const only = rows.length === 1 ? rows[0] : undefined;
+  const keyPrompt =
+    only?.kind === "prompt" && only.prompt.key === API_KEY_PROMPT_KEY && only.prompt.type !== "select"
+      ? only.prompt
+      : null;
 
   const setAnswer = (key: string, value: string) => {
     setAnswers((prev) => ({ ...prev, [key]: value }));
@@ -807,6 +829,36 @@ function ModProviderForm({
         void save();
       }}
     >
+      {keyPrompt ? (
+        <div className="flex flex-col gap-1 text-sm" data-testid={`mod-prompt-${keyPrompt.key}-row`}>
+          <ApiKeyLabel
+            state={stored.has(keyPrompt.key) ? "saved" : null}
+            testId={`mod-prompt-${keyPrompt.key}-saved`}
+          />
+          <Input
+            id={`mod-prompt-${keyPrompt.key}`}
+            data-testid={`mod-prompt-${keyPrompt.key}`}
+            type="password"
+            aria-label={t("settings.models.apiKey")}
+            autoComplete="off"
+            value={answers[keyPrompt.key] ?? ""}
+            placeholder={
+              stored.has(keyPrompt.key)
+                ? t("settings.models.apiKeySealedPlaceholder")
+                : keyPrompt.placeholder !== undefined
+                  ? resolveLocalizedText(keyPrompt.placeholder, locale)
+                  : t("settings.models.apiKeyPlaceholder")
+            }
+            aria-invalid={touched && problems[keyPrompt.key] ? true : undefined}
+            onChange={(event) => setAnswer(keyPrompt.key, event.currentTarget.value)}
+          />
+          {touched && problems[keyPrompt.key] ? (
+            <span className="text-destructive text-xs" data-testid={`mod-prompt-${keyPrompt.key}-error`}>
+              {t(PROBLEM_KEY[problems[keyPrompt.key]!])}
+            </span>
+          ) : null}
+        </div>
+      ) : (
       <OptionRowList>
         {rows.map((row) => {
           if (row.kind === "prompt") {
@@ -970,6 +1022,7 @@ function ModProviderForm({
           );
         })}
       </OptionRowList>
+      )}
       <div className="flex items-center justify-end gap-2">
         {failed ? (
           <span className="text-destructive text-xs" data-testid="mod-prompt-failed">
