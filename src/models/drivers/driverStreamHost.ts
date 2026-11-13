@@ -549,8 +549,9 @@ class DriverStream {
       // Before the send is counted: a refused egress never left.
       const egress = seamed?.prepared.plan?.egress
       if (egress) refuseUnservedEgress(`the proxy "${egress.name}"`)
-      // Security: a proxy nobody was shown may read what is not encrypted.
-      if (egress?.dynamic && !/^https:\/\//i.test(request.url)) {
+      // Security: a pool member's address is not one the person saw, and the
+      // proxy may read what is not encrypted.
+      if (egress && !/^https:\/\//i.test(request.url)) {
         throw new RawProviderStreamError(
           'EGRESS_INVALID',
           `the proxy "${egress.name}" carries https requests only; the request was not sent`,

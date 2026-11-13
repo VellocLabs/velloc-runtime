@@ -97,9 +97,9 @@ export type ProviderRequestAnswer = {
   limits?: { maxOutputTokens?: number; contextWindow?: number }
   /** This request's own thresholds, held to the bounds of declared ones. */
   timeouts?: { firstByteMs?: number; idleMs?: number; firstContentMs?: number; stallMs?: number }
-  /** The name of an egress the provider declared, or a member of one of its
-   *  pools: this request leaves through that proxy. Absent: it follows the
-   *  host's proxy setting. */
+  /** A registered member of one of the provider's pools: this request
+   *  leaves through that proxy. Absent: it follows the host's proxy
+   *  setting. */
   route?: { egress: string; member: string }
 }
 

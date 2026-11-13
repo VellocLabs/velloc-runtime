@@ -1,6 +1,6 @@
 /**
  * Plugins: the GRANT a person consents to — each provider's `domains`,
- * `secrets`, `readsSecrets`, `requestNeeds`, `signNeeds`, its proxy hosts, the folders an
+ * `secrets`, `readsSecrets`, `requestNeeds`, `signNeeds`, the reach of its proxy pools, the folders an
  * app's background module may reach, and whether it may run the agent (F-40). Consent binds to the grant, not
  * the bytes: an update no wider than the consented grant needs no new consent.
  * Pure.

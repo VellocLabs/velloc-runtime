@@ -250,9 +250,9 @@ describe('a route to a pool member', () => {
   const lookup = (pool: string, member: string) =>
     pool === 'pool' && member === 'p0' ? { url: 'http://203.0.113.7:8080', hosts: ['203.0.113.7'] } : undefined
 
-  it('reads as that member, marked dynamic', () => {
+  it('reads as that member', () => {
     expect(readRequestPlan({ route: { egress: 'pool', member: 'p0' } }, {}, lookup)).toEqual({
-      egress: { name: 'pool/p0', url: 'http://203.0.113.7:8080', hosts: ['203.0.113.7'], dynamic: true },
+      egress: { name: 'pool/p0', url: 'http://203.0.113.7:8080', hosts: ['203.0.113.7'] },
     })
   })
 

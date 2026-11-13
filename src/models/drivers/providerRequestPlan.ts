@@ -5,8 +5,9 @@
  * Contract: `readRequestPlan` returns the plan parts the answer states, each
  * within the platform's bounds, or undefined when it states none. It throws
  * on a part of the wrong shape, an unknown property inside a part, and on a
- * `route` that is not the name of an egress the provider declares; the caller
- * fails the request closed, as for every other part of the answer.
+ * `route` that is not `{ egress, member }` naming a registered member of one
+ * of the provider's pools; the caller fails the request closed, as for every
+ * other part of the answer.
  *
  * Security: the answer is plugin input. A limit never exceeds what the
  * model's row states (the platform's ceiling when the row states nothing),
@@ -30,12 +31,7 @@ export type ProviderRequestPlan = {
   timeouts?: ProviderTimeouts
   /** The pool member the hook named in `route`. Absent: the request
    *  follows the host's own proxy setting. */
-  egress?: ProviderEgress & {
-    name: string
-    /** A member of a pool the module filled: its address is not one the
-     *  person saw, so it carries `https` requests only. */
-    dynamic?: true
-  }
+  egress?: ProviderEgress & { name: string }
 }
 
 /** What the model's row states, when it states it. */
@@ -134,7 +130,7 @@ function readRoute(
   if (!found) {
     throw new Error(`route: "${member.slice(0, 64)}" is not a registered member of the pool "${pool.slice(0, 64)}"`)
   }
-  return { name: `${pool}/${member}`, url: found.url, hosts: found.hosts, dynamic: true }
+  return { name: `${pool}/${member}`, url: found.url, hosts: found.hosts }
 }
 
 export function readRequestPlan(
