@@ -3,7 +3,7 @@ import { createElement } from 'react'
 import { afterEach, describe, expect, it } from 'vitest'
 import { cleanup, render, waitFor } from '@testing-library/react'
 import { BackgroundTasksDrawer } from '../browser/webview/BackgroundTasksDrawer'
-import { TaskRunStats } from '../browser/webview/TaskRunStats'
+import { TaskRunStats, cachedPercent } from '../browser/webview/TaskRunStats'
 import { subAgentsEqual } from '../browser/webview/backgroundSubAgents'
 import { computeRunStats } from '../browser/worker/taskProjection'
 import { compactTokenCount } from '../utils/taskRunStats'
@@ -121,6 +121,24 @@ describe('TaskRunStats', () => {
     expect(document.querySelector('[data-testid="task-run-stats"]')).toBeNull()
   })
 
+  it('cachedPercent is cache read over the whole input, rounded', () => {
+    const base = { toolUses: 0, inputTokens: 0, outputTokens: 999, cacheReadTokens: 0, cacheWriteTokens: 0 }
+    expect(cachedPercent(base)).toBe(0)
+    expect(cachedPercent({ ...base, inputTokens: 8, cacheReadTokens: 29_489, cacheWriteTokens: 36_037 })).toBe(45)
+    expect(cachedPercent({ ...base, inputTokens: 1, cacheReadTokens: 999 })).toBe(100)
+  })
+
+  it('leaves the cached share off a strip with no cache reads', () => {
+    render(
+      createElement(TaskRunStats, {
+        stats: { ...STATS, cacheReadTokens: 0 },
+        variant: 'strip',
+      }),
+    )
+    expect(document.querySelector('[data-testid="task-run-stats-total"]')).not.toBeNull()
+    expect(document.querySelector('[data-testid="task-run-stats-cached"]')).toBeNull()
+  })
+
   it('hides the cache figure when the run has no cache traffic', () => {
     render(
       createElement(TaskRunStats, {
@@ -165,6 +183,11 @@ describe('Background Tasks drawer shows a sub-agent run usage', () => {
     expect(strip.closest('[data-testid="task-meta-line"]')).not.toBeNull()
     expect(text('task-run-stats-tools')).toBe('12')
     expect(text('task-run-stats-total')).toBe('172k tokens')
+    // 120,000 read of 169,200 input → 71%.
+    expect(text('task-run-stats-cached')).toBe('71% cached')
+    expect(strip.querySelector('[data-testid="task-run-stats-cached"]')!.getAttribute('title')).toBe(
+      '71% of the input was read from the prompt cache',
+    )
     expect(strip.querySelector('[data-testid="task-run-stats-input"]')).toBeNull()
     const n = (v: number) => v.toLocaleString('en')
     expect(strip.querySelector('[data-testid="task-run-stats-total"]')!.getAttribute('title')).toBe(

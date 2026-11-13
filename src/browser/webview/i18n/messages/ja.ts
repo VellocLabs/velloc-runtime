@@ -1272,6 +1272,8 @@ export const ja: Messages = {
   'backgroundTasks.meta.tookTitle': '所要 {span}',
   'taskStats.totalTokens': '{n} トークン',
   'taskStats.totalTitle': '入力 {input} · 出力 {output} · キャッシュ読取 {read} · キャッシュ書込 {write}',
+  'taskStats.cachedPercent': '{pct}% キャッシュ',
+  'taskStats.cachedTitle': '入力の {pct}% をプロンプトキャッシュから読み取りました',
   'backgroundTasks.resumeDefaultText': '続けてください。',
   'backgroundTasks.category.subagent': 'サブエージェント',
   'backgroundTasks.viaAgent': '{name} から',

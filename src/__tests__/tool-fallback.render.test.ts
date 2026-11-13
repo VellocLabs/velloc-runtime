@@ -284,6 +284,7 @@ describe('Agent (sub-agent) tool card', () => {
     expect(html).toMatch(/data-testid="task-run-stats-tools"[^>]*>.*?7</)
     expect(html).toContain('77k tokens')
     expect(html).toMatch(/data-variant="strip"[^>]*class="[^"]*text-muted-foreground/)
+    expect(html).toContain('84% cached')
     expect(html).toContain('data-testid="agent-jump-to-background-tasks"')
     // Another run's row does not leak onto this card.
     expect(card([{ sessionId: 'aother', spawnerSessionId: 'P', status: 'running', stats: { toolUses: 3, inputTokens: 1, outputTokens: 1, cacheReadTokens: 0, cacheWriteTokens: 0 } }])).not.toContain('task-run-stats')

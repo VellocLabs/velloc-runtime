@@ -1323,6 +1323,9 @@ export const en = {
   'backgroundTasks.meta.tookTitle': 'Took {span}',
   'taskStats.totalTokens': '{n} tokens',
   'taskStats.totalTitle': 'Input {input} · Output {output} · Cache read {read} · Cache write {write}',
+  // `{pct}` is a whole number: cache read / (input + cache read + cache write).
+  'taskStats.cachedPercent': '{pct}% cached',
+  'taskStats.cachedTitle': '{pct}% of the input was read from the prompt cache',
   'backgroundTasks.resumeDefaultText': 'Continue.',
   // Kind categories (Sub-agents / Shell / Super Shell / Super Edit / Running).
   // "Super Shell" and "Super Edit" are coined tool labels — verbatim in every

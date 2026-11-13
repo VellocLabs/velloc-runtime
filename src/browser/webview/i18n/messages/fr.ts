@@ -1285,6 +1285,8 @@ export const fr: Messages = {
   'backgroundTasks.meta.tookTitle': 'A pris {span}',
   'taskStats.totalTokens': '{n} jetons',
   'taskStats.totalTitle': 'Entrée {input} · Sortie {output} · Cache lu {read} · Cache écrit {write}',
+  'taskStats.cachedPercent': '{pct} % en cache',
+  'taskStats.cachedTitle': '{pct} % de l’entrée a été lu depuis le cache de prompt',
   'backgroundTasks.resumeDefaultText': 'Continue.',
   'backgroundTasks.category.subagent': 'Sous-agents',
   'backgroundTasks.viaAgent': 'via {name}',

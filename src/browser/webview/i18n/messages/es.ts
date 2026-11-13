@@ -1285,6 +1285,8 @@ export const es: Messages = {
   'backgroundTasks.meta.tookTitle': 'Tardó {span}',
   'taskStats.totalTokens': '{n} tokens',
   'taskStats.totalTitle': 'Entrada {input} · Salida {output} · Caché leída {read} · Caché escrita {write}',
+  'taskStats.cachedPercent': '{pct} % en caché',
+  'taskStats.cachedTitle': 'El {pct} % de la entrada se leyó de la caché de prompts',
   'backgroundTasks.resumeDefaultText': 'Continúa.',
   'backgroundTasks.category.subagent': 'Subagentes',
   'backgroundTasks.viaAgent': 'vía {name}',

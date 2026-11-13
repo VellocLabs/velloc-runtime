@@ -1263,6 +1263,8 @@ export const zh: Messages = {
   'backgroundTasks.meta.tookTitle': '耗时 {span}',
   'taskStats.totalTokens': '{n} token',
   'taskStats.totalTitle': '输入 {input} · 输出 {output} · 缓存读取 {read} · 缓存写入 {write}',
+  'taskStats.cachedPercent': '{pct}% 缓存',
+  'taskStats.cachedTitle': '输入中有 {pct}% 读自提示词缓存',
   'backgroundTasks.resumeDefaultText': '继续。',
   'backgroundTasks.category.subagent': '子智能体',
   'backgroundTasks.viaAgent': '来自 {name}',

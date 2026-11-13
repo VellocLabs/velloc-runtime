@@ -1283,6 +1283,8 @@ export const de: Messages = {
   'backgroundTasks.meta.tookTitle': 'Dauerte {span}',
   'taskStats.totalTokens': '{n} Tokens',
   'taskStats.totalTitle': 'Eingabe {input} · Ausgabe {output} · Cache gelesen {read} · Cache geschrieben {write}',
+  'taskStats.cachedPercent': '{pct} % gecacht',
+  'taskStats.cachedTitle': '{pct} % der Eingabe kamen aus dem Prompt-Cache',
   'backgroundTasks.resumeDefaultText': 'Mach weiter.',
   'backgroundTasks.category.subagent': 'Sub-Agenten',
   'backgroundTasks.viaAgent': 'über {name}',

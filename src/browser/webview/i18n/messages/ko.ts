@@ -1268,6 +1268,8 @@ export const ko: Messages = {
   'backgroundTasks.meta.tookTitle': '{span} 소요',
   'taskStats.totalTokens': '{n} 토큰',
   'taskStats.totalTitle': '입력 {input} · 출력 {output} · 캐시 읽기 {read} · 캐시 쓰기 {write}',
+  'taskStats.cachedPercent': '{pct}% 캐시됨',
+  'taskStats.cachedTitle': '입력의 {pct}%를 프롬프트 캐시에서 읽었습니다',
   'backgroundTasks.resumeDefaultText': '계속하세요.',
   'backgroundTasks.category.subagent': '하위 에이전트',
   'backgroundTasks.viaAgent': '{name}에서',

@@ -37,6 +37,7 @@ export function TaskRunStats({ stats, variant, running = false, className }: Tas
   const toolsTitle = t('taskStats.toolsTitle', { n: exact(stats.toolUses) })
 
   if (variant === 'strip') {
+    const cachedPct = cachedPercent(stats)
     const totalTitle = t('taskStats.totalTitle', {
       input: exact(stats.inputTokens),
       output: exact(stats.outputTokens),
@@ -63,6 +64,14 @@ export function TaskRunStats({ stats, variant, running = false, className }: Tas
             className={running ? 'text-foreground/80' : undefined}>
             {t('taskStats.totalTokens', { n: compactTokenCount(total) })}
           </MetaItem>
+        ) : null}
+        {cachedPct > 0 ? (
+          <>
+            <span aria-hidden className="-mx-1">·</span>
+            <MetaItem title={t('taskStats.cachedTitle', { pct: cachedPct })} testId="task-run-stats-cached">
+              {t('taskStats.cachedPercent', { pct: cachedPct })}
+            </MetaItem>
+          </>
         ) : null}
       </span>
     )
@@ -114,6 +123,13 @@ function LiveIcon({ icon: Icon, tint, live }: { icon: IconType; tint: string; li
       className={cn('size-3 shrink-0', tint, live && 'animate-pulse')}
     />
   )
+}
+
+/** Share of the run's whole input read from the prompt cache, as a whole
+ *  percent: cache read / (input + cache read + cache write). */
+export function cachedPercent(stats: NexusTaskRunStats): number {
+  const prompt = stats.inputTokens + stats.cacheReadTokens + stats.cacheWriteTokens
+  return prompt > 0 ? Math.round((stats.cacheReadTokens / prompt) * 100) : 0
 }
 
 /**
