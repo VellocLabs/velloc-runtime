@@ -322,47 +322,45 @@ function renderRange(
     );
   }
   for (let k = range.startIndex; k <= range.endIndex; k++) {
-    {
-      const part = (
-        <PartLineProvider
+    const part = (
+      <PartLineProvider
+        key={k}
+        line={lineAt(partLines, k)}
+        isRevealTarget={revealPart === k}
+      >
+        <MessagePrimitive.PartByIndex
+          index={k}
+          components={PART_COMPONENTS}
+        />
+      </PartLineProvider>
+    );
+    // A lone tool call reads as a group of one: a summary line that opens
+    // onto the call's own card.
+    children.push(
+      range.kind === "tool-group" &&
+        USE_TOOL_PLAN_STREAM &&
+        types[k] === "tool-call" ? (
+        <ToolCallLine
           key={k}
-          line={lineAt(partLines, k)}
-          isRevealTarget={revealPart === k}
+          index={k}
+          narrationIndex={narrationIndex}
+          narrationLine={
+            narrationIndex === undefined
+              ? null
+              : lineAt(partLines, narrationIndex)
+          }
+          revealNarration={
+            narrationIndex !== undefined && revealPart === narrationIndex
+          }
+          forceOpen={revealPart === k}
+          {...spanOf(partLines, k, k)}
         >
-          <MessagePrimitive.PartByIndex
-            index={k}
-            components={PART_COMPONENTS}
-          />
-        </PartLineProvider>
-      );
-      // A lone tool call reads as a group of one: a summary line that opens
-      // onto the call's own card.
-      children.push(
-        range.kind === "tool-group" &&
-          USE_TOOL_PLAN_STREAM &&
-          types[k] === "tool-call" ? (
-          <ToolCallLine
-            key={k}
-            index={k}
-            narrationIndex={narrationIndex}
-            narrationLine={
-              narrationIndex === undefined
-                ? null
-                : lineAt(partLines, narrationIndex)
-            }
-            revealNarration={
-              narrationIndex !== undefined && revealPart === narrationIndex
-            }
-            forceOpen={revealPart === k}
-            {...spanOf(partLines, k, k)}
-          >
-            {part}
-          </ToolCallLine>
-        ) : (
-          part
-        ),
-      );
-    }
+          {part}
+        </ToolCallLine>
+      ) : (
+        part
+      ),
+    );
   }
 
   if (range.kind === "tool-group") {

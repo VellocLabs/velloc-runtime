@@ -545,10 +545,10 @@ const ToolPlanStreamImpl: FC<ToolPlanStreamProps> = ({
 
   // Second line: the latest thought in this card's range, else — for a card
   // with no narration of its own — the message-wide memory, else the running
-  // tool's label. Shown while the card is active;
-  // the text only changes when new non-empty narration arrives, so new tools
-  // or empty text parts never blank the line (mirrors the todo card). A
-  // thought keeps its glyph wherever it comes from — a recalled one too.
+  // tool's label. Shown while the card is active. An unnarrated card keeps
+  // its line between calls through the memory; a narrated card's line is its
+  // own thought or running call, since its narration already stands above it.
+  // A thought keeps its glyph wherever it comes from — a recalled one too.
   const narrationSource: { text: string; isReasoning: boolean } | undefined =
     !isActive
       ? undefined

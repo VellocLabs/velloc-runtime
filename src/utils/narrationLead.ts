@@ -19,7 +19,7 @@ export function isCompactNarration(text: string | undefined): boolean {
     (line) =>
       /^\s*(#{1,6}\s|[-*+]\s|\d+[.)]\s|>|\|)/.test(line) ||
       // A setext underline, a thematic break, or a table's delimiter row.
-      /^\s*(=+|[-*_](\s*[-*_]){2,})\s*$/.test(line) ||
-      /^\s*\|?\s*:?-+:?\s*(\|\s*:?-+:?\s*)+\|?\s*$/.test(line),
+      /^\s*(=+|-+|[-*_](\s*[-*_]){2,})\s*$/.test(line) ||
+      (/^[\s|:-]+$/.test(line) && line.includes('|') && line.includes('-')),
   )
 }

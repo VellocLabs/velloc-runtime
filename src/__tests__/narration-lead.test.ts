@@ -27,6 +27,8 @@ describe('isCompactNarration', () => {
     expect(isCompactNarration('| a | b |\n| - | - |')).toBe(false)
     expect(isCompactNarration('Summary\n---')).toBe(false)
     expect(isCompactNarration('Summary\n===')).toBe(false)
+    expect(isCompactNarration('Summary\n--')).toBe(false)
+    expect(isCompactNarration('Only\n--|')).toBe(false)
     expect(isCompactNarration('a | b\n--|--')).toBe(false)
     expect(isCompactNarration('Above.\n* * *')).toBe(false)
   })
