@@ -2520,6 +2520,9 @@ export const ko: Messages = {
   'settings.network.problem.scheme': '주소는 http://, https://, socks4:// 또는 socks5://로 시작해야 합니다.',
   'settings.network.problem.credentials': '주소에 사용자 이름과 비밀번호를 포함할 수 없습니다.',
   'settings.network.problem.tooLong': '목록이 너무 깁니다.',
+  'settings.network.problem.pacScheme': '주소는 http:// 또는 https://로 시작해야 합니다.',
+  'settings.network.privateNetworkNote':
+    '프록시를 거치면 웹 도구 요청이 로컬 네트워크로 향하는지 호스트가 판단할 수 없으므로 이러한 주소를 더 이상 차단하지 않습니다. 어디에 도달할지는 프록시가 결정합니다.',
   'settings.network.overridden.policy': '조직에서 이 설정을 관리합니다.',
   'settings.network.overridden.commandLine': '이번 실행에서는 명령줄 스위치가 프록시를 지정합니다.',
   'settings.network.overridden.extension': '확장 프로그램이 이 설정을 제어합니다.',

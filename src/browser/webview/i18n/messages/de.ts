@@ -2579,6 +2579,9 @@ export const de: Messages = {
   'settings.network.problem.credentials':
     'Benutzername und Passwort dürfen nicht Teil der Adresse sein.',
   'settings.network.problem.tooLong': 'Diese Liste ist zu lang.',
+  'settings.network.problem.pacScheme': 'Beginne die Adresse mit http:// oder https://.',
+  'settings.network.privateNetworkNote':
+    'Über einen Proxy kann der Host nicht mehr erkennen, ob eine Anfrage eines Web-Tools in dein lokales Netzwerk geht, und blockiert solche Adressen daher nicht mehr. Was erreicht wird, entscheidet der Proxy.',
   'settings.network.overridden.policy': 'Deine Organisation verwaltet diese Einstellung.',
   'settings.network.overridden.commandLine':
     'Ein Befehlszeilenschalter legt den Proxy für diese Ausführung fest.',

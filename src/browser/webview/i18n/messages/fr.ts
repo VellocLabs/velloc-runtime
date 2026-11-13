@@ -2588,6 +2588,9 @@ export const fr: Messages = {
   'settings.network.problem.credentials':
     'L’adresse ne peut pas contenir de nom d’utilisateur ni de mot de passe.',
   'settings.network.problem.tooLong': 'Cette liste est trop longue.',
+  'settings.network.problem.pacScheme': 'L’adresse doit commencer par http:// ou https://.',
+  'settings.network.privateNetworkNote':
+    'À travers un proxy, l’hôte ne peut plus savoir si une requête d’un outil web vise votre réseau local ; il ne bloque donc plus ces adresses. C’est le proxy qui décide de ce qu’il atteint.',
   'settings.network.overridden.policy': 'Votre organisation gère ce paramètre.',
   'settings.network.overridden.commandLine':
     'Une option de ligne de commande définit le proxy pour cette exécution.',

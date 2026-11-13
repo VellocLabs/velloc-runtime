@@ -53,6 +53,10 @@ describe('proxy form', () => {
       field: 'pacUrl',
       reason: 'scheme',
     })
+    expect(checkProxyForm(form({ mode: 'pac', pacUrl: 'file:///C:/corp/proxy.pac' }))).toEqual({
+      field: 'pacUrl',
+      reason: 'scheme',
+    })
     expect(
       checkProxyForm(form({ mode: 'pac', pacUrl: 'https://example.com/proxy.pac' })),
     ).toBeNull()

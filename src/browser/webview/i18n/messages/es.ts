@@ -2586,6 +2586,9 @@ export const es: Messages = {
   'settings.network.problem.credentials':
     'La dirección no puede incluir un nombre de usuario ni una contraseña.',
   'settings.network.problem.tooLong': 'Esta lista es demasiado larga.',
+  'settings.network.problem.pacScheme': 'La dirección debe empezar por http:// o https://.',
+  'settings.network.privateNetworkNote':
+    'A través de un proxy, el host ya no puede saber si una solicitud de una herramienta web va a tu red local, así que deja de bloquear esas direcciones. Lo que se alcanza lo decide el proxy.',
   'settings.network.overridden.policy': 'Tu organización administra esta configuración.',
   'settings.network.overridden.commandLine':
     'Un parámetro de la línea de comandos define el proxy para esta ejecución.',

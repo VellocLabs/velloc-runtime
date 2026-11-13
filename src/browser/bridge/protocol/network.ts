@@ -119,7 +119,7 @@ export type BridgeNetworkOnWsClosePayload = {
   wasClean: boolean
 }
 
-/** How the host's network stack reaches the network (F-27). `fixed` sends
+/** How the host's network stack reaches the network (F-18). `fixed` sends
  *  everything through `server`; `pac` asks the script at `pacUrl`. */
 export type BridgeProxyMode = 'system' | 'direct' | 'fixed' | 'pac' | 'autoDetect'
 

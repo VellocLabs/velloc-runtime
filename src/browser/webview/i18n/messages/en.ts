@@ -2619,6 +2619,9 @@ export const en = {
     'Start the address with http://, https://, socks4:// or socks5://.',
   'settings.network.problem.credentials': 'A user name and password can’t be part of the address.',
   'settings.network.problem.tooLong': 'This list is too long.',
+  'settings.network.problem.pacScheme': 'Start the address with http:// or https://.',
+  'settings.network.privateNetworkNote':
+    'Through a proxy, the host can no longer tell whether a web tool request is headed for your local network, so it no longer blocks those addresses. The proxy decides what it reaches.',
   'settings.network.overridden.policy': 'Your organization manages this setting.',
   'settings.network.overridden.commandLine': 'A command-line switch sets the proxy for this run.',
   'settings.network.overridden.extension': 'An extension controls this setting.',

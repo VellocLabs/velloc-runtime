@@ -10,7 +10,7 @@ import type {
   BridgeProxySettings,
 } from "../../../bridge/protocol/network";
 import { useT, type TranslateFn } from "../../i18n";
-import { useCapabilities } from "../../useCan";
+import { mayIssue, useCapabilities } from "../../useCan";
 import { getProxySettings, setProxySettings } from "../../nexusBridgeActions";
 import {
   PROXY_MODES,
@@ -48,6 +48,13 @@ const PROBLEM_LABELS: Record<ProxyFormProblem["reason"], MessageKey> = {
   tooLong: "settings.network.problem.tooLong",
 };
 
+function problemLabel(problem: ProxyFormProblem): MessageKey {
+  if (problem.field === "pacUrl" && problem.reason === "scheme") {
+    return "settings.network.problem.pacScheme";
+  }
+  return PROBLEM_LABELS[problem.reason];
+}
+
 // The stores that outrank the user's own value, each with its own line.
 const OVERRIDE_LABELS: Partial<Record<BridgeProxySettings["source"], MessageKey>> = {
   policy: "settings.network.overridden.policy",
@@ -57,7 +64,7 @@ const OVERRIDE_LABELS: Partial<Record<BridgeProxySettings["source"], MessageKey>
 
 /**
  * Network — the proxy every request of the host's network stack leaves
- * through (F-27): model requests, web tools and pages alike. The value is
+ * through (F-18): model requests, web tools and pages alike. The value is
  * the default profile's proxy setting, read and written through the
  * `network` capability; a write takes effect at once.
  *
@@ -74,6 +81,7 @@ export function NetworkSection({
   const allowed =
     capabilities.can("network", "proxyGet") &&
     capabilities.can("network", "proxySet");
+  const mayRead = mayIssue(capabilities, "network", "proxyGet");
   const [settings, setSettings] = React.useState<BridgeProxySettings | null>(null);
   const [form, setForm] = React.useState<ProxyForm | null>(null);
   const [unavailable, setUnavailable] = React.useState(false);
@@ -90,8 +98,9 @@ export function NetworkSection({
   }, []);
 
   React.useEffect(() => {
-    if (!allowed) return;
+    if (!mayRead) return;
     let cancelled = false;
+    setUnavailable(false);
     void (async () => {
       try {
         const next = await getProxySettings(transport);
@@ -103,7 +112,7 @@ export function NetworkSection({
     return () => {
       cancelled = true;
     };
-  }, [transport, allowed, show]);
+  }, [transport, mayRead, show]);
 
   const title = t("settings.network.title");
   if (!allowed || unavailable) {
@@ -135,6 +144,7 @@ export function NetworkSection({
   };
 
   const apply = async () => {
+    if (locked || !changed) return;
     setAttempted(true);
     if (problem) return;
     setSaving(true);
@@ -157,7 +167,7 @@ export function NetworkSection({
   const problemLine = (field: ProxyFormProblem["field"]) =>
     shownProblem?.field === field ? (
       <p className="mt-1 text-destructive text-xs" data-testid={`network-proxy-problem-${field}`}>
-        {t(PROBLEM_LABELS[shownProblem.reason])}
+        {t(problemLabel(shownProblem))}
       </p>
     ) : null;
 
@@ -240,6 +250,11 @@ export function NetworkSection({
                 )
               : null}
           </SettingsCard>
+          {form.mode === "fixed" || form.mode === "pac" ? (
+            <SettingsNotice testId="network-proxy-private-network">
+              {t("settings.network.privateNetworkNote")}
+            </SettingsNotice>
+          ) : null}
           {refused ? (
             <SettingsNotice tone="warning" testId="network-proxy-refused">
               {t("settings.network.refused")}

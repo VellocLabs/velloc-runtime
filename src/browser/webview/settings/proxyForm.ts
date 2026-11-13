@@ -1,10 +1,11 @@
+import type { BrowserBridgeRequestPayload } from '../../bridge/protocol/core'
 import type {
   BridgeProxyMode,
   BridgeProxySettings,
 } from '../../bridge/protocol/network'
 
 /**
- * The proxy form of the Network settings page (F-27), apart from the page so
+ * The proxy form of the Network settings page (F-18), apart from the page so
  * its rules are testable without a renderer. The host checks every write
  * again; these checks only let the page name the field at fault before one
  * is sent.
@@ -33,7 +34,7 @@ export const PROXY_MODES: readonly BridgeProxyMode[] = [
 export const MAX_BYPASS_LIST_CHARS = 4096
 
 const SERVER_SCHEMES = new Set(['http', 'https', 'socks4', 'socks5'])
-const PAC_SCHEMES = new Set(['http:', 'https:', 'file:'])
+const PAC_SCHEMES = new Set(['http:', 'https:'])
 const AUTHORITY = /^(\[[0-9a-f:.]+\]|[a-z0-9._-]+)(?::(\d{1,5}))?$/i
 
 export function formFromSettings(settings: BridgeProxySettings): ProxyForm {
@@ -91,12 +92,9 @@ export function checkProxyForm(form: ProxyForm): ProxyFormProblem | null {
 }
 
 /** What `proxySet` is sent: only the fields the chosen mode reads. */
-export function payloadFromForm(form: ProxyForm): {
-  mode: BridgeProxyMode
-  server?: string
-  bypassList?: string
-  pacUrl?: string
-} {
+export function payloadFromForm(
+  form: ProxyForm,
+): BrowserBridgeRequestPayload<'network', 'proxySet'> {
   if (form.mode === 'fixed') {
     const bypassList = form.bypassList.trim()
     return {

@@ -2529,6 +2529,9 @@ export const ja: Messages = {
   'settings.network.problem.scheme': 'アドレスは http://、https://、socks4://、socks5:// のいずれかで始めてください。',
   'settings.network.problem.credentials': 'アドレスにユーザー名とパスワードを含めることはできません。',
   'settings.network.problem.tooLong': 'このリストは長すぎます。',
+  'settings.network.problem.pacScheme': 'アドレスは http:// または https:// で始めてください。',
+  'settings.network.privateNetworkNote':
+    'プロキシを経由すると、Web ツールのリクエストがローカルネットワーク宛てかどうかをホストが判断できなくなるため、そうしたアドレスはブロックされなくなります。到達先はプロキシ側で決まります。',
   'settings.network.overridden.policy': 'この設定は組織によって管理されています。',
   'settings.network.overridden.commandLine': '今回の起動ではコマンドラインスイッチがプロキシを指定しています。',
   'settings.network.overridden.extension': 'この設定は拡張機能によって制御されています。',

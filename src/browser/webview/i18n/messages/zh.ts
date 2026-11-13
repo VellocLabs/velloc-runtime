@@ -2473,6 +2473,9 @@ export const zh: Messages = {
   'settings.network.problem.scheme': '地址需以 http://、https://、socks4:// 或 socks5:// 开头。',
   'settings.network.problem.credentials': '地址中不能包含用户名和密码。',
   'settings.network.problem.tooLong': '列表过长。',
+  'settings.network.problem.pacScheme': '地址需以 http:// 或 https:// 开头。',
+  'settings.network.privateNetworkNote':
+    '经过代理时，宿主无法再判断网页工具的请求是否发往你的本地网络，因此不再拦截这类地址。能访问到哪里由代理决定。',
   'settings.network.overridden.policy': '此设置由你的组织管理。',
   'settings.network.overridden.commandLine': '本次运行的代理由命令行开关指定。',
   'settings.network.overridden.extension': '此设置由扩展程序控制。',
