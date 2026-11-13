@@ -215,7 +215,7 @@ function getErrorText(value: unknown): string {
   return String(value ?? '')
 }
 
-function cleanupDetail(text: string): string {
+export function cleanupDetail(text: string): string {
   return text
     .replace(/^\s*(LLM_ERROR|provider_error|api_error|STREAM_ERROR):\s*/i, '')
     .replace(/^\s*Provider connection failed after \d+ attempts? \([^)]*\)\. Last error:\s*/i, '')

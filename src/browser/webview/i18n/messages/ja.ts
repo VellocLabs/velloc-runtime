@@ -516,15 +516,15 @@ export const ja: Messages = {
   'providerIssue.rawStream.targetNotAllowed.summary':
     'リクエストのアドレスが、このプロバイダに設定されたドメインの外にあるため、{product} は送信しませんでした。設定でプロバイダのベース URL を確認してください。',
   'providerIssue.rawStream.responseTooLarge.summary':
-    'プロバイダの応答がモデル応答の上限を超えたため、{product} は読み取りを中止しました。[再試行] を選ぶか、より少ない応答を返すモデルを使用してください。',
+    'プロバイダの応答がモデル応答の上限を超えたため、{product} は読み取りを中止しました。「再試行」 を選ぶか、より少ない応答を返すモデルを使用してください。',
   'providerIssue.rawStream.protocol.summary':
     'プロバイダの応答が {product} の想定するプロトコルに従っていないため、読み取れませんでした。プロバイダの設定とエンドポイントを確認してください。',
   'providerIssue.rawStream.network.summary':
-    'プロバイダへの接続に失敗したか中断されたため、応答を読み取れませんでした。[再試行] を選んでください。',
+    'プロバイダへの接続に失敗したか中断されたため、応答を読み取れませんでした。「再試行」 を選んでください。',
   'providerIssue.rawStream.cancelled.summary':
     'リクエストは完了前にキャンセルされました。',
   'providerIssue.rawStream.signInRequired.summary':
-    '設定でこのプロバイダにサインインしてから、[再試行] を選んでください。',
+    '設定でこのプロバイダにサインインしてから、「再試行」 を選んでください。',
   'providerIssue.network.title': 'ネットワーク接続の問題',
   'providerIssue.network.summary':
     '{product} はプロバイダに安定して接続できませんでした。{product} は自動的に再試行してから、API エラーを表示します。',

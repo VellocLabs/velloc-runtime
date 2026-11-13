@@ -141,8 +141,10 @@ export function retryReasonText(
   const detail = rawStreamProblem
     ? t(rawStreamProblemSummaryKey(rawStreamProblem))
     : detailText.replace(/\s+/g, " ");
+  // The cap bounds a provider's own text, which can be a whole JSON body. A
+  // catalog sentence is ours and bounded, and the row truncates with CSS.
   const short =
-    detail.length > MAX_RETRY_DETAIL_CHARS
+    rawStreamProblem === undefined && detail.length > MAX_RETRY_DETAIL_CHARS
       ? `${detail.slice(0, MAX_RETRY_DETAIL_CHARS - 1).trimEnd()}…`
       : detail;
   const segments: string[] = [];

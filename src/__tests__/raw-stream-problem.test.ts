@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { rawStreamProblemOf, rawStreamProblemSummaryKey } from '../utils/rawStreamProblem'
 import { retryReasonText } from '../components/assistant-ui/running-indicator'
 import { createTranslate } from '../browser/webview/i18n'
+import { OAUTH_SIGN_IN_MESSAGE } from '../models/drivers/driverStreamHost'
 
 const t = createTranslate('en')
 
@@ -22,6 +23,24 @@ describe('rawStreamProblemOf', () => {
     ['Sign in to this provider in Settings to continue', 'sign_in_required'],
   ])('recognises %s', (detail, problem) => {
     expect(rawStreamProblemOf(detail)).toBe(problem)
+  })
+
+  it('recognises the code behind the wire prefix the detail is stored with', () => {
+    expect(rawStreamProblemOf('provider_error: EGRESS_BLOCKED: refused, address is private')).toBe(
+      'egress_blocked',
+    )
+    expect(rawStreamProblemOf('provider_error: PROTOCOL: rawStreamRead answered without `done`')).toBe(
+      'protocol',
+    )
+    expect(
+      rawStreamProblemOf(
+        'Provider connection failed after 3 attempts (Provider connection failed). Last error: EGRESS_INVALID: the proxy "pool" carries https requests only',
+      ),
+    ).toBe('egress_invalid')
+  })
+
+  it('recognises the sign-in sentence the host stores', () => {
+    expect(rawStreamProblemOf(OAUTH_SIGN_IN_MESSAGE)).toBe('sign_in_required')
   })
 
   it('leaves other provider errors to their own classification', () => {
@@ -64,6 +83,18 @@ describe('retryReasonText', () => {
     })
     expect(text).toContain('此服务商通过其声明的代理发送请求')
     expect(text).not.toContain('cannot send a request')
+  })
+
+  it('shows the whole catalog sentence, not a truncated one', () => {
+    const text = retryReasonText(t, {
+      remainingSeconds: 3,
+      attempt: 1,
+      maxRetries: 10,
+      errorDetail:
+        'EGRESS_INVALID: the proxy "pool" carries https requests only; the request was not sent',
+    })
+    expect(text).toContain(t('providerIssue.rawStream.egressInvalid.summary'))
+    expect(text).not.toContain('…')
   })
 
   it('still shows an unfamiliar provider detail as-is', () => {

@@ -1,14 +1,13 @@
 /**
  * A refusal or failure that came out of the raw provider stream (the host's
  * byte transport for provider-defined wire protocols), recognised by the
- * code prefix the transport puts on its message. The worker carries that
- * message as the API-error detail; this maps it to a catalog sentence so the
- * card and the retry status line say it in the reader's language instead of
- * printing the transport's English text.
- *
- * Dependency-free: the worker and the webview both import it.
+ * code the transport puts on its message. The worker carries that message as
+ * the API-error detail; this maps it to a catalog sentence so the card and
+ * the retry status line say it in the reader's language instead of printing
+ * the transport's English text.
  */
 import type { MessageKey } from '../browser/webview/i18n/messages/en'
+import { cleanupDetail } from './providerConnectivity'
 
 export type RawStreamProblem =
   | 'egress_unsupported'
@@ -62,7 +61,9 @@ const SUMMARY_KEYS: Readonly<Record<RawStreamProblem, MessageKey>> = {
 
 /** The transport code a stored API-error detail starts with, or undefined. */
 export function rawStreamProblemOf(detail: string): RawStreamProblem | undefined {
-  const text = detail.trim()
+  // A failure no classifier branch claimed reaches the card as the raw error
+  // message, which still carries the wire's `provider_error: ` prefix.
+  const text = cleanupDetail(detail)
   if (STREAM_NETWORK_ERROR.test(text)) return 'network'
   if (SIGN_IN_REQUIRED.test(text)) return 'sign_in_required'
   const match = CODE_PREFIX.exec(text)
