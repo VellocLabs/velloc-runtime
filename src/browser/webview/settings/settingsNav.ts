@@ -193,7 +193,9 @@ export function visibleNav(
  * page is visible (`onlyWithout`) resolves to that host page, so a deep link
  * to Session models lands on Models — scrolled to it — rather than on the
  * first nav entry; an embedded part (`remoteAccess`) resolves to the page
- * holding it. Undefined when the id is not reachable at all.
+ * holding it whenever that page is reachable — the page renders only the parts
+ * this connection may see, so a part gated off costs the part, not the page.
+ * Undefined when there is no page to land on.
  */
 export function resolveSettingsPage(
   id: SettingsSectionId,

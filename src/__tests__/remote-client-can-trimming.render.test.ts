@@ -274,6 +274,9 @@ describe('the Remote access section follows the channel (beta-only)', () => {
     expect(visibleNetworkParts(full, true, 'stable')).not.toContain('remoteAccess')
     expect(visibleNetworkParts(full, true, 'beta')).toContain('remoteAccess')
     expect(isSettingsSectionVisible('remoteAccess', full, true, 'stable')).toBe(false)
+    // The deep link still lands on the page that holds the gated-off part: the
+    // page renders only the sections this connection may see.
+    expect(resolveSettingsPage('remoteAccess', visibleNav(full, true, 'stable'))).toBe('network')
   })
 })
 
