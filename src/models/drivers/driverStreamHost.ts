@@ -17,10 +17,10 @@ import type {
 import {
   openRawProviderStream,
   RawProviderStreamError,
+  refuseUnservedEgress,
   type RawProviderStream,
 } from '../../browser/bridge/rawProviderStream'
-import { hostServesPrimitive } from './driverRegistry'
-import { EGRESS_UNSUPPORTED, RAW_STREAM_EGRESS_PRIMITIVE } from './providerEgress'
+import { EGRESS_UNSUPPORTED } from './providerEgress'
 import { DriverChunkEmitter } from './chunkEmitter'
 import { buildSystemInstruction } from './hostCallOptions'
 import { buildThinkingBodyExtension } from '../../config/nexusModelConfig/thinkingTierParams'
@@ -546,15 +546,9 @@ class DriverStream {
       // The stream's own table guards its request, whatever the realm's
       // table has become since it opened.
       this.masking?.checkEgress(request)
-      // Security: a host that does not know the input would send the
-      // request on its default route, so it is not sent to one.
+      // Before the send is counted: a refused egress never left.
       const egress = seamed?.prepared.plan?.egress
-      if (egress && !hostServesPrimitive(RAW_STREAM_EGRESS_PRIMITIVE)) {
-        throw new RawProviderStreamError(
-          EGRESS_UNSUPPORTED,
-          `this Velloc cannot send a request through the proxy "${egress.name}"; the request was not sent`,
-        )
-      }
+      if (egress) refuseUnservedEgress(`the proxy "${egress.name}"`)
       this.sends += 1
       this.status = undefined
       if (seamed) this.lastContext = seamed.prepared.context

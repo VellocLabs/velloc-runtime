@@ -30,13 +30,14 @@ const SCHEMES = ['http', 'https', 'socks5'] as const
 const isRecord = (v: unknown): v is Record<string, unknown> =>
   typeof v === 'object' && v !== null && !Array.isArray(v)
 
-function isIpv6(host: string): boolean {
-  if (!host.includes(':')) return false
+/** `host` in the form a URL gives it (an IPv6 address compressed, no
+ *  brackets), or undefined when it is no IPv6 address. */
+function canonicalIpv6(host: string): string | undefined {
+  if (!host.includes(':')) return undefined
   try {
-    new URL(`http://[${host}]/`)
-    return true
+    return new URL(`http://[${host}]/`).hostname.slice(1, -1)
   } catch {
-    return false
+    return undefined
   }
 }
 
@@ -65,9 +66,9 @@ function checkHosts(value: unknown, label: string, bad: Problems): string[] | un
   }
   const out: string[] = []
   for (const entry of value as string[]) {
-    const host = entry.trim().toLowerCase()
-    const plain = HOST_NAME.test(host) || isIpv6(host)
-    if (!plain) {
+    const trimmed = entry.trim().toLowerCase()
+    const host = HOST_NAME.test(trimmed) ? trimmed : canonicalIpv6(trimmed)
+    if (host === undefined) {
       bad(`${label}: "${entry}" is not a plain host name or IP address (no scheme, port, brackets, path or wildcard)`)
       return undefined
     }

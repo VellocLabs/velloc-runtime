@@ -133,16 +133,23 @@ export function setRawProviderEgressCheck(check: RawProviderEgressCheck | undefi
   egressCheck = check
 }
 
+/** Throws `EGRESS_UNSUPPORTED` when the host does not list the `egress`
+ *  primitive. Security: such a host ignores `egress` and sends the request on
+ *  its default route. `what` names the proxy in the message. */
+export function refuseUnservedEgress(what: string): void {
+  if (hostServesPrimitive(RAW_STREAM_EGRESS_PRIMITIVE)) return
+  throw new RawProviderStreamError(
+    EGRESS_UNSUPPORTED,
+    `this Velloc cannot send a request through ${what}; the request was not sent`,
+  )
+}
+
 export async function openRawProviderStream(
   transport: BrowserBridgeTransport,
   input: RawProviderStreamRequest,
 ): Promise<RawProviderStream> {
   input.signal?.throwIfAborted()
-  // Security: a host that does not know `egress` ignores it and sends the
-  // request on its default route.
-  if (input.egress !== undefined && !hostServesPrimitive(RAW_STREAM_EGRESS_PRIMITIVE)) {
-    throw new RawProviderStreamError(EGRESS_UNSUPPORTED, 'this host cannot send a request through a proxy; the request was not sent')
-  }
+  if (input.egress !== undefined) refuseUnservedEgress('a proxy')
   const request = egressCheck?.(input) ?? input
   const idleTimeoutMs = Math.min(
     request.idleTimeoutMs ?? RAW_STREAM_MAX_IDLE_TIMEOUT_MS,

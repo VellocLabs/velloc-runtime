@@ -88,10 +88,12 @@ describe('a manifest egress', () => {
     const { table, problems } = check({
       a: { url: 'http://Gate.Example.com:8080', hosts: ['gate.example.com'] },
       b: { url: 'socks5://[2001:DB8::1]:1080', hosts: ['2001:db8::1'] },
+      d: { url: 'http://[2001:db8:0:0::1]:8080', hosts: ['2001:DB8:0:0::1'] },
       c: { url: 'https://me:{{secret:proxy_pass}}@gate.example.com', hosts: ['gate.example.com'] },
     })
     expect(problems).toEqual([])
-    expect(Object.keys(table!)).toEqual(['a', 'b', 'c'])
+    expect(Object.keys(table!)).toEqual(['a', 'b', 'd', 'c'])
+    expect(table!.d!.hosts).toEqual(['2001:db8::1'])
   })
 
   it('refuses more proxies than the limit', () => {
