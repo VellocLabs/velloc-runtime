@@ -1,5 +1,10 @@
 import { useEffect, useState } from 'react'
 import type { PlanPanelEntry } from '@/components/assistant-ui/plan-panel-context'
+import {
+  dropPlanFeedbackDraft,
+  readPlanFeedbackDraft,
+  writePlanFeedbackDraft,
+} from '@/components/assistant-ui/planFeedbackDrafts'
 import { StaticMarkdown } from '@/components/assistant-ui/static-markdown'
 import { useT } from './i18n'
 import { useSessionAreaVisible } from './sessionAreaVisibility'
@@ -24,7 +29,19 @@ export function PlanDetailsPanel({
   onClose: () => void
 }) {
   const t = useT()
-  const [feedback, setFeedback] = useState('')
+  // The draft lives in the per-plan store, so it survives this body's remount
+  // on a session switch and never shows under another plan.
+  const draftKey = entry.toolCallId
+  const [draft, setDraft] = useState(() => ({
+    key: draftKey,
+    text: readPlanFeedbackDraft(draftKey),
+  }))
+  const feedback =
+    draft.key === draftKey ? draft.text : readPlanFeedbackDraft(draftKey)
+  const setFeedback = (text: string) => {
+    writePlanFeedbackDraft(draftKey, text)
+    setDraft({ key: draftKey, text })
+  }
   const [busy, setBusy] = useState(false)
 
   // Esc closes — only while the panel is on screen. The shell keeps the
@@ -45,6 +62,7 @@ export function PlanDetailsPanel({
     setBusy(true)
     try {
       await onResolve(decision, feedback)
+      dropPlanFeedbackDraft(draftKey)
       onClose()
     } finally {
       setBusy(false)

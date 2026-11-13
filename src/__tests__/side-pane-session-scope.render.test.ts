@@ -162,17 +162,43 @@ describe('SidePaneBody across a session switch', () => {
     expect(loadTaskTranscript.mock.calls.slice(loadsInA)).toEqual([])
   })
 
-  it('does not carry a plan feedback draft into another session', () => {
-    const { rerender } = render(
-      createElement(SidePaneBody, bodyProps('plan', { activeSessionId: 'A', planEntry: plan('plan of a') })),
-    )
-    const box = () => document.querySelector<HTMLTextAreaElement>('[data-slot="plan-panel-feedback"]')!
-    fireEvent.change(box(), { target: { value: 'feedback for a' } })
-    expect(box().value).toBe('feedback for a')
+  const feedbackBox = () => document.querySelector<HTMLTextAreaElement>('[data-slot="plan-panel-feedback"]')!
+
+  it('keeps a plan feedback draft with its plan across a switch away and back', () => {
+    const inA = bodyProps('plan', { activeSessionId: 'A', planEntry: plan('round trip of a') })
+    const { rerender } = render(createElement(SidePaneBody, inA))
+    fireEvent.change(feedbackBox(), { target: { value: 'feedback for a' } })
     rerender(
-      createElement(SidePaneBody, bodyProps('plan', { activeSessionId: 'B', planEntry: plan('plan of b') })),
+      createElement(SidePaneBody, bodyProps('plan', { activeSessionId: 'B', planEntry: plan('round trip of b') })),
     )
-    expect(box().value).toBe('')
+    expect(feedbackBox().value).toBe('')
+    rerender(createElement(SidePaneBody, inA))
+    expect(feedbackBox().value).toBe('feedback for a')
+  })
+
+  it('never shows a plan feedback draft under a different plan', () => {
+    const { rerender } = render(
+      createElement(SidePaneBody, bodyProps('plan', { activeSessionId: 'A', planEntry: plan('first plan of a') })),
+    )
+    fireEvent.change(feedbackBox(), { target: { value: 'about the first plan' } })
+    rerender(
+      createElement(SidePaneBody, bodyProps('plan', { activeSessionId: 'A', planEntry: plan('second plan of a') })),
+    )
+    expect(feedbackBox().value).toBe('')
+  })
+
+  it('drops the plan feedback draft once the plan resolves', async () => {
+    const onPlanResolve = vi.fn()
+    const inA = bodyProps('plan', { activeSessionId: 'A', planEntry: plan('resolved plan of a'), onPlanResolve })
+    const { rerender } = render(createElement(SidePaneBody, inA))
+    fireEvent.change(feedbackBox(), { target: { value: 'keep planning, please' } })
+    fireEvent.click(document.querySelector('[data-slot="plan-panel-keep-planning"]')!)
+    await waitFor(() => expect(onPlanResolve).toHaveBeenCalledWith('reject', 'keep planning, please'))
+    rerender(
+      createElement(SidePaneBody, bodyProps('plan', { activeSessionId: 'B', planEntry: plan('round trip of b') })),
+    )
+    rerender(createElement(SidePaneBody, inA))
+    await waitFor(() => expect(feedbackBox().value).toBe(''))
   })
 
   it('keeps the A2UI mount element across the switch', () => {

@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { ChevronRightIcon, ClipboardListIcon } from 'lucide-react'
 import { useT } from '@/browser/webview/i18n'
 import { usePlanPanel } from './plan-panel-context'
+import { dropPlanFeedbackDraft } from './planFeedbackDrafts'
 
 /**
  * Plan-approval control in the composer footer: status + "View plan" (opens
@@ -21,6 +22,7 @@ export function PlanApprovalFooterControl() {
     setBusy(true)
     try {
       await resolve?.(decision, feedback)
+      dropPlanFeedbackDraft(pending.toolCallId)
     } finally {
       setBusy(false)
     }
