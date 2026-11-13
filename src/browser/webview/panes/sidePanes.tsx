@@ -36,6 +36,8 @@ export type SidePaneContentProps = {
   onTaskResume: (subAgentSessionId: string, prompt: string) => void
   loadTaskTranscript: (subAgentSessionId: string) => Promise<NexusTaskDetail | null>
   diffTarget?: RightPanelDiffTarget | null
+  /** The person went back from the shown file diff to the history. */
+  onDismissDiffTarget?: () => void
   skillTarget?: RightPanelSkillTarget | null
   loadedSkills?: readonly SkillPanelListRow[]
   onSelectSkill?: (skill: SkillPanelListRow) => void
@@ -48,7 +50,10 @@ export type SidePaneContentProps = {
   agentChanges?: readonly NexusAgentChangeSection[]
   loadAgentTurnDiffDetail?: LoadAgentTurnDiffDetail
   onOpenFile?: (target: RightPanelFileTarget) => void
-  /** The foreground session, whose A2UI surfaces the A2UI pane shows. */
+  /**
+   * The foreground session: the A2UI pane shows its surfaces, and every other
+   * body's own view state belongs to it.
+   */
   activeSessionId?: string | null
 }
 
@@ -60,15 +65,26 @@ function EmptyState({ label }: { label: string }): ReactElement {
   )
 }
 
+type SidePaneBodyKind = Exclude<SidePaneKind, 'files' | 'browser' | 'mods' | 'terminal' | 'sidechat'>
+type SidePaneBodyProps = SidePaneContentProps & { kind: SidePaneBodyKind }
+
 /**
  * One pane's body by kind; the Files, Plugins and Terminal panes draw their
  * own (`FilesPane`, `ModsPane`, `TerminalPane`) and the browser pane's body
  * is the native view's placeholder (`WebviewArea`).
+ *
+ * Contract: a body's own view state (the open detail, a draft, a pending
+ * load) belongs to the session it was opened in. Another session becoming
+ * the foreground one starts the body fresh; none of that state is carried
+ * across. The A2UI body holds no such state and stays mounted, so the
+ * element its session draws into is kept.
  */
-export function SidePaneBody({
-  kind,
-  ...props
-}: SidePaneContentProps & { kind: Exclude<SidePaneKind, 'files' | 'browser' | 'mods' | 'terminal' | 'sidechat'> }): ReactElement {
+export function SidePaneBody(props: SidePaneBodyProps): ReactElement {
+  const scope = props.kind === 'a2ui' ? 'a2ui' : `${props.kind}:${props.activeSessionId ?? ''}`
+  return <SessionPaneBody key={scope} {...props} />
+}
+
+function SessionPaneBody({ kind, ...props }: SidePaneBodyProps): ReactElement {
   const t = useT()
   switch (kind) {
     case 'tasks':
@@ -98,6 +114,7 @@ export function SidePaneBody({
       return (
         <DiffPanel
           target={props.diffTarget ?? null}
+          onDismissTarget={props.onDismissDiffTarget}
           turnDiffHistory={props.turnDiffHistory}
           loadTurnDiffDetail={props.loadTurnDiffDetail}
           requestTurnDiffHistory={props.requestTurnDiffHistory}

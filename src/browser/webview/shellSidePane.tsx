@@ -87,6 +87,7 @@ export interface ShellSidePaneInputs {
   handleResumeSubAgent: PaneBodyProps['onTaskResume']
   handleLoadSubAgentTranscript: PaneBodyProps['loadTaskTranscript']
   rightPanelDiffTarget: PaneBodyProps['diffTarget']
+  dismissDiffTarget: PaneBodyProps['onDismissDiffTarget']
   rightPanelSkillTarget: PaneBodyProps['skillTarget']
   activeLoadedSkills: PaneBodyProps['loadedSkills']
   handleSelectSkill: PaneBodyProps['onSelectSkill']
@@ -120,7 +121,7 @@ export function renderShellSidePane(inputs: ShellSidePaneInputs, kind: SidePaneK
     handleStopBackgroundTask, handleResumeSubAgent, handleLoadSubAgentTranscript,
     rightPanelDiffTarget, rightPanelSkillTarget, activeLoadedSkills, handleSelectSkill,
     loadToolCallDetail, loadBundledSkillBody, activeState, loadTurnDiffDetail,
-    requestTurnDiffHistory, loadAgentTurnDiffDetail, openFile,
+    requestTurnDiffHistory, loadAgentTurnDiffDetail, openFile, dismissDiffTarget,
   } = inputs
   const name = sidePaneName(kind)
   const frame = (title: ReactNode, body: ReactNode, actions?: ReactNode) => (
@@ -151,6 +152,7 @@ export function renderShellSidePane(inputs: ShellSidePaneInputs, kind: SidePaneK
     return (
       <ModsPane
         modUi={shellModUi}
+        sessionKey={activeSessionId}
         onCloseTab={handleCloseModTab}
         frame={({ title, body }) => frame(title, body)}
       />
@@ -278,6 +280,7 @@ export function renderShellSidePane(inputs: ShellSidePaneInputs, kind: SidePaneK
       onTaskResume={handleResumeSubAgent}
       loadTaskTranscript={handleLoadSubAgentTranscript}
       diffTarget={rightPanelDiffTarget}
+      onDismissDiffTarget={dismissDiffTarget}
       skillTarget={rightPanelSkillTarget}
       loadedSkills={activeLoadedSkills}
       onSelectSkill={handleSelectSkill}

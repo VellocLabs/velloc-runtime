@@ -488,6 +488,17 @@ export function createShellOpenDiffInPanel(
     openPaneFor('diff')
   }
 }
+/** Going back from a file diff: that session's Diff pane shows its history from then on. */
+export function createShellDismissDiffTarget(
+  activeSessionIdRef: RefObject<string>,
+  updatePaneUi: (sessionId: string, fn: (prev: PaneSessionUi) => PaneSessionUi) => void,
+) {
+  return () => {
+    const id = activeSessionIdRef.current
+    if (!id) return
+    updatePaneUi(id, cur => (cur.diffTarget?.kind === 'file' ? { ...cur, diffTarget: null } : cur))
+  }
+}
 export function createShellOpenSkillInPanel(
   activeSessionIdRef: RefObject<string>,
   updatePaneUi: (sessionId: string, fn: (prev: PaneSessionUi) => PaneSessionUi) => void,

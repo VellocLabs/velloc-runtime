@@ -24,6 +24,7 @@ import type { NexusAgentChangeSection } from "@/browser/bridge/protocol/ui";
  */
 export function DiffPanel({
   target,
+  onDismissTarget,
   turnDiffHistory,
   loadTurnDiffDetail,
   requestTurnDiffHistory,
@@ -32,6 +33,8 @@ export function DiffPanel({
   onOpenFile,
 }: {
   target: RightPanelDiffTarget | null;
+  /** The person went back from the file target; its owner may drop it. */
+  onDismissTarget?: () => void;
   turnDiffHistory?: TurnDiffMeta[] | null;
   loadTurnDiffDetail?: LoadTurnDiffDetail;
   /** The session's sub-agents that changed files, listed under its own turns. */
@@ -80,7 +83,10 @@ export function DiffPanel({
         filePath={fileTarget.filePath}
         plusLines={fileTarget.plusLines}
         minusLines={fileTarget.minusLines}
-        onBack={() => setDismissed(fileTarget)}
+        onBack={() => {
+          setDismissed(fileTarget);
+          onDismissTarget?.();
+        }}
         onOpenFile={onOpenFile}
       >
         {fileTarget.hunks.length > 0 ? (

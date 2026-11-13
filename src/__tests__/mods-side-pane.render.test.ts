@@ -15,9 +15,10 @@ afterEach(cleanup)
 const report = { plugin: 'test-report', id: 'r-1', title: 'Report', isShown: false, isFocused: false, closeOnEscape: false }
 const clock = { plugin: 'clock', id: 'clock', title: 'Clock', isShown: true, isFocused: false, closeOnEscape: false }
 
-function pane(mod: Partial<ModUiContextValue>, onCloseTab = vi.fn()): ReactNode {
+function pane(mod: Partial<ModUiContextValue>, onCloseTab = vi.fn(), sessionKey = 'A'): ReactNode {
   return createElement(ModsPane, {
     modUi: { ...EMPTY_MOD_UI, panesDocked: true, ...mod },
+    sessionKey,
     onCloseTab,
     frame: ({ title, body }: { title: ReactNode; body: ReactNode }) =>
       createElement('section', null, createElement('header', null, title), body),
@@ -56,5 +57,17 @@ describe('ModsPane', () => {
     expect(asked[0].requestId).toBe('clock')
     expect(asked[0].props.placement).toBe('dock')
     expect(asked[0].viewport?.isFullscreen).toBe(true)
+  })
+
+  it("does not show one session's drawing for another session's pane of the same plugin and id", async () => {
+    const hooked = [{ plugin: 'clock' }]
+    const drawA = vi.fn(async () => ({ kind: 'tree' as const, tree: { type: 'Text', children: ['DRAWN FOR A'] }, plugin: 'clock' }))
+    const { rerender } = render(pane({ panes: [clock], hooked, render: drawA as never }))
+    await waitFor(() => expect(screen.getByTestId('mod-pane-clock-clock').textContent).toContain('DRAWN FOR A'))
+
+    // B's drawing has not arrived: its pane is empty, never A's.
+    const drawB = vi.fn(() => new Promise<never>(() => {}))
+    rerender(pane({ panes: [clock], hooked, render: drawB as never }, vi.fn(), 'B'))
+    expect(screen.getByTestId('mod-pane-clock-clock').textContent).not.toContain('DRAWN FOR A')
   })
 })

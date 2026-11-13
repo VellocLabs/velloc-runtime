@@ -13,14 +13,20 @@ import { useT } from '../i18n'
  * runtime's `isShown`) with `placement: 'dock'`. A tab press shows its pane;
  * its close mark is the person's close (`ui.close`, origin `person`). Renders
  * outside the thread's providers, so it brings the session's mod UI value.
+ *
+ * Contract: a drawn pane belongs to `sessionKey`'s session. Two sessions may
+ * each hold a pane of the same plugin and id; neither one's drawing nor what
+ * the person typed in it is shown for the other.
  */
 export type ModsPaneProps = {
   modUi: ModUiContextValue
+  /** The session whose panes these are. */
+  sessionKey: string
   onCloseTab: (pane: { plugin: string; id: string }) => void
   frame: (parts: { title: ReactNode; body: ReactNode }) => ReactNode
 }
 
-export function ModsPane({ modUi, onCloseTab, frame }: ModsPaneProps): ReactElement {
+export function ModsPane({ modUi, sessionKey, onCloseTab, frame }: ModsPaneProps): ReactElement {
   const t = useT()
   const { panes } = modUi
   const shown = panes.find(pane => pane.isShown) ?? panes[panes.length - 1]
@@ -74,7 +80,7 @@ export function ModsPane({ modUi, onCloseTab, frame }: ModsPaneProps): ReactElem
   const body = (
     <div className="flex min-h-0 flex-1 flex-col">
       <ModUiContext.Provider value={modUi}>
-        {shown ? <ModDockedPane key={`${shown.plugin}\u0000${shown.id}`} plugin={shown.plugin} id={shown.id} /> : null}
+        {shown ? <ModDockedPane key={`${sessionKey}\u0000${shown.plugin}\u0000${shown.id}`} plugin={shown.plugin} id={shown.id} /> : null}
       </ModUiContext.Provider>
     </div>
   )

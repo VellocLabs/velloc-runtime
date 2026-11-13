@@ -285,6 +285,7 @@ import {
   createShellCommitPaneResize,
   createShellCommitPaneMove,
   createShellUpdatePaneUi,
+  createShellDismissDiffTarget,
   createShellHandleFileDirtyChange,
   createShellOpenFileInPanel,
   createShellOpenFile,
@@ -2081,6 +2082,10 @@ export function MultiSessionShell({
     () => createShellOpenDiffInPanel(activeSessionIdRef, updatePaneUi, openPaneFor),
     [updatePaneUi, openPaneFor],
   )
+  const dismissDiffTarget = useMemo(
+    () => createShellDismissDiffTarget(activeSessionIdRef, updatePaneUi),
+    [updatePaneUi],
+  )
 
   // Skill card "View skill" → the Skill pane: stores the target the pane
   // body reads and opens the pane.
@@ -3834,7 +3839,7 @@ export function MultiSessionShell({
     handleStopBackgroundTask, handleResumeSubAgent, handleLoadSubAgentTranscript,
     rightPanelDiffTarget, rightPanelSkillTarget, activeLoadedSkills, handleSelectSkill,
     loadToolCallDetail, loadBundledSkillBody, activeState, loadTurnDiffDetail,
-    requestTurnDiffHistory, loadAgentTurnDiffDetail, openFile,
+    requestTurnDiffHistory, loadAgentTurnDiffDetail, openFile, dismissDiffTarget,
   }
   const renderSidePane = (kind: SidePaneKind): ReactNode => renderShellSidePane(sidePaneInputs, kind)
 
