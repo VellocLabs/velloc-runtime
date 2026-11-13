@@ -494,6 +494,27 @@ describe('a provider whose form is only its key', () => {
     expect(h.upserts[0]).toMatchObject({ source: 'mod', apiKey: 'sk-1' })
   })
 
+  it('a key with settings keeps the option rows, before and after the settings load', async () => {
+    const h = harness({ [ID]: { source: 'mod', account: 'zed' } }, withRow(modRow({ credentialMethods: ['apiKey'], secrets: [], prompts: undefined })))
+    let releaseOptions = () => {}
+    const held = new Promise<void>((resolve) => { releaseOptions = resolve })
+    const request = h.bridge.request.bind(h.bridge)
+    vi.mocked(h.bridge).request = vi.fn(async (route: { action: string }, payload: Record<string, unknown>) => {
+      if (route.action === 'modOptions') await held
+      return request(route as never, payload as never)
+    }) as never
+    mount(h)
+    fireEvent.click(await screen.findByTestId(`models-provider-settings-${ID}`))
+    await screen.findByTestId('mod-prompt-api_key-row')
+    const sideLabel = () => screen.getByTestId('mod-prompt-form').querySelector('label[for="mod-prompt-api_key"]')
+    expect(screen.queryByTestId('mod-option-acme-region')).toBeNull()
+    expect(sideLabel()).not.toBeNull()
+    releaseOptions()
+    await screen.findByTestId('mod-option-acme-region')
+    expect(sideLabel()).not.toBeNull()
+    expect(screen.queryByTestId('mod-prompt-api_key-saved')).toBeNull()
+  })
+
   it('a stored key reads Saved, with the replace placeholder', async () => {
     const h = harness({ [ID]: { source: 'mod', hasApiKey: true } }, withRow(keyOnly()))
     mount(h)
@@ -507,7 +528,14 @@ describe('a provider whose form is only its key', () => {
 describe('status card', () => {
   it('sits after the form, with the model count and the plugin it comes from', async () => {
     const h = harness(
-      { [ID]: { source: 'mod', modVersion: '1.2.0', hasApiKey: true, modelEntries: [{ id: 'a' }, { id: 'b' }] } as never },
+      {
+        [ID]: {
+          source: 'mod',
+          modVersion: '1.2.0',
+          hasApiKey: true,
+          modelEntries: [{ family: 'a', version: 'latest' }, { family: 'b', version: 'latest' }],
+        },
+      },
       withRow(modRow()),
     )
     mount(h)

@@ -10,6 +10,16 @@ export type ProviderStatusPresentation = {
   detail: string;
 };
 
+/** A connected provider's detail line: its model count, or the plain ready line when it lists none. */
+export function modelCountText(t: TranslateFn, modelCount: number): string {
+  return modelCount > 0
+    ? t("settings.models.modelsFound", {
+        count: modelCount,
+        unit: t(modelCount === 1 ? "settings.models.unitModel" : "settings.models.unitModels"),
+      })
+    : t("settings.models.detailReady");
+}
+
 /** Status-card presentation for every provider status. */
 export function providerStatusPresentation({
   t,
@@ -33,17 +43,7 @@ export function providerStatusPresentation({
       chip: t("settings.models.chipConnected"),
       chipVariant: "success",
       title: t("settings.models.titleConnected"),
-      detail:
-        modelCount > 0
-          ? t("settings.models.modelsFound", {
-              count: modelCount,
-              unit: t(
-                modelCount === 1
-                  ? "settings.models.unitModel"
-                  : "settings.models.unitModels",
-              ),
-            })
-          : t("settings.models.detailReady"),
+      detail: modelCountText(t, modelCount),
     },
     draft: {
       chip: t("settings.models.chipPending"),

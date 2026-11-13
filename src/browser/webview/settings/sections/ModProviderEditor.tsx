@@ -56,6 +56,7 @@ import { mapErrorCode } from "../verifyErrorText";
 import { getProviderLoginStore, useProviderLogin } from "../../providerLoginStore";
 import { ModBaseUrlField } from "./ModBaseUrlField";
 import { ApiKeyLabel } from "./models/ApiKeyLabel";
+import { modelCountText } from "./models/providerStatusPresentation";
 import { MissingRequiredMark, OptionFieldControl, OptionRow, OptionRowList } from "./ModOptionRows";
 import { ModProviderStatusCard } from "./ModProviderStatusCard";
 import { ProviderModelEntries } from "./ProviderModelEntries";
@@ -239,6 +240,14 @@ function ReadyEditor({
     [mod.prompts, t],
   );
   const customPrompts = !!mod.prompts && mod.prompts.length > 0;
+  // Decided from the manifest, not the drawn rows: the settings rows arrive
+  // with the options, and the form must not change shape under the cursor.
+  const keyOnly =
+    prompts.length === 1 &&
+    prompts[0]!.key === API_KEY_PROMPT_KEY &&
+    prompts[0]!.type !== "select" &&
+    (mod.secrets ?? []).length === 0 &&
+    !Object.values(mod.settings ?? {}).some((field) => field.binds === undefined);
 
   // The last key check of this editor, as an error code; null = none failed.
   const [verifyFailed, setVerifyFailed] = React.useState<string | null>(null);
@@ -483,6 +492,7 @@ function ReadyEditor({
       <ModProviderForm
         key={`${providerId}:${customPrompts ? "prompts" : "key"}:${formGeneration}`}
         prompts={method === "apiKey" ? prompts : null}
+        keyOnly={keyOnly}
         saved={saved}
         options={options}
         settingsConfig={settingsConfig && Object.keys(settingsConfig.fields).length > 0 ? settingsConfig : null}
@@ -557,12 +567,7 @@ function ReadyEditor({
           </Badge>
           {connected ? (
             <span className="text-muted-foreground text-xs" data-testid="mod-provider-model-count">
-              {modelCount > 0
-                ? t("settings.models.modelsFound", {
-                    count: modelCount,
-                    unit: t(modelCount === 1 ? "settings.models.unitModel" : "settings.models.unitModels"),
-                  })
-                : t("settings.models.detailReady")}
+              {modelCountText(t, modelCount)}
             </span>
           ) : null}
         </div>
@@ -635,6 +640,7 @@ function ReadyEditor({
  */
 function ModProviderForm({
   prompts,
+  keyOnly,
   saved,
   options,
   settingsConfig,
@@ -652,6 +658,8 @@ function ModProviderForm({
 }: {
   /** The method in force takes prompts; null hides them. */
   prompts: CredentialPrompt[] | null;
+  /** The form is only the provider's key: drawn as a built-in provider's. */
+  keyOnly: boolean;
   saved: NexusProviderConfig | undefined;
   options: { values: Record<string, unknown>; storedSensitive: string[] } | null;
   settingsConfig: ModsUserConfig | null;
@@ -727,11 +735,8 @@ function ModProviderForm({
   if (rows.length === 0) return null;
   // A form that is only the provider's key is drawn as the built-in
   // providers draw theirs: "API key" above one full-width field.
-  const only = rows.length === 1 ? rows[0] : undefined;
-  const keyPrompt =
-    only?.kind === "prompt" && only.prompt.key === API_KEY_PROMPT_KEY && only.prompt.type !== "select"
-      ? only.prompt
-      : null;
+  const only = keyOnly && rows.length === 1 ? rows[0] : undefined;
+  const keyPrompt = only?.kind === "prompt" && only.prompt.type !== "select" ? only.prompt : null;
 
   const setAnswer = (key: string, value: string) => {
     setAnswers((prev) => ({ ...prev, [key]: value }));
