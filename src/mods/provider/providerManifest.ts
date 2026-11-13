@@ -9,7 +9,7 @@ import { isLocalizedText, resolveLocalizedText, whyNotLocalizedText, type Locali
 import type { PluginUserConfigField } from '../../pluginHost/pluginModel'
 import { readUserConfigFields } from '../../pluginHost/userConfigFields'
 import { joinRuntimePath } from '../../utils/runtimePaths'
-import type { ProviderEgressPools, ProviderEgressTable } from '../../models/drivers/providerEgress'
+import type { ProviderEgressPools } from '../../models/drivers/providerEgress'
 import type { ProviderPolicy } from '../../models/drivers/providerPolicy'
 import { HOST_NAME, checkProviderEgress } from './providerEgressManifest'
 import { checkPolicy, reportPolicyClamp } from './providerPolicyManifest'
@@ -163,8 +163,6 @@ export type ProviderManifest = {
   /** The provider's own facts per model id or id prefix, beneath its listing. */
   modelFacts?: ProviderModelFacts
   policy?: ProviderPolicy
-  /** The proxies a request may leave through, by the name `route` answers. */
-  egress?: ProviderEgressTable
   /** The pools of proxies its module registers while it runs, by name. */
   egressPools?: ProviderEgressPools
   jobs?: ProviderJobDecl[]
@@ -876,7 +874,7 @@ function checkProvider(key: string, raw: unknown, errors: string[]): ProviderMan
   const egress =
     raw.egress === undefined
       ? undefined
-      : checkProviderEgress(raw.egress, new Set((credentials?.secrets ?? []).map(secret => secret.name)), bad)
+      : checkProviderEgress(raw.egress, bad)
 
   if (failed || displayName === undefined || defaultBaseUrl === undefined || domains === undefined || format === undefined || credentials === undefined || moduleRef === undefined) {
     return undefined
@@ -899,8 +897,7 @@ function checkProvider(key: string, raw: unknown, errors: string[]): ProviderMan
     ...(updates ? { updates } : {}),
     ...(modelFacts && Object.keys(modelFacts).length > 0 ? { modelFacts } : {}),
     ...(policy && Object.keys(policy).length > 0 ? { policy } : {}),
-    ...(egress && Object.keys(egress.proxies).length > 0 ? { egress: egress.proxies } : {}),
-    ...(egress && Object.keys(egress.pools).length > 0 ? { egressPools: egress.pools } : {}),
+    ...(egress && Object.keys(egress).length > 0 ? { egressPools: egress } : {}),
     ...(jobs && jobs.length > 0 ? { jobs } : {}),
     module: moduleRef,
   }

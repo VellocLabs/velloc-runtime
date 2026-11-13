@@ -2198,8 +2198,6 @@ export const en = {
   'settings.plugins.providers.consent.provider': 'Provider: {provider}',
   'settings.plugins.providers.consent.domains': 'May contact: {domains}',
   'settings.plugins.providers.consent.noDomains': 'Declares no domains to contact.',
-  'settings.plugins.providers.consent.proxies':
-    'Sends your requests through these proxy servers instead of your own proxy setting: {hosts}',
   'settings.plugins.providers.consent.proxyPools':
     'Sends your requests through proxy servers its code chooses, instead of your own proxy setting. Their addresses are not shown here.',
   'settings.plugins.providers.consent.proxyPoolsLocal':
@@ -2262,8 +2260,6 @@ export const en = {
   'settings.plugins.providers.updates.waitingBody': 'It asks for more than you agreed to. The version you have keeps running until you decide.',
   'settings.plugins.providers.updates.addedProvider': 'New provider: {provider}',
   'settings.plugins.providers.updates.addedDomains': '{id} may now contact: {domains}',
-  'settings.plugins.providers.updates.addedProxies':
-    '{id} may now send requests through: {hosts}',
   'settings.plugins.providers.updates.addedProxyPools':
     '{id} may now send requests through proxy servers its code chooses',
   'settings.plugins.providers.updates.addedProxyPoolsLocal':

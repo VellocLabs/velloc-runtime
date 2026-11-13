@@ -82,9 +82,9 @@ export function proxyHostOfMember(url: unknown, pool: ProviderEgressPool): strin
   if (typeof url !== 'string' || url === '' || url.length > POOL_MEMBER_URL_MAX_LENGTH) {
     throw new TypeError(`url must be a proxy address of at most ${POOL_MEMBER_URL_MAX_LENGTH} characters`)
   }
-  // Security: the host fills `{{secret:NAME}}` in an egress address. A
-  // member's address comes from code, so a template in it would hand a
-  // stored secret to a proxy that code picked.
+  // Security: a member's address comes from code, so a secret template in
+  // it would aim a stored secret at a proxy that code picked. The host
+  // refuses one too; refusing here names the member.
   if (url.includes('{') || url.includes('}')) {
     throw new TypeError('url must be written out in full: a member cannot use {{secret:NAME}}')
   }

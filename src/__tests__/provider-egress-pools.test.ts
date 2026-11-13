@@ -11,7 +11,7 @@ import type { ProviderModRuntime } from '../mods/provider/ProviderModRuntime'
 import { createMemoryKeyVault } from '../mods/provider/nouns/keyVault'
 import { createProviderNouns } from '../mods/provider/nouns/providerNounTable'
 import { MemorySessionStores } from '../mods/provider/nouns/sessionStore'
-import { EGRESS_POOL_MAX_MEMBERS, checkProviderEgress } from '../mods/provider/providerEgressManifest'
+import { EGRESS_MAX, EGRESS_POOL_MAX_MEMBERS, checkProviderEgress } from '../mods/provider/providerEgressManifest'
 import {
   POOL_MEMBER_URL_MAX_LENGTH,
   ProviderEgressPoolRegistry,
@@ -34,29 +34,45 @@ afterEach(() => {
   resetProviderRequestSeams()
 })
 
-describe('a dynamic pool in the manifest', () => {
+describe('a pool in the manifest', () => {
   function check(value: unknown) {
     const problems: string[] = []
-    const declared = checkProviderEgress(value, new Set(['proxy_a']), message => problems.push(message))
+    const declared = checkProviderEgress(value, (message: string) => problems.push(message))
     return { declared, problems: problems.join(' | ') }
   }
 
-  it('is kept apart from the proxies with a stated address', () => {
+  it('is read with its defaults', () => {
     const { declared, problems } = check({
-      fixed: { url: '{{secret:proxy_a}}', hosts: ['p.example.com'] },
       pool: { dynamic: true },
       home: { dynamic: true, max: 3, local: true },
     })
     expect(problems).toBe('')
-    expect(declared).toEqual({
-      proxies: { fixed: { url: '{{secret:proxy_a}}', hosts: ['p.example.com'] } },
-      pools: { pool: { max: EGRESS_POOL_MAX_MEMBERS, local: false }, home: { max: 3, local: true } },
-    })
+    expect(declared).toEqual({ pool: { max: EGRESS_POOL_MAX_MEMBERS, local: false }, home: { max: 3, local: true } })
+    expect(check({}).declared).toEqual({})
+  })
+
+  // A manifest cannot state a proxy's address, literal or held in a secret.
+  it.each([
+    ['a literal address', { url: 'http://p.example.com:8080', hosts: ['p.example.com'] }],
+    ['an address held in a secret', { url: '{{secret:proxy_a}}', hosts: ['p.example.com'] }],
+    ['a pool that also states an address', { dynamic: true, url: 'http://p.example.com' }],
+  ])('refuses %s', (_what, entry) => {
+    const { declared, problems } = check({ pool: entry })
+    expect(declared).toBeUndefined()
+    expect(problems).toContain('egress.pool: a proxy address cannot be declared')
+  })
+
+  it('refuses what is no table of pools, too many of them, and a bad name', () => {
+    expect(check([]).problems).toContain('egress: expected an object of named pools')
+    const many = Object.fromEntries(Array.from({ length: EGRESS_MAX + 1 }, (_, i) => [`p${i}`, { dynamic: true }]))
+    expect(check(many).problems).toContain(`egress: at most ${EGRESS_MAX} pools`)
+    expect(check({ 'bad name': { dynamic: true } }).problems).toContain('egress.bad name: a name is 1-32')
+    expect(check({ pool: 5 }).problems).toContain('egress.pool: expected a pool')
   })
 
   it.each([
     ['dynamic that is not true', { dynamic: false }, 'egress.pool.dynamic: expected true'],
-    ['a pool with an address', { dynamic: true, url: 'http://p.example.com' }, 'egress.pool.url: not a known property of a dynamic pool'],
+    ['an unknown property', { dynamic: true, schemes: ['http'] }, 'egress.pool.schemes: not a known property of a pool'],
     ['no members allowed', { dynamic: true, max: 0 }, 'egress.pool.max: expected a whole number from 1 to'],
     ['more members than the limit', { dynamic: true, max: EGRESS_POOL_MAX_MEMBERS + 1 }, 'egress.pool.max: expected a whole number'],
     ['local that is no boolean', { dynamic: true, local: 'yes' }, 'egress.pool.local: expected true or false'],
@@ -235,7 +251,7 @@ describe('a route to a pool member', () => {
     pool === 'pool' && member === 'p0' ? { url: 'http://203.0.113.7:8080', hosts: ['203.0.113.7'] } : undefined
 
   it('reads as that member, marked dynamic', () => {
-    expect(readRequestPlan({ route: { egress: 'pool', member: 'p0' } }, {}, undefined, lookup)).toEqual({
+    expect(readRequestPlan({ route: { egress: 'pool', member: 'p0' } }, {}, lookup)).toEqual({
       egress: { name: 'pool/p0', url: 'http://203.0.113.7:8080', hosts: ['203.0.113.7'], dynamic: true },
     })
   })
@@ -246,7 +262,7 @@ describe('a route to a pool member', () => {
     [{ egress: 'pool' }, 'route is not { egress, member }'],
     [{ egress: 'pool', member: 'p0', url: 'http://x' }, 'route.url is not a known property'],
   ])('refuses %j', (route, problem) => {
-    expect(() => readRequestPlan({ route }, {}, undefined, lookup)).toThrow(problem)
+    expect(() => readRequestPlan({ route }, {}, lookup)).toThrow(problem)
   })
 
   it('a provider with no pool refuses every member', () => {
@@ -273,7 +289,6 @@ describe('the seam of a provider with a pool', () => {
   it('finds members of its declared pools only, and of its own provider', () => {
     const manifest = manifestOf({ egress: { pool: { dynamic: true } } })
     expect(manifest.egressPools).toEqual({ pool: { max: EGRESS_POOL_MAX_MEMBERS, local: false } })
-    expect(manifest.egress).toBeUndefined()
     const seam = seamForRegistration({ providerId: ID, manifest, runtime }, () => {})
     providerEgressPools.set(ID, 'pool', PUBLIC, [{ id: 'p0', url: 'http://203.0.113.7' }])
     providerEgressPools.set(ID, 'undeclared', PUBLIC, [{ id: 'p0', url: 'http://203.0.113.8' }])

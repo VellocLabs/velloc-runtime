@@ -2163,8 +2163,6 @@ export const es: Messages = {
   'settings.plugins.providers.consent.provider': 'Proveedor: {provider}',
   'settings.plugins.providers.consent.domains': 'Puede conectarse a: {domains}',
   'settings.plugins.providers.consent.noDomains': 'No declara dominios a los que conectarse.',
-  'settings.plugins.providers.consent.proxies':
-    'Envía tus solicitudes a través de estos servidores proxy en lugar de tu propia configuración de proxy: {hosts}',
   'settings.plugins.providers.consent.proxyPools':
     'Envía tus solicitudes a través de servidores proxy que elige su código, en lugar de tu propia configuración de proxy. Sus direcciones no se muestran aquí.',
   'settings.plugins.providers.consent.proxyPoolsLocal':
@@ -2227,8 +2225,6 @@ export const es: Messages = {
   'settings.plugins.providers.updates.waitingBody': 'Solicita más de lo que usted aceptó. La versión actual sigue en uso hasta que usted decida.',
   'settings.plugins.providers.updates.addedProvider': 'Proveedor nuevo: {provider}',
   'settings.plugins.providers.updates.addedDomains': '{id} ahora puede conectarse a: {domains}',
-  'settings.plugins.providers.updates.addedProxies':
-    '{id} ahora puede enviar solicitudes a través de: {hosts}',
   'settings.plugins.providers.updates.addedProxyPools':
     '{id} ahora puede enviar solicitudes a través de servidores proxy que elige su código',
   'settings.plugins.providers.updates.addedProxyPoolsLocal':

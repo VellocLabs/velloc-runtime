@@ -2123,8 +2123,6 @@ export const ko: Messages = {
   'settings.plugins.providers.consent.provider': '제공업체: {provider}',
   'settings.plugins.providers.consent.domains': '접속할 수 있는 곳: {domains}',
   'settings.plugins.providers.consent.noDomains': '접속할 도메인을 선언하지 않았습니다.',
-  'settings.plugins.providers.consent.proxies':
-    '요청을 사용자의 프록시 설정 대신 다음 프록시 서버를 통해 보냅니다: {hosts}',
   'settings.plugins.providers.consent.proxyPools':
     '요청을 사용자의 프록시 설정 대신 이 공급자의 코드가 선택하는 프록시 서버를 통해 보냅니다. 해당 주소는 여기에 표시되지 않습니다.',
   'settings.plugins.providers.consent.proxyPoolsLocal':
@@ -2187,8 +2185,6 @@ export const ko: Messages = {
   'settings.plugins.providers.updates.waitingBody': '이전에 동의한 것보다 더 많은 권한을 요청합니다. 결정하기 전까지는 현재 버전이 계속 실행됩니다.',
   'settings.plugins.providers.updates.addedProvider': '새 제공업체: {provider}',
   'settings.plugins.providers.updates.addedDomains': '{id}이(가) 이제 접속할 수 있는 곳: {domains}',
-  'settings.plugins.providers.updates.addedProxies':
-    '{id}이(가) 이제 다음 프록시를 통해 요청을 보낼 수 있습니다: {hosts}',
   'settings.plugins.providers.updates.addedProxyPools':
     '{id}이(가) 이제 자체 코드가 선택하는 프록시 서버를 통해 요청을 보낼 수 있습니다',
   'settings.plugins.providers.updates.addedProxyPoolsLocal':

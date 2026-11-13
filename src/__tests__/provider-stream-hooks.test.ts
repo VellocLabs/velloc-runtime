@@ -25,7 +25,7 @@ import {
   raiseProviderOutcome,
   type ProviderOutcomeEvent,
 } from '../models/drivers/providerOutcome'
-import { RAW_STREAM_EGRESS_PRIMITIVE, type ProviderEgressTable } from '../models/drivers/providerEgress'
+import { RAW_STREAM_EGRESS_PRIMITIVE } from '../models/drivers/providerEgress'
 import type { ProviderPolicy } from '../models/drivers/providerPolicy'
 import {
   PLAN_CONTEXT_WINDOW_CEILING,
@@ -151,7 +151,6 @@ const stops = (chunks: any[]) => chunks.filter(c => c.type === 'message_stop').l
 
 type Script = {
   policy?: ProviderPolicy
-  egress?: ProviderEgressTable
   egressMember?: ProviderRequestSeam['egressMember']
   request?: (e: ProviderRequestEvent) => unknown
   classify?: (e: ProviderClassifyEvent) => unknown
@@ -171,7 +170,6 @@ function plug(script: Script) {
   }
   const seam: ProviderRequestSeam = {
     ...(script.policy ? { policy: script.policy } : {}),
-    ...(script.egress ? { egress: script.egress } : {}),
     ...(script.egressMember ? { egressMember: script.egressMember } : {}),
     ...(script.budgetMs !== undefined ? { budgetMs: script.budgetMs } : {}),
     ...(script.credentials ? { credentials: script.credentials } : {}),
@@ -222,12 +220,10 @@ afterEach(() => {
   vi.useRealTimers()
 })
 
-const EGRESS: ProviderEgressTable = {
-  'pool-a': { url: '{{secret:proxy_a}}', hosts: ['proxy-a.example.com'] },
-}
-
 const MEMBER: NonNullable<ProviderRequestSeam['egressMember']> = (pool, member) =>
   pool === 'pool' && member === 'p0' ? { url: 'http://203.0.113.7:8080', hosts: ['203.0.113.7'] } : undefined
+
+const ROUTE = { egress: 'pool', member: 'p0' }
 
 // ── request-plan fields ─────────────────────────────────────────────────────
 
@@ -260,51 +256,24 @@ describe('the plan fields of a request answer', () => {
     [{ timeouts: 'fast' }, 'timeouts is not an object'],
     [{ timeouts: { idleMs: -1 } }, 'timeouts.idleMs is not a number'],
     [{ timeouts: { idle: 5 } }, 'timeouts.idle is not a known property'],
-    [{ route: 5 }, 'route is not the name of an egress'],
-    [{ route: 'pool-a' }, 'route "pool-a" is not an egress this provider declares'],
+    [{ route: 5 }, 'route is not { egress, member }'],
+    [{ route: 'pool-a' }, 'route is not { egress, member }'],
+    [{ route: { egress: 'pool', member: 'p0' } }, 'is not a registered member'],
   ])('refuses %j', (answer, problem) => {
     expect(() => readRequestPlan(answer as Record<string, unknown>)).toThrow(problem)
   })
 
-  it('reads a route as the declared egress of that name', () => {
-    expect(readRequestPlan({ route: 'pool-a' }, {}, EGRESS)).toEqual({
-      egress: { name: 'pool-a', url: '{{secret:proxy_a}}', hosts: ['proxy-a.example.com'] },
-    })
-    expect(() => readRequestPlan({ route: 'pool-b' }, {}, EGRESS)).toThrow('route "pool-b" is not an egress this provider declares')
-    expect(() => readRequestPlan({ route: 'toString' }, {}, EGRESS)).toThrow('is not an egress this provider declares')
-    expect(() => readRequestPlan({ route: '' }, {}, EGRESS)).toThrow('route is not the name of an egress')
-  })
-
-  it('a route sends the request through the declared egress, as declared', async () => {
-    setHostPrimitives([RAW_STREAM_EGRESS_PRIMITIVE])
-    plug({ egress: EGRESS, request: () => ({ route: 'pool-a' }) })
-    const { transport, opens } = scripted([])
-    const chunks = await run(transport)
-    expect(opens).toHaveLength(1)
-    expect(opens[0]!.egress).toEqual({ url: '{{secret:proxy_a}}', hosts: ['proxy-a.example.com'] })
-    expect(textOf(chunks)).toBe('hi')
-  })
-
   it('no route follows the host setting: nothing about an egress is sent', async () => {
     setHostPrimitives([RAW_STREAM_EGRESS_PRIMITIVE])
-    plug({ egress: EGRESS, request: () => ({ headers: { 'x-a': '1' } }) })
+    plug({ egressMember: MEMBER, request: () => ({ headers: { 'x-a': '1' } }) })
     const { transport, opens } = scripted([])
     await run(transport)
     expect(opens[0]).not.toHaveProperty('egress')
   })
 
-  it('a route to an egress the provider does not declare is not sent at all', async () => {
-    setHostPrimitives([RAW_STREAM_EGRESS_PRIMITIVE])
-    plug({ egress: EGRESS, request: () => ({ route: 'elsewhere' }) })
-    const { transport, opens } = scripted([])
-    const chunks = await run(transport)
-    expect(opens).toEqual([])
-    expect(JSON.stringify(errorOf(chunks))).toContain('is not an egress this provider declares')
-  })
-
   it('a host that does not list the primitive is not sent the request', async () => {
     setHostPrimitives(['model.rawStreamOpen.oauth'])
-    plug({ egress: EGRESS, request: () => ({ route: 'pool-a' }) })
+    plug({ egressMember: MEMBER, request: () => ({ route: ROUTE }) })
     const { transport, opens } = scripted([])
     const chunks = await run(transport)
     expect(opens).toEqual([])
@@ -314,8 +283,8 @@ describe('the plan fields of a request answer', () => {
   it('that refusal is final: the provider cannot replay it and it is not retried', async () => {
     setHostPrimitives([])
     const calls = plug({
-      egress: EGRESS,
-      request: () => ({ route: 'pool-a' }),
+      egressMember: MEMBER,
+      request: () => ({ route: ROUTE }),
       classify: () => ({ kind: 'network', retryable: true, replay: { headers: { 'x-again': '1' } } }),
     })
     const { transport, opens } = scripted([])
@@ -335,15 +304,15 @@ describe('the plan fields of a request answer', () => {
   it('a re-send after a retry keeps the egress', async () => {
     setHostPrimitives([RAW_STREAM_EGRESS_PRIMITIVE])
     plug({
-      egress: EGRESS,
-      request: () => ({ route: 'pool-a' }),
+      egressMember: MEMBER,
+      request: () => ({ route: ROUTE }),
       retry: () => ({ retry: { headers: { 'x-again': '1' } } }),
     })
     const { transport, opens } = scripted([{ status: 409, body: text('again') }])
     await run(transport)
     expect(opens.length).toBeGreaterThan(1)
     for (const open of opens) {
-      expect(open.egress).toEqual({ url: '{{secret:proxy_a}}', hosts: ['proxy-a.example.com'] })
+      expect(open.egress).toEqual({ url: 'http://203.0.113.7:8080', hosts: ['203.0.113.7'] })
     }
   })
 
@@ -417,7 +386,7 @@ describe('the plan fields of a request answer', () => {
   })
 
   it.each([
-    ['a route', { route: 'pool-a' }],
+    ['a route', { route: { egress: 'pool', member: 'p0' } }],
     ['a malformed limit', { limits: { maxOutputTokens: 'lots' } }],
     ['a misspelt timeout', { timeouts: { idleMS: 1000 } }],
   ])('%s fails the request closed: nothing is sent', async (_name, answer) => {

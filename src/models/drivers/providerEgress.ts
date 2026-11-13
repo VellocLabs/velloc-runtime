@@ -1,15 +1,15 @@
 /**
- * A provider's declared egresses (F-27): the proxies its own model requests
- * may leave through, by name.
+ * A provider's egress (F-27): the proxies its own model requests may leave
+ * through. They are members of pools the provider declares by name and its
+ * module fills while it runs; no manifest states a proxy's address.
  *
- * Contract: a request leaves through an egress only when the provider's
- * `request` hook names one in `route`; a request that names none follows the
- * host's own proxy setting. There is no name for "no proxy".
+ * Contract: a request leaves through a proxy only when the provider's
+ * `request` hook names a pool member in `route`; a request that names none
+ * follows the host's own proxy setting. There is no name for "no proxy".
  *
- * Security: `url` is sent to the host as declared, `{{secret:NAME}}` left in
- * place — the host expands it, so the proxy's address and credentials never
- * reach the provider's module or this realm. `hosts` is what the person
- * agreed to at install; the host refuses a proxy whose host is not in it.
+ * Security: a member's address is written out in full by the module that
+ * registered it. The host uses it as written and fills no stored secret
+ * into it.
  */
 
 /** The host manifest primitive for the `egress` input of `model.rawStreamOpen`.
@@ -21,9 +21,9 @@ export const RAW_STREAM_EGRESS_PRIMITIVE = 'model.rawStreamOpen.egress'
 export const EGRESS_UNSUPPORTED = 'EGRESS_UNSUPPORTED'
 
 export type ProviderEgress = {
-  /** `scheme://[user:pass@]host[:port]`; may contain `{{secret:NAME}}`. */
+  /** `scheme://[user:pass@]host[:port]`, written out in full. */
   url: string
-  /** The proxy hosts the provider declared (lower case). */
+  /** The proxy's own host (lower case): the only host the host accepts. */
   hosts: readonly string[]
 }
 
@@ -39,12 +39,3 @@ export type ProviderEgressPools = Readonly<Record<string, ProviderEgressPool>>
 
 /** The registered member `member` of the pool `pool`, or undefined. */
 export type ProviderEgressMemberLookup = (pool: string, member: string) => ProviderEgress | undefined
-
-/** A provider's egresses by the name its `request` hook answers. */
-export type ProviderEgressTable = Readonly<Record<string, ProviderEgress>>
-
-/** The egress `name` of `table`, or undefined when the provider declares none
- *  by that name. */
-export function egressNamed(table: ProviderEgressTable | undefined, name: string): ProviderEgress | undefined {
-  return table && Object.prototype.hasOwnProperty.call(table, name) ? table[name] : undefined
-}

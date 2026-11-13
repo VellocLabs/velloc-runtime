@@ -2094,8 +2094,6 @@ export const zh: Messages = {
   'settings.plugins.providers.consent.provider': '服务商：{provider}',
   'settings.plugins.providers.consent.domains': '可以访问：{domains}',
   'settings.plugins.providers.consent.noDomains': '未声明可访问的域名。',
-  'settings.plugins.providers.consent.proxies':
-    '通过这些代理服务器发送你的请求，而不使用你自己的代理设置：{hosts}',
   'settings.plugins.providers.consent.proxyPools':
     '通过它的代码自行选择的代理服务器发送你的请求，而不使用你自己的代理设置。这些代理的地址不会在这里列出。',
   'settings.plugins.providers.consent.proxyPoolsLocal':
@@ -2158,8 +2156,6 @@ export const zh: Messages = {
   'settings.plugins.providers.updates.waitingBody': '它需要的权限比你之前同意的更多。在你决定之前，现有版本会继续运行。',
   'settings.plugins.providers.updates.addedProvider': '新增服务商：{provider}',
   'settings.plugins.providers.updates.addedDomains': '{id} 现在可以访问：{domains}',
-  'settings.plugins.providers.updates.addedProxies':
-    '{id} 现在可以通过这些代理发送请求：{hosts}',
   'settings.plugins.providers.updates.addedProxyPools':
     '{id} 现在可以通过它的代码自行选择的代理服务器发送请求',
   'settings.plugins.providers.updates.addedProxyPoolsLocal':

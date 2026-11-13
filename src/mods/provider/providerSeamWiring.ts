@@ -36,7 +36,6 @@ export function seamForRegistration(
       manifest.credentials?.methods?.includes('login') ? getProviderCredentials().seamCredentials(providerId) : undefined,
     )
     if (manifest.policy) seam.policy = manifest.policy
-    if (manifest.egress) seam.egress = manifest.egress
     const pools = manifest.egressPools
     if (pools) {
       seam.egressMember = (pool, member) =>

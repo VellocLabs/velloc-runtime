@@ -2129,8 +2129,6 @@ export const ja: Messages = {
   'settings.plugins.providers.consent.provider': 'プロバイダ: {provider}',
   'settings.plugins.providers.consent.domains': '接続できる先: {domains}',
   'settings.plugins.providers.consent.noDomains': '接続先のドメインは宣言されていません。',
-  'settings.plugins.providers.consent.proxies':
-    'リクエストを、ユーザー自身のプロキシ設定ではなく次のプロキシサーバー経由で送信します: {hosts}',
   'settings.plugins.providers.consent.proxyPools':
     'リクエストを、ユーザー自身のプロキシ設定ではなく、このプロバイダーのコードが選ぶプロキシサーバー経由で送信します。それらのアドレスはここには表示されません。',
   'settings.plugins.providers.consent.proxyPoolsLocal':
@@ -2193,8 +2191,6 @@ export const ja: Messages = {
   'settings.plugins.providers.updates.waitingBody': '以前に同意した範囲を超える権限を求めています。あなたが決めるまで、現在のバージョンが引き続き動作します。',
   'settings.plugins.providers.updates.addedProvider': '新しいプロバイダ: {provider}',
   'settings.plugins.providers.updates.addedDomains': '{id} は次にも接続できるようになります: {domains}',
-  'settings.plugins.providers.updates.addedProxies':
-    '{id} は次のプロキシ経由でリクエストを送信できるようになります: {hosts}',
   'settings.plugins.providers.updates.addedProxyPools':
     '{id} は、自身のコードが選ぶプロキシサーバー経由でリクエストを送信できるようになります',
   'settings.plugins.providers.updates.addedProxyPoolsLocal':

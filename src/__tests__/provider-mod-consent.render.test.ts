@@ -130,16 +130,6 @@ describe('ProviderConsentDialog', () => {
     )
   })
 
-  it('lists the proxy hosts of a provider that declares an egress, and no such line otherwise', () => {
-    open({}, status({ grant: { providers: { zen: { ...GRANT.providers.zen, proxies: ['proxy-a.zen.example', 'proxy-b.zen.example'] } } } }))
-    expect(screen.getByTestId('consent-proxies-zen').textContent).toBe(
-      'Sends your requests through these proxy servers instead of your own proxy setting: proxy-a.zen.example, proxy-b.zen.example',
-    )
-    cleanup()
-    open()
-    expect(screen.queryByTestId('consent-proxies-zen')).toBeNull()
-  })
-
   it('says a pool of proxies is chosen by the code, and says more when it reaches local ones', () => {
     open({}, status({ grant: { providers: { zen: { ...GRANT.providers.zen, proxyPools: 'public' as const } } } }))
     expect(screen.getByTestId('consent-proxy-pools-zen').textContent).toBe(
@@ -344,24 +334,6 @@ describe('ProviderUpdatePanel', () => {
       },
     })
     expect(grantDeltaLines(parked, t)).toEqual(["zen's code is now also shown: the folder the session is working in"])
-  })
-
-  it('an update that adds a proxy host names it', () => {
-    const parked = status({
-      state: 'needs-consent',
-      pending: {
-        ...NEEDS_CONSENT.pending!,
-        delta: {
-          widened: true,
-          added: {
-            providers: [],
-            perProvider: { zen: { domains: [], secrets: [], readsSecrets: false, requestNeeds: [], proxies: ['proxy.zen.example'] } },
-          },
-          removed: [],
-        },
-      },
-    })
-    expect(grantDeltaLines(parked, t)).toEqual(['zen may now send requests through: proxy.zen.example'])
   })
 
   it('an update that adds a pool of proxies says so', () => {
