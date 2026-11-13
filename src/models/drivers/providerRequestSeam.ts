@@ -17,6 +17,7 @@ import { mergeHeaders } from './modelProvider'
 import type { ProviderPolicy } from './providerPolicy'
 import { readClassifyAnswer, type ClassifyAnswer, type ClassifyReplay, type ProviderClassifyEvent } from './providerClassify'
 import type { ProviderOutcomeEvent } from './providerOutcome'
+import type { ProviderEgressTable } from './providerEgress'
 import { readRequestPlan, type ModelCeilings, type ProviderRequestPlan } from './providerRequestPlan'
 import {
   holdRequestBody,
@@ -96,7 +97,8 @@ export type ProviderRequestAnswer = {
   limits?: { maxOutputTokens?: number; contextWindow?: number }
   /** This request's own thresholds, held to the bounds of declared ones. */
   timeouts?: { firstByteMs?: number; idleMs?: number; firstContentMs?: number; stallMs?: number }
-  /** The name of an egress the provider declared. */
+  /** The name of an egress the provider declared: this request leaves
+   *  through that proxy. Absent: it follows the host's proxy setting. */
   route?: string
 }
 
@@ -203,6 +205,9 @@ export interface ProviderRequestSeam {
   /** The retry policy and error rules the provider declared. Absent = the
    *  platform's ladder and classification, unchanged. */
   policy?: ProviderPolicy
+  /** The egresses the provider declared, by the name `route` answers.
+   *  Absent = none: any `route` is refused. */
+  egress?: ProviderEgressTable
 }
 
 // ── registry ────────────────────────────────────────────────────────────────
@@ -472,7 +477,7 @@ export type PreparedProviderRequest = {
   /** The request before `sign`: a re-send is signed afresh from here. */
   unsigned: DriverHttpRequest
   idleTimeoutMs?: number
-  /** The `limits` and `timeouts` the `request` hook answered, within bounds. */
+  /** The `limits`, `timeouts` and egress the `request` hook answered. */
   plan?: ProviderRequestPlan
   context: ProviderRequestContext
 }
@@ -894,7 +899,7 @@ export class ProviderRequestFlow {
     ) {
       throw new Error('idleTimeoutMs is not a positive number')
     }
-    const plan = readRequestPlan(answer as Record<string, unknown>, this.facts.ceilings)
+    const plan = readRequestPlan(answer as Record<string, unknown>, this.facts.ceilings, this.seam.egress)
     const outputCap = plan?.limits?.maxOutputTokens
     const sawBody = this.needs('body')
     const replacesParts = answer.system !== undefined || answer.tools !== undefined

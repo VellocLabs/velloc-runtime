@@ -120,6 +120,16 @@ describe('raw provider stream', () => {
     expect('authHeader' in calls[0]!.payload).toBe(false)
   })
 
+  it('passes an egress through as given, and sends none when none is asked', async () => {
+    const egress = { url: '{{secret:proxy_a}}', hosts: ['proxy.example.com'] }
+    const through = fakeHost(OPENED, [read(bytes(1), true)])
+    await openRawProviderStream(through.transport, { providerId: 'mod.acme.main', url: 'https://api.acme.example/v1', egress })
+    expect(through.calls[0]!.payload.egress).toEqual(egress)
+    const plain = fakeHost(OPENED, [read(bytes(1), true)])
+    await openRawProviderStream(plain.transport, { providerId: 'mod.acme.main', url: 'https://api.acme.example/v1' })
+    expect('egress' in plain.calls[0]!.payload).toBe(false)
+  })
+
   it('clamps the idle timeout under the model route fallback', async () => {
     const { transport, calls } = fakeHost(OPENED, [read(bytes(), true)])
     const stream = await openRawProviderStream(transport, {

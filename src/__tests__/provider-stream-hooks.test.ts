@@ -7,7 +7,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { BrowserBridgeTransport } from '../browser/bridge/browserBridgeProtocol'
 import { assembleTurnDependencies } from '../engine/turn/turnDependencies'
 import { DriverStreamHost } from '../models/drivers/driverStreamHost'
-import { registerProviderDriver } from '../models/drivers/driverRegistry'
+import { registerProviderDriver, setHostPrimitives } from '../models/drivers/driverRegistry'
 import { createModelProvider } from '../models/drivers/modelProvider'
 import type { DriverStreamEvent, ProviderDriver } from '../models/drivers/driverTypes'
 import {
@@ -25,6 +25,7 @@ import {
   raiseProviderOutcome,
   type ProviderOutcomeEvent,
 } from '../models/drivers/providerOutcome'
+import { RAW_STREAM_EGRESS_PRIMITIVE, type ProviderEgressTable } from '../models/drivers/providerEgress'
 import type { ProviderPolicy } from '../models/drivers/providerPolicy'
 import {
   PLAN_CONTEXT_WINDOW_CEILING,
@@ -150,6 +151,7 @@ const stops = (chunks: any[]) => chunks.filter(c => c.type === 'message_stop').l
 
 type Script = {
   policy?: ProviderPolicy
+  egress?: ProviderEgressTable
   request?: (e: ProviderRequestEvent) => unknown
   classify?: (e: ProviderClassifyEvent) => unknown
   retry?: (e: ProviderRetryEvent) => unknown
@@ -168,6 +170,7 @@ function plug(script: Script) {
   }
   const seam: ProviderRequestSeam = {
     ...(script.policy ? { policy: script.policy } : {}),
+    ...(script.egress ? { egress: script.egress } : {}),
     ...(script.budgetMs !== undefined ? { budgetMs: script.budgetMs } : {}),
     ...(script.credentials ? { credentials: script.credentials } : {}),
     ...(script.request
@@ -212,9 +215,14 @@ function plug(script: Script) {
 
 afterEach(() => {
   resetProviderRequestSeams()
+  setHostPrimitives(undefined)
   vi.restoreAllMocks()
   vi.useRealTimers()
 })
+
+const EGRESS: ProviderEgressTable = {
+  'pool-a': { url: '{{secret:proxy_a}}', hosts: ['proxy-a.example.com'] },
+}
 
 // ── request-plan fields ─────────────────────────────────────────────────────
 
@@ -251,6 +259,66 @@ describe('the plan fields of a request answer', () => {
     [{ route: 'pool-a' }, 'route "pool-a" is not an egress this provider declares'],
   ])('refuses %j', (answer, problem) => {
     expect(() => readRequestPlan(answer as Record<string, unknown>)).toThrow(problem)
+  })
+
+  it('reads a route as the declared egress of that name', () => {
+    expect(readRequestPlan({ route: 'pool-a' }, {}, EGRESS)).toEqual({
+      egress: { name: 'pool-a', url: '{{secret:proxy_a}}', hosts: ['proxy-a.example.com'] },
+    })
+    expect(() => readRequestPlan({ route: 'pool-b' }, {}, EGRESS)).toThrow('route "pool-b" is not an egress this provider declares')
+    expect(() => readRequestPlan({ route: 'toString' }, {}, EGRESS)).toThrow('is not an egress this provider declares')
+    expect(() => readRequestPlan({ route: '' }, {}, EGRESS)).toThrow('route is not the name of an egress')
+  })
+
+  it('a route sends the request through the declared egress, as declared', async () => {
+    setHostPrimitives([RAW_STREAM_EGRESS_PRIMITIVE])
+    plug({ egress: EGRESS, request: () => ({ route: 'pool-a' }) })
+    const { transport, opens } = scripted([])
+    const chunks = await run(transport)
+    expect(opens).toHaveLength(1)
+    expect(opens[0]!.egress).toEqual({ url: '{{secret:proxy_a}}', hosts: ['proxy-a.example.com'] })
+    expect(textOf(chunks)).toBe('hi')
+  })
+
+  it('no route follows the host setting: nothing about an egress is sent', async () => {
+    setHostPrimitives([RAW_STREAM_EGRESS_PRIMITIVE])
+    plug({ egress: EGRESS, request: () => ({ headers: { 'x-a': '1' } }) })
+    const { transport, opens } = scripted([])
+    await run(transport)
+    expect(opens[0]).not.toHaveProperty('egress')
+  })
+
+  it('a route to an egress the provider does not declare is not sent at all', async () => {
+    setHostPrimitives([RAW_STREAM_EGRESS_PRIMITIVE])
+    plug({ egress: EGRESS, request: () => ({ route: 'elsewhere' }) })
+    const { transport, opens } = scripted([])
+    const chunks = await run(transport)
+    expect(opens).toEqual([])
+    expect(JSON.stringify(errorOf(chunks))).toContain('is not an egress this provider declares')
+  })
+
+  it('a host that does not list the primitive is not sent the request', async () => {
+    setHostPrimitives(['model.rawStreamOpen.oauth'])
+    plug({ egress: EGRESS, request: () => ({ route: 'pool-a' }) })
+    const { transport, opens } = scripted([])
+    const chunks = await run(transport)
+    expect(opens).toEqual([])
+    expect(JSON.stringify(errorOf(chunks))).toContain('the request was not sent')
+  })
+
+  it('a re-send after a retry keeps the egress', async () => {
+    setHostPrimitives([RAW_STREAM_EGRESS_PRIMITIVE])
+    plug({
+      egress: EGRESS,
+      request: () => ({ route: 'pool-a' }),
+      retry: () => ({ retry: { headers: { 'x-again': '1' } } }),
+    })
+    const { transport, opens } = scripted([{ status: 409, body: text('again') }])
+    await run(transport)
+    expect(opens.length).toBeGreaterThan(1)
+    for (const open of opens) {
+      expect(open.egress).toEqual({ url: '{{secret:proxy_a}}', hosts: ['proxy-a.example.com'] })
+    }
   })
 
   it('limits.maxOutputTokens builds the request again under the cap; a patch still applies', async () => {

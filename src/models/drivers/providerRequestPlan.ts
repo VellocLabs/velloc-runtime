@@ -4,9 +4,9 @@
  *
  * Contract: `readRequestPlan` returns the plan parts the answer states, each
  * within the platform's bounds, or undefined when it states none. It throws
- * on a part of the wrong shape, an unknown property inside a part, and on any
- * `route`; the caller fails the request closed, as for every other part of
- * the answer.
+ * on a part of the wrong shape, an unknown property inside a part, and on a
+ * `route` that is not the name of an egress the provider declares; the caller
+ * fails the request closed, as for every other part of the answer.
  *
  * Security: the answer is plugin input. A limit never exceeds what the
  * model's row states (the platform's ceiling when the row states nothing),
@@ -15,6 +15,7 @@
  */
 import { NEXUS_MODEL_CONFIG } from '../../config/nexusModelConfig'
 import { findConfiguredModelIn } from '../../config/nexusModelConfig/findConfiguredModel'
+import { egressNamed, type ProviderEgress, type ProviderEgressTable } from './providerEgress'
 import { clampTimeouts, TIMEOUT_KEYS, type ProviderTimeouts } from './providerTimeouts'
 import { traceLine } from '../../utils/debugLog'
 
@@ -27,6 +28,9 @@ export type ProviderRequestLimits = {
 export type ProviderRequestPlan = {
   limits?: ProviderRequestLimits
   timeouts?: ProviderTimeouts
+  /** The declared egress the hook named in `route`. Absent: the request
+   *  follows the host's own proxy setting. */
+  egress?: ProviderEgress & { name: string }
 }
 
 /** What the model's row states, when it states it. */
@@ -111,14 +115,22 @@ function readTimeouts(value: unknown): ProviderTimeouts | undefined {
   return Object.keys(timeouts).length > 0 ? timeouts : undefined
 }
 
-export function readRequestPlan(answer: Record<string, unknown>, ceilings: ModelCeilings = {}): ProviderRequestPlan | undefined {
-  if (answer.route !== undefined) {
-    if (typeof answer.route !== 'string' || answer.route === '') throw new Error('route is not the name of an egress')
-    // A provider cannot declare an egress yet, so no name can be one of its own.
-    throw new Error(`route "${answer.route.slice(0, 64)}" is not an egress this provider declares`)
-  }
+function readRoute(value: unknown, declared: ProviderEgressTable | undefined): ProviderRequestPlan['egress'] {
+  if (value === undefined) return undefined
+  if (typeof value !== 'string' || value === '') throw new Error('route is not the name of an egress')
+  const egress = egressNamed(declared, value)
+  if (!egress) throw new Error(`route "${value.slice(0, 64)}" is not an egress this provider declares`)
+  return { name: value, url: egress.url, hosts: egress.hosts }
+}
+
+export function readRequestPlan(
+  answer: Record<string, unknown>,
+  ceilings: ModelCeilings = {},
+  declaredEgress?: ProviderEgressTable,
+): ProviderRequestPlan | undefined {
+  const egress = readRoute(answer.route, declaredEgress)
   const limits = readLimits(answer.limits, ceilings)
   const timeouts = readTimeouts(answer.timeouts)
-  if (!limits && !timeouts) return undefined
-  return { ...(limits ? { limits } : {}), ...(timeouts ? { timeouts } : {}) }
+  if (!limits && !timeouts && !egress) return undefined
+  return { ...(limits ? { limits } : {}), ...(timeouts ? { timeouts } : {}), ...(egress ? { egress } : {}) }
 }

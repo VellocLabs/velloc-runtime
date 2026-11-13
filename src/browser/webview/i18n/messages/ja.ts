@@ -2126,6 +2126,8 @@ export const ja: Messages = {
   'settings.plugins.providers.consent.provider': 'プロバイダ: {provider}',
   'settings.plugins.providers.consent.domains': '接続できる先: {domains}',
   'settings.plugins.providers.consent.noDomains': '接続先のドメインは宣言されていません。',
+  'settings.plugins.providers.consent.proxies':
+    'リクエストを、ユーザー自身のプロキシ設定ではなく次のプロキシサーバー経由で送信します: {hosts}',
   'settings.plugins.providers.consent.secrets': '保存するシークレット名: {secrets}',
   'settings.plugins.providers.consent.noSecrets': '独自のシークレットは保存しません。',
   'settings.plugins.providers.consent.readsSecrets': '保存済みのシークレットを平文で読み取ります（たとえばリクエストへの署名のため）。',
@@ -2184,6 +2186,8 @@ export const ja: Messages = {
   'settings.plugins.providers.updates.waitingBody': '以前に同意した範囲を超える権限を求めています。あなたが決めるまで、現在のバージョンが引き続き動作します。',
   'settings.plugins.providers.updates.addedProvider': '新しいプロバイダ: {provider}',
   'settings.plugins.providers.updates.addedDomains': '{id} は次にも接続できるようになります: {domains}',
+  'settings.plugins.providers.updates.addedProxies':
+    '{id} は次のプロキシ経由でリクエストを送信できるようになります: {hosts}',
   'settings.plugins.providers.updates.addedSecrets': '{id} は次のシークレットも保存するようになります: {secrets}',
   'settings.plugins.providers.updates.addedReadsSecrets': '{id} は保存済みのシークレットを平文で読み取るようになります。',
   'settings.plugins.providers.updates.addedNeeds': '{id} のコードには次も渡されるようになります: {needs}',

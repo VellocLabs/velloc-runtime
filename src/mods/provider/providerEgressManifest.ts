@@ -1,0 +1,145 @@
+/**
+ * Validation of a provider manifest's `egress`: the proxies the provider's
+ * model requests may leave through (F-27).
+ *
+ * Contract: `checkProviderEgress` returns the table as the runtime uses it,
+ * or reports every problem through `bad` (which refuses the provider) and
+ * returns undefined. It is strict: an unknown property, a secret the
+ * provider does not declare, or an address the host is known to refuse is a
+ * problem, named by its path.
+ *
+ * Security: the proxy's host list is part of what the person agrees to at
+ * install, so it is required and holds plain host names or IP addresses
+ * only. An address is either a declared secret (the usual case: it carries
+ * a password) or a literal the manifest shows in full.
+ */
+import type { ProviderEgress, ProviderEgressTable } from '../../models/drivers/providerEgress'
+
+type Problems = (message: string) => void
+
+export const EGRESS_MAX = 8
+export const EGRESS_HOSTS_MAX = 8
+export const EGRESS_URL_MAX_LENGTH = 512
+
+const EGRESS_NAME = /^[A-Za-z0-9][A-Za-z0-9_-]{0,31}$/
+const HOST_NAME = /^(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)*$/
+const IPV6 = /^[0-9a-f:.]+$/
+const SECRET_REF = /\{\{secret:([^{}]*)\}\}/g
+const SCHEMES = ['http', 'https', 'socks5'] as const
+
+const isRecord = (v: unknown): v is Record<string, unknown> =>
+  typeof v === 'object' && v !== null && !Array.isArray(v)
+
+function checkHosts(value: unknown, label: string, bad: Problems): string[] | undefined {
+  if (!Array.isArray(value) || value.length === 0 || !value.every(entry => typeof entry === 'string')) {
+    bad(`${label}: expected a non-empty list of the proxy's host names`)
+    return undefined
+  }
+  if (value.length > EGRESS_HOSTS_MAX) {
+    bad(`${label}: at most ${EGRESS_HOSTS_MAX} host names`)
+    return undefined
+  }
+  const out: string[] = []
+  for (const entry of value as string[]) {
+    const host = entry.trim().toLowerCase()
+    const plain = HOST_NAME.test(host) || (host.includes(':') && IPV6.test(host))
+    if (!plain) {
+      bad(`${label}: "${entry}" is not a plain host name or IP address (no scheme, port, brackets, path or wildcard)`)
+      return undefined
+    }
+    if (!out.includes(host)) out.push(host)
+  }
+  return out
+}
+
+function checkUrl(value: unknown, label: string, secrets: ReadonlySet<string>, bad: Problems): string | undefined {
+  if (typeof value !== 'string' || value.trim() === '') {
+    bad(`${label}: expected the proxy's address, or a {{secret:NAME}} holding it`)
+    return undefined
+  }
+  const url = value.trim()
+  if (url.length > EGRESS_URL_MAX_LENGTH) {
+    bad(`${label}: longer than ${EGRESS_URL_MAX_LENGTH} characters`)
+    return undefined
+  }
+  let ok = true
+  for (const match of url.matchAll(SECRET_REF)) {
+    const name = match[1]!
+    if (!secrets.has(name)) {
+      bad(`${label}: {{secret:${name}}} is not a declared credentials.secrets name`)
+      ok = false
+    }
+  }
+  const literal = url.replace(SECRET_REF, '')
+  if (literal.includes('{{') || literal.includes('}}')) {
+    bad(`${label}: only {{secret:NAME}} may be used in a proxy address`)
+    ok = false
+  }
+  // The scheme is checked only where the manifest states it; an address held
+  // whole in a secret is checked by the host when it is used.
+  if (!url.startsWith('{{')) {
+    const scheme = /^([A-Za-z][A-Za-z0-9+.-]*):\/\//.exec(url)?.[1]?.toLowerCase()
+    if (scheme === undefined || !(SCHEMES as readonly string[]).includes(scheme)) {
+      bad(`${label}: expected an address starting with ${SCHEMES.map(s => `${s}://`).join(', ')}`)
+      ok = false
+    } else if (scheme === 'socks5' && url.includes('@')) {
+      bad(`${label}: a socks5 proxy cannot take a user name and password; use an http or https proxy for one that needs them`)
+      ok = false
+    }
+  }
+  return ok ? url : undefined
+}
+
+/** Validate `providers.<key>.egress`. `secrets` are the names the provider
+ *  declares in `credentials.secrets`. */
+export function checkProviderEgress(
+  value: unknown,
+  secrets: ReadonlySet<string>,
+  bad: Problems,
+): ProviderEgressTable | undefined {
+  if (!isRecord(value)) {
+    bad('egress: expected an object of named proxies')
+    return undefined
+  }
+  const names = Object.keys(value)
+  if (names.length > EGRESS_MAX) {
+    bad(`egress: at most ${EGRESS_MAX} proxies`)
+    return undefined
+  }
+  const out: Record<string, ProviderEgress> = {}
+  let failed = false
+  for (const name of names) {
+    const label = `egress.${name}`
+    if (!EGRESS_NAME.test(name)) {
+      bad(`${label}: a name is 1-32 letters, digits, "_" or "-", starting with a letter or digit`)
+      failed = true
+      continue
+    }
+    const raw = value[name]
+    if (!isRecord(raw)) {
+      bad(`${label}: expected an object with url and hosts`)
+      failed = true
+      continue
+    }
+    const unknown = Object.keys(raw).filter(key => key !== 'url' && key !== 'hosts')
+    if (unknown.length > 0) {
+      bad(`${label}.${unknown[0]}: not a known property (known: url / hosts)`)
+      failed = true
+    }
+    const url = checkUrl(raw.url, `${label}.url`, secrets, bad)
+    const hosts = checkHosts(raw.hosts, `${label}.hosts`, bad)
+    if (url === undefined || hosts === undefined) {
+      failed = true
+      continue
+    }
+    out[name] = { url, hosts }
+  }
+  return failed ? undefined : out
+}
+
+/** Every proxy host a table names: lower case, sorted, unique. */
+export function egressHostsOf(table: ProviderEgressTable | undefined): string[] {
+  const hosts = new Set<string>()
+  for (const egress of Object.values(table ?? {})) for (const host of egress.hosts) hosts.add(host)
+  return [...hosts].sort()
+}

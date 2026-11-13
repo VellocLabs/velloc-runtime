@@ -24,6 +24,9 @@ export type RawProviderStreamRequest = {
   idleTimeoutMs?: number
   /** The idle timeout is one a provider declared (F-27): the higher ceiling applies. */
   declaredIdle?: boolean
+  /** Send through this proxy instead of the host's own proxy setting (see
+   *  protocol). The caller checks the host lists the primitive first. */
+  egress?: { url: string; hosts: string[] }
   maxResponseBytes?: number
   signal?: AbortSignal
   /** `stream`: a driver stream already checked this request against its own
@@ -189,6 +192,7 @@ export async function openRawProviderStream(
         ? { captureSecrets: request.captureSecrets }
         : {}),
       idleTimeoutMs,
+      ...(request.egress !== undefined ? { egress: request.egress } : {}),
       ...(request.maxResponseBytes !== undefined
         ? { maxResponseBytes: request.maxResponseBytes }
         : {}),

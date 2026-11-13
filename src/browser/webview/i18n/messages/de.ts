@@ -2157,6 +2157,8 @@ export const de: Messages = {
   'settings.plugins.providers.consent.provider': 'Anbieter: {provider}',
   'settings.plugins.providers.consent.domains': 'Darf Verbindungen aufbauen zu: {domains}',
   'settings.plugins.providers.consent.noDomains': 'Gibt keine Domains an, zu denen es Verbindungen aufbaut.',
+  'settings.plugins.providers.consent.proxies':
+    'Sendet deine Anfragen über diese Proxyserver statt über deine eigene Proxy-Einstellung: {hosts}',
   'settings.plugins.providers.consent.secrets': 'Speichert Geheimnisse mit den Namen: {secrets}',
   'settings.plugins.providers.consent.noSecrets': 'Speichert keine eigenen Geheimnisse.',
   'settings.plugins.providers.consent.readsSecrets': 'Liest seine gespeicherten Geheimnisse im Klartext, zum Beispiel um Anfragen zu signieren.',
@@ -2215,6 +2217,8 @@ export const de: Messages = {
   'settings.plugins.providers.updates.waitingBody': 'Sie verlangt mehr, als du zugestimmt hast. Die aktuelle Version läuft weiter, bis du entscheidest.',
   'settings.plugins.providers.updates.addedProvider': 'Neuer Anbieter: {provider}',
   'settings.plugins.providers.updates.addedDomains': '{id} darf jetzt Verbindungen aufbauen zu: {domains}',
+  'settings.plugins.providers.updates.addedProxies':
+    '{id} darf Anfragen jetzt senden über: {hosts}',
   'settings.plugins.providers.updates.addedSecrets': '{id} speichert jetzt Geheimnisse mit den Namen: {secrets}',
   'settings.plugins.providers.updates.addedReadsSecrets': '{id} liest seine gespeicherten Geheimnisse jetzt im Klartext.',
   'settings.plugins.providers.updates.addedNeeds': 'Der Code von {id} bekommt jetzt zusätzlich zu sehen: {needs}',

@@ -130,6 +130,16 @@ describe('ProviderConsentDialog', () => {
     )
   })
 
+  it('lists the proxy hosts of a provider that declares an egress, and no such line otherwise', () => {
+    open({}, status({ grant: { providers: { zen: { ...GRANT.providers.zen, proxies: ['proxy-a.zen.example', 'proxy-b.zen.example'] } } } }))
+    expect(screen.getByTestId('consent-proxies-zen').textContent).toBe(
+      'Sends your requests through these proxy servers instead of your own proxy setting: proxy-a.zen.example, proxy-b.zen.example',
+    )
+    cleanup()
+    open()
+    expect(screen.queryByTestId('consent-proxies-zen')).toBeNull()
+  })
+
   it('says so plainly when a provider declares nothing, and when the publisher is unstated', () => {
     open(
       {},
@@ -321,6 +331,24 @@ describe('ProviderUpdatePanel', () => {
       },
     })
     expect(grantDeltaLines(parked, t)).toEqual(["zen's code is now also shown: the folder the session is working in"])
+  })
+
+  it('an update that adds a proxy host names it', () => {
+    const parked = status({
+      state: 'needs-consent',
+      pending: {
+        ...NEEDS_CONSENT.pending!,
+        delta: {
+          widened: true,
+          added: {
+            providers: [],
+            perProvider: { zen: { domains: [], secrets: [], readsSecrets: false, requestNeeds: [], proxies: ['proxy.zen.example'] } },
+          },
+          removed: [],
+        },
+      },
+    })
+    expect(grantDeltaLines(parked, t)).toEqual(['zen may now send requests through: proxy.zen.example'])
   })
 
   it('grantDeltaLines names agent runs newly asked for', () => {

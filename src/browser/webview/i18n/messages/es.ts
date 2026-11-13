@@ -2160,6 +2160,8 @@ export const es: Messages = {
   'settings.plugins.providers.consent.provider': 'Proveedor: {provider}',
   'settings.plugins.providers.consent.domains': 'Puede conectarse a: {domains}',
   'settings.plugins.providers.consent.noDomains': 'No declara dominios a los que conectarse.',
+  'settings.plugins.providers.consent.proxies':
+    'Envía tus solicitudes a través de estos servidores proxy en lugar de tu propia configuración de proxy: {hosts}',
   'settings.plugins.providers.consent.secrets': 'Guarda secretos llamados: {secrets}',
   'settings.plugins.providers.consent.noSecrets': 'No guarda secretos propios.',
   'settings.plugins.providers.consent.readsSecrets': 'Lee sus secretos guardados en texto sin cifrar, por ejemplo para firmar solicitudes.',
@@ -2218,6 +2220,8 @@ export const es: Messages = {
   'settings.plugins.providers.updates.waitingBody': 'Solicita más de lo que usted aceptó. La versión actual sigue en uso hasta que usted decida.',
   'settings.plugins.providers.updates.addedProvider': 'Proveedor nuevo: {provider}',
   'settings.plugins.providers.updates.addedDomains': '{id} ahora puede conectarse a: {domains}',
+  'settings.plugins.providers.updates.addedProxies':
+    '{id} ahora puede enviar solicitudes a través de: {hosts}',
   'settings.plugins.providers.updates.addedSecrets': '{id} ahora guarda secretos llamados: {secrets}',
   'settings.plugins.providers.updates.addedReadsSecrets': '{id} ahora lee sus secretos guardados en texto sin cifrar.',
   'settings.plugins.providers.updates.addedNeeds': 'El código de {id} ahora también recibe: {needs}',

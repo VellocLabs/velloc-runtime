@@ -88,6 +88,11 @@ function ProviderGrantBlock({ provider, grant, t }: { provider: string; grant: P
             ? t("settings.plugins.providers.consent.domains", { domains: grant.domains.join(", ") })
             : t("settings.plugins.providers.consent.noDomains")}
         </li>
+        {grant.proxies && grant.proxies.length > 0 ? (
+          <li data-testid={`consent-proxies-${provider}`}>
+            {t("settings.plugins.providers.consent.proxies", { hosts: grant.proxies.join(", ") })}
+          </li>
+        ) : null}
         <li data-testid={`consent-secrets-${provider}`}>
           {grant.secrets.length > 0
             ? t("settings.plugins.providers.consent.secrets", { secrets: grant.secrets.join(", ") })
@@ -226,6 +231,9 @@ export function grantDeltaLines(status: ProviderModUpdateStatus, t: TranslateFn)
   for (const [provider, added] of Object.entries(delta.added.perProvider)) {
     if (added.domains.length > 0) {
       lines.push(t("settings.plugins.providers.updates.addedDomains", { id: provider, domains: added.domains.join(", ") }));
+    }
+    if (added.proxies && added.proxies.length > 0) {
+      lines.push(t("settings.plugins.providers.updates.addedProxies", { id: provider, hosts: added.proxies.join(", ") }));
     }
     if (added.secrets.length > 0) {
       lines.push(t("settings.plugins.providers.updates.addedSecrets", { id: provider, secrets: added.secrets.join(", ") }));

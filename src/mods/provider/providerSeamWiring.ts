@@ -34,6 +34,7 @@ export function seamForRegistration(
       manifest.credentials?.methods?.includes('login') ? getProviderCredentials().seamCredentials(providerId) : undefined,
     )
     if (manifest.policy) seam.policy = manifest.policy
+    if (manifest.egress) seam.egress = manifest.egress
     // The id mapper exists only for a provider that states `ids` rules; one
     // that states none pays nothing. Rules that cannot run must not be
     // skipped (the vendor's ids would go out unmapped): that is an error here.

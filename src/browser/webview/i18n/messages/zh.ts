@@ -2091,6 +2091,8 @@ export const zh: Messages = {
   'settings.plugins.providers.consent.provider': '服务商：{provider}',
   'settings.plugins.providers.consent.domains': '可以访问：{domains}',
   'settings.plugins.providers.consent.noDomains': '未声明可访问的域名。',
+  'settings.plugins.providers.consent.proxies':
+    '通过这些代理服务器发送你的请求，而不使用你自己的代理设置：{hosts}',
   'settings.plugins.providers.consent.secrets': '存储的密钥名称：{secrets}',
   'settings.plugins.providers.consent.noSecrets': '不存储自己的密钥。',
   'settings.plugins.providers.consent.readsSecrets': '会以明文读取其已保存的密钥，例如用于为请求签名。',
@@ -2149,6 +2151,8 @@ export const zh: Messages = {
   'settings.plugins.providers.updates.waitingBody': '它需要的权限比你之前同意的更多。在你决定之前，现有版本会继续运行。',
   'settings.plugins.providers.updates.addedProvider': '新增服务商：{provider}',
   'settings.plugins.providers.updates.addedDomains': '{id} 现在可以访问：{domains}',
+  'settings.plugins.providers.updates.addedProxies':
+    '{id} 现在可以通过这些代理发送请求：{hosts}',
   'settings.plugins.providers.updates.addedSecrets': '{id} 现在会存储这些密钥：{secrets}',
   'settings.plugins.providers.updates.addedReadsSecrets': '{id} 现在会以明文读取其已保存的密钥。',
   'settings.plugins.providers.updates.addedNeeds': '{id} 的代码现在还可以看到：{needs}',

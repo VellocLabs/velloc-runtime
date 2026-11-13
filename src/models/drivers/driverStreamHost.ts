@@ -19,6 +19,8 @@ import {
   RawProviderStreamError,
   type RawProviderStream,
 } from '../../browser/bridge/rawProviderStream'
+import { hostServesPrimitive } from './driverRegistry'
+import { RAW_STREAM_EGRESS_PRIMITIVE } from './providerEgress'
 import { DriverChunkEmitter } from './chunkEmitter'
 import { buildSystemInstruction } from './hostCallOptions'
 import { buildThinkingBodyExtension } from '../../config/nexusModelConfig/thinkingTierParams'
@@ -544,6 +546,15 @@ class DriverStream {
       // The stream's own table guards its request, whatever the realm's
       // table has become since it opened.
       this.masking?.checkEgress(request)
+      // Security: a host that does not know the input would send the
+      // request on its default route, so it is not sent to one.
+      const egress = seamed?.prepared.plan?.egress
+      if (egress && !hostServesPrimitive(RAW_STREAM_EGRESS_PRIMITIVE)) {
+        throw new RawProviderStreamError(
+          'EGRESS_UNSUPPORTED',
+          `this Velloc cannot send a request through the proxy "${egress.name}"; the request was not sent`,
+        )
+      }
       this.sends += 1
       this.status = undefined
       if (seamed) this.lastContext = seamed.prepared.context
@@ -557,6 +568,7 @@ class DriverStream {
         body: request.body,
         ...(idleTimeoutMs !== undefined ? { idleTimeoutMs } : {}),
         ...(guard.timeouts ? { declaredIdle: true } : {}),
+        ...(egress ? { egress: { url: egress.url, hosts: [...egress.hosts] } } : {}),
         signal: guard.signal,
         ...(this.masking ? { masking: 'stream' as const } : {}),
       })
