@@ -25,6 +25,14 @@ describe('isCompactNarration', () => {
     expect(isCompactNarration('## Result')).toBe(false)
     expect(isCompactNarration('> quoted')).toBe(false)
     expect(isCompactNarration('| a | b |\n| - | - |')).toBe(false)
+    expect(isCompactNarration('Summary\n---')).toBe(false)
+    expect(isCompactNarration('Summary\n===')).toBe(false)
+    expect(isCompactNarration('a | b\n--|--')).toBe(false)
+    expect(isCompactNarration('Above.\n* * *')).toBe(false)
+  })
+
+  it('keeps a hyphenated or dashed sentence', () => {
+    expect(isCompactNarration('Re-running the build - then the tests.')).toBe(true)
   })
 
   it('rejects a paragraph past the length cap', () => {

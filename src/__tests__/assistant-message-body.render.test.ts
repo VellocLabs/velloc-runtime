@@ -630,6 +630,29 @@ describe('AssistantMessageBody — a turn\'s closing reply renders top-level', (
     expect(label.closest('.sr-only')).toBeNull()
     expect(label.textContent).toContain('1 failed')
   })
+
+  it('a narrated run never shows an earlier card\'s thought as its second line', async () => {
+    const Harness = makeHarness(
+      {
+        role: 'assistant',
+        content: [
+          { type: 'reasoning', text: 'An earlier thought about the tips.' },
+          { ...BASH, toolCallId: 'early-1' },
+          { type: 'text', text: 'Plan:\n\nCheck each tip in turn.' },
+          { ...BASH, toolCallId: 'late-1' },
+          { type: 'tool-call', toolCallId: 'late-2', toolName: 'Bash', args: { command: 'git status' } },
+        ],
+      } as ThreadMessageLike,
+      true,
+    )
+    const { container } = render(createElement(Harness))
+    await waitFor(() => {
+      expect(container.querySelectorAll('[data-slot="tool-plan-stream-root"]').length).toBe(2)
+    })
+    const second = container.querySelectorAll('[data-slot="tool-plan-stream-root"]')[1]!
+    expect(second.textContent).not.toContain('An earlier thought about the tips.')
+    expect(second.querySelector('[data-slot="tool-plan-stream-reasoning-icon"]')).toBeNull()
+  })
 })
 
 describe('AssistantMessageBody — reasoning is a row of the tool card, not a break in it', () => {

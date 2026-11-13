@@ -15,5 +15,11 @@ export function isCompactNarration(text: string | undefined): boolean {
   if (trimmed.includes('```')) return false
   const lines = trimmed.split(/\r?\n/)
   if (lines.some((line) => line.trim().length === 0)) return false
-  return !lines.some((line) => /^\s*(#{1,6}\s|[-*+]\s|\d+[.)]\s|>|\|)/.test(line))
+  return !lines.some(
+    (line) =>
+      /^\s*(#{1,6}\s|[-*+]\s|\d+[.)]\s|>|\|)/.test(line) ||
+      // A setext underline, a thematic break, or a table's delimiter row.
+      /^\s*(=+|[-*_](\s*[-*_]){2,})\s*$/.test(line) ||
+      /^\s*\|?\s*:?-+:?\s*(\|\s*:?-+:?\s*)+\|?\s*$/.test(line),
+  )
 }

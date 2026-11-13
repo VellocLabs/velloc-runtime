@@ -85,6 +85,7 @@ import {
 } from "@/browser/webview/partRevealStore";
 import { ToolPlanStream } from "./tool-plan-stream";
 import { ToolCallLine } from "./tool-call-line";
+import { NarrationPart } from "./narration-lead";
 import { TodoItemRow, TodoSection } from "./todo-section";
 
 // When true, runs of consecutive tool calls render as `<ToolPlanStream>` instead of
@@ -302,27 +303,12 @@ function renderRange(
   // The text that introduces the run, drawn by the run: as its line when it
   // is short, above its summary line otherwise.
   const narrationIndex =
-    range.kind === "tool-group" && USE_TOOL_PLAN_STREAM
-      ? range.narrationIndex
-      : undefined;
-  const narration =
-    narrationIndex === undefined ? undefined : (
-      <PartLineProvider
-        line={lineAt(partLines, narrationIndex)}
-        isRevealTarget={revealPart === narrationIndex}
-      >
-        <MessagePrimitive.PartByIndex
-          index={narrationIndex}
-          components={PART_COMPONENTS}
-        />
-      </PartLineProvider>
-    );
+    range.kind === "tool-group" ? range.narrationIndex : undefined;
 
   const children: ReactNode[] = [];
   if (skipChildren) {
     return (
       <ToolPlanStream
-        narration={narration}
         narrationIndex={narrationIndex}
         key={`tps-${range.startIndex}`}
         startIndex={range.startIndex}
@@ -336,27 +322,7 @@ function renderRange(
     );
   }
   for (let k = range.startIndex; k <= range.endIndex; k++) {
-    // Indent absorbed preamble text (`pl-10`) so it aligns with the tool cards' label.
-    const isToolGroupTextChild =
-      range.kind === "tool-group" && types[k] === "text";
-    if (isToolGroupTextChild) {
-      const line = lineAt(partLines, k);
-      children.push(
-        <div
-          key={k}
-          data-slot="tool-group-inner-preamble"
-          data-line-ordinal={line === null ? undefined : String(line)}
-          className="aui-tool-group-inner-preamble pl-10 pr-4 text-muted-foreground"
-        >
-          <PartLineProvider line={line} isRevealTarget={revealPart === k}>
-            <MessagePrimitive.PartByIndex
-              index={k}
-              components={PART_COMPONENTS}
-            />
-          </PartLineProvider>
-        </div>,
-      );
-    } else {
+    {
       const part = (
         <PartLineProvider
           key={k}
@@ -378,8 +344,15 @@ function renderRange(
           <ToolCallLine
             key={k}
             index={k}
-            narration={narration}
             narrationIndex={narrationIndex}
+            narrationLine={
+              narrationIndex === undefined
+                ? null
+                : lineAt(partLines, narrationIndex)
+            }
+            revealNarration={
+              narrationIndex !== undefined && revealPart === narrationIndex
+            }
             forceOpen={revealPart === k}
             {...spanOf(partLines, k, k)}
           >
@@ -405,16 +378,24 @@ function renderRange(
       return <Fragment key={`tg-${range.startIndex}`}>{children}</Fragment>;
     }
     return (
-      <ToolGroup
-        key={`tg-${range.startIndex}`}
-        startIndex={range.startIndex}
-        endIndex={range.endIndex}
-        toolCallCount={range.toolCallCount}
-        forceOpen={holdsTarget}
-        {...spanOf(partLines, range.startIndex, range.endIndex)}
-      >
-        {children}
-      </ToolGroup>
+      <Fragment key={`tg-${range.startIndex}`}>
+        {narrationIndex === undefined ? null : (
+          <NarrationPart
+            index={narrationIndex}
+            line={lineAt(partLines, narrationIndex)}
+            isRevealTarget={revealPart === narrationIndex}
+          />
+        )}
+        <ToolGroup
+          startIndex={range.startIndex}
+          endIndex={range.endIndex}
+          toolCallCount={range.toolCallCount}
+          forceOpen={holdsTarget}
+          {...spanOf(partLines, range.startIndex, range.endIndex)}
+        >
+          {children}
+        </ToolGroup>
+      </Fragment>
     );
   }
 

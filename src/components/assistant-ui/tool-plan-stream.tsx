@@ -5,7 +5,6 @@ import {
   useEffect,
   useState,
   type FC,
-  type ReactNode,
 } from "react";
 import {
   MessagePrimitive,
@@ -17,7 +16,12 @@ import { Ban, BrainIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { rememberBounded } from "@/components/assistant-ui/boundedUiMemory";
 import { PlanCard, usePlanCardOpen } from "./plan-card";
-import { isCompactNarration } from "../../utils/narrationLead";
+import {
+  NarrationPart,
+  narrationLeadsRun,
+  useCompactNarration,
+  type ToolRunState,
+} from "./narration-lead";
 import { PlanListItem, PlanRowLookContext } from "../tool-ui/plan/parts/ListItem";
 import {
   PartLineProvider,
@@ -284,11 +288,10 @@ export type ToolPlanStreamProps = {
   /** Number of tool-call parts in [startIndex..endIndex]. */
   callTotal: number;
   /**
-   * The text that introduces this run, already rendered, and its part index
-   * (outside the run's range). Short narration becomes the run's line, with
-   * the chevron after it; longer narration stays prose above the summary line.
+   * Part index of the text that introduces this run (outside the run's
+   * range). Short narration becomes the run's line, with the chevron after
+   * it; longer narration stays prose above the summary line.
    */
-  narration?: ReactNode;
   narrationIndex?: number;
 };
 
@@ -313,18 +316,11 @@ const ToolPlanStreamImpl: FC<ToolPlanStreamProps> = ({
   partLines,
   revealPart,
   forceOpen = false,
-  narration: narrationLead,
   narrationIndex,
 }) => {
   const t = useT();
   const locale = useLocale();
-  const compactNarration = useAssistantState(({ message }) => {
-    if (narrationIndex === undefined) return false;
-    const part = message.parts[narrationIndex] as { text?: unknown } | undefined;
-    return isCompactNarration(
-      typeof part?.text === "string" ? part.text : undefined,
-    );
-  });
+  const compactNarration = useCompactNarration(narrationIndex);
   const snapshot = useAssistantState(
     useShallow(({ message }): ToolPlanStreamSnapshot => {
       let runningToolName: string | undefined;
@@ -360,11 +356,9 @@ const ToolPlanStreamImpl: FC<ToolPlanStreamProps> = ({
             : "_") +
           (part.isError ? "e" : "_") +
           "|";
-        // Preamble text: the latest non-empty text part in the run drives the
-        // header's second line (narration), mirroring the todo current-update.
-        // Every text part in a tool-group range is a bundled preamble (a
-        // trailing real reply is never in-range — see groupSliceByPartType), so
-        // "latest text" is always the narration for the current tool.
+        // Text in the range drives the header's second line. Grouping puts
+        // only blank text in a run (text ends a run), so from the message body
+        // this branch sees nothing to show.
         if (part.type === "text") {
           const t = typeof part.text === "string" ? part.text.trim() : "";
           if (t) {
@@ -523,7 +517,7 @@ const ToolPlanStreamImpl: FC<ToolPlanStreamProps> = ({
     : allCancelled
       ? t("plan.verbCancelled")
       : t("plan.verbDone");
-  const headerState: "running" | "cancelled" | "failed" | "settled" = isActive
+  const headerState: ToolRunState = isActive
     ? "running"
     : allCancelled
       ? "cancelled"
@@ -549,9 +543,9 @@ const ToolPlanStreamImpl: FC<ToolPlanStreamProps> = ({
         : t("plan.countTools", { count: snapshot.callTotal })
       : undefined;
 
-  // Second line: the model's latest narration — from this card's range, else
-  // the message-wide memory (a fresh card after a split has no text of its
-  // own yet), else the running tool's label. Shown while the card is active;
+  // Second line: the latest thought in this card's range, else — for a card
+  // with no narration of its own — the message-wide memory, else the running
+  // tool's label. Shown while the card is active;
   // the text only changes when new non-empty narration arrives, so new tools
   // or empty text parts never blank the line (mirrors the todo card). A
   // thought keeps its glyph wherever it comes from — a recalled one too.
@@ -563,7 +557,9 @@ const ToolPlanStreamImpl: FC<ToolPlanStreamProps> = ({
             text: snapshot.currentUpdateText,
             isReasoning: snapshot.currentUpdateIsReasoning,
           }
-        : (lastNarrationByMessageId.get(snapshot.messageId) ??
+        : ((narrationIndex === undefined
+            ? lastNarrationByMessageId.get(snapshot.messageId)
+            : undefined) ??
           (snapshot.runningToolLabel
             ? {
                 text: t("plan.runningTarget", {
@@ -574,12 +570,16 @@ const ToolPlanStreamImpl: FC<ToolPlanStreamProps> = ({
             : undefined));
   const narration = narrationSource?.text;
   const narrationIsReasoning = narrationSource?.isReasoning === true;
-  // A failed or cancelled run keeps its summary line: that line is where the
-  // outcome is written.
+  const narrationLead =
+    narrationIndex === undefined ? undefined : (
+      <NarrationPart
+        index={narrationIndex}
+        line={lineOfPart(partLines, narrationIndex)}
+        isRevealTarget={revealPart === narrationIndex}
+      />
+    );
   const asLead =
-    narrationLead !== undefined &&
-    compactNarration &&
-    (headerState === "running" || headerState === "settled");
+    narrationLead !== undefined && narrationLeadsRun(compactNarration, headerState);
   // Under a narration line the sentence is not drawn, so the running call is
   // named below it, and carries the sheen.
   const runningLine =
