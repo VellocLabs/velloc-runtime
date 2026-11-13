@@ -29,8 +29,9 @@ export type ProviderRequestLimits = {
 export type ProviderRequestPlan = {
   limits?: ProviderRequestLimits
   timeouts?: ProviderTimeouts
-  /** The pool member the hook named in `route`. Absent: the request
-   *  follows the host's own proxy setting. */
+  /** The pool member the hook named in `route`, which carries `https`
+   *  requests only. Absent: the request follows the host's own proxy
+   *  setting. */
   egress?: ProviderEgress & { name: string }
 }
 

@@ -90,11 +90,7 @@ function ProviderGrantBlock({ provider, grant, t }: { provider: string; grant: P
         </li>
         {grant.proxyPools ? (
           <li data-testid={`consent-proxy-pools-${provider}`}>
-            {t(
-              grant.proxyPools === "local"
-                ? "settings.plugins.providers.consent.proxyPoolsLocal"
-                : "settings.plugins.providers.consent.proxyPools",
-            )}
+            {t("settings.plugins.providers.consent.proxyPools")}
           </li>
         ) : null}
         <li data-testid={`consent-secrets-${provider}`}>
@@ -237,14 +233,7 @@ export function grantDeltaLines(status: ProviderModUpdateStatus, t: TranslateFn)
       lines.push(t("settings.plugins.providers.updates.addedDomains", { id: provider, domains: added.domains.join(", ") }));
     }
     if (added.proxyPools) {
-      lines.push(
-        t(
-          added.proxyPools === "local"
-            ? "settings.plugins.providers.updates.addedProxyPoolsLocal"
-            : "settings.plugins.providers.updates.addedProxyPools",
-          { id: provider },
-        ),
-      );
+      lines.push(t("settings.plugins.providers.updates.addedProxyPools", { id: provider }));
     }
     if (added.secrets.length > 0) {
       lines.push(t("settings.plugins.providers.updates.addedSecrets", { id: provider, secrets: added.secrets.join(", ") }));

@@ -2125,8 +2125,6 @@ export const ko: Messages = {
   'settings.plugins.providers.consent.noDomains': '접속할 도메인을 선언하지 않았습니다.',
   'settings.plugins.providers.consent.proxyPools':
     '요청을 사용자의 프록시 설정 대신 이 공급자의 코드가 선택하는 프록시 서버를 통해 보냅니다. 해당 주소는 여기에 표시되지 않습니다.',
-  'settings.plugins.providers.consent.proxyPoolsLocal':
-    '요청을 사용자의 프록시 설정 대신 이 공급자의 코드가 선택하는 프록시 서버(이 컴퓨터나 로컬 네트워크에 있는 서버 포함)를 통해 보냅니다. 해당 주소는 여기에 표시되지 않습니다.',
   'settings.plugins.providers.consent.secrets': '저장하는 비밀 이름: {secrets}',
   'settings.plugins.providers.consent.noSecrets': '자체 비밀을 저장하지 않습니다.',
   'settings.plugins.providers.consent.readsSecrets': '저장된 비밀을 일반 텍스트로 읽습니다(예: 요청에 서명하기 위해).',
@@ -2187,8 +2185,6 @@ export const ko: Messages = {
   'settings.plugins.providers.updates.addedDomains': '{id}이(가) 이제 접속할 수 있는 곳: {domains}',
   'settings.plugins.providers.updates.addedProxyPools':
     '{id}이(가) 이제 자체 코드가 선택하는 프록시 서버를 통해 요청을 보낼 수 있습니다',
-  'settings.plugins.providers.updates.addedProxyPoolsLocal':
-    '{id}이(가) 이제 자체 코드가 선택하는 프록시 서버(이 컴퓨터나 로컬 네트워크에 있는 서버 포함)를 통해 요청을 보낼 수 있습니다',
   'settings.plugins.providers.updates.addedSecrets': '{id}이(가) 이제 저장하는 비밀: {secrets}',
   'settings.plugins.providers.updates.addedReadsSecrets': '{id}이(가) 이제 저장된 비밀을 일반 텍스트로 읽습니다.',
   'settings.plugins.providers.updates.addedNeeds': '{id}의 코드에 이제 다음도 전달됩니다: {needs}',

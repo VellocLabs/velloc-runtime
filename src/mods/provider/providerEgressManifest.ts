@@ -28,16 +28,12 @@ const isRecord = (v: unknown): v is Record<string, unknown> =>
 function checkPool(raw: Record<string, unknown>, label: string, bad: Problems): ProviderEgressPool | undefined {
   let ok = true
   if (raw.url !== undefined || raw.hosts !== undefined) {
-    bad(`${label}: a proxy address cannot be declared; declare a pool ({ "dynamic": true }) and register its proxies with $.provider.setEgress`)
+    bad(`${label}: a proxy address cannot be declared; declare a pool ({ "max": 16 }, or {}) and register its proxies with $.provider.setEgress`)
     return undefined
   }
-  const unknown = Object.keys(raw).filter(key => key !== 'dynamic' && key !== 'max' && key !== 'local')
+  const unknown = Object.keys(raw).filter(key => key !== 'max')
   if (unknown.length > 0) {
-    bad(`${label}.${unknown[0]}: not a known property of a pool (known: dynamic / max / local)`)
-    ok = false
-  }
-  if (raw.dynamic !== true) {
-    bad(`${label}.dynamic: expected true`)
+    bad(`${label}.${unknown[0]}: not a known property of a pool (known: max)`)
     ok = false
   }
   const max = raw.max
@@ -45,11 +41,7 @@ function checkPool(raw: Record<string, unknown>, label: string, bad: Problems): 
     bad(`${label}.max: expected a whole number from 1 to ${EGRESS_POOL_MAX_MEMBERS}`)
     ok = false
   }
-  if (raw.local !== undefined && typeof raw.local !== 'boolean') {
-    bad(`${label}.local: expected true or false`)
-    ok = false
-  }
-  return ok ? { max: (max as number | undefined) ?? EGRESS_POOL_MAX_MEMBERS, local: raw.local === true } : undefined
+  return ok ? { max: (max as number | undefined) ?? EGRESS_POOL_MAX_MEMBERS } : undefined
 }
 
 /** Validate `providers.<key>.egress`. */
@@ -74,7 +66,7 @@ export function checkProviderEgress(value: unknown, bad: Problems): ProviderEgre
     }
     const raw = value[name]
     if (!isRecord(raw)) {
-      bad(`${label}: expected a pool, { "dynamic": true }`)
+      bad(`${label}: expected a pool, { "max": 16 } or {}`)
       failed = true
       continue
     }

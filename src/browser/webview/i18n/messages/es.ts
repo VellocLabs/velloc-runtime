@@ -2165,8 +2165,6 @@ export const es: Messages = {
   'settings.plugins.providers.consent.noDomains': 'No declara dominios a los que conectarse.',
   'settings.plugins.providers.consent.proxyPools':
     'Envía tus solicitudes a través de servidores proxy que elige su código, en lugar de tu propia configuración de proxy. Sus direcciones no se muestran aquí.',
-  'settings.plugins.providers.consent.proxyPoolsLocal':
-    'Envía tus solicitudes a través de servidores proxy que elige su código, incluidos los de este equipo o tu red local, en lugar de tu propia configuración de proxy. Sus direcciones no se muestran aquí.',
   'settings.plugins.providers.consent.secrets': 'Guarda secretos llamados: {secrets}',
   'settings.plugins.providers.consent.noSecrets': 'No guarda secretos propios.',
   'settings.plugins.providers.consent.readsSecrets': 'Lee sus secretos guardados en texto sin cifrar, por ejemplo para firmar solicitudes.',
@@ -2227,8 +2225,6 @@ export const es: Messages = {
   'settings.plugins.providers.updates.addedDomains': '{id} ahora puede conectarse a: {domains}',
   'settings.plugins.providers.updates.addedProxyPools':
     '{id} ahora puede enviar solicitudes a través de servidores proxy que elige su código',
-  'settings.plugins.providers.updates.addedProxyPoolsLocal':
-    '{id} ahora puede enviar solicitudes a través de servidores proxy que elige su código, incluidos los de este equipo o tu red local',
   'settings.plugins.providers.updates.addedSecrets': '{id} ahora guarda secretos llamados: {secrets}',
   'settings.plugins.providers.updates.addedReadsSecrets': '{id} ahora lee sus secretos guardados en texto sin cifrar.',
   'settings.plugins.providers.updates.addedNeeds': 'El código de {id} ahora también recibe: {needs}',

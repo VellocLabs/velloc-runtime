@@ -31,8 +31,6 @@ export type ProviderEgress = {
 export type ProviderEgressPool = {
   /** The most members the pool may hold. */
   max: number
-  /** Members may be on this machine or a private network. */
-  local: boolean
 }
 
 export type ProviderEgressPools = Readonly<Record<string, ProviderEgressPool>>

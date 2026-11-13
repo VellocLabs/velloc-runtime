@@ -30,7 +30,7 @@ export type ProviderNounDeps = {
   /** The settings write path, sealed host-side: name by name, `''` removes
    *  (`providers.upsert` semantics). PM-3 owns it. */
   writeProviderSecrets: (providerId: string, record: Readonly<Record<string, string>>) => Promise<void>
-  /** The dynamic egress pools a provider declared, and where their members
+  /** The egress pools a provider declared, and where their members
    *  are kept. Absent: no pool can be filled in this realm. */
   egress?: {
     declaredPools: (providerId: string) => ProviderEgressPools | undefined
@@ -169,7 +169,7 @@ export function createProviderNouns(deps: ProviderNounDeps): ProviderNouns {
       if (!deps.egress || !decl) {
         const names = Object.keys(declared ?? {})
         throw refusal(
-          `$.provider.setEgress: ${pool.slice(0, 64)} is not a dynamic pool ${providerId} declares` +
+          `$.provider.setEgress: ${pool.slice(0, 64)} is not a pool ${providerId} declares` +
             (names.length > 0 ? ` (it declares ${names.join(', ')})` : ''),
         )
       }

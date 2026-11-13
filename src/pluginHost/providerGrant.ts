@@ -24,12 +24,10 @@ export type ProviderGrant = {
   requestNeeds: ProviderRequestNeed[]
   /** Absent: the provider does not sign. */
   signNeeds?: ProviderSignNeed
-  /** It sends requests through proxies its code chooses while it runs:
-   *  `public` ones only, or `local` ones too. Absent: it has no such pool. */
-  proxyPools?: ProxyPoolReach
+  /** It sends requests through proxies its code chooses while it runs, on
+   *  any network. Absent: it has no such pool. */
+  proxyPools?: true
 }
-
-export type ProxyPoolReach = 'public' | 'local'
 
 /** A plugin's grant: its providers' grants, by provider key, and the folders its background modules reach. */
 export type Grant = {
@@ -48,8 +46,8 @@ export type ProviderGrantAddition = {
   requestNeeds: ProviderRequestNeed[]
   /** The new, wider `signNeeds` value. */
   signNeeds?: ProviderSignNeed
-  /** The new, wider reach of its proxy pools. */
-  proxyPools?: ProxyPoolReach
+  /** It newly has proxy pools. */
+  proxyPools?: true
 }
 
 export type GrantDelta = {
@@ -71,16 +69,13 @@ export type GrantDelta = {
 
 const REQUEST_NEED_ORDER: readonly ProviderRequestNeed[] = ['system', 'tools', 'body', 'cwd']
 const SIGN_RANK: Readonly<Record<ProviderSignNeed, number>> = { digest: 1, body: 2 }
-const POOL_RANK: Readonly<Record<ProxyPoolReach, number>> = { public: 1, local: 2 }
 
 const sortedUnique = (values: readonly string[]): string[] => [...new Set(values)].sort()
 
 /** The grant of one provider manifest. */
 export function providerGrantOf(manifest: ProviderManifest): ProviderGrant {
   const needs = new Set(manifest.requestNeeds ?? [])
-  const pools = Object.values(manifest.egressPools ?? {})
-  const proxyPools: ProxyPoolReach | undefined =
-    pools.length === 0 ? undefined : pools.some(pool => pool.local) ? 'local' : 'public'
+  const proxyPools = Object.keys(manifest.egressPools ?? {}).length > 0
   return {
     domains: sortedUnique(manifest.domains.map(domain => domain.trim().toLowerCase())),
     secrets: sortedUnique((manifest.credentials.secrets ?? []).map(secret => secret.name)),
@@ -116,8 +111,7 @@ function additionOf(consented: ProviderGrant | undefined, next: ProviderGrant): 
   const requestNeeds = next.requestNeeds.filter(need => !had(consented?.requestNeeds, need))
   const wider =
     next.signNeeds !== undefined && SIGN_RANK[next.signNeeds] > (consented?.signNeeds ? SIGN_RANK[consented.signNeeds] : 0)
-  const widerPools =
-    next.proxyPools !== undefined && POOL_RANK[next.proxyPools] > (consented?.proxyPools ? POOL_RANK[consented.proxyPools] : 0)
+  const widerPools = next.proxyPools === true && consented?.proxyPools !== true
   if (domains.length === 0 && secrets.length === 0 && !readsSecrets && requestNeeds.length === 0 && !wider && !widerPools) {
     return undefined
   }
@@ -134,7 +128,7 @@ function additionOf(consented: ProviderGrant | undefined, next: ProviderGrant): 
 /**
  * Whether `next` asks for more than `consented`. A new provider key, a new
  * domain, a new secret name, `readsSecrets` turned on, a new `requestNeeds`
- * value, a wider proxy pool (none < public < local), or a larger `signNeeds`
+ * value, a first proxy pool, or a larger `signNeeds`
  * (none < digest < body) is wider, as is a
  * folder not consented to, a read-only one asked for writing, or agent runs
  * not consented to. Dropping or

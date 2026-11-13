@@ -130,14 +130,11 @@ describe('ProviderConsentDialog', () => {
     )
   })
 
-  it('says a pool of proxies is chosen by the code, and says more when it reaches local ones', () => {
-    open({}, status({ grant: { providers: { zen: { ...GRANT.providers.zen, proxyPools: 'public' as const } } } }))
+  it('says a pool of proxies is chosen by the code', () => {
+    open({}, status({ grant: { providers: { zen: { ...GRANT.providers.zen, proxyPools: true as const } } } }))
     expect(screen.getByTestId('consent-proxy-pools-zen').textContent).toBe(
       'Sends your requests through proxy servers its code chooses, instead of your own proxy setting. Their addresses are not shown here.',
     )
-    cleanup()
-    open({}, status({ grant: { providers: { zen: { ...GRANT.providers.zen, proxyPools: 'local' as const } } } }))
-    expect(screen.getByTestId('consent-proxy-pools-zen').textContent).toContain('including ones on this computer or your local network')
     cleanup()
     open()
     expect(screen.queryByTestId('consent-proxy-pools-zen')).toBeNull()
@@ -337,22 +334,18 @@ describe('ProviderUpdatePanel', () => {
   })
 
   it('an update that adds a pool of proxies says so', () => {
-    const parked = (proxyPools: 'public' | 'local') =>
-      status({
+    const parked = status({
         state: 'needs-consent',
         pending: {
           ...NEEDS_CONSENT.pending!,
           delta: {
             widened: true,
-            added: { providers: [], perProvider: { zen: { domains: [], secrets: [], readsSecrets: false, requestNeeds: [], proxyPools } } },
+            added: { providers: [], perProvider: { zen: { domains: [], secrets: [], readsSecrets: false, requestNeeds: [], proxyPools: true as const } } },
             removed: [],
           },
         },
       })
-    expect(grantDeltaLines(parked('public'), t)).toEqual(['zen may now send requests through proxy servers its code chooses'])
-    expect(grantDeltaLines(parked('local'), t)).toEqual([
-      'zen may now send requests through proxy servers its code chooses, including ones on this computer or your local network',
-    ])
+    expect(grantDeltaLines(parked, t)).toEqual(['zen may now send requests through proxy servers its code chooses'])
   })
 
   it('grantDeltaLines names agent runs newly asked for', () => {

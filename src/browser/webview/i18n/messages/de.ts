@@ -2162,8 +2162,6 @@ export const de: Messages = {
   'settings.plugins.providers.consent.noDomains': 'Gibt keine Domains an, zu denen es Verbindungen aufbaut.',
   'settings.plugins.providers.consent.proxyPools':
     'Sendet deine Anfragen über Proxyserver, die sein Code auswählt, statt über deine eigene Proxy-Einstellung. Ihre Adressen werden hier nicht angezeigt.',
-  'settings.plugins.providers.consent.proxyPoolsLocal':
-    'Sendet deine Anfragen über Proxyserver, die sein Code auswählt, auch solche auf diesem Computer oder in deinem lokalen Netzwerk, statt über deine eigene Proxy-Einstellung. Ihre Adressen werden hier nicht angezeigt.',
   'settings.plugins.providers.consent.secrets': 'Speichert Geheimnisse mit den Namen: {secrets}',
   'settings.plugins.providers.consent.noSecrets': 'Speichert keine eigenen Geheimnisse.',
   'settings.plugins.providers.consent.readsSecrets': 'Liest seine gespeicherten Geheimnisse im Klartext, zum Beispiel um Anfragen zu signieren.',
@@ -2224,8 +2222,6 @@ export const de: Messages = {
   'settings.plugins.providers.updates.addedDomains': '{id} darf jetzt Verbindungen aufbauen zu: {domains}',
   'settings.plugins.providers.updates.addedProxyPools':
     '{id} darf Anfragen jetzt über Proxyserver senden, die sein Code auswählt',
-  'settings.plugins.providers.updates.addedProxyPoolsLocal':
-    '{id} darf Anfragen jetzt über Proxyserver senden, die sein Code auswählt, auch solche auf diesem Computer oder in deinem lokalen Netzwerk',
   'settings.plugins.providers.updates.addedSecrets': '{id} speichert jetzt Geheimnisse mit den Namen: {secrets}',
   'settings.plugins.providers.updates.addedReadsSecrets': '{id} liest seine gespeicherten Geheimnisse jetzt im Klartext.',
   'settings.plugins.providers.updates.addedNeeds': 'Der Code von {id} bekommt jetzt zusätzlich zu sehen: {needs}',

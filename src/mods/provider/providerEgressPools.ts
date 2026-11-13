@@ -1,5 +1,5 @@
 /**
- * The members of a provider's dynamic egress pools (F-27): proxies its
+ * The members of a provider's egress pools (F-27): proxies its
  * module registers while it runs, which no manifest lists.
  *
  * Contract: `set` replaces a pool's members whole, after checking every one;
@@ -7,16 +7,15 @@
  * answers a registered member as the egress a request is sent with. Members
  * live in this realm's memory only: a module registers them again after a
  * restart, and `clear` forgets a provider's pools when it is taken out. A
- * member is answered only while it meets the pool as declared now: a new
- * version that narrows the pool hides the members the old one admitted.
+ * member is answered only while it fits the pool as declared now: a new
+ * version with a smaller `max` hides the members past it.
  *
  * Security: a member's address is plugin input that reaches the host's
- * network stack. It is one of the three proxy schemes, a `socks5` member
- * carries no credentials, and an address on this machine or a private
- * network is refused unless the pool declared `local` (which the person saw
- * at install). A name that only resolves to such an address is not caught
- * here. No message of this module contains a member's address: it can carry
- * a password.
+ * network stack. It is one of the three proxy schemes and a `socks5` member
+ * carries no credentials. Where the proxy is, is not judged: the person
+ * agreed at install that this provider's code chooses its proxies, on any
+ * network. No message of this module contains a member's address: it can
+ * carry a password.
  */
 import type { ProviderEgress, ProviderEgressPool } from '../../models/drivers/providerEgress'
 import { HOST_NAME, SCHEMES, SOCKS5_NO_CREDENTIALS } from './providerEgressManifest'
@@ -26,42 +25,6 @@ const MEMBER_ID = /^[A-Za-z0-9_.-]{1,64}$/
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
-}
-
-function ipv4Octets(host: string): number[] | undefined {
-  const parts = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(host)
-  if (!parts) return undefined
-  const octets = parts.slice(1).map(Number)
-  return octets.every(octet => octet <= 255) ? octets : undefined
-}
-
-/** Whether a literal host is this machine or on a private network. */
-export function isLocalProxyHost(host: string): boolean {
-  if (host === 'localhost' || host.endsWith('.localhost') || host.endsWith('.local')) return true
-  const v4 = ipv4Octets(host)
-  if (v4) {
-    const [a, b] = v4 as [number, number, number, number]
-    return (
-      a === 0 || a === 10 || a === 127 ||
-      (a === 100 && b >= 64 && b <= 127) ||
-      (a === 169 && b === 254) ||
-      (a === 172 && b >= 16 && b <= 31) ||
-      (a === 192 && b === 168)
-    )
-  }
-  if (host.includes(':')) {
-    const mapped = /^::ffff:(\d{1,3}(?:\.\d{1,3}){3})$/.exec(host)
-    if (mapped) return isLocalProxyHost(mapped[1]!)
-    const mappedHex = /^::ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})$/.exec(host)
-    if (mappedHex) {
-      const high = parseInt(mappedHex[1]!, 16)
-      const low = parseInt(mappedHex[2]!, 16)
-      return isLocalProxyHost(`${high >> 8}.${high & 255}.${low >> 8}.${low & 255}`)
-    }
-    // Loopback, unspecified, unique-local (fc00::/7) and link-local (fe80::/10).
-    return host === '::1' || host === '::' || /^f[cd]/.test(host) || /^fe[89ab]/.test(host)
-  }
-  return false
 }
 
 function canonicalHost(written: string, bracketed: boolean): string {
@@ -78,7 +41,7 @@ function canonicalHost(written: string, bracketed: boolean): string {
  * The host of a member's address in canonical form, IPv6 without its brackets.
  * Throws a `TypeError` that says what is wrong and never quotes the address.
  */
-export function proxyHostOfMember(url: unknown, pool: ProviderEgressPool): string {
+export function proxyHostOfMember(url: unknown): string {
   if (typeof url !== 'string' || url === '' || url.length > POOL_MEMBER_URL_MAX_LENGTH) {
     throw new TypeError(`url must be a proxy address of at most ${POOL_MEMBER_URL_MAX_LENGTH} characters`)
   }
@@ -97,13 +60,8 @@ export function proxyHostOfMember(url: unknown, pool: ProviderEgressPool): strin
   const bracketed = parts[3]!.startsWith('[')
   const written = (bracketed ? parts[3]!.slice(1, -1) : parts[3]!).toLowerCase()
   if (!bracketed && !HOST_NAME.test(written)) throw new TypeError('url has a host that is not a host name or an IP address')
-  // Judged in the form the network stack reads: `2130706433`, `127.1` and
-  // `[::ffff:127.0.0.1]` all name 127.0.0.1.
-  const host = canonicalHost(written, bracketed)
-  if (!pool.local && isLocalProxyHost(host)) {
-    throw new TypeError('the proxy is on this machine or a private network, which this pool did not declare ("local": true)')
-  }
-  return host
+  // The form the network stack reads, which the host compares with `hosts`.
+  return canonicalHost(written, bracketed)
 }
 
 type Member = { url: string; host: string }
@@ -127,7 +85,7 @@ export class ProviderEgressPoolRegistry {
       }
       if (next.has(raw.id)) throw new TypeError(`member "${raw.id}" is listed twice`)
       try {
-        next.set(raw.id, { url: raw.url as string, host: proxyHostOfMember(raw.url, declared) })
+        next.set(raw.id, { url: raw.url as string, host: proxyHostOfMember(raw.url) })
       } catch (error) {
         throw new TypeError(`member "${raw.id}": ${error instanceof Error ? error.message : 'its url is refused'}`)
       }
@@ -140,7 +98,6 @@ export class ProviderEgressPoolRegistry {
     const members = this.pools.get(this.key(providerId, pool))
     const member = members?.get(id)
     if (!member || [...members!.keys()].indexOf(id) >= declared.max) return undefined
-    if (!declared.local && isLocalProxyHost(member.host)) return undefined
     return { url: member.url, hosts: [member.host] }
   }
 

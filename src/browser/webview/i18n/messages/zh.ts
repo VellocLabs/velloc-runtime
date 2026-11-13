@@ -2096,8 +2096,6 @@ export const zh: Messages = {
   'settings.plugins.providers.consent.noDomains': '未声明可访问的域名。',
   'settings.plugins.providers.consent.proxyPools':
     '通过它的代码自行选择的代理服务器发送你的请求，而不使用你自己的代理设置。这些代理的地址不会在这里列出。',
-  'settings.plugins.providers.consent.proxyPoolsLocal':
-    '通过它的代码自行选择的代理服务器（包括本机或你的本地网络上的代理）发送你的请求，而不使用你自己的代理设置。这些代理的地址不会在这里列出。',
   'settings.plugins.providers.consent.secrets': '存储的密钥名称：{secrets}',
   'settings.plugins.providers.consent.noSecrets': '不存储自己的密钥。',
   'settings.plugins.providers.consent.readsSecrets': '会以明文读取其已保存的密钥，例如用于为请求签名。',
@@ -2158,8 +2156,6 @@ export const zh: Messages = {
   'settings.plugins.providers.updates.addedDomains': '{id} 现在可以访问：{domains}',
   'settings.plugins.providers.updates.addedProxyPools':
     '{id} 现在可以通过它的代码自行选择的代理服务器发送请求',
-  'settings.plugins.providers.updates.addedProxyPoolsLocal':
-    '{id} 现在可以通过它的代码自行选择的代理服务器（包括本机或你的本地网络上的代理）发送请求',
   'settings.plugins.providers.updates.addedSecrets': '{id} 现在会存储这些密钥：{secrets}',
   'settings.plugins.providers.updates.addedReadsSecrets': '{id} 现在会以明文读取其已保存的密钥。',
   'settings.plugins.providers.updates.addedNeeds': '{id} 的代码现在还可以看到：{needs}',

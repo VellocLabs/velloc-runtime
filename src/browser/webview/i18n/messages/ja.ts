@@ -2131,8 +2131,6 @@ export const ja: Messages = {
   'settings.plugins.providers.consent.noDomains': '接続先のドメインは宣言されていません。',
   'settings.plugins.providers.consent.proxyPools':
     'リクエストを、ユーザー自身のプロキシ設定ではなく、このプロバイダーのコードが選ぶプロキシサーバー経由で送信します。それらのアドレスはここには表示されません。',
-  'settings.plugins.providers.consent.proxyPoolsLocal':
-    'リクエストを、ユーザー自身のプロキシ設定ではなく、このプロバイダーのコードが選ぶプロキシサーバー（このコンピューターやローカルネットワーク上のものを含む）経由で送信します。それらのアドレスはここには表示されません。',
   'settings.plugins.providers.consent.secrets': '保存するシークレット名: {secrets}',
   'settings.plugins.providers.consent.noSecrets': '独自のシークレットは保存しません。',
   'settings.plugins.providers.consent.readsSecrets': '保存済みのシークレットを平文で読み取ります（たとえばリクエストへの署名のため）。',
@@ -2193,8 +2191,6 @@ export const ja: Messages = {
   'settings.plugins.providers.updates.addedDomains': '{id} は次にも接続できるようになります: {domains}',
   'settings.plugins.providers.updates.addedProxyPools':
     '{id} は、自身のコードが選ぶプロキシサーバー経由でリクエストを送信できるようになります',
-  'settings.plugins.providers.updates.addedProxyPoolsLocal':
-    '{id} は、自身のコードが選ぶプロキシサーバー（このコンピューターやローカルネットワーク上のものを含む）経由でリクエストを送信できるようになります',
   'settings.plugins.providers.updates.addedSecrets': '{id} は次のシークレットも保存するようになります: {secrets}',
   'settings.plugins.providers.updates.addedReadsSecrets': '{id} は保存済みのシークレットを平文で読み取るようになります。',
   'settings.plugins.providers.updates.addedNeeds': '{id} のコードには次も渡されるようになります: {needs}',
