@@ -6,6 +6,8 @@ import {
   RAW_STREAM_MAX_IDLE_TIMEOUT_MS,
   RawProviderStreamError,
 } from '../browser/bridge/rawProviderStream'
+import { setHostPrimitives } from '../models/drivers/driverRegistry'
+import { EGRESS_UNSUPPORTED, RAW_STREAM_EGRESS_PRIMITIVE } from '../models/drivers/providerEgress'
 
 type Call = { action: string; payload: Record<string, any> }
 type Reply = { ok: true; result: any } | { ok: false; error: { code: string; message: string } }
@@ -121,13 +123,26 @@ describe('raw provider stream', () => {
   })
 
   it('passes an egress through as given, and sends none when none is asked', async () => {
+    setHostPrimitives([RAW_STREAM_EGRESS_PRIMITIVE])
+    try {
+      const egress = { url: '{{secret:proxy_a}}', hosts: ['proxy.example.com'] }
+      const through = fakeHost(OPENED, [read(bytes(1), true)])
+      await openRawProviderStream(through.transport, { providerId: 'mod.acme.main', url: 'https://api.acme.example/v1', egress })
+      expect(through.calls[0]!.payload.egress).toEqual(egress)
+      const plain = fakeHost(OPENED, [read(bytes(1), true)])
+      await openRawProviderStream(plain.transport, { providerId: 'mod.acme.main', url: 'https://api.acme.example/v1' })
+      expect('egress' in plain.calls[0]!.payload).toBe(false)
+    } finally {
+      setHostPrimitives(undefined)
+    }
+  })
+
+  it('refuses an egress, sending nothing, when the host does not list the primitive', async () => {
     const egress = { url: '{{secret:proxy_a}}', hosts: ['proxy.example.com'] }
-    const through = fakeHost(OPENED, [read(bytes(1), true)])
-    await openRawProviderStream(through.transport, { providerId: 'mod.acme.main', url: 'https://api.acme.example/v1', egress })
-    expect(through.calls[0]!.payload.egress).toEqual(egress)
-    const plain = fakeHost(OPENED, [read(bytes(1), true)])
-    await openRawProviderStream(plain.transport, { providerId: 'mod.acme.main', url: 'https://api.acme.example/v1' })
-    expect('egress' in plain.calls[0]!.payload).toBe(false)
+    const host = fakeHost(OPENED, [read(bytes(1), true)])
+    await expect(openRawProviderStream(host.transport, { providerId: 'mod.acme.main', url: 'https://api.acme.example/v1', egress }))
+      .rejects.toMatchObject({ code: EGRESS_UNSUPPORTED })
+    expect(host.calls).toEqual([])
   })
 
   it('clamps the idle timeout under the model route fallback', async () => {

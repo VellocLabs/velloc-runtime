@@ -504,6 +504,9 @@ export const ja: Messages = {
   'providerIssue.maskingUndecodable.title': '添付ファイルを置き換えられません',
   'providerIssue.maskingUndecodable.summary':
     'キーワードの置き換えはオンですが、このリクエストのテキスト添付ファイルが UTF-8 テキストではないため、置き換えられませんでした。そのまま送信しないよう、{product} はリクエストを送信しませんでした。ファイルを UTF-8 で保存し直すか削除するか、/masking off で置き換えをオフにしてから、「再試行」を選んでください。',
+  'providerIssue.egressUnsupported.title': 'プロバイダのプロキシに対応していません',
+  'providerIssue.egressUnsupported.summary':
+    'このプロバイダは自身が宣言したプロキシ経由でリクエストを送りますが、このバージョンの {product} はそれに対応していないため、リクエストは送信されませんでした。{product} を更新するか、別のプロバイダを選んでください。',
   'providerIssue.network.title': 'ネットワーク接続の問題',
   'providerIssue.network.summary':
     '{product} はプロバイダに安定して接続できませんでした。{product} は自動的に再試行してから、API エラーを表示します。',

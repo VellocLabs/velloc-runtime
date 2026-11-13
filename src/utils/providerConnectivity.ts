@@ -329,6 +329,22 @@ function classifyPlatformIssue(value: unknown): PlatformIssue | null {
     }
   }
 
+  // The provider routes this request through a proxy the host cannot use:
+  // nothing was sent, and resending cannot help on this version.
+  if (/\bEGRESS_UNSUPPORTED:/.test(detail)) {
+    return {
+      kind: 'configuration',
+      error: 'invalid_request',
+      titleKey: 'providerIssue.egressUnsupported.title',
+      summaryKey: 'providerIssue.egressUnsupported.summary',
+      retryable: false,
+      settingsRecommended: false,
+      detail,
+      status,
+      retryAfterMs,
+    }
+  }
+
   // The host's table of open model streams is full: the request never left
   // the browser, whichever provider was chosen. Not retried in place; the
   // host frees an ended stream nobody reads within a minute.

@@ -507,6 +507,9 @@ export const fr: Messages = {
   'providerIssue.maskingUndecodable.title': 'Pièce jointe impossible à remplacer',
   'providerIssue.maskingUndecodable.summary':
     'Le remplacement des mots-clés est activé, et une pièce jointe texte de cette requête n’est pas du texte UTF-8 : elle n’a donc pas pu être remplacée. {product} n’a pas envoyé la requête plutôt que de l’envoyer telle quelle. Enregistrez le fichier en UTF-8 ou retirez-le, ou désactivez le remplacement avec /masking off, puis choisissez « Réessayer ».',
+  'providerIssue.egressUnsupported.title': 'Proxy du fournisseur non pris en charge',
+  'providerIssue.egressUnsupported.summary':
+    'Ce fournisseur envoie ses requêtes par un proxy qu’il déclare, et cette version de {product} ne sait pas le faire : la requête n’a donc pas été envoyée. Mettez à jour {product} ou choisissez un autre fournisseur.',
   'providerIssue.network.title': 'Problème de connexion réseau',
   'providerIssue.network.summary':
     '{product} n’a pas pu joindre le fournisseur de manière fiable. {product} réessaie automatiquement avant d’afficher l’erreur d’API.',

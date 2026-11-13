@@ -20,7 +20,7 @@ import {
   type RawProviderStream,
 } from '../../browser/bridge/rawProviderStream'
 import { hostServesPrimitive } from './driverRegistry'
-import { RAW_STREAM_EGRESS_PRIMITIVE } from './providerEgress'
+import { EGRESS_UNSUPPORTED, RAW_STREAM_EGRESS_PRIMITIVE } from './providerEgress'
 import { DriverChunkEmitter } from './chunkEmitter'
 import { buildSystemInstruction } from './hostCallOptions'
 import { buildThinkingBodyExtension } from '../../config/nexusModelConfig/thinkingTierParams'
@@ -298,7 +298,7 @@ class DriverStream {
     try {
       this.masking = modelMasking.openStream()
     } catch (error) {
-      this.fail(errorText(error), maskingRefusal(error))
+      this.fail(errorText(error), localRefusal(error))
       return
     }
     let request: ReturnType<ModelProvider['buildRequest']>
@@ -309,7 +309,7 @@ class DriverStream {
       request = this.withMaskedValues(this.provider.buildRequest(this.payload, this.model))
     } catch (error) {
       if (error instanceof MaskingResidualError || error instanceof MaskingUndecodableError) {
-        this.fail(errorText(error), maskingRefusal(error))
+        this.fail(errorText(error), localRefusal(error))
       }
       else this.fail(`Failed to build the ${this.provider.format} request: ${errorText(error)}`)
       return
@@ -551,7 +551,7 @@ class DriverStream {
       const egress = seamed?.prepared.plan?.egress
       if (egress && !hostServesPrimitive(RAW_STREAM_EGRESS_PRIMITIVE)) {
         throw new RawProviderStreamError(
-          'EGRESS_UNSUPPORTED',
+          EGRESS_UNSUPPORTED,
           `this Velloc cannot send a request through the proxy "${egress.name}"; the request was not sent`,
         )
       }
@@ -578,7 +578,7 @@ class DriverStream {
     } catch (error) {
       guard.watchdog?.stop()
       if (this.abort.signal.aborted) return this.ended()
-      const refusal = maskingRefusal(error)
+      const refusal = localRefusal(error)
       if (refusal.httpStatus !== undefined || !seamed) {
         const broken = this.brokenSend(error, guard, false)
         this.push([{ ...broken, ...refusal }])
@@ -853,12 +853,14 @@ class DriverStream {
   }
 }
 
-/** A request masking stopped is a refusal, not a broken connection: the
- *  engine must not retry it. */
-function maskingRefusal(error: unknown): { httpStatus?: number } {
+/** A request masking stopped, or one naming a proxy this host cannot use, is
+ *  a refusal, not a broken connection: the provider's hooks and the engine
+ *  must not retry it. */
+function localRefusal(error: unknown): { httpStatus?: number } {
   return error instanceof MaskingResidualError
     || error instanceof MaskingUnavailableError
     || error instanceof MaskingUndecodableError
+    || (error instanceof RawProviderStreamError && error.code === EGRESS_UNSUPPORTED)
     ? { httpStatus: 400 }
     : {}
 }

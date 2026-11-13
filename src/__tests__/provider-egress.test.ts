@@ -16,7 +16,7 @@ import {
 } from '../mods/provider/providerEgressManifest'
 import { checkProviderManifests, type ProviderManifest } from '../mods/provider/providerManifest'
 import { seamForRegistration } from '../mods/provider/providerSeamWiring'
-import { grantOf, widened, type Grant } from '../pluginHost/providerGrant'
+import { grantOf, pluginGrantOf, widened, type Grant } from '../pluginHost/providerGrant'
 import { providerJson } from './_helpers/pluginArchive'
 
 const SECRETS = new Set(['proxy_a', 'proxy_pass'])
@@ -73,10 +73,25 @@ describe('a manifest egress', () => {
     ['a host with a port', { url: '{{secret:proxy_a}}', hosts: ['p.example.com:8080'] }, 'is not a plain host name or IP address'],
     ['a wildcard host', { url: '{{secret:proxy_a}}', hosts: ['*.example.com'] }, 'is not a plain host name or IP address'],
     ['too many hosts', { url: '{{secret:proxy_a}}', hosts: Array.from({ length: EGRESS_HOSTS_MAX + 1 }, (_, i) => `p${i}.example.com`) }, `at most ${EGRESS_HOSTS_MAX} host names`],
-    ['an unknown property', { url: '{{secret:proxy_a}}', hosts: ['p.example.com'], kind: 'socks5' }, 'egress.pool.kind: not a known property'],
+    ['an unknown property', { url: '{{secret:proxy_a}}', hosts: ['p.example.com'], kind: 'socks5' }, 'egress.pool: unknown property "kind"'],
+    ['two unknown properties', { url: '{{secret:proxy_a}}', hosts: ['p.example.com'], kind: 'socks5', port: 1 }, 'egress.pool: unknown properties "kind", "port"'],
+    ['colons and hex digits that are no IPv6 address', { url: '{{secret:proxy_a}}', hosts: ['cafe:babe'] }, '"cafe:babe" is not a plain host name or IP address'],
+    ['a lone colon', { url: '{{secret:proxy_a}}', hosts: [':'] }, '":" is not a plain host name or IP address'],
+    ['a literal address whose host is not listed', { url: 'http://gate.example.com:8080', hosts: ['proxy.example.com'] }, 'egress.pool.url: the proxy host "gate.example.com" is not one of hosts'],
+    ['a literal address that does not parse', { url: 'http://bad host:8080', hosts: ['proxy.example.com'] }, 'egress.pool.url: not a valid proxy address'],
   ])('refuses %s', (_what, entry, problem) => {
     expect(check({ pool: entry }).table).toBeUndefined()
     expect(problemOf(entry)).toContain(problem)
+  })
+
+  it('a literal address matches its listed host in any case, an IPv6 one in brackets', () => {
+    const { table, problems } = check({
+      a: { url: 'http://Gate.Example.com:8080', hosts: ['gate.example.com'] },
+      b: { url: 'socks5://[2001:DB8::1]:1080', hosts: ['2001:db8::1'] },
+      c: { url: 'https://me:{{secret:proxy_pass}}@gate.example.com', hosts: ['gate.example.com'] },
+    })
+    expect(problems).toEqual([])
+    expect(Object.keys(table!)).toEqual(['a', 'b', 'c'])
   })
 
   it('refuses more proxies than the limit', () => {
@@ -157,6 +172,14 @@ describe('proxy hosts in the grant', () => {
 
   it('dropping the egress is not wider', () => {
     expect(widened(grant({ egress: POOL }), grant()).widened).toBe(false)
+  })
+
+  it('a grant read from a plugin manifest that was never validated lists the hosts as validation would', () => {
+    const raw = { providers: { main: { ...BASE, egress: { pool: { url: '{{secret:proxy_a}}', hosts: [' Proxy.Acme.test '] } } } } }
+    expect(pluginGrantOf(raw).providers.main!.proxies).toEqual(['proxy.acme.test'])
+    expect(widened(grant({ egress: POOL }), pluginGrantOf(raw)).widened).toBe(false)
+    const odd = { providers: { main: { ...BASE, egress: { pool: { url: 'x', hosts: 'proxy.acme.test' }, q: 5 } } } }
+    expect(pluginGrantOf(odd).providers.main).not.toHaveProperty('proxies')
   })
 
   it('a grant consented to before proxies existed reads as having none', () => {

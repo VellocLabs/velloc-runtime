@@ -306,6 +306,27 @@ describe('the plan fields of a request answer', () => {
     expect(JSON.stringify(errorOf(chunks))).toContain('the request was not sent')
   })
 
+  it('that refusal is final: the provider cannot replay it and it is not retried', async () => {
+    setHostPrimitives([])
+    const calls = plug({
+      egress: EGRESS,
+      request: () => ({ route: 'pool-a' }),
+      classify: () => ({ kind: 'network', retryable: true, replay: { headers: { 'x-again': '1' } } }),
+    })
+    const { transport, opens } = scripted([])
+    const chunks = await run(transport)
+    expect(opens).toEqual([])
+    expect(calls.classify).toEqual([])
+    expect(calls.request).toHaveLength(1)
+    const error = errorOf(chunks)
+    expect(classifyProviderConnectivityIssue(error.message)).toMatchObject({
+      kind: 'configuration',
+      titleKey: 'providerIssue.egressUnsupported.title',
+      summaryKey: 'providerIssue.egressUnsupported.summary',
+      retryable: false,
+    })
+  })
+
   it('a re-send after a retry keeps the egress', async () => {
     setHostPrimitives([RAW_STREAM_EGRESS_PRIMITIVE])
     plug({

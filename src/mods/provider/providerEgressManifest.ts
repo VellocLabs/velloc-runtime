@@ -14,6 +14,7 @@
  * a password) or a literal the manifest shows in full.
  */
 import type { ProviderEgress, ProviderEgressTable } from '../../models/drivers/providerEgress'
+import { onlyKeys } from './providerStatusManifest'
 
 type Problems = (message: string) => void
 
@@ -22,13 +23,36 @@ export const EGRESS_HOSTS_MAX = 8
 export const EGRESS_URL_MAX_LENGTH = 512
 
 const EGRESS_NAME = /^[A-Za-z0-9][A-Za-z0-9_-]{0,31}$/
-const HOST_NAME = /^(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)*$/
-const IPV6 = /^[0-9a-f:.]+$/
+export const HOST_NAME = /^(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)*$/
 const SECRET_REF = /\{\{secret:([^{}]*)\}\}/g
 const SCHEMES = ['http', 'https', 'socks5'] as const
 
 const isRecord = (v: unknown): v is Record<string, unknown> =>
   typeof v === 'object' && v !== null && !Array.isArray(v)
+
+function isIpv6(host: string): boolean {
+  if (!host.includes(':')) return false
+  try {
+    new URL(`http://[${host}]/`)
+    return true
+  } catch {
+    return false
+  }
+}
+
+/** The host of a literal proxy address (lower case, no brackets), or
+ *  undefined when a secret stands in for it or the address does not parse. */
+function literalHostOf(url: string): string | undefined {
+  const rest = url.slice(url.indexOf('://') + 3)
+  const authority = rest.split(/[/?#]/, 1)[0]!
+  const hostPort = authority.slice(authority.lastIndexOf('@') + 1)
+  if (hostPort.includes('{{')) return undefined
+  try {
+    return new URL(`http://${hostPort}/`).hostname.replace(/^\[|\]$/g, '').toLowerCase()
+  } catch {
+    return undefined
+  }
+}
 
 function checkHosts(value: unknown, label: string, bad: Problems): string[] | undefined {
   if (!Array.isArray(value) || value.length === 0 || !value.every(entry => typeof entry === 'string')) {
@@ -42,7 +66,7 @@ function checkHosts(value: unknown, label: string, bad: Problems): string[] | un
   const out: string[] = []
   for (const entry of value as string[]) {
     const host = entry.trim().toLowerCase()
-    const plain = HOST_NAME.test(host) || (host.includes(':') && IPV6.test(host))
+    const plain = HOST_NAME.test(host) || isIpv6(host)
     if (!plain) {
       bad(`${label}: "${entry}" is not a plain host name or IP address (no scheme, port, brackets, path or wildcard)`)
       return undefined
@@ -121,25 +145,42 @@ export function checkProviderEgress(
       failed = true
       continue
     }
-    const unknown = Object.keys(raw).filter(key => key !== 'url' && key !== 'hosts')
-    if (unknown.length > 0) {
-      bad(`${label}.${unknown[0]}: not a known property (known: url / hosts)`)
+    onlyKeys(raw, ['url', 'hosts'], label, message => {
       failed = true
-    }
+      bad(message)
+    })
     const url = checkUrl(raw.url, `${label}.url`, secrets, bad)
     const hosts = checkHosts(raw.hosts, `${label}.hosts`, bad)
     if (url === undefined || hosts === undefined) {
       failed = true
       continue
     }
+    if (!url.startsWith('{{')) {
+      const host = literalHostOf(url)
+      if (host === undefined) {
+        bad(`${label}.url: not a valid proxy address`)
+        failed = true
+        continue
+      }
+      if (!hosts.includes(host)) {
+        bad(`${label}.url: the proxy host "${host}" is not one of hosts`)
+        failed = true
+        continue
+      }
+    }
     out[name] = { url, hosts }
   }
   return failed ? undefined : out
 }
 
-/** Every proxy host a table names: lower case, sorted, unique. */
+/** Every proxy host a table names: lower case, sorted, unique. Also reads a
+ *  manifest that was never validated, so it skips what is not a host list. */
 export function egressHostsOf(table: ProviderEgressTable | undefined): string[] {
   const hosts = new Set<string>()
-  for (const egress of Object.values(table ?? {})) for (const host of egress.hosts) hosts.add(host)
+  for (const egress of Object.values(table ?? {})) {
+    const list: unknown = isRecord(egress) ? egress.hosts : undefined
+    if (!Array.isArray(list)) continue
+    for (const host of list) if (typeof host === 'string') hosts.add(host.trim().toLowerCase())
+  }
   return [...hosts].sort()
 }

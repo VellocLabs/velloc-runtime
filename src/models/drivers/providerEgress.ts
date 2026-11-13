@@ -17,6 +17,9 @@
  *  default route, so a request that names an egress is not sent to one. */
 export const RAW_STREAM_EGRESS_PRIMITIVE = 'model.rawStreamOpen.egress'
 
+/** The refusal of a request naming an egress on a host without the primitive. */
+export const EGRESS_UNSUPPORTED = 'EGRESS_UNSUPPORTED'
+
 export type ProviderEgress = {
   /** `scheme://[user:pass@]host[:port]`; may contain `{{secret:NAME}}`. */
   url: string

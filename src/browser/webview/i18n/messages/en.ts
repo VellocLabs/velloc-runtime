@@ -537,6 +537,9 @@ export const en = {
   'providerIssue.maskingUndecodable.title': 'Attachment cannot be masked',
   'providerIssue.maskingUndecodable.summary':
     'Keyword masking is on, and a text attachment in this request is not UTF-8 text, so it could not be masked. {product} did not send the request rather than send it as it is. Save the file as UTF-8 or remove it, or turn masking off with /masking off, then choose Try again.',
+  'providerIssue.egressUnsupported.title': 'Provider proxy not supported',
+  'providerIssue.egressUnsupported.summary':
+    'This provider sends its requests through a proxy it declares, and this version of {product} cannot do that, so the request was not sent. Update {product}, or choose another provider.',
   'providerIssue.network.title': 'Network connection issue',
   'providerIssue.network.summary':
     '{product} could not reliably reach the provider. {product} retries automatically before surfacing the API error.',

@@ -509,6 +509,9 @@ export const es: Messages = {
   'providerIssue.maskingUndecodable.title': 'No se puede reemplazar el adjunto',
   'providerIssue.maskingUndecodable.summary':
     'El reemplazo de palabras clave está activado y un adjunto de texto de esta solicitud no es texto UTF-8, así que no se pudo reemplazar. {product} no envió la solicitud en lugar de enviarla tal cual. Guarda el archivo como UTF-8 o quítalo, o desactiva el reemplazo con /masking off, y luego elige «Reintentar».',
+  'providerIssue.egressUnsupported.title': 'Proxy del proveedor no compatible',
+  'providerIssue.egressUnsupported.summary':
+    'Este proveedor envía sus solicitudes a través de un proxy que declara, y esta versión de {product} no puede hacerlo, así que la solicitud no se envió. Actualiza {product} o elige otro proveedor.',
   'providerIssue.network.title': 'Problema de conexión de red',
   'providerIssue.network.summary':
     '{product} no pudo comunicarse de forma fiable con el proveedor. {product} reintenta automáticamente antes de mostrar el error de API.',

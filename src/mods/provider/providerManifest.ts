@@ -11,7 +11,7 @@ import { readUserConfigFields } from '../../pluginHost/userConfigFields'
 import { joinRuntimePath } from '../../utils/runtimePaths'
 import type { ProviderEgressTable } from '../../models/drivers/providerEgress'
 import type { ProviderPolicy } from '../../models/drivers/providerPolicy'
-import { checkProviderEgress } from './providerEgressManifest'
+import { HOST_NAME, checkProviderEgress } from './providerEgressManifest'
 import { checkPolicy, reportPolicyClamp } from './providerPolicyManifest'
 import { checkProviderJobs, type ProviderJobDecl } from './providerJobsManifest'
 import { checkProviderStatus, onlyKeys, type ProviderStatusView } from './providerStatusManifest'
@@ -208,7 +208,6 @@ const isStringList = (v: unknown): v is string[] => Array.isArray(v) && v.every(
 
 const insidePlugin = (p: string): boolean => p.startsWith('./') && !p.includes('..') && !p.includes('\\')
 const MODULE_PATH = /\.[cm]?[jt]sx?$/i
-const HOSTNAME = /^(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)*$/
 const SECRET_NAME = /^[A-Za-z0-9_.-]{1,64}$/
 const PROMPT_KEY = /^[A-Za-z_][A-Za-z0-9_.-]{0,63}$/
 const PREFIX = /^[A-Za-z0-9_-]{0,32}$/
@@ -239,7 +238,7 @@ function checkDomains(value: unknown, bad: Problems): string[] | undefined {
   const out: string[] = []
   for (const entry of value) {
     const host = entry.trim().toLowerCase()
-    if (!HOSTNAME.test(host)) {
+    if (!HOST_NAME.test(host)) {
       bad(`domains: "${entry}" is not a plain host name (no scheme, port, path or wildcard)`)
       return undefined
     }

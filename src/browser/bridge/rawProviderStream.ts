@@ -8,6 +8,8 @@ import {
   createBridgeRoute,
   type BrowserBridgeTransport,
 } from './browserBridgeProtocol'
+import { hostServesPrimitive } from '../../models/drivers/driverRegistry'
+import { EGRESS_UNSUPPORTED, RAW_STREAM_EGRESS_PRIMITIVE } from '../../models/drivers/providerEgress'
 
 export type RawProviderStreamRequest = {
   providerId: string
@@ -25,7 +27,8 @@ export type RawProviderStreamRequest = {
   /** The idle timeout is one a provider declared (F-27): the higher ceiling applies. */
   declaredIdle?: boolean
   /** Send through this proxy instead of the host's own proxy setting (see
-   *  protocol). The caller checks the host lists the primitive first. */
+   *  protocol). Refused with `EGRESS_UNSUPPORTED`, nothing sent, when the
+   *  host does not list the primitive. */
   egress?: { url: string; hosts: string[] }
   maxResponseBytes?: number
   signal?: AbortSignal
@@ -135,6 +138,11 @@ export async function openRawProviderStream(
   input: RawProviderStreamRequest,
 ): Promise<RawProviderStream> {
   input.signal?.throwIfAborted()
+  // Security: a host that does not know `egress` ignores it and sends the
+  // request on its default route.
+  if (input.egress !== undefined && !hostServesPrimitive(RAW_STREAM_EGRESS_PRIMITIVE)) {
+    throw new RawProviderStreamError(EGRESS_UNSUPPORTED, 'this host cannot send a request through a proxy; the request was not sent')
+  }
   const request = egressCheck?.(input) ?? input
   const idleTimeoutMs = Math.min(
     request.idleTimeoutMs ?? RAW_STREAM_MAX_IDLE_TIMEOUT_MS,

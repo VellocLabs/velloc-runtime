@@ -508,6 +508,9 @@ export const de: Messages = {
   'providerIssue.maskingUndecodable.title': 'Anhang kann nicht ersetzt werden',
   'providerIssue.maskingUndecodable.summary':
     'Das Ersetzen von Schlüsselwörtern ist eingeschaltet, und ein Textanhang dieser Anfrage ist kein UTF-8-Text, daher konnte er nicht ersetzt werden. {product} hat die Anfrage nicht gesendet, statt sie unverändert zu senden. Speichern Sie die Datei als UTF-8 oder entfernen Sie sie, oder schalten Sie das Ersetzen mit /masking off aus, und wählen Sie dann „Erneut versuchen“.',
+  'providerIssue.egressUnsupported.title': 'Proxy des Anbieters nicht unterstützt',
+  'providerIssue.egressUnsupported.summary':
+    'Dieser Anbieter sendet seine Anfragen über einen von ihm angegebenen Proxy, und diese Version von {product} kann das nicht. Die Anfrage wurde daher nicht gesendet. Aktualisieren Sie {product} oder wählen Sie einen anderen Anbieter.',
   'providerIssue.network.title': 'Problem mit der Netzwerkverbindung',
   'providerIssue.network.summary':
     '{product} konnte den Anbieter nicht zuverlässig erreichen. {product} versucht es automatisch erneut, bevor der API-Fehler angezeigt wird.',
