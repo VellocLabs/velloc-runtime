@@ -43,7 +43,7 @@ import {
   type NexusTaskDeliveryResult,
 } from './taskTypes'
 import {
-  computeRunStats,
+  subAgentRunStats,
   extractFinalAssistantText,
   isSubAgentSessionId,
   projectSubAgentTranscript,
@@ -576,6 +576,7 @@ export class SubAgentCoordinator {
       // Keep the provenance on the live state too, so a SECOND resume (which
       // reads the record written when this one finishes) still carries it.
       routineOriginId: rec.routineOriginId,
+      priorStats: rec.stats,
     }
     // No longer terminal — it's live again. (A fresh terminal record is written
     // when this resumed run finalizes.)
@@ -768,7 +769,7 @@ export class SubAgentCoordinator {
       // Capture the full projected transcript before the run is reaped so the
       // detail view stays readable when finished (not just while running).
       transcript: projectSubAgentTranscript(state.messages),
-      stats: computeRunStats(state.messages),
+      stats: subAgentRunStats(state),
       prompt: state.prompt,
       startedAt: state.startedAt,
       finishedAt: Date.now(),
@@ -867,7 +868,7 @@ export class SubAgentCoordinator {
         : 'Stopped by request (no output produced yet).',
       // Keep the partial transcript readable after the run is reaped.
       transcript: projectSubAgentTranscript(run.messages),
-      stats: computeRunStats(run.messages),
+      stats: subAgentRunStats(run),
       prompt: run.prompt,
       startedAt: run.startedAt,
       finishedAt: Date.now(),

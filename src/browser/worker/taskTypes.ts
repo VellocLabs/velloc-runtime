@@ -74,6 +74,9 @@ export type SubAgentRunState = {
    *  routine-originated, and re-reading the parent is not possible once the
    *  spawning turn is gone. */
   routineOriginId?: string
+  /** Figures of the run's earlier segments, before an `AgentResume`; added to
+   *  the figures of `messages`. */
+  priorStats?: NexusTaskRunStats
   /** Worktree-cleanup callback (G7); invoked once on finalize/stop. */
   onCleanup?: () => void | Promise<void>
   /** The directory the run edits in: its worktree, else its project root. */

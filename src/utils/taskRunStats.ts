@@ -13,7 +13,7 @@ export function runStatsEqual(a: NexusTaskRunStats | undefined, b: NexusTaskRunS
   )
 }
 
-/** A token count in at most four characters: 950, 1.2k, 45k, 1.23M. */
+/** A short token count: 950, 1.2k, 45k, 1.23M. */
 export function compactTokenCount(n: number): string {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(2)}M`
   if (n >= 10_000) return `${Math.round(n / 1000)}k`

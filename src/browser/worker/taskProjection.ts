@@ -209,6 +209,23 @@ export function computeRunStats(messages: readonly unknown[]): NexusTaskRunStats
   return { toolUses: scan.toolIds.size + scan.anonymousTools, ...total }
 }
 
+/** A `local_agent` run's figures: its earlier segments' plus its current messages'. */
+export function subAgentRunStats(run: {
+  messages: readonly unknown[]
+  priorStats?: NexusTaskRunStats
+}): NexusTaskRunStats {
+  const current = computeRunStats(run.messages)
+  const prior = run.priorStats
+  if (!prior) return current
+  return {
+    toolUses: prior.toolUses + current.toolUses,
+    inputTokens: prior.inputTokens + current.inputTokens,
+    outputTokens: prior.outputTokens + current.outputTokens,
+    cacheReadTokens: prior.cacheReadTokens + current.cacheReadTokens,
+    cacheWriteTokens: prior.cacheWriteTokens + current.cacheWriteTokens,
+  }
+}
+
 export function finishedRecordToSnapshot(rec: FinishedSubAgentRecord): SubAgentSnapshot {
   return {
     // Public `a…` taskId (fallback to native for directly-seeded test records).

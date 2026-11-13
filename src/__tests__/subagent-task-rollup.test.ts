@@ -227,6 +227,40 @@ describe('a sub-agent\'s file changes', () => {
   })
 })
 
+describe('a sub-agent run\'s tool calls and token usage', () => {
+  const messages = () => [
+    { type: 'assistant', message: { id: 'r1', content: [{ type: 'tool_use', id: 't1' }], usage: { input_tokens: 10, output_tokens: 2 } } },
+    { type: 'assistant', message: { id: 'r1', content: [{ type: 'tool_use', id: 't2' }], usage: { input_tokens: 10, output_tokens: 5 } } },
+  ]
+  const expected = { toolUses: 2, inputTokens: 10, outputTokens: 5, cacheReadTokens: 0, cacheWriteTokens: 0 }
+
+  it('are kept on the finished record when the run finishes', () => {
+    const { registry, coord } = coordinator()
+    registry.registerLive('subagent-s', liveAgent('subagent-s', 'P1', 'a1', { messages: messages() }) as never, 'a1')
+    ;(coord as unknown as { finalizeSubAgentRun(id: string, s: string, sum: string): void })
+      .finalizeSubAgentRun('subagent-s', 'success', 'done')
+    expect((registry.getFinished('subagent-s') as { stats?: unknown } | undefined)?.stats).toEqual(expected)
+  })
+
+  it('are kept on the finished record when the run is stopped', () => {
+    const { registry, coord } = coordinator()
+    registry.registerLive('subagent-t', liveAgent('subagent-t', 'P1', 'a2', { messages: messages() }) as never, 'a2')
+    coord.stopRun('subagent-t')
+    expect((registry.getFinished('subagent-t') as { stats?: unknown } | undefined)?.stats).toEqual(expected)
+  })
+
+  it('of a resumed run add to the figures it had before', () => {
+    const { registry, coord } = coordinator()
+    const prior = { toolUses: 40, inputTokens: 300, outputTokens: 20, cacheReadTokens: 7, cacheWriteTokens: 1 }
+    registry.registerLive('subagent-u', liveAgent('subagent-u', 'P1', 'a3', { messages: messages(), priorStats: prior }) as never, 'a3')
+    ;(coord as unknown as { finalizeSubAgentRun(id: string, s: string, sum: string): void })
+      .finalizeSubAgentRun('subagent-u', 'success', 'done')
+    expect((registry.getFinished('subagent-u') as { stats?: unknown } | undefined)?.stats).toEqual({
+      toolUses: 42, inputTokens: 310, outputTokens: 25, cacheReadTokens: 7, cacheWriteTokens: 1,
+    })
+  })
+})
+
 describe('a sub-agent worker\'s diff history', () => {
   it('carries the hunks only when its host asks for them', async () => {
     const run = async (includeHunks: boolean) => {

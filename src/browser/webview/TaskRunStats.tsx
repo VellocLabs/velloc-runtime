@@ -10,7 +10,7 @@ import { ArrowDownIcon, ArrowUpIcon, DatabaseIcon, PencilLineIcon, WrenchIcon } 
 import { cn } from '@/lib/utils'
 import type { NexusTaskRunStats } from '../bridge/protocol/ui'
 import { compactTokenCount, hasRunStats } from '../../utils/taskRunStats'
-import { useT } from './i18n'
+import { useLocale, useT } from './i18n'
 
 type IconType = ComponentType<{ className?: string; 'data-testid'?: string }>
 
@@ -18,10 +18,6 @@ const TOOL_TINT = 'text-foreground/60'
 const INPUT_TINT = 'text-info'
 const OUTPUT_TINT = 'text-success'
 const CACHE_TINT = 'text-warning'
-
-function exact(n: number): string {
-  return n.toLocaleString()
-}
 
 export type TaskRunStatsProps = {
   stats: NexusTaskRunStats | undefined
@@ -33,9 +29,11 @@ export type TaskRunStatsProps = {
 
 export function TaskRunStats({ stats, variant, running = false, className }: TaskRunStatsProps): ReactNode {
   const t = useT()
+  const locale = useLocale()
   if (!hasRunStats(stats)) return null
+  const exact = (n: number) => n.toLocaleString(locale)
   const hasTokens = stats.inputTokens + stats.outputTokens + stats.cacheReadTokens + stats.cacheWriteTokens > 0
-  const hasCache = stats.cacheReadTokens + stats.cacheWriteTokens > 0
+  const hasCacheRead = stats.cacheReadTokens > 0
   const toolsTitle = t('taskStats.toolsTitle', { n: exact(stats.toolUses) })
   const inputTitle = t('taskStats.inputTitle', { n: exact(stats.inputTokens) })
   const outputTitle = t('taskStats.outputTitle', { n: exact(stats.outputTokens) })
@@ -68,7 +66,7 @@ export function TaskRunStats({ stats, variant, running = false, className }: Tas
             <StripItem icon={ArrowDownIcon} tint={OUTPUT_TINT} title={outputTitle} testId="task-run-stats-output">
               {compactTokenCount(stats.outputTokens)}
             </StripItem>
-            {hasCache ? (
+            {hasCacheRead ? (
               <StripItem icon={DatabaseIcon} tint={CACHE_TINT} title={cacheTitle} testId="task-run-stats-cache">
                 {compactTokenCount(stats.cacheReadTokens)}
               </StripItem>
@@ -97,7 +95,7 @@ export function TaskRunStats({ stats, variant, running = false, className }: Tas
             value={compactTokenCount(stats.inputTokens)} label={t('taskStats.inputLabel')} />
           <Badge icon={ArrowDownIcon} tint={OUTPUT_TINT} title={outputTitle} testId="task-run-stats-output"
             value={compactTokenCount(stats.outputTokens)} label={t('taskStats.outputLabel')} />
-          {hasCache ? (
+          {hasCacheRead ? (
             <Badge icon={DatabaseIcon} tint={CACHE_TINT} title={cacheTitle} testId="task-run-stats-cache"
               value={compactTokenCount(stats.cacheReadTokens)} label={t('taskStats.cacheReadLabel')} />
           ) : null}

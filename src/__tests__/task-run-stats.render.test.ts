@@ -131,6 +131,16 @@ describe('TaskRunStats', () => {
     expect(document.querySelector('[data-testid="task-run-stats-cache"]')).toBeNull()
     expect(document.querySelector('[data-testid="task-run-stats-cache-write"]')).toBeNull()
   })
+
+  it('shows cache writes without a zero cache-read figure', () => {
+    const writesOnly = { ...STATS, cacheReadTokens: 0, cacheWriteTokens: 4_000 }
+    render(createElement(TaskRunStats, { stats: writesOnly, variant: 'strip' }))
+    expect(document.querySelector('[data-testid="task-run-stats-cache"]')).toBeNull()
+    cleanup()
+    render(createElement(TaskRunStats, { stats: writesOnly, variant: 'badges' }))
+    expect(document.querySelector('[data-testid="task-run-stats-cache"]')).toBeNull()
+    expect(document.querySelector('[data-testid="task-run-stats-cache-write"]')!.textContent).toBe('4.0kcache write')
+  })
 })
 
 describe('Background Tasks drawer shows a sub-agent run usage', () => {
@@ -156,7 +166,7 @@ describe('Background Tasks drawer shows a sub-agent run usage', () => {
     expect(text('task-run-stats-output')).toBe('3.1k')
     expect(text('task-run-stats-cache')).toBe('120k')
     expect(strip.querySelector('[data-testid="task-run-stats-cache"]')!.getAttribute('title')).toBe(
-      `Cache read: ${(120_000).toLocaleString()} · Cache write: ${(4_000).toLocaleString()}`,
+      `Cache read: ${(120_000).toLocaleString('en')} · Cache write: ${(4_000).toLocaleString('en')}`,
     )
     expect(strip.querySelector('[data-testid="task-run-stats-live"]')).not.toBeNull()
   })

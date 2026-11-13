@@ -35,6 +35,7 @@ import {
 import { runStatsEqual } from '../../utils/taskRunStats'
 import {
   computeRunStats,
+  subAgentRunStats,
   fastCallDisplayLabel,
   isSubAgentSessionId,
   resolveTaskOrigin,
@@ -442,7 +443,7 @@ export class SessionFeedPublisher {
         description: run.description,
         agentType: run.agentType,
         updates: run.messages.length,
-        stats: computeRunStats(run.messages),
+        stats: subAgentRunStats(run),
         startedAt: run.startedAt,
         lastActivityAt: run.lastActivityAt,
       })
