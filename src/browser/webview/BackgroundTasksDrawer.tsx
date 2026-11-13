@@ -390,20 +390,23 @@ export function BackgroundTasksDrawer({
   const [transcriptLoading, setTranscriptLoading] = useState(false)
   const detailReqRef = useRef<string | null>(null)
 
-  // 5s ticker so the running rows' "started Xm ago / updated Ys ago" stay fresh
-  // between broadcasts. Gated: it only matters in the LIST view AND only while a
-  // row is actually running (ages render only for running rows), so the detail
-  // view and an all-finished list don't re-render the drawer every 5s for nothing.
+  // 5s ticker so a running task's elapsed time and last-update age stay fresh
+  // between broadcasts: in the list while any row runs, in the detail view while
+  // the opened row runs. Nothing else renders ages, so otherwise it stays off.
   const hasRunningRows = rows.some((r) => r.status === 'running')
-  // A loop timer's countdown (F-15) ticks every second.
-  const hasTimerRows = rows.some((r) => r.type === 'local_timer')
+  const detailRunning =
+    view.kind === 'detail' &&
+    rows.some((r) => r.sessionId === view.sessionId && r.status === 'running')
+  const ticking = view.kind === 'list' ? hasRunningRows : detailRunning
+  // A loop timer's countdown (F-15) ticks every second; timers render only in the list.
+  const hasTimerRows = view.kind === 'list' && rows.some((r) => r.type === 'local_timer')
   const [now, setNow] = useState(() => Date.now())
   useEffect(() => {
-    if (view.kind !== 'list' || !hasRunningRows) return
+    if (!ticking) return
     setNow(Date.now()) // refresh immediately so a re-armed ticker isn't stale
     const id = window.setInterval(() => setNow(Date.now()), hasTimerRows ? 1000 : 5000)
     return () => window.clearInterval(id)
-  }, [view.kind, hasRunningRows, hasTimerRows])
+  }, [ticking, hasTimerRows])
   // The timer a focus request named: a timer has no detail, so the list shows it.
   const [focusedTimerId, setFocusedTimerId] = useState<string | null>(null)
 

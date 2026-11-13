@@ -32,18 +32,11 @@ export function TaskRunStats({ stats, variant, running = false, className }: Tas
   const locale = useLocale()
   if (!hasRunStats(stats)) return null
   const exact = (n: number) => n.toLocaleString(locale)
-  const hasTokens = stats.inputTokens + stats.outputTokens + stats.cacheReadTokens + stats.cacheWriteTokens > 0
-  const hasCacheRead = stats.cacheReadTokens > 0
+  const total = stats.inputTokens + stats.outputTokens + stats.cacheReadTokens + stats.cacheWriteTokens
+  const hasTokens = total > 0
   const toolsTitle = t('taskStats.toolsTitle', { n: exact(stats.toolUses) })
-  const inputTitle = t('taskStats.inputTitle', { n: exact(stats.inputTokens) })
-  const outputTitle = t('taskStats.outputTitle', { n: exact(stats.outputTokens) })
-  const cacheTitle = t('taskStats.cacheTitle', {
-    read: exact(stats.cacheReadTokens),
-    write: exact(stats.cacheWriteTokens),
-  })
 
   if (variant === 'strip') {
-    const total = stats.inputTokens + stats.outputTokens + stats.cacheReadTokens + stats.cacheWriteTokens
     const totalTitle = t('taskStats.totalTitle', {
       input: exact(stats.inputTokens),
       output: exact(stats.outputTokens),
@@ -56,7 +49,10 @@ export function TaskRunStats({ stats, variant, running = false, className }: Tas
         aria-label={t('taskStats.groupLabel')}
         data-testid="task-run-stats"
         data-variant="strip"
-        className={cn('inline-flex min-w-0 items-center gap-2.5', className)}
+        className={cn(
+          'inline-flex min-w-0 items-center gap-2.5 text-[11px] leading-none tabular-nums text-muted-foreground',
+          className,
+        )}
       >
         <MetaItem icon={WrenchIcon} tint={running ? TOOL_TINT : undefined} title={toolsTitle}
           testId="task-run-stats-tools" live={running}>
@@ -72,6 +68,13 @@ export function TaskRunStats({ stats, variant, running = false, className }: Tas
     )
   }
 
+  const hasCacheRead = stats.cacheReadTokens > 0
+  const inputTitle = t('taskStats.inputTitle', { n: exact(stats.inputTokens) })
+  const outputTitle = t('taskStats.outputTitle', { n: exact(stats.outputTokens) })
+  const cacheTitle = t('taskStats.cacheTitle', {
+    read: exact(stats.cacheReadTokens),
+    write: exact(stats.cacheWriteTokens),
+  })
   return (
     <div
       role="group"

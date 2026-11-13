@@ -31,7 +31,7 @@ export function AgentTypePill({ type, className }: { type: string; className?: s
       title={t('backgroundTasks.meta.agentTypeTitle', { type })}
       data-testid="task-agent-type"
       className={cn(
-        'inline-flex h-4 max-w-[9rem] shrink-0 items-center truncate rounded bg-muted px-1.5 text-[10px] font-medium leading-none text-muted-foreground',
+        'block h-4 max-w-[9rem] shrink-0 truncate rounded bg-muted px-1.5 text-[10px] font-medium leading-4 text-muted-foreground',
         className,
       )}
     >

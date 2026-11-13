@@ -3,6 +3,7 @@ import { createElement } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { act, cleanup, fireEvent, render, waitFor } from '@testing-library/react'
 import { BackgroundTasksDrawer } from '../browser/webview/BackgroundTasksDrawer'
+import { formatStartStamp } from '../browser/webview/TaskRowMeta'
 import { I18nProvider } from '../browser/webview/i18n'
 import type {
   NexusTaskDetail,
@@ -246,9 +247,15 @@ describe('BackgroundTasksDrawer focus consumption', () => {
 })
 
 describe('BackgroundTasksDrawer row meta', () => {
+  // Local noon, so a start two minutes earlier is always the same day.
+  const NOON = new Date(2026, 5, 30, 12, 0, 0).getTime()
+
+  afterEach(() => vi.useRealTimers())
+
   it('a running row shows its elapsed time and last update; a finished row its start and span, as icon items with no status word', () => {
+    vi.useFakeTimers({ now: NOON, toFake: ['Date'] })
     const rows: NexusTaskSummaryRow[] = [
-      runningRow(), // running → Running section (expanded)
+      { ...runningRow(), startedAt: NOON - 5_000, lastActivityAt: NOON - 1_000 }, // running → Running section (expanded)
       {
         sessionId: 'b-done',
         spawnerSessionId: 'P',
@@ -256,8 +263,8 @@ describe('BackgroundTasksDrawer row meta', () => {
         type: 'local_bash',
         description: 'failing build',
         command: 'failing build',
-        startedAt: NOW - 130_000,
-        finishedAt: NOW - 5_000, // took 125s → "2m 5s"
+        startedAt: NOON - 130_000,
+        finishedAt: NOON - 5_000, // took 125s → "2m 5s"
       },
     ]
     render(createElement(BackgroundTasksDrawer, drawerProps({ rows })))
@@ -280,7 +287,7 @@ describe('BackgroundTasksDrawer row meta', () => {
     expect(item(running, 'task-meta-started')).toBeNull()
     expect(item(running, 'task-meta-took')).toBeNull()
     // Finished: a 24-hour start stamp and the span it took.
-    expect(item(finished, 'task-meta-started')?.textContent).toMatch(/^\d{2}:\d{2}$/)
+    expect(item(finished, 'task-meta-started')?.textContent).toBe('11:57')
     expect(item(finished, 'task-meta-took')?.textContent).toBe('2m 5s')
     expect(item(finished, 'task-meta-took')?.getAttribute('title')).toBe('Took 2m 5s')
     expect(item(finished, 'task-meta-elapsed')).toBeNull()
@@ -289,6 +296,30 @@ describe('BackgroundTasksDrawer row meta', () => {
     const srOnly = metaLine.querySelector('.sr-only')
     expect(srOnly?.textContent).toBeTruthy()
     expect(metaLine.textContent!.replace(srOnly!.textContent!, '')).not.toMatch(/failed|error|done/i)
+  })
+
+  it('a start on another day carries its date', () => {
+    expect(formatStartStamp(NOON - 24 * 3_600_000, 'en', NOON)).toBe('Jun 29 12:00')
+    expect(formatStartStamp(NOON - 60_000, 'en', NOON)).toBe('11:59')
+  })
+
+  it('the detail header keeps a running task\'s elapsed time ticking', async () => {
+    vi.useFakeTimers({ now: NOW, toFake: ['Date', 'setInterval', 'clearInterval'] })
+    render(
+      createElement(
+        BackgroundTasksDrawer,
+        drawerProps({ rows: [runningRow()], focusSessionId: 'b-run', onFocusConsumed: () => {} }),
+      ),
+    )
+    await waitFor(() => expect(detailEl()).not.toBeNull())
+    const elapsed = () =>
+      document.querySelector('[data-testid="background-tasks-detail-back"]')!.parentElement!
+        .querySelector('[data-testid="task-meta-elapsed"]')!.textContent
+    expect(elapsed()).toBe('5s')
+    act(() => {
+      vi.advanceTimersByTime(10_000)
+    })
+    expect(elapsed()).toBe('15s')
   })
 })
 
