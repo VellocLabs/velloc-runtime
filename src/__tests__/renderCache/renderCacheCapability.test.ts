@@ -210,9 +210,10 @@ describe('installRuntimeRenderCache', () => {
 
   it('starts once, and a purge asks the host for guest + gpu at critical', async () => {
     const { bridge, requests } = transport()
+    let primitives = ['appInfo.purgeRenderCaches']
     const deps = {
       transport: () => bridge,
-      manifest: () => ({ capabilities: [], primitives: ['appInfo.purgeRenderCaches'] }),
+      manifest: () => ({ capabilities: [], primitives }),
       createRequestId: () => 'r',
       isAnyBusy: () => false,
       idlePurgeEnabled: async () => true,
@@ -233,6 +234,13 @@ describe('installRuntimeRenderCache', () => {
     policy!.noteVisibility(true)
     policy!.noteVisibility(false)
     for (let i = 0; i < 200 && requests.length < 2; i += 1) await new Promise(resolve => setTimeout(resolve, 2))
-    expect(requests[1].payload).toEqual({ targets: ['gpu'], level: 'critical', trimWorkingSet: true })
+    // A host that does not list the trim input is not sent it.
+    expect(requests[1].payload).toEqual({ targets: ['gpu'], level: 'critical' })
+
+    primitives = ['appInfo.purgeRenderCaches', 'appInfo.purgeRenderCaches.trimWorkingSet']
+    policy!.noteVisibility(true)
+    policy!.noteVisibility(false)
+    for (let i = 0; i < 200 && requests.length < 3; i += 1) await new Promise(resolve => setTimeout(resolve, 2))
+    expect(requests[2].payload).toEqual({ targets: ['gpu'], level: 'critical', trimWorkingSet: true })
   })
 })

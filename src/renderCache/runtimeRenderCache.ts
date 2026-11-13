@@ -15,6 +15,8 @@ import {
 import { createRealmHolder } from '../utils/realmHolder'
 
 export const RENDER_CACHE_PRIMITIVE = 'appInfo.purgeRenderCaches'
+/** Listed by a host that honours the purge's `trimWorkingSet` input. */
+export const RENDER_CACHE_TRIM_PRIMITIVE = 'appInfo.purgeRenderCaches.trimWorkingSet'
 
 const holder = createRealmHolder<RenderCachePolicy>('render-cache', {
   onReplace: previous => previous.dispose(),
@@ -55,15 +57,17 @@ export function installRuntimeRenderCache(deps: RuntimeRenderCacheDeps): string 
     purge: async (targets, trimWorkingSet) => {
       const transport = deps.transport()
       if (!transport) throw new Error('render cache purge: no host port')
+      const manifest = deps.manifest()
       const primitives = createNativePrimitives({
         transport,
         createRequestId: deps.createRequestId,
-        manifest: deps.manifest() ?? undefined,
+        manifest: manifest ?? undefined,
       })
+      const trim = trimWorkingSet && manifest?.primitives?.includes(RENDER_CACHE_TRIM_PRIMITIVE) === true
       return primitives.appInfo.purgeRenderCaches({
         targets: [...targets],
         level: RENDER_CACHE_PURGE_LEVEL,
-        ...(trimWorkingSet ? { trimWorkingSet: true } : {}),
+        ...(trim ? { trimWorkingSet: true } : {}),
       })
     },
   })
