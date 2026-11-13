@@ -817,7 +817,7 @@ describe('ToolPlanStream tool-call row label truncation', () => {
 })
 
 describe('ToolPlanStream unified header', () => {
-  it('a settled run speaks "Done", leads with the tools count, and has no narration line', () => {
+  it('a settled run speaks "Done", reads as one sentence of the work done, and has no narration line', () => {
     const Harness = makeHarness(
       SETTLED_TWO_TOOLS,
       { startIndex: 0, endIndex: 1, callTotal: 2 },
@@ -830,13 +830,13 @@ describe('ToolPlanStream unified header', () => {
       '[data-slot="tool-plan-stream-trigger-label"]',
     )!
     const text = (label.textContent ?? '').replace(/\s+/g, ' ')
-    // Unified verb — NOT the old "Used N tools" title.
     expect(text).toContain('Done')
-    expect(text).not.toContain('Used')
-    expect(text).toContain('2 tools')
-    // The state word is spoken, not drawn; the count leads the line.
+    // The state word is spoken, not drawn; the sentence is the whole line.
     expect(label.querySelector('.sr-only')!.textContent).toBe('Done')
-    expect(headerTitle(root).textContent).toBe('2 tools')
+    expect(headerTitle(root).textContent).toBe('Read 1 file, edited 1 file')
+    expect(root.querySelector('[data-slot="tool-plan-stream-summary"]')).toBeNull()
+    expect(text).not.toContain('·')
+    expect(text).not.toContain('2 tools')
     expect(label.getAttribute('data-state')).toBe('settled')
     // The count is said once: no separate counter beside the chevron.
     expect(root.querySelector('[data-slot="tool-plan-stream-counter"]')).toBeNull()
@@ -860,10 +860,10 @@ describe('ToolPlanStream unified header', () => {
     )!
     const text = (label.textContent ?? '').replace(/\s+/g, ' ')
     expect(text).toContain('完成')
-    expect(text).toContain('2 个工具')
+    expect(text).toContain('读取了 1 个文件，编辑了 1 个文件')
     expect(text).not.toContain('2/2')
     expect(text).not.toContain('Done')
-    expect(text).not.toContain('tools')
+    expect(text).not.toContain('file')
   })
 
   it('falls back to the shared tool label (Name: summary) for a running tool with no preamble', () => {
@@ -1004,6 +1004,9 @@ describe('ToolPlanStream unified header', () => {
     expect(headerTitle(root).className).toContain('nexus-sheen')
     const text = (label.textContent ?? '').replace(/\s+/g, ' ')
     expect(text).not.toContain('1/2')
+    // The sentence follows the running target, still and muted.
+    const summary = root.querySelector('[data-slot="tool-plan-stream-summary"]')
+    if (summary) expect(summary.className).not.toMatch(/sheen/)
     // The narration is reading text: it stays still.
     const update = root.querySelector(
       '[data-slot="tool-plan-stream-current-update"]',
@@ -1023,7 +1026,7 @@ describe('ToolPlanStream unified header', () => {
     expect(root.querySelector('.animate-spin, .motion-safe\\:animate-spin')).toBeNull()
   })
 
-  it('a run with a failed call is marked: an icon, a failed count, and a glyph on that row', () => {
+  it('a run with failed calls counts them in parentheses, in the text colour, with no icon', () => {
     const Harness = makeHarness(
       {
         role: 'assistant',
@@ -1038,32 +1041,82 @@ describe('ToolPlanStream unified header', () => {
           },
           {
             type: 'tool-call',
+            toolCallId: 'bad2',
+            toolName: 'PowerShell',
+            args: { command: 'exit 4' },
+            result: 'exit code 4',
+            isError: true,
+          },
+          {
+            type: 'tool-call',
+            toolCallId: 'fine',
+            toolName: 'Bash',
+            args: { command: 'echo ok' },
+            result: 'ok',
+          },
+          {
+            type: 'tool-call',
             toolCallId: 'ok',
             toolName: 'Read',
             args: { file_path: '/repo/a.ts' },
             result: 'contents',
           },
+          {
+            type: 'tool-call',
+            toolCallId: 'ok2',
+            toolName: 'Read',
+            args: { file_path: '/repo/b.ts' },
+            result: 'contents',
+          },
         ],
       },
-      { startIndex: 0, endIndex: 1, callTotal: 2 },
+      { startIndex: 0, endIndex: 4, callTotal: 5 },
       false,
     )
     render(createElement(Harness))
-    openPlanCards()
     const root = document.querySelector('[data-slot="tool-plan-stream-root"]')!
     const label = root.querySelector(
       '[data-slot="tool-plan-stream-trigger-label"]',
     )!
     expect(label.getAttribute('data-state')).toBe('failed')
-    const icon = root.querySelector('[data-slot="tool-plan-stream-state-icon"]')!
-    expect(icon.getAttribute('data-state')).toBe('failed')
-    expect(
-      root.querySelector('[data-slot="tool-plan-stream-failed-count"]')!.textContent,
-    ).toContain('1 failed')
+    expect(headerTitle(root).textContent).toBe(
+      'Ran 3 commands (2 failed), read 2 files',
+    )
+    // No status icon ahead of the line and nothing in the destructive colour.
+    const trigger = root.querySelector('[data-slot="tool-plan-stream-trigger"]')!
+    expect(root.querySelector('[data-slot="tool-plan-stream-state-icon"]')).toBeNull()
+    expect(trigger.querySelector('svg:not([data-slot="tool-plan-stream-trigger-chevron"])')).toBeNull()
+    expect(trigger.querySelector('[class*="destructive"]')).toBeNull()
+    expect(trigger.className).not.toContain('destructive')
+    // The failed rows themselves keep their glyph once the card is opened.
+    openPlanCards()
     const glyphs = root.querySelectorAll('[data-slot="plan-list-item-glyph"]')
-    expect(glyphs.length).toBe(1)
+    expect(glyphs.length).toBe(2)
     expect(glyphs[0]!.getAttribute('data-status')).toBe('failed')
     expect(root.querySelector('.nexus-sheen')).toBeNull()
+  })
+
+  it('an opened tool row keeps the background of the card around it', () => {
+    const Harness = makeHarnessWithDrawer(
+      BACKGROUND_SHELL_WITH_RUNNING_SIBLING,
+      { startIndex: 0, endIndex: 1, callTotal: 2 },
+      true,
+      () => {},
+    )
+    render(createElement(Harness))
+    openPlanCards()
+    const root = document.querySelector('[data-slot="tool-plan-stream-root"]')!
+    const rowTrigger = Array.from(
+      root.querySelectorAll<HTMLElement>('[data-slot="plan-list-item-trigger"]'),
+    ).find((el) => (el.textContent ?? '').includes('Start-Sleep 999'))!
+    // A row remembers being opened, so it may already be open here.
+    if (rowTrigger.getAttribute('data-state') !== 'open') fireEvent.click(rowTrigger)
+    expect(root.querySelector('[data-slot="tool-call-detail-body"]')).not.toBeNull()
+    const body = root.querySelector(
+      '[data-slot="plan-list-item-body"][data-state="open"]',
+    )!
+    expect(body).not.toBeNull()
+    expect(body.className).not.toMatch(/\bbg-/)
   })
 
   it('a running run reads "Working" and surfaces the model narration on the second line', () => {
@@ -1150,7 +1203,7 @@ describe('ToolPlanStream reasoning rows + header', () => {
     expect(update!.querySelector('[data-slot="tool-plan-stream-reasoning-icon"]')).not.toBeNull()
     // Reasoning rows do not count as tools.
     const label = root.querySelector('[data-slot="tool-plan-stream-trigger-label"]')!
-    expect((label.textContent ?? '').replace(/\s+/g, ' ')).toContain('3 tools')
+    expect((label.textContent ?? '').replace(/\s+/g, ' ')).toContain('Read 2 files, edited 1 file')
   })
 
   it('later narration text replaces the thought (and drops the glyph)', () => {

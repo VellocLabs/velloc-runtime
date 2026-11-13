@@ -12,7 +12,7 @@ import {
   type ToolCallMessagePartStatus,
 } from "@assistant-ui/react";
 import { useShallow } from "zustand/react/shallow";
-import { Ban, BrainIcon, CircleAlert } from "lucide-react";
+import { Ban, BrainIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { rememberBounded } from "@/components/assistant-ui/boundedUiMemory";
 import { PlanCard, usePlanCardOpen } from "./plan-card";
@@ -26,9 +26,13 @@ import {
 } from "./part-line-context";
 import type { PlanTodoStatus } from "../tool-ui/plan/types";
 import {
-  classifyTodoSectionFileOperation,
   getTodoSectionToolTarget,
 } from "../../utils/todoSections";
+import {
+  classifyToolGroupWork,
+  describeToolGroupWork,
+  emptyToolGroupWorkTally,
+} from "../../utils/toolGroupSummary";
 import { ToolCallDetailBody } from "./tool-call-detail-body";
 import {
   SPAWN_TOOL_ID,
@@ -61,7 +65,7 @@ import { ChildSessionCard, classifyChildSpawn } from "./child-session-card";
 import { AssistantText } from "./assistant-text";
 import { Reasoning } from "./reasoning";
 import { rememberNarration } from "./planNarrationMemory";
-import { useT } from "@/browser/webview/i18n";
+import { useLocale, useT } from "@/browser/webview/i18n";
 import { useBackgroundTasksContext } from "./background-tasks-context";
 import { useRightPanelContent } from "./right-panel-content-context";
 import { useToolCallDetailContext } from "./tool-call-detail-context";
@@ -139,15 +143,20 @@ type ToolPlanStreamSnapshot = {
   cancelledCount: number;
   errorCount: number;
   /**
-   * File-operation tallies across the run, mirroring the todo header chips.
-   * Kept as three flat primitives (NOT a nested object) so `useShallow`'s
-   * per-field `Object.is` comparison stays stable — a fresh `{read,edited,
-   * deleted}` object every selector call would fail equality and re-enter the
-   * "Maximum update depth exceeded" loop the top comment warns about.
+   * Calls and failed calls per kind of work, for the header sentence. Flat
+   * primitives, not a nested object: `useShallow` compares per field with
+   * `Object.is`, and a fresh object each selector call would never be equal.
    */
-  fileReadCount: number;
-  fileEditedCount: number;
-  fileDeletedCount: number;
+  commandCount: number;
+  commandFailed: number;
+  readCount: number;
+  readFailed: number;
+  editedCount: number;
+  editedFailed: number;
+  deletedCount: number;
+  deletedFailed: number;
+  otherCount: number;
+  otherFailed: number;
   /** Basename/target of the running tool, else the last tool — the header's
    *  final chip, mirroring the todo `currentOrLastTarget`. */
   currentOrLastTarget: string | undefined;
@@ -296,6 +305,7 @@ const ToolPlanStreamImpl: FC<ToolPlanStreamProps> = ({
   forceOpen = false,
 }) => {
   const t = useT();
+  const locale = useLocale();
   const snapshot = useAssistantState(
     useShallow(({ message }): ToolPlanStreamSnapshot => {
       let runningToolName: string | undefined;
@@ -304,9 +314,7 @@ const ToolPlanStreamImpl: FC<ToolPlanStreamProps> = ({
       let concurrentBatchSize = 0;
       let cancelled = 0;
       let errored = 0;
-      let fileReadCount = 0;
-      let fileEditedCount = 0;
-      let fileDeletedCount = 0;
+      const work = emptyToolGroupWorkTally();
       let runningTarget: string | undefined;
       let lastTarget: string | undefined;
       let currentUpdateText: string | undefined;
@@ -364,10 +372,8 @@ const ToolPlanStreamImpl: FC<ToolPlanStreamProps> = ({
           getConcurrentBatchSize(part),
         );
         if (firstToolCallId === undefined) firstToolCallId = part.toolCallId;
-        const fileOp = classifyTodoSectionFileOperation(part.toolName);
-        if (fileOp === "read") fileReadCount++;
-        else if (fileOp === "edited") fileEditedCount++;
-        else if (fileOp === "deleted") fileDeletedCount++;
+        const kindCount = work[classifyToolGroupWork(part.toolName)];
+        kindCount.total++;
         const target = getTodoSectionToolTarget(part.toolName, part.args);
         if (target) lastTarget = target;
         if (part.status?.type === "running") {
@@ -376,10 +382,16 @@ const ToolPlanStreamImpl: FC<ToolPlanStreamProps> = ({
           if (target) runningTarget = target;
           activeCount++;
         } else if (part.status?.type === "complete") {
-          if (part.isError) errored++;
+          if (part.isError) {
+            errored++;
+            kindCount.failed++;
+          }
         } else if (part.status?.type === "incomplete") {
           if (part.status.reason === "cancelled") cancelled++;
-          else errored++;
+          else {
+            errored++;
+            kindCount.failed++;
+          }
         }
       }
 
@@ -402,9 +414,16 @@ const ToolPlanStreamImpl: FC<ToolPlanStreamProps> = ({
         callTotal,
         cancelledCount: cancelled,
         errorCount: errored,
-        fileReadCount,
-        fileEditedCount,
-        fileDeletedCount,
+        commandCount: work.command.total,
+        commandFailed: work.command.failed,
+        readCount: work.read.total,
+        readFailed: work.read.failed,
+        editedCount: work.edited.total,
+        editedFailed: work.edited.failed,
+        deletedCount: work.deleted.total,
+        deletedFailed: work.deleted.failed,
+        otherCount: work.other.total,
+        otherFailed: work.other.failed,
         currentOrLastTarget: runningTarget ?? lastTarget,
         currentUpdateText,
         currentUpdateIsReasoning,
@@ -476,8 +495,9 @@ const ToolPlanStreamImpl: FC<ToolPlanStreamProps> = ({
   }
 
   // Header: one text line. The state word is spoken but not drawn, except
-  // "Cancelled", which leads the line. A running card leads with its current
-  // target under a sheen; a settled one leads with the tool count.
+  // "Cancelled", which leads the line. A settled card reads as one sentence
+  // naming the work done per kind, failures in parentheses; a running card
+  // leads with its current target under a sheen and the sentence follows.
   const verb = isActive
     ? t("plan.verbWorking")
     : allCancelled
@@ -491,26 +511,23 @@ const ToolPlanStreamImpl: FC<ToolPlanStreamProps> = ({
         ? "failed"
         : "settled";
 
-  const summaryChips: string[] = [];
-  if (snapshot.callTotal > 0) {
-    summaryChips.push(
-      snapshot.callTotal === 1
+  const workSentence = describeToolGroupWork(
+    {
+      command: { total: snapshot.commandCount, failed: snapshot.commandFailed },
+      read: { total: snapshot.readCount, failed: snapshot.readFailed },
+      edited: { total: snapshot.editedCount, failed: snapshot.editedFailed },
+      deleted: { total: snapshot.deletedCount, failed: snapshot.deletedFailed },
+      other: { total: snapshot.otherCount, failed: snapshot.otherFailed },
+    },
+    t,
+    locale,
+  );
+  const toolCountText =
+    snapshot.callTotal > 0
+      ? snapshot.callTotal === 1
         ? t("plan.countToolsOne", { count: snapshot.callTotal })
-        : t("plan.countTools", { count: snapshot.callTotal }),
-    );
-  }
-  if (snapshot.fileReadCount) {
-    summaryChips.push(t("plan.fileRead", { count: snapshot.fileReadCount }));
-  }
-  if (snapshot.fileEditedCount) {
-    summaryChips.push(t("plan.fileEdited", { count: snapshot.fileEditedCount }));
-  }
-  if (snapshot.fileDeletedCount) {
-    summaryChips.push(t("plan.fileDeleted", { count: snapshot.fileDeletedCount }));
-  }
-  if (snapshot.currentOrLastTarget) {
-    summaryChips.push(snapshot.currentOrLastTarget);
-  }
+        : t("plan.countTools", { count: snapshot.callTotal })
+      : undefined;
 
   // Second line: the model's latest narration — from this card's range, else
   // the message-wide memory (a fresh card after a split has no text of its
@@ -545,13 +562,13 @@ const ToolPlanStreamImpl: FC<ToolPlanStreamProps> = ({
       ? verb
       : leadsWithTarget
         ? target
-        : (summaryChips[0] ?? verb);
-  const trailingChips =
+        : workSentence || verb;
+  const trailingText =
     headerState === "cancelled"
-      ? summaryChips
+      ? toolCountText
       : leadsWithTarget
-        ? summaryChips.filter((chip) => chip !== target)
-        : summaryChips.slice(1);
+        ? workSentence
+        : undefined;
 
   const header = (
     <span
@@ -566,6 +583,7 @@ const ToolPlanStreamImpl: FC<ToolPlanStreamProps> = ({
         data-slot="tool-plan-stream-title"
         className={cn(
           "min-w-0 truncate font-medium",
+          trailingText && "shrink-0",
           headerState === "running"
             ? "nexus-sheen"
             : "text-muted-foreground group-hover/trigger:text-foreground",
@@ -573,19 +591,13 @@ const ToolPlanStreamImpl: FC<ToolPlanStreamProps> = ({
       >
         {leadText}
       </span>
-      {trailingChips.map((chip) => (
-        <span key={chip} className="min-w-0 truncate text-muted-foreground">
-          <span className="mr-2 text-muted-foreground">·</span>
-          {chip}
-        </span>
-      ))}
-      {hasError ? (
+      {trailingText ? (
         <span
-          data-slot="tool-plan-stream-failed-count"
-          className="text-destructive shrink-0"
+          data-slot="tool-plan-stream-summary"
+          className="min-w-0 truncate text-muted-foreground"
         >
           <span className="mr-2 text-muted-foreground">·</span>
-          {t("plan.countFailed", { count: snapshot.errorCount })}
+          {trailingText}
         </span>
       ) : null}
     </span>
@@ -631,14 +643,7 @@ const ToolPlanStreamImpl: FC<ToolPlanStreamProps> = ({
       // across the remount.
       look="line"
       leadingIcon={
-        headerState === "failed" ? (
-          <CircleAlert
-            data-slot="tool-plan-stream-state-icon"
-            data-state="failed"
-            aria-hidden
-            className="size-4 shrink-0 text-destructive"
-          />
-        ) : headerState === "cancelled" ? (
+        headerState === "cancelled" ? (
           <Ban
             data-slot="tool-plan-stream-state-icon"
             data-state="cancelled"

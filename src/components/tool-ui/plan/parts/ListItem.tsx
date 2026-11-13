@@ -203,10 +203,8 @@ export const PlanListItem = memo(function PlanListItem({
       {rail && <Connector />}
       <Collapsible asChild open={isOpen} onOpenChange={handleOpenChange}>
         <div
-          className={cn(
-            "data-[state=open]:bg-primary/5 min-w-0 motion-safe:transition-all motion-safe:duration-200",
-            !flat && "rounded-md",
-          )}
+          data-slot="plan-list-item-body"
+          className={cn("min-w-0", !flat && "rounded-md")}
         >
           <CollapsibleTrigger
             data-slot="plan-list-item-trigger"

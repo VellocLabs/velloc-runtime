@@ -1406,7 +1406,22 @@ export const en = {
   'plan.verbCancelled': 'Cancelled',
   'plan.countTools': '{count} tools',
   'plan.countToolsOne': '{count} tool',
-  'plan.countFailed': '{count} failed',
+  // Tool-group summary sentence: one `work*` clause per kind of work,
+  // lower case; the first letter of the finished sentence is capitalised
+  // in code. `workWithFailed` appends a kind's failed count, `workJoin`
+  // chains two clauses.
+  'plan.workCommands': 'ran {count} commands',
+  'plan.workCommandsOne': 'ran {count} command',
+  'plan.workRead': 'read {count} files',
+  'plan.workReadOne': 'read {count} file',
+  'plan.workEdited': 'edited {count} files',
+  'plan.workEditedOne': 'edited {count} file',
+  'plan.workDeleted': 'deleted {count} files',
+  'plan.workDeletedOne': 'deleted {count} file',
+  'plan.workOther': 'used {count} tools',
+  'plan.workOtherOne': 'used {count} tool',
+  'plan.workWithFailed': '{work} ({count} failed)',
+  'plan.workJoin': '{work}, {more}',
   'plan.fileRead': 'Read {count}',
   'plan.fileEdited': 'Edited {count}',
   'plan.fileDeleted': 'Deleted {count}',
