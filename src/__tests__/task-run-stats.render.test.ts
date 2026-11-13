@@ -3,10 +3,10 @@ import { createElement } from 'react'
 import { afterEach, describe, expect, it } from 'vitest'
 import { cleanup, render, waitFor } from '@testing-library/react'
 import { BackgroundTasksDrawer } from '../browser/webview/BackgroundTasksDrawer'
-import { TaskRunStats, cachedPercent } from '../browser/webview/TaskRunStats'
+import { TaskRunStats } from '../browser/webview/TaskRunStats'
 import { subAgentsEqual } from '../browser/webview/backgroundSubAgents'
 import { computeRunStats } from '../browser/worker/taskProjection'
-import { compactTokenCount } from '../utils/taskRunStats'
+import { cachedPercent, compactTokenCount } from '../utils/taskRunStats'
 import type { NexusTaskRunStats, NexusTaskSummaryRow } from '../browser/bridge/protocol/ui'
 
 afterEach(() => cleanup())
@@ -125,7 +125,14 @@ describe('TaskRunStats', () => {
     const base = { toolUses: 0, inputTokens: 0, outputTokens: 999, cacheReadTokens: 0, cacheWriteTokens: 0 }
     expect(cachedPercent(base)).toBe(0)
     expect(cachedPercent({ ...base, inputTokens: 8, cacheReadTokens: 29_489, cacheWriteTokens: 36_037 })).toBe(45)
-    expect(cachedPercent({ ...base, inputTokens: 1, cacheReadTokens: 999 })).toBe(100)
+    expect(cachedPercent({ ...base, inputTokens: 1, cacheReadTokens: 2 })).toBe(67)
+    expect(cachedPercent({ ...base, cacheReadTokens: 5_000 })).toBe(100)
+  })
+
+  it('cachedPercent keeps a partial share off 0 and 100', () => {
+    const base = { toolUses: 0, inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 }
+    expect(cachedPercent({ ...base, inputTokens: 300, cacheReadTokens: 120_000 })).toBe(99)
+    expect(cachedPercent({ ...base, inputTokens: 120_000, cacheReadTokens: 300 })).toBe(1)
   })
 
   it('leaves the cached share off a strip with no cache reads', () => {
@@ -174,7 +181,7 @@ describe('Background Tasks drawer shows a sub-agent run usage', () => {
     })
   }
 
-  it('the running row ends its meta line with the tool count and total tokens', () => {
+  it('the running row ends its meta line with the tool count, total tokens and cached share', () => {
     render(drawer([agentRow()]))
     const strip = document.querySelector<HTMLElement>('li [data-testid="task-run-stats"]')!
     expect(strip).not.toBeNull()

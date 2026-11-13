@@ -1,15 +1,15 @@
 /**
  * A sub-agent or fork run's tool calls and token usage (F-2).
  *
- * `strip`: the tool count and total tokens as two meta items, for a list row
- * or a conversation card, tinted only while the run works. `badges`: labelled
+ * `strip`: the tool count, total tokens and cached share as meta items, for a
+ * list row or a conversation card, tinted only while the run works. `badges`: labelled
  * chips for the detail header, the tool count set apart from the token figures.
  */
 import type { ComponentType, ReactNode } from 'react'
 import { ArrowDownIcon, ArrowUpIcon, DatabaseIcon, PencilLineIcon, WrenchIcon } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { NexusTaskRunStats } from '../bridge/protocol/ui'
-import { compactTokenCount, hasRunStats } from '../../utils/taskRunStats'
+import { cachedPercent, compactTokenCount, hasRunStats } from '../../utils/taskRunStats'
 import { useLocale, useT } from './i18n'
 
 export type IconType = ComponentType<{ className?: string; 'data-testid'?: string }>
@@ -123,13 +123,6 @@ function LiveIcon({ icon: Icon, tint, live }: { icon: IconType; tint: string; li
       className={cn('size-3 shrink-0', tint, live && 'animate-pulse')}
     />
   )
-}
-
-/** Share of the run's whole input read from the prompt cache, as a whole
- *  percent: cache read / (input + cache read + cache write). */
-export function cachedPercent(stats: NexusTaskRunStats): number {
-  const prompt = stats.inputTokens + stats.cacheReadTokens + stats.cacheWriteTokens
-  return prompt > 0 ? Math.round((stats.cacheReadTokens / prompt) * 100) : 0
 }
 
 /**

@@ -28,3 +28,15 @@ export function hasRunStats(stats: NexusTaskRunStats | undefined): stats is Nexu
     stats.toolUses + stats.inputTokens + stats.outputTokens + stats.cacheReadTokens + stats.cacheWriteTokens > 0
   )
 }
+/**
+ * Share of the run's whole input read from the prompt cache, as a whole
+ * percent: cache read / (input + cache read + cache write), rounded. A partial
+ * share stays within 1–99, so 0 means no cache reads and 100 a fully cached input.
+ */
+export function cachedPercent(stats: NexusTaskRunStats): number {
+  const read = stats.cacheReadTokens
+  const prompt = stats.inputTokens + read + stats.cacheWriteTokens
+  if (read <= 0 || prompt <= 0) return 0
+  if (read >= prompt) return 100
+  return Math.min(99, Math.max(1, Math.round((read / prompt) * 100)))
+}
