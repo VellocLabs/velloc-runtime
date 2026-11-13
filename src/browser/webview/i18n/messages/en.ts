@@ -1408,18 +1408,19 @@ export const en = {
   'plan.countToolsOne': '{count} tool',
   // Tool-group summary sentence: one `work*` clause per kind of work,
   // lower case; the first letter of the finished sentence is capitalised
-  // in code. `workWithFailed` appends a kind's failed count, `workJoin`
+  // in code. The `*One` clauses name a single call with an article, not a
+  // number. `workWithFailed` appends a kind's failed count, `workJoin`
   // chains two clauses.
   'plan.workCommands': 'ran {count} commands',
-  'plan.workCommandsOne': 'ran {count} command',
+  'plan.workCommandsOne': 'ran a command',
   'plan.workRead': 'read {count} files',
-  'plan.workReadOne': 'read {count} file',
+  'plan.workReadOne': 'read a file',
   'plan.workEdited': 'edited {count} files',
-  'plan.workEditedOne': 'edited {count} file',
+  'plan.workEditedOne': 'edited a file',
   'plan.workDeleted': 'deleted {count} files',
-  'plan.workDeletedOne': 'deleted {count} file',
+  'plan.workDeletedOne': 'deleted a file',
   'plan.workOther': 'used {count} tools',
-  'plan.workOtherOne': 'used {count} tool',
+  'plan.workOtherOne': 'used a tool',
   'plan.workWithFailed': '{work} ({count} failed)',
   'plan.workJoin': '{work}, {more}',
   'plan.fileRead': 'Read {count}',

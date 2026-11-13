@@ -833,7 +833,7 @@ describe('ToolPlanStream unified header', () => {
     expect(text).toContain('Done')
     // The state word is spoken, not drawn; the sentence is the whole line.
     expect(label.querySelector('.sr-only')!.textContent).toBe('Done')
-    expect(headerTitle(root).textContent).toBe('Read 1 file, edited 1 file')
+    expect(headerTitle(root).textContent).toBe('Read a file, edited a file')
     expect(root.querySelector('[data-slot="tool-plan-stream-summary"]')).toBeNull()
     expect(text).not.toContain('·')
     expect(text).not.toContain('2 tools')
@@ -1203,7 +1203,7 @@ describe('ToolPlanStream reasoning rows + header', () => {
     expect(update!.querySelector('[data-slot="tool-plan-stream-reasoning-icon"]')).not.toBeNull()
     // Reasoning rows do not count as tools.
     const label = root.querySelector('[data-slot="tool-plan-stream-trigger-label"]')!
-    expect((label.textContent ?? '').replace(/\s+/g, ' ')).toContain('Read 2 files, edited 1 file')
+    expect((label.textContent ?? '').replace(/\s+/g, ' ')).toContain('Read 2 files, edited a file')
   })
 
   it('later narration text replaces the thought (and drops the glyph)', () => {

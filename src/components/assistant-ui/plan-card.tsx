@@ -85,7 +85,7 @@ export type PlanCardProps = {
    * `data-slot` / `aui-*` prefix. Existing e2e + scroll-lock selectors pin
    * `todo-section-*` and `tool-plan-stream-*`, so each caller passes its own prefix.
    */
-  slotPrefix: "todo-section" | "tool-plan-stream";
+  slotPrefix: "todo-section" | "tool-plan-stream" | "tool-call-line";
   /** Stable persist key; `undefined` until the first tool id streams in. */
   persistKey: string | undefined;
   /**

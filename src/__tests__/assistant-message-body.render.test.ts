@@ -672,3 +672,77 @@ describe('AssistantMessageBody — a code review Skill call is a top-level card'
     expect(container.querySelector('[data-slot="assistant-message-body"]')!.children.length).toBe(1)
   })
 })
+
+describe('AssistantMessageBody — a lone tool call reads as a one-line tool group', () => {
+  afterEach(cleanup)
+
+  const lone = (extra: Record<string, unknown> = {}) =>
+    makeHarness(
+      {
+        role: 'assistant',
+        status: { type: 'complete', reason: 'stop' },
+        content: [
+          { type: 'text', text: 'Checking.' },
+          { ...BASH, toolCallId: `lone-${JSON.stringify(extra)}`, ...extra },
+          { type: 'text', text: 'All good.' },
+        ],
+      } as ThreadMessageLike,
+      false,
+    )
+
+  it('draws the line "Ran a command", collapsed, and opens onto the call\'s own card', async () => {
+    const { container } = render(createElement(lone()))
+    await waitFor(() => {
+      expect(container.querySelector('[data-slot="tool-call-line-root"]')).not.toBeNull()
+    })
+    expect(container.querySelectorAll('[data-slot="tool-call-line-root"]').length).toBe(1)
+    expect(
+      container.querySelector('[data-slot="tool-call-line-title"]')!.textContent,
+    ).toBe('Ran a command')
+    // A text line: no border on the shell, and it is not a tool group.
+    const shell = container.querySelector('[data-slot="tool-call-line-card"]')!
+    expect(shell.getAttribute('data-look')).toBe('line')
+    expect(shell.className).not.toMatch(/\bborder\b/)
+    expect(container.querySelector('[data-slot="tool-plan-stream-root"]')).toBeNull()
+    // Collapsed: the call's card is not drawn until the line is opened.
+    const trigger = container.querySelector<HTMLElement>('[data-slot="tool-call-line-trigger"]')!
+    expect(trigger.getAttribute('data-state')).toBe('closed')
+    expect(container.querySelector('[data-slot="tool-fallback-root"]')).toBeNull()
+    fireEvent.click(trigger)
+    await waitFor(() => {
+      expect(
+        container.querySelector(
+          '[data-slot="tool-call-line-content"] [data-slot="tool-fallback-root"]',
+        ),
+      ).not.toBeNull()
+    })
+    const card = container.querySelector('[data-slot="tool-fallback-root"]')!
+    expect(card.getAttribute('data-variant')).toBe('nested')
+    expect(card.querySelector('[data-tool-name="Bash"]')).not.toBeNull()
+  })
+
+  it('counts a failed call in parentheses, with no icon and no destructive colour', async () => {
+    const { container } = render(createElement(lone({ isError: true, result: 'exit code 3' })))
+    await waitFor(() => {
+      expect(container.querySelector('[data-slot="tool-call-line-title"]')).not.toBeNull()
+    })
+    expect(
+      container.querySelector('[data-slot="tool-call-line-title"]')!.textContent,
+    ).toBe('Ran a command (1 failed)')
+    const trigger = container.querySelector('[data-slot="tool-call-line-trigger"]')!
+    expect(trigger.querySelector('svg:not([data-slot="tool-call-line-trigger-chevron"])')).toBeNull()
+    expect(trigger.querySelector('[class*="destructive"]')).toBeNull()
+  })
+
+  it('names the kind of work of the call', async () => {
+    const { container } = render(
+      createElement(lone({ toolName: 'Read', args: { file_path: '/repo/a.ts' } })),
+    )
+    await waitFor(() => {
+      expect(container.querySelector('[data-slot="tool-call-line-title"]')).not.toBeNull()
+    })
+    expect(
+      container.querySelector('[data-slot="tool-call-line-title"]')!.textContent,
+    ).toBe('Read a file')
+  })
+})

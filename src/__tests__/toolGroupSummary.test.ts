@@ -46,15 +46,16 @@ describe('describeToolGroupWork', () => {
     )
   })
 
-  it('uses the singular for a count of one', () => {
-    expect(sentence({ command: [1] })).toBe('Ran 1 command')
-    expect(sentence({ read: [1] })).toBe('Read 1 file')
-    expect(sentence({ edited: [1] })).toBe('Edited 1 file')
-    expect(sentence({ deleted: [1] })).toBe('Deleted 1 file')
-    expect(sentence({ other: [1] })).toBe('Used 1 tool')
+  it('names a single call with an article instead of a number', () => {
+    expect(sentence({ command: [1] })).toBe('Ran a command')
+    expect(sentence({ read: [1] })).toBe('Read a file')
+    expect(sentence({ edited: [1] })).toBe('Edited a file')
+    expect(sentence({ deleted: [1] })).toBe('Deleted a file')
+    expect(sentence({ other: [1] })).toBe('Used a tool')
     expect(sentence({ command: [1, 1], read: [1] })).toBe(
-      'Ran 1 command (1 failed), read 1 file',
+      'Ran a command (1 failed), read a file',
     )
+    expect(sentence({ command: [2], other: [1] })).toBe('Ran 2 commands, used a tool')
   })
 
   it('names every kind in a fixed order and skips a kind with no calls', () => {
@@ -74,14 +75,22 @@ describe('describeToolGroupWork', () => {
 
   it('keeps singular and plural apart in the inflecting locales', () => {
     expect(sentence({ command: [1], read: [2, 1] }, 'de')).toBe(
-      '1 Befehl ausgeführt, 2 Dateien gelesen (1 fehlgeschlagen)',
+      'Einen Befehl ausgeführt, 2 Dateien gelesen (1 fehlgeschlagen)',
     )
     expect(sentence({ command: [2], read: [1] }, 'fr')).toBe(
-      '2 commandes exécutées, 1 fichier lu',
+      '2 commandes exécutées, un fichier lu',
     )
     expect(sentence({ command: [1], other: [2] }, 'es')).toBe(
-      '1 comando ejecutado, 2 herramientas usadas',
+      'Un comando ejecutado, 2 herramientas usadas',
     )
+    expect(sentence({ other: [1] }, 'es')).toBe('Una herramienta usada')
+    expect(sentence({ read: [1] }, 'de')).toBe('Eine Datei gelesen')
+  })
+
+  it('keeps the number for a single call where the language has no article', () => {
+    expect(sentence({ command: [1] }, 'zh')).toBe('运行了 1 条命令')
+    expect(sentence({ read: [1] }, 'ja')).toBe('ファイルを 1 件読み取り')
+    expect(sentence({ other: [1] }, 'ko')).toBe('도구 1개 사용')
   })
 
   it('uses each locale’s own punctuation', () => {

@@ -51,8 +51,9 @@ export function classifyToolGroupWork(
 
 /**
  * The summary sentence of a tool group, e.g. "Ran 3 commands (1 failed),
- * read 2 files". A kind with no calls is left out; a kind's failed count
- * follows it in parentheses. Returns '' when the tally holds no calls.
+ * read a file". A kind with no calls is left out, a kind with one call is
+ * named with an article, and a kind's failed count follows it in
+ * parentheses. Returns '' when the tally holds no calls.
  */
 export function describeToolGroupWork(
   tally: ToolGroupWorkTally,
@@ -64,7 +65,7 @@ export function describeToolGroupWork(
     const { total, failed } = tally[kind]
     if (total <= 0) continue
     const keys = WORK_KEYS[kind]
-    let work = t(total === 1 ? keys.one : keys.many, { count: total })
+    let work = total === 1 ? t(keys.one) : t(keys.many, { count: total })
     if (failed > 0) work = t('plan.workWithFailed', { work, count: failed })
     sentence = sentence ? t('plan.workJoin', { work: sentence, more: work }) : work
   }

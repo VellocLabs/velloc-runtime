@@ -83,6 +83,7 @@ import {
   subscribePartReveal,
 } from "@/browser/webview/partRevealStore";
 import { ToolPlanStream } from "./tool-plan-stream";
+import { ToolCallLine } from "./tool-call-line";
 import { TodoItemRow, TodoSection } from "./todo-section";
 
 // When true, runs of consecutive tool calls render as `<ToolPlanStream>` instead of
@@ -334,7 +335,7 @@ function renderRange(
         </div>,
       );
     } else {
-      children.push(
+      const part = (
         <PartLineProvider
           key={k}
           line={lineAt(partLines, k)}
@@ -344,7 +345,25 @@ function renderRange(
             index={k}
             components={PART_COMPONENTS}
           />
-        </PartLineProvider>,
+        </PartLineProvider>
+      );
+      // A lone tool call reads as a group of one: a summary line that opens
+      // onto the call's own card.
+      children.push(
+        range.kind === "tool-group" &&
+          USE_TOOL_PLAN_STREAM &&
+          types[k] === "tool-call" ? (
+          <ToolCallLine
+            key={k}
+            index={k}
+            forceOpen={revealPart === k}
+            {...spanOf(partLines, k, k)}
+          >
+            {part}
+          </ToolCallLine>
+        ) : (
+          part
+        ),
       );
     }
   }
