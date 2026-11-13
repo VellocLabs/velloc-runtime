@@ -1498,6 +1498,7 @@ export const de: Messages = {
   'settings.nav.memory': 'Gedächtnis',
   'settings.nav.features': 'Skills',
   'settings.nav.plugins': 'Plugins & Mods',
+  'settings.nav.network': 'Netzwerk',
   'settings.nav.remoteAccess': 'Remote-Zugriff',
   'settings.nav.about': 'Über',
 
@@ -2547,6 +2548,41 @@ export const de: Messages = {
   'settings.system.keepRunning': '{product} im Hintergrund weiterlaufen lassen',
   'settings.system.keepRunningDescription':
     'Wenn Sie das Fenster schließen, bleibt {product} in der Taskleiste und Ihre Sitzungen laufen weiter. Klicken Sie auf das Taskleistensymbol oder öffnen Sie {product} erneut, um dort weiterzumachen. Wenn ausgeschaltet, wird {product} beim Schließen des Fensters beendet.',
+
+  'settings.network.title': 'Netzwerk',
+  'settings.network.proxy.title': 'Proxy',
+  'settings.network.proxy.description':
+    'Gilt sofort für Modellanfragen, Web-Tools und Seiten. Befehle, die der Agent ausführt, behalten ihre eigenen Netzwerkeinstellungen.',
+  'settings.network.unavailable': 'Proxy-Einstellungen sind in diesem Build nicht verfügbar.',
+  'settings.network.mode': 'Verbindung',
+  'settings.network.mode.system': 'Systemeinstellungen verwenden',
+  'settings.network.mode.direct': 'Kein Proxy',
+  'settings.network.mode.fixed': 'Proxyserver',
+  'settings.network.mode.pac': 'Automatisches Konfigurationsskript',
+  'settings.network.mode.autoDetect': 'Automatisch erkennen',
+  'settings.network.server': 'Server',
+  'settings.network.serverPlaceholder': 'http://127.0.0.1:8080',
+  'settings.network.serverDescription':
+    'Eine Adresse, die mit http://, https://, socks4:// oder socks5:// beginnt.',
+  'settings.network.bypass': 'Umgehen für',
+  'settings.network.bypassPlaceholder': 'localhost, *.example.com',
+  'settings.network.bypassDescription':
+    'Hosts, die ohne den Proxy erreicht werden, durch Kommas getrennt.',
+  'settings.network.pacUrl': 'Skriptadresse',
+  'settings.network.pacUrlPlaceholder': 'https://example.com/proxy.pac',
+  'settings.network.apply': 'Anwenden',
+  'settings.network.refused': 'Die Proxy-Einstellung wurde nicht übernommen.',
+  'settings.network.problem.required': 'Gib eine Adresse ein.',
+  'settings.network.problem.malformed': 'Das ist keine gültige Adresse.',
+  'settings.network.problem.scheme':
+    'Beginne die Adresse mit http://, https://, socks4:// oder socks5://.',
+  'settings.network.problem.credentials':
+    'Benutzername und Passwort dürfen nicht Teil der Adresse sein.',
+  'settings.network.problem.tooLong': 'Diese Liste ist zu lang.',
+  'settings.network.overridden.policy': 'Deine Organisation verwaltet diese Einstellung.',
+  'settings.network.overridden.commandLine':
+    'Ein Befehlszeilenschalter legt den Proxy für diese Ausführung fest.',
+  'settings.network.overridden.extension': 'Eine Erweiterung steuert diese Einstellung.',
 
   // ── Slash-Befehle — Beschreibungen im Befehlsauswahlfeld ───────────────
   'slash.builtin.help': 'Verfügbare Slash-Befehle anzeigen',

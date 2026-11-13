@@ -1218,8 +1218,9 @@ describe('host proxy', () => {
   // `appearance.resolveTheme` (now `observe`) — net −1, so 41. The MCP
   // pre-save probe moved into the worker (`mcpSettings.testConnect`) — 40. `session.publishStatus` was removed from the host
   // 39. The browser pane's strip and address field: three `ui` routes — 42.
-  it('HOST_PROXY_TABLE covers the 42 routes the plan lists', () => {
-    expect(hostProxyRouteCount()).toBe(42)
+  // The proxy setting of the host: two `network` routes — 44.
+  it('HOST_PROXY_TABLE covers the 44 routes the plan lists', () => {
+    expect(hostProxyRouteCount()).toBe(44)
     const specs = hostProxySpecs()
     expect(specs.map(s => s.cap).sort()).toEqual(Object.keys(HOST_PROXY_TABLE).sort())
     // Below `full`: the pure read a remote observer needs (observe); the

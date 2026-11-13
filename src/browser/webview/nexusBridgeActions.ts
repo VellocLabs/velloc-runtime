@@ -183,6 +183,23 @@ export function setLauncherEnabled(
   )
 }
 
+// --- network (the host's proxy setting) -------------------------------------
+
+export function getProxySettings(transport: BrowserBridgeTransport) {
+  return requestHostBridge(transport, createBridgeRoute('network', 'proxyGet'), {})
+}
+
+export function setProxySettings(
+  transport: BrowserBridgeTransport,
+  settings: BrowserBridgeRequestPayload<'network', 'proxySet'>,
+) {
+  return requestHostBridge(
+    transport,
+    createBridgeRoute('network', 'proxySet'),
+    settings,
+  )
+}
+
 // --- appearance (per-client theme resolver + host UI language) -------------
 //
 // The theme itself is per-client now: scheme/seed/variant live in this

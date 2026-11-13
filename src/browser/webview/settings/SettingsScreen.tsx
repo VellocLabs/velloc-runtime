@@ -21,6 +21,7 @@ import { McpSection } from "./sections/McpSection";
 import { MemorySection } from "./sections/MemorySection";
 import { ModelsSection } from "./sections/ModelsSection";
 import { ModelDataSection } from "./sections/ModelDataSection";
+import { NetworkSection } from "./sections/NetworkSection";
 import { SessionModelsSection } from "./sections/SessionModelsSection";
 import { PluginsSection } from "./sections/PluginsSection";
 import {
@@ -130,6 +131,8 @@ function SectionContent({
           onOpenModels={onOpenModels}
         />
       );
+    case "network":
+      return <NetworkSection transport={transport} />;
     case "remoteAccess":
       return (
         <RemoteAccessSection state={remoteState ?? null} conn={remoteConn ?? null} />

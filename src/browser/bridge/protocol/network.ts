@@ -119,7 +119,46 @@ export type BridgeNetworkOnWsClosePayload = {
   wasClean: boolean
 }
 
+/** How the host's network stack reaches the network (F-27). `fixed` sends
+ *  everything through `server`; `pac` asks the script at `pacUrl`. */
+export type BridgeProxyMode = 'system' | 'direct' | 'fixed' | 'pac' | 'autoDetect'
+
+/**
+ * The proxy setting of the host's default profile. `source` names the store
+ * the value in force comes from; only `default` and `user` are `editable` —
+ * a policy, a command-line switch or an extension outranks the user's value.
+ */
+export type BridgeProxySettings = {
+  mode: BridgeProxyMode
+  /** `fixed` only: `scheme://host[:port]`, scheme http, https, socks4 or socks5. */
+  server?: string
+  /** `fixed` only: comma-separated hosts that are reached directly. */
+  bypassList?: string
+  /** `pac` only. */
+  pacUrl?: string
+  source: 'default' | 'user' | 'commandLine' | 'extension' | 'policy'
+  editable: boolean
+}
+
 export type NetworkBridgeActionMap = {
+  /** Manifest primitive `network.proxy`. */
+  proxyGet: {
+    payload: Record<string, never>
+    result: BridgeProxySettings
+  }
+  /** Applies at once to every request the host's network stack sends, page
+   *  loads included; processes the host spawns are not covered. Errors:
+   *  `PROXY_INVALID` (a `server` with credentials is refused),
+   *  `PROXY_OVERRIDDEN` when the setting is not `editable`. */
+  proxySet: {
+    payload: {
+      mode: BridgeProxyMode
+      server?: string
+      bypassList?: string
+      pacUrl?: string
+    }
+    result: BridgeProxySettings
+  }
   httpRequest: {
     payload: BridgeHttpRequestPayload
     result: BridgeHttpGetResult

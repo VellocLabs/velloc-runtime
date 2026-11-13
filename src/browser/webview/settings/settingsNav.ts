@@ -5,6 +5,7 @@ import {
   FileTextIcon,
   GlobeIcon,
   InfoIcon,
+  NetworkIcon,
   PuzzleIcon,
   RouteIcon,
   SlidersHorizontalIcon,
@@ -32,6 +33,7 @@ export type SettingsSectionId =
   | "memory"
   | "features"
   | "plugins"
+  | "network"
   | "remoteAccess"
   | "about";
 
@@ -83,6 +85,9 @@ export const NAV: Array<{
   { id: "memory", labelKey: "settings.nav.memory", icon: BrainIcon },
   { id: "features", labelKey: "settings.nav.features", icon: SlidersHorizontalIcon },
   { id: "plugins", labelKey: "settings.nav.plugins", icon: PuzzleIcon },
+  // The host machine's proxy: both `network.proxy*` actions are `full`, and
+  // the page is the desktop's own — a remote client has its own network.
+  { id: "network", labelKey: "settings.nav.network", icon: NetworkIcon, needs: { cap: "network", act: "proxyGet" }, desktopOnly: true },
   // Every `remote.*` action is `full`, AND the page exists only when
   // the host advertises `remoteAccess` (`access.supported` on remote/state).
   // Beta-only while the remote-access surface hardens (v1): deleting

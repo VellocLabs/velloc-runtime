@@ -1546,6 +1546,7 @@ export const en = {
   'settings.nav.memory': 'Memory',
   'settings.nav.features': 'Skills',
   'settings.nav.plugins': 'Plugins & Mods',
+  'settings.nav.network': 'Network',
   'settings.nav.remoteAccess': 'Remote access',
   'settings.nav.about': 'About',
 
@@ -2588,6 +2589,39 @@ export const en = {
   'settings.system.keepRunning': 'Keep {product} running in the background',
   'settings.system.keepRunningDescription':
     'When you close the window, {product} stays in the system tray and your sessions keep running. Click the tray icon or open {product} again to pick up where you left off. Turn this off to quit {product} when the window closes.',
+
+  // ── Settings — Network (the proxy setting of the host) ───────────────────
+  'settings.network.title': 'Network',
+  'settings.network.proxy.title': 'Proxy',
+  'settings.network.proxy.description':
+    'Takes effect right away for model requests, web tools and pages. Commands the agent runs keep their own network settings.',
+  'settings.network.unavailable': 'Proxy settings aren’t available on this build.',
+  'settings.network.mode': 'Connection',
+  'settings.network.mode.system': 'Use system settings',
+  'settings.network.mode.direct': 'No proxy',
+  'settings.network.mode.fixed': 'Proxy server',
+  'settings.network.mode.pac': 'Automatic configuration script',
+  'settings.network.mode.autoDetect': 'Detect automatically',
+  'settings.network.server': 'Server',
+  'settings.network.serverPlaceholder': 'http://127.0.0.1:8080',
+  'settings.network.serverDescription':
+    'An address that starts with http://, https://, socks4:// or socks5://.',
+  'settings.network.bypass': 'Bypass for',
+  'settings.network.bypassPlaceholder': 'localhost, *.example.com',
+  'settings.network.bypassDescription': 'Hosts reached without the proxy, separated by commas.',
+  'settings.network.pacUrl': 'Script address',
+  'settings.network.pacUrlPlaceholder': 'https://example.com/proxy.pac',
+  'settings.network.apply': 'Apply',
+  'settings.network.refused': 'The proxy setting wasn’t accepted.',
+  'settings.network.problem.required': 'Enter an address.',
+  'settings.network.problem.malformed': 'This isn’t a valid address.',
+  'settings.network.problem.scheme':
+    'Start the address with http://, https://, socks4:// or socks5://.',
+  'settings.network.problem.credentials': 'A user name and password can’t be part of the address.',
+  'settings.network.problem.tooLong': 'This list is too long.',
+  'settings.network.overridden.policy': 'Your organization manages this setting.',
+  'settings.network.overridden.commandLine': 'A command-line switch sets the proxy for this run.',
+  'settings.network.overridden.extension': 'An extension controls this setting.',
 
   // ── Slash commands — built-in picker hints ─────────────────────────────
   // The hint shown beside each built-in command in the composer's slash

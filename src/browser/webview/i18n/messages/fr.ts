@@ -1502,6 +1502,7 @@ export const fr: Messages = {
   'settings.nav.memory': 'Mémoire',
   'settings.nav.features': 'Compétences',
   'settings.nav.plugins': 'Extensions et mods',
+  'settings.nav.network': 'Réseau',
   'settings.nav.remoteAccess': 'Accès à distance',
   'settings.nav.about': 'À propos',
 
@@ -2556,6 +2557,41 @@ export const fr: Messages = {
   'settings.system.keepRunning': 'Laisser {product} s’exécuter en arrière-plan',
   'settings.system.keepRunningDescription':
     'Lorsque vous fermez la fenêtre, {product} reste dans la zone de notification et vos sessions continuent. Cliquez sur l’icône de la zone de notification ou rouvrez {product} pour reprendre là où vous en étiez. Si cette option est désactivée, {product} se ferme avec la fenêtre.',
+
+  'settings.network.title': 'Réseau',
+  'settings.network.proxy.title': 'Proxy',
+  'settings.network.proxy.description':
+    'S’applique immédiatement aux requêtes vers les modèles, aux outils web et aux pages. Les commandes exécutées par l’agent conservent leurs propres paramètres réseau.',
+  'settings.network.unavailable':
+    'Les paramètres de proxy ne sont pas disponibles dans cette version.',
+  'settings.network.mode': 'Connexion',
+  'settings.network.mode.system': 'Utiliser les paramètres système',
+  'settings.network.mode.direct': 'Aucun proxy',
+  'settings.network.mode.fixed': 'Serveur proxy',
+  'settings.network.mode.pac': 'Script de configuration automatique',
+  'settings.network.mode.autoDetect': 'Détecter automatiquement',
+  'settings.network.server': 'Serveur',
+  'settings.network.serverPlaceholder': 'http://127.0.0.1:8080',
+  'settings.network.serverDescription':
+    'Une adresse commençant par http://, https://, socks4:// ou socks5://.',
+  'settings.network.bypass': 'Ignorer pour',
+  'settings.network.bypassPlaceholder': 'localhost, *.example.com',
+  'settings.network.bypassDescription': 'Hôtes joints sans le proxy, séparés par des virgules.',
+  'settings.network.pacUrl': 'Adresse du script',
+  'settings.network.pacUrlPlaceholder': 'https://example.com/proxy.pac',
+  'settings.network.apply': 'Appliquer',
+  'settings.network.refused': 'Le paramètre de proxy n’a pas été accepté.',
+  'settings.network.problem.required': 'Saisissez une adresse.',
+  'settings.network.problem.malformed': 'Cette adresse n’est pas valide.',
+  'settings.network.problem.scheme':
+    'L’adresse doit commencer par http://, https://, socks4:// ou socks5://.',
+  'settings.network.problem.credentials':
+    'L’adresse ne peut pas contenir de nom d’utilisateur ni de mot de passe.',
+  'settings.network.problem.tooLong': 'Cette liste est trop longue.',
+  'settings.network.overridden.policy': 'Votre organisation gère ce paramètre.',
+  'settings.network.overridden.commandLine':
+    'Une option de ligne de commande définit le proxy pour cette exécution.',
+  'settings.network.overridden.extension': 'Une extension contrôle ce paramètre.',
 
   // ── Commandes slash — descriptions du sélecteur ────────────────────────
   'slash.builtin.help': 'Afficher les commandes slash disponibles',

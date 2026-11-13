@@ -60,6 +60,8 @@ const DESKTOP_CAPABILITIES: CapabilityAdvert[] = [
   { cap: 'memory', acts: ['snapshot', 'userInstructions', 'writeUserInstructions'] },
   // The desktop can manage remote access (every remote.* action is full).
   { cap: 'remote', acts: ['pairList', 'pairStart', 'pairRevoke', 'getAccess', 'setAccess'] },
+  // The proxy setting of the host: both actions are full.
+  { cap: 'network', acts: ['proxyGet', 'proxySet'] },
 ]
 
 /** What a `control` remote connection is advertised: the reads, not the writes. */
@@ -78,6 +80,7 @@ const NAV_IDS = [
   'memory',
   'features',
   'plugins',
+  'network',
   'about',
 ]
 
@@ -155,6 +158,7 @@ describe('useCan — trimming a smaller grant', () => {
     expect(ids).not.toContain('models')
     expect(ids).not.toContain('mcp')
     expect(ids).not.toContain('instructions')
+    expect(ids).not.toContain('network')
     // Kept: readable at observe/control.
     expect(ids).toEqual(['general', 'sessionModels', 'memory', 'features', 'plugins', 'about'])
   })
@@ -277,11 +281,16 @@ describe('the Remote access entry is desktop-only (never on a remote client page
     expect(isSettingsSectionVisible('remoteAccess', full, true, 'beta', false)).toBe(true)
   })
 
-  it('drops nothing else on a remote client', () => {
+  // The host's proxy setting is the desktop's own too: a remote client with
+  // a full grant would otherwise reroute the machine it is connected to.
+  it('drops only the two desktop-only pages on a remote client', () => {
     const full = queryFor(DESKTOP_CAPABILITIES)
     const desktop = visibleNav(full, true, 'beta', false).map(e => e.id)
     const remote = visibleNav(full, true, 'beta', true).map(e => e.id)
-    expect(remote).toEqual(desktop.filter(id => id !== 'remoteAccess'))
+    expect(desktop).toContain('network')
+    expect(remote).toEqual(
+      desktop.filter(id => id !== 'remoteAccess' && id !== 'network'),
+    )
   })
 })
 

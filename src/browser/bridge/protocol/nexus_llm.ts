@@ -569,6 +569,14 @@ export type ModelBridgeCapabilityMap = {
          *  Omitted: the host mints one. Additive on interface 1: an older host
          *  ignores it and answers its own id. */
         streamId?: string
+        /** Sends this request through a proxy instead of the host's own proxy
+         *  setting (manifest primitive `model.rawStreamOpen.egress`; a host
+         *  without it ignores the field, so the caller must check first).
+         *  `url` is `scheme://[user:pass@]host[:port]` with scheme http, https
+         *  or socks5 and may contain `{{secret:NAME}}`; credentials are for
+         *  http and https only. The proxy's host must be one of `hosts`.
+         *  Errors: `EGRESS_INVALID`, `SECRET_UNAVAILABLE`, `EGRESS_UNAVAILABLE`. */
+        egress?: { url: string; hosts: string[] }
       }
       result: {
         /** Echoes the caller's `streamId`, or the id the host minted. */

@@ -57,6 +57,12 @@ export const HOST_PROXY_TABLE = {
     setLauncher: 'full',
     setBackgroundMode: 'full',
   },
+  // The proxy every request of the host machine leaves through: a write
+  // reroutes the desktop's own traffic, and the read shows its address.
+  network: {
+    proxyGet: 'full',
+    proxySet: 'full',
+  },
   // The version is a read any client may show; the webapp URL is the
   // desktop's own config — readable by a manager, writable only locally —
   // and relaunch restarts the host machine's browser.
