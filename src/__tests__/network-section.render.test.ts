@@ -108,6 +108,17 @@ describe('NetworkSection', () => {
     expect(setProxySettings).not.toHaveBeenCalled()
   })
 
+  it('stops saying the password is saved once the server changes', async () => {
+    getProxySettings.mockResolvedValue(
+      settings({ mode: 'fixed', server: 'http://proxy.example.com:3128', username: 'me', hasPassword: true, source: 'user' }),
+    )
+    render(page(ALLOW_ALL))
+    const password = (await screen.findByTestId('network-proxy-password')) as HTMLInputElement
+    expect(password.placeholder).toBe('Saved. Leave empty to keep it.')
+    fireEvent.change(screen.getByTestId('network-proxy-server'), { target: { value: 'https://proxy.example.com:3128' } })
+    expect(password.placeholder).toBe('')
+  })
+
   it('names the PAC schemes, not the proxy server ones, for a PAC address', async () => {
     getProxySettings.mockResolvedValue(settings({ mode: 'pac', pacUrl: '', source: 'user' }))
     render(page(ALLOW_ALL))

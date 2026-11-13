@@ -17,6 +17,7 @@ import {
   checkProxyForm,
   formFromSettings,
   isProxyFormChanged,
+  keepsStoredPassword,
   payloadFromForm,
   type ProxyForm,
   type ProxyFormProblem,
@@ -264,7 +265,7 @@ export function NetworkSection({
                 {textField(
                   "password",
                   t("settings.network.password"),
-                  settings.hasPassword && settings.username === form.username.trim()
+                  keepsStoredPassword(form, settings)
                     ? t("settings.network.passwordSaved")
                     : "",
                   undefined,

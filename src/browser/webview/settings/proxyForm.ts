@@ -59,7 +59,7 @@ function serverKey(text: string): string {
 }
 
 /** Whether the host still holds a password for this server and user name. */
-function keepsStoredPassword(form: ProxyForm, settings: BridgeProxySettings | undefined): boolean {
+export function keepsStoredPassword(form: ProxyForm, settings: BridgeProxySettings | undefined): boolean {
   return (
     settings?.hasPassword === true &&
     settings.username === form.username.trim() &&
