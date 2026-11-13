@@ -26,12 +26,12 @@ import { useT } from "../../i18n";
 import { describeUserAgent } from "../../remote/userAgentLabel";
 import {
   SettingsCard,
+  SettingsGroupLabel,
   SettingsSection,
-  SettingsSubpageLayout,
 } from "../SettingsSubpageLayout";
 
 /**
- * Remote access — the settings page for the desktop's embedded relay (F-24). All
+ * Remote access — the Network page's section for the desktop's embedded relay (F-24). All
  * state comes from the `remote/state` topic and every mutation is a `remote.*`
  * action (P-3). Renders only when the connection may `remote.pairList` AND
  * `access.supported` is true. Security: the listener binds 0.0.0.0; one long-lived
@@ -398,6 +398,35 @@ function Disclosure({
   );
 }
 
+/** One labelled group inside the Remote access section. */
+function RemoteGroup({
+  title,
+  description,
+  testId,
+  children,
+}: {
+  title: string;
+  description?: string;
+  testId?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div
+      data-remote-group=""
+      className="mt-3 flex flex-col gap-2"
+      {...(testId ? { "data-testid": testId } : {})}
+    >
+      <div className="flex flex-col gap-1">
+        <SettingsGroupLabel>{title}</SettingsGroupLabel>
+        {description ? (
+          <p className="text-[13px] text-muted-foreground leading-relaxed">{description}</p>
+        ) : null}
+      </div>
+      {children}
+    </div>
+  );
+}
+
 export function RemoteAccessSection({
   state,
   conn,
@@ -458,9 +487,9 @@ export function RemoteAccessSection({
 
   if (!access || !conn) {
     return (
-      <SettingsSubpageLayout title={t("settings.nav.remoteAccess")}>
+      <SettingsSection title={t("settings.remoteAccess.title")} testId="settings-remote-access">
         <p className="text-muted-foreground text-sm">{t("settings.loading")}</p>
-      </SettingsSubpageLayout>
+      </SettingsSection>
     );
   }
 
@@ -506,16 +535,15 @@ export function RemoteAccessSection({
   };
 
   return (
-    <SettingsSubpageLayout
+    <SettingsSection
       title={t("settings.remoteAccess.title")}
       description={t("settings.remoteAccess.description")}
+      testId="settings-remote-access"
     >
-      {/* Remote access — the master toggle, with the listener state and the
-          device count on their own lines under it. Everything else reveals
-          on enable; while off this page is exactly one switch. The page is
-          sibling sections (switch · connect · access security · connected
-          devices), not one section nesting the rest: each gets its own
-          heading and the same air above it. */}
+      {/* The master toggle, with the listener state and the device count on
+          their own lines under it. Everything else reveals on enable; while
+          off this section is exactly one switch. The groups below (connect ·
+          access security · connected devices) each carry a group label. */}
       <div data-testid="remote-access-section">
         <SettingsCard>
           <div className="flex items-center justify-between gap-4 px-4 py-3">
@@ -542,7 +570,7 @@ export function RemoteAccessSection({
            a valid link opens a session. The page picks the address most
            likely to work and puts it first with the primary copy button;
            every other address keeps its own copy button one click away. */
-        <SettingsSection
+        <RemoteGroup
           title={t("settings.remoteAccess.connectTitle")}
           description={t("settings.remoteAccess.connectDescription")}
         >
@@ -582,13 +610,13 @@ export function RemoteAccessSection({
               {t("settings.remoteAccess.noLinkYet")}
             </p>
           )}
-        </SettingsSection>
+        </RemoteGroup>
       ) : null}
 
       {access.enabled ? (
         /* Access security — the link is the credential; the revoke button lives here
            so a leaked link is killed without turning the listener off. */
-        <SettingsSection title={t("settings.remoteAccess.securityTitle")}>
+        <RemoteGroup title={t("settings.remoteAccess.securityTitle")}>
           {/* One tight group: the section gap (gap-4) between the callout,
               the details and the button left them scattered. */}
           <div className="flex flex-col gap-2">
@@ -625,7 +653,7 @@ export function RemoteAccessSection({
               </Button>
             </div>
           </div>
-        </SettingsSection>
+        </RemoteGroup>
       ) : null}
 
       {access.enabled &&
@@ -639,7 +667,7 @@ export function RemoteAccessSection({
            Gated on a RUNNING listener like the count itself: a listener that
            is starting or failed to bind has no devices to list, and "No
            devices connected" under "Port in use" reads as if it were up. */
-        <SettingsSection
+        <RemoteGroup
           title={t("settings.remoteAccess.devicesTitle")}
           testId="remote-access-devices-section"
         >
@@ -656,7 +684,7 @@ export function RemoteAccessSection({
               {t("settings.remoteAccess.devicesEmpty")}
             </p>
           )}
-        </SettingsSection>
+        </RemoteGroup>
       ) : null}
 
       {/* The one-time enable confirmation carries the full plaintext warning —
@@ -752,6 +780,6 @@ export function RemoteAccessSection({
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </SettingsSubpageLayout>
+    </SettingsSection>
   );
 }

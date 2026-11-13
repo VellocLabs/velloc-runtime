@@ -355,7 +355,7 @@ describe('RemoteAccessSection', () => {
     )
   })
 
-  it('Access security is its own section: the password callout, Security details and the regenerate button', async () => {
+  it('Access security is its own group: the password callout, Security details and the regenerate button', async () => {
     renderSection({
       relay: 'off',
       pairings: [makePairing()],
@@ -367,10 +367,10 @@ describe('RemoteAccessSection', () => {
     // "Your own devices" was too narrow: sharing with a colleague is fine.
     expect(note.textContent).toContain('Only share it with devices you trust')
     expect(note.textContent).not.toContain('encrypted')
-    // The callout, the details and the regenerate button are one section,
+    // The callout, the details and the regenerate button are one group,
     // headed Access security — not a sentence between the links and a button.
-    const section = note.closest('section')!
-    expect(section.querySelector('h2')?.textContent).toBe('Access security')
+    const section = note.closest('[data-remote-group]')!
+    expect(section.querySelector('h3')?.textContent).toBe('Access security')
     expect(section.contains(screen.getByTestId('remote-access-security-details'))).toBe(true)
     expect(section.contains(screen.getByTestId('remote-access-reset-link'))).toBe(true)
     expect(section.contains(screen.getByTestId('remote-access-links'))).toBe(false)
@@ -478,7 +478,7 @@ describe('RemoteAccessSection connected devices', () => {
     // The list is its own Connected devices section, not part of the
     // switch's status card.
     const section = screen.getByTestId('remote-access-devices-section')
-    expect(section.querySelector('h2')?.textContent).toBe('Connected devices')
+    expect(section.querySelector('h3')?.textContent).toBe('Connected devices')
     expect(section.contains(rows[0])).toBe(true)
     expect(screen.getByTestId('remote-access-status').contains(rows[0])).toBe(false)
     expect(screen.queryByTestId('remote-access-devices-empty')).toBeNull()

@@ -1486,7 +1486,6 @@ export const ko: Messages = {
   'settings.nav.features': '스킬',
   'settings.nav.plugins': '플러그인 및 Mods',
   'settings.nav.network': '네트워크',
-  'settings.nav.remoteAccess': '원격 액세스',
   'settings.nav.about': '정보',
 
   // ── 설정 — 일반(프로필) ───────────────────────────────────────────────
@@ -2520,7 +2519,11 @@ export const ko: Messages = {
   'settings.network.bypassDescription': '프록시 없이 연결할 호스트를 쉼표로 구분해 입력합니다.',
   'settings.network.pacUrl': '스크립트 주소',
   'settings.network.pacUrlPlaceholder': 'https://example.com/proxy.pac',
-  'settings.network.apply': '적용',
+  'settings.network.edit': '편집',
+  'settings.network.editAria': '프록시 편집',
+  'settings.network.save': '저장',
+  'settings.network.cancel': '취소',
+  'settings.network.summaryServerUser': '{server} · {username}(으)로 로그인',
   'settings.network.refused': '프록시 설정이 적용되지 않았습니다.',
   'settings.network.problem.required': '주소를 입력하세요.',
   'settings.network.problem.malformed': '올바른 주소가 아닙니다.',

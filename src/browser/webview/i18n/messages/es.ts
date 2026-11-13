@@ -1505,7 +1505,6 @@ export const es: Messages = {
   'settings.nav.features': 'Skills',
   'settings.nav.plugins': 'Complementos y mods',
   'settings.nav.network': 'Red',
-  'settings.nav.remoteAccess': 'Acceso remoto',
   'settings.nav.about': 'Acerca de',
 
   // ── Configuración — General (perfil) ───────────────────────────────────
@@ -2584,7 +2583,11 @@ export const es: Messages = {
     'Hosts a los que se accede sin el proxy, separados por comas.',
   'settings.network.pacUrl': 'Dirección del script',
   'settings.network.pacUrlPlaceholder': 'https://example.com/proxy.pac',
-  'settings.network.apply': 'Aplicar',
+  'settings.network.edit': 'Editar',
+  'settings.network.editAria': 'Editar proxy',
+  'settings.network.save': 'Guardar',
+  'settings.network.cancel': 'Cancelar',
+  'settings.network.summaryServerUser': '{server} · inicia sesión como {username}',
   'settings.network.refused': 'No se aceptó la configuración del proxy.',
   'settings.network.problem.required': 'Introduce una dirección.',
   'settings.network.problem.malformed': 'Esta dirección no es válida.',

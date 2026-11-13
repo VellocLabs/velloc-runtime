@@ -1506,7 +1506,6 @@ export const fr: Messages = {
   'settings.nav.features': 'Compétences',
   'settings.nav.plugins': 'Extensions et mods',
   'settings.nav.network': 'Réseau',
-  'settings.nav.remoteAccess': 'Accès à distance',
   'settings.nav.about': 'À propos',
 
   // ── Paramètres — Général (profil) ──────────────────────────────────────
@@ -2586,7 +2585,11 @@ export const fr: Messages = {
   'settings.network.bypassDescription': 'Hôtes joints sans le proxy, séparés par des virgules.',
   'settings.network.pacUrl': 'Adresse du script',
   'settings.network.pacUrlPlaceholder': 'https://example.com/proxy.pac',
-  'settings.network.apply': 'Appliquer',
+  'settings.network.edit': 'Modifier',
+  'settings.network.editAria': 'Modifier le proxy',
+  'settings.network.save': 'Enregistrer',
+  'settings.network.cancel': 'Annuler',
+  'settings.network.summaryServerUser': '{server} · se connecte en tant que {username}',
   'settings.network.refused': 'Le paramètre de proxy n’a pas été accepté.',
   'settings.network.problem.required': 'Saisissez une adresse.',
   'settings.network.problem.malformed': 'Cette adresse n’est pas valide.',

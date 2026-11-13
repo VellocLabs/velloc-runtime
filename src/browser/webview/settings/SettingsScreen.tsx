@@ -24,16 +24,17 @@ import { ModelDataSection } from "./sections/ModelDataSection";
 import { NetworkSection } from "./sections/NetworkSection";
 import { SessionModelsSection } from "./sections/SessionModelsSection";
 import { PluginsSection } from "./sections/PluginsSection";
-import {
-  RemoteAccessSection,
-  type RemoteAccessConnection,
-  type RemoteAccessPageState,
+import type {
+  RemoteAccessConnection,
+  RemoteAccessPageState,
 } from "./sections/RemoteAccessSection";
 import { SettingsSubpageLayout } from "./SettingsSubpageLayout";
 import {
   NAV,
   resolveSettingsPage,
   visibleNav,
+  visibleNetworkParts,
+  type SettingsPartId,
   type SettingsSectionId,
 } from "./settingsNav";
 
@@ -58,6 +59,8 @@ function PlaceholderSection({ label }: { label: string }) {
 function SectionContent({
   section,
   focusSessionModels,
+  focusRemoteAccess,
+  networkParts,
   catalog,
   transport,
   onProviderConnected,
@@ -81,6 +84,10 @@ function SectionContent({
   /** Models was reached by way of Session models (a deep link or a
    *  remembered selection): scroll its embedded group into view. */
   focusSessionModels: boolean;
+  /** Network was reached by way of Remote access: scroll that section into view. */
+  focusRemoteAccess: boolean;
+  /** The Network page's sections this connection may see. */
+  networkParts: readonly SettingsPartId[];
   catalog: BrowserLlmCatalog | null | undefined;
   transport: BrowserBridgeTransport;
   onProviderConnected?: () => void;
@@ -132,10 +139,14 @@ function SectionContent({
         />
       );
     case "network":
-      return <NetworkSection transport={transport} />;
-    case "remoteAccess":
       return (
-        <RemoteAccessSection state={remoteState ?? null} conn={remoteConn ?? null} />
+        <NetworkSection
+          transport={transport}
+          parts={networkParts}
+          remoteState={remoteState ?? null}
+          remoteConn={remoteConn ?? null}
+          focusRemoteAccess={focusRemoteAccess}
+        />
       );
     case "about":
       return <AboutSection transport={transport} />;
@@ -181,14 +192,14 @@ export function SettingsScreen({
   revealMcpServerRequest?: { server: string; seq: number } | null;
   /**
    * The page's runtime connection. Its `remote/state` view (the shared
-   * store) gates the Remote access nav entry on `access.supported` (the
-   * manifest gate's UI half) and is handed to the Remote access section, with
-   * the connection for its `remote.*` actions.
+   * store) gates the Remote access section on `access.supported` (the
+   * manifest gate's UI half) and is handed to that section, with the
+   * connection for its `remote.*` actions.
    */
   runtimeConnection?: () => Promise<RuntimeConnection>;
   /**
    * True on a REMOTE client page (the shell's `remoteHost` is set). Drops the
-   * desktop-only entries — Remote access — from the nav, and a stale pointer
+   * desktop-only entries — Network — from the nav, and a stale pointer
    * to one falls back like any other hidden section.
    */
   remoteClient?: boolean;
@@ -198,7 +209,7 @@ export function SettingsScreen({
 }) {
   const t = useT();
   const capabilities = useCapabilities();
-  // The Remote access entry exists only once the published remote/state says the
+  // The Remote access section exists only once the published remote/state says the
   // host supports it. Read from the page's shared store (`useRemoteAccessView`):
   // the topic's snapshot goes to the FIRST listener only.
   const { view: remoteState, connection: remoteConn } =
@@ -206,6 +217,10 @@ export function SettingsScreen({
   const remoteAccessSupported = remoteState?.access.supported === true;
   const nav = React.useMemo(
     () => visibleNav(capabilities, remoteAccessSupported, undefined, remoteClient),
+    [capabilities, remoteAccessSupported, remoteClient],
+  );
+  const networkParts = React.useMemo(
+    () => visibleNetworkParts(capabilities, remoteAccessSupported, undefined, remoteClient),
     [capabilities, remoteAccessSupported, remoteClient],
   );
   // A section reachable only by a stale pointer (deep link, remembered
@@ -291,6 +306,8 @@ export function SettingsScreen({
           <SectionContent
             section={shown}
             focusSessionModels={section === "sessionModels" && shown === "models"}
+            focusRemoteAccess={section === "remoteAccess" && shown === "network"}
+            networkParts={networkParts}
             catalog={catalog}
             transport={transport}
             onProviderConnected={onProviderConnected}

@@ -1502,7 +1502,6 @@ export const de: Messages = {
   'settings.nav.features': 'Skills',
   'settings.nav.plugins': 'Plugins & Mods',
   'settings.nav.network': 'Netzwerk',
-  'settings.nav.remoteAccess': 'Remote-Zugriff',
   'settings.nav.about': 'Über',
 
   // ── Einstellungen — Allgemein (Profil) ─────────────────────────────────
@@ -2577,7 +2576,11 @@ export const de: Messages = {
     'Hosts, die ohne den Proxy erreicht werden, durch Kommas getrennt.',
   'settings.network.pacUrl': 'Skriptadresse',
   'settings.network.pacUrlPlaceholder': 'https://example.com/proxy.pac',
-  'settings.network.apply': 'Anwenden',
+  'settings.network.edit': 'Bearbeiten',
+  'settings.network.editAria': 'Proxy bearbeiten',
+  'settings.network.save': 'Speichern',
+  'settings.network.cancel': 'Abbrechen',
+  'settings.network.summaryServerUser': '{server} · meldet sich als {username} an',
   'settings.network.refused': 'Die Proxy-Einstellung wurde nicht übernommen.',
   'settings.network.problem.required': 'Gib eine Adresse ein.',
   'settings.network.problem.malformed': 'Das ist keine gültige Adresse.',

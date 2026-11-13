@@ -1,307 +1,56 @@
 import * as React from "react";
 
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Select } from "@/components/ui/select";
-
 import type { BrowserBridgeTransport } from "../../../bridge/browserBridgeProtocol";
-import type {
-  BridgeProxyMode,
-  BridgeProxySettings,
-} from "../../../bridge/protocol/network";
-import { useT, type TranslateFn } from "../../i18n";
-import { mayIssue, useCapabilities } from "../../useCan";
-import { getProxySettings, setProxySettings } from "../../nexusBridgeActions";
+import { useT } from "../../i18n";
+import type { SettingsPartId } from "../settingsNav";
+import { SettingsSubpageLayout } from "../SettingsSubpageLayout";
+import { ProxySection } from "./ProxySection";
 import {
-  PROXY_MODES,
-  checkProxyForm,
-  formFromSettings,
-  isProxyFormChanged,
-  keepsStoredPassword,
-  payloadFromForm,
-  type ProxyForm,
-  type ProxyFormProblem,
-} from "../proxyForm";
-import {
-  SETTINGS_SELECT_WIDTH,
-  SettingsCard,
-  SettingsNotice,
-  SettingsRow,
-  SettingsSection,
-  SettingsSubpageLayout,
-} from "../SettingsSubpageLayout";
-
-type MessageKey = Parameters<TranslateFn>[0];
-
-const MODE_LABELS: Record<BridgeProxyMode, MessageKey> = {
-  system: "settings.network.mode.system",
-  direct: "settings.network.mode.direct",
-  fixed: "settings.network.mode.fixed",
-  pac: "settings.network.mode.pac",
-  autoDetect: "settings.network.mode.autoDetect",
-};
-
-const PROBLEM_LABELS: Record<ProxyFormProblem["reason"], MessageKey> = {
-  required: "settings.network.problem.required",
-  malformed: "settings.network.problem.malformed",
-  scheme: "settings.network.problem.scheme",
-  credentials: "settings.network.problem.credentials",
-  tooLong: "settings.network.problem.tooLong",
-};
-
-const SIGN_IN_PROBLEM_LABELS: Partial<Record<string, MessageKey>> = {
-  "username:required": "settings.network.problem.usernameRequired",
-  "username:scheme": "settings.network.problem.signInScheme",
-  "username:malformed": "settings.network.problem.username",
-  "username:tooLong": "settings.network.problem.signInTooLong",
-  "password:required": "settings.network.problem.passwordRequired",
-  "password:tooLong": "settings.network.problem.signInTooLong",
-};
-
-function problemLabel(problem: ProxyFormProblem): MessageKey {
-  const signIn = SIGN_IN_PROBLEM_LABELS[`${problem.field}:${problem.reason}`];
-  if (signIn) return signIn;
-  if (problem.field === "pacUrl" && problem.reason === "scheme") {
-    return "settings.network.problem.pacScheme";
-  }
-  return PROBLEM_LABELS[problem.reason];
-}
-
-// The stores that outrank the user's own value, each with its own line.
-const OVERRIDE_LABELS: Partial<Record<BridgeProxySettings["source"], MessageKey>> = {
-  policy: "settings.network.overridden.policy",
-  commandLine: "settings.network.overridden.commandLine",
-  extension: "settings.network.overridden.extension",
-};
+  RemoteAccessSection,
+  type RemoteAccessConnection,
+  type RemoteAccessPageState,
+} from "./RemoteAccessSection";
 
 /**
- * Network — the proxy every request of the host's network stack leaves
- * through (F-18): model requests, web tools and pages alike. The value is
- * the default profile's proxy setting, read and written through the
- * `network` capability; a write takes effect at once.
- *
- * Security: both actions are `full`. The form never accepts credentials in
- * the server address, and the host refuses them again. A proxy's password
- * is typed into its own field, sent once, sealed by the host and never read
- * back: the page only learns that one is stored.
+ * The Network page (F-18): the host's proxy and remote access, one section
+ * each. `parts` is what this connection may see (`visibleNetworkParts`); the
+ * page renders only those. Every control on the page acts at once; a setting
+ * that needs several fields to be valid is edited in a dialog and saved as a
+ * whole.
  */
 export function NetworkSection({
   transport,
+  parts,
+  remoteState,
+  remoteConn,
+  focusRemoteAccess = false,
 }: {
   transport: BrowserBridgeTransport;
+  parts: readonly SettingsPartId[];
+  remoteState: RemoteAccessPageState | null;
+  remoteConn: RemoteAccessConnection | null;
+  /** Scroll the Remote access section into view when it first renders. */
+  focusRemoteAccess?: boolean;
 }) {
   const t = useT();
-  const capabilities = useCapabilities();
-  const allowed =
-    capabilities.can("network", "proxyGet") &&
-    capabilities.can("network", "proxySet");
-  const mayRead = mayIssue(capabilities, "network", "proxyGet");
-  const [settings, setSettings] = React.useState<BridgeProxySettings | null>(null);
-  const [form, setForm] = React.useState<ProxyForm | null>(null);
-  const [unavailable, setUnavailable] = React.useState(false);
-  const [refused, setRefused] = React.useState(false);
-  const [saving, setSaving] = React.useState(false);
-  // A problem is shown once the user has tried to apply the form, not while
-  // an address is still being typed.
-  const [attempted, setAttempted] = React.useState(false);
-
-  const show = React.useCallback((next: BridgeProxySettings) => {
-    setSettings(next);
-    setForm(formFromSettings(next));
-    setAttempted(false);
+  const showProxy = parts.includes("proxy");
+  const showRemote = parts.includes("remoteAccess");
+  const remoteRef = React.useRef<HTMLDivElement>(null);
+  React.useEffect(() => {
+    if (focusRemoteAccess) remoteRef.current?.scrollIntoView?.({ block: "start" });
+    // Mount only: a later re-render must not yank the page back here.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  React.useEffect(() => {
-    if (!mayRead) return;
-    let cancelled = false;
-    setUnavailable(false);
-    void (async () => {
-      try {
-        const next = await getProxySettings(transport);
-        if (!cancelled) show(next);
-      } catch {
-        if (!cancelled) setUnavailable(true);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [transport, mayRead, show]);
-
-  const title = t("settings.network.title");
-  if (!allowed || unavailable) {
-    return (
-      <SettingsSubpageLayout title={title}>
-        <p className="text-muted-foreground text-sm" data-testid="network-proxy-unavailable">
-          {t("settings.network.unavailable")}
-        </p>
-      </SettingsSubpageLayout>
-    );
-  }
-  if (!settings || !form) {
-    return (
-      <SettingsSubpageLayout title={title}>
-        <p className="text-muted-foreground text-sm">{t("settings.loading")}</p>
-      </SettingsSubpageLayout>
-    );
-  }
-
-  const locked = !settings.editable || saving;
-  const problem = checkProxyForm(form, settings);
-  const shownProblem = attempted ? problem : null;
-  const changed = isProxyFormChanged(form, settings);
-  const overrideKey = settings.editable ? undefined : OVERRIDE_LABELS[settings.source];
-
-  const edit = (patch: Partial<ProxyForm>) => {
-    setRefused(false);
-    setForm({ ...form, ...patch });
-  };
-
-  const apply = async () => {
-    if (locked || !changed) return;
-    setAttempted(true);
-    if (problem) return;
-    setSaving(true);
-    setRefused(false);
-    try {
-      // The answer is what the host now has in force, which is what is shown.
-      show(await setProxySettings(transport, payloadFromForm(form)));
-    } catch {
-      setRefused(true);
-      try {
-        setSettings(await getProxySettings(transport));
-      } catch {
-        // The last value read stays on screen beside the refusal.
-      }
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const problemLine = (field: ProxyFormProblem["field"]) =>
-    shownProblem?.field === field ? (
-      <p className="mt-1 text-destructive text-xs" data-testid={`network-proxy-problem-${field}`}>
-        {t(problemLabel(shownProblem))}
-      </p>
-    ) : null;
-
-  const textField = (
-    field: ProxyFormProblem["field"],
-    label: string,
-    placeholder: string,
-    description?: string,
-    secret = false,
-  ) => (
-    <SettingsRow bare stacked label={label} description={description}>
-      <Input
-        value={form[field]}
-        type={secret ? "password" : "text"}
-        placeholder={placeholder}
-        disabled={locked}
-        spellCheck={false}
-        autoComplete="off"
-        aria-label={label}
-        aria-invalid={shownProblem?.field === field || undefined}
-        onChange={(event) => edit({ [field]: event.target.value })}
-        onKeyDown={(event) => {
-          if (event.key === "Enter") void apply();
-        }}
-        data-testid={`network-proxy-${field}`}
-      />
-      {problemLine(field)}
-    </SettingsRow>
-  );
-
   return (
-    <SettingsSubpageLayout title={title}>
-      <div data-testid="settings-network" className="flex flex-col gap-4">
-        <SettingsSection
-          title={t("settings.network.proxy.title")}
-          description={t("settings.network.proxy.description")}
-        >
-          {overrideKey ? (
-            <SettingsNotice tone="warning" testId="network-proxy-overridden">
-              {t(overrideKey)}
-            </SettingsNotice>
-          ) : null}
-          <SettingsCard>
-            <SettingsRow
-              bare
-              label={t("settings.network.mode")}
-              control={
-                <Select
-                  value={form.mode}
-                  options={PROXY_MODES.map((mode) => ({
-                    value: mode,
-                    label: t(MODE_LABELS[mode]),
-                  }))}
-                  disabled={locked}
-                  onValueChange={(next) => edit({ mode: next as BridgeProxyMode })}
-                  className={SETTINGS_SELECT_WIDTH}
-                  testId="network-proxy-mode"
-                />
-              }
-            />
-            {form.mode === "fixed" ? (
-              <>
-                {textField(
-                  "server",
-                  t("settings.network.server"),
-                  t("settings.network.serverPlaceholder"),
-                  t("settings.network.serverDescription"),
-                )}
-                {textField(
-                  "bypassList",
-                  t("settings.network.bypass"),
-                  t("settings.network.bypassPlaceholder"),
-                  t("settings.network.bypassDescription"),
-                )}
-                {textField(
-                  "username",
-                  t("settings.network.username"),
-                  "",
-                  t("settings.network.signInDescription"),
-                )}
-                {textField(
-                  "password",
-                  t("settings.network.password"),
-                  keepsStoredPassword(form, settings)
-                    ? t("settings.network.passwordSaved")
-                    : "",
-                  undefined,
-                  true,
-                )}
-              </>
-            ) : null}
-            {form.mode === "pac"
-              ? textField(
-                  "pacUrl",
-                  t("settings.network.pacUrl"),
-                  t("settings.network.pacUrlPlaceholder"),
-                )
-              : null}
-          </SettingsCard>
-          {form.mode === "fixed" || form.mode === "pac" || form.mode === "autoDetect" ? (
-            <SettingsNotice testId="network-proxy-private-network">
-              {t("settings.network.privateNetworkNote")}
-            </SettingsNotice>
-          ) : null}
-          {refused ? (
-            <SettingsNotice tone="warning" testId="network-proxy-refused">
-              {t("settings.network.refused")}
-            </SettingsNotice>
-          ) : null}
-          <div className="flex justify-end">
-            <Button
-              size="sm"
-              disabled={locked || !changed}
-              onClick={() => void apply()}
-              data-testid="network-proxy-apply"
-            >
-              {t("settings.network.apply")}
-            </Button>
+    <SettingsSubpageLayout title={t("settings.network.title")}>
+      <div data-testid="settings-network" className="flex flex-col">
+        {showProxy ? <ProxySection transport={transport} /> : null}
+        {showRemote ? (
+          <div ref={remoteRef} className={showProxy ? "mt-8" : undefined}>
+            <RemoteAccessSection state={remoteState} conn={remoteConn} />
           </div>
-        </SettingsSection>
+        ) : null}
       </div>
     </SettingsSubpageLayout>
   );

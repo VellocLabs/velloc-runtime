@@ -18,6 +18,7 @@ import { SettingsScreen, visibleNav } from '../browser/webview/settings/Settings
 import {
   isSettingsSectionVisible,
   resolveSettingsPage,
+  visibleNetworkParts,
 } from '../browser/webview/settings/settingsNav'
 import {
   ALLOW_ALL,
@@ -183,21 +184,43 @@ describe('useCan — trimming a smaller grant', () => {
     expect(screen.getByTestId('settings-nav-general')).toBeTruthy()
   })
 
-  it('gates Remote access on BOTH the capability and the host manifest (WP-7)', () => {
+  it('gates Remote access on BOTH the capability and the host manifest', () => {
     // The manifest gate's UI half: even a full (desktop) connection does NOT
-    // see the entry until remote/state.access.supported is true — an older
-    // binary publishes supported:false and simply has no Remote access page.
-    // (The entry is beta-only in v1; pin beta so THIS test exercises only the
+    // see the section until remote/state.access.supported is true — an older
+    // binary publishes supported:false and simply has no Remote access.
+    // (The section is beta-only; pin beta so THIS test exercises only the
     // capability + manifest gates. The channel gate is its own describe.)
     __setUiChannelForTest('beta')
     const full = queryFor(DESKTOP_CAPABILITIES)
-    expect(visibleNav(full, false).map(e => e.id)).not.toContain('remoteAccess')
-    expect(visibleNav(full, true).map(e => e.id)).toContain('remoteAccess')
+    expect(visibleNetworkParts(full, false)).toEqual(['proxy'])
+    expect(visibleNetworkParts(full, true)).toEqual(['proxy', 'remoteAccess'])
     // And the capability half: a remote (control) connection lacks remote.pairList,
-    // so it never sees the entry even when the host supports it.
+    // so it never sees the section even when the host supports it.
     const remote = queryFor(REMOTE_CAPABILITIES)
-    expect(visibleNav(remote, true).map(e => e.id)).not.toContain('remoteAccess')
-    expect(visibleNav(remote, false).map(e => e.id)).not.toContain('remoteAccess')
+    expect(visibleNetworkParts(remote, true)).toEqual([])
+    expect(visibleNetworkParts(remote, false)).toEqual([])
+  })
+
+  it('Remote access is a section of the Network page, never a page of its own', () => {
+    __setUiChannelForTest('beta')
+    const full = queryFor(DESKTOP_CAPABILITIES)
+    const nav = visibleNav(full, true)
+    expect(nav.map(e => e.id)).not.toContain('remoteAccess')
+    // A deep link to it (the topbar's devices button) lands on Network.
+    expect(resolveSettingsPage('remoteAccess', nav)).toBe('network')
+  })
+
+  it('keeps the Network page while either of its sections is visible', () => {
+    __setUiChannelForTest('beta')
+    // Remote access alone: no proxy grant, but the page still shows.
+    const remoteOnly: CapabilityQuery = { can: (cap: string) => cap === 'remote' }
+    expect(visibleNetworkParts(remoteOnly, true)).toEqual(['remoteAccess'])
+    expect(visibleNav(remoteOnly, true).map(e => e.id)).toContain('network')
+    // Neither: the page is gone, and the deep link resolves nowhere.
+    const neither: CapabilityQuery = { can: () => false }
+    const nav = visibleNav(neither, true)
+    expect(nav.map(e => e.id)).not.toContain('network')
+    expect(resolveSettingsPage('remoteAccess', nav)).toBeUndefined()
   })
 
   it('falls back off a trimmed section reached by a stale pointer', () => {
@@ -229,68 +252,54 @@ describe('useCan — trimming a smaller grant', () => {
   })
 })
 
-describe('the Remote access entry follows the channel (beta-only in v1)', () => {
-  // The entry carries a declarative `betaOnly` flag: deleting it ships the
-  // page to stable. Until then a full desktop connection on STABLE does not
-  // see Remote access — the capability AND the host manifest both pass and it
-  // is still hidden — while BETA shows it. `__setUiChannelForTest` pins the
+describe('the Remote access section follows the channel (beta-only)', () => {
+  // The section carries a declarative `betaOnly` flag: deleting it ships it
+  // to stable. Until then a full desktop connection on STABLE does not see
+  // Remote access — the capability AND the host manifest both pass and it is
+  // still hidden — while BETA shows it. `__setUiChannelForTest` pins the
   // channel the way `__setTemplateChannelForTest` pins the template one.
   it('hidden on stable, shown on beta', () => {
     const full = queryFor(DESKTOP_CAPABILITIES)
     __setUiChannelForTest('stable')
-    expect(visibleNav(full, true).map(e => e.id)).not.toContain('remoteAccess')
+    expect(visibleNetworkParts(full, true)).not.toContain('remoteAccess')
     __setUiChannelForTest('beta')
-    expect(visibleNav(full, true).map(e => e.id)).toContain('remoteAccess')
+    expect(visibleNetworkParts(full, true)).toContain('remoteAccess')
   })
 
   it('an explicit channel argument decides over the pinned realm', () => {
-    // `visibleNav` takes the channel as a parameter (defaulting to the
-    // realm's): a caller can ask about another channel without mutating state.
+    // The channel is a parameter (defaulting to the realm's): a caller can
+    // ask about another channel without mutating state.
     const full = queryFor(DESKTOP_CAPABILITIES)
     __setUiChannelForTest('beta')
-    expect(visibleNav(full, true, 'stable').map(e => e.id)).not.toContain('remoteAccess')
-    expect(visibleNav(full, true, 'beta').map(e => e.id)).toContain('remoteAccess')
-  })
-
-  it('the render hides the nav entry on stable even when the host supports it', () => {
-    __setUiChannelForTest('stable')
-    renderSettings(queryFor(DESKTOP_CAPABILITIES))
-    expect(screen.queryByTestId('settings-nav-remoteAccess')).toBeNull()
-    __setUiChannelForTest('beta')
-    // The capability passes, but the manifest gate still holds the entry off
-    // until remote/state publishes supported:true — the beta channel alone is
-    // not sufficient. (That settle is the nav-gate test above; here the entry
-    // is simply reachable by visibleNav.)
-    expect(visibleNav(queryFor(DESKTOP_CAPABILITIES), true).map(e => e.id)).toContain('remoteAccess')
+    expect(visibleNetworkParts(full, true, 'stable')).not.toContain('remoteAccess')
+    expect(visibleNetworkParts(full, true, 'beta')).toContain('remoteAccess')
+    expect(isSettingsSectionVisible('remoteAccess', full, true, 'stable')).toBe(false)
   })
 })
 
-describe('the Remote access entry is desktop-only (never on a remote client page)', () => {
-  // The page manages the DESKTOP's listener: who is connected, pairing links,
-  // the on/off switch. On a remote client page it is about a machine the user
-  // is not at — and switching it off from there cuts off that very page. The
-  // capability gate cannot express this (a `full` remote grant holds
-  // remote.pairList too), so the entry carries `desktopOnly` and the remote
-  // boot's `remoteHost` drops it. Without the fix a full remote grant on beta
-  // shows the entry exactly like the desktop does.
-  it('a remote client never sees it, even with every other gate passing', () => {
+describe('the Network page is desktop-only (never on a remote client page)', () => {
+  // Remote access manages the DESKTOP's listener: who is connected, pairing
+  // links, the on/off switch. On a remote client page it is about a machine
+  // the user is not at — and switching it off from there cuts off that very
+  // page. The capability gate cannot express this (a `full` remote grant
+  // holds remote.pairList too), so the section carries `desktopOnly` and the
+  // remote boot's `remoteHost` drops it.
+  it('a remote client never sees Remote access, even with every other gate passing', () => {
     const full = queryFor(DESKTOP_CAPABILITIES)
-    expect(visibleNav(full, true, 'beta', false).map(e => e.id)).toContain('remoteAccess')
-    expect(visibleNav(full, true, 'beta', true).map(e => e.id)).not.toContain('remoteAccess')
+    expect(visibleNetworkParts(full, true, 'beta', false)).toContain('remoteAccess')
+    expect(visibleNetworkParts(full, true, 'beta', true)).toEqual([])
     expect(isSettingsSectionVisible('remoteAccess', full, true, 'beta', true)).toBe(false)
     expect(isSettingsSectionVisible('remoteAccess', full, true, 'beta', false)).toBe(true)
   })
 
   // The host's proxy setting is the desktop's own too: a remote client with
   // a full grant would otherwise reroute the machine it is connected to.
-  it('drops only the two desktop-only pages on a remote client', () => {
+  it('drops only the Network page on a remote client', () => {
     const full = queryFor(DESKTOP_CAPABILITIES)
     const desktop = visibleNav(full, true, 'beta', false).map(e => e.id)
     const remote = visibleNav(full, true, 'beta', true).map(e => e.id)
     expect(desktop).toContain('network')
-    expect(remote).toEqual(
-      desktop.filter(id => id !== 'remoteAccess' && id !== 'network'),
-    )
+    expect(remote).toEqual(desktop.filter(id => id !== 'network'))
   })
 })
 

@@ -1490,7 +1490,6 @@ export const ja: Messages = {
   'settings.nav.features': 'スキル',
   'settings.nav.plugins': 'プラグインと Mods',
   'settings.nav.network': 'ネットワーク',
-  'settings.nav.remoteAccess': 'リモートアクセス',
   'settings.nav.about': 'このアプリについて',
 
   // ── 設定 — 全般（プロフィール） ───────────────────────────────────────
@@ -2529,7 +2528,11 @@ export const ja: Messages = {
   'settings.network.bypassDescription': 'プロキシを通さずに接続するホストをカンマで区切って指定します。',
   'settings.network.pacUrl': 'スクリプトのアドレス',
   'settings.network.pacUrlPlaceholder': 'https://example.com/proxy.pac',
-  'settings.network.apply': '適用',
+  'settings.network.edit': '編集',
+  'settings.network.editAria': 'プロキシを編集',
+  'settings.network.save': '保存',
+  'settings.network.cancel': 'キャンセル',
+  'settings.network.summaryServerUser': '{server} · {username} としてサインイン',
   'settings.network.refused': 'プロキシ設定は受け付けられませんでした。',
   'settings.network.problem.required': 'アドレスを入力してください。',
   'settings.network.problem.malformed': '有効なアドレスではありません。',

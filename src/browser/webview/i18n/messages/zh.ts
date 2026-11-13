@@ -1476,7 +1476,6 @@ export const zh: Messages = {
   'settings.nav.features': '技能',
   'settings.nav.plugins': '插件与模组',
   'settings.nav.network': '网络',
-  'settings.nav.remoteAccess': '远程访问',
   'settings.nav.about': '关于',
 
   // ── 设置 — 通用（个人资料） ───────────────────────────────────────────
@@ -2473,7 +2472,11 @@ export const zh: Messages = {
   'settings.network.bypassDescription': '不经过代理直接访问的主机，用逗号分隔。',
   'settings.network.pacUrl': '脚本地址',
   'settings.network.pacUrlPlaceholder': 'https://example.com/proxy.pac',
-  'settings.network.apply': '应用',
+  'settings.network.edit': '编辑',
+  'settings.network.editAria': '编辑代理',
+  'settings.network.save': '保存',
+  'settings.network.cancel': '取消',
+  'settings.network.summaryServerUser': '{server} · 以 {username} 登录',
   'settings.network.refused': '代理设置未被接受。',
   'settings.network.problem.required': '请输入地址。',
   'settings.network.problem.malformed': '这不是有效的地址。',

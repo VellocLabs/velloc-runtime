@@ -1550,7 +1550,6 @@ export const en = {
   'settings.nav.features': 'Skills',
   'settings.nav.plugins': 'Plugins & Mods',
   'settings.nav.network': 'Network',
-  'settings.nav.remoteAccess': 'Remote access',
   'settings.nav.about': 'About',
 
   // ── Settings — General (Profile) ───────────────────────────────────────
@@ -2618,7 +2617,11 @@ export const en = {
   'settings.network.bypassDescription': 'Hosts reached without the proxy, separated by commas.',
   'settings.network.pacUrl': 'Script address',
   'settings.network.pacUrlPlaceholder': 'https://example.com/proxy.pac',
-  'settings.network.apply': 'Apply',
+  'settings.network.edit': 'Edit',
+  'settings.network.editAria': 'Edit proxy',
+  'settings.network.save': 'Save',
+  'settings.network.cancel': 'Cancel',
+  'settings.network.summaryServerUser': '{server} · signs in as {username}',
   'settings.network.refused': 'The proxy setting wasn’t accepted.',
   'settings.network.problem.required': 'Enter an address.',
   'settings.network.problem.malformed': 'This isn’t a valid address.',
