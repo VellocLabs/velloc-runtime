@@ -585,7 +585,6 @@ const ToolPlanStreamImpl: FC<ToolPlanStreamProps> = ({
         data-slot="tool-plan-stream-title"
         className={cn(
           "min-w-0 truncate font-medium",
-          trailingText && "shrink-0",
           headerState === "running"
             ? "nexus-sheen"
             : "text-muted-foreground group-hover/trigger:text-foreground",
@@ -596,7 +595,7 @@ const ToolPlanStreamImpl: FC<ToolPlanStreamProps> = ({
       {trailingText ? (
         <span
           data-slot="tool-plan-stream-summary"
-          className="min-w-0 truncate text-muted-foreground"
+          className="min-w-0 shrink-[999] truncate text-muted-foreground"
         >
           <span className="mr-2 text-muted-foreground">·</span>
           {trailingText}
