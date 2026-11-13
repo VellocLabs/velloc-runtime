@@ -1112,7 +1112,12 @@ describe('explicit semantic duplicate merges', () => {
     expect((await invoke({ operation: 'coverage', angles: '["lines"]', limitations: '[]', complete: 'true' }, 'complete-text')).data).toMatchObject({ coverageRecorded: true })
     expect((await h.store.getSnapshot(h.id)).coverage.complete).toBe(true)
     await expect(invoke({ operation: 'coverage', angles: '[]', limitations: '[]', complete: 'partial' }, 'not-boolean')).rejects.toThrow(/^invalid-completeness: coverage\.complete is the JSON boolean/)
-    await expect(invoke({ operation: 'coverage', angles: 'lines', limitations: '[]', complete: 'true' }, 'not-array')).rejects.toThrow(/^invalid-array: /)
+    await expect(invoke({ operation: 'coverage', angles: 'lines', limitations: '[]', complete: 'true' }, 'not-array')).rejects.toThrow(/^invalid-array: coverage\.angles and coverage\.limitations/)
+    await expect(invoke({ operation: 'coverage', coverage: "{'angles': []}" }, 'not-json')).rejects.toThrow(/^invalid-object: coverage is an object/)
+    await expect(invoke({ operation: 'coverage', coverage: { angles: [], limitations: [], complete: false, extra: 1 } }, 'extra-field')).rejects.toThrow(/^unknown-field: coverage takes only/)
+    const refused = await invoke({ operation: 'coverage', angles: '[]', limitations: '[]', complete: 'partial' }, 'kept-class').catch((error: unknown) => error)
+    expect(refused).toBeInstanceOf(ReportStoreError)
+    expect(refused).toMatchObject({ code: 'invalid-completeness' })
   })
   it('names the field an operation is missing, says a coverage write was recorded, and asks a finder for its angles', async () => {
     const h = await pair()

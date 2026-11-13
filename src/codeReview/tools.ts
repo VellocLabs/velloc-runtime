@@ -1,6 +1,6 @@
 import { declareTool, type ToolContract } from '../toolkit/toolContract'
 import type { Message } from '../runtime/RuntimeTypes'
-import type { ReviewReportStore } from './report-store'
+import { ReportStoreError, type ReviewReportStore } from './report-store'
 
 export interface ReviewToolBindings {
   runId: string
@@ -67,6 +67,13 @@ const REFUSAL_HINTS: Record<string, string> = {
   'unstructured-worker-answer': 'candidates and support must each be a JSON array and coverage a JSON object; do not send them as text',
   'worker-angle-candidate-limit': 'too many candidates for one angle; keep the strongest of that angle',
   'worker-angle-not-assigned': 'every candidate angle and every coverage angle must be one of your assigned angles',
+}
+/** How to correct a refused coverage statement, where it differs from the hint for a refused item. */
+const COVERAGE_REFUSAL_HINTS: Record<string, string> = {
+  'invalid-object': 'coverage is an object with angles, limitations and complete',
+  'invalid-array': 'coverage.angles and coverage.limitations are arrays of strings',
+  'unknown-field': 'coverage takes only angles, limitations and complete',
+  'unknown-angle': 'every coverage angle must be one of the angles of this review',
 }
 /** A refused item as a worker reads it: its code and how to correct it. */
 export const withRefusalHint = <T extends { code: string }>(item: T): T & { hint?: string } => ({ ...item, ...(REFUSAL_HINTS[item.code] ? { hint: REFUSAL_HINTS[item.code] } : {}) })
@@ -141,8 +148,9 @@ export function createReviewTools(bindings: ReviewToolBindings): ToolContract[] 
       const written = bindings.store.submitLedger(bindings.runId, id, input)
       // A refused coverage statement names how to correct it, as a refused item does.
       return input.operation !== 'coverage' ? written : written.catch((error: unknown) => {
-        const code = error instanceof Error ? error.message : ''
-        throw REFUSAL_HINTS[code] ? new Error(`${code}: ${REFUSAL_HINTS[code]}`) : error
+        const hint = error instanceof ReportStoreError ? COVERAGE_REFUSAL_HINTS[error.code] ?? REFUSAL_HINTS[error.code] : undefined
+        if (hint) (error as ReportStoreError).message = `${(error as ReportStoreError).code}: ${hint}`
+        throw error
       })
     }),
   ]
