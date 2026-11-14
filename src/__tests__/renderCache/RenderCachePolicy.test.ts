@@ -30,8 +30,8 @@ function harness(options: { busy?: boolean; enabled?: boolean; fail?: string } =
       purges.push(now)
       targets.push([...asked])
       trims.push(trimWorkingSet)
-      if (trimWorkingSet) return { ...outcome, workingSetTrim: 'scheduled' as const }
       if (options.fail) throw new Error(options.fail)
+      if (trimWorkingSet) return { ...outcome, workingSetTrim: 'scheduled' as const }
       return outcome
     },
     now: () => now,
@@ -216,6 +216,29 @@ describe('RenderCachePolicy', () => {
     h.policy.noteVisibility(false)
     await h.settle()
     expect(h.purges).toHaveLength(2)
+  })
+
+  it('hidden, shown and hidden again while the flag is read sends one hidden purge', async () => {
+    const h = harness()
+    h.policy.start()
+    await h.settle()
+    h.policy.noteVisibility(true)
+    h.policy.noteVisibility(false)
+    h.policy.noteVisibility(true)
+    h.policy.noteVisibility(false)
+    await h.settle()
+    expect(h.targets).toEqual([['gpu']])
+  })
+
+  it('a failed hidden purge is recorded', async () => {
+    const h = harness({ fail: 'host gone' })
+    h.policy.start()
+    h.policy.noteVisibility(true)
+    h.policy.noteVisibility(false)
+    await h.settle()
+    expect(h.trims).toEqual([true])
+    expect(h.policy.getState().lastError).toBe('host gone')
+    expect(h.policy.getState().purges).toBe(0)
   })
 
   it('a first report of hidden, with no page seen visible, does not purge', async () => {

@@ -52,6 +52,7 @@ export class RenderCachePolicy {
   /** Null until a client has reported. */
   private visible: boolean | null = null
   private hiddenPurgeWaiting = false
+  private hiddenPurgeRunning = false
   private idlePurge = true
   private purges = 0
   private last: RenderCachePurgeRecord | undefined
@@ -175,14 +176,21 @@ export class RenderCachePolicy {
     // A running turn keeps the purge waiting for noteBusyChanged.
     if (this.disposed || !this.hiddenPurgeWaiting || this.deps.isAnyBusy()) return
     this.hiddenPurgeWaiting = false
-    const enabled = await this.refreshIdlePurgeFlag()
-    // A page may have been shown, or a turn started, while the flag was read.
-    if (!enabled || this.disposed || this.visible !== false) return
-    if (this.deps.isAnyBusy()) {
-      this.hiddenPurgeWaiting = true
-      return
+    // The purge already under way covers a hide that arrives before it ends.
+    if (this.hiddenPurgeRunning) return
+    this.hiddenPurgeRunning = true
+    try {
+      const enabled = await this.refreshIdlePurgeFlag()
+      // A page may have been shown, or a turn started, while the flag was read.
+      if (!enabled || this.disposed || this.visible !== false) return
+      if (this.deps.isAnyBusy()) {
+        this.hiddenPurgeWaiting = true
+        return
+      }
+      await this.runPurge('hidden', RENDER_CACHE_HIDDEN_PURGE_TARGETS, true).catch(() => {})
+    } finally {
+      this.hiddenPurgeRunning = false
     }
-    await this.runPurge('hidden', RENDER_CACHE_HIDDEN_PURGE_TARGETS, true).catch(() => {})
   }
 
   private async refreshIdlePurgeFlag(): Promise<boolean> {

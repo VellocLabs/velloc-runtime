@@ -90,6 +90,8 @@ export function registerRenderCacheCapability(
     unwatchPolicy?.()
     const policy = getPolicy()
     unwatchPolicy = policy ? policy.onStateChange(() => publish()) : null
+    // A page reported visible before this policy existed: its first hide counts.
+    if (policy && presence.anyVisible()) policy.noteVisibility(true)
     publish()
   }
   const unwatchHolder = (options.onPolicyChanged ?? onRenderCachePolicyChanged)(watch)

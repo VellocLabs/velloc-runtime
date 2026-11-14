@@ -164,6 +164,28 @@ describe('renderCache capability over a connection', () => {
     expect(policy.getState().last?.reason).toBe('hidden')
   })
 
+  it('a page reported visible before the policy is installed purges on its first hide', async () => {
+    const { policy, purge } = fakePolicy()
+    let current: RenderCachePolicy | null = null
+    let changed: () => void = () => {}
+    const registry = new CapabilityRegistry()
+    const table = new PresenceTable()
+    registerRenderCacheCapability(registry, new TopicBroker(), table, {
+      getPolicy: () => current,
+      onPolicyChanged: listener => {
+        changed = listener
+        return () => {}
+      },
+    })
+    table.reportActivity('desktop', true)
+    current = policy
+    changed()
+
+    table.reportActivity('desktop', false)
+    await until(() => purge.mock.calls.length === 1, 'the hidden purge')
+    expect(purge.mock.calls[0][0]).toEqual(['gpu'])
+  })
+
   it('the last visible connection going away purges the GPU process', async () => {
     const { policy, purge } = fakePolicy()
     const { connect } = rig(policy)
