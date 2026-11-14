@@ -122,6 +122,28 @@ describe('PaneFrame', () => {
     expect(document.activeElement).toBe(expand)
   })
 
+  it('a pane that keeps a title across Restore keeps the same buttons too', () => {
+    const props = {
+      kind: 'files' as const,
+      name: 'Files',
+      title: 'Files',
+      titleWhenMaximized: createElement('span', { 'data-testid': 'kept-tab' }, 'tab'),
+      maximized: true,
+      onToggleMaximized: vi.fn(),
+      onClose: vi.fn(),
+      children: null,
+    }
+    const view = render(createElement(PaneFrame, props))
+    const expand = screen.getByTestId('pane-files-expand')
+    expand.focus()
+    view.rerender(createElement(PaneFrame, { ...props, maximized: false }))
+    expect(screen.getByTestId('pane-files-expand')).toBe(expand)
+    expect(document.activeElement).toBe(expand)
+    view.rerender(createElement(PaneFrame, props))
+    expect(screen.getByTestId('pane-files-expand')).toBe(expand)
+    expect(document.activeElement).toBe(expand)
+  })
+
   it('not maximized, the header stays with the actions first', () => {
     const action = createElement('button', { 'data-testid': 'own-action', type: 'button' }, 'Reload')
     renderFrame({ actions: action })

@@ -158,30 +158,22 @@ export function PaneFrame(props: PaneFrameProps): ReactElement {
               ) : null}
             </div>
           )}
-          {immersive ? (
-            keptTitle === null ? null : (
-              <div
-                data-testid={`pane-${kind}-title`}
-                className="flex h-full min-w-0 flex-1 items-center gap-1.5 text-[13px] font-medium leading-none"
-              >
-                {keptTitle}
-              </div>
-            )
-          ) : (
+          {immersive && keptTitle === null ? null : (
             <div
               data-testid={`pane-${kind}-title`}
               className="flex h-full min-w-0 flex-1 items-center gap-1.5 text-[13px] font-medium leading-none"
             >
-              {props.title}
+              {immersive ? keptTitle : props.title}
             </div>
           )}
-          {immersive && keptTitle !== null ? (
-            <div className="flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity focus-within:opacity-100 hover:opacity-100">
-              {buttons}
-            </div>
-          ) : (
-            buttons
-          )}
+          <div
+            className={cn(
+              'flex shrink-0 items-center gap-0.5',
+              immersive && keptTitle !== null && 'opacity-0 transition-opacity focus-within:opacity-100 hover:opacity-100',
+            )}
+          >
+            {buttons}
+          </div>
         </div>
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden">{props.children}</div>
       </section>
