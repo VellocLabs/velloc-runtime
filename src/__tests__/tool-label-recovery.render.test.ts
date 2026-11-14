@@ -90,7 +90,7 @@ describe('sidecar label recovery (historical stripped args)', () => {
           ) as ReactElement),
     )
     await waitFor(() =>
-      expect(document.body.textContent).toContain('Super Edit: Rename files'),
+      expect(document.body.textContent).toContain('Super Edit: Renamed files'),
     )
     expect(document.body.textContent).not.toContain('SECRET_JS_SOURCE')
   })

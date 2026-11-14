@@ -1216,8 +1216,14 @@ function ToolCallPlanRow({ row, isLast, isNew }: ToolCallPlanRowProps) {
           ? () => openWorkspaceDiff(workspaceDiffPath)
           : undefined;
 
+  const descriptionTense =
+    planStatus === "in_progress"
+      ? "progressive"
+      : planStatus === "completed"
+        ? "past"
+        : undefined;
   const labelText = isRunJs
-    ? formatSuperEditToolLabel(labelArgs)
+    ? formatSuperEditToolLabel(labelArgs, descriptionTense)
     : isSkill
       ? skillName
         ? statusType === "running"
@@ -1230,7 +1236,7 @@ function ToolCallPlanRow({ row, isLast, isNew }: ToolCallPlanRowProps) {
           ? `Edited ${fileBaseName(filePath)}`
           : isWrite && filePath
             ? `Wrote ${fileBaseName(filePath)}`
-            : formatToolLabel(row.toolName, labelArgs);
+            : formatToolLabel(row.toolName, labelArgs, descriptionTense);
 
   const label = (
     // The truncate span must be a FLEX ITEM (min-w-0) for `truncate` to clip —

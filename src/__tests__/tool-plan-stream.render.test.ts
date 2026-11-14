@@ -501,7 +501,7 @@ describe('ToolPlanStream per-tool cards (SuperEdit / Skill / Read / Edit)', () =
     render(createElement(Harness))
     openPlanCards()
     const root = document.querySelector('[data-slot="tool-plan-stream-root"]')!
-    expect(root.textContent).toContain('Super Edit: Rename handoff')
+    expect(root.textContent).toContain('Super Edit: Renamed handoff')
     // The JS source lives only in the drawer detail (lazy) — never inline.
     expect(root.textContent).not.toContain('SECRET_JS_SOURCE_TOKEN')
     const jump = document.querySelector<HTMLElement>(

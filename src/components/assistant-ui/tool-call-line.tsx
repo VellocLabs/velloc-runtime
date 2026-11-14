@@ -83,7 +83,15 @@ export const ToolCallLine: FC<ToolCallLineProps> = ({
         toolName: part?.toolName,
         toolCallId: part?.toolCallId,
         statusType,
-        description: toolCallDescription(part?.toolName, part?.args),
+        description: toolCallDescription(
+          part?.toolName,
+          part?.args,
+          statusType === "running"
+            ? "progressive"
+            : statusType === "complete" && part?.isError !== true
+              ? "past"
+              : undefined,
+        ),
         cancelled,
         failed: isFailedToolCall(
           statusType,

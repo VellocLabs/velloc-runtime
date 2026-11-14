@@ -75,6 +75,34 @@ describe('formatToolLabel', () => {
     ).toBe('PowerShell: dir')
   })
 
+  it('shows a description in the tense it is given, never the command', () => {
+    const args = { command: 'rg -n TODO src', description: 'Find the open TODOs' }
+    expect(formatToolLabel('Bash', args, 'progressive')).toBe(
+      'Bash: Finding the open TODOs',
+    )
+    expect(formatToolLabel('Bash', args, 'past')).toBe('Bash: Found the open TODOs')
+    expect(formatToolLabel('Bash', args)).toBe('Bash: Find the open TODOs')
+    expect(formatToolLabel('Bash', { command: 'run it' }, 'past')).toBe(
+      'Bash: run it',
+    )
+    expect(
+      formatToolLabel('SuperShell', { description: 'Rebuild the index' }, 'past'),
+    ).toBe('Super Shell: Rebuilt the index')
+    expect(
+      formatSuperEditToolLabel({ description: 'Rename the helper' }, 'progressive'),
+    ).toBe('Super Edit: Renaming the helper')
+    expect(
+      formatBackgroundShellToolLabel(
+        'PowerShell',
+        { command: 'npm run dev', description: 'Start the dev server' },
+        'progressive',
+      ),
+    ).toBe('PowerShell: Starting the dev server')
+    expect(
+      toolCallDescription('Bash', { description: 'Commit and push' }, 'past'),
+    ).toBe('Committed and pushed')
+  })
+
   it('reads a call description only from the tools that carry one', () => {
     expect(toolCallDescription('Bash', { description: '  Run it  ' })).toBe('Run it')
     expect(toolCallDescription('PowerShell', { description: 'Run it' })).toBe('Run it')

@@ -5,6 +5,10 @@
  */
 
 import {
+  describeInTense,
+  type DescriptionTense,
+} from "./descriptionTense";
+import {
   EDIT_TOOL_ID,
   READ_TOOL_ID,
   WRITE_TOOL_ID,
@@ -133,9 +137,10 @@ export function isBackgroundShellRequest(
  * model supplied one, otherwise the command line. The command stays behind
  * the row's ">" expand either way.
  */
-function shellRowSummary(args: unknown): string {
+function shellRowSummary(args: unknown, tense?: DescriptionTense): string {
   const obj = asRecord(args);
-  return str(obj.description) || str(obj.command);
+  const description = str(obj.description);
+  return description ? describeInTense(description, tense) : str(obj.command);
 }
 
 /**
@@ -146,6 +151,7 @@ function shellRowSummary(args: unknown): string {
 export function toolCallDescription(
   toolName: string | undefined,
   args: unknown,
+  tense?: DescriptionTense,
 ): string {
   if (
     toolName !== SHELL_TOOL_ID &&
@@ -155,14 +161,15 @@ export function toolCallDescription(
   ) {
     return "";
   }
-  return str(asRecord(args).description);
+  return describeInTense(str(asRecord(args).description), tense);
 }
 
 export function formatBackgroundShellToolLabel(
   toolName: string,
   args: unknown,
+  tense?: DescriptionTense,
 ): string {
-  const summary = shellRowSummary(args);
+  const summary = shellRowSummary(args, tense);
   const prefix = toolName === PWSH_TOOL_ID ? "PowerShell" : "Bash";
   return summary ? `${prefix}: ${summary}` : prefix;
 }
@@ -171,9 +178,14 @@ export function formatBackgroundShellToolLabel(
  * The card label for a `SuperEdit` call: `Super Edit: {description}` (or bare
  * `Super Edit`). "Super Edit" is a coined name, left untranslated.
  */
-export function formatSuperEditToolLabel(args: unknown): string {
+export function formatSuperEditToolLabel(
+  args: unknown,
+  tense?: DescriptionTense,
+): string {
   const description = str(asRecord(args).description);
-  return description ? `Super Edit: ${description}` : "Super Edit";
+  return description
+    ? `Super Edit: ${describeInTense(description, tense)}`
+    : "Super Edit";
 }
 
 // Display name for tools whose raw id is opaque. Tools
@@ -225,7 +237,11 @@ export function toolDisplayName(toolName: string, args?: unknown): string {
  * the caller renders just the name in that case. The trigger truncates long
  * summaries with CSS, so commands/queries are returned in full.
  */
-export function toolUseSummary(toolName: string, args?: unknown): string {
+export function toolUseSummary(
+  toolName: string,
+  args?: unknown,
+  tense?: DescriptionTense,
+): string {
   const obj = asRecord(args);
   switch (toolName) {
     case "Grep": {
@@ -242,7 +258,7 @@ export function toolUseSummary(toolName: string, args?: unknown): string {
     }
     case SHELL_TOOL_ID:
     case PWSH_TOOL_ID:
-      return shellRowSummary(obj);
+      return shellRowSummary(obj, tense);
     case WRITE_TOOL_ID: {
       const filePath = str(obj.file_path);
       return filePath ? baseName(filePath) : "";
@@ -269,7 +285,7 @@ export function toolUseSummary(toolName: string, args?: unknown): string {
     case "ToolSearch":
       return str(obj.query);
     case SUPER_SHELL_TOOL_NAME:
-      return str(obj.description);
+      return describeInTense(str(obj.description), tense);
     case MAIL_TOOL_ID:
       // The recipient, never the message body: the row is one line, and the
       // body renders behind the card's ">" expand. `to` is exactly the slim
@@ -293,7 +309,11 @@ export function toolUseSummary(toolName: string, args?: unknown): string {
  * everything else is `displayName` + an optional args summary. Unknown tools
  * fall back to their raw name with no summary.
  */
-export function formatToolLabel(toolName: string, args: unknown): string {
+export function formatToolLabel(
+  toolName: string,
+  args: unknown,
+  tense?: DescriptionTense,
+): string {
   if (toolName === "browser_actions") {
     const actions = extractActionTypes(args);
     if (actions.length > 0) {
@@ -304,7 +324,7 @@ export function formatToolLabel(toolName: string, args: unknown): string {
     return formatAgentToolLabel(args);
   }
   const name = toolDisplayName(toolName, args);
-  const summary = toolUseSummary(toolName, args);
+  const summary = toolUseSummary(toolName, args, tense);
   return summary ? `${name}: ${summary}` : name;
 }
 
