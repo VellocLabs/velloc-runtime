@@ -521,7 +521,6 @@ export class ReviewReportStore {
       this.event(state, 'candidate-verified')
     })
   }
-  /** A failed worker leaves its angles unavailable; a later worker that covers one makes it available again. */
   /** Contract: the host's verdict on whether the run covered its scope; no model-written statement reaches it (F-38). */
   async setComplete(runId: string, complete: boolean): Promise<void> {
     return this.mutate(runId, state => {
@@ -541,6 +540,7 @@ export class ReviewReportStore {
   async coverageStated(runId: string): Promise<boolean> {
     return this.serial(runId, async () => (await this.load(runId)).coverageStated === true)
   }
+  /** A failed worker leaves its angles unavailable; a later worker that covers one makes it available again. */
   async noteWorker(runId: string, event: 'started' | 'finished', unavailableAngles: string[] = [], coveredAngles: string[] = []): Promise<void> {
     return this.mutate(runId, state => {
       if (state.run.progress.status !== 'active') return fail('run-not-active')
