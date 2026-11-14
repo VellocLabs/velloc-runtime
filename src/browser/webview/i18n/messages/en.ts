@@ -1331,10 +1331,12 @@ export const en = {
   'taskStats.outputLabel': 'out',
   'taskStats.cacheReadLabel': 'cache read',
   'taskStats.cacheWriteLabel': 'cache write',
-  // Task meta line (F-2). `{span}` is a duration ("1m 35s"), `{when}` a clock
-  // time, `{type}` an agent type name, the rest formatted numbers.
+  // Task meta line (F-2). `{span}`/`{age}` are durations ("1m 35s"), `{when}` a
+  // clock time, `{type}` an agent type name, the rest formatted numbers.
   'backgroundTasks.meta.agentTypeTitle': 'Agent type: {type}',
-  'backgroundTasks.meta.updatedTitle': 'Last update at {when}',
+  'backgroundTasks.meta.elapsedTitle': 'Running for {span}',
+  'backgroundTasks.meta.updatedTitle': 'Last update {age} ago',
+  'backgroundTasks.meta.ago': '{age} ago',
   'backgroundTasks.meta.startedTitle': 'Started {when}',
   'backgroundTasks.meta.tookTitle': 'Took {span}',
   'taskStats.totalTokens': '{n} tokens',

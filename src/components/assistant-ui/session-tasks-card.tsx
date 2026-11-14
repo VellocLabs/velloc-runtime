@@ -2,8 +2,8 @@ import * as React from "react";
 import { CheckCheckIcon, Loader2Icon, SquareIcon } from "lucide-react";
 
 import { cn } from "@/lib/utils";
-import { useLocale, useT } from "@/browser/webview/i18n";
-import { formatStartStamp } from "@/browser/webview/TaskRowMeta";
+import { durationLabel } from "@/utils/humanize/durationLabel";
+import { useT } from "@/browser/webview/i18n";
 import { loopTimerCountdown } from "@/browser/webview/loopTimers";
 import type { NexusTaskSummaryRow } from "@/browser/bridge/protocol/ui";
 import {
@@ -19,10 +19,10 @@ import { useBackgroundTasksContext } from "./background-tasks-context";
 /**
  * The Background tasks card's unfolded body (F-9): the session's running
  * shells and subagents — at most five until Show more — each with its
- * start time (24-hour clock) and a stop button, then how many finished. A running row opens
+ * elapsed time and a stop button, then how many finished. A running row opens
  * its detail in the side panel's Tasks view; the finished row opens the list.
- * A loop timer (F-15) shows the countdown to its next fire in place of a
- * start time.
+ * A loop timer (F-15) shows the countdown to its next fire in place of an
+ * elapsed time.
  */
 
 const ROW_CLASS =
@@ -30,14 +30,11 @@ const ROW_CLASS =
 
 export function SessionTasksList() {
   const t = useT();
-  const locale = useLocale();
   const { taskRows, stopTask, openTasksDrawer, openTasksList } = useBackgroundTasksContext();
   const { running, finished } = React.useMemo(() => sessionTaskCardRows(taskRows), [taskRows]);
   const [showAll, setShowAll] = React.useState(false);
   const [stopping, setStopping] = React.useState<ReadonlySet<string>>(() => new Set());
-  // Only a loop timer's countdown changes with the clock; task times are
-  // absolute stamps, refreshed by the row broadcasts.
-  const now = useSecondClock(running.some((row) => row.type === "local_timer"));
+  const now = useSecondClock(running.length > 0);
 
   // A stop is pending until its row leaves the running list.
   React.useEffect(() => {
@@ -68,10 +65,6 @@ export function SessionTasksList() {
         const isStopping = stopping.has(row.sessionId);
         // A fast call is one in-flight request: nothing to stop.
         const canStop = stopTask !== undefined && kind !== "local_fast";
-        const started =
-          row.startedAt !== undefined
-            ? formatStartStamp(row.startedAt, locale, now)
-            : null;
         return (
           <div key={row.sessionId} className="flex min-w-0 items-center" data-testid="session-card-task" data-task-kind={kind}>
             <button
@@ -93,13 +86,9 @@ export function SessionTasksList() {
                 <span data-testid="session-card-task-countdown" className="shrink-0 text-muted-foreground text-[12px] tabular-nums">
                   {loopTimerCountdown(row.nextFireAt, now, t)}
                 </span>
-              ) : started ? (
-                <span
-                  data-testid="session-card-task-started"
-                  title={t("backgroundTasks.meta.startedTitle", { when: started })}
-                  className="shrink-0 text-muted-foreground text-[12px] tabular-nums"
-                >
-                  {started}
+              ) : row.startedAt !== undefined ? (
+                <span data-testid="session-card-task-elapsed" className="shrink-0 text-muted-foreground text-[12px] tabular-nums">
+                  {durationLabel(Math.max(0, now - row.startedAt))}
                 </span>
               ) : null}
             </button>

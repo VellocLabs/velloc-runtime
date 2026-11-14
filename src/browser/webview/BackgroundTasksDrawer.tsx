@@ -392,16 +392,23 @@ export function BackgroundTasksDrawer({
   const [transcriptLoading, setTranscriptLoading] = useState(false)
   const detailReqRef = useRef<string | null>(null)
 
-  // Only a loop timer's countdown (F-15) changes with the clock: task times are
-  // absolute stamps, refreshed by the row broadcasts. Timers render only in the list.
+  // 5s ticker so a running task's elapsed time and last-update age stay fresh
+  // between broadcasts: in the list while any row runs, in the detail view while
+  // the opened row runs. Nothing else renders ages, so otherwise it stays off.
+  const hasRunningRows = rows.some((r) => r.status === 'running')
+  const detailRunning =
+    view.kind === 'detail' &&
+    rows.some((r) => r.sessionId === view.sessionId && r.status === 'running')
+  const ticking = view.kind === 'list' ? hasRunningRows : detailRunning
+  // A loop timer's countdown (F-15) ticks every second; timers render only in the list.
   const hasTimerRows = view.kind === 'list' && rows.some((r) => r.type === 'local_timer')
   const [now, setNow] = useState(() => Date.now())
   useEffect(() => {
-    if (!hasTimerRows) return
+    if (!ticking) return
     setNow(Date.now()) // refresh immediately so a re-armed ticker isn't stale
-    const id = window.setInterval(() => setNow(Date.now()), 1000)
+    const id = window.setInterval(() => setNow(Date.now()), hasTimerRows ? 1000 : 5000)
     return () => window.clearInterval(id)
-  }, [hasTimerRows])
+  }, [ticking, hasTimerRows])
   // The timer a focus request named: a timer has no detail, so the list shows it.
   const [focusedTimerId, setFocusedTimerId] = useState<string | null>(null)
 
