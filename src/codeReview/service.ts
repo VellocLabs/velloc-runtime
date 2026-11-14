@@ -59,12 +59,14 @@ interface LiveRun {
   verification?: Promise<VerificationOutcome>
   startVerification?: () => Promise<VerificationOutcome>
   findersLaunched?: boolean
+  /** Included paths whose patch a diff read returned. */
+  patchesRead: Set<string>
 }
 export class ReviewGatewayError extends Error { constructor(readonly code: string) { super(code) } }
 const onlyTestsSkipped = (manifest: ScopeManifest): boolean => !manifest.files.some(file => file.status === 'included') && manifest.files.some(file => file.status === 'skipped' && isTestOrFixturePath(file.path))
 const block = (text: string, source: string): ReviewPromptBlock => ({ type: 'text', text, source, provenance: 'trusted-task' })
-const newLive = (base: Omit<LiveRun, 'completedAngles' | 'finderTasks' | 'verified' | 'sweepIds' | 'swept' | 'tasks' | 'agentIds'>): LiveRun =>
-  ({ ...base, completedAngles: new Set(), finderTasks: new Map(), verified: new Set(), sweepIds: new Set(), swept: false, tasks: new Map(), agentIds: new Map() })
+const newLive = (base: Omit<LiveRun, 'completedAngles' | 'finderTasks' | 'verified' | 'sweepIds' | 'swept' | 'tasks' | 'agentIds' | 'patchesRead'>): LiveRun =>
+  ({ ...base, completedAngles: new Set(), finderTasks: new Map(), verified: new Set(), sweepIds: new Set(), swept: false, tasks: new Map(), agentIds: new Map(), patchesRead: new Set() })
 const endCode = (end: ReviewRunEnd): string => `review-${end.kind}`
 /** A worker's step limit, and the steps it may spend reading before it must answer. */
 const WORKER_STEPS = 18, WORKER_READ_STEPS = 14
@@ -368,6 +370,11 @@ export class LocalReviewService {
           const complete = !gap && !reportRejected
           const limitations = [...(gap ? ['independent-worker-coverage-incomplete'] : []), ...(summaryStale && plan.presentation !== 'panel' ? ['verified-after-summary'] : [])]
           if (limitations.length || complete !== snapshot.coverage.complete) await this.store.submitLedger(runId, crypto.randomUUID(), { operation: 'coverage', coverage: { angles: [], limitations, complete } })
+        } else if (!plan.allowWholeFileReads && !plan.angles.length && !reportRejected
+          && access.manifest.files.every(file => file.status !== 'included' || live.patchesRead.has(file.path))
+          && !(await this.store.getSnapshot(runId)).coverage.complete) {
+          // Contract (F-38): a diff-only run with no selected angles that read every included patch is complete; the coordinator's notes stay as limitations.
+          await this.store.submitLedger(runId, crypto.randomUUID(), { operation: 'coverage', coverage: { angles: [], limitations: [], complete: true } })
         }
         if (hostVerified && (await this.store.getSnapshot(runId)).structured) await this.store.submitRecord(runId, crypto.randomUUID(), await this.store.expectedRecord(runId))
         if (!access.manifest.complete) await this.store.submitLedger(runId, crypto.randomUUID(), { operation: 'coverage', coverage: { angles: [], limitations: access.manifest.notices.concat('scope-incomplete'), complete: false } })
@@ -421,7 +428,11 @@ export class LocalReviewService {
       return { ...result, matches: result.matches.map(match => cited.has(match) ? { ...match, source: cited.get(match) } : match) }
     }
     if (input.operation === 'diff' && result && typeof result === 'object') {
-      const withSources = (file: unknown) => file && typeof file === 'object' && 'patch' in file && 'path' in file && typeof file.path === 'string' ? { ...file, sources: patchSources(manifest, file.path) } : file
+      const withSources = (file: unknown) => {
+        if (!(file && typeof file === 'object' && 'patch' in file && 'path' in file && typeof file.path === 'string')) return file
+        live.patchesRead.add(file.path)
+        return { ...file, sources: patchSources(manifest, file.path) }
+      }
       return 'files' in result && Array.isArray(result.files) ? { ...result, files: result.files.map(withSources) } : withSources(result)
     }
     return result

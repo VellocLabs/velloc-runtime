@@ -292,6 +292,30 @@ describe('local review runtime gateway', () => {
     expect(report.coverage.limitations).toContain('tests-fixtures-skipped')
     expect(report.coverage.limitations).not.toContain('scope-incomplete')
   })
+  it.each([
+    ['every included patch', 'finished', ['src/a.ts', 'docs/b.md']],
+    ['one of two included patches', 'partial', ['src/a.ts']],
+  ] as const)('a low review that read %s and claimed complete=false ends %s', async (_label, status, readPaths) => {
+    const files = [{ path: 'src/a.ts', patch: '-old\n+new' }, { path: 'docs/b.md', patch: '-x\n+y' }]
+    const manifest: ScopeManifest = { scope: { kind: 'workspace', workspaceKey: '/repo', repository: { projectKey: '/repo' }, revision: { base: 'a', head: 'b', workingCopyDigest: 'w' }, pathFilter: [] },
+      files: [...files.map(file => ({ ...file, status: 'included' as const, anchors: [] })), { path: 'src/__tests__/a.test.ts', status: 'skipped', patch: '', anchors: [] }],
+      anchors: [], status: 'reviewable', complete: true, notices: [], baseSource: 'main', semantics: 'working-copy' }
+    const read = vi.fn(async (input: Record<string, unknown>) => ({ files: files.filter(file => (input.paths as string[]).includes(file.path)).map(file => ({ ...file, beforePath: file.path, status: 'included' })) }))
+    const runModel = vi.fn(async (request: ReviewModelRequest) => {
+      expect(request.tools.find(tool => tool.name === 'ReviewRead')!.argsSchema).toMatchObject({ properties: { operation: { enum: ['diff'] } } })
+      await h.invoke(request, 'ReviewRead', { operation: 'diff', paths: [...readPaths] })
+      const coverage = { angles: [], limitations: ['Patch-only reads: code outside the hunks could not be inspected.'], complete: false }
+      await h.invoke(request, 'ReviewLedger', { operation: 'coverage', coverage })
+      return { text: 'Reviewed the patches; nothing found.', interrupted: false }
+    })
+    const h = setup({ args: { runModel, resolveScope: vi.fn(async () => ({ manifest, trustedGuidance: '', read })) } })
+    const { runId } = await h.service.startUser('low')
+    const report = await h.service.wait(runId)
+    expect(JSON.parse(runModel.mock.calls[0]![0].blocks.find(b => b.source === 'resolved-policy')!.text)).toMatchObject({ allowWholeFileReads: false, angles: [] })
+    expect(report.run.progress.status).toBe(status)
+    expect(report.coverage.complete).toBe(status === 'finished')
+    expect(report.coverage.limitations).toEqual(expect.arrayContaining(['Patch-only reads: code outside the hunks could not be inspected.', 'tests-fixtures-skipped']))
+  })
   it('finishes a local run that covered every angle although nothing was independently verified', async () => {
     const h = setup()
     const { runId } = await h.service.startUser('high')
