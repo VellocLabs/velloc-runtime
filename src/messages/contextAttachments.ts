@@ -1180,8 +1180,9 @@ export async function collectPlanModeAttachmentMessages(params: {
  * The plan rows that follow a compaction summary, for both the automatic and
  * the manual path: the full plan-mode reminder while plan mode is active (the
  * short one points at instructions the boundary just cut off), then the plan
- * file's current contents when there are any. Without a `runtimeConfig` (a
- * fork) only the contents are returned.
+ * file's current contents when there are any, then the turn board's step list
+ * as it stands. Without a `runtimeConfig` (a fork) the plan-mode reminder is
+ * skipped, but the contents and the step list are still returned.
  */
 export async function collectPostCompactPlanRows(
   context: ToolCallContext | undefined,

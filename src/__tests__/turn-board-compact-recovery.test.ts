@@ -4,7 +4,6 @@ import { SYSTEM_SUBTYPE_COMPACT_BOUNDARY } from '../runtime/VercelModelConstants
 import { runTurnLoop } from '../engine/turnInterpreter'
 import { assembleTurnDependencies } from '../engine/turn/turnDependencies'
 import { collectPostCompactPlanRows } from '../messages/contextAttachments'
-import { installProcessFs, resetProcessFs } from '../utils/fs/runtimeFs'
 import {
   DefaultRuntimeConfig,
   NoopPlatformCapabilities,
@@ -19,16 +18,8 @@ import { createPostCompactTurnBoardMessage } from '../sessions/turnBoardRecovery
 const SESSION = 'turn-board-compact'
 
 afterEach(() => {
-  resetProcessFs()
   turnBoard.forget(SESSION)
 })
-
-function noPlanFile(): void {
-  const missing = async () => {
-    throw Object.assign(new Error('ENOENT'), { code: 'ENOENT' })
-  }
-  installProcessFs({ readFile: missing, stat: missing } as never)
-}
 
 function context(options: { tools?: string[]; sessionId?: string; agentId?: string; teammateName?: string } = {}): ToolCallContext {
   const tools = (options.tools ?? [SET_PLAN_TOOL_NAME, CLOSE_TURN_TOOL_NAME]).map(name => ({ name }))
@@ -113,7 +104,6 @@ describe('createPostCompactTurnBoardMessage', () => {
 
 describe('after a compaction', () => {
   it('the post-compaction rows end with the step list', async () => {
-    noPlanFile()
     turnBoard.setPlan(SESSION, steps)
     const rows = await collectPostCompactPlanRows(context(), new DefaultRuntimeConfig())
     expect(rows).toHaveLength(1)
@@ -121,7 +111,6 @@ describe('after a compaction', () => {
   })
 
   it('the request after an automatic compaction carries the step list after the summary', async () => {
-    noPlanFile()
     turnBoard.setPlan(SESSION, steps)
     let compacted = false
     const seen: string[][] = []
