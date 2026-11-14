@@ -1,4 +1,5 @@
 import { RunningBlob, RunningIndicator } from "@/components/assistant-ui/running-indicator";
+import { TurnClosingBox, TurnPlanCard } from "@/components/assistant-ui/turn-board";
 import { COLLAPSE_ALL_OFFER_MS, resolveFloatingScrollButton, useRunStatusRow } from "@/components/assistant-ui/run-status-row";
 import type { TurnDiffMeta } from "@/utils/turnDiffs";
 import { TooltipIconButton } from "@/components/assistant-ui/tooltip-icon-button";
@@ -569,10 +570,16 @@ export const Thread: FC<{
           />
         </div>
 
+        {/* The session's step list (F-41), the row above the run status. */}
+        <TurnPlanCard />
+
         {/* The live run status (blob + progress text), or why the composer offers
             Continue, as the conversation's last row. Scrolled out of view, the
             status shows on the session tab instead. */}
         <ConversationRunStatus sessionId={sessionId} isForeground={isForeground} />
+
+        {/* The ended turn's closing question and its reply buttons (F-41). */}
+        <TurnClosingBox />
 
         {/* A mod's note on the turn just ended (F-25 `turn.complete`), right
             under the last answer, until the next turn starts. */}

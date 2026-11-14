@@ -51,7 +51,6 @@ import { GIT_STATE_TIMEOUT_MS, readGitState } from '../utils/gitState'
 import { NEXUS_WORKSPACE_DIR_NAME } from '../utils/conversationStoragePaths'
 import { makeContextRow, createGeneratedUserMessage } from './messageFactories'
 import { findMentionedPaths, toMentionTarget } from './mentionParsing'
-import { collectTodoReminderAttachments } from './todoReminder'
 
 import { createPostCompactPlanReferenceMessage } from './planReminder'
 export { createPostCompactPlanReferenceMessage }
@@ -1247,9 +1246,6 @@ export async function collectInitialAttachmentMessages(params: {
     collectFolderTreeAttachments(params.context),
   ])
   attachments.push(...gitState, ...folderTree)
-  attachments.push(
-    ...collectTodoReminderAttachments(params.context.messages, params.context),
-  )
 
   return attachments.map(attachment =>
     makeContextRow(params.runtimeConfig, attachment),
@@ -1379,9 +1375,6 @@ export async function* collectQueuedAttachmentMessages(
   reminders.push(...collectSkillListingAttachments(params.toolUseContext))
   reminders.push(...(await collectPlanModeAttachments(params.toolUseContext)))
   reminders.push(...collectDateChangeAttachments(params.toolUseContext, params.runtimeConfig))
-  reminders.push(
-    ...collectTodoReminderAttachments(params.messages, params.toolUseContext),
-  )
   const attachments = [...(await collectQueuedThroughMods(params)), ...reminders]
 
   for (const attachment of attachments) {

@@ -9,7 +9,6 @@ tools:
   - read
   - shell
   - plan
-  - todo
   - subagent
   - webfetch
   - ask
@@ -33,6 +32,7 @@ deferredTools: [browser, schedule, a2ui, agent-teams]
 !code_doing_tasks @standard
 !executing_with_care @standard
 !code_using_your_tools
+!turn_board
 !child_sessions
 !tool_call_parallelism @standard
 !code_tone_and_style

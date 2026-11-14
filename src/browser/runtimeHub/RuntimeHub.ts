@@ -63,6 +63,7 @@ import { registerWorkspaceCapability, type WorkspaceStateStore } from './workspa
 import { registerProviderUpdatesCapability } from './providerUpdatesCapability'
 import { registerProposalsCapability } from './proposalsCapability'
 import { registerChaptersCapability } from './chaptersCapability'
+import { registerTurnTopic } from './turnCapability'
 import { registerReviewCapability } from './reviewCapability'
 import { registerPluginUpdatesCapability } from './pluginUpdatesCapability'
 import { resolveHostHome } from './hostFs'
@@ -340,6 +341,9 @@ export class RuntimeHub {
     // and the mark / unmark actions, `control`: they write that session's
     // stored record.
     registerChaptersCapability(this.registry, this.broker)
+    // Turn board (F-41): one session's plan and closing on `turn/<sessionId>`;
+    // a topic with no actions.
+    registerTurnTopic(this.broker)
     this.review = registerReviewCapability(this.registry, this.broker, { readStoredSnapshot: sessionId => host.readStoredReviewSnapshot?.(sessionId) ?? Promise.resolve(undefined) })
     // Marketplace plugin updates (F-14): `plugins/updates` and the
     // check / update / rollback / setAutoUpdate actions, all `full`; the

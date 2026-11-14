@@ -6,6 +6,7 @@ import {
 } from '../../components/assistant-ui/session-card-stack'
 import { useSessionModUi } from './mods/useSessionModUi'
 import { useSessionProposals } from './proposalsView'
+import { useSessionTurnBoard } from './turnBoardView'
 import { CodeReviewProvider } from '@/components/assistant-ui/code-review-card'
 import { useSessionChapters } from './chaptersView'
 import {
@@ -21,6 +22,7 @@ import {
   type ChapterPlace,
 } from '../../components/assistant-ui/chapter-marks'
 import { SessionProposalsContext } from '../../components/assistant-ui/session-proposals-context'
+import { TurnBoardContext } from '../../components/assistant-ui/turn-board-context'
 import { useCan } from './useCan'
 import type {
   ThreadMessageLike,
@@ -427,6 +429,8 @@ function InteractiveAssistantUiThread({
   // The session's child-session proposal cards (F-36).
   const canAnswerProposals = useCan('proposals', 'start') && !readOnly
   const sessionProposals = useSessionProposals(runtimeConnection, modSessionId, canAnswerProposals)
+  // The session's step list and closing box (F-41); a read-only thread shows them without replies.
+  const sessionTurnBoard = useSessionTurnBoard(runtimeConnection, modSessionId, !readOnly)
   // The session's chapter marks (F-37); a read-only thread shows them too.
   const canMarkChapters = useCan('chapters', 'mark') && !readOnly
   const sessionChapters = useSessionChapters(
@@ -1268,6 +1272,7 @@ function InteractiveAssistantUiThread({
                   <ModUiContext.Provider value={modUi}>
                   <CodeReviewProvider value={{ connection: runtimeConnection, sessionId: modSessionId ?? threadSessionId, readOnly }}>
                   <SessionProposalsContext.Provider value={sessionProposals}>
+                  <TurnBoardContext.Provider value={sessionTurnBoard}>
                   <SessionCardsPopoverContext.Provider value={sessionCardsPopover}>
                   <SessionChangeFiguresContext.Provider value={state.sessionChangeFigures ?? null}>
                   <AgentChangesContext.Provider value={state.agentChanges ?? NO_AGENT_CHANGES}>
@@ -1324,6 +1329,7 @@ function InteractiveAssistantUiThread({
                   </AgentChangesContext.Provider>
                   </SessionChangeFiguresContext.Provider>
                   </SessionCardsPopoverContext.Provider>
+                  </TurnBoardContext.Provider>
                   </SessionProposalsContext.Provider>
                   </CodeReviewProvider>
                   </ModUiContext.Provider>

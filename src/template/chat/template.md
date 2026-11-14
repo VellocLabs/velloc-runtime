@@ -5,7 +5,7 @@ description: Conversation — web + chat + skills + memory; no access to the use
 # A light conversational type. EAGER groups (tools:): read = Read/Glob/Grep,
 # edit = Write/Edit/NotebookEdit, webfetch = WebFetch, ask = AskUserQuestion,
 # codehandoff = ContinueInCode, skills = Skill/ToolSearch, misc = Sleep.
-# EXCLUDED by omission: subagent, plan, todo, schedule, shell.
+# EXCLUDED by omission: subagent, plan, schedule, shell.
 # Security: in a chat session the file tools are confined by the chat
 # local-access gate — read and write inside the memory dir, read-only inside
 # loaded skill roots and the session's uploads dir, denied everywhere else.
@@ -53,7 +53,7 @@ deferredTools: [browser, a2ui]
 
 # this type's own tool-usage block (no longer host-rendered): file tools +
 
-# skills + parallelism. No TodoWrite (the `todo` group is omitted) and no
+# skills + parallelism. No step list (a chat has no turn board) and no
 
 # browser catalog (browser DEFERS here — the skill carries its own
 

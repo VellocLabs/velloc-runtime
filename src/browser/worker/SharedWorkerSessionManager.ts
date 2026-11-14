@@ -58,6 +58,7 @@ import {
   notifyProposalsChanged,
   setProposalBoard,
 } from '../../sessions/proposalBoard'
+import { turnBoard } from '../../sessions/turnBoard'
 import {
   ChapterBook,
   notifyChaptersChanged,
@@ -2674,6 +2675,8 @@ export class SharedWorkerSessionManager {
       this.childReports.personWrote(sessionId, message.payload.prompt)
       // A person's new message closes the session's open offers (F-36).
       this.proposals.supersedeOpenOffers(sessionId)
+      // It also answers the turn's closing and takes down a finished plan (F-41).
+      turnBoard.personWrote(sessionId)
     }
 
     // The worker owns the submit queue and the pending message; the manager

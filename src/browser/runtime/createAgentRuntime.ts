@@ -125,6 +125,9 @@ import {
   mcpServerInstructionsFromPool,
   mcpServerFailuresFromPool,
   mcpSessionOffering,
+  builtinMcpOffering,
+  registerBundledBuiltinMcpServers,
+  withBuiltinMcpOffering,
   type McpSessionOffering,
 } from '../../mcp'
 import { MCPPool } from '../../mcp/pool'
@@ -1078,8 +1081,21 @@ export async function createBrowserRuntime(
   }
   // The session's MCP offering (F-10): the pool's connected servers as tool contracts, deferral
   // units, Skill commands and the set of servers offered. Read again after a plugin reload.
+  // Built-in servers (F-10) run in this loop and start nothing, so a type that takes nothing from
+  // the pool still gets them. A fork keeps its parent's list; its calls are refused by the tools.
+  registerBundledBuiltinMcpServers()
+  const builtinOffering = builtinMcpOffering({
+    templateType,
+    nested:
+      (options.isSubAgent === true || (resolvedOptions as { isTeammate?: boolean }).isTeammate === true) &&
+      (options as { forkExactTools?: boolean }).forkExactTools !== true,
+    headless: (options as { isHeadless?: boolean }).isHeadless === true,
+  })
   const readMcpOffering = (): McpSessionOffering =>
-    allowsMcp ? mcpSessionOffering(mcpPool) : { tools: [], skillNames: [], commands: [], servers: new Set() }
+    withBuiltinMcpOffering(
+      allowsMcp ? mcpSessionOffering(mcpPool) : { tools: [], skillNames: [], commands: [], servers: new Set() },
+      builtinOffering,
+    )
   let mcpOffering = readMcpOffering()
   // Deferrable skills: the template's `deferredTools` decides which defer by default; MCP servers defer
   // by default.

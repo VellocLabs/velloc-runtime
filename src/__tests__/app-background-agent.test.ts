@@ -260,11 +260,11 @@ describe('the request, the manifest and the tools', () => {
     expect(manifestAsksAgent(null)).toBe(false)
   })
 
-  it('an app run keeps files, todos, skills, fetch and MCP tools, and drops shells, agents, sessions, routines and asks', () => {
-    for (const name of ['Read', 'Glob', 'Grep', 'Write', 'Edit', 'TodoWrite', 'Skill', 'ToolSearch', 'WebFetch', 'SuperEdit', 'mcp__pay__invoices']) {
+  it('an app run keeps files, skills, fetch and MCP tools, and drops shells, agents, sessions, routines, asks and the step list', () => {
+    for (const name of ['Read', 'Glob', 'Grep', 'Write', 'Edit', 'Skill', 'ToolSearch', 'WebFetch', 'SuperEdit', 'mcp__pay__invoices']) {
       expect(appRunKeepsTool(name)).toBe(true)
     }
-    for (const name of ['Bash', 'PowerShell', 'SuperShell', 'Exec', 'Agent', 'SpawnSession', 'SendMessage', 'TeamCreate', 'CronCreate', 'RoutineSignal', 'AskUserQuestion', 'BuildApp', 'ExitPlanMode']) {
+    for (const name of ['Bash', 'PowerShell', 'SuperShell', 'Exec', 'Agent', 'SpawnSession', 'SendMessage', 'TeamCreate', 'CronCreate', 'RoutineSignal', 'AskUserQuestion', 'BuildApp', 'ExitPlanMode', 'TodoWrite', 'mcp__session_turn__set_plan', 'mcp__session_turn__close']) {
       expect(appRunKeepsTool(name)).toBe(false)
     }
     expect(appRunTools([{ name: 'Read' }, { name: 'Bash' }])).toEqual([{ name: 'Read' }])

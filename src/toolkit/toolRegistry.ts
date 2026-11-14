@@ -22,7 +22,6 @@ import { SkillRunTool } from './builtin/skill'
 import { SleepTool } from './builtin/sleepWait'
 import { ContinueInCodeTool } from './builtin/continueInCode'
 import { deferredLoaderTool } from './builtin/toolSearch'
-import { ChecklistTool } from './builtin/todoWrite'
 import { PageReadTool } from './builtin/webFetch/webFetch'
 import { PlanOnTool } from './builtin/planEnter'
 import { ExitPlanModeTool } from './builtin/planExit'
@@ -110,10 +109,9 @@ const WORKSPACE_TOOLS: ToolContractList = [
   PageReadTool,
 ]
 
-// Tools that work on the session itself: todos, plan mode, questions to the
+// Tools that work on the session itself: plan mode, questions to the
 // user, sub-agents and their control, waiting, and deferred-tool loading.
 const SESSION_TOOLS: ToolContractList = [
-  ChecklistTool,
   PlanOnTool,
   ExitPlanModeTool,
   AskPersonTool,

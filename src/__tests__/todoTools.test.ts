@@ -138,42 +138,35 @@ describe('applyToolLineGates — {{IF_TOOL:<Name>}} line gate', () => {
   })
 })
 
-describe('loadSystemPromptHolders — the TodoWrite prose follows the visible tool set', () => {
+describe('loadSystemPromptHolders — the step-list section follows the visible tool set', () => {
+  const SET_PLAN = 'mcp__session_turn__set_plan'
   const stub = (name: string) => ({ name }) as unknown as ToolContract
-  const TOOLS = [stub('Read'), stub('TodoWrite')] as unknown as ToolContractList
+  const TOOLS = [stub('Read'), stub(SET_PLAN)] as unknown as ToolContractList
 
-  async function usingYourTools(
-    templateType: string,
-    visibleToolNames: string[],
-  ): Promise<string> {
-    const parts = await loadSystemPromptHolders({
-      tools: TOOLS,
-      visibleToolNames,
-      templateType,
-    })
-    const hit = parts.find(p => p.startsWith('# Tools'))
-    expect(hit, `${templateType}_using_your_tools is present`).toBeDefined()
-    return hit!
-  }
+  const sections = (templateType: string, visibleToolNames: string[]): Promise<string[]> =>
+    loadSystemPromptHolders({ tools: TOOLS, visibleToolNames, templateType })
 
-  for (const type of ['code', 'agent', 'team']) {
-    it(`${type}: line present when TodoWrite is visible, gone when the model is withheld it`, async () => {
-      const withTool = await usingYourTools(type, ['Read', 'TodoWrite'])
-      expect(withTool).toContain('TodoWrite')
-      expect(withTool).not.toContain('{{IF_TOOL')
+  for (const type of ['code', 'agent', 'team', 'safe_code']) {
+    it(`${type}: the section is present when set_plan is visible and gone whole when it is not`, async () => {
+      const withTool = await sections(type, ['Read', SET_PLAN])
+      const section = withTool.find(part => part.startsWith('# Step list and closing'))
+      expect(section, `${type} lists the turn_board holder`).toBeDefined()
+      expect(section).toContain(SET_PLAN)
+      expect(section).toContain('mcp__session_turn__close')
+      expect(withTool.join(' ')).not.toContain('{{IF_TOOL')
 
-      // What QueryEngine passes for a `todoTools: false` model: the tool is in
-      // the type's tool set (`tools`) but not in the visible set.
-      const withheld = await usingYourTools(type, ['Read'])
-      expect(withheld).not.toContain('TodoWrite')
-      expect(withheld).not.toContain('{{IF_TOOL')
-      expect(withheld).toContain('# Tools')
-      // Only that one line went: every other line survives verbatim.
-      const dropped = withTool.split('\n').filter(l => !withheld.split('\n').includes(l))
-      expect(dropped).toHaveLength(1)
-      expect(dropped[0]).toContain('TodoWrite')
+      // A loop under the session (a sub-agent) shares the type but not the tools.
+      const without = await sections(type, ['Read'])
+      expect(without.join(' ')).not.toContain('session_turn')
+      expect(without.join(' ')).not.toContain('{{IF_TOOL')
+      expect(without.some(part => part.startsWith('# Tools'))).toBe(true)
     })
   }
+
+  it('chat has no step-list section even with the tool visible', async () => {
+    const parts = await sections('chat', ['Read', SET_PLAN])
+    expect(parts.join(' ')).not.toContain('session_turn')
+  })
 })
 
 describe('todo_reminder — never nudges a model toward a tool it cannot see', () => {

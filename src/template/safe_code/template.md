@@ -80,6 +80,7 @@ skills: []
 
 !safe_code_intro
 !safe_code_using_your_tools
+!turn_board
 !tool_call_parallelism
 !delivering_work
 !autonomy

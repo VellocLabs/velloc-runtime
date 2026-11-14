@@ -19,7 +19,6 @@ tools:
   - read
   - shell
   - plan
-  - todo
   - subagent
   - webfetch
   - ask
@@ -42,6 +41,7 @@ deferredTools: [browser, a2ui]
 !system
 !executing_with_care @standard
 !team_using_your_tools
+!turn_board
 !team_leading
 !tool_call_parallelism @standard
 !pronouns

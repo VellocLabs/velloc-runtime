@@ -4,6 +4,12 @@
 
 import { isInternalUser } from '../../utils/internalUser'
 
+/** The built-in `session_turn` server's tools, by wire name (F-41). */
+export const TURN_BOARD_TOOL_NAMES: readonly string[] = [
+  'mcp__session_turn__set_plan',
+  'mcp__session_turn__close',
+]
+
 export const TOOL_GROUPS = {
   // ── host file tools — split so a template can grant read-only access ──
   /** Inspect files: read contents, list, search. */
@@ -22,8 +28,6 @@ export const TOOL_GROUPS = {
   subagent: ['Agent', 'AgentList', 'TaskStop', 'TaskOutput', 'AgentResume'],
   /** Plan-mode workflow (propose a plan before acting). */
   plan: ['EnterPlanMode', 'ExitPlanMode'],
-  /** Structured task/progress tracking. */
-  todo: ['TodoWrite'],
   /** Fetch + read web content. */
   webfetch: ['WebFetch'],
   /** Ask the user a structured multiple-choice question. */
@@ -89,6 +93,8 @@ export const CHILD_AGENT_DENYLIST: readonly string[] = [
   // The control tools from the `subagent` group — everything except `Agent`
   // itself, whose exposure is mode-gated (getAllAgentDisallowedTools).
   ...TOOL_GROUPS.subagent.filter((name) => name !== 'Agent'),
+  // The step list and the closing box are the main conversation's (F-41).
+  ...TURN_BOARD_TOOL_NAMES,
 ]
 
 /**

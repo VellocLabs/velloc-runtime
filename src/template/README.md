@@ -170,7 +170,7 @@ entries that load but stay hidden until activated. Both accept **group names**
 
 Groups (eager-or-excluded): `read` (Read/Glob/Grep), `edit`
 (Write/Edit/NotebookEdit), `shell` (Bash/PowerShell), `subagent` (Agent),
-`plan`, `todo`, `webfetch` (WebFetch), `ask` (AskUserQuestion), `schedule` (cron /
+`plan`, `webfetch` (WebFetch), `ask` (AskUserQuestion), `schedule` (cron /
 routines), `skills` (Skill/ToolSearch — keep eager whenever anything is
 deferred), `superedit` (SuperEdit), `exec` (exec), `misc` (Sleep), `sessions`
 (the child-session tools and SendMessage).
@@ -327,11 +327,11 @@ provider/locale override registry were removed).
   in the turn's **visible** tool set, and dropped whole otherwise
   (`systemPromptLoader.ts::applyToolLineGates`). It is for a bullet naming one
   tool inside a section that must otherwise stay, where the tool can be absent
-  for THIS turn only. Today that is `TodoWrite`: a catalog row with
-  `todoTools: false` (Fable, Opus 4.8 / 5, Sonnet 5, other providers'
-  flagship tiers) is sent neither the schema nor the line
-  (`utils/todoTools.ts` — one decision shared by `tools[]`, this prose, the
-  dispatch guard and `todo_reminder`). Put the marker at the very start of the
+  for THIS turn only, or absent for some loops of the type: the step-list
+  tools of the built-in `session_turn` server are the main conversation's, so
+  `shared_includes/turn_board.md` gates every line on
+  `mcp__session_turn__set_plan` and a sub-agent's prompt carries none of it.
+  Put the marker at the very start of the
   line, before the bullet, so stripping it restores the ungated text. A tool
   the TYPE never has needs no gate — leave its prose out of that type's file.
 - **No thinking-mode section.** There is one full prompt regardless of the

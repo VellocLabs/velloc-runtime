@@ -600,6 +600,7 @@ describe('templateRegistry — manifest parse', () => {
     expect(t.prompt).toEqual([
       { kind: 'holder', name: 'safe_code_intro' },
       { kind: 'holder', name: 'safe_code_using_your_tools' },
+      { kind: 'holder', name: 'turn_board' },
       // UNGATED here: safe_code has no lean rendering, so a `@standard`
       // gate would drop the paragraph under a lean-profile model.
       { kind: 'holder', name: 'tool_call_parallelism' },
@@ -1057,9 +1058,12 @@ describe('templateRegistry — beta variants (index-beta.md, template-beta.md)',
     for (const type of ['code', 'agent']) {
       const stable = getTemplate(type)!
       expect(expandGroups(stable.config.tools ?? [])).toContain('SpawnSession')
-      // The `child_sessions` holder sits right after the type's tools block.
+      // The `child_sessions` holder follows the type's tools block and the step-list section.
       const holders = stable.prompt.filter(e => e.kind === 'holder').map(e => e.name)
-      expect(holders[holders.indexOf('child_sessions') - 1]).toBe(`${type}_using_your_tools`)
+      expect(holders.slice(holders.indexOf('child_sessions') - 2, holders.indexOf('child_sessions'))).toEqual([
+        `${type}_using_your_tools`,
+        'turn_board',
+      ])
     }
     // code keeps the raw shell eager, no SuperShell.
     const eager = expandGroups(getTemplate('code')!.config.tools ?? [])
@@ -1186,11 +1190,12 @@ describe('templateRegistry — holder prose', () => {
         `${type} must not inline the browser catalog`,
       ).not.toContain('## Browser tools')
     }
-    // Only the types that actually register TodoWrite / Skill may name them.
-    for (const type of ['agent', 'code']) {
-      expect(proseOf(type), `${type} has TodoWrite`).toContain('TodoWrite')
+    // No type registers TodoWrite, so no type's prose names it; the step list is the built-in
+    // `session_turn` server's, and a chat has none.
+    for (const type of ['agent', 'chat', 'code', 'safe_code']) {
+      expect(proseOf(type), `${type} has no TodoWrite`).not.toContain('TodoWrite')
     }
-    expect(proseOf('chat'), 'chat has no todo group').not.toContain('TodoWrite')
+    expect(proseOf('chat'), 'chat has no step list').not.toContain('session_turn')
     // chat defers `shell`, so its prose must not lean on a shell that is absent
     // at cold start (it must not describe a tool the model cannot see).
     for (const absent of ['Bash', 'PowerShell']) {
@@ -1219,6 +1224,7 @@ describe('code template — coding prompt skeleton and holders', () => {
       // (after `!pronouns`) — the same holder, listed once per profile.
       { kind: 'holder', name: 'executing_with_care', profile: 'standard' },
       { kind: 'holder', name: 'code_using_your_tools' },
+      { kind: 'holder', name: 'turn_board' },
       { kind: 'holder', name: 'child_sessions' },
       // Shared, and `@standard` only: the lean `# Harness` block already
       // says independent tool calls can run in parallel.
@@ -1348,7 +1354,7 @@ describe('code template — prompt profiles (lean vs standard)', () => {
       const tools = base('code_using_your_tools', profile)!
       expect(tools).toContain('over Bash or PowerShell when one fits')
       expect(tools).toContain('SuperEdit')
-      expect(tools).toContain('Plan and track work with TodoWrite')
+      expect(tools).not.toContain('TodoWrite')
       // The parallel-tool-call paragraph is SHARED — one file, four types.
       expect(tools).not.toContain('You can make several tool calls in one response')
       expect(base('tool_call_parallelism', profile)).toContain(
@@ -1386,7 +1392,7 @@ describe('code template — prompt profiles (lean vs standard)', () => {
     // Standard carries the full guidance; lean drops the lead-in line.
     const std = getHolderProse('code_supershell_tools', { type: 'code', profile: 'standard' })!
     expect(std).toContain('over SuperShell when one fits')
-    expect(std).toContain('Plan and track work with TodoWrite')
+    expect(std).not.toContain('TodoWrite')
     const lean = getHolderProse('code_supershell_tools', { type: 'code', profile: 'lean' })!
     expect(lean).not.toContain('Prefer dedicated tools over SuperShell')
     expect(lean).not.toContain('TodoWrite')
@@ -1510,7 +1516,7 @@ describe('code template — prompt profiles (lean vs standard)', () => {
     // "use SuperEdit instead"; keep that regression pinned here, where the
     // agent tool block is pinned.
     expect(tools).not.toContain('SuperEdit')
-    expect(tools).toContain('Plan and track work with TodoWrite')
+    expect(tools).not.toContain('TodoWrite')
     expect(tools).not.toContain('Do NOT use the Bash or PowerShell tool')
     // The browser one-call-per-turn rule is NOT in the prompt body any more:
     // it follows the browser CAPABILITY, in the skill catalog, so `code` and

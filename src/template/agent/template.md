@@ -13,7 +13,6 @@ tools:
   - browser
   - subagent
   - plan
-  - todo
   - webfetch
   - ask
   - schedule
@@ -97,6 +96,7 @@ deferredTools: [a2ui, agent-teams]
 !agent_autonomy
 !delivering_work
 !agent_using_your_tools
+!turn_board
 !child_sessions
 !tool_call_parallelism @standard
 $skill_catalogs

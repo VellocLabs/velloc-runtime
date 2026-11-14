@@ -85,3 +85,15 @@ export type {
   MCPAuthStore,
 } from './types'
 export { isMcpSessionTool, mcpSessionOffering, type McpSessionOffering } from './sessionOffering'
+export {
+  builtinMcpOffering,
+  isBuiltinMcpServerName,
+  listBuiltinMcpServers,
+  registerBuiltinMcpServer,
+  withBuiltinMcpOffering,
+  type BuiltinMcpServer,
+  type BuiltinMcpSession,
+  type BuiltinMcpTool,
+  type BuiltinMcpToolResult,
+} from './builtinServers'
+export { registerBundledBuiltinMcpServers } from './bundledBuiltinServers'
