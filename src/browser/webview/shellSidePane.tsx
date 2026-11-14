@@ -123,11 +123,17 @@ export function renderShellSidePane(inputs: ShellSidePaneInputs, kind: SidePaneK
     requestTurnDiffHistory, loadAgentTurnDiffDetail, openFile, dismissDiffTarget,
   } = inputs
   const name = sidePaneName(kind)
-  const frame = (title: ReactNode, body: ReactNode, actions?: ReactNode) => (
+  const frame = (
+    title: ReactNode,
+    body: ReactNode,
+    actions?: ReactNode,
+    titleWhenMaximized?: ReactNode,
+  ) => (
     <PaneFrame
       kind={kind}
       name={name}
       title={title}
+      titleWhenMaximized={titleWhenMaximized}
       actions={actions}
       maximized={paneMaximized === kind}
       onToggleMaximized={() =>
@@ -152,7 +158,7 @@ export function renderShellSidePane(inputs: ShellSidePaneInputs, kind: SidePaneK
         modUi={shellModUi}
         sessionKey={activeSessionId}
         onCloseTab={handleCloseModTab}
-        frame={({ title, body }) => frame(title, body)}
+        frame={({ title, titleWhenMaximized, body }) => frame(title, body, undefined, titleWhenMaximized)}
       />
     )
   }
@@ -180,7 +186,8 @@ export function renderShellSidePane(inputs: ShellSidePaneInputs, kind: SidePaneK
           runtimeConnection={runtimeConnection}
           sessionId={activeSessionId}
           openLink={openTerminalLink}
-          frame={({ title, actions, body }) => frame(title, body, actions)}
+          frame={({ title, titleWhenMaximized, actions, body }) =>
+            frame(title, body, actions, titleWhenMaximized)}
         />
       </Suspense>
     )
@@ -211,7 +218,8 @@ export function renderShellSidePane(inputs: ShellSidePaneInputs, kind: SidePaneK
           listDir={listDir}
           search={startFileSearch}
           roots={filesTreeRoots}
-          frame={({ title, actions, body }) => frame(title, body, actions)}
+          frame={({ title, titleWhenMaximized, actions, body }) =>
+            frame(title, body, actions, titleWhenMaximized)}
         />
       </Suspense>
     )
@@ -225,9 +233,8 @@ export function renderShellSidePane(inputs: ShellSidePaneInputs, kind: SidePaneK
     // The title slot is the session's tab strip, the count beside it; the
     // body stacks the address field over the native view's placeholder.
     const activeTab = activeSessionTabs.find(tab => tab.active) ?? null
-    return frame(
+    const tabs = (
       <>
-        {label}
         <BrowserTabStrip
           tabs={activeSessionTabs}
           onActivate={activateBrowserTab}
@@ -241,6 +248,12 @@ export function renderShellSidePane(inputs: ShellSidePaneInputs, kind: SidePaneK
             ? t('pane.browser.oneTab')
             : t('pane.browser.tabs', { count: String(activeNexusTabCount) })}
         </span>
+      </>
+    )
+    return frame(
+      <>
+        {label}
+        {tabs}
       </>,
       <div className="flex h-full min-h-0 flex-col">
         <BrowserAddressBar tab={activeTab} onNavigate={navigateBrowserTab} />
@@ -260,6 +273,7 @@ export function renderShellSidePane(inputs: ShellSidePaneInputs, kind: SidePaneK
       >
         <PlusIcon className="size-3.5" />
       </Button>,
+      tabs,
     )
   }
   return frame(

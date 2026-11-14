@@ -23,7 +23,7 @@ export type ModsPaneProps = {
   /** The session whose panes these are. */
   sessionKey: string
   onCloseTab: (pane: { plugin: string; id: string }) => void
-  frame: (parts: { title: ReactNode; body: ReactNode }) => ReactNode
+  frame: (parts: { title: ReactNode; titleWhenMaximized?: ReactNode; body: ReactNode }) => ReactNode
 }
 
 export function ModsPane({ modUi, sessionKey, onCloseTab, frame }: ModsPaneProps): ReactElement {
@@ -84,5 +84,5 @@ export function ModsPane({ modUi, sessionKey, onCloseTab, frame }: ModsPaneProps
       </ModUiContext.Provider>
     </div>
   )
-  return <>{frame({ title, body })}</>
+  return <>{frame({ title, titleWhenMaximized: title, body })}</>
 }

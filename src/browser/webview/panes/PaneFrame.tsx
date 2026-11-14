@@ -21,8 +21,9 @@ import { usePaneHandle } from './usePaneDrag'
  * own actions, Expand / Restore, Close) over a body that owns its scrolling.
  * The icon becomes a grip on header hover and is the only drag handle.
  * Brings its own TooltipProvider (panes render outside the thread ones).
- * Maximized: no header or border; the buttons float in the top-end corner,
- * shown on hover or focus. Otherwise the header flashes on an open signal.
+ * Maximized: no header or border; the buttons sit in the top-end corner,
+ * shown on hover or focus, floating over the body unless the pane keeps its
+ * own title there. Otherwise the header flashes on an open signal.
  */
 export type PaneFrameProps = {
   kind: SidePaneKind
@@ -30,6 +31,12 @@ export type PaneFrameProps = {
   name: string
   /** The header's start: a label, a picker, a tab strip. */
   title: ReactNode
+  /**
+   * The title content that stays while maximized, in its place at the top
+   * (a pane's own controls: a tab strip). Nothing else of the title slot is
+   * drawn, and the buttons keep the corner, shown on hover or focus.
+   */
+  titleWhenMaximized?: ReactNode
   /** The pane's own header actions, before Expand and Close. */
   actions?: ReactNode
   maximized: boolean
@@ -48,6 +55,7 @@ export function PaneFrame(props: PaneFrameProps): ReactElement {
   const handle = usePaneHandle(kind)
   const KindIcon = PANE_ICON[kind]
   const immersive = props.maximized
+  const keptTitle = immersive ? props.titleWhenMaximized ?? null : null
   const flash = usePaneFlash(kind)
   const expandLabel = t(props.maximized ? 'pane.restore' : 'pane.expand')
   const buttons = (
@@ -107,11 +115,13 @@ export function PaneFrame(props: PaneFrameProps): ReactElement {
         {/* One element in both modes, so the buttons keep focus and state across Expand / Restore. */}
         <div
           data-testid={immersive ? `pane-${kind}-float-bar` : `pane-${kind}-header`}
-          className={
+          className={cn(
             immersive
-              ? 'absolute end-1 top-1 z-20 flex items-center gap-0.5 rounded-md border border-border bg-card p-0.5 opacity-0 shadow-sm transition-opacity focus-within:opacity-100 hover:opacity-100'
-              : 'group/pane-header relative isolate flex h-9 shrink-0 items-center gap-0.5 border-b border-border pe-1 ps-2'
-          }
+              ? keptTitle === null
+                ? 'absolute end-1 top-1 z-20 flex items-center gap-0.5 rounded-md border border-border bg-card p-0.5 opacity-0 shadow-sm transition-opacity focus-within:opacity-100 hover:opacity-100'
+                : 'relative isolate flex h-9 shrink-0 items-center gap-0.5 pe-1 ps-2'
+              : 'group/pane-header relative isolate flex h-9 shrink-0 items-center gap-0.5 border-b border-border pe-1 ps-2',
+          )}
         >
           {immersive || flash === null ? null : (
             <span
@@ -148,7 +158,16 @@ export function PaneFrame(props: PaneFrameProps): ReactElement {
               ) : null}
             </div>
           )}
-          {immersive ? null : (
+          {immersive ? (
+            keptTitle === null ? null : (
+              <div
+                data-testid={`pane-${kind}-title`}
+                className="flex h-full min-w-0 flex-1 items-center gap-1.5 text-[13px] font-medium leading-none"
+              >
+                {keptTitle}
+              </div>
+            )
+          ) : (
             <div
               data-testid={`pane-${kind}-title`}
               className="flex h-full min-w-0 flex-1 items-center gap-1.5 text-[13px] font-medium leading-none"
@@ -156,7 +175,13 @@ export function PaneFrame(props: PaneFrameProps): ReactElement {
               {props.title}
             </div>
           )}
-          {buttons}
+          {immersive && keptTitle !== null ? (
+            <div className="flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity focus-within:opacity-100 hover:opacity-100">
+              {buttons}
+            </div>
+          ) : (
+            buttons
+          )}
         </div>
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden">{props.children}</div>
       </section>

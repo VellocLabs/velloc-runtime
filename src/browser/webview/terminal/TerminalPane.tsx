@@ -69,7 +69,12 @@ export type TerminalPaneProps = {
   runtimeConnection?: () => Promise<RuntimeConnection>
   sessionId: string | null
   /** Builds the frame around the title strip, the menu and the body. */
-  frame: (parts: { title: ReactNode; actions: ReactNode; body: ReactNode }) => ReactNode
+  frame: (parts: {
+    title: ReactNode
+    titleWhenMaximized?: ReactNode
+    actions: ReactNode
+    body: ReactNode
+  }) => ReactNode
   /** A web link clicked in a terminal's output. */
   openLink: (url: string) => void
 }
@@ -253,100 +258,110 @@ export function TerminalPane(props: TerminalPaneProps): ReactElement {
     </Button>
   )
 
+  const label = tabs.length <= 1 ? (
+    <span className="min-w-0 truncate" title={activeTab?.row?.title}>
+      {titled(name, activeTab?.row ?? null)}
+    </span>
+  ) : null
+  const strip = tabs.length <= 1 ? null : (
+    <div
+      role="tablist"
+      aria-label={t('terminal.tabs')}
+      data-testid="pane-terminal-tabs"
+      className="flex min-w-0 flex-1 items-center gap-0.5 overflow-hidden"
+    >
+      {tabs.map((tab, index) => {
+        const isActive = index === activeIndex
+        const label = labels[index] ?? ''
+        const kind = tab.row ? tab.row.state.kind : 'pending'
+        return (
+          // The whole pill is the tab: a press on its edge activates it too.
+          <div
+            key={tab.key}
+            onClick={event => {
+              if (event.target === event.currentTarget) activate(tab.key)
+            }}
+            className={cn(
+              'group flex h-7 min-w-0 cursor-default items-stretch rounded-md text-[12px]',
+              isActive ? 'bg-muted' : 'hover:bg-muted/50',
+            )}
+          >
+            <button
+              type="button"
+              role="tab"
+              aria-selected={isActive}
+              data-testid={`pane-terminal-tab:${tab.key}`}
+              data-state={kind}
+              title={tab.row ? tab.row.title : t('terminal.placeholder.pending')}
+              onClick={() => activate(tab.key)}
+              className={cn(
+                'flex min-w-0 max-w-[14rem] items-center gap-1 pe-1 ps-1.5 outline-none',
+                isActive ? 'font-medium text-foreground' : 'text-muted-foreground',
+                kind === 'exited' || kind === 'failed' ? 'line-through' : null,
+                kind === 'pending' ? 'italic' : null,
+              )}
+            >
+              <span className="min-w-0 truncate">{titled(label, tab.row)}</span>
+            </button>
+            <button
+              type="button"
+              aria-label={t('terminal.closeTerminal', { title: label })}
+              data-testid={`pane-terminal-close:${tab.key}`}
+              onClick={() => closeTab(tab)}
+              className="me-0.5 flex size-4 shrink-0 items-center justify-center self-center rounded text-muted-foreground hover:text-foreground"
+            >
+              <XIcon className="size-3" />
+            </button>
+          </div>
+        )
+      })}
+    </div>
+  )
+  const newTerminal = shells.length > 1 ? (
+    <DropdownMenuPrimitive.Root>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <DropdownMenuPrimitive.Trigger asChild>{newButton}</DropdownMenuPrimitive.Trigger>
+        </TooltipTrigger>
+        <TooltipContent side="bottom">{t('terminal.new')}</TooltipContent>
+      </Tooltip>
+      <DropdownMenuPrimitive.Portal>
+        <DropdownMenuPrimitive.Content
+          align="start"
+          sideOffset={6}
+          data-testid="pane-terminal-shell-menu"
+          className={MENU_CONTENT_CLASS}
+        >
+          {shells.map(shell => (
+            <DropdownMenuPrimitive.Item
+              key={shell.id}
+              data-testid={`pane-terminal-shell:${shell.id}`}
+              className={MENU_ITEM_CLASS}
+              onSelect={() => void createTerminal(shell.id)}
+            >
+              <span className="flex-1">{shellLabel(shell.id, shell.version)}</span>
+            </DropdownMenuPrimitive.Item>
+          ))}
+        </DropdownMenuPrimitive.Content>
+      </DropdownMenuPrimitive.Portal>
+    </DropdownMenuPrimitive.Root>
+  ) : (
+    <Tooltip>
+      <TooltipTrigger asChild>{newButton}</TooltipTrigger>
+      <TooltipContent side="bottom">{t('terminal.new')}</TooltipContent>
+    </Tooltip>
+  )
+  // A pane that covers the chat keeps its own controls, not its name.
+  const controls = (
+    <>
+      {strip}
+      {newTerminal}
+    </>
+  )
   const title = (
     <>
-      {tabs.length <= 1 ? (
-        <span className="min-w-0 truncate" title={activeTab?.row?.title}>
-          {titled(name, activeTab?.row ?? null)}
-        </span>
-      ) : (
-        <div
-          role="tablist"
-          aria-label={t('terminal.tabs')}
-          data-testid="pane-terminal-tabs"
-          className="flex min-w-0 flex-1 items-center gap-0.5 overflow-hidden"
-        >
-          {tabs.map((tab, index) => {
-            const isActive = index === activeIndex
-            const label = labels[index] ?? ''
-            const kind = tab.row ? tab.row.state.kind : 'pending'
-            return (
-              // The whole pill is the tab: a press on its edge activates it too.
-              <div
-                key={tab.key}
-                onClick={event => {
-                  if (event.target === event.currentTarget) activate(tab.key)
-                }}
-                className={cn(
-                  'group flex h-7 min-w-0 cursor-default items-stretch rounded-md text-[12px]',
-                  isActive ? 'bg-muted' : 'hover:bg-muted/50',
-                )}
-              >
-                <button
-                  type="button"
-                  role="tab"
-                  aria-selected={isActive}
-                  data-testid={`pane-terminal-tab:${tab.key}`}
-                  data-state={kind}
-                  title={tab.row ? tab.row.title : t('terminal.placeholder.pending')}
-                  onClick={() => activate(tab.key)}
-                  className={cn(
-                    'flex min-w-0 max-w-[14rem] items-center gap-1 pe-1 ps-1.5 outline-none',
-                    isActive ? 'font-medium text-foreground' : 'text-muted-foreground',
-                    kind === 'exited' || kind === 'failed' ? 'line-through' : null,
-                    kind === 'pending' ? 'italic' : null,
-                  )}
-                >
-                  <span className="min-w-0 truncate">{titled(label, tab.row)}</span>
-                </button>
-                <button
-                  type="button"
-                  aria-label={t('terminal.closeTerminal', { title: label })}
-                  data-testid={`pane-terminal-close:${tab.key}`}
-                  onClick={() => closeTab(tab)}
-                  className="me-0.5 flex size-4 shrink-0 items-center justify-center self-center rounded text-muted-foreground hover:text-foreground"
-                >
-                  <XIcon className="size-3" />
-                </button>
-              </div>
-            )
-          })}
-        </div>
-      )}
-      {shells.length > 1 ? (
-        <DropdownMenuPrimitive.Root>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <DropdownMenuPrimitive.Trigger asChild>{newButton}</DropdownMenuPrimitive.Trigger>
-            </TooltipTrigger>
-            <TooltipContent side="bottom">{t('terminal.new')}</TooltipContent>
-          </Tooltip>
-          <DropdownMenuPrimitive.Portal>
-            <DropdownMenuPrimitive.Content
-              align="start"
-              sideOffset={6}
-              data-testid="pane-terminal-shell-menu"
-              className={MENU_CONTENT_CLASS}
-            >
-              {shells.map(shell => (
-                <DropdownMenuPrimitive.Item
-                  key={shell.id}
-                  data-testid={`pane-terminal-shell:${shell.id}`}
-                  className={MENU_ITEM_CLASS}
-                  onSelect={() => void createTerminal(shell.id)}
-                >
-                  <span className="flex-1">{shellLabel(shell.id, shell.version)}</span>
-                </DropdownMenuPrimitive.Item>
-              ))}
-            </DropdownMenuPrimitive.Content>
-          </DropdownMenuPrimitive.Portal>
-        </DropdownMenuPrimitive.Root>
-      ) : (
-        <Tooltip>
-          <TooltipTrigger asChild>{newButton}</TooltipTrigger>
-          <TooltipContent side="bottom">{t('terminal.new')}</TooltipContent>
-        </Tooltip>
-      )}
+      {label}
+      {controls}
     </>
   )
 
@@ -547,7 +562,7 @@ export function TerminalPane(props: TerminalPaneProps): ReactElement {
     </div>
   )
 
-  return <>{props.frame({ title, actions, body })}</>
+  return <>{props.frame({ title, titleWhenMaximized: controls, actions, body })}</>
 }
 
 function Notice({ label, testId }: { label: string; testId: string }): ReactElement {

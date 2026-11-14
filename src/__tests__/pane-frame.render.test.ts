@@ -2,8 +2,9 @@
 /**
  * The pane frame (F-9): renders outside any TooltipProvider, carries the
  * title slot, Expand / Restore and Close, and reports presses as focus;
- * every pane, maximized, floats its buttons in place of the header; beside
- * the chat, its header flashes on an open signal.
+ * every pane, maximized, drops the header and keeps its buttons in the
+ * corner — over the body, or beside the title content the pane keeps there;
+ * beside the chat, its header flashes on an open signal.
  */
 import { createElement } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -72,6 +73,32 @@ describe('PaneFrame', () => {
     expect(props.onToggleMaximized).toHaveBeenCalledTimes(1)
     fireEvent.click(screen.getByTestId('pane-diff-close'))
     expect(props.onClose).toHaveBeenCalledTimes(1)
+  })
+
+  it('maximized, a pane that keeps title content shows it instead of its name', () => {
+    const kept = createElement('button', { 'data-testid': 'kept-tab', type: 'button' }, 'dock-inner.ts')
+    renderFrame({ maximized: true, titleWhenMaximized: kept })
+    expect(screen.queryByTestId('pane-diff-header')).toBeNull()
+    expect(screen.queryByTestId('title-slot'), 'the name is not drawn').toBeNull()
+    const title = screen.getByTestId('pane-diff-title')
+    expect(title.querySelector('[data-testid="kept-tab"]')).toBeTruthy()
+    const bar = screen.getByTestId('pane-diff-float-bar')
+    expect(bar.className, 'the corner cluster sits in the row, not over it').not.toContain('absolute')
+    expect([...bar.querySelectorAll('button')].map(b => b.getAttribute('data-testid'))).toEqual([
+      'kept-tab',
+      'pane-diff-expand',
+      'pane-diff-close',
+    ])
+    const buttons = bar.querySelector('[data-testid="pane-diff-expand"]')!.parentElement!
+    expect(buttons.className, 'the buttons stay hidden until hovered').toContain('opacity-0')
+    expect(buttons.className).toContain('hover:opacity-100')
+    expect(buttons.className).toContain('focus-within:opacity-100')
+  })
+
+  it('beside the chat, title content kept for the maximized pane is not drawn', () => {
+    renderFrame({ titleWhenMaximized: createElement('span', { 'data-testid': 'kept-tab' }, 'tab') })
+    expect(screen.getByTestId('title-slot')).toBeTruthy()
+    expect(screen.queryByTestId('kept-tab')).toBeNull()
   })
 
   it('Expand and Restore keep the same button, so it keeps keyboard focus', () => {

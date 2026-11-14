@@ -26,7 +26,12 @@ export type SideChatPaneProps = {
   /** Closes a side chat: archives it. Offered only while it neither starts,
    *  works nor waits for the person, which the runtime refuses. */
   onArchive: (sessionId: string) => void
-  frame: (parts: { title: ReactNode; actions: ReactNode; body: ReactNode }) => ReactNode
+  frame: (parts: {
+    title: ReactNode
+    titleWhenMaximized?: ReactNode
+    actions: ReactNode
+    body: ReactNode
+  }) => ReactNode
   /** The selected side chat's mounted conversation. */
   children?: ReactNode
 }
@@ -80,13 +85,12 @@ export function SideChatPane({
     tabs[next]?.focus()
   }
 
-  const title = (
-    <TooltipProvider>
-      {items.length === 0 ? (
-        <span data-testid="side-chat-pane-name" className="min-w-0 truncate ps-1">
-          {t('topbar.pane.sidechat')}
-        </span>
-      ) : (
+  const label = (
+    <span data-testid="side-chat-pane-name" className="min-w-0 truncate ps-1">
+      {t('topbar.pane.sidechat')}
+    </span>
+  )
+  const strip = items.length === 0 ? null : (
         <div
           ref={stripRef}
           role="tablist"
@@ -165,7 +169,11 @@ export function SideChatPane({
             )
           })}
         </div>
-      )}
+  )
+  // A pane that covers the chat keeps its own controls, not its name.
+  const controls = (
+    <>
+      {strip}
       <Tooltip>
         <TooltipTrigger asChild>
           <Button
@@ -183,6 +191,12 @@ export function SideChatPane({
         </TooltipTrigger>
         <TooltipContent side="bottom">{t('sideChat.add')}</TooltipContent>
       </Tooltip>
+    </>
+  )
+  const title = (
+    <TooltipProvider>
+      {items.length === 0 ? label : null}
+      {controls}
     </TooltipProvider>
   )
   const actions = shown ? (
@@ -236,5 +250,5 @@ export function SideChatPane({
       )}
     </div>
   )
-  return <>{frame({ title, actions, body })}</>
+  return <>{frame({ title, titleWhenMaximized: controls, actions, body })}</>
 }

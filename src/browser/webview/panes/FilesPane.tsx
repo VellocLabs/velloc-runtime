@@ -73,7 +73,12 @@ export type FilesPaneProps = {
   /** The tree's roots: the session's folders. `null` while the session has not reported them. */
   roots?: readonly string[] | null
   /** Builds the frame around the strip, the header actions and the bodies. */
-  frame: (parts: { title: ReactNode; actions?: ReactNode; body: ReactNode }) => ReactNode
+  frame: (parts: {
+    title: ReactNode
+    titleWhenMaximized?: ReactNode
+    actions?: ReactNode
+    body: ReactNode
+  }) => ReactNode
 }
 
 export function FilesPane(props: FilesPaneProps): ReactElement {
@@ -275,13 +280,7 @@ export function FilesPane(props: FilesPaneProps): ReactElement {
       />
     )
 
-  const title = state.tabs.length === 0 ? (
-    <>
-      <span data-testid="files-pane-browse-title" className="min-w-0 truncate">
-        {t('filesBrowse.title')}
-      </span>
-    </>
-  ) : (
+  const openTabs = (
     <div role="tablist" data-testid="files-pane-tabs" className="flex min-w-0 flex-1 items-center gap-0.5 overflow-hidden">
       {state.tabs.map(path => {
         const active = path === state.active
@@ -323,6 +322,14 @@ export function FilesPane(props: FilesPaneProps): ReactElement {
         )
       })}
     </div>
+  )
+  // The strip is the pane's own control: it stays when the pane covers the chat.
+  const title = state.tabs.length === 0 ? (
+    <span data-testid="files-pane-browse-title" className="min-w-0 truncate">
+      {t('filesBrowse.title')}
+    </span>
+  ) : (
+    openTabs
   )
 
   // Header while a file is open, start to end after the strip: Go to file,
@@ -421,7 +428,7 @@ export function FilesPane(props: FilesPaneProps): ReactElement {
 
   return (
     <FilesRowMenuContext.Provider value={rowMenu}>
-      {props.frame({ title, actions, body })}
+      {props.frame({ title, titleWhenMaximized: state.tabs.length === 0 ? undefined : openTabs, actions, body })}
     </FilesRowMenuContext.Provider>
   )
 }
