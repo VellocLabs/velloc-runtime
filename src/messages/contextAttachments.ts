@@ -29,6 +29,7 @@ import { resolveToolByName } from '../toolkit/toolContract'
 import { type PermissionDecider } from '../toolkit/permissionVerdict'
 import { type ToolCallContext } from '../toolkit/toolCallContext'
 import * as sessionTranscriptModule from '../sessions/transcriptWriter'
+import { createPostCompactTurnBoardMessage } from '../sessions/turnBoardRecovery'
 import {
   discoverRelevantSkills,
   getModelInvocableCommands,
@@ -1215,6 +1216,8 @@ export async function collectPostCompactPlanRows(
   }
   const contents = await createPostCompactPlanReferenceMessage(context)
   if (contents) rows.push(contents)
+  const steps = createPostCompactTurnBoardMessage(context)
+  if (steps) rows.push(steps)
   return rows
 }
 
