@@ -909,6 +909,27 @@ describe('AssistantMessageBody — a lone tool call reads as a one-line tool gro
     expect(card.getAttribute('data-state')).toBe('closed')
   })
 
+  it('reads a shell handed to the background in the progressive', async () => {
+    const { container } = render(
+      createElement(
+        lone({
+          args: {
+            command: 'npm run dev',
+            description: 'Start the dev server',
+            run_in_background: true,
+          },
+          result: { background_shell_id: 'b1a2b3c4' },
+        }),
+      ),
+    )
+    await waitFor(() => {
+      expect(container.querySelector('[data-slot="tool-call-line-title"]')).not.toBeNull()
+    })
+    expect(
+      container.querySelector('[data-slot="tool-call-line-title"]')!.textContent,
+    ).toBe('Starting the dev server')
+  })
+
   it('reads the call description as the line and opens straight onto the detail', async () => {
     const { container } = render(
       createElement(

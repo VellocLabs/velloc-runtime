@@ -16,6 +16,11 @@ import {
   isFailedToolCall,
 } from "../../utils/toolGroupSummary";
 import { toolCallDescription } from "../../utils/toolLabels";
+import { tenseForCallStatus } from "../../utils/descriptionTense";
+import {
+  extractBackgroundShellResultPreview,
+  isBackgroundShellToolName,
+} from "../../utils/toolCallDetails";
 import { ToolCardOpenDefault } from "./tool-card-open-default";
 
 type ToolCallLineSnapshot = {
@@ -72,6 +77,7 @@ export const ToolCallLine: FC<ToolCallLineProps> = ({
             toolName?: string;
             toolCallId?: string;
             args?: unknown;
+            result?: unknown;
             isError?: boolean;
             status?: { type?: string; reason?: string };
           }
@@ -79,6 +85,10 @@ export const ToolCallLine: FC<ToolCallLineProps> = ({
       const statusType = part?.status?.type;
       const cancelled =
         statusType === "incomplete" && part?.status?.reason === "cancelled";
+      const runsInBackground =
+        part?.toolName !== undefined &&
+        isBackgroundShellToolName(part.toolName) &&
+        extractBackgroundShellResultPreview(part.result)?.status === "running";
       return {
         toolName: part?.toolName,
         toolCallId: part?.toolCallId,
@@ -86,11 +96,7 @@ export const ToolCallLine: FC<ToolCallLineProps> = ({
         description: toolCallDescription(
           part?.toolName,
           part?.args,
-          statusType === "running"
-            ? "progressive"
-            : statusType === "complete" && part?.isError !== true
-              ? "past"
-              : undefined,
+          tenseForCallStatus(statusType, part?.isError, runsInBackground),
         ),
         cancelled,
         failed: isFailedToolCall(

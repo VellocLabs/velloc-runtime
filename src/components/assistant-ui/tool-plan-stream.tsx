@@ -58,6 +58,7 @@ import {
   ToolFallbackError,
 } from "./tool-fallback";
 import { useToolLabelArgs } from "./use-tool-label-args";
+import { tenseForCallStatus } from "../../utils/descriptionTense";
 import {
   extractBackgroundShellResultPreview,
   isBackgroundShellToolName,
@@ -1216,12 +1217,11 @@ function ToolCallPlanRow({ row, isLast, isNew }: ToolCallPlanRowProps) {
           ? () => openWorkspaceDiff(workspaceDiffPath)
           : undefined;
 
-  const descriptionTense =
-    planStatus === "in_progress"
-      ? "progressive"
-      : planStatus === "completed"
-        ? "past"
-        : undefined;
+  const descriptionTense = tenseForCallStatus(
+    statusType,
+    row.isError,
+    isShellRunningHandoff,
+  );
   const labelText = isRunJs
     ? formatSuperEditToolLabel(labelArgs, descriptionTense)
     : isSkill

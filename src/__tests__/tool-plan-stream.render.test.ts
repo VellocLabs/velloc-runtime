@@ -426,6 +426,37 @@ describe('ToolPlanStream background-task jump affordance', () => {
     expect(opened).toEqual(['b1a2b3c4'])
   })
 
+  it('a described background shell row reads in the progressive', () => {
+    const message: ThreadMessageLike = {
+      ...BACKGROUND_SHELL_WITH_RUNNING_SIBLING,
+      content: [
+        {
+          type: 'tool-call',
+          toolCallId: 'sh',
+          toolName: 'PowerShell',
+          args: {
+            command: 'npm run dev',
+            description: 'Start the dev server',
+            run_in_background: true,
+          },
+          result: { background_shell_id: 'b1a2b3c4' },
+        },
+        { type: 'tool-call', toolCallId: 'r', toolName: 'Read', args: { file_path: '/repo/a.ts' } },
+      ],
+    }
+    const Harness = makeHarnessWithDrawer(
+      message,
+      { startIndex: 0, endIndex: 1, callTotal: 2 },
+      true,
+      () => {},
+    )
+    render(createElement(Harness))
+    openPlanCards()
+    const root = document.querySelector('[data-slot="tool-plan-stream-root"]')!
+    expect(root.textContent).toContain('PowerShell: Starting the dev server')
+    expect(root.textContent).not.toContain('Started the dev server')
+  })
+
   it('a background Agent row surfaces the ">>" jump and keeps the launch details out of the collapsed row', () => {
     // A background sub-agent launched among ≥2 tool calls renders here (not as a
     // standalone ToolFallback card). Unified design: the row shows the ">>" jump

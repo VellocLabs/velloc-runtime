@@ -4,8 +4,8 @@
 // imperative ("Find the config") and returns it in the asked tense
 // ("Finding the config" / "Found the config"). Only verbs this module knows
 // are changed; a description that does not open with one is returned as it
-// was, so text in another language, or one that opens with a noun, is never
-// altered.
+// was, so text in another language is never altered. A known verb that opens
+// the text is read as a verb, except directly before "of" ("List of files").
 
 export type DescriptionTense = "progressive" | "past";
 
@@ -127,9 +127,12 @@ function inflectWord(word: string, tense: DescriptionTense): string | null {
 // After "and" or a comma one of these may be a noun, so the text is left as
 // written.
 const NOUN_LIKE = words(
-  "build change check diff export import index link list log mark merge " +
-    "patch query queue record release report review sample search sort " +
-    "stash test trace track update upgrade view watch",
+  "build call change check clean clone close copy count deploy diff display " +
+    "download dump edit export filter fix format import index install link " +
+    "lint list load log map mark merge monitor open patch pin ping plan poll " +
+    "print probe pull query queue record release report review sample scan " +
+    "search sort start stash store stub switch tag test trace track update " +
+    "upgrade upload view watch zip",
 );
 
 // A word that may open a later clause: after ";", ",", "then" or "and".
@@ -144,7 +147,7 @@ export function inflectDescription(
   text: string,
   tense: DescriptionTense,
 ): string {
-  const opening = /^(\s*)([A-Za-z]+)\b/.exec(text);
+  const opening = /^(\s*)([A-Za-z]+)\b(?!\s+of\b)/i.exec(text);
   if (!opening) return text;
   const lead = inflectWord(opening[2]!, tense);
   if (lead === null) return text;
@@ -166,14 +169,16 @@ export function inflectDescription(
 
 /**
  * The tense a call's description is shown in for its status: progressive
- * while it runs, past once it completed cleanly, and none (the description
- * as written) when it failed, was cancelled, or has not started.
+ * while it runs or keeps running in the background, past once it completed
+ * cleanly, and none (the description as written) when it failed, was
+ * cancelled, or has not started.
  */
 export function tenseForCallStatus(
   statusType: string | undefined,
   isError: boolean | undefined,
+  runsInBackground = false,
 ): DescriptionTense | undefined {
-  if (statusType === "running") return "progressive";
+  if (statusType === "running" || runsInBackground) return "progressive";
   if (statusType === "complete" && isError !== true) return "past";
   return undefined;
 }

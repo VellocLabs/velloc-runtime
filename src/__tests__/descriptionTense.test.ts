@@ -91,6 +91,24 @@ describe('inflectDescription', () => {
     )
   })
 
+  it('keeps the text as written for verbs that commonly name a thing after "and" or a comma', () => {
+    for (const text of [
+      'Run lint and format checks',
+      'Check the CI config, deploy targets and secrets',
+      'Inspect build and install scripts',
+      'Review the branch and pull requests',
+    ]) {
+      expect(inflectDescription(text, 'past')).toBe(text)
+    }
+  })
+
+  it('keeps an opening word before "of" as written', () => {
+    for (const text of ['List of changed files', 'Index of the docs']) {
+      expect(inflectDescription(text, 'past')).toBe(text)
+      expect(inflectDescription(text, 'progressive')).toBe(text)
+    }
+  })
+
   it('keeps the case of the word and any leading space', () => {
     expect(inflectDescription('run the tests', 'past')).toBe('ran the tests')
     expect(inflectDescription('  Run the tests', 'past')).toBe('  Ran the tests')
@@ -119,6 +137,11 @@ describe('inflectDescription', () => {
     expect(tenseForCallStatus('complete', true)).toBeUndefined()
     expect(tenseForCallStatus('incomplete', undefined)).toBeUndefined()
     expect(tenseForCallStatus(undefined, undefined)).toBeUndefined()
+  })
+
+  it('reads a call still running in the background in the progressive', () => {
+    expect(tenseForCallStatus('complete', undefined, true)).toBe('progressive')
+    expect(tenseForCallStatus('complete', undefined, false)).toBe('past')
   })
 
   it('leaves the text as written when no tense is given', () => {

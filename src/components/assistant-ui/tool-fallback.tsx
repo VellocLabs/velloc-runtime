@@ -23,7 +23,10 @@ import { BackgroundTaskJumpButton } from "@/components/assistant-ui/background-t
 import { TaskRunStats } from "@/browser/webview/TaskRunStats";
 import { PanelJumpChevron } from "@/components/assistant-ui/panel-jump-chevron";
 import { ToolCardOpenDefault } from "@/components/assistant-ui/tool-card-open-default";
-import { tenseForCallStatus } from "@/utils/descriptionTense";
+import {
+  tenseForCallStatus,
+  type DescriptionTense,
+} from "@/utils/descriptionTense";
 import { useToolCallDetailContext } from "@/components/assistant-ui/tool-call-detail-context";
 import { toolLineRange } from "@/browser/webview/assistantUiAdapter";
 import { useToolLineRanges } from "@/components/assistant-ui/tool-line-range-context";
@@ -175,6 +178,7 @@ function ToolFallbackTrigger({
   args,
   status,
   isError,
+  descriptionTense,
   labelOverride,
   onTitleClick,
   trailingAction,
@@ -185,6 +189,8 @@ function ToolFallbackTrigger({
   args?: unknown;
   status?: ToolCallMessagePartStatus;
   isError?: boolean;
+  /** Tense of the call's description in the computed label. */
+  descriptionTense?: DescriptionTense;
   /** Replaces the computed label (e.g. Edit's "Edited foo.ts +N -M"). */
   labelOverride?: string;
   /** When set, the label becomes a link that runs this instead of toggling the
@@ -208,8 +214,7 @@ function ToolFallbackTrigger({
 
   const Icon = statusIconMap[statusType];
   const labelText =
-    labelOverride ??
-    formatToolLabel(toolName, args, tenseForCallStatus(statusType, isError));
+    labelOverride ?? formatToolLabel(toolName, args, descriptionTense);
 
   return (
     <CollapsibleTrigger
@@ -856,6 +861,11 @@ const ToolFallbackImpl: ToolCallMessagePartComponent = ({
   const displayStatus: ToolCallMessagePartStatus | undefined = pinComplete
     ? { type: "complete" }
     : status;
+  const descriptionTense = tenseForCallStatus(
+    status?.type,
+    isError,
+    isShellRunningHandoff,
+  );
   // SendMessage: the collapsed row reads "SendMessage: <to>"; the expand renders only the
   // message text, loaded from the sidecar. Declared ABOVE `jumpTrailingAction`, which
   // reads it: a TDZ ReferenceError here would crash every tool card.
@@ -979,6 +989,7 @@ const ToolFallbackImpl: ToolCallMessagePartComponent = ({
         args={labelArgs}
         status={displayStatus}
         isError={isError}
+        descriptionTense={descriptionTense}
         labelOverride={
           editLabel ??
           readLabel ??
@@ -987,13 +998,13 @@ const ToolFallbackImpl: ToolCallMessagePartComponent = ({
             ? // labelArgs, not displayArgs: SuperEdit disables the card-local
               // lazy fetch, so displayArgs is just the (possibly stripped)
               // transcript args — the recovered label must win here.
-              formatSuperEditToolLabel(
-                labelArgs,
-                tenseForCallStatus(status?.type, isError),
-              )
+              formatSuperEditToolLabel(labelArgs, descriptionTense)
             : isShellRunningHandoff
-              ? // The command keeps running in the background.
-                formatBackgroundShellToolLabel(toolName, labelArgs, "progressive")
+              ? formatBackgroundShellToolLabel(
+                  toolName,
+                  labelArgs,
+                  descriptionTense,
+                )
               : undefined)
         }
         onTitleClick={
