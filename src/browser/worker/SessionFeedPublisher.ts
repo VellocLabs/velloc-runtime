@@ -117,6 +117,15 @@ export interface SessionFeedHost {
   isCliBusy?(sessionId: string): boolean
 }
 
+/** A shell row's display description: the model's `description` arg, or the
+ *  command when it gave none (`NexusTaskSummaryRow.description` is required). */
+export function shellRowDescription(
+  params: { description?: string } | undefined,
+  command: string,
+): string {
+  return params?.description?.trim() || command
+}
+
 export class SessionFeedPublisher {
   // Last status snapshot fanned out per session — deltas are computed against
   // it. A session with no entry (never emitted, forgotten, or `announceStatus`)
@@ -465,8 +474,8 @@ export class SessionFeedPublisher {
       })
     }
     // local_bash tasks (background shells) — running first, then a finished tail.
-    // Same shape; `command` rides the row so the drawer renders it (mono) in
-    // place of an agent description (see BackgroundTasksDrawer kind-switch).
+    // `description` is the model's own account of the command (the command
+    // when it gave none); `command` rides the row for the fallback and detail.
     // A SuperShell step carries its invocation's id, so the drawer lists it
     // under that invocation rather than under Shell.
     for (const run of this.registry.liveByType('local_bash')) {
@@ -475,7 +484,7 @@ export class SessionFeedPublisher {
         spawnerSessionId: run.spawnerSessionId,
         status: 'running',
         type: 'local_bash',
-        description: run.command,
+        description: shellRowDescription(run.params, run.command),
         command: run.command,
         ...(run.superShellTaskId ? { superShellTaskId: run.superShellTaskId } : {}),
         updates: run.polls,
@@ -498,7 +507,7 @@ export class SessionFeedPublisher {
         spawnerSessionId: rec.spawnerSessionId,
         status: rec.status,
         type: 'local_bash',
-        description: rec.command,
+        description: shellRowDescription(rec.params, rec.command),
         command: rec.command,
         ...(rec.superShellTaskId ? { superShellTaskId: rec.superShellTaskId } : {}),
         startedAt: rec.startedAt,
@@ -526,10 +535,9 @@ export class SessionFeedPublisher {
           spawnerSessionId: ownerSessionId,
           status: rec.status,
           type: 'local_bash',
-          // `command` is the drawer's preferred label; `description` is the
-          // required-string fallback. A real backgrounded shell always kept its
-          // command in the transcript, so the '' only guards a pathological row.
-          description: rec.command ?? '',
+          // The model's description titles the row, the command is the
+          // fallback; '' only guards a row that kept neither.
+          description: rec.description ?? rec.command ?? '',
           command: rec.command,
           startedAt: rec.startedAt,
           finishedAt: rec.finishedAt,

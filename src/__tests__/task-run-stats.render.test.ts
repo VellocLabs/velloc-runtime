@@ -216,7 +216,7 @@ describe('Background Tasks drawer shows a sub-agent run usage', () => {
     expect(pill?.textContent).toBe('general-purpose')
     const metaLine = header.querySelector<HTMLElement>('[data-testid="task-meta-line"]')!
     expect(metaLine.querySelector('[data-testid="task-meta-status"]')!.textContent).toBe('running')
-    expect(metaLine.querySelector('[data-testid="task-meta-elapsed"]')).not.toBeNull()
+    expect(metaLine.querySelector('[data-testid="task-meta-started"]')).not.toBeNull()
     expect(metaLine.querySelector('[data-testid="task-run-stats"]')).toBeNull()
     expect(header.querySelector('[data-testid="task-run-stats"]')).toBeNull()
     expect(badges.closest('[data-testid="background-tasks-detail-info"]')).not.toBeNull()

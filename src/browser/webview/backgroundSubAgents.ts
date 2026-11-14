@@ -296,6 +296,21 @@ export function taskRowLabelKey(
     : 'backgroundTasks.fastCall.generic'
 }
 
+/**
+ * A shell row's title: the model's own `description` when it gave one,
+ * otherwise the command line. `isCommand` marks the fallback so the caller can
+ * set it in a monospace face; the command itself stays in the detail view.
+ */
+export function shellTaskTitle(
+  row: Pick<NexusTaskSummaryRow, 'description' | 'command'>,
+): { text: string; isCommand: boolean } {
+  const description = row.description.trim()
+  if (description && description !== row.command?.trim()) {
+    return { text: description, isCommand: false }
+  }
+  return { text: row.command ?? row.description, isCommand: true }
+}
+
 /** A task row's glyph by kind (absent `type` ⇒ `local_agent`): shells share
  *  the terminal, a subagent is the person. */
 export const TASK_KIND_ICON: Record<NexusTaskKind, LucideIcon> = {

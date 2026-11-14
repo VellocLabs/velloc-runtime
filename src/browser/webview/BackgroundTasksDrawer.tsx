@@ -45,6 +45,7 @@ import {
   SUB_AGENT_STATUS_LABEL_KEY,
   groupSubAgentsByCategory,
   isReviewTaskRow,
+  shellTaskTitle,
   taskRowLabelKey,
   type SubAgentCategory,
 } from './backgroundSubAgents'
@@ -1038,9 +1039,9 @@ export function BackgroundTasksDrawer({
                           />
                         )
                       }
-                      // A background shell (local_bash) shows its COMMAND (mono,
-                      // terminal glyph) in place of the agent description; agent
-                      // rows are unchanged. Absent type ⇒ local_agent. Forks /
+                      // A background shell (local_bash) is titled by the model's
+                      // description, else its command (mono); the command itself
+                      // is in the detail. Absent type ⇒ local_agent. Forks /
                       // fast calls / routines get their own kind glyph.
                       const kind = item.type ?? 'local_agent'
                       const isBash = kind === 'local_bash'
@@ -1059,8 +1060,9 @@ export function BackgroundTasksDrawer({
                                     ? PuzzleIcon
                                     : null
                       const labelKey = taskRowLabelKey(item)
-                      const primaryLabel = isBash
-                        ? item.command ?? item.description
+                      const shellTitle = isBash ? shellTaskTitle(item) : null
+                      const primaryLabel = shellTitle
+                        ? shellTitle.text
                         : labelKey
                           ? t(labelKey)
                           : item.description
@@ -1090,7 +1092,7 @@ export function BackgroundTasksDrawer({
                                 // description overflow the <li> (hard-clipped by the
                                 // parent scroll container) instead of truncating.
                                 'flex min-w-0 items-center gap-1.5 truncate font-medium text-foreground/90',
-                                isBash && 'font-mono',
+                                shellTitle?.isCommand && 'font-mono',
                               )}
                             >
                               {KindGlyph ? (

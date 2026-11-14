@@ -7,8 +7,10 @@ import {
   groupSubAgentsByCategory,
   subAgentsEqual,
   summarizeSubAgents,
+  shellTaskTitle,
   taskRowLabelKey,
 } from '../browser/webview/backgroundSubAgents'
+import { shellRowDescription } from '../browser/worker/SessionFeedPublisher'
 
 /** Session ids in a named category, for order-preserving assertions. */
 function idsInCategory(
@@ -221,5 +223,22 @@ describe('sessionTaskCardRows', () => {
 
   it('nothing for no rows', () => {
     expect(sessionTaskCardRows(undefined)).toEqual({ running: [], finished: 0 })
+  })
+})
+
+describe('shellTaskTitle', () => {
+  it('prefers the description, falls back to the command', () => {
+    expect(shellTaskTitle({ description: 'Run tests', command: 'npm test' })).toEqual({ text: 'Run tests', isCommand: false })
+    expect(shellTaskTitle({ description: 'npm test', command: 'npm test' })).toEqual({ text: 'npm test', isCommand: true })
+    expect(shellTaskTitle({ description: '  ', command: 'npm test' })).toEqual({ text: 'npm test', isCommand: true })
+    expect(shellTaskTitle({ description: 'Run tests' })).toEqual({ text: 'Run tests', isCommand: false })
+  })
+})
+
+describe('shellRowDescription', () => {
+  it('uses the model description when set, else the command', () => {
+    expect(shellRowDescription({ description: ' Run tests ' }, 'npm test')).toBe('Run tests')
+    expect(shellRowDescription({ description: '' }, 'npm test')).toBe('npm test')
+    expect(shellRowDescription(undefined, 'npm test')).toBe('npm test')
   })
 })

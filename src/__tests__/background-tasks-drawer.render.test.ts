@@ -252,7 +252,7 @@ describe('BackgroundTasksDrawer row meta', () => {
 
   afterEach(() => vi.useRealTimers())
 
-  it('a running row shows its elapsed time and last update; a finished row its start and span, as icon items with no status word', () => {
+  it('a running row shows its start and last update as 24-hour clock times; a finished row its start and span, as icon items with no status word', () => {
     vi.useFakeTimers({ now: NOON, toFake: ['Date'] })
     const rows: NexusTaskSummaryRow[] = [
       { ...runningRow(), startedAt: NOON - 5_000, lastActivityAt: NOON - 1_000 }, // running → Running section (expanded)
@@ -281,10 +281,12 @@ describe('BackgroundTasksDrawer row meta', () => {
     const finished = rowButtons.find(b => b.title.includes('b-done'))!
     const item = (row: HTMLElement, id: string) =>
       row.querySelector<HTMLElement>(`[data-testid="${id}"]`)
-    // Running: elapsed + last update; no start stamp, no span.
-    expect(item(running, 'task-meta-elapsed')?.textContent).toBe('5s')
-    expect(item(running, 'task-meta-updated')?.textContent).toBe('1s ago')
-    expect(item(running, 'task-meta-started')).toBeNull()
+    // Running: start + last update as clock times, never "... ago"; no span.
+    expect(item(running, 'task-meta-started')?.textContent).toBe('11:59')
+    expect(item(running, 'task-meta-updated')?.textContent).toBe('11:59:59')
+    expect(item(running, 'task-meta-updated')?.getAttribute('title')).toBe('Last update at 11:59:59')
+    expect(running.textContent).not.toMatch(/ago/)
+    expect(item(running, 'task-meta-elapsed')).toBeNull()
     expect(item(running, 'task-meta-took')).toBeNull()
     // Finished: a 24-hour start stamp and the span it took.
     expect(item(finished, 'task-meta-started')?.textContent).toBe('11:57')
@@ -298,28 +300,54 @@ describe('BackgroundTasksDrawer row meta', () => {
     expect(metaLine.textContent!.replace(srOnly!.textContent!, '')).not.toMatch(/failed|error|done/i)
   })
 
-  it('a start on another day carries its date', () => {
+  it('a start on another day carries its date; seconds are optional', () => {
     expect(formatStartStamp(NOON - 24 * 3_600_000, 'en', NOON)).toBe('Jun 29 12:00')
     expect(formatStartStamp(NOON - 60_000, 'en', NOON)).toBe('11:59')
+    expect(formatStartStamp(NOON + 3 * 3_600_000 + 5_000, 'en', NOON, true)).toBe('15:00:05')
   })
 
-  it('the detail header keeps a running task\'s elapsed time ticking', async () => {
-    vi.useFakeTimers({ now: NOW, toFake: ['Date', 'setInterval', 'clearInterval'] })
+  it('the detail header shows a running task\'s start as a clock time', async () => {
+    vi.useFakeTimers({ now: NOON, toFake: ['Date', 'setInterval', 'clearInterval'] })
     render(
       createElement(
         BackgroundTasksDrawer,
-        drawerProps({ rows: [runningRow()], focusSessionId: 'b-run', onFocusConsumed: () => {} }),
+        drawerProps({
+          rows: [{ ...runningRow(), startedAt: NOON - 5_000, lastActivityAt: NOON - 1_000 }],
+          focusSessionId: 'b-run',
+          onFocusConsumed: () => {},
+        }),
       ),
     )
     await waitFor(() => expect(detailEl()).not.toBeNull())
-    const elapsed = () =>
-      document.querySelector('[data-testid="background-tasks-detail-back"]')!.parentElement!
-        .querySelector('[data-testid="task-meta-elapsed"]')!.textContent
-    expect(elapsed()).toBe('5s')
-    act(() => {
-      vi.advanceTimersByTime(10_000)
-    })
-    expect(elapsed()).toBe('15s')
+    const header = document.querySelector('[data-testid="background-tasks-detail-back"]')!.parentElement!
+    expect(header.querySelector('[data-testid="task-meta-started"]')!.textContent).toBe('11:59')
+    expect(header.querySelector('[data-testid="task-meta-elapsed"]')).toBeNull()
+  })
+
+  it('a shell row is titled by its description; the command stays in the detail', async () => {
+    const row = { ...runningRow(), description: 'Build the web app' }
+    render(
+      createElement(
+        BackgroundTasksDrawer,
+        drawerProps({ rows: [row], focusSessionId: 'b-run', onFocusConsumed: () => {} }),
+      ),
+    )
+    await waitFor(() => expect(detailEl()).not.toBeNull())
+    const header = document.querySelector('[data-testid="background-tasks-detail-back"]')!.parentElement!
+    expect(header.textContent).toContain('Build the web app')
+    expect(header.textContent).not.toContain('npm run build')
+    fireEvent.click(document.querySelector('[data-testid="background-tasks-detail-back"]')!)
+    const open = document.querySelector<HTMLElement>('[data-testid="subagent-row-open"]')!
+    expect(open.textContent).toContain('Build the web app')
+    expect(open.textContent).not.toContain('npm run build')
+    expect(open.querySelector('.font-mono')).toBeNull()
+  })
+
+  it('a shell row with no description falls back to its command, in mono', () => {
+    render(createElement(BackgroundTasksDrawer, drawerProps({ rows: [runningRow()] })))
+    const open = document.querySelector<HTMLElement>('[data-testid="subagent-row-open"]')!
+    expect(open.textContent).toContain('npm run build')
+    expect(open.querySelector('.font-mono')).not.toBeNull()
   })
 })
 

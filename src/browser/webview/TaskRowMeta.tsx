@@ -13,10 +13,16 @@ import { taskRowOriginName } from './backgroundSubAgents'
 import { useLocale, useT } from './i18n'
 import { MetaItem, TaskRunStats } from './TaskRunStats'
 
-/** Start stamp on a 24-hour clock: "14:32" today, "Jun 30 14:32" otherwise. */
-export function formatStartStamp(ms: number, locale: string, now = Date.now()): string {
+/** A stamp on a 24-hour clock: "14:32" today, "Jun 30 14:32" otherwise;
+ *  `seconds` adds them ("14:32:05"). */
+export function formatStartStamp(ms: number, locale: string, now = Date.now(), seconds = false): string {
   const d = new Date(ms)
-  const time = d.toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })
+  const time = d.toLocaleTimeString(locale, {
+    hour: '2-digit',
+    minute: '2-digit',
+    ...(seconds ? { second: '2-digit' as const } : {}),
+    hourCycle: 'h23',
+  })
   return d.toDateString() === new Date(now).toDateString()
     ? time
     : `${d.toLocaleDateString(locale, { month: 'short', day: 'numeric' })} ${time}`
@@ -57,31 +63,23 @@ export function TaskMetaLine({ row, now, leading, srStatus, usage = true, classN
   const locale = useLocale()
   const running = row.status === 'running'
   const timeItems: ReactNode[] = []
+  // Times are clock stamps (24-hour), never "… ago".
+  if (row.startedAt) {
+    const when = formatStartStamp(row.startedAt, locale, now)
+    timeItems.push(
+      <MetaItem key="started" icon={ClockIcon} testId="task-meta-started"
+        title={t('backgroundTasks.meta.startedTitle', { when })}>{when}</MetaItem>,
+    )
+  }
   if (running) {
-    if (row.startedAt) {
-      const span = durationLabel(Math.max(0, now - row.startedAt), 'largest')
-      timeItems.push(
-        <MetaItem key="elapsed" icon={TimerIcon} testId="task-meta-elapsed"
-          title={t('backgroundTasks.meta.elapsedTitle', { span })}>{span}</MetaItem>,
-      )
-    }
     if (row.lastActivityAt) {
-      const age = durationLabel(Math.max(0, now - row.lastActivityAt), 'largest')
+      const when = formatStartStamp(row.lastActivityAt, locale, now, true)
       timeItems.push(
         <MetaItem key="updated" icon={HistoryIcon} testId="task-meta-updated"
-          title={t('backgroundTasks.meta.updatedTitle', { age })}>
-          {t('backgroundTasks.meta.ago', { age })}
-        </MetaItem>,
+          title={t('backgroundTasks.meta.updatedTitle', { when })}>{when}</MetaItem>,
       )
     }
   } else {
-    if (row.startedAt) {
-      const when = formatStartStamp(row.startedAt, locale, now)
-      timeItems.push(
-        <MetaItem key="started" icon={ClockIcon} testId="task-meta-started"
-          title={t('backgroundTasks.meta.startedTitle', { when })}>{when}</MetaItem>,
-      )
-    }
     if (row.startedAt && row.finishedAt) {
       const span = durationLabel(Math.max(0, row.finishedAt - row.startedAt))
       timeItems.push(

@@ -191,6 +191,25 @@ describe('extractRecoveredBashRows — real inline {shell_id,status} shape', () 
   })
 })
 
+describe('extractRecoveredBashRows — description', () => {
+  it('keeps the launching call\'s description so the recovered row is titled by it', () => {
+    const rows = extractRecoveredBashRows([
+      {
+        type: 'assistant',
+        message: {
+          role: 'assistant',
+          content: [
+            { type: 'tool-call', toolCallId: 'call_d', toolName: 'Bash', args: { command: 'npm test', description: '  Run the unit tests ' } },
+          ],
+        },
+      },
+      shellResult('call_d', 'bdesc', 'completed'),
+    ])
+    expect(rows).toHaveLength(1)
+    expect(rows[0]).toMatchObject({ taskId: 'bdesc', command: 'npm test', description: 'Run the unit tests' })
+  })
+})
+
 describe('extractRecoveredBashRows — legacy backgrounded handoff shape', () => {
   it('projects a completed background shell to a success row with output-file + times', () => {
     const rows = extractRecoveredBashRows([

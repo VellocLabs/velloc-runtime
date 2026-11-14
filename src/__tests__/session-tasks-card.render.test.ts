@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 /**
  * The Background tasks card's unfolded body (F-9): running tasks with their
- * elapsed time and a stop button (at most five until Show more), then how
+ * start time (24-hour clock) and a stop button (at most five until Show more), then how
  * many finished; a running row opens its detail, the finished row the list.
  */
 import { createElement } from 'react'
@@ -20,7 +20,7 @@ afterEach(() => {
   vi.useRealTimers()
 })
 
-const NOW = Date.UTC(2026, 9, 16, 12, 0, 0)
+const NOW = new Date(2026, 9, 16, 12, 0, 0).getTime()
 
 function row(sessionId: string, status: NexusTaskSummaryRow['status'], extra: Partial<NexusTaskSummaryRow> = {}): NexusTaskSummaryRow {
   return { sessionId, spawnerSessionId: 'P', status, description: `task ${sessionId}`, ...extra }
@@ -33,11 +33,11 @@ function draw(value: BackgroundTasksContextValue) {
 const labels = () => screen.queryAllByTestId('session-card-task').map(el => el.textContent ?? '')
 
 describe('SessionTasksList', () => {
-  it('lists running tasks with kind, label and elapsed time, then the finished count', () => {
+  it('lists running tasks with kind, label and start time, then the finished count', () => {
     vi.useFakeTimers({ now: NOW })
     draw({
       taskRows: [
-        row('sh', 'running', { type: 'local_bash', command: 'npm test', startedAt: NOW - 93_000 }),
+        row('sh', 'running', { type: 'local_bash', description: 'npm test', command: 'npm test', startedAt: NOW - 93_000 }),
         row('ag', 'running', { startedAt: NOW - 5_000 }),
         row('done1', 'success'),
         row('done2', 'error', { type: 'local_bash' }),
@@ -47,19 +47,36 @@ describe('SessionTasksList', () => {
     const rows = screen.getAllByTestId('session-card-task')
     expect(rows.map(el => el.getAttribute('data-task-kind'))).toEqual(['local_bash', 'local_agent'])
     expect(rows[0].textContent).toContain('npm test')
-    expect(rows[0].textContent).toContain('1m 33s')
+    expect(rows[0].textContent).toContain('11:58')
     expect(rows[1].textContent).toContain('task ag')
     expect(screen.getByTestId('session-card-tasks-finished').textContent).toBe('2 finished')
   })
 
-  it('the elapsed time ticks every second', () => {
+  it('the start time is a fixed 24-hour clock stamp, never relative', () => {
     vi.useFakeTimers({ now: NOW })
     draw({ taskRows: [row('a', 'running', { startedAt: NOW - 1_000 })] })
-    expect(screen.getByTestId('session-card-task-elapsed').textContent).toBe('1s')
+    const started = screen.getByTestId('session-card-task-started')
+    expect(started.textContent).toBe('11:59')
+    expect(started.getAttribute('title')).toBe('Started 11:59')
     act(() => {
       vi.advanceTimersByTime(3_000)
     })
-    expect(screen.getByTestId('session-card-task-elapsed').textContent).toBe('4s')
+    expect(screen.getByTestId('session-card-task-started').textContent).toBe('11:59')
+  })
+
+  it('a shell is titled by its description, else by its command in mono', () => {
+    draw({
+      taskRows: [
+        row('d', 'running', { type: 'local_bash', description: 'Run the unit tests', command: 'npm test' }),
+        row('c', 'running', { type: 'local_bash', description: 'npm run lint', command: 'npm run lint' }),
+      ],
+    })
+    const [described, bare] = screen.getAllByTestId('session-card-task')
+    expect(described.textContent).toContain('Run the unit tests')
+    expect(described.textContent).not.toContain('npm test')
+    expect(described.querySelector('.font-mono')).toBeNull()
+    expect(bare.textContent).toContain('npm run lint')
+    expect(bare.querySelector('.font-mono')).not.toBeNull()
   })
 
   it('shows five running tasks, the rest behind Show more / Show less', () => {
@@ -128,7 +145,7 @@ describe('SessionTasksList', () => {
     expect(task.getAttribute('data-task-kind')).toBe('local_timer')
     expect(task.querySelector('svg.lucide-alarm-clock')).not.toBeNull()
     expect(screen.getByTestId('session-card-task-countdown').textContent).toBe('Next 46s')
-    expect(screen.queryByTestId('session-card-task-elapsed')).toBeNull()
+    expect(screen.queryByTestId('session-card-task-started')).toBeNull()
     act(() => {
       vi.advanceTimersByTime(1000)
     })

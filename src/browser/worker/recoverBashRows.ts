@@ -22,6 +22,9 @@ export type RecoveredBashRow = {
    *  parsed from a completion summary). Drawer display label (rendered mono).
    *  Absent when neither source kept it — the publisher falls back to a label. */
   command?: string
+  /** The model's `description` arg from the launching tool use, when it set
+   *  one — the row's title, ahead of the command. */
+  description?: string
   /** The tool-call id of the shell result — the tool-detail SIDECAR key. The
    *  drawer detail loads it lazily to render the persisted output + true
    *  pass/fail. Absent only for a completion recovered from a `<task-notification>`
@@ -119,7 +122,7 @@ export function extractRecoveredBashRows(
   // `{ shell_id, status: completed }` result carries only ONE timestamp (the
   // finish), so without this the recovered row would have no `startedAt` and
   // the drawer could render neither "started …" nor "took …" — only "done".
-  const launchByCallId = new Map<string, { command?: string; startedAt?: number }>()
+  const launchByCallId = new Map<string, { command?: string; description?: string; startedAt?: number }>()
 
   const upsert = (
     taskId: string,
@@ -140,6 +143,9 @@ export function extractRecoveredBashRows(
     }
     if (existing.command === undefined && patch.command !== undefined) {
       existing.command = patch.command
+    }
+    if (existing.description === undefined && patch.description !== undefined) {
+      existing.description = patch.description
     }
     if (existing.detailId === undefined && patch.detailId !== undefined) {
       existing.detailId = patch.detailId
@@ -222,11 +228,17 @@ export function extractRecoveredBashRows(
           typeof rawCommand === 'string' && rawCommand.trim()
             ? rawCommand.trim()
             : undefined
+        const rawDescription = partArgs(p)?.description
+        const description =
+          typeof rawDescription === 'string' && rawDescription.trim()
+            ? rawDescription.trim()
+            : undefined
         // Keep the first-seen launch time; fill in whichever field a prior
         // part for this call id lacked.
         const prev = launchByCallId.get(callId)
         launchByCallId.set(callId, {
           command: command ?? prev?.command,
+          description: description ?? prev?.description,
           startedAt: prev?.startedAt ?? at,
         })
       }
@@ -245,6 +257,7 @@ export function extractRecoveredBashRows(
         const callId = partToolCallId(p) ?? undefined
         const launch = callId ? launchByCallId.get(callId) : undefined
         const command = launch?.command
+        const description = launch?.description
         const status = result.status
         const running = status === 'running'
 
@@ -263,6 +276,7 @@ export function extractRecoveredBashRows(
           const startedAt = launch?.startedAt ?? (running ? at : undefined)
           upsert(shellId, {
             ...(command ? { command } : {}),
+            ...(description ? { description } : {}),
             ...(callId ? { detailId: callId } : {}),
             status: running ? 'stopped' : 'success',
             ...(startedAt !== undefined ? { startedAt } : {}),
@@ -279,6 +293,7 @@ export function extractRecoveredBashRows(
         if (running && taskId && outputFile) {
           upsert(taskId, {
             ...(command ? { command } : {}),
+            ...(description ? { description } : {}),
             ...(callId ? { detailId: callId } : {}),
             outputFilePath: outputFile,
             status: 'stopped',

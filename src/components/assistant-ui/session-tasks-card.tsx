@@ -2,14 +2,15 @@ import * as React from "react";
 import { CheckCheckIcon, Loader2Icon, SquareIcon } from "lucide-react";
 
 import { cn } from "@/lib/utils";
-import { durationLabel } from "@/utils/humanize/durationLabel";
-import { useT } from "@/browser/webview/i18n";
+import { useLocale, useT } from "@/browser/webview/i18n";
+import { formatStartStamp } from "@/browser/webview/TaskRowMeta";
 import { loopTimerCountdown } from "@/browser/webview/loopTimers";
 import type { NexusTaskSummaryRow } from "@/browser/bridge/protocol/ui";
 import {
   SESSION_TASKS_RUNNING_LIMIT,
   TASK_KIND_ICON,
   sessionTaskCardRows,
+  shellTaskTitle,
   taskRowLabelKey,
   taskRowOriginName,
 } from "@/browser/webview/backgroundSubAgents";
@@ -18,10 +19,10 @@ import { useBackgroundTasksContext } from "./background-tasks-context";
 /**
  * The Background tasks card's unfolded body (F-9): the session's running
  * shells and subagents — at most five until Show more — each with its
- * elapsed time and a stop button, then how many finished. A running row opens
+ * start time (24-hour clock) and a stop button, then how many finished. A running row opens
  * its detail in the side panel's Tasks view; the finished row opens the list.
- * A loop timer (F-15) shows the countdown to its next fire in place of an
- * elapsed time.
+ * A loop timer (F-15) shows the countdown to its next fire in place of a
+ * start time.
  */
 
 const ROW_CLASS =
@@ -29,6 +30,7 @@ const ROW_CLASS =
 
 export function SessionTasksList() {
   const t = useT();
+  const locale = useLocale();
   const { taskRows, stopTask, openTasksDrawer, openTasksList } = useBackgroundTasksContext();
   const { running, finished } = React.useMemo(() => sessionTaskCardRows(taskRows), [taskRows]);
   const [showAll, setShowAll] = React.useState(false);
@@ -48,7 +50,7 @@ export function SessionTasksList() {
   const visible = showAll || !overflow ? running : running.slice(0, SESSION_TASKS_RUNNING_LIMIT);
 
   const labelOf = (row: NexusTaskSummaryRow): string => {
-    if (row.type === "local_bash") return row.command ?? row.description;
+    if (row.type === "local_bash") return shellTaskTitle(row).text;
     const key = taskRowLabelKey(row);
     return key ? t(key) : row.description;
   };
@@ -75,7 +77,7 @@ export function SessionTasksList() {
               className={cn(ROW_CLASS, "flex-1")}
             >
               <Icon aria-hidden strokeWidth={1.5} className="size-4 shrink-0 text-muted-foreground" />
-              <span className={cn("min-w-0 flex-1 truncate", kind === "local_bash" && "font-mono text-[12px]")}>{label}</span>
+              <span className={cn("min-w-0 flex-1 truncate", kind === "local_bash" && shellTaskTitle(row).isCommand && "font-mono text-[12px]")}>{label}</span>
               {origin ? (
                 <span data-testid="session-card-task-origin" className="min-w-0 max-w-[40%] shrink truncate text-muted-foreground text-[12px]">
                   {origin}
@@ -86,8 +88,12 @@ export function SessionTasksList() {
                   {loopTimerCountdown(row.nextFireAt, now, t)}
                 </span>
               ) : row.startedAt !== undefined ? (
-                <span data-testid="session-card-task-elapsed" className="shrink-0 text-muted-foreground text-[12px] tabular-nums">
-                  {durationLabel(Math.max(0, now - row.startedAt))}
+                <span
+                  data-testid="session-card-task-started"
+                  title={t("backgroundTasks.meta.startedTitle", { when: formatStartStamp(row.startedAt, locale, now) })}
+                  className="shrink-0 text-muted-foreground text-[12px] tabular-nums"
+                >
+                  {formatStartStamp(row.startedAt, locale, now)}
                 </span>
               ) : null}
             </button>
