@@ -11,11 +11,16 @@ type Script = {
   result?: { code: string; detail: string; pv: string } | null
   runningPolls?: number
   failDownload?: boolean
+  /** Directory names under ROOT. */
+  dirs?: string[]
+  failList?: boolean
+  failRemove?: string
 }
 
 function fakeHost(script: Script = {}) {
   const files = new Map<string, string>()
   const calls: string[] = []
+  const dirs = new Set(script.dirs ?? [])
   let polls = script.runningPolls ?? 1
   let lastScript = ''
   const host: AppUpdateHost = {
@@ -35,6 +40,15 @@ function fakeHost(script: Script = {}) {
     },
     remove: async path => {
       files.delete(path)
+    },
+    listDirectories: async path => {
+      if (script.failList) throw new Error('EACCES: access denied')
+      return path === ROOT ? [...dirs] : []
+    },
+    removeDirectory: async path => {
+      calls.push(`rmdir ${path}`)
+      if (script.failRemove && path.endsWith(script.failRemove)) throw new Error('EBUSY: in use')
+      dirs.delete(path.slice(ROOT.length + 1))
     },
     rename: async (from, to) => {
       calls.push(`rename ${from} -> ${to}`)
@@ -60,7 +74,7 @@ function fakeHost(script: Script = {}) {
       calls.push('relaunch')
     },
   }
-  return { host, files, calls, script: () => lastScript }
+  return { host, files, calls, dirs, script: () => lastScript }
 }
 
 function service(host: AppUpdateHost) {
@@ -103,6 +117,41 @@ describe('AppUpdateService', () => {
     await svc.check()
     expect(svc.getState()).toMatchObject({ phase: 'idle', current: '1.149.2.5', checkedAt: 1_000 })
     expect(fake.calls).toEqual(['fetch https://velloc.app/update/stable.json'])
+  })
+
+  it('each check first deletes version directories at or below the running version', async () => {
+    const dirs = ['1.149.2.3', '1.149.2.4', '1.149.2.5', '1.150.0.0', 'notes', '1.149']
+    const fake = fakeHost({ current: '1.149.2.5', dirs })
+    const { svc } = service(fake.host)
+    await svc.check()
+    expect(fake.calls).toEqual([
+      `rmdir ${ROOT}\\1.149.2.3`,
+      `rmdir ${ROOT}\\1.149.2.4`,
+      `rmdir ${ROOT}\\1.149.2.5`,
+      'fetch https://velloc.app/update/stable.json',
+    ])
+    expect([...fake.dirs]).toEqual(['1.150.0.0', 'notes', '1.149'])
+    expect(svc.getState().phase).toBe('idle')
+  })
+
+  it('a failed cleanup is reported but never fails the check', async () => {
+    const lines: string[] = []
+    const remove = fakeHost({ current: '1.149.2.5', dirs: ['1.149.2.3', '1.149.2.4'], failRemove: '1.149.2.3' })
+    const svc = new AppUpdateService({
+      host: remove.host,
+      manifestUrl: 'https://velloc.app/update/stable.json',
+      report: line => lines.push(line),
+    })
+    await svc.check()
+    expect(svc.getState().phase).toBe('idle')
+    expect([...remove.dirs]).toEqual(['1.149.2.3'])
+    expect(lines).toEqual(['could not remove 1.149.2.3: EBUSY: in use'])
+
+    const list = fakeHost({ current: '1.149.2.5', failList: true })
+    const second = service(list.host)
+    await second.svc.check()
+    expect(second.svc.getState().phase).toBe('idle')
+    expect(list.calls).toEqual(['fetch https://velloc.app/update/stable.json'])
   })
 
   it('honours min_version: a client at or above it is left alone', async () => {

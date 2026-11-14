@@ -126,6 +126,17 @@ export function createBridgeAppUpdateHost(deps: BridgeAppUpdateHostDeps): AppUpd
     async remove(path) {
       await fs().rm(path, { force: true })
     },
+    async listDirectories(path) {
+      try {
+        return (await fs().readdir(path)).filter(entry => entry.isDirectory()).map(entry => entry.name)
+      } catch (error) {
+        if ((error as { code?: string }).code === 'ENOENT') return []
+        throw error
+      }
+    },
+    async removeDirectory(path) {
+      await fs().rm(path, { recursive: true, force: true })
+    },
     async rename(from, to) {
       const rename = fs().rename
       if (!rename) throw new Error('the host cannot rename files')

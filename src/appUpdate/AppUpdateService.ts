@@ -21,6 +21,10 @@ export type AppUpdateHost = {
   mkdir(path: string): Promise<void>
   /** Resolves whether or not the file existed. */
   remove(path: string): Promise<void>
+  /** Names of the directories directly under `path`; empty when it does not exist. */
+  listDirectories(path: string): Promise<string[]>
+  /** Removes `path` and everything under it; resolves whether or not it existed. */
+  removeDirectory(path: string): Promise<void>
   rename(from: string, to: string): Promise<void>
   /** Null when the file does not exist. */
   readText(path: string): Promise<string | null>
@@ -146,6 +150,7 @@ export class AppUpdateService {
       this.update({ phase: 'checking' })
       const current = await this.host.currentVersion()
       this.update({ phase: 'checking', current })
+      await this.removeStaleVersions(current)
 
       const response = await this.host.fetchText(this.options.manifestUrl, MANIFEST_MAX_BYTES)
       if (response.status !== 200) throw new Error(`manifest request answered ${response.status}`)
@@ -199,6 +204,30 @@ export class AppUpdateService {
       const lastError = messageOf(error)
       this.report(`check failed: ${lastError}`)
       this.update({ phase: 'failed', lastError })
+    }
+  }
+
+  /**
+   * Deletes every version directory under the update root at or below
+   * `current`; other names are left alone. Never throws: a failure is only
+   * reported, and the check goes on.
+   */
+  private async removeStaleVersions(current: string): Promise<void> {
+    const own = parseVersion(current)
+    if (!own) return
+    try {
+      const root = await this.host.updateRoot()
+      for (const name of await this.host.listDirectories(root)) {
+        const version = parseVersion(name)
+        if (!version || compareVersions(version, own) > 0) continue
+        try {
+          await this.host.removeDirectory(joinPath(root, name))
+        } catch (error) {
+          this.report(`could not remove ${name}: ${messageOf(error)}`)
+        }
+      }
+    } catch (error) {
+      this.report(`could not list old updates: ${messageOf(error)}`)
     }
   }
 

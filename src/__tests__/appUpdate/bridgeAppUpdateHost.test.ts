@@ -7,8 +7,11 @@ import { configureAppUpdateService, currentAppUpdateService } from '../../appUpd
 type Req = { route: { capability: string; action: string }; payload: Record<string, unknown> }
 
 /** A host port that serves only the routes the update host uses. */
-function hostPort(opts: { status?: number; chunks?: Uint8Array[]; streamError?: string; osName?: string } = {}) {
+function hostPort(
+  opts: { status?: number; chunks?: Uint8Array[]; streamError?: string; osName?: string; readdirMissing?: boolean } = {},
+) {
   const log: string[] = []
+  const removed: Array<Record<string, unknown>> = []
   const appended: Array<{ path: string; bytes: number[] }> = []
   const spawns: Array<Record<string, unknown>> = []
   let chunks = [...(opts.chunks ?? [new Uint8Array([1, 2]), new Uint8Array([3])])]
@@ -32,7 +35,14 @@ function hostPort(opts: { status?: number; chunks?: Uint8Array[]; streamError?: 
           appended.push({ path: req.payload.path as string, bytes: [...(req.payload.data as Uint8Array)] })
           return answer({ ok: true })
         case 'fs.rm':
+          removed.push(req.payload)
           return answer({ ok: true })
+        case 'fs.readdir':
+          if (opts.readdirMissing) return { ok: false, error: { code: 'ENOENT', message: 'ENOENT: no such directory' } }
+          return answer([
+            { name: '1.149.2.3', isFile: false, isDirectory: true, isSymbolicLink: false },
+            { name: 'stray.txt', isFile: true, isDirectory: false, isSymbolicLink: false },
+          ])
         case 'fs.paths':
           return answer({ home: 'C:\\Users\\u', temp: '', appData: '', cache: 'C:\\Users\\u\\AppData\\Local' })
         case 'shell.spawn':
@@ -52,7 +62,7 @@ function hostPort(opts: { status?: number; chunks?: Uint8Array[]; streamError?: 
   const set = (next: Uint8Array[]) => {
     chunks = next
   }
-  return { transport, log, appended, persistent, set, spawns }
+  return { transport, log, appended, persistent, set, spawns, removed }
 }
 
 const fullManifest = { capabilities: [], primitives: [...APP_UPDATE_PRIMITIVES, 'shell.spawn.argv'] }
@@ -90,6 +100,17 @@ describe('bridge update host', () => {
       'download failed: net::ERR_CONNECTION_RESET',
     )
     expect(broken.log).toContain('network.streamCancel')
+  })
+
+  it('lists only directories, treats a missing root as empty, and removes a directory recursively', async () => {
+    const port = hostPort()
+    const host = createBridgeAppUpdateHost(deps(port.transport))
+    await expect(host.listDirectories('C:\\U')).resolves.toEqual(['1.149.2.3'])
+    await expect(
+      createBridgeAppUpdateHost(deps(hostPort({ readdirMissing: true }).transport)).listDirectories('C:\\U'),
+    ).resolves.toEqual([])
+    await host.removeDirectory('C:\\U\\1.149.2.3')
+    expect(port.removed).toEqual([{ path: 'C:\\U\\1.149.2.3', recursive: true, force: true }])
   })
 
   it('reads the manifest text and its status', async () => {
