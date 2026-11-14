@@ -7,8 +7,6 @@ import { useLocale, useT } from "@/browser/webview/i18n";
 import { PlanCard } from "./plan-card";
 import {
   NarrationPart,
-  narrationLeadsRun,
-  useCompactNarration,
   type ToolRunState,
 } from "./narration-lead";
 import {
@@ -91,7 +89,6 @@ export const ToolCallLine: FC<ToolCallLineProps> = ({
     }),
   );
 
-  const compactNarration = useCompactNarration(narrationIndex);
   const state: ToolRunState =
     snapshot.statusType === "running"
       ? "running"
@@ -120,28 +117,16 @@ export const ToolCallLine: FC<ToolCallLineProps> = ({
         index={narrationIndex}
         line={narrationLine}
         isRevealTarget={revealNarration}
+        running={state === "running"}
       />
     );
-  const asLead =
-    narration !== undefined && narrationLeadsRun(compactNarration, state);
 
   return (
     <>
-      {narration !== undefined && !asLead ? narration : null}
+      {narration ?? null}
       <PlanCard
         slotPrefix="tool-call-line"
         look="line"
-        lead={asLead ? narration : undefined}
-        headerDescription={
-          asLead && state === "running" ? (
-            <span
-              data-slot="tool-call-line-running"
-              className="nexus-sheen min-w-0 truncate"
-            >
-              {title}
-            </span>
-          ) : undefined
-        }
         data-line-from={lineFrom}
         data-line-to={lineTo}
         persistKey={

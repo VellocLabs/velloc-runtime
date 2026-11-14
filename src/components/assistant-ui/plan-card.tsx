@@ -125,13 +125,6 @@ export type PlanCardProps = {
    * opened body, whose rows are flat and divided.
    */
   look?: "card" | "line";
-  /**
-   * `line` look only. Content that stands in front of the chevron in place
-   * of `header`, outside the trigger: it can be selected and holds its own
-   * links, and only the chevron toggles. `header` is still rendered, hidden,
-   * as the trigger's name.
-   */
-  lead?: ReactNode;
   /** Extra classes on the inner `Card` (e.g. the cancelled variant). */
   cardClassName?: string;
   /** Rendered inside the muted body panel above the rows (e.g. progress bar). */
@@ -156,7 +149,6 @@ const PlanCardImpl: FC<PlanCardProps> = ({
   headerDescription,
   showCompletionCheck = false,
   look = "card",
-  lead,
   cardClassName,
   beforeBody,
   children,
@@ -266,48 +258,23 @@ const PlanCardImpl: FC<PlanCardProps> = ({
       data-look="line"
       className={cn("isolate flex w-full min-w-0 flex-col", cardClassName)}
     >
-      {lead === undefined ? (
-        <CollapsibleTrigger
-          data-slot={`${slotPrefix}-trigger`}
-          className={cn(
-            `aui-${slotPrefix}-trigger group/trigger flex w-full min-w-0 flex-col gap-1 py-1`,
-            "text-left text-body",
-          )}
-        >
-          <span className="flex max-w-full min-w-0 items-center gap-1.5">
-            {leadingIcon}
-            {header}
-            {headerAdornment}
-            {chevron}
-          </span>
-          {headerDescription && (
-            <span className="min-w-0 text-left">{headerDescription}</span>
-          )}
-        </CollapsibleTrigger>
-      ) : (
-        <div className="flex min-w-0 flex-col gap-1">
-          <div className="flex min-w-0 items-end gap-1.5">
-            <div data-slot={`${slotPrefix}-lead`} className="min-w-0">
-              {lead}
-            </div>
-            <CollapsibleTrigger
-              data-slot={`${slotPrefix}-trigger`}
-              className={cn(
-                `aui-${slotPrefix}-trigger group/trigger inline-flex shrink-0 items-center gap-1.5 py-1`,
-                "text-left text-body",
-              )}
-            >
-              <span className="sr-only">{header}</span>
-              {leadingIcon}
-              {headerAdornment}
-              {chevron}
-            </CollapsibleTrigger>
-          </div>
-          {headerDescription && (
-            <span className="min-w-0 text-left">{headerDescription}</span>
-          )}
-        </div>
-      )}
+      <CollapsibleTrigger
+        data-slot={`${slotPrefix}-trigger`}
+        className={cn(
+          `aui-${slotPrefix}-trigger group/trigger flex w-full min-w-0 flex-col gap-1 py-1`,
+          "text-left text-body",
+        )}
+      >
+        <span className="flex max-w-full min-w-0 items-center gap-1.5">
+          {leadingIcon}
+          {header}
+          {headerAdornment}
+          {chevron}
+        </span>
+        {headerDescription && (
+          <span className="min-w-0 text-left">{headerDescription}</span>
+        )}
+      </CollapsibleTrigger>
       <CollapsibleContent
         data-slot={`${slotPrefix}-content`}
         className={contentClassName}

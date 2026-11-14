@@ -801,29 +801,51 @@
   }
 }
 
-/* Running-state text sheen: a highlight band sweeps across the glyphs. The
- * element keeps its own text for assistive tech; only the paint changes. */
+/* Running-state text sheen: a highlight band of fixed width sweeps across the
+ * glyphs over a muted base. The band is sized in rem, not as a share of the
+ * element, so a one-word label shows the same passing highlight as a
+ * paragraph. The element keeps its own text for assistive tech; only the
+ * paint changes. Descendants go transparent so their glyphs take the clipped
+ * background; code and links keep a solid colour, since their own box would
+ * cover it. */
 .nexus-sheen {
-  background-image: linear-gradient(
-    90deg,
-    var(--muted-foreground) 0%,
-    var(--muted-foreground) 35%,
-    var(--foreground) 50%,
-    var(--muted-foreground) 65%,
-    var(--muted-foreground) 100%
-  );
-  background-size: 200% 100%;
+  --nexus-sheen-band: 6rem;
+  background-image:
+    linear-gradient(
+      90deg,
+      transparent 0%,
+      var(--foreground) 50%,
+      transparent 100%
+    ),
+    linear-gradient(var(--muted-foreground), var(--muted-foreground));
+  background-size:
+    var(--nexus-sheen-band) 100%,
+    100% 100%;
+  background-repeat: no-repeat;
+  background-position:
+    calc(-1 * var(--nexus-sheen-band)) 0,
+    0 0;
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
   animation: nexus-sheen-sweep 2s linear infinite;
 }
+.nexus-sheen * {
+  color: transparent;
+}
+.nexus-sheen :is(code, pre, kbd, a) {
+  color: var(--muted-foreground);
+}
 @keyframes nexus-sheen-sweep {
   from {
-    background-position: 100% 0;
+    background-position:
+      calc(-1 * var(--nexus-sheen-band)) 0,
+      0 0;
   }
   to {
-    background-position: -100% 0;
+    background-position:
+      calc(100% + var(--nexus-sheen-band)) 0,
+      0 0;
   }
 }
 

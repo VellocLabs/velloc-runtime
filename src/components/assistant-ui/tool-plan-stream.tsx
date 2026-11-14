@@ -18,8 +18,6 @@ import { rememberBounded } from "@/components/assistant-ui/boundedUiMemory";
 import { PlanCard, usePlanCardOpen } from "./plan-card";
 import {
   NarrationPart,
-  narrationLeadsRun,
-  useCompactNarration,
   type ToolRunState,
 } from "./narration-lead";
 import { PlanListItem, PlanRowLookContext } from "../tool-ui/plan/parts/ListItem";
@@ -320,7 +318,6 @@ const ToolPlanStreamImpl: FC<ToolPlanStreamProps> = ({
 }) => {
   const t = useT();
   const locale = useLocale();
-  const compactNarration = useCompactNarration(narrationIndex);
   const snapshot = useAssistantState(
     useShallow(({ message }): ToolPlanStreamSnapshot => {
       let runningToolName: string | undefined;
@@ -409,12 +406,17 @@ const ToolPlanStreamImpl: FC<ToolPlanStreamProps> = ({
         }
       }
 
-      // Anything with a tool-call after this range is a PAST card — only the
-      // message's last tool run may claim "active" during inter-tool gaps.
+      // A run followed by a tool call or by text is past: the text starts the
+      // next run or ends the turn. Reasoning and blank text do not end it.
       let hasToolCallAfterRange = false;
       for (let i = endIndex + 1; i < message.parts.length; i++) {
         const part = message.parts[i] as AggregateMessagePart | undefined;
-        if (part?.type === "tool-call") {
+        if (
+          part?.type === "tool-call" ||
+          (part?.type === "text" &&
+            typeof part.text === "string" &&
+            part.text.trim() !== "")
+        ) {
           hasToolCallAfterRange = true;
           break;
         }
@@ -576,16 +578,9 @@ const ToolPlanStreamImpl: FC<ToolPlanStreamProps> = ({
         index={narrationIndex}
         line={lineOfPart(partLines, narrationIndex)}
         isRevealTarget={revealPart === narrationIndex}
+        running={isActive}
       />
     );
-  const asLead =
-    narrationLead !== undefined && narrationLeadsRun(compactNarration, headerState);
-  // Under a narration line the sentence is not drawn, so the running call is
-  // named below it, and carries the sheen.
-  const runningLine =
-    asLead && snapshot.runningToolLabel
-      ? t("plan.runningTarget", { target: snapshot.runningToolLabel })
-      : undefined;
 
   const target = snapshot.currentOrLastTarget;
   const leadsWithTarget = headerState === "running" && Boolean(target);
@@ -608,6 +603,7 @@ const ToolPlanStreamImpl: FC<ToolPlanStreamProps> = ({
       data-state={headerState}
       className={cn(
         "aui-tool-plan-stream-trigger-label-wrapper relative flex min-w-0 items-baseline gap-2 overflow-hidden text-left leading-6",
+        headerState === "running" && "nexus-sheen",
       )}
     >
       {leadText === verb ? null : <span className="sr-only">{verb}</span>}
@@ -615,9 +611,8 @@ const ToolPlanStreamImpl: FC<ToolPlanStreamProps> = ({
         data-slot="tool-plan-stream-title"
         className={cn(
           "min-w-0 truncate font-medium",
-          headerState === "running"
-            ? "nexus-sheen"
-            : "text-muted-foreground group-hover/trigger:text-foreground",
+          headerState !== "running" &&
+            "text-muted-foreground group-hover/trigger:text-foreground",
         )}
       >
         {leadText}
@@ -684,15 +679,7 @@ const ToolPlanStreamImpl: FC<ToolPlanStreamProps> = ({
         ) : undefined
       }
       header={header}
-      lead={asLead ? narrationLead : undefined}
-      headerDescription={runningLine ? (
-        <span
-          data-slot="tool-plan-stream-running"
-          className="nexus-sheen min-w-0 truncate"
-        >
-          {runningLine}
-        </span>
-      ) : narration ? (
+      headerDescription={narration ? (
         <span
           data-slot="tool-plan-stream-current-update"
           className={cn(
@@ -725,7 +712,7 @@ const ToolPlanStreamImpl: FC<ToolPlanStreamProps> = ({
 
   return (
     <>
-      {narrationLead !== undefined && !asLead ? narrationLead : null}
+      {narrationLead ?? null}
       <ModToolGroupSite
         requestId={snapshot.persistKey}
         calls={groupCalls}

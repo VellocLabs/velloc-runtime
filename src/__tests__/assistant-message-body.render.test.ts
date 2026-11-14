@@ -491,7 +491,7 @@ describe('AssistantMessageBody — a turn\'s closing reply renders top-level', (
     })
   })
 
-  it('an unmarked text between two tool calls is the second call\'s line, in the open', async () => {
+  it('an unmarked text between two tool calls is prose above the second call\'s line', async () => {
     const Harness = makeHarness(
       {
         role: 'assistant',
@@ -508,13 +508,16 @@ describe('AssistantMessageBody — a turn\'s closing reply renders top-level', (
       ).toBe(2)
     })
     expect(container.querySelector('[data-slot="tool-plan-stream-root"]')).toBeNull()
-    // It is drawn once, as the lead of the second line, outside the toggle.
-    const leads = container.querySelectorAll('[data-slot="tool-call-line-lead"]')
-    expect(leads.length).toBe(1)
-    expect(leads[0]!.textContent).toContain(REPLY)
+    // It is drawn once, between the two lines, outside both toggles.
+    const texts = container.querySelectorAll('[data-slot="tool-run-narration"]')
+    expect(texts.length).toBe(1)
+    expect(texts[0]!.textContent).toContain(REPLY)
+    expect(texts[0]!.closest('[data-slot="tool-call-line-trigger"]')).toBeNull()
     const roots = container.querySelectorAll('[data-slot="tool-call-line-root"]')
-    expect(roots[1]!.contains(leads[0]!)).toBe(true)
-    expect(leads[0]!.closest('[data-slot="tool-call-line-trigger"]')).toBeNull()
+    const follows = Node.DOCUMENT_POSITION_FOLLOWING
+    expect(roots[0]!.compareDocumentPosition(texts[0]!) & follows).toBeTruthy()
+    expect(texts[0]!.compareDocumentPosition(roots[1]!) & follows).toBeTruthy()
+    expect(container.querySelector('[data-slot="tool-call-line-lead"]')).toBeNull()
     const occurrences = (container.textContent ?? '').split(REPLY).length - 1
     expect(occurrences).toBe(1)
   })
@@ -546,7 +549,7 @@ describe('AssistantMessageBody — a turn\'s closing reply renders top-level', (
     expect(label.closest('.sr-only')).toBeNull()
   })
 
-  it('a short text in front of a tool run is the run\'s line; only the chevron toggles', async () => {
+  it('a short text in front of a tool run is prose; the summary line below it is the toggle', async () => {
     const Harness = makeHarness(
       {
         role: 'assistant',
@@ -561,27 +564,32 @@ describe('AssistantMessageBody — a turn\'s closing reply renders top-level', (
     )
     const { container } = render(createElement(Harness))
     await waitFor(() => {
-      expect(container.querySelector('[data-slot="tool-plan-stream-lead"]')).not.toBeNull()
+      expect(container.querySelector('[data-slot="tool-plan-stream-root"]')).not.toBeNull()
     })
-    const lead = container.querySelector('[data-slot="tool-plan-stream-lead"]')!
-    expect(lead.textContent).toContain('Claiming the handoff first.')
+    expect(container.querySelector('[data-slot="tool-plan-stream-lead"]')).toBeNull()
+    const text = container.querySelector('[data-slot="tool-run-narration"]')!
+    expect(text.textContent).toContain('Claiming the handoff first.')
     const trigger = container.querySelector<HTMLElement>(
       '[data-slot="tool-plan-stream-trigger"]',
     )!
-    expect(trigger.contains(lead)).toBe(false)
-    // The work sentence names the toggle without being drawn.
+    expect(trigger.contains(text)).toBe(false)
+    expect(
+      text.compareDocumentPosition(trigger) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy()
+    // The work sentence is drawn on its own line, not hidden behind the text.
     const label = trigger.querySelector(
       '[data-slot="tool-plan-stream-trigger-label"]',
     )!
-    expect(label.closest('.sr-only')).not.toBeNull()
+    expect(label.closest('.sr-only')).toBeNull()
+    expect(label.textContent).toContain('2')
     expect(trigger.getAttribute('data-state')).toBe('closed')
-    fireEvent.click(lead)
+    fireEvent.click(text)
     expect(trigger.getAttribute('data-state')).toBe('closed')
     fireEvent.click(trigger)
     expect(trigger.getAttribute('data-state')).toBe('open')
   })
 
-  it('under a narration line, the running call is named below it and carries the sheen', async () => {
+  it('a running run sweeps its text and its summary line; nothing else sweeps', async () => {
     const Harness = makeHarness(
       {
         role: 'assistant',
@@ -595,14 +603,46 @@ describe('AssistantMessageBody — a turn\'s closing reply renders top-level', (
     )
     const { container } = render(createElement(Harness))
     await waitFor(() => {
-      expect(container.querySelector('[data-slot="tool-plan-stream-running"]')).not.toBeNull()
+      expect(container.querySelector('[data-slot="tool-plan-stream-root"]')).not.toBeNull()
     })
-    const running = container.querySelector('[data-slot="tool-plan-stream-running"]')!
-    expect(running.className).toContain('nexus-sheen')
-    expect(running.textContent).toContain('Running')
-    // The narration itself is reading text: it does not sweep.
-    const lead = container.querySelector('[data-slot="tool-plan-stream-lead"]')!
-    expect(lead.querySelector('.nexus-sheen')).toBeNull()
+    const text = container.querySelector('[data-slot="tool-run-narration"]')!
+    expect(text.getAttribute('data-running')).toBe('true')
+    expect(text.className).toContain('nexus-sheen')
+    const label = container.querySelector(
+      '[data-slot="tool-plan-stream-trigger-label"]',
+    )!
+    expect(label.getAttribute('data-state')).toBe('running')
+    // The whole summary line sweeps, so a short one still shows the band.
+    expect(label.className).toContain('nexus-sheen')
+    expect(container.querySelector('[data-slot="tool-plan-stream-running"]')).toBeNull()
+    expect(container.querySelector('[data-slot="tool-plan-stream-lead"]')).toBeNull()
+  })
+
+  it('an earlier run stops sweeping as soon as text follows it, before the next call', async () => {
+    const Harness = makeHarness(
+      {
+        role: 'assistant',
+        content: [
+          { type: 'text', text: 'Reading the handoff.' },
+          { ...BASH, toolCallId: 'past-1' },
+          { ...BASH, toolCallId: 'past-2' },
+          { type: 'text', text: 'Now the worktrees.' },
+        ],
+      } as ThreadMessageLike,
+      true,
+    )
+    const { container } = render(createElement(Harness))
+    await waitFor(() => {
+      expect(container.querySelector('[data-slot="tool-plan-stream-root"]')).not.toBeNull()
+    })
+    const label = container.querySelector(
+      '[data-slot="tool-plan-stream-trigger-label"]',
+    )!
+    expect(label.getAttribute('data-state')).toBe('settled')
+    expect(container.querySelector('.nexus-sheen')).toBeNull()
+    expect(
+      container.querySelector('[data-slot="tool-run-narration"]')!.getAttribute('data-running'),
+    ).toBeNull()
   })
 
   it('a run with a failed call keeps its summary line under the narration', async () => {

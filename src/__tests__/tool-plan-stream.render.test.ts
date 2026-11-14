@@ -988,7 +988,7 @@ describe('ToolPlanStream unified header', () => {
     expect(body.querySelector('[data-slot="plan-list-item-glyph"]')).toBeNull()
   })
 
-  it('a running run sweeps a sheen over its title and over the running row only', () => {
+  it('a running run sweeps a sheen over its summary line and over the running row only', () => {
     const Harness = makeHarness(
       RUNNING_WITH_PREAMBLE,
       { startIndex: 0, endIndex: 2, callTotal: 2 },
@@ -1001,7 +1001,9 @@ describe('ToolPlanStream unified header', () => {
       '[data-slot="tool-plan-stream-trigger-label"]',
     )!
     expect(label.getAttribute('data-state')).toBe('running')
-    expect(headerTitle(root).className).toContain('nexus-sheen')
+    // The whole line sweeps, so a short title still shows the band.
+    expect(label.className).toContain('nexus-sheen')
+    expect(headerTitle(root).className).not.toContain('text-muted-foreground')
     const text = (label.textContent ?? '').replace(/\s+/g, ' ')
     expect(text).not.toContain('1/2')
     // The sentence follows the running target, still and muted.
