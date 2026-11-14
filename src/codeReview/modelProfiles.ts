@@ -1,6 +1,6 @@
 import type { CapabilityProfile } from './contracts'
 
-export const REVIEW_MODEL_MAPPING_REVISION = 5
+export const REVIEW_MODEL_MAPPING_REVISION = 6
 export type ReviewModelTier = 'specialist' | 'flagship' | 'balanced' | 'fast'
 export type ReviewModelIdentity = Readonly<{
   id: string
@@ -54,7 +54,7 @@ export const REVIEW_MODEL_IDENTITIES: readonly ReviewModelIdentity[] = Object.fr
   identity('glm-4-air', 'zhipu', 'fast', 'fallback-no-team'),
   identity('glm-4v-plus', 'zhipu', 'balanced', 'fallback-no-team'),
   identity('deepseek-v4-pro', 'deepseek', 'flagship', 'delegation-specialist', ['deepseek/deepseek-v4-pro']),
-  identity('deepseek-flash', 'deepseek', 'fast', 'delegation-specialist', ['deepseek/deepseek-v4.1-flash', 'deepseek-ai/DeepSeek-V4.1-Flash']),
+  identity('deepseek-flash', 'deepseek', 'fast', 'delegation-specialist', ['deepseek-v4.1-flash', 'deepseek/deepseek-v4.1-flash', 'deepseek-ai/DeepSeek-V4.1-Flash']),
   identity('MiniMax-M3.1-Flash', 'minimax', 'fast', 'fallback-no-team', ['MiniMaxAI/MiniMax-M3.1-Flash']),
   identity('MiniMax-M3', 'minimax', 'flagship', 'fallback-no-team'),
   identity('MiniMax-M2.7', 'minimax', 'balanced', 'fallback-no-team'),

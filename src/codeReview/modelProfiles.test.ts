@@ -56,7 +56,7 @@ describe('review model identities', () => {
 })
 
 describe('profile-specific review workflows', () => {
-  it.each(['gpt-6.1-sol', 'gpt-6-sol', 'gpt-5.6-terra', 'gpt-6-luna', 'gpt-5.4-mini', 'k3', 'k3.1-pro', 'deepseek-v4-pro', 'deepseek-flash', 'deepseek-ai/DeepSeek-V4.1-Flash'])('runs %s as a team from medium', id => {
+  it.each(['gpt-6.1-sol', 'gpt-6-sol', 'gpt-5.6-terra', 'gpt-6-luna', 'gpt-5.4-mini', 'k3', 'k3.1-pro', 'deepseek-v4-pro', 'deepseek-flash', 'deepseek-v4.1-flash', 'deepseek-ai/DeepSeek-V4.1-Flash'])('runs %s as a team from medium', id => {
     expect(resolveCapabilityProfile(id)).toBe('delegation-specialist')
     expect(REVIEW_LEVELS.map(level => plan(id, level).recipe)).toEqual(['quick-expand', 'team-eight-precise', 'team-eight-recall', 'team-ten', 'team-ten'])
     expect(plan(id, 'medium')).toMatchObject({ independentVerification: true, reportLimit: 8 })
