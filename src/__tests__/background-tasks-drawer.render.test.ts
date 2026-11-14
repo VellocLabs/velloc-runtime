@@ -283,7 +283,9 @@ describe('BackgroundTasksDrawer row meta', () => {
       row.querySelector<HTMLElement>(`[data-testid="${id}"]`)
     // Running: elapsed + last update; no start stamp, no span.
     expect(item(running, 'task-meta-elapsed')?.textContent).toBe('5s')
+    expect(item(running, 'task-meta-elapsed')?.getAttribute('title')).toBe('Running for 5s')
     expect(item(running, 'task-meta-updated')?.textContent).toBe('1s ago')
+    expect(item(running, 'task-meta-updated')?.getAttribute('title')).toBe('Last update 1s ago')
     expect(item(running, 'task-meta-started')).toBeNull()
     expect(item(running, 'task-meta-took')).toBeNull()
     // Finished: a 24-hour start stamp and the span it took.
@@ -320,6 +322,18 @@ describe('BackgroundTasksDrawer row meta', () => {
       vi.advanceTimersByTime(10_000)
     })
     expect(elapsed()).toBe('15s')
+  })
+
+  it('the list row keeps a running task\'s elapsed time ticking', () => {
+    vi.useFakeTimers({ now: NOW, toFake: ['Date', 'setInterval', 'clearInterval'] })
+    render(createElement(BackgroundTasksDrawer, drawerProps({ rows: [runningRow()] })))
+    const elapsed = () =>
+      document.querySelector('li [data-testid="task-meta-elapsed"]')!.textContent
+    expect(elapsed()).toBe('5s')
+    act(() => {
+      vi.advanceTimersByTime(5_000)
+    })
+    expect(elapsed()).toBe('10s')
   })
 
   it('a shell row is titled by its description; the command stays in the detail', async () => {

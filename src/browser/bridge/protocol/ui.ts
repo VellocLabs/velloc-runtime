@@ -286,7 +286,8 @@ export type NexusTaskSummaryRow = {
   stats?: NexusTaskRunStats
   /** Liveness (G5): stream-update count while running. */
   updates?: number
-  /** Unix ms when the (current) run started — drives the "running for …" age. */
+  /** Unix ms when the (current) run started — the "running for …" age on a
+   *  running row, the start stamp on a finished one. */
   startedAt?: number
   /** Liveness (G5): Unix ms of the last stream update (present while running) —
    *  drives the "updated … ago" hint. */
