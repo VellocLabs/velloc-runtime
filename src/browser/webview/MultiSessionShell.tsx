@@ -46,7 +46,6 @@ import {
   dropModsPane,
   hasPane,
   followBrowserTabs,
-  openPane,
   panesIn,
   paneToggleAction,
   paneWeightFor,

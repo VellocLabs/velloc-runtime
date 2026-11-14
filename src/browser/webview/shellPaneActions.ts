@@ -8,7 +8,6 @@ import {
   closePane,
   hasPane,
   browserToggleAction,
-  openPane,
   movePane,
   paneLayoutEquals,
   panesIn,

@@ -126,16 +126,28 @@ describe('PaneFrame', () => {
     expect(frameClasses()).toEqual(expect.arrayContaining(['border', 'rounded-lg']))
   })
 
-  it('beside the chat, the header flashes on each open signal for its kind, never on mount', () => {
-    requestPaneFlash('diff')
+  it('a pane opened beside the chat flashes the header its own open signal asked for', () => {
+    requestPaneFlash('files')
+    renderFrame({ kind: 'files' })
+    const opened = screen.getByTestId('pane-files-flash')
+    expect(opened.getAttribute('data-pane-flash')).toBe('true')
+    expect(screen.getByTestId('pane-files-header').contains(opened)).toBe(true)
+  })
+
+  it('a pane mounting with no open signal for it does not flash, and a signal is spent once', () => {
     renderFrame()
-    expect(screen.queryByTestId('pane-diff-flash'), 'a signal before mount does not flash').toBeNull()
-    act(() => requestPaneFlash('files'))
+    expect(screen.queryByTestId('pane-diff-flash')).toBeNull()
+    cleanup()
+    renderFrame()
+    expect(screen.queryByTestId('pane-diff-flash'), 'a session switch back does not flash').toBeNull()
+  })
+
+  it('a signal on a mounted pane flashes it, restarts on the next signal, and leaves another kind alone', () => {
+    renderFrame()
+    act(() => requestPaneFlash('a2ui'))
     expect(screen.queryByTestId('pane-diff-flash'), 'another kind does not flash').toBeNull()
     act(() => requestPaneFlash('diff'))
     const first = screen.getByTestId('pane-diff-flash')
-    expect(first.getAttribute('data-pane-flash')).toBe('true')
-    expect(screen.getByTestId('pane-diff-header').contains(first)).toBe(true)
     act(() => requestPaneFlash('diff'))
     expect(screen.getByTestId('pane-diff-flash'), 'a new signal restarts the flash').not.toBe(first)
   })

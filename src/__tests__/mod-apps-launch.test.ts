@@ -144,7 +144,7 @@ describe('an app press', () => {
       (fn, sessionId) => {
         records.set(sessionId!, fn(records.get(sessionId!) ?? defaultSessionPaneRecord()))
       },
-      { getSnapshot: () => ({ weights: {} }) } as never,
+      { getSnapshot: () => ({ weights: {} }) },
       focusedPane as never,
       presence,
       vi.fn(),

@@ -5,12 +5,7 @@ import type {
   NexusSettingsSection,
   ProviderMissingPrompt,
 } from '../bridge/browserBridgeProtocol'
-import {
-  openPane,
-  setMaximized,
-  type SessionPaneRecord,
-  CHAT_WEIGHT as PANE_CHAT_WEIGHT,
-} from './layout/paneLayout'
+import { CHAT_WEIGHT as PANE_CHAT_WEIGHT } from './layout/paneLayout'
 import { type SessionLayoutsStore } from './layout/sessionLayouts'
 import type { OpenSidePane } from './openSidePane'
 import { forgetAskedPane, modsPaneWeight } from './layout/modsPane'

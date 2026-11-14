@@ -24,7 +24,7 @@ function setup(active: string, cli?: string) {
     { current: cli },
     ['browser', 'terminal'],
     updatePaneRecord,
-    { getSnapshot: () => ({ records: new Map(), weights: {} }) } as never,
+    { getSnapshot: () => ({ weights: {} }) },
     { current: focused },
     event => presence.push(event),
     kind => flashed.push(kind),

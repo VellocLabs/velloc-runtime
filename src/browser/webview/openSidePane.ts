@@ -7,7 +7,6 @@ import type { ActionDispatch, RefObject } from 'react'
 
 import { hasPane, openPane, setMaximized, type PaneWeightByKind, type SessionPaneRecord, type SidePaneKind } from './layout/paneLayout'
 import type { RightPanelPresenceEvent } from './layout/rightPanelPresence'
-import type { SessionLayoutsStore } from './layout/sessionLayouts'
 
 /** How a side pane opens. Every field is optional. */
 export interface SidePaneOpenOptions {
@@ -57,7 +56,7 @@ export function createShellOpenSidePane(
   activeCliRef: RefObject<string | undefined>,
   cliPanes: readonly SidePaneKind[],
   updatePaneRecord: (fn: (prev: SessionPaneRecord) => SessionPaneRecord, sessionId?: string) => void,
-  sessionLayoutsStore: Pick<SessionLayoutsStore, 'getSnapshot'>,
+  sessionLayoutsStore: { getSnapshot(): { weights: PaneWeightByKind } },
   focusedPaneRef: RefObject<Map<string, SidePaneKind>>,
   presentRightPanel: ActionDispatch<[event: RightPanelPresenceEvent]> | ((event: RightPanelPresenceEvent) => void),
   flashPane: (kind: SidePaneKind) => void,
