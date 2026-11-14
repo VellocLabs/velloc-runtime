@@ -805,11 +805,9 @@
  * glyphs over a muted base. The band is sized in rem, not as a share of the
  * element, so a one-word label shows the same passing highlight as a
  * paragraph. The element keeps its own text for assistive tech; only the
- * paint changes. Descendants go transparent so their glyphs take the clipped
- * background. Boxes with a background of their own (code, table headers,
- * code headers, shell cards), links, buttons and icons would cover or not
- * take that paint: they keep a solid colour, and what they contain keeps its
- * own. */
+ * paint changes. Descendants go transparent to take the clipped background;
+ * boxes and paint of their own (code, headers, cards, buttons, icons) keep a
+ * solid colour, contents included (F-22). */
 .nexus-sheen {
   --nexus-sheen-band: 6rem;
   background-image:
