@@ -135,7 +135,7 @@ export function isBackgroundShellRequest(
  */
 function shellRowSummary(args: unknown): string {
   const obj = asRecord(args);
-  return str(obj.description).trim() || str(obj.command);
+  return str(obj.description) || str(obj.command);
 }
 
 /**
@@ -155,7 +155,7 @@ export function toolCallDescription(
   ) {
     return "";
   }
-  return str(asRecord(args).description).trim();
+  return str(asRecord(args).description);
 }
 
 export function formatBackgroundShellToolLabel(

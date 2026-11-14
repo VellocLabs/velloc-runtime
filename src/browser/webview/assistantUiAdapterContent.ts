@@ -5,6 +5,7 @@ import { toRenderableImageUrl } from '../../utils/images/inlineImage'
 import { isImageSourceNoteText } from '../../utils/images/imageSourceNote'
 import {
   extractBackgroundShellArgsPreview,
+  extractToolDescriptionPreview,
   isBackgroundShellToolName,
   shouldLazyLoadToolDetail,
 } from '../../utils/toolCallDetails'
@@ -174,11 +175,14 @@ export function convertAssistantBlock(
             // {skill, args} is the slim preview sanitize keeps inline - the
             // card title needs the skill name synchronously.
             ? args
-          : isBackgroundShellToolName(toolName)
-            ? extractBackgroundShellArgsPreview(args, {
-                includeForeground: backgroundShellResultPreview !== undefined,
-              }) ?? {}
-            : {}
+          : {
+              ...extractToolDescriptionPreview(toolName, args),
+              ...(isBackgroundShellToolName(toolName)
+                ? extractBackgroundShellArgsPreview(args, {
+                    includeForeground: backgroundShellResultPreview !== undefined,
+                  })
+                : null),
+            }
         : args
 
       return [

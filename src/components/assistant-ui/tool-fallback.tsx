@@ -631,8 +631,10 @@ const ToolFallbackImpl: ToolCallMessagePartComponent = ({
   // at the enclosing group: the group declares a span, but nothing inside
   // it claims a specific line, so there is no leaf to land on.
   const ownLine = usePartLine();
-  // Collapsed by default, including while `running`; only the user or a search reveal
-  // opens a card. A stored `toolFallbackOpenState` entry survives the remount.
+  // Collapsed by default, including while `running`, unless the enclosing tool line
+  // is titled by the call's description (`ToolCardOpenDefault`); otherwise only the
+  // user or a search reveal opens a card. A stored `toolFallbackOpenState` entry
+  // survives the remount and wins over the default.
   const openByDefault = useContext(ToolCardOpenDefault);
   const [open, setOpen] = useState<boolean>(
     () => toolFallbackOpenState.get(toolCallId) ?? openByDefault,
@@ -949,7 +951,7 @@ const ToolFallbackImpl: ToolCallMessagePartComponent = ({
   return (
     <ToolFallbackRoot
       // Every card is collapsible; on a jump card the ">" expands the call args
-      // (`isArgsOnlyBody` below). Nothing auto-expands.
+      // (`isArgsOnlyBody` below). Only `ToolCardOpenDefault` starts one open.
       open={open}
       onOpenChange={handleOpenChange}
       className={cn(isCancelled && "border-muted-foreground/30 bg-muted/30")}

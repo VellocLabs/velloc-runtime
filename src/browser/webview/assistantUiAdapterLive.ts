@@ -3,6 +3,7 @@ import type { ThreadMessageLike } from '@assistant-ui/react'
 import type { ModelReplyRow, Message, StreamRecord, NoticeRow } from '../../runtime/RuntimeTypes'
 import {
   extractBackgroundShellArgsPreview,
+  extractToolDescriptionPreview,
   isBackgroundShellToolName,
   shouldLazyLoadToolDetail,
 } from '../../utils/toolCallDetails'
@@ -65,9 +66,12 @@ function appendRunningToolPart(
   const inlineArgs = lazyDetail
     ? params.toolName === 'browser_actions'
       ? extractBrowserActionsTypePreview(args)
-      : isBackgroundShellToolName(params.toolName)
-        ? extractBackgroundShellArgsPreview(args) ?? {}
-        : {}
+      : {
+          ...extractToolDescriptionPreview(params.toolName, args),
+          ...(isBackgroundShellToolName(params.toolName)
+            ? extractBackgroundShellArgsPreview(args)
+            : null),
+        }
     : args
   const argsText = lazyDetail ? '' : JSON.stringify(args, null, 2)
   const backgroundAgentPendingResult = pendingBackgroundAgentResult(

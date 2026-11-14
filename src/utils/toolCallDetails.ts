@@ -505,6 +505,23 @@ function extractRunJsArgsPreview(
   return null
 }
 
+// The tools whose lone tool line is titled by the call's `description`: the
+// adapters keep that one short string inline while the rest of the args load
+// on demand. Inline literals keep the tool modules out of this util.
+const DESCRIBED_TOOL_NAMES = new Set(['Bash', 'PowerShell', 'SuperShell', SUPER_EDIT_TOOL_NAME])
+
+export function extractToolDescriptionPreview(
+  toolName: string,
+  source: unknown,
+): { description: string } | null {
+  if (!DESCRIBED_TOOL_NAMES.has(toolName)) return null
+  const obj = asRecord(source)
+  if (obj && typeof obj.description === 'string' && obj.description.trim()) {
+    return { description: obj.description }
+  }
+  return null
+}
+
 // Skill args are `{skill, args}` — two short strings. The Skill card title
 // needs the skill name synchronously (same rationale as Read/Edit's
 // file_path), so keep both; the sidecar still holds the canonical copy.
