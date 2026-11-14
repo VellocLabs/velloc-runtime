@@ -69,7 +69,10 @@ const DESCRIPTION =
   'its own page, model and permissions, that reports each finished turn back ' +
   'here. Use it for a task that outlives this turn and that the user may want ' +
   'to open, steer or review apart from this work; a sub-agent (Agent) is for a ' +
-  'result you need in this turn. from="fresh" starts it from your briefing ' +
+  'result you need in this turn. A direct start passes initiation="asked", ' +
+  'title, task (one or two sentences: what to do and what done looks like) ' +
+  'and, for a fresh start, briefing (the full context); the long brief goes ' +
+  'in briefing, not in task. from="fresh" starts it from your briefing ' +
   'alone (it has not seen this conversation; the briefing must say everything, ' +
   `at least ${CHILD_BRIEFING_MIN_CHARS} characters); from="fork" copies this ` +
   'conversation up to the last answered message and then gives it the task. ' +

@@ -174,31 +174,42 @@ export function checkChildSessionRequest(
   const typeError = checkChildStringFields(input, CHILD_SESSION_INPUT_FIELDS)
   if (typeError) return { ok: false, reason: typeError }
 
+  // The core fields are checked together, so one refusal names every one
+  // that needs fixing and a corrected call can succeed on the next try.
+  const coreProblems: string[] = []
+
   const initiation = trimmed(input?.initiation)
   if (initiation !== 'asked') {
-    return { ok: false, reason: `initiation must be "asked" (got ${JSON.stringify(initiation)}); other initiations are not available yet.` }
+    coreProblems.push(`initiation must be "asked" (got ${JSON.stringify(initiation)}); other initiations are not available yet.`)
   }
 
   const from = trimmed(input?.from) || 'fresh'
   if (from !== 'fresh' && from !== 'fork') {
-    return { ok: false, reason: `from must be "fresh" or "fork" (got ${JSON.stringify(from)}).` }
+    coreProblems.push(`from must be "fresh" or "fork" (got ${JSON.stringify(from)}).`)
   }
 
   const title = trimmed(input?.title)
-  if (!title) return { ok: false, reason: 'title is required.' }
-  if (title.length > 120) return { ok: false, reason: 'title must be at most 120 characters.' }
-  if (hasControlCharacters(title)) return { ok: false, reason: 'title must not contain control characters.' }
+  if (!title) coreProblems.push('title is required.')
+  else if (title.length > 120) coreProblems.push('title must be at most 120 characters.')
+  else if (hasControlCharacters(title)) coreProblems.push('title must not contain control characters.')
 
   // An offer is checked before its brief exists: the task and briefing come
   // once the person accepts it, and are checked then.
   const task = trimmed(input?.task)
-  if (!task && !options.briefLater) return { ok: false, reason: 'task is required: what the child session is to do.' }
+  if (!task && !options.briefLater) coreProblems.push('task is required: what the child session is to do.')
 
   const briefing = trimmed(input?.briefing)
   if (from === 'fresh' && !options.briefLater && briefing.length < CHILD_BRIEFING_MIN_CHARS) {
+    coreProblems.push(
+      `briefing must be at least ${CHILD_BRIEFING_MIN_CHARS} characters for a fresh session: it is all the child knows (got ${briefing.length}).`,
+    )
+  }
+
+  if (coreProblems.length === 1) return { ok: false, reason: coreProblems[0] }
+  if (coreProblems.length > 1) {
     return {
       ok: false,
-      reason: `briefing must be at least ${CHILD_BRIEFING_MIN_CHARS} characters for a fresh session: it is all the child knows (got ${briefing.length}).`,
+      reason: `${coreProblems.length} fields need fixing: ${coreProblems.map((problem, index) => `(${index + 1}) ${problem}`).join(' ')}`,
     }
   }
 
@@ -266,7 +277,7 @@ export function checkChildSessionRequest(
       title,
       task,
       ...(briefing ? { briefing } : {}),
-      from,
+      from: from as ChildSessionSource,
       ...(name ? { name } : {}),
       isolation: effectiveIsolation,
       isolationRequested: isolation.length > 0,

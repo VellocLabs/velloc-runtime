@@ -118,6 +118,16 @@ describe('checkChildSessionRequest — the gate', () => {
     expect(refusal({ task: '' })).toMatch(/task is required/)
   })
 
+  it('names every core field that needs fixing in one refusal', () => {
+    // The brief passed as the task, with no initiation and no briefing.
+    const reason = refusal({ initiation: '', task: 'x'.repeat(200), briefing: '' })
+    expect(reason).toMatch(/^2 fields need fixing: \(1\) initiation must be "asked"/)
+    expect(reason).toMatch(/\(2\) briefing must be at least/)
+    const all = refusal({ initiation: '', title: '', task: '', briefing: '' })
+    expect(all).toMatch(/^4 fields need fixing:/)
+    for (const field of ['initiation', 'title', 'task', 'briefing']) expect(all).toContain(`${field} `)
+  })
+
   it('a fresh request needs a briefing of at least the minimum; a fork does not', () => {
     expect(refusal({ briefing: 'too short' })).toMatch(new RegExp(`at least ${CHILD_BRIEFING_MIN_CHARS}`))
     expect(refusal({ briefing: '' })).toMatch(/got 0/)
