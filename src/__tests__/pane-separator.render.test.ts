@@ -142,10 +142,10 @@ describe('PaneArea separators', () => {
     expect(screen.getAllByRole('separator')).toHaveLength(2)
   })
 
-  it('an expanded pane sits a gutter in from the edges; an expanded app pane fills the area', () => {
+  it('an expanded pane, of any kind, fills the area edge to edge', () => {
     const slotStyle = (kind: string) => document.querySelector<HTMLElement>(`[data-pane-slot="${kind}"]`)!.style
     renderArea({ maximized: 'diff' })
-    expect([slotStyle('diff').left, slotStyle('diff').top, slotStyle('diff').width]).toEqual(['8px', '8px', '1492px'])
+    expect([slotStyle('diff').left, slotStyle('diff').top, slotStyle('diff').width]).toEqual(['0px', '0px', '1508px'])
     cleanup()
     renderArea({ layout: placePane(chatColumn(), 'a2ui', { weight: 1 }), maximized: 'a2ui' })
     expect([slotStyle('a2ui').left, slotStyle('a2ui').top, slotStyle('a2ui').width, slotStyle('a2ui').height])

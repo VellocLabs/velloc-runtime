@@ -196,13 +196,8 @@ describe('dragging a pane', () => {
   })
 
   it('no drag while a pane is expanded or the region is a seat', () => {
-    const expanded = renderArea({ maximized: 'diff' })
-    press('diff', 1000, 20)
-    moveTo(1000, 60)
-    expect(area().hasAttribute('data-pane-dragging')).toBe(false)
-    expect(chip()).toBeNull()
-    release(1000, 60)
-    expect(moves(expanded.props)).toEqual([])
+    renderArea({ maximized: 'diff' })
+    expect(screen.queryByTestId('pane-diff-handle'), 'an expanded pane has no header, so no handle').toBeNull()
     cleanup()
     const floating = renderArea({ form: 'float', seatWidth: 500 })
     press('tasks', 1200, 320)
@@ -258,9 +253,9 @@ describe('moving a pane with the keyboard', () => {
 
   it('expanded, the keys move nothing', () => {
     const { props } = renderArea({ maximized: 'diff' })
-    const diff = handle('diff')
-    diff.focus()
-    fireEvent.keyDown(diff, { key: 'ArrowUp' })
+    const tasks = handle('tasks')
+    tasks.focus()
+    fireEvent.keyDown(tasks, { key: 'ArrowUp' })
     expect(moves(props)).toEqual([])
   })
 })

@@ -2,13 +2,15 @@
 /**
  * The pane frame (F-9): renders outside any TooltipProvider, carries the
  * title slot, Expand / Restore and Close, and reports presses as focus;
- * an immersive pane, maximized, floats its buttons in place of the header.
+ * every pane, maximized, floats its buttons in place of the header; beside
+ * the chat, its header flashes on an open signal.
  */
 import { createElement } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 
 import { PaneFrame } from '@/browser/webview/panes/PaneFrame'
+import { requestPaneFlash } from '@/browser/webview/panes/paneFlash'
 import { PaneHandleContext } from '@/browser/webview/panes/usePaneDrag'
 
 afterEach(cleanup)
@@ -52,9 +54,9 @@ describe('PaneFrame', () => {
     expect(props.onToggleMaximized).toHaveBeenCalledTimes(1)
   })
 
-  it('immersive and maximized, the header is gone; actions, Restore and Close float in the corner', () => {
+  it('maximized, the header is gone; actions, Restore and Close float in the corner', () => {
     const action = createElement('button', { 'data-testid': 'own-action', type: 'button' }, 'Reload')
-    const props = renderFrame({ immersiveWhenMaximized: true, maximized: true, actions: action })
+    const props = renderFrame({ maximized: true, actions: action })
     expect(screen.queryByTestId('pane-diff-header')).toBeNull()
     expect(screen.queryByTestId('title-slot')).toBeNull()
     const bar = screen.getByTestId('pane-diff-float-bar')
@@ -72,13 +74,12 @@ describe('PaneFrame', () => {
     expect(props.onClose).toHaveBeenCalledTimes(1)
   })
 
-  it('immersive, Expand and Restore keep the same button, so it keeps keyboard focus', () => {
+  it('Expand and Restore keep the same button, so it keeps keyboard focus', () => {
     const props = {
       kind: 'diff' as const,
       name: 'Diff',
       title: 'Diff',
       maximized: false,
-      immersiveWhenMaximized: true,
       onToggleMaximized: vi.fn(),
       onClose: vi.fn(),
       children: null,
@@ -94,9 +95,9 @@ describe('PaneFrame', () => {
     expect(document.activeElement).toBe(expand)
   })
 
-  it('immersive but not maximized, or maximized but not immersive, the header stays with the actions first', () => {
+  it('not maximized, the header stays with the actions first', () => {
     const action = createElement('button', { 'data-testid': 'own-action', type: 'button' }, 'Reload')
-    renderFrame({ immersiveWhenMaximized: true, actions: action })
+    renderFrame({ actions: action })
     const header = screen.getByTestId('pane-diff-header')
     expect([...header.querySelectorAll('button')].map(b => b.getAttribute('data-testid'))).toEqual([
       'own-action',
@@ -104,23 +105,45 @@ describe('PaneFrame', () => {
       'pane-diff-close',
     ])
     expect(screen.queryByTestId('pane-diff-float-bar')).toBeNull()
-    cleanup()
-    renderFrame({ maximized: true })
-    expect(screen.getByTestId('pane-diff-header')).toBeTruthy()
-    expect(screen.queryByTestId('pane-diff-float-bar')).toBeNull()
   })
 
-  it('immersive and maximized, the pane drops its rounded border; otherwise it keeps it', () => {
+  it('every pane kind, maximized, floats its buttons with no header', () => {
+    for (const kind of ['tasks', 'files', 'terminal', 'browser', 'a2ui'] as const) {
+      renderFrame({ kind, maximized: true })
+      expect(screen.queryByTestId(`pane-${kind}-header`), kind).toBeNull()
+      expect(screen.getByTestId(`pane-${kind}-float-bar`), kind).toBeTruthy()
+      cleanup()
+    }
+  })
+
+  it('maximized, the pane drops its rounded border; otherwise it keeps it', () => {
     const frameClasses = () => screen.getByTestId('pane-diff').className.split(/\s+/)
-    renderFrame({ immersiveWhenMaximized: true, maximized: true })
+    renderFrame({ maximized: true })
     expect(frameClasses()).not.toContain('border')
     expect(frameClasses()).not.toContain('rounded-lg')
     cleanup()
-    renderFrame({ immersiveWhenMaximized: true })
+    renderFrame()
     expect(frameClasses()).toEqual(expect.arrayContaining(['border', 'rounded-lg']))
-    cleanup()
+  })
+
+  it('beside the chat, the header flashes on each open signal for its kind, never on mount', () => {
+    requestPaneFlash('diff')
+    renderFrame()
+    expect(screen.queryByTestId('pane-diff-flash'), 'a signal before mount does not flash').toBeNull()
+    act(() => requestPaneFlash('files'))
+    expect(screen.queryByTestId('pane-diff-flash'), 'another kind does not flash').toBeNull()
+    act(() => requestPaneFlash('diff'))
+    const first = screen.getByTestId('pane-diff-flash')
+    expect(first.getAttribute('data-pane-flash')).toBe('true')
+    expect(screen.getByTestId('pane-diff-header').contains(first)).toBe(true)
+    act(() => requestPaneFlash('diff'))
+    expect(screen.getByTestId('pane-diff-flash'), 'a new signal restarts the flash').not.toBe(first)
+  })
+
+  it('maximized, no flash is drawn', () => {
     renderFrame({ maximized: true })
-    expect(frameClasses()).toEqual(expect.arrayContaining(['border', 'rounded-lg']))
+    act(() => requestPaneFlash('diff'))
+    expect(screen.queryByTestId('pane-diff-flash')).toBeNull()
   })
 
   it('close closes, and a press inside focuses the pane', () => {

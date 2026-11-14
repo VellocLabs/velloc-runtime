@@ -41,9 +41,6 @@ export function appPaneTitle(
   return app ? resolveLocalizedText(app.title, locale) || null : null
 }
 
-/** Panes that, maximized, fill the area edge to edge with no header or frame (F-9). */
-export const IMMERSIVE_PANES: ReadonlySet<SidePaneKind> = new Set<SidePaneKind>(['a2ui'])
-
 export const PANE_ICON: Record<SidePaneKind, LucideIcon> = {
   tasks: ListTodoIcon,
   diff: FileDiffIcon,

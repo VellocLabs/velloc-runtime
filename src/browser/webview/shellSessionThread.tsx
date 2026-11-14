@@ -51,7 +51,7 @@ export interface ShellSessionThreadInputs {
   subAgentRowsForSession: (sessionId: string) => NexusTaskSummaryRow[]
   handleStopBackgroundTask: ThreadProps['onStopBackgroundTask']
   handleOpenBackgroundTasksList: ThreadProps['onOpenBackgroundTasksList']
-  openPaneFor: (kind: SidePaneKind) => void
+  openSidePane: (kind: SidePaneKind) => void
   openFile: ThreadProps['onOpenFileInPanel']
   openTerminalInPanel: ThreadProps['onOpenTerminalInPanel']
   statFilePaths: ThreadProps['statFilePaths']
@@ -99,7 +99,7 @@ export function renderShellSessionThread(
     loadToolCallDetail, loadTurnDiffDetail, interrupt, setPermissionMode,
     setSkipDangerousMode, clearPendingMessage, removeInjectMessage, resolveToolUseConfirm,
     clearPlanApproval, sessionItems, handleArchiveThread, handleOpenBackgroundTasks, subAgentRowsForSession,
-    handleStopBackgroundTask, handleOpenBackgroundTasksList, openPaneFor, openFile,
+    handleStopBackgroundTask, handleOpenBackgroundTasksList, openSidePane, openFile,
     openTerminalInPanel, statFilePaths, openDiffInPanel, openSkillInPanel, focusSession,
     handleDeleteThread, retitleSession, handlePendingQuestionsChange, openNewSession,
     handleOpenSettings, handleOpenPluginSettings, modPanesDocked, sessionCardsDocked,
@@ -179,7 +179,7 @@ export function renderShellSessionThread(
                 backgroundTaskRows={subAgentRowsForSession(sessionId)}
                 onStopBackgroundTask={handleStopBackgroundTask}
                 onOpenBackgroundTasksList={handleOpenBackgroundTasksList}
-                onOpenPlanPanel={() => openPaneFor('plan')}
+                onOpenPlanPanel={() => openSidePane('plan')}
                 onOpenFileInPanel={openFile}
                 onOpenTerminalInPanel={openTerminalInPanel}
                 statFilePaths={statFilePaths}

@@ -48,6 +48,7 @@ import {
   navigateSessionTab,
   openSessionTab,
 } from './nexusBridgeActions'
+import type { OpenSidePane } from './openSidePane'
 import { fileOpenKind } from '@/utils/fileOpenKind'
 import { requestTerminalFocus } from './terminal/terminalFocus'
 import { cliOfTemplateType } from '../../prompting/templateCatalog'
@@ -119,46 +120,12 @@ export function createShellFocusPane(
     if (id) focusedPaneRef.current.set(id, kind)
   }
 }
-export function createShellOpenPaneFor(
-  activeCliRef: RefObject<string | undefined>,
-  updatePaneRecord: (fn: (prev: SessionPaneRecord) => SessionPaneRecord, sessionId?: string) => void,
-  sessionLayoutsStore: SessionLayoutsStore,
-  focusPane: (kind: SidePaneKind) => void,
-  presentRightPanel: ActionDispatch<[event: RightPanelPresenceEvent]>,
-) {
-  return (kind: SidePaneKind) => {
-    if (activeCliRef.current && !CLI_SESSION_PANES.includes(kind)) return
-    updatePaneRecord(r => {
-      const opened = openPane(r, kind, sessionLayoutsStore.getSnapshot().weights)
-      return opened.maximized !== null ? setMaximized(opened, kind) : opened
-    })
-    focusPane(kind)
-    presentRightPanel({ type: 'personOpen', view: kind })
-  }
-}
-/** Open `kind` in `sessionId`'s record: for the person when that session is
- *  shown, else placed without taking the foreground. */
-export function createShellOpenPaneForSession(
-  activeSessionIdRef: RefObject<string>,
-  openPaneFor: (kind: SidePaneKind) => void,
-  updatePaneRecord: (fn: (prev: SessionPaneRecord) => SessionPaneRecord, sessionId?: string) => void,
-  sessionLayoutsStore: SessionLayoutsStore,
-) {
-  return (kind: SidePaneKind, sessionId: string) => {
-    if (activeSessionIdRef.current === sessionId) {
-      openPaneFor(kind)
-      return
-    }
-    updatePaneRecord(r => openPane(r, kind, sessionLayoutsStore.getSnapshot().weights), sessionId)
-  }
-}
 /** An A2UI host's pane request (F-1): a person's open goes through
- *  `openPaneForSession`; a transcript change only edits that session's record;
- *  a restore un-maximizes that session's panes (F-40). */
+ *  `openSidePane` in the foreground; a transcript change only edits that
+ *  session's record; a restore un-maximizes that session's panes (F-40). */
 export function createShellA2uiPaneRequest(
-  openPaneForSession: (kind: SidePaneKind, sessionId: string) => void,
+  openSidePane: OpenSidePane,
   updatePaneRecord: (fn: (prev: SessionPaneRecord) => SessionPaneRecord, sessionId?: string) => void,
-  sessionLayoutsStore: SessionLayoutsStore,
 ) {
   return (request: A2uiPaneRequest) => {
     const { sessionId } = request
@@ -167,14 +134,11 @@ export function createShellA2uiPaneRequest(
       return
     }
     const { open, byPerson } = request
-    if (open && byPerson) {
-      openPaneForSession('a2ui', sessionId)
+    if (open) {
+      openSidePane('a2ui', byPerson ? { sessionId } : { sessionId, foreground: false })
       return
     }
-    updatePaneRecord(
-      r => (open ? openPane(r, 'a2ui', sessionLayoutsStore.getSnapshot().weights) : closePane(r, 'a2ui')),
-      sessionId,
-    )
+    updatePaneRecord(r => closePane(r, 'a2ui'), sessionId)
   }
 }
 export function createShellSetModsPaneDismissedFor(
@@ -261,7 +225,7 @@ export function createShellTogglePane(
   openBrowserTab: (sessionId: string) => void,
   browserDismissedAtRef: RefObject<Map<string, number>>,
   setModsPaneDismissedFor: (sessionId: string, dismissed: boolean) => void,
-  openPaneFor: (kind: SidePaneKind) => void,
+  openSidePane: OpenSidePane,
   updatePaneRecord: (fn: (prev: SessionPaneRecord) => SessionPaneRecord, sessionId?: string) => void,
   focusPane: (kind: SidePaneKind) => void,
   closePaneFor: (kind: SidePaneKind) => void,
@@ -284,7 +248,7 @@ export function createShellTogglePane(
       case 'open':
         if (kind === 'browser') browserDismissedAtRef.current.delete(id)
         if (kind === 'mods') setModsPaneDismissedFor(id, false)
-        openPaneFor(kind)
+        openSidePane(kind)
         break
       case 'move-expansion':
         updatePaneRecord(r => setMaximized(r, kind))
@@ -358,11 +322,9 @@ export function createShellOpenFileInPanel(
   activeSessionIdRef: RefObject<string>,
   updatePaneRecord: (fn: (prev: SessionPaneRecord) => SessionPaneRecord, sessionId?: string) => void,
   dirtyFilePathsRef: RefObject<ReadonlySet<string>>,
-  sessionLayoutsStore: SessionLayoutsStore,
-  focusPane: (kind: SidePaneKind) => void,
+  openSidePane: OpenSidePane,
   updatePaneUi: (sessionId: string, fn: (prev: PaneSessionUi) => PaneSessionUi) => void,
   fileRevealNonceRef: RefObject<number>,
-  presentRightPanel: ActionDispatch<[event: RightPanelPresenceEvent]>,
 ) {
   return (target: RightPanelFileTarget) => {
     const id = activeSessionIdRef.current
@@ -371,10 +333,9 @@ export function createShellOpenFileInPanel(
       const files = openFileTab(r.files ?? EMPTY_FILES_PANE, target.path, {
         protectedPaths: dirtyFilePathsRef.current,
       })
-      const opened = openPane(r, 'files', sessionLayoutsStore.getSnapshot().weights)
-      return files === r.files ? opened : { ...opened, files }
+      return files === r.files ? r : { ...r, files }
     })
-    focusPane('files')
+    openSidePane('files')
     // A `path:42` mention carries a landing line — record the reveal even
     // for an already-open tab (the click means "take me THERE, again").
     if (target.line !== undefined) {
@@ -384,7 +345,6 @@ export function createShellOpenFileInPanel(
         fileReveal: { path: target.path, line, nonce: ++fileRevealNonceRef.current },
       }))
     }
-    presentRightPanel({ type: 'personOpen', view: 'files' })
   }
 }
 export function createShellOpenFile(
@@ -406,11 +366,11 @@ export function createShellOpenFile(
   }
 }
 export function createShellOpenTerminalInPanel(
-  openPaneFor: (kind: SidePaneKind) => void,
+  openSidePane: OpenSidePane,
 ) {
   return (sessionId: string, terminalId: string) => {
     requestTerminalFocus(sessionId, terminalId)
-    openPaneFor('terminal')
+    openSidePane('terminal')
   }
 }
 export function createShellOpenFileFromTree(
@@ -479,13 +439,13 @@ export function createShellAttachPathToComposer(
 export function createShellOpenDiffInPanel(
   activeSessionIdRef: RefObject<string>,
   updatePaneUi: (sessionId: string, fn: (prev: PaneSessionUi) => PaneSessionUi) => void,
-  openPaneFor: (kind: SidePaneKind) => void,
+  openSidePane: OpenSidePane,
 ) {
   return (target: RightPanelDiffTarget) => {
     const id = activeSessionIdRef.current
     if (!id) return
     updatePaneUi(id, cur => ({ ...cur, diffTarget: target }))
-    openPaneFor('diff')
+    openSidePane('diff')
   }
 }
 /** Going back from a file diff: that session's Diff pane shows its history from then on. */
@@ -502,12 +462,12 @@ export function createShellDismissDiffTarget(
 export function createShellOpenSkillInPanel(
   activeSessionIdRef: RefObject<string>,
   updatePaneUi: (sessionId: string, fn: (prev: PaneSessionUi) => PaneSessionUi) => void,
-  openPaneFor: (kind: SidePaneKind) => void,
+  openSidePane: OpenSidePane,
 ) {
   return (target: RightPanelSkillTarget) => {
     const id = activeSessionIdRef.current
     if (!id) return
     updatePaneUi(id, cur => ({ ...cur, skillTarget: target }))
-    openPaneFor('skill')
+    openSidePane('skill')
   }
 }

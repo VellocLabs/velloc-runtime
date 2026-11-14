@@ -13,6 +13,7 @@ import {
 import { useT } from '../i18n'
 import type { SidePaneKind } from '../layout/paneLayout'
 import { PANE_ICON } from './paneKinds'
+import { usePaneFlash } from './paneFlash'
 import { usePaneHandle } from './usePaneDrag'
 
 /**
@@ -20,8 +21,8 @@ import { usePaneHandle } from './usePaneDrag'
  * own actions, Expand / Restore, Close) over a body that owns its scrolling.
  * The icon becomes a grip on header hover and is the only drag handle.
  * Brings its own TooltipProvider (panes render outside the thread ones).
- * `immersiveWhenMaximized`: maximized, no header; the buttons float in the
- * top-end corner, shown on hover or focus.
+ * Maximized: no header or border; the buttons float in the top-end corner,
+ * shown on hover or focus. Otherwise the header flashes on an open signal.
  */
 export type PaneFrameProps = {
   kind: SidePaneKind
@@ -32,8 +33,6 @@ export type PaneFrameProps = {
   /** The pane's own header actions, before Expand and Close. */
   actions?: ReactNode
   maximized: boolean
-  /** Maximized, hide the header and float its buttons in the corner. */
-  immersiveWhenMaximized?: boolean
   onToggleMaximized: () => void
   onClose: () => void
   /** A press or focus inside the pane: it becomes the focused pane. */
@@ -48,7 +47,8 @@ export function PaneFrame(props: PaneFrameProps): ReactElement {
   const { kind, name } = props
   const handle = usePaneHandle(kind)
   const KindIcon = PANE_ICON[kind]
-  const immersive = props.immersiveWhenMaximized === true && props.maximized
+  const immersive = props.maximized
+  const flash = usePaneFlash(kind)
   const expandLabel = t(props.maximized ? 'pane.restore' : 'pane.expand')
   const buttons = (
     <>
@@ -110,9 +110,18 @@ export function PaneFrame(props: PaneFrameProps): ReactElement {
           className={
             immersive
               ? 'absolute end-1 top-1 z-20 flex items-center gap-0.5 rounded-md border border-border bg-card p-0.5 opacity-0 shadow-sm transition-opacity focus-within:opacity-100 hover:opacity-100'
-              : 'group/pane-header flex h-9 shrink-0 items-center gap-0.5 border-b border-border pe-1 ps-2'
+              : 'group/pane-header relative isolate flex h-9 shrink-0 items-center gap-0.5 border-b border-border pe-1 ps-2'
           }
         >
+          {immersive || flash === null ? null : (
+            <span
+              key={flash}
+              aria-hidden="true"
+              data-pane-flash="true"
+              data-testid={`pane-${kind}-flash`}
+              className="pointer-events-none absolute inset-0 -z-10"
+            />
+          )}
           {immersive ? null : (
             <div
               role="button"

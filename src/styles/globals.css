@@ -977,3 +977,29 @@
 ::-webkit-scrollbar-button {
   display: none;
 }
+
+/* A side pane opened beside the chat (F-9): its header flashes twice so the
+   person sees where it opened, even when it was open already. */
+@keyframes nexus-pane-open-flash {
+  0%,
+  50% {
+    background-color: color-mix(in srgb, var(--primary) 28%, transparent);
+  }
+  25%,
+  75% {
+    background-color: color-mix(in srgb, var(--primary) 6%, transparent);
+  }
+  100% {
+    background-color: transparent;
+  }
+}
+
+[data-pane-flash='true'] {
+  animation: nexus-pane-open-flash 1.2s ease-out forwards;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-pane-flash='true'] {
+    animation: nexus-pane-open-flash 1.2s steps(1, end) forwards;
+  }
+}

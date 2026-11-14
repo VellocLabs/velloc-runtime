@@ -8,7 +8,6 @@ import { createElement as h } from 'react'
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 
 import {
-  appPaneRecord,
   createOpenApp,
   pickAppSession,
   unlistedAppSessionIds,
@@ -18,6 +17,7 @@ import {
 } from '../browser/webview/apps/appLaunch'
 import { APP_RUN_SESSION_PREFIX } from '../mods/app/appAgentRun'
 import { defaultSessionPaneRecord, hasPane } from '../browser/webview/layout/paneLayout'
+import { createShellOpenSidePane, openSidePaneRecord } from '../browser/webview/openSidePane'
 import { setModContributions } from '../browser/webview/mods/modContributionsView'
 import { createAppSignIn, dueSignIns } from '../browser/webview/mcpAuthView'
 import type { McpAuthServerState, McpAuthState } from '../mcp/oauth/mcpAuthProtocol'
@@ -126,7 +126,7 @@ describe('app sessions the list leaves out', () => {
 
 describe('an app press', () => {
   it('opens the A2UI pane and has it cover the chat', () => {
-    const record = appPaneRecord(defaultSessionPaneRecord(), {})
+    const record = openSidePaneRecord(defaultSessionPaneRecord(), 'a2ui', {}, { maximized: true })
     expect(hasPane(record.layout, 'a2ui')).toBe(true)
     expect(record.maximized).toBe('a2ui')
   })
@@ -137,18 +137,19 @@ describe('an app press', () => {
     const openNewSession = vi.fn(() => 'new-session')
     const focusedPane = { current: new Map<string, 'a2ui' | 'browser'>() }
     const presence = vi.fn()
-    const open = createOpenApp(
-      { current: sessions },
-      focusSession,
-      openNewSession,
+    const openSidePane = createShellOpenSidePane(
+      { current: 'shown' },
+      { current: undefined },
+      [],
       (fn, sessionId) => {
         records.set(sessionId!, fn(records.get(sessionId!) ?? defaultSessionPaneRecord()))
       },
-      { getSnapshot: () => ({ weights: {} }) },
+      { getSnapshot: () => ({ weights: {} }) } as never,
       focusedPane as never,
       presence,
-      () => NOW,
+      vi.fn(),
     )
+    const open = createOpenApp({ current: sessions }, focusSession, openNewSession, openSidePane, () => NOW)
     return { open, records, focusSession, openNewSession, focusedPane, presence }
   }
 

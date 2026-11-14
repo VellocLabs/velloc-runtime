@@ -5,8 +5,7 @@
  * screen. Page-side; the runtime seeds the folder when the session starts.
  */
 
-import { openPane, setMaximized, type PaneWeightByKind, type SessionPaneRecord, type SidePaneKind } from '../layout/paneLayout'
-import type { RightPanelPresenceEvent } from '../layout/rightPanelPresence'
+import type { OpenSidePane } from '../openSidePane'
 import { sessionActivityTime, sessionTimeBucket } from '../sessionTimeBucket'
 import { isSideChatUnderParent } from '../sideChat'
 import { isAppRunSessionId } from '../../../mods/app/appAgentRun'
@@ -71,25 +70,16 @@ export function unlistedAppSessionSet(key: string): ReadonlySet<string> {
   return key === '' ? NONE : new Set(key.split('\n'))
 }
 
-/** The pane record an app opens with: the A2UI pane open and covering the chat. */
-export function appPaneRecord(record: SessionPaneRecord, weights: PaneWeightByKind): SessionPaneRecord {
-  return setMaximized(openPane(record, 'a2ui', weights), 'a2ui')
-}
-
 /**
- * The topbar's app press: focus or open the app's session, then show its pane.
- * Plain-name inputs, so the shell's memo holds no render scope.
+ * The topbar's app press: focus or open the app's session, then show its pane
+ * covering the chat. Plain-name inputs, so the shell's memo holds no render scope.
  */
 export function createOpenApp<T extends AppSessionEntry>(
   sessions: { readonly current: readonly T[] },
   focusSession: (sessionId: string) => void,
   /** Opens a session of `type` (an empty one of that type may be reused); its id. */
   openNewSession: (type: string) => string,
-  updatePaneRecord: (fn: (prev: SessionPaneRecord) => SessionPaneRecord, sessionId?: string) => void,
-  layouts: { getSnapshot(): { weights: PaneWeightByKind } },
-  /** The pane each session's pane shortcuts act on. */
-  focusedPane: { readonly current: Map<string, SidePaneKind> },
-  presentRightPanel: (event: RightPanelPresenceEvent) => void,
+  openSidePane: OpenSidePane,
   now: () => number = Date.now,
 ): (type: string) => string {
   return type => {
@@ -101,9 +91,7 @@ export function createOpenApp<T extends AppSessionEntry>(
     } else {
       sessionId = openNewSession(type)
     }
-    updatePaneRecord(record => appPaneRecord(record, layouts.getSnapshot().weights), sessionId)
-    focusedPane.current.set(sessionId, 'a2ui')
-    presentRightPanel({ type: 'personOpen', view: 'a2ui' })
+    openSidePane('a2ui', { sessionId, maximized: true, foreground: true })
     return sessionId
   }
 }

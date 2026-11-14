@@ -272,8 +272,6 @@ import {
   createShellReadPaneRecord,
   createShellUpdatePaneRecord,
   createShellFocusPane,
-  createShellOpenPaneFor,
-  createShellOpenPaneForSession,
   createShellA2uiPaneRequest,
   createShellSetModsPaneDismissedFor,
   createShellClosePaneFor,
@@ -300,6 +298,8 @@ import {
   createShellOpenDiffInPanel,
   createShellOpenSkillInPanel,
 } from './shellPaneActions'
+import { createShellOpenSidePane } from './openSidePane'
+import { requestPaneFlash } from './panes/paneFlash'
 import {
   readSavedSidebarWidth,
   createShellHandleToggleSidebar,
@@ -1871,12 +1871,17 @@ export function MultiSessionShell({
     () => createShellFocusPane(activeSessionIdRef, focusedPaneRef),
     [],
   )
+  /** Every side pane opens through this (F-9): the pane, its session, maximized or beside the chat. */
+  const openSidePane = useMemo(
+    () => createShellOpenSidePane(activeSessionIdRef, activeCliRef, CLI_SESSION_PANES, updatePaneRecord, sessionLayoutsStore, focusedPaneRef, presentRightPanel, requestPaneFlash),
+    [updatePaneRecord, sessionLayoutsStore],
+  )
   // An app's topbar icon (F-40): today's session of the app, or a new one, its pane covering the chat.
   const appSessionsRef = useRef(sessions)
   appSessionsRef.current = sessions
   const handleOpenApp = useMemo(
-    () => createOpenApp(appSessionsRef, focusSession, openNewSession, updatePaneRecord, sessionLayoutsStore, focusedPaneRef, presentRightPanel),
-    [focusSession, openNewSession, updatePaneRecord, sessionLayoutsStore],
+    () => createOpenApp(appSessionsRef, focusSession, openNewSession, openSidePane),
+    [focusSession, openNewSession, openSidePane],
   )
   // At an app's press, its MCP servers that wait on a sign-in get one (F-10).
   const appMcpAuthLatest = useMcpAuthLatest(runtimeConnection)
@@ -1892,17 +1897,7 @@ export function MultiSessionShell({
     canSignOut: runtimeCapabilities.can('mcpAuth', 'signOut'),
   }
   const appPressPort = useMemo(() => createAppPressPort(appPressContextRef), [])
-  /** Open `kind` for the person: placed, focused, and expanded in place of
-   *  a pane that was expanded. */
-  const openPaneFor = useMemo(
-    () => createShellOpenPaneFor(activeCliRef, updatePaneRecord, sessionLayoutsStore, focusPane, presentRightPanel),
-    [updatePaneRecord, sessionLayoutsStore, focusPane],
-  )
-  const openPaneForSession = useMemo(
-    () => createShellOpenPaneForSession(activeSessionIdRef, openPaneFor, updatePaneRecord, sessionLayoutsStore),
-    [openPaneFor, updatePaneRecord, sessionLayoutsStore],
-  )
-  openSideChatPaneForRef.current = (parentId: string) => openPaneForSession('sidechat', parentId)
+  openSideChatPaneForRef.current = (parentId: string) => openSidePane('sidechat', { sessionId: parentId })
   // The tab count a session's browser pane was closed at: the pane returns
   // on new tab activity (another count), not for the state it was closed in.
   // Transient, like the dismissal it replaces.
@@ -1940,8 +1935,8 @@ export function MultiSessionShell({
   )
   /** The topbar toggle (`paneToggleAction` against the drawn record). */
   const togglePane = useMemo(
-    () => createShellTogglePane(activeSessionIdRef, activeCliRef, setBackgroundTaskFocusSessionId, readPaneRecord, sessionTabCountsRef, openBrowserTab, browserDismissedAtRef, setModsPaneDismissedFor, openPaneFor, updatePaneRecord, focusPane, closePaneFor),
-    [readPaneRecord, openPaneFor, closePaneFor, updatePaneRecord, focusPane, openBrowserTab, setModsPaneDismissedFor],
+    () => createShellTogglePane(activeSessionIdRef, activeCliRef, setBackgroundTaskFocusSessionId, readPaneRecord, sessionTabCountsRef, openBrowserTab, browserDismissedAtRef, setModsPaneDismissedFor, openSidePane, updatePaneRecord, focusPane, closePaneFor),
+    [readPaneRecord, openSidePane, closePaneFor, updatePaneRecord, focusPane, openBrowserTab, setModsPaneDismissedFor],
   )
   // The browser pane follows each session's tab count: a change above zero
   // places it (unless closed at that count), zero leaves it to the prune.
@@ -2024,8 +2019,8 @@ export function MultiSessionShell({
   // Open a file as a tab of the Files pane; past the strip's cap the oldest
   // tab is dropped, never the active or a dirty one.
   const openFileInPanel = useMemo(
-    () => createShellOpenFileInPanel(activeSessionIdRef, updatePaneRecord, dirtyFilePathsRef, sessionLayoutsStore, focusPane, updatePaneUi, fileRevealNonceRef, presentRightPanel),
-    [updatePaneRecord, sessionLayoutsStore, focusPane, updatePaneUi],
+    () => createShellOpenFileInPanel(activeSessionIdRef, updatePaneRecord, dirtyFilePathsRef, openSidePane, updatePaneUi, fileRevealNonceRef),
+    [updatePaneRecord, openSidePane, updatePaneUi],
   )
   // Every file open goes by its kind (`fileOpenKind`): text becomes a Files tab, media loads in
   // the host's viewer window. A media file the viewer cannot take, and a file of no listed kind,
@@ -2036,8 +2031,8 @@ export function MultiSessionShell({
   )
   // A chat Run card ran a command (F-31): the Terminal pane opens on that terminal's tab.
   const openTerminalInPanel = useMemo(
-    () => createShellOpenTerminalInPanel(openPaneFor),
-    [openPaneFor],
+    () => createShellOpenTerminalInPanel(openSidePane),
+    [openSidePane],
   )
   const openFileFromTree = useMemo(
     () => createShellOpenFileFromTree(openFile),
@@ -2080,8 +2075,8 @@ export function MultiSessionShell({
     [],
   )
   const openDiffInPanel = useMemo(
-    () => createShellOpenDiffInPanel(activeSessionIdRef, updatePaneUi, openPaneFor),
-    [updatePaneUi, openPaneFor],
+    () => createShellOpenDiffInPanel(activeSessionIdRef, updatePaneUi, openSidePane),
+    [updatePaneUi, openSidePane],
   )
   const dismissDiffTarget = useMemo(
     () => createShellDismissDiffTarget(activeSessionIdRef, updatePaneUi),
@@ -2091,8 +2086,8 @@ export function MultiSessionShell({
   // Skill card "View skill" → the Skill pane: stores the target the pane
   // body reads and opens the pane.
   const openSkillInPanel = useMemo(
-    () => createShellOpenSkillInPanel(activeSessionIdRef, updatePaneUi, openPaneFor),
-    [updatePaneUi, openPaneFor],
+    () => createShellOpenSkillInPanel(activeSessionIdRef, updatePaneUi, openSidePane),
+    [updatePaneUi, openSidePane],
   )
 
   // Open handles for FilePathLinks rendered INSIDE the panel (plan text /
@@ -2188,15 +2183,15 @@ export function MultiSessionShell({
     [openSkillInPanel],
   )
   const handleOpenBackgroundTasks = useMemo(
-    () => createShellHandleOpenBackgroundTasks(setBackgroundTaskFocusSessionId, openPaneFor),
-    [openPaneFor],
+    () => createShellHandleOpenBackgroundTasks(setBackgroundTaskFocusSessionId, openSidePane),
+    [openSidePane],
   )
   // Tasks on its list: each request (a count) sends the drawer back from any
   // task detail it shows.
   const [backgroundTaskListRequest, setBackgroundTaskListRequest] = useState(0)
   const handleOpenBackgroundTasksList = useMemo(
-    () => createShellHandleOpenBackgroundTasksList(setBackgroundTaskFocusSessionId, setBackgroundTaskListRequest, openPaneFor),
-    [openPaneFor],
+    () => createShellHandleOpenBackgroundTasksList(setBackgroundTaskFocusSessionId, setBackgroundTaskListRequest, openSidePane),
+    [openSidePane],
   )
 
   // `$.ui.view` (F-25): a teammate's transcript is its own session; a
@@ -2336,15 +2331,15 @@ export function MultiSessionShell({
       return
     }
     agentOpenRightPanelRef.current('plan')
-    updatePaneRecord(r => openPane(r, 'plan', sessionLayoutsStore.getSnapshot().weights))
-  }, [activePlanEntry, activeSessionId, updatePaneRecord, sessionLayoutsStore])
+    openSidePane('plan', { foreground: false })
+  }, [activePlanEntry, activeSessionId, openSidePane])
   // A session's A2UI host opens its pane on a new surface and closes it when
   // the last surface is deleted (F-1); a background session's record changes
   // without taking the foreground. A person's card press in the shown session
   // opens it the way a pane toggle does.
   const handleA2uiPaneRequest = useMemo(
-    () => createShellA2uiPaneRequest(openPaneForSession, updatePaneRecord, sessionLayoutsStore),
-    [openPaneForSession, updatePaneRecord, sessionLayoutsStore],
+    () => createShellA2uiPaneRequest(openSidePane, updatePaneRecord),
+    [openSidePane, updatePaneRecord],
   )
   useEffect(() => onA2uiPaneRequest(handleA2uiPaneRequest), [handleA2uiPaneRequest])
   useLayoutEffect(() => {
@@ -2564,8 +2559,8 @@ export function MultiSessionShell({
   // the chat as wide as `columns` cells (a width the person dragged wins);
   // `forward` also shows it over a pane expanded in front.
   const bringModsPane = useMemo(
-    () => createShellBringModsPane(updatePaneRecord, sessionLayoutsStore, modCellWidth, modRowWidthRef),
-    [updatePaneRecord, sessionLayoutsStore, modCellWidth],
+    () => createShellBringModsPane(openSidePane, sessionLayoutsStore, modCellWidth, modRowWidthRef),
+    [openSidePane, sessionLayoutsStore, modCellWidth],
   )
   // Per session: the opens last folded (`newModPaneOpens`'s `seen`), and
   // the mod's own opens that wait for the pane (placed when the window
@@ -2727,13 +2722,13 @@ export function MultiSessionShell({
           break
         }
         case 'open':
-          openPaneFor(step.kind)
+          openSidePane(step.kind)
           break
       }
     }
     document.addEventListener('keydown', onKey, true)
     return () => document.removeEventListener('keydown', onKey, true)
-  }, [readPaneRecord, togglePane, closePaneFor, openPaneFor, updatePaneRecord])
+  }, [readPaneRecord, togglePane, closePaneFor, openSidePane, updatePaneRecord])
   const handleSettingsNavigate = useMemo(
     () => createShellHandleSettingsNavigate(setPluginSettingsRequest, setMcpSettingsRequest, setSettingsSection),
     [],
@@ -3820,7 +3815,7 @@ export function MultiSessionShell({
     loadToolCallDetail, loadTurnDiffDetail, interrupt, setPermissionMode,
     setSkipDangerousMode, clearPendingMessage, removeInjectMessage, resolveToolUseConfirm,
     clearPlanApproval, sessionItems, handleArchiveThread, handleOpenBackgroundTasks, subAgentRowsForSession,
-    handleStopBackgroundTask, handleOpenBackgroundTasksList, openPaneFor, openFile,
+    handleStopBackgroundTask, handleOpenBackgroundTasksList, openSidePane, openFile,
     openTerminalInPanel, statFilePaths, openDiffInPanel, openSkillInPanel, focusSession,
     handleDeleteThread, retitleSession, handlePendingQuestionsChange, openNewSession,
     handleOpenSettings, handleOpenPluginSettings, modPanesDocked, sessionCardsDocked,

@@ -75,22 +75,22 @@ export function createShellHandleSelectSkill(
 }
 export function createShellHandleOpenBackgroundTasks(
   setBackgroundTaskFocusSessionId: Dispatch<SetStateAction<string | null>>,
-  openPaneFor: (kind: SidePaneKind) => void,
+  openSidePane: (kind: SidePaneKind) => void,
 ) {
   return (focusSessionId?: string) => {
     setBackgroundTaskFocusSessionId(focusSessionId ?? null)
-    openPaneFor('tasks')
+    openSidePane('tasks')
   }
 }
 export function createShellHandleOpenBackgroundTasksList(
   setBackgroundTaskFocusSessionId: Dispatch<SetStateAction<string | null>>,
   setBackgroundTaskListRequest: Dispatch<SetStateAction<number>>,
-  openPaneFor: (kind: SidePaneKind) => void,
+  openSidePane: (kind: SidePaneKind) => void,
 ) {
   return () => {
     setBackgroundTaskFocusSessionId(null)
     setBackgroundTaskListRequest(n => n + 1)
-    openPaneFor('tasks')
+    openSidePane('tasks')
   }
 }
 export function createShellHandleTaskFocusConsumed(

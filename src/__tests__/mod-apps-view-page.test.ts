@@ -10,7 +10,7 @@ import { createElement as h } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { appCoveredBy, shownAppOf, useShownApp, type ShownApp } from '../browser/webview/apps/appView'
-import { appPaneRecord } from '../browser/webview/apps/appLaunch'
+import { openSidePaneRecord } from '../browser/webview/openSidePane'
 import { closePane, defaultSessionPaneRecord, hasPane, setMaximized, type SessionPaneRecord } from '../browser/webview/layout/paneLayout'
 import { setModContributions } from '../browser/webview/mods/modContributionsView'
 import { PluginTopbarItems, usePluginTopbarItems } from '../browser/webview/topbar/PluginTopbarItems'
@@ -23,7 +23,7 @@ afterEach(() => cleanup())
 
 const WEIGHTS = {} as never
 const APPS: ReadonlySet<string> = new Set(['pay:board', 'crm:board'])
-const open = (): SessionPaneRecord => appPaneRecord(defaultSessionPaneRecord(), WEIGHTS)
+const open = (): SessionPaneRecord => openSidePaneRecord(defaultSessionPaneRecord(), 'a2ui', WEIGHTS, { maximized: true })
 
 describe('shownAppOf', () => {
   it('is the app of the shown session while its pane is open and nothing covers it, full or beside the chat', () => {

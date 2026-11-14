@@ -12,6 +12,7 @@ import {
   CHAT_WEIGHT as PANE_CHAT_WEIGHT,
 } from './layout/paneLayout'
 import { type SessionLayoutsStore } from './layout/sessionLayouts'
+import type { OpenSidePane } from './openSidePane'
 import { forgetAskedPane, modsPaneWeight } from './layout/modsPane'
 import { saveModPanesAsked } from './layout/layoutStorage'
 import { getProviderMissingPrompt, revealProjectFolder, setWindowDragRegions } from './nexusBridgeActions'
@@ -58,27 +59,29 @@ export function createShellWriteModPanesAsked(
   }
 }
 export function createShellBringModsPane(
-  updatePaneRecord: (fn: (prev: SessionPaneRecord) => SessionPaneRecord, sessionId?: string) => void,
+  openSidePane: OpenSidePane,
   sessionLayoutsStore: SessionLayoutsStore,
   modCellWidth: number,
   modRowWidthRef: RefObject<number>,
 ) {
   return (sessionId: string, columns: number | undefined, forward: boolean) => {
-    updatePaneRecord(r => {
-      const weights = sessionLayoutsStore.getSnapshot().weights
-      const asked =
-        weights.mods === undefined
-          ? modsPaneWeight({
-              columns,
-              cellWidth: modCellWidth,
-              chromeWidth: MODS_PANE_CHROME_PX,
-              rowWidth: modRowWidthRef.current,
-              chatWeight: PANE_CHAT_WEIGHT,
-            })
-          : null
-      const opened = openPane(r, 'mods', asked !== null ? { ...weights, mods: asked } : weights)
-      return forward && opened.maximized !== null ? setMaximized(opened, 'mods') : opened
-    }, sessionId)
+    const weights = sessionLayoutsStore.getSnapshot().weights
+    const asked =
+      weights.mods === undefined
+        ? modsPaneWeight({
+            columns,
+            cellWidth: modCellWidth,
+            chromeWidth: MODS_PANE_CHROME_PX,
+            rowWidth: modRowWidthRef.current,
+            chatWeight: PANE_CHAT_WEIGHT,
+          })
+        : null
+    openSidePane('mods', {
+      sessionId,
+      foreground: false,
+      takeExpansion: forward,
+      ...(asked !== null ? { weight: asked } : {}),
+    })
   }
 }
 export function createShellHandleCloseModTab(

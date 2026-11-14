@@ -6,7 +6,6 @@ import { FilePathContext } from '@/components/assistant-ui/file-path-context'
 import { setMaximized, type SidePaneKind, type SessionPaneRecord } from './layout/paneLayout'
 import { PaneFrame } from './panes/PaneFrame'
 import { A2uiPaneActionsSlot } from './a2ui/A2uiPaneSlot'
-import { IMMERSIVE_PANES } from './panes/paneKinds'
 import { ModsPane } from './panes/ModsPane'
 import { SideChatPane } from './panes/SideChatPane'
 import { BrowserAddressBar, BrowserTabStrip } from './panes/BrowserPaneChrome'
@@ -131,7 +130,6 @@ export function renderShellSidePane(inputs: ShellSidePaneInputs, kind: SidePaneK
       title={title}
       actions={actions}
       maximized={paneMaximized === kind}
-      immersiveWhenMaximized={IMMERSIVE_PANES.has(kind)}
       onToggleMaximized={() =>
         updatePaneRecord(r => setMaximized(r, r.maximized === kind ? null : kind))
       }
