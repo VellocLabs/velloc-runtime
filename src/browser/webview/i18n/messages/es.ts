@@ -1344,11 +1344,6 @@ export const es: Messages = {
   'backgroundTasks.resumeHint':
     'El subagente se reanuda conservando su contexto anterior. Escriba una instrucción de seguimiento.',
   'backgroundTasks.openInDrawer': 'Abrir en Tareas en segundo plano',
-  'backgroundTasks.view': 'Ver',
-  'backgroundTasks.stillRunningOne':
-    'Queda 1 tarea en segundo plano en ejecución; su resultado se publicará aquí cuando termine.',
-  'backgroundTasks.stillRunning':
-    'Quedan {count} tareas en segundo plano en ejecución; los resultados se publicarán aquí a medida que terminen.',
 
   // ── Encabezados de tarjetas de plan/tareas (TodoSection y tool-plan-stream) ──
   'plan.verbWorking': 'Trabajando',

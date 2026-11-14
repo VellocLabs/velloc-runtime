@@ -1391,11 +1391,6 @@ export const en = {
   'backgroundTasks.resumeHint':
     'The sub-agent resumes with its prior context preserved. Enter a follow-up directive.',
   'backgroundTasks.openInDrawer': 'Open in Background Tasks',
-  'backgroundTasks.view': 'View',
-  'backgroundTasks.stillRunningOne':
-    '1 background task still running — its result will be posted here when it finishes.',
-  'backgroundTasks.stillRunning':
-    '{count} background tasks still running — results will be posted here as they finish.',
 
   // ── Plan/todo card headers (TodoSection + tool-plan-stream) ────────────
   // Verbs and summary chips of the per-turn plan cards. `{count}` may be 1 —

@@ -1341,11 +1341,6 @@ export const de: Messages = {
   'backgroundTasks.resumeHint':
     'Der Sub-Agent setzt mit seinem bisherigen Kontext fort. Gib eine Folgeanweisung ein.',
   'backgroundTasks.openInDrawer': 'In Hintergrundaufgaben öffnen',
-  'backgroundTasks.view': 'Ansehen',
-  'backgroundTasks.stillRunningOne':
-    'Noch 1 Hintergrundaufgabe läuft — ihr Ergebnis erscheint hier, sobald sie fertig ist.',
-  'backgroundTasks.stillRunning':
-    'Noch {count} Hintergrundaufgaben laufen — die Ergebnisse erscheinen hier, sobald sie fertig sind.',
 
   // ── Kopfzeilen der Plan-/Aufgabenkarten (TodoSection + tool-plan-stream) ──
   'plan.verbWorking': 'In Arbeit',

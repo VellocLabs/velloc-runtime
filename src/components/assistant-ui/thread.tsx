@@ -38,7 +38,6 @@ import {
 } from "./mod-ui";
 import { ModAbovePrompt, ModPanes } from "./mod-render";
 import { EnterPlanModeFooterControl } from "./enter-plan-mode-footer-control";
-import { BackgroundTasksFooterControl } from "./background-tasks-footer-control";
 import { SessionCardStack } from "./session-card-stack";
 import { NextMessageStrip } from "./next-message-strip";
 import { PendingMessageProvider, PendingMessageEntriesProvider, ClearPendingMessageProvider } from "./next-message-strip";
@@ -605,10 +604,6 @@ export const Thread: FC<{
           <PermissionAskFooterControl />
           <PlanApprovalFooterControl />
           <EnterPlanModeFooterControl />
-          {/* "Turn settled but background tasks still running" indicator —
-              the session will receive more (task-notification) messages, so
-              it must not read as fully done. */}
-          <BackgroundTasksFooterControl />
           {/* An archived session: why the composer is held, and Unarchive. */}
           <ArchivedSessionNotice />
           {/* The mods' panes (F-25 `$.ui.open`, drawn by `ui.render` on

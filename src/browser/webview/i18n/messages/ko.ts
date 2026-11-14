@@ -1326,11 +1326,6 @@ export const ko: Messages = {
   'backgroundTasks.resumeHint':
     '하위 에이전트는 이전 컨텍스트를 유지한 채 이어서 실행됩니다. 다음 지시를 입력하세요.',
   'backgroundTasks.openInDrawer': '백그라운드 작업에서 열기',
-  'backgroundTasks.view': '보기',
-  'backgroundTasks.stillRunningOne':
-    '백그라운드 작업 1개가 아직 실행 중입니다. 완료되면 결과가 여기에 표시됩니다.',
-  'backgroundTasks.stillRunning':
-    '백그라운드 작업 {count}개가 아직 실행 중입니다. 완료되는 대로 결과가 여기에 표시됩니다.',
 
   // ── 계획/할 일 카드 헤더(TodoSection와 tool-plan-stream) ───────────────
   'plan.verbWorking': '작업 중',

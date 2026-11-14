@@ -1344,11 +1344,6 @@ export const fr: Messages = {
   'backgroundTasks.resumeHint':
     'Le sous-agent reprend en conservant son contexte précédent. Saisissez une instruction de suivi.',
   'backgroundTasks.openInDrawer': 'Ouvrir dans Tâches en arrière-plan',
-  'backgroundTasks.view': 'Afficher',
-  'backgroundTasks.stillRunningOne':
-    'Il reste 1 tâche en arrière-plan en cours ; son résultat sera publié ici dès qu’elle sera terminée.',
-  'backgroundTasks.stillRunning':
-    'Il reste {count} tâches en arrière-plan en cours ; les résultats seront publiés ici au fur et à mesure.',
 
   // ── En-têtes des cartes plan/tâches (TodoSection et tool-plan-stream) ──
   'plan.verbWorking': 'En cours',

@@ -1320,9 +1320,6 @@ export const zh: Messages = {
   'backgroundTasks.resumeTitle': '继续“{description}”',
   'backgroundTasks.resumeHint': '子智能体会保留之前的上下文继续运行。请输入后续指令。',
   'backgroundTasks.openInDrawer': '在后台任务中打开',
-  'backgroundTasks.view': '查看',
-  'backgroundTasks.stillRunningOne': '还有 1 个后台任务在运行——完成后结果会显示在这里。',
-  'backgroundTasks.stillRunning': '还有 {count} 个后台任务在运行——完成后结果会陆续显示在这里。',
 
   // ── 计划/任务卡片标题（TodoSection 与 tool-plan-stream）──────────────
   'plan.verbWorking': '工作中',

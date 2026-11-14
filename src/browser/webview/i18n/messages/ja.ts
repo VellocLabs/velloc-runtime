@@ -1330,11 +1330,6 @@ export const ja: Messages = {
   'backgroundTasks.resumeHint':
     'サブエージェントは直前のコンテキストを保ったまま再開します。次の指示を入力してください。',
   'backgroundTasks.openInDrawer': 'バックグラウンドタスクで開く',
-  'backgroundTasks.view': '表示',
-  'backgroundTasks.stillRunningOne':
-    'バックグラウンドタスクが 1 件実行中です。完了すると結果がここに表示されます。',
-  'backgroundTasks.stillRunning':
-    'バックグラウンドタスクが {count} 件実行中です。完了したものから結果がここに表示されます。',
 
   // ── 計画／タスクカードの見出し（TodoSection と tool-plan-stream） ──────
   'plan.verbWorking': '作業中',

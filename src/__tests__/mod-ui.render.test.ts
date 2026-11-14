@@ -144,9 +144,11 @@ describe('where the mods\' rows sit in the composer footer', () => {
     }
     const composer = at('Composer')
     const mods = ['ModPanes', 'ModAbovePrompt', 'ModAsks'].map(at)
-    for (const engine of ['PermissionAskFooterControl', 'PlanApprovalFooterControl', 'EnterPlanModeFooterControl', 'BackgroundTasksFooterControl']) {
+    for (const engine of ['PermissionAskFooterControl', 'PlanApprovalFooterControl', 'EnterPlanModeFooterControl']) {
       expect(at(engine), engine).toBeLessThan(Math.min(...mods))
     }
+    // A settled turn with background work still running draws no footer bar.
+    expect(thread).not.toMatch(/BackgroundTasksFooterControl|background-tasks-footer/)
     expect(mods).toEqual([...mods].sort((a, b) => a - b))
     expect(Math.max(...mods)).toBeLessThan(composer)
     // Nothing between the last mod row and the composer.
