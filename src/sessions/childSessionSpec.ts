@@ -199,7 +199,7 @@ export function checkChildSessionRequest(
   if (!task && !options.briefLater) coreProblems.push('task is required: what the child session is to do.')
 
   const briefing = trimmed(input?.briefing)
-  if (from === 'fresh' && !options.briefLater && briefing.length < CHILD_BRIEFING_MIN_CHARS) {
+  if (from !== 'fork' && !options.briefLater && briefing.length < CHILD_BRIEFING_MIN_CHARS) {
     coreProblems.push(
       `briefing must be at least ${CHILD_BRIEFING_MIN_CHARS} characters for a fresh session: it is all the child knows (got ${briefing.length}).`,
     )

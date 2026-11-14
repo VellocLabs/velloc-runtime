@@ -126,6 +126,9 @@ describe('checkChildSessionRequest — the gate', () => {
     const all = refusal({ initiation: '', title: '', task: '', briefing: '' })
     expect(all).toMatch(/^4 fields need fixing:/)
     for (const field of ['initiation', 'title', 'task', 'briefing']) expect(all).toContain(`${field} `)
+    const badFrom = refusal({ from: 'copy', briefing: '' })
+    expect(badFrom).toMatch(/^2 fields need fixing: \(1\) from must be/)
+    expect(badFrom).toMatch(/\(2\) briefing must be at least/)
   })
 
   it('a fresh request needs a briefing of at least the minimum; a fork does not', () => {
