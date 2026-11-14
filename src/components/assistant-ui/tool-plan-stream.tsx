@@ -176,11 +176,11 @@ type ToolPlanStreamSnapshot = {
   messageId: string;
   /** Whether the parent assistant message is still streaming. */
   isMessageLive: boolean;
-  /** Whether any tool-call part exists AFTER this card's range. False means
-   *  this card is the message's LAST tool run — the turn's current work
-   *  surface even in the gap between one tool settling and the next
-   *  streaming in. */
-  hasToolCallAfterRange: boolean;
+  /** Whether a tool-call or non-blank text part exists AFTER this card's
+   *  range. False means this card is the message's LAST piece of work — the
+   *  turn's current work surface even in the gap between one tool settling
+   *  and the next streaming in. */
+  hasWorkAfterRange: boolean;
   /**
    * Stable persist key for the open/closed state of the whole card.
    * First tool call's toolCallId — survives the live → persisted message
@@ -408,7 +408,7 @@ const ToolPlanStreamImpl: FC<ToolPlanStreamProps> = ({
 
       // A run followed by a tool call or by text is past: the text starts the
       // next run or ends the turn. Reasoning and blank text do not end it.
-      let hasToolCallAfterRange = false;
+      let hasWorkAfterRange = false;
       for (let i = endIndex + 1; i < message.parts.length; i++) {
         const part = message.parts[i] as AggregateMessagePart | undefined;
         if (
@@ -417,7 +417,7 @@ const ToolPlanStreamImpl: FC<ToolPlanStreamProps> = ({
             typeof part.text === "string" &&
             part.text.trim() !== "")
         ) {
-          hasToolCallAfterRange = true;
+          hasWorkAfterRange = true;
           break;
         }
       }
@@ -445,7 +445,7 @@ const ToolPlanStreamImpl: FC<ToolPlanStreamProps> = ({
         currentUpdateIsReasoning,
         messageId: message.id,
         isMessageLive: message.status?.type === "running",
-        hasToolCallAfterRange,
+        hasWorkAfterRange,
         persistKey: firstToolCallId,
         fingerprint,
       };
@@ -483,14 +483,13 @@ const ToolPlanStreamImpl: FC<ToolPlanStreamProps> = ({
 
   const isRunning = snapshot.activeCount > 0;
   // "Active" = this card is the turn's CURRENT work surface: a tool is
-  // running, OR the parent message is still streaming and no tool-call exists
-  // after this range. The second disjunct covers the gap between one tool
-  // settling and the next streaming in — without it the card flipped
-  // Working→Done→Working and blanked its narration line at every tool
-  // boundary. Past cards of the same live message (tool-calls after their
-  // range) stay settled.
+  // running, OR the parent message is still streaming and no tool-call or
+  // non-blank text exists after this range. The second disjunct covers the
+  // gap between one tool settling and the next streaming in, so the card
+  // does not flip Working→Done→Working at every tool boundary. Past cards of
+  // the same live message (work after their range) stay settled.
   const isActive =
-    isRunning || (snapshot.isMessageLive && !snapshot.hasToolCallAfterRange);
+    isRunning || (snapshot.isMessageLive && !snapshot.hasWorkAfterRange);
   const isConcurrentBatch = snapshot.concurrentBatchSize > 1;
   const isConcurrentRunning = isRunning && isConcurrentBatch;
   const showConcurrentBadge = isConcurrentBatch;

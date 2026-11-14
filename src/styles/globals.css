@@ -806,8 +806,10 @@
  * element, so a one-word label shows the same passing highlight as a
  * paragraph. The element keeps its own text for assistive tech; only the
  * paint changes. Descendants go transparent so their glyphs take the clipped
- * background; code and links keep a solid colour, since their own box would
- * cover it. */
+ * background. Boxes with a background of their own (code, table headers,
+ * code headers, shell cards), links, buttons and icons would cover or not
+ * take that paint: they keep a solid colour, and what they contain keeps its
+ * own. */
 .nexus-sheen {
   --nexus-sheen-band: 6rem;
   background-image:
@@ -830,10 +832,15 @@
   color: transparent;
   animation: nexus-sheen-sweep 2s linear infinite;
 }
-.nexus-sheen * {
+.nexus-sheen
+  *:not(
+    :is(code, pre, kbd, a, th, svg, button, [data-shell-command], .aui-code-header-root),
+    :is(code, pre, kbd, a, th, svg, button, [data-shell-command], .aui-code-header-root) *
+  ) {
   color: transparent;
 }
-.nexus-sheen :is(code, pre, kbd, a) {
+.nexus-sheen
+  :is(code, pre, kbd, a, th, svg, button, [data-shell-command], .aui-code-header-root) {
   color: var(--muted-foreground);
 }
 @keyframes nexus-sheen-sweep {

@@ -33,9 +33,8 @@ export type ToolCallLineProps = {
   "data-line-to"?: string;
   /**
    * Part index of the text that introduces this call, its transcript line,
-   * and whether a search asked for it. Short narration becomes the line,
-   * with the chevron after it; longer narration stays prose above the
-   * summary line.
+   * and whether a search asked for it. The narration is drawn as prose
+   * above the summary line.
    */
   narrationIndex?: number;
   narrationLine?: number | null;

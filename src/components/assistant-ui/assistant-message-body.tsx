@@ -300,8 +300,8 @@ function renderRange(
     revealPart >= range.startIndex &&
     revealPart <= range.endIndex;
 
-  // The text that introduces the run, drawn by the run: as its line when it
-  // is short, above its summary line otherwise.
+  // The text that introduces the run, drawn by the run as prose above its
+  // summary line.
   const narrationIndex =
     range.kind === "tool-group" ? range.narrationIndex : undefined;
 
