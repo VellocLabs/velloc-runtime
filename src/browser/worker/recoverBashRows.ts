@@ -19,8 +19,9 @@ export type RecoveredBashRow = {
    *  is `result.task_id`. Row identity + the drawer's detail lookup key. */
   taskId: string
   /** The command the model ran (from the Bash/PowerShell tool-use args, or
-   *  parsed from a completion summary). Drawer display label (rendered mono).
-   *  Absent when neither source kept it — the publisher falls back to a label. */
+   *  parsed from a completion summary) — the row's title when the call carried
+   *  no `description` (rendered mono). Absent when neither source kept it — the
+   *  publisher falls back to a label. */
   command?: string
   /** The model's `description` arg from the launching tool use, when it set
    *  one — the row's title, ahead of the command. */

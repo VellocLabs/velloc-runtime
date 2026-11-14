@@ -272,8 +272,9 @@ export type NexusTaskSummaryRow = {
    *  Lets the drawer distinguish e.g. a skill fork from a memory fork without
    *  parsing the display description. */
   querySource?: string
-  /** The shell command, for a 'local_bash' row — the drawer shows it in place of
-   *  the agent description/agentType. */
+  /** The shell command, for a 'local_bash' row — the row's title when the model
+   *  gave no description (set in monospace), and the detail view's *Command*
+   *  block. */
   command?: string
   /** For a 'local_bash' row a SuperShell script started (one of its `bash()`
    *  steps): that invocation's public task id. The drawer shows such a shell
@@ -285,10 +286,10 @@ export type NexusTaskSummaryRow = {
   stats?: NexusTaskRunStats
   /** Liveness (G5): stream-update count while running. */
   updates?: number
-  /** Unix ms when the (current) run started — drives the "running for …" age. */
+  /** Unix ms when the (current) run started — drives the row's start clock stamp. */
   startedAt?: number
   /** Liveness (G5): Unix ms of the last stream update (present while running) —
-   *  drives the "updated … ago" hint. */
+   *  drives the running row's last-update clock stamp. */
   lastActivityAt?: number
   /** Unix ms when a terminal run finished — with `startedAt`, drives the
    *  "took …" span on finished rows. Absent while running. */

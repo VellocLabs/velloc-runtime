@@ -537,7 +537,7 @@ export class SessionFeedPublisher {
           type: 'local_bash',
           // The model's description titles the row, the command is the
           // fallback; '' only guards a row that kept neither.
-          description: rec.description ?? rec.command ?? '',
+          description: shellRowDescription(rec, rec.command ?? ''),
           command: rec.command,
           startedAt: rec.startedAt,
           finishedAt: rec.finishedAt,

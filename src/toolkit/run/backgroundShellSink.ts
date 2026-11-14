@@ -18,7 +18,8 @@ export type BackgroundShellLaunch = {
   taskId?: string
   /** The host-readable output file path the model can inspect with Read. */
   spoolPath?: string
-  /** The command line the model ran. Drawer display label for the task. */
+  /** The command line the model ran — the row's title when the model gave no
+   *  description. */
   command: string
   /**
    * The owning LLM session that launched the shell. Used to scope the

@@ -35,7 +35,9 @@ export function SessionTasksList() {
   const { running, finished } = React.useMemo(() => sessionTaskCardRows(taskRows), [taskRows]);
   const [showAll, setShowAll] = React.useState(false);
   const [stopping, setStopping] = React.useState<ReadonlySet<string>>(() => new Set());
-  const now = useSecondClock(running.length > 0);
+  // Only a loop timer's countdown changes with the clock; task times are
+  // absolute stamps, refreshed by the row broadcasts.
+  const now = useSecondClock(running.some((row) => row.type === "local_timer"));
 
   // A stop is pending until its row leaves the running list.
   React.useEffect(() => {
@@ -66,6 +68,10 @@ export function SessionTasksList() {
         const isStopping = stopping.has(row.sessionId);
         // A fast call is one in-flight request: nothing to stop.
         const canStop = stopTask !== undefined && kind !== "local_fast";
+        const started =
+          row.startedAt !== undefined
+            ? formatStartStamp(row.startedAt, locale, now)
+            : null;
         return (
           <div key={row.sessionId} className="flex min-w-0 items-center" data-testid="session-card-task" data-task-kind={kind}>
             <button
@@ -87,13 +93,13 @@ export function SessionTasksList() {
                 <span data-testid="session-card-task-countdown" className="shrink-0 text-muted-foreground text-[12px] tabular-nums">
                   {loopTimerCountdown(row.nextFireAt, now, t)}
                 </span>
-              ) : row.startedAt !== undefined ? (
+              ) : started ? (
                 <span
                   data-testid="session-card-task-started"
-                  title={t("backgroundTasks.meta.startedTitle", { when: formatStartStamp(row.startedAt, locale, now) })}
+                  title={t("backgroundTasks.meta.startedTitle", { when: started })}
                   className="shrink-0 text-muted-foreground text-[12px] tabular-nums"
                 >
-                  {formatStartStamp(row.startedAt, locale, now)}
+                  {started}
                 </span>
               ) : null}
             </button>
