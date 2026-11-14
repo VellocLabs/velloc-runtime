@@ -16,7 +16,6 @@ import { SharedWorkerSessionManager } from '../browser/worker/SharedWorkerSessio
 import type { AgentRuntimeWorkerHandle } from '../browser/worker/SharedWorkerSessionManager'
 import {
   countRunning,
-  countRunningWork,
   filterSubAgentRowsBySession,
   groupSubAgentsByCategory,
 } from '../browser/webview/backgroundSubAgents'
@@ -177,12 +176,10 @@ describe('webview helpers', () => {
     description: 'loop-check-deploy',
   }
 
-  it('files a timer under Running, counts it as running but not as work', () => {
+  it('files a timer under Running and counts it as running', () => {
     const shell: NexusTaskSummaryRow = { ...timerRow, sessionId: 'b1', type: 'local_bash' }
     expect(groupSubAgentsByCategory([timerRow]).map(g => g.category)).toEqual(['running'])
     expect(countRunning([timerRow, shell])).toBe(2)
-    expect(countRunningWork([timerRow, shell])).toBe(1)
-    expect(countRunningWork([timerRow])).toBe(0)
   })
 
   it('stop asks the session to delete the routine by id', () => {

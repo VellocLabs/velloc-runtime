@@ -98,17 +98,6 @@ export function countRunning(
   return n
 }
 
-/** Running rows that are doing work now: every running row but a loop timer,
- *  which only waits for its next fire (F-15). */
-export function countRunningWork(
-  rows: readonly NexusTaskSummaryRow[] | undefined,
-): number {
-  if (!rows) return 0
-  let n = 0
-  for (const r of rows) if (r.status === 'running' && r.type !== 'local_timer') n++
-  return n
-}
-
 /**
  * Task rows that belong to one session (F-9): the ones it launched, and the ones a sub-agent it
  * started launched (`ownerSessionId`, F-2). A new array, incoming order kept. `local_routine` rows
