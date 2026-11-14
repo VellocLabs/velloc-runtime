@@ -240,6 +240,16 @@ describe('Background Tasks drawer shows a sub-agent run usage', () => {
     const header = document.querySelector<HTMLElement>('[data-testid="background-tasks-detail-back"]')!.parentElement!
     expect(header.querySelector('[data-testid="task-meta-line"]')).not.toBeNull()
     expect(header.querySelector('[data-testid="task-meta-status"]')).toBeNull()
+    expect(header.querySelector('[data-testid="task-meta-line"] .sr-only')!.textContent).toBe('done')
+  })
+
+  it('a successful run with no duration still names its status in the header', async () => {
+    render(drawer([agentRow({ status: 'success', lastActivityAt: undefined, finishedAt: undefined })], 'a-run'))
+    await waitFor(() =>
+      expect(document.querySelector('[data-testid="background-tasks-detail-back"]')).not.toBeNull(),
+    )
+    const header = document.querySelector<HTMLElement>('[data-testid="background-tasks-detail-back"]')!.parentElement!
+    expect(header.querySelector('[data-testid="task-meta-status"]')).not.toBeNull()
   })
 
   it('a failed run still names its status in the header', async () => {

@@ -549,6 +549,8 @@ export function BackgroundTasksDrawer({
     view.kind === 'detail'
       ? rows.find((r) => r.sessionId === view.sessionId)
       : undefined
+  const successShownByDuration =
+    detailRow?.status === 'success' && !!detailRow.startedAt && !!detailRow.finishedAt
   const detailRowLabelKey = detailRow ? taskRowLabelKey(detailRow) : null
   const detailRowLabel = detailRowLabelKey
     ? t(detailRowLabelKey)
@@ -672,9 +674,14 @@ export function BackgroundTasksDrawer({
                   row={detailRow}
                   now={now}
                   usage={false}
-                  // A finished run says so by its duration alone; only a live,
-                  // failed or stopped run names its status here.
-                  leading={detailRow.status === 'success' ? undefined : (
+                  // A successful run with a duration says so by that duration
+                  // alone; screen readers still hear its status.
+                  srStatus={
+                    successShownByDuration
+                      ? t(SUB_AGENT_STATUS_LABEL_KEY[detailRow.status])
+                      : undefined
+                  }
+                  leading={successShownByDuration ? undefined : (
                     <span
                       data-testid="task-meta-status"
                       className="inline-flex shrink-0 items-center gap-1 font-medium text-foreground/80"
