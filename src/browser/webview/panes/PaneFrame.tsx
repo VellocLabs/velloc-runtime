@@ -21,9 +21,8 @@ import { usePaneHandle } from './usePaneDrag'
  * own actions, Expand / Restore, Close) over a body that owns its scrolling.
  * The icon becomes a grip on header hover and is the only drag handle.
  * Brings its own TooltipProvider (panes render outside the thread ones).
- * Maximized: no header or border; the buttons sit in the top-end corner,
- * shown on hover or focus, floating over the body unless the pane keeps its
- * own title there. Otherwise the header flashes on an open signal.
+ * Maximized: no chrome or border; the buttons sit in the top-end corner,
+ * shown on hover or focus. Otherwise the header flashes on an open signal.
  */
 export type PaneFrameProps = {
   kind: SidePaneKind
