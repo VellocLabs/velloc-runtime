@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'vitest'
+import { extractBackgroundShellArgsPreview } from '../utils/toolCallDetails'
 import {
+  formatBackgroundShellToolLabel,
   formatSuperEditToolLabel,
   formatToolLabel,
+  toolCallDescription,
   toolDisplayName,
   toolLabelArgsMissing,
   toolUseSummary,
@@ -36,6 +39,65 @@ describe('formatToolLabel', () => {
     expect(
       formatToolLabel('PowerShell', { command: 'Get-ChildItem' }),
     ).toBe('PowerShell: Get-ChildItem')
+  })
+
+  it('prefers the call description over the command on a shell row', () => {
+    expect(
+      formatToolLabel('Bash', {
+        command: 'git diff --stat main | tail -1',
+        description: 'Summarise how much the branch differs from main',
+      }),
+    ).toBe('Bash: Summarise how much the branch differs from main')
+    expect(
+      formatToolLabel('PowerShell', {
+        command: 'Get-ChildItem -Recurse',
+        description: 'List every file under the project',
+      }),
+    ).toBe('PowerShell: List every file under the project')
+    expect(
+      formatBackgroundShellToolLabel('Bash', {
+        command: 'npm run dev',
+        description: 'Start the dev server',
+        run_in_background: true,
+      }),
+    ).toBe('Bash: Start the dev server')
+  })
+
+  it('falls back to the command when the description is absent or blank', () => {
+    expect(
+      formatToolLabel('Bash', { command: 'npm test', description: '   ' }),
+    ).toBe('Bash: npm test')
+    expect(
+      formatToolLabel('Bash', { command: 'npm test', description: null }),
+    ).toBe('Bash: npm test')
+    expect(
+      formatBackgroundShellToolLabel('PowerShell', { command: 'dir' }),
+    ).toBe('PowerShell: dir')
+  })
+
+  it('reads a call description only from the tools that carry one', () => {
+    expect(toolCallDescription('Bash', { description: '  Run it  ' })).toBe('Run it')
+    expect(toolCallDescription('PowerShell', { description: 'Run it' })).toBe('Run it')
+    expect(toolCallDescription('SuperShell', { description: 'Run it' })).toBe('Run it')
+    expect(toolCallDescription('SuperEdit', { description: 'Edit it' })).toBe('Edit it')
+    expect(toolCallDescription('Bash', { command: 'ls' })).toBe('')
+    expect(toolCallDescription('Agent', { description: 'Explore' })).toBe('')
+    expect(toolCallDescription(undefined, { description: 'x' })).toBe('')
+  })
+
+  it('keeps a shell description in the slim args a row is stored with', () => {
+    expect(
+      extractBackgroundShellArgsPreview(
+        { command: 'npm test', description: 'Run the test suite', timeout: 5 },
+        { includeForeground: true },
+      ),
+    ).toEqual({ command: 'npm test', description: 'Run the test suite' })
+    expect(
+      extractBackgroundShellArgsPreview(
+        { command: 'npm test', description: '' },
+        { includeForeground: true },
+      ),
+    ).toEqual({ command: 'npm test' })
   })
 
   it('renders Write / WebSearch / WebFetch / TodoWrite readably', () => {

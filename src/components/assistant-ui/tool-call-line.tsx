@@ -15,11 +15,14 @@ import {
   emptyToolGroupWorkTally,
   isFailedToolCall,
 } from "../../utils/toolGroupSummary";
+import { toolCallDescription } from "../../utils/toolLabels";
+import { ToolCardOpenDefault } from "./tool-card-open-default";
 
 type ToolCallLineSnapshot = {
   toolName: string | undefined;
   toolCallId: string | undefined;
   statusType: string | undefined;
+  description: string;
   cancelled: boolean;
   failed: boolean;
 };
@@ -44,9 +47,10 @@ export type ToolCallLineProps = {
 };
 
 /**
- * A lone tool call as a tool group of one: a collapsed text line naming the
- * work ("Ran a command") with the chevron after it; opened, the call's own
- * card sits in the bordered body.
+ * A lone tool call as a tool group of one: a collapsed text line with the
+ * chevron after it; opened, the call's own card sits in the bordered body.
+ * The line reads the call's own description when it has one, and the card
+ * then starts opened; otherwise it names the work ("Ran a command").
  */
 export const ToolCallLine: FC<ToolCallLineProps> = ({
   index,
@@ -67,6 +71,7 @@ export const ToolCallLine: FC<ToolCallLineProps> = ({
             type?: string;
             toolName?: string;
             toolCallId?: string;
+            args?: unknown;
             isError?: boolean;
             status?: { type?: string; reason?: string };
           }
@@ -78,6 +83,7 @@ export const ToolCallLine: FC<ToolCallLineProps> = ({
         toolName: part?.toolName,
         toolCallId: part?.toolCallId,
         statusType,
+        description: toolCallDescription(part?.toolName, part?.args),
         cancelled,
         failed: isFailedToolCall(
           statusType,
@@ -107,8 +113,15 @@ export const ToolCallLine: FC<ToolCallLineProps> = ({
     total: 1,
     failed: snapshot.failed ? 1 : 0,
   };
-  const title =
-    state === "cancelled" ? verb : describeToolGroupWork(tally, t, locale);
+  // A call that says what it does is titled by that; a failed or cancelled
+  // one keeps the work sentence, which is where the outcome is stated.
+  const titledByCall =
+    snapshot.description !== "" && (state === "running" || state === "settled");
+  const title = titledByCall
+    ? snapshot.description
+    : state === "cancelled"
+      ? verb
+      : describeToolGroupWork(tally, t, locale);
 
   const narration =
     narrationIndex === undefined ? undefined : (
@@ -148,6 +161,7 @@ export const ToolCallLine: FC<ToolCallLineProps> = ({
             {title === verb ? null : <span className="sr-only">{verb}</span>}
             <span
               data-slot="tool-call-line-title"
+              data-title-source={titledByCall ? "call" : "work"}
               className={cn(
                 "min-w-0 truncate font-medium",
                 state === "running"
@@ -160,7 +174,11 @@ export const ToolCallLine: FC<ToolCallLineProps> = ({
           </span>
         }
       >
-        <li className="min-w-0">{children}</li>
+        <li className="min-w-0">
+          <ToolCardOpenDefault.Provider value={titledByCall}>
+            {children}
+          </ToolCardOpenDefault.Provider>
+        </li>
       </PlanCard>
     </>
   );

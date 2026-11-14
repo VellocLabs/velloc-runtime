@@ -61,6 +61,8 @@ export const BACKGROUND_SHELL_TOOL_NAMES = new Set(['Bash', 'PowerShell'])
 
 export type BackgroundShellArgsPreview = {
   command?: string
+  // The model's one-line account of the command; the row label prefers it.
+  description?: string
   run_in_background?: true
 }
 
@@ -96,6 +98,9 @@ export function extractBackgroundShellArgsPreview(
   }
   if (typeof obj.command === 'string') {
     preview.command = obj.command
+  }
+  if (typeof obj.description === 'string' && obj.description.trim()) {
+    preview.description = obj.description
   }
   return preview.command || preview.run_in_background ? preview : null
 }

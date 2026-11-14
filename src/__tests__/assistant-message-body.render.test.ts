@@ -905,6 +905,51 @@ describe('AssistantMessageBody — a lone tool call reads as a one-line tool gro
     const card = container.querySelector('[data-slot="tool-fallback-root"]')!
     expect(card.getAttribute('data-variant')).toBe('nested')
     expect(card.querySelector('[data-tool-name="Bash"]')).not.toBeNull()
+    // The line named only the work, so the card inside starts closed.
+    expect(card.getAttribute('data-state')).toBe('closed')
+  })
+
+  it('reads the call description as the line and opens straight onto the detail', async () => {
+    const { container } = render(
+      createElement(
+        lone({ args: { command: 'ls -la', description: 'List the project files' } }),
+      ),
+    )
+    await waitFor(() => {
+      expect(container.querySelector('[data-slot="tool-call-line-title"]')).not.toBeNull()
+    })
+    const title = container.querySelector('[data-slot="tool-call-line-title"]')!
+    expect(title.textContent).toBe('List the project files')
+    expect(title.getAttribute('data-title-source')).toBe('call')
+    expect(container.querySelector('[data-slot="tool-fallback-root"]')).toBeNull()
+    fireEvent.click(
+      container.querySelector<HTMLElement>('[data-slot="tool-call-line-trigger"]')!,
+    )
+    await waitFor(() => {
+      expect(container.querySelector('[data-slot="tool-fallback-root"]')).not.toBeNull()
+    })
+    // One click reaches the detail: the card is already open.
+    const card = container.querySelector('[data-slot="tool-fallback-root"]')!
+    expect(card.getAttribute('data-state')).toBe('open')
+    expect(card.querySelector('[data-slot="tool-fallback-content"]')).not.toBeNull()
+  })
+
+  it('keeps the work sentence for a failed call that has a description', async () => {
+    const { container } = render(
+      createElement(
+        lone({
+          args: { command: 'npm test', description: 'Run the test suite' },
+          isError: true,
+          result: 'exit code 1',
+        }),
+      ),
+    )
+    await waitFor(() => {
+      expect(container.querySelector('[data-slot="tool-call-line-title"]')).not.toBeNull()
+    })
+    const title = container.querySelector('[data-slot="tool-call-line-title"]')!
+    expect(title.textContent).toBe('Ran a command (1 failed)')
+    expect(title.getAttribute('data-title-source')).toBe('work')
   })
 
   it('counts a failed call in parentheses, with no icon and no destructive colour', async () => {

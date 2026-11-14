@@ -128,13 +128,43 @@ export function isBackgroundShellRequest(
   return asRecord(args).run_in_background === true;
 }
 
+/**
+ * What a shell row says after its name: the call's own `description` when the
+ * model supplied one, otherwise the command line. The command stays behind
+ * the row's ">" expand either way.
+ */
+function shellRowSummary(args: unknown): string {
+  const obj = asRecord(args);
+  return str(obj.description).trim() || str(obj.command);
+}
+
+/**
+ * The model's own one-line account of a call, for the tools that carry one
+ * (the shells and the two script tools). Empty when the tool has no such
+ * argument or the call left it blank.
+ */
+export function toolCallDescription(
+  toolName: string | undefined,
+  args: unknown,
+): string {
+  if (
+    toolName !== SHELL_TOOL_ID &&
+    toolName !== PWSH_TOOL_ID &&
+    toolName !== SUPER_SHELL_TOOL_NAME &&
+    toolName !== SUPER_EDIT_TOOL_NAME
+  ) {
+    return "";
+  }
+  return str(asRecord(args).description).trim();
+}
+
 export function formatBackgroundShellToolLabel(
   toolName: string,
   args: unknown,
 ): string {
-  const command = str(asRecord(args).command);
+  const summary = shellRowSummary(args);
   const prefix = toolName === PWSH_TOOL_ID ? "PowerShell" : "Bash";
-  return command ? `${prefix}: ${command}` : prefix;
+  return summary ? `${prefix}: ${summary}` : prefix;
 }
 
 /**
@@ -212,7 +242,7 @@ export function toolUseSummary(toolName: string, args?: unknown): string {
     }
     case SHELL_TOOL_ID:
     case PWSH_TOOL_ID:
-      return str(obj.command);
+      return shellRowSummary(obj);
     case WRITE_TOOL_ID: {
       const filePath = str(obj.file_path);
       return filePath ? baseName(filePath) : "";

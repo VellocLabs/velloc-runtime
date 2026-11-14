@@ -272,14 +272,21 @@ describe('sanitizeMessageForPersistence — file_path and background-shell previ
       run_in_background: true,
     })
   })
-  it('keeps the command for FOREGROUND shells too (the "Bash: <cmd>" row label)', () => {
+  it('keeps the command and description for FOREGROUND shells too (the row label)', () => {
     // Regression (beta "bare tool name" report): foreground shell args were
     // stripped whole, so every persisted Bash/PowerShell row degraded to a
     // bare "Bash". The label is exactly as arg-dependent as Read's filename.
     const out = sanitizeMessageForPersistence(
-      assistantToolCall('Bash', { command: 'npm test', description: 'run tests' }),
+      assistantToolCall('Bash', {
+        command: 'npm test',
+        description: 'run tests',
+        timeout: 60000,
+      }),
     )
-    expect(sanitizedArgs(out)).toEqual({ command: 'npm test' })
+    expect(sanitizedArgs(out)).toEqual({
+      command: 'npm test',
+      description: 'run tests',
+    })
   })
 
   it('keeps the label fields for Grep/Glob (pattern + path) — Search rows', () => {

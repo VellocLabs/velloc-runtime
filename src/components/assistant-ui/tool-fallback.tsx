@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useRef, useState } from "react";
+import { memo, useCallback, useContext, useEffect, useRef, useState } from "react";
 import {
   AlertCircleIcon,
   CheckIcon,
@@ -22,6 +22,7 @@ import { ToolDetailTree } from "@/components/assistant-ui/tool-detail-tree";
 import { BackgroundTaskJumpButton } from "@/components/assistant-ui/background-task-jump";
 import { TaskRunStats } from "@/browser/webview/TaskRunStats";
 import { PanelJumpChevron } from "@/components/assistant-ui/panel-jump-chevron";
+import { ToolCardOpenDefault } from "@/components/assistant-ui/tool-card-open-default";
 import { useToolCallDetailContext } from "@/components/assistant-ui/tool-call-detail-context";
 import { toolLineRange } from "@/browser/webview/assistantUiAdapter";
 import { useToolLineRanges } from "@/components/assistant-ui/tool-line-range-context";
@@ -632,8 +633,9 @@ const ToolFallbackImpl: ToolCallMessagePartComponent = ({
   const ownLine = usePartLine();
   // Collapsed by default, including while `running`; only the user or a search reveal
   // opens a card. A stored `toolFallbackOpenState` entry survives the remount.
+  const openByDefault = useContext(ToolCardOpenDefault);
   const [open, setOpen] = useState<boolean>(
-    () => toolFallbackOpenState.get(toolCallId) ?? false,
+    () => toolFallbackOpenState.get(toolCallId) ?? openByDefault,
   );
   // Keep the map in sync with the latest open value — covers the initial mount
   // (so a later remount sees the user-toggled state) and every user
