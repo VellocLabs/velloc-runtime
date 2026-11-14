@@ -11,6 +11,7 @@ import { createBridgeRoute } from '../browser/bridge/browserBridgeProtocol'
 import { createNativePrimitives, type NativePrimitives } from '../browser/bridge/nativePrimitives'
 import { createBrowserFsOperations } from '../utils/BrowserFsOperations'
 import type { RuntimeFs } from '../utils/fs/runtimeFs'
+import { dirnameRuntimePath } from '../utils/runtimePaths'
 import type { AppUpdateHost } from './AppUpdateService'
 import { joinPath } from './AppUpdateService'
 
@@ -31,14 +32,6 @@ export const APP_UPDATE_PRIMITIVES = [
 const READ_WAIT_MS = 30_000
 const READ_MAX_BYTES = 4 * 1024 * 1024
 const DOWNLOAD_MAX_BYTES = 1024 * 1024 * 1024
-
-/** The directory part of an absolute path, in either separator. */
-function parentDirectory(path: string): string {
-  const at = Math.max(path.lastIndexOf('\\'), path.lastIndexOf('/'))
-  if (at <= 0) return path
-  const dir = path.slice(0, at)
-  return /^[A-Za-z]:$/.test(dir) ? `${dir}\\` : dir
-}
 
 export function createBridgeAppUpdateHost(deps: BridgeAppUpdateHostDeps): AppUpdateHost {
   const transport = (): BrowserBridgeTransport => {
@@ -154,7 +147,7 @@ export function createBridgeAppUpdateHost(deps: BridgeAppUpdateHostDeps): AppUpd
       const { persistentId } = await primitives().shell.spawnPersistent({
         shell: 'powershell',
         command: script,
-        cwd: parentDirectory(logPath),
+        cwd: dirnameRuntimePath(logPath),
         logPath,
         closeStdin: true,
       })
