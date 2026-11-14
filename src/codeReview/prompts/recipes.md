@@ -1,6 +1,6 @@
 ## quick-hunks
 
-This is a quick diff inspection. Obtain the complete target diff and cover the established scope within the permitted single read. Skip tests and fixtures as specified by the scope configuration. Do not launch subagents or read entire source files. At this level the patches are the whole review material: reading nothing beyond them and skipping tests and fixtures are not coverage gaps, so they do not make the review incomplete.
+This is a quick diff inspection. Obtain the complete target diff and cover the established scope within the permitted single read. Skip tests and fixtures as specified by the scope configuration. Do not launch subagents or read entire source files. At this level the patches are the whole review material: reading nothing beyond them is not a coverage gap, and the tests and fixtures the scope configuration skips do not make the review incomplete.
 
 Report only runtime errors, visible duplication, or residual dead code that can be explained from a hunk and its included context. Leave call-chain, performance, or missing-test concerns that cannot be established from the excerpt to a deeper review. Do not report speculation as a finding in this run.
 
@@ -8,7 +8,7 @@ Produce results after reading, without independent verification or a gap sweep. 
 
 ## quick-expand
 
-This remains a quick diff inspection: do not launch subagents or read entire source files. Follow the scope configuration when deciding whether to skip tests and fixtures. At this level the patches are the whole review material: reading nothing beyond them and skipping tests and fixtures are not coverage gaps, so they do not make the review incomplete.
+This remains a quick diff inspection: do not launch subagents or read entire source files. Follow the scope configuration when deciding whether to skip tests and fixtures. At this level the patches are the whole review material: reading nothing beyond them is not a coverage gap, and the tests and fixtures the scope configuration skips do not make the review incomplete.
 
 Focus on incorrect behavior, visible duplication, or dead code that can be explained directly from the diff. If the number of findings is substantially below the smaller of the changed-file count and 4, you may inspect larger changed regions and removed code again. This is a prompt to broaden inspection, not a minimum reporting quota.
 
