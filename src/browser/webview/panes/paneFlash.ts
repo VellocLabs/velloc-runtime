@@ -40,9 +40,10 @@ export function usePaneFlash(kind: SidePaneKind): number | null {
   const [onMount, setOnMount] = useState<number | null>(null)
   useEffect(() => {
     mounted.set(kind, (mounted.get(kind) ?? 0) + 1)
-    if (waiting.get(kind) === atMount.current) {
+    const asked = waiting.get(kind)
+    if (asked !== undefined) {
       waiting.delete(kind)
-      setOnMount(atMount.current)
+      if (asked === atMount.current) setOnMount(asked)
     }
     return () => {
       mounted.set(kind, (mounted.get(kind) ?? 1) - 1)

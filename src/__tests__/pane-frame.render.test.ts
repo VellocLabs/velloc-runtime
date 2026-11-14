@@ -132,6 +132,9 @@ describe('PaneFrame', () => {
     const opened = screen.getByTestId('pane-files-flash')
     expect(opened.getAttribute('data-pane-flash')).toBe('true')
     expect(screen.getByTestId('pane-files-header').contains(opened)).toBe(true)
+    cleanup()
+    renderFrame({ kind: 'files' })
+    expect(screen.queryByTestId('pane-files-flash'), 'the signal is spent once').toBeNull()
   })
 
   it('a pane mounting with no open signal for it does not flash, and a signal is spent once', () => {
