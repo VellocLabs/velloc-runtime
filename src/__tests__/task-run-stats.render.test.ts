@@ -203,7 +203,7 @@ describe('Background Tasks drawer shows a sub-agent run usage', () => {
     expect(strip.querySelector('[data-testid="task-run-stats-live"]')).not.toBeNull()
   })
 
-  it('the detail header shows labelled badges, live while running', async () => {
+  it('the detail panel shows labelled badges, live while running, and the header keeps two lines', async () => {
     render(drawer([agentRow()], 'a-run'))
     await waitFor(() =>
       expect(document.querySelector('[data-testid="background-tasks-detail-back"]')).not.toBeNull(),
@@ -218,6 +218,8 @@ describe('Background Tasks drawer shows a sub-agent run usage', () => {
     expect(metaLine.querySelector('[data-testid="task-meta-status"]')!.textContent).toBe('running')
     expect(metaLine.querySelector('[data-testid="task-meta-elapsed"]')).not.toBeNull()
     expect(metaLine.querySelector('[data-testid="task-run-stats"]')).toBeNull()
+    expect(header.querySelector('[data-testid="task-run-stats"]')).toBeNull()
+    expect(badges.closest('[data-testid="background-tasks-detail-info"]')).not.toBeNull()
     expect(badges.querySelector('[data-testid="task-run-stats-input"]')!.textContent).toBe('45kin')
     expect(badges.querySelector('[data-testid="task-run-stats-output"]')!.textContent).toBe('3.1kout')
     expect(badges.querySelector('[data-testid="task-run-stats-cache"]')!.textContent).toBe('120kcache read')
@@ -235,5 +237,35 @@ describe('Background Tasks drawer shows a sub-agent run usage', () => {
     const badges = document.querySelector<HTMLElement>('[data-testid="task-run-stats"][data-variant="badges"]')!
     expect(badges.querySelector('[data-testid="task-run-stats-tools"]')!.textContent).toBe('1tool')
     expect(badges.querySelector('[data-testid="task-run-stats-live"]')).toBeNull()
+    const header = document.querySelector<HTMLElement>('[data-testid="background-tasks-detail-back"]')!.parentElement!
+    expect(header.querySelector('[data-testid="task-meta-line"]')).not.toBeNull()
+    expect(header.querySelector('[data-testid="task-meta-status"]')).toBeNull()
+  })
+
+  it('a failed run still names its status in the header', async () => {
+    render(drawer([agentRow({ status: 'error', lastActivityAt: undefined, finishedAt: Date.now() })], 'a-run'))
+    await waitFor(() =>
+      expect(document.querySelector('[data-testid="background-tasks-detail-back"]')).not.toBeNull(),
+    )
+    const header = document.querySelector<HTMLElement>('[data-testid="background-tasks-detail-back"]')!.parentElement!
+    expect(header.querySelector('[data-testid="task-meta-status"]')).not.toBeNull()
+  })
+
+  it('the detail panel shows the usage even when the run has no loaded info', async () => {
+    render(
+      createElement(BackgroundTasksDrawer, {
+        rows: [agentRow({ status: 'success', lastActivityAt: undefined, finishedAt: Date.now() })],
+        onClose: () => {},
+        onStop: () => {},
+        onResume: () => {},
+        loadTranscript: async () => null,
+        focusSessionId: 'a-run',
+      }),
+    )
+    await waitFor(() =>
+      expect(document.querySelector('[data-testid="task-run-stats"][data-variant="badges"]')).not.toBeNull(),
+    )
+    const info = document.querySelector<HTMLElement>('[data-testid="background-tasks-detail-info"]')!
+    expect(info.querySelector('[data-testid="task-run-stats-input"]')!.textContent).toBe('45kin')
   })
 })

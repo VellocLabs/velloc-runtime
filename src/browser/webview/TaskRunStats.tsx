@@ -3,7 +3,7 @@
  *
  * `strip`: the tool count, total tokens and cached share as meta items, for a
  * list row or a conversation card, tinted only while the run works. `badges`: labelled
- * chips for the detail header, the tool count set apart from the token figures.
+ * chips for the run's detail panel, the tool count set apart from the token figures.
  */
 import type { ComponentType, ReactNode } from 'react'
 import { ArrowDownIcon, ArrowUpIcon, DatabaseIcon, PencilLineIcon, WrenchIcon } from 'lucide-react'

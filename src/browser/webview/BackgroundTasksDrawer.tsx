@@ -51,6 +51,7 @@ import {
 import { loopTimerCountdown, loopTimerScheduleText } from './loopTimers'
 import { useT } from "./i18n";
 import { TaskRunStats } from "./TaskRunStats";
+import { hasRunStats } from "../../utils/taskRunStats";
 import { AgentTypePill, TaskMetaLine } from "./TaskRowMeta";
 import { reviewTaskSummaryMessage } from '@/codeReview/messages'
 import { useSessionAreaVisible } from './sessionAreaVisibility'
@@ -671,7 +672,9 @@ export function BackgroundTasksDrawer({
                   row={detailRow}
                   now={now}
                   usage={false}
-                  leading={
+                  // A finished run says so by its duration alone; only a live,
+                  // failed or stopped run names its status here.
+                  leading={detailRow.status === 'success' ? undefined : (
                     <span
                       data-testid="task-meta-status"
                       className="inline-flex shrink-0 items-center gap-1 font-medium text-foreground/80"
@@ -679,7 +682,7 @@ export function BackgroundTasksDrawer({
                       <StatusIcon status={detailRow.status} />
                       {t(SUB_AGENT_STATUS_LABEL_KEY[detailRow.status])}
                     </span>
-                  }
+                  )}
                   className="mt-1"
                 />
               ) : (
@@ -687,12 +690,6 @@ export function BackgroundTasksDrawer({
                   {t('backgroundTasks.status.unknown')}
                 </div>
               )}
-              <TaskRunStats
-                stats={detailRow?.stats}
-                variant="badges"
-                running={detailStatus === 'running'}
-                className="mt-1.5"
-              />
             </div>
             {/* Reload only makes sense for a RUNNING task (streaming transcript
                 / live shell output). A terminal task — including a shell/run_js
@@ -719,7 +716,8 @@ export function BackgroundTasksDrawer({
             className="flex min-h-0 flex-1 flex-col overflow-y-auto px-2 py-2"
             data-testid="background-tasks-detail"
           >
-            {info &&
+            {hasRunStats(detailRow?.stats) ||
+            (info &&
             (info.model ||
               info.effort ||
               info.task ||
@@ -729,7 +727,7 @@ export function BackgroundTasksDrawer({
               info.shellParams ||
               info.jsSource ||
               info.jsParams ||
-              info.type === 'local_js') ? (
+              info.type === 'local_js')) ? (
               <div
                 data-testid="background-tasks-detail-info"
                 // A flat list of header+content blocks that all flow at their
@@ -741,6 +739,13 @@ export function BackgroundTasksDrawer({
                 // render in reading order (params → result → source/output).
                 className="mb-2 flex flex-col gap-2 rounded-md border bg-muted/30 px-2 py-2 text-xs"
               >
+                <TaskRunStats
+                  stats={detailRow?.stats}
+                  variant="badges"
+                  running={detailStatus === 'running'}
+                />
+                {info ? (
+                <>
                 {info.model ? (
                   <div>
                     <span className="font-medium text-muted-foreground">
@@ -867,6 +872,8 @@ export function BackgroundTasksDrawer({
                       {info.jsSource}
                     </pre>
                   </div>
+                ) : null}
+                </>
                 ) : null}
               </div>
             ) : null}
