@@ -154,6 +154,8 @@ describe('PaneFrame', () => {
       'pane-diff-close',
     ])
     expect(screen.queryByTestId('pane-diff-float-bar')).toBeNull()
+    const cluster = header.querySelector('[data-testid="pane-diff-expand"]')!.parentElement!
+    expect(cluster.className, 'the buttons keep the header\'s own layout').toBe('contents')
   })
 
   it('every pane kind, maximized, floats its buttons with no header', () => {

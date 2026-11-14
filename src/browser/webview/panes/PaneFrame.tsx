@@ -168,8 +168,9 @@ export function PaneFrame(props: PaneFrameProps): ReactElement {
           )}
           <div
             className={cn(
-              'flex shrink-0 items-center gap-0.5',
-              immersive && keptTitle !== null && 'opacity-0 transition-opacity focus-within:opacity-100 hover:opacity-100',
+              immersive && keptTitle !== null
+                ? 'flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity focus-within:opacity-100 hover:opacity-100'
+                : 'contents',
             )}
           >
             {buttons}
