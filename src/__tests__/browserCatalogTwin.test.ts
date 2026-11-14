@@ -29,7 +29,7 @@ describe('browser tool catalog — the guest copy', () => {
     // "one browser tool call per turn" reads as "emit nothing else either",
     // which would suppress useful batching (a browser call + TodoWrite).
     expect(BROWSER_SYSTEM_PROMPT_CATALOG).toContain(
-      'Combining one browser tool with a non-browser tool (TodoWrite, for example) in the same response is fine',
+      'Combining one browser tool with a non-browser tool in the same response is fine',
     )
   })
 })

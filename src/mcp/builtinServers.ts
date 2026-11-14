@@ -86,11 +86,6 @@ export function listBuiltinMcpServers(): BuiltinMcpServer[] {
   return Array.from(registry.values())
 }
 
-/** Whether `serverName`, as configured or as sanitized, is a built-in's. */
-export function isBuiltinMcpServerName(serverName: string): boolean {
-  return registry.has(sanitizeSegment(serverName))
-}
-
 function buildBuiltinTool(server: BuiltinMcpServer, tool: BuiltinMcpTool): ToolContract {
   const readOnly = tool.readOnly === true
   return declareTool({

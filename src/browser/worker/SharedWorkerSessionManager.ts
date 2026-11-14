@@ -2675,7 +2675,7 @@ export class SharedWorkerSessionManager {
       this.childReports.personWrote(sessionId, message.payload.prompt)
       // A person's new message closes the session's open offers (F-36).
       this.proposals.supersedeOpenOffers(sessionId)
-      // It also answers the turn's closing and takes down a finished plan (F-41).
+      // It also answers the turn's closing; the plan itself stays (F-41).
       turnBoard.personWrote(sessionId)
     }
 

@@ -2,7 +2,6 @@ import { afterEach, describe, expect, it } from 'vitest'
 
 import {
   builtinMcpOffering,
-  isBuiltinMcpServerName,
   listBuiltinMcpServers,
   registerBuiltinMcpServer,
   withBuiltinMcpOffering,
@@ -56,10 +55,9 @@ describe('built-in MCP server registry', () => {
     const unregister = registerBuiltinMcpServer(notes)
     undo.push(unregister)
     expect(listBuiltinMcpServers()).toContain(notes)
-    expect(isBuiltinMcpServerName('notes')).toBe(true)
     expect(() => registerBuiltinMcpServer(server())).toThrow(/already registered/)
     unregister()
-    expect(isBuiltinMcpServerName('notes')).toBe(false)
+    expect(listBuiltinMcpServers()).not.toContain(notes)
   })
 
   it('refuses a name that is not its sanitized form and a repeated tool name', () => {

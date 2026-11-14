@@ -44,10 +44,10 @@ describe('TurnPlanCardView', () => {
 
   it('spins the step in progress only while the turn runs', () => {
     const live = card({ running: true })
-    expect(live.container.querySelectorAll('.animate-spin')).toHaveLength(1)
+    expect(live.queryAllByTestId('turn-step-spinner')).toHaveLength(1)
     cleanup()
     const idle = card({ running: false })
-    expect(idle.container.querySelectorAll('.animate-spin')).toHaveLength(0)
+    expect(idle.queryAllByTestId('turn-step-spinner')).toHaveLength(0)
   })
 
   it('shows no chip without running tasks', () => {

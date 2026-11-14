@@ -31,7 +31,7 @@ const StepMark: FC<{ status: TurnStepStatus; running: boolean }> = ({ status, ru
     );
   }
   if (status === "in_progress" && running) {
-    return <Loader2 className="size-4 shrink-0 animate-spin text-foreground" aria-hidden="true" />;
+    return <Loader2 data-testid="turn-step-spinner" className="size-4 shrink-0 animate-spin text-foreground" aria-hidden="true" />;
   }
   return (
     <CircleDashed

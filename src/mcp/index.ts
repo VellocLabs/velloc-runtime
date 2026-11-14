@@ -87,7 +87,6 @@ export type {
 export { isMcpSessionTool, mcpSessionOffering, type McpSessionOffering } from './sessionOffering'
 export {
   builtinMcpOffering,
-  isBuiltinMcpServerName,
   listBuiltinMcpServers,
   registerBuiltinMcpServer,
   withBuiltinMcpOffering,

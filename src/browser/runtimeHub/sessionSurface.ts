@@ -32,6 +32,8 @@ import {
 } from './restartReadiness'
 import type { TopicBroker } from './TopicBroker'
 import { modRosterAttach, modRosterDetach } from '../../mods/modSlotRegistry'
+import { turnBoard } from '../../sessions/turnBoard'
+import { turnTopic } from '../../sessions/turnProtocol'
 import type { ActionSpec, ConnectionInfo, HandlerRequest, TopicProvider } from './types'
 
 // ---- opening a session -------------------------------------------------------------
@@ -781,6 +783,8 @@ export function installSessionSurface(
       for (const kind of ['state', 'transcript', 'stream', 'diff'] as const) {
         broker.dropTopic(topic.session(sessionId, kind))
       }
+      broker.dropTopic(turnTopic(sessionId))
+      turnBoard.forget(sessionId)
       attachedKinds.delete(sessionId)
     },
     submit: (sessionId, payload) => {

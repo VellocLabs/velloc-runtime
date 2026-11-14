@@ -43,6 +43,8 @@ import {
   type RuntimeConnection,
 } from '../browser/runtimeClient'
 import { BrowserRuntimeClient } from '../browser/webview/BrowserRuntimeClient'
+import { turnBoard } from '../sessions/turnBoard'
+import { turnTopic } from '../sessions/turnProtocol'
 import { modRoster, resetModSlotRegistryForTests } from '../mods/modSlotRegistry'
 
 async function flush(rounds = 6): Promise<void> {
@@ -623,8 +625,13 @@ describe('session surface over the hub', () => {
     expect(rig.broker.authorize(topic.session('s2', 'state'), narrow)).toBe('forbidden')
     rig.broker.publish(topic.session('s1', 'stream'), 'x')
     expect(rig.broker.seqOf(topic.session('s1', 'stream'))).toBe(1)
+    rig.broker.publish(turnTopic('s1'), { sessionId: 's1', steps: [], closing: null })
+    expect(rig.broker.seqOf(turnTopic('s1'))).toBe(1)
+    turnBoard.setPlan('s1', [{ text: 'Read the parser', status: 'pending' }])
     rig.surface.dropSessionTopics('s1')
     expect(rig.broker.seqOf(topic.session('s1', 'stream'))).toBe(0)
+    expect(rig.broker.seqOf(turnTopic('s1'))).toBe(0)
+    expect(turnBoard.read('s1').steps).toEqual([])
   })
 
   it("a connection's first session topic adds it to the session's mod roster, its last takes it off (session.attach / detach)", async () => {
