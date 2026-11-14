@@ -215,8 +215,12 @@ export class AppUpdateService {
   private async removeStaleVersions(current: string): Promise<void> {
     const own = parseVersion(current)
     if (!own) return
+    const root = await this.host.updateRoot().catch(error => {
+      this.report(`could not find the update directory: ${messageOf(error)}`)
+      return null
+    })
+    if (!root) return
     try {
-      const root = await this.host.updateRoot()
       for (const name of await this.host.listDirectories(root)) {
         const version = parseVersion(name)
         if (!version || compareVersions(version, own) > 0) continue

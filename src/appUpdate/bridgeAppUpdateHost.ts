@@ -12,6 +12,7 @@ import { createNativePrimitives, type NativePrimitives } from '../browser/bridge
 import { createBrowserFsOperations } from '../utils/BrowserFsOperations'
 import type { RuntimeFs } from '../utils/fs/runtimeFs'
 import { dirnameRuntimePath } from '../utils/runtimePaths'
+import { isFsNotFoundError } from '../utils/fsTransportFailure'
 import type { AppUpdateHost } from './AppUpdateService'
 import { joinPath } from './AppUpdateService'
 
@@ -130,7 +131,7 @@ export function createBridgeAppUpdateHost(deps: BridgeAppUpdateHostDeps): AppUpd
       try {
         return (await fs().readdir(path)).filter(entry => entry.isDirectory()).map(entry => entry.name)
       } catch (error) {
-        if ((error as { code?: string }).code === 'ENOENT') return []
+        if (isFsNotFoundError(error)) return []
         throw error
       }
     },

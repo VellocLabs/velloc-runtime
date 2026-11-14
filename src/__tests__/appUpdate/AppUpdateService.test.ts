@@ -15,6 +15,7 @@ type Script = {
   dirs?: string[]
   failList?: boolean
   failRemove?: string
+  failRoot?: boolean
 }
 
 function fakeHost(script: Script = {}) {
@@ -25,7 +26,10 @@ function fakeHost(script: Script = {}) {
   let lastScript = ''
   const host: AppUpdateHost = {
     currentVersion: async () => script.current ?? '1.149.2.4',
-    updateRoot: async () => ROOT,
+    updateRoot: async () => {
+      if (script.failRoot) throw new Error('the host has no local cache directory')
+      return ROOT
+    },
     fetchText: async url => {
       calls.push(`fetch ${url}`)
       return script.manifest ?? { status: 200, text: JSON.stringify({ version: '1.149.2.5', url: PKG }) }
@@ -152,6 +156,20 @@ describe('AppUpdateService', () => {
     await second.svc.check()
     expect(second.svc.getState().phase).toBe('idle')
     expect(list.calls).toEqual(['fetch https://velloc.app/update/stable.json'])
+  })
+
+  it('reports an update directory it cannot resolve as that, not as a listing failure', async () => {
+    const lines: string[] = []
+    const fake = fakeHost({ current: '1.149.2.5', dirs: ['1.149.2.3'], failRoot: true })
+    const svc = new AppUpdateService({
+      host: fake.host,
+      manifestUrl: 'https://velloc.app/update/stable.json',
+      report: line => lines.push(line),
+    })
+    await svc.check()
+    expect(svc.getState().phase).toBe('idle')
+    expect(lines).toEqual(['could not find the update directory: the host has no local cache directory'])
+    expect(fake.calls).toEqual(['fetch https://velloc.app/update/stable.json'])
   })
 
   it('honours min_version: a client at or above it is left alone', async () => {

@@ -8,7 +8,14 @@ type Req = { route: { capability: string; action: string }; payload: Record<stri
 
 /** A host port that serves only the routes the update host uses. */
 function hostPort(
-  opts: { status?: number; chunks?: Uint8Array[]; streamError?: string; osName?: string; readdirMissing?: boolean } = {},
+  opts: {
+    status?: number
+    chunks?: Uint8Array[]
+    streamError?: string
+    osName?: string
+    readdirMissing?: boolean
+    readdirError?: { code: string; message: string }
+  } = {},
 ) {
   const log: string[] = []
   const removed: Array<Record<string, unknown>> = []
@@ -38,7 +45,9 @@ function hostPort(
           removed.push(req.payload)
           return answer({ ok: true })
         case 'fs.readdir':
-          if (opts.readdirMissing) return { ok: false, error: { code: 'ENOENT', message: 'ENOENT: no such directory' } }
+          if (opts.readdirMissing) {
+            return { ok: false, error: opts.readdirError ?? { code: 'ENOENT', message: 'ENOENT: no such directory' } }
+          }
           return answer([
             { name: '1.149.2.3', isFile: false, isDirectory: true, isSymbolicLink: false },
             { name: 'stray.txt', isFile: true, isDirectory: false, isSymbolicLink: false },
@@ -109,6 +118,13 @@ describe('bridge update host', () => {
     await expect(
       createBridgeAppUpdateHost(deps(hostPort({ readdirMissing: true }).transport)).listDirectories('C:\\U'),
     ).resolves.toEqual([])
+    const absent = ['ENOTDIR: not a directory', 'File not found or permission denied']
+    for (const message of absent) {
+      const port = hostPort({ readdirMissing: true, readdirError: { code: 'FS_ERROR', message } })
+      await expect(createBridgeAppUpdateHost(deps(port.transport)).listDirectories('C:\\U')).resolves.toEqual([])
+    }
+    const denied = hostPort({ readdirMissing: true, readdirError: { code: 'FS_ERROR', message: 'EACCES: access denied' } })
+    await expect(createBridgeAppUpdateHost(deps(denied.transport)).listDirectories('C:\\U')).rejects.toThrow()
     await host.removeDirectory('C:\\U\\1.149.2.3')
     expect(port.removed).toEqual([{ path: 'C:\\U\\1.149.2.3', recursive: true, force: true }])
   })
