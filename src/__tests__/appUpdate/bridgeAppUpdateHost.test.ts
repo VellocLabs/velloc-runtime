@@ -10,6 +10,7 @@ type Req = { route: { capability: string; action: string }; payload: Record<stri
 function hostPort(opts: { status?: number; chunks?: Uint8Array[]; streamError?: string; osName?: string } = {}) {
   const log: string[] = []
   const appended: Array<{ path: string; bytes: number[] }> = []
+  const spawns: Array<Record<string, unknown>> = []
   let chunks = [...(opts.chunks ?? [new Uint8Array([1, 2]), new Uint8Array([3])])]
   const persistent = [{ id: 'p1', command: 'x', logPath: 'l', startedMs: 0, running: false, exitCode: 0 }]
   const answer = (result: unknown) => ({ ok: true, result })
@@ -35,6 +36,7 @@ function hostPort(opts: { status?: number; chunks?: Uint8Array[]; streamError?: 
         case 'fs.paths':
           return answer({ home: 'C:\\Users\\u', temp: '', appData: '', cache: 'C:\\Users\\u\\AppData\\Local' })
         case 'shell.spawn':
+          spawns.push(req.payload)
           return answer({ persistentId: 'p1' })
         case 'shell.persistentList':
           return answer({ shells: persistent })
@@ -50,7 +52,7 @@ function hostPort(opts: { status?: number; chunks?: Uint8Array[]; streamError?: 
   const set = (next: Uint8Array[]) => {
     chunks = next
   }
-  return { transport, log, appended, persistent, set }
+  return { transport, log, appended, persistent, set, spawns }
 }
 
 const fullManifest = { capabilities: [], primitives: [...APP_UPDATE_PRIMITIVES, 'shell.spawn.argv'] }
@@ -96,6 +98,21 @@ describe('bridge update host', () => {
       status: 200,
       text: '{"version":"1"}',
     })
+  })
+
+  it('runs the install program in the directory that holds its log', async () => {
+    const port = hostPort()
+    const host = createBridgeAppUpdateHost(deps(port.transport))
+    await host.startInstall('script', 'C:\\Users\\u\\AppData\\Local\\Velloc\\Update\\1.2.3.4\\install.log')
+    expect(port.spawns).toEqual([
+      {
+        shell: 'powershell',
+        command: 'script',
+        cwd: 'C:\\Users\\u\\AppData\\Local\\Velloc\\Update\\1.2.3.4',
+        closeStdin: true,
+        persist: { logPath: 'C:\\Users\\u\\AppData\\Local\\Velloc\\Update\\1.2.3.4\\install.log' },
+      },
+    ])
   })
 
   it('places updates under the local cache and reports an install as finished once the host lists it ended', async () => {

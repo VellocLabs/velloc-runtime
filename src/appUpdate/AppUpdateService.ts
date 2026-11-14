@@ -25,7 +25,10 @@ export type AppUpdateHost = {
   /** Null when the file does not exist. */
   readText(path: string): Promise<string | null>
   writeText(path: string, text: string): Promise<void>
-  /** Start the PowerShell program detached from this connection; returns its id. */
+  /**
+   * Start the PowerShell program detached from this connection, in the
+   * directory that holds `logPath`; returns its id.
+   */
   startInstall(script: string, logPath: string): Promise<string>
   /** Null when the host no longer lists the child. */
   installRunning(id: string): Promise<boolean | null>

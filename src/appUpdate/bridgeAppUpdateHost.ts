@@ -32,6 +32,14 @@ const READ_WAIT_MS = 30_000
 const READ_MAX_BYTES = 4 * 1024 * 1024
 const DOWNLOAD_MAX_BYTES = 1024 * 1024 * 1024
 
+/** The directory part of an absolute path, in either separator. */
+function parentDirectory(path: string): string {
+  const at = Math.max(path.lastIndexOf('\\'), path.lastIndexOf('/'))
+  if (at <= 0) return path
+  const dir = path.slice(0, at)
+  return /^[A-Za-z]:$/.test(dir) ? `${dir}\\` : dir
+}
+
 export function createBridgeAppUpdateHost(deps: BridgeAppUpdateHostDeps): AppUpdateHost {
   const transport = (): BrowserBridgeTransport => {
     const current = deps.transport()
@@ -142,9 +150,11 @@ export function createBridgeAppUpdateHost(deps: BridgeAppUpdateHostDeps): AppUpd
       await fs().writeFile(path, text)
     },
     async startInstall(script, logPath) {
+      // The host refuses a spawn without an existing absolute cwd.
       const { persistentId } = await primitives().shell.spawnPersistent({
         shell: 'powershell',
         command: script,
+        cwd: parentDirectory(logPath),
         logPath,
         closeStdin: true,
       })
