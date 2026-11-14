@@ -33,7 +33,7 @@ const stringList = { type: 'array', items: text }
 const shape = (properties: Record<string, unknown>, required = Object.keys(properties)) => ({ type: 'object', properties, required, additionalProperties: false })
 export const REVIEW_SUPPORT_SCHEMA = { type: 'array', items: shape({ source: text, startLine: { type: 'integer', minimum: 1 }, endLine: { type: 'integer', minimum: 1 }, path: text, quote: text, relevance: text }, ['relevance']) }
 export const REVIEW_ASSESSMENT_SCHEMA = shape({ disposition: { type: 'string', enum: ['proven', 'plausible', 'dismissed', 'unchecked'] }, reason: text })
-export const REVIEW_COVERAGE_SCHEMA = shape({ angles: stringList, limitations: stringList, complete: { type: 'boolean' } })
+export const REVIEW_COVERAGE_SCHEMA = shape({ angles: stringList, limitations: stringList })
 export const REVIEW_CANDIDATE_SCHEMA = shape({
   location: shape({ anchorKey: text, path: text, line: { type: 'integer', minimum: 1 }, endLine: { type: 'integer', minimum: 1 } }, ['anchorKey', 'path', 'line']),
   statement: shape({ headline: text, details: text, scenario: text }),
@@ -60,7 +60,6 @@ const REFUSAL_HINTS: Record<string, string> = {
   'invalid-text': 'every text field must be a nonempty string',
   'invalid-integer': 'line numbers are integers from 1',
   'invalid-array': 'candidates, support, angles and limitations are arrays',
-  'invalid-completeness': 'coverage.complete is the JSON boolean true or false, inside the coverage object beside angles and limitations',
   'invalid-object': 'location, statement, assessment and every support item are objects',
   'unknown-field': 'remove fields the schema does not list',
   'worker-candidate-limit': 'more candidates than this task allows; keep the strongest',
@@ -70,16 +69,16 @@ const REFUSAL_HINTS: Record<string, string> = {
 }
 /** How to correct a refused coverage statement, where it differs from the hint for a refused item. */
 const COVERAGE_REFUSAL_HINTS: Record<string, string> = {
-  'invalid-object': 'coverage is an object with angles, limitations and complete',
+  'invalid-object': 'coverage is an object with angles and limitations',
   'invalid-array': 'coverage.angles and coverage.limitations are arrays of strings',
-  'unknown-field': 'coverage takes only angles, limitations and complete',
+  'unknown-field': 'coverage takes only angles and limitations',
   'unknown-angle': 'every coverage angle must be one of the angles of this review',
 }
 /** A refused item as a worker reads it: its code and how to correct it. */
 export const withRefusalHint = <T extends { code: string }>(item: T): T & { hint?: string } => ({ ...item, ...(REFUSAL_HINTS[item.code] ? { hint: REFUSAL_HINTS[item.code] } : {}) })
 
 /** The value a field spells when it arrived as JSON text of the wanted kind; any other value is returned unchanged. */
-function spelled(value: unknown, kind: 'object' | 'array' | 'boolean'): unknown {
+function spelled(value: unknown, kind: 'object' | 'array'): unknown {
   if (typeof value !== 'string') return value
   let parsed: unknown
   try { parsed = JSON.parse(value) } catch { return value }
@@ -91,7 +90,6 @@ function coverageStatement(fields: Record<string, unknown>): Record<string, unkn
   const statement = { ...fields }
   if ('angles' in statement) statement.angles = spelled(statement.angles, 'array')
   if ('limitations' in statement) statement.limitations = spelled(statement.limitations, 'array')
-  if ('complete' in statement) statement.complete = spelled(statement.complete, 'boolean')
   return statement
 }
 /** A coverage call as the ledger takes it: the statement under `coverage`, also when its fields came beside `operation`, `operation` was repeated inside it, or the statement or its fields came as JSON text. */

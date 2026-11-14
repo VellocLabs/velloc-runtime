@@ -72,7 +72,7 @@ const endCode = (end: ReviewRunEnd): string => `review-${end.kind}`
 const WORKER_STEPS = 18, WORKER_READ_STEPS = 14
 /** Turn limits of the main review run: a team coordinator delegates its reads; a single-context review makes them all, reading in at most SINGLE_CONTEXT_READ_STEPS of its steps, whenever they come. */
 const COORDINATOR_STEPS = 32, SINGLE_CONTEXT_STEPS = 64, SINGLE_CONTEXT_READ_STEPS = 48, WRAP_UP_STEPS = 5
-const WRAP_UP_TEXT = 'Your step limit is reached and no more reads are available. Using only what you have already read, record any remaining candidates with ReviewLedger, then record coverage: list only the angles you fully covered, name every angle or included file you did not finish as a limitation, and set complete=false if any is left. Then end with the short summary the output contract asks for.'
+const WRAP_UP_TEXT = 'Your step limit is reached and no more reads are available. Using only what you have already read, record any remaining candidates with ReviewLedger, then record coverage: list only the angles you fully covered and name every angle or included file you did not finish as a limitation. Then end with the short summary the output contract asks for.'
 const whenAborted = (signal: AbortSignal): Promise<never> => new Promise((_, reject) => {
   const fail = () => reject(new ReviewGatewayError('review-cancelled'))
   if (signal.aborted) fail()
@@ -311,7 +311,8 @@ export class LocalReviewService {
       await this.store.registerEvidenceSources(runId, access.evidenceSources ?? [])
       await this.store.attachDiffSources(runId, diffEvidenceSources(access.manifest))
       if (access.manifest.status === 'empty') {
-        await this.store.submitLedger(runId, crypto.randomUUID(), { operation: 'coverage', coverage: { angles: [], limitations: access.manifest.notices, complete: true } })
+        await this.store.addLimitations(runId, access.manifest.notices)
+        await this.store.setComplete(runId, true)
         await this.store.submitRecord(runId, crypto.randomUUID(), await this.store.expectedRecord(runId))
       } else {
         const readSteps = plan.agentMode === 'parallel' ? undefined : SINGLE_CONTEXT_READ_STEPS
@@ -341,7 +342,7 @@ export class LocalReviewService {
             .catch((error: unknown) => { if (controller.signal.aborted) throw error; return undefined })
           if (wrapUp && endOf(wrapUp).kind === 'completed') {
             result = wrapUp; end = endOf(wrapUp)
-            await this.store.submitLedger(runId, crypto.randomUUID(), { operation: 'coverage', coverage: { angles: [], limitations: ['review-step-limit'], complete: (await this.store.getSnapshot(runId)).coverage.complete } })
+            await this.store.addLimitations(runId, ['review-step-limit'])
           }
         }
         if (end.kind !== 'completed') {
@@ -359,29 +360,32 @@ export class LocalReviewService {
         if (plan.presentation !== 'panel') {
           const committed = await this.store.submitFinalAnswer(runId, crypto.randomUUID(), result.text)
           reportRejected = !!committed.rejected?.length
-          if (reportRejected) await this.store.submitLedger(runId, crypto.randomUUID(), { operation: 'coverage', coverage: { angles: [], limitations: ['report-candidates-rejected'], complete: false } })
+          if (reportRejected) await this.store.addLimitations(runId, ['report-candidates-rejected'])
         }
+        // Contract (F-38): the host decides completeness from what it observed; coverage statements carry angles and notes only.
+        let complete: boolean
         if (plan.agentMode === 'parallel') {
           const snapshot = await this.store.getSnapshot(runId)
           const missing = plan.angles.filter(angle => !live.completedAngles.has(angle))
           const unverified = snapshot.diagnostics.map(diagnostic => diagnostic.id).filter(id => isPrimary(snapshot, id) && !live.verified.has(id) && !live.sweepIds.has(id))
           const gap = missing.length > 0 || plan.independentVerification && unverified.length > 0 || plan.sweep === 'independent' && !live.swept
           // Contract (F-38): a team run is complete when its receipts say so; the coordinator's and workers' notes stay as limitations.
-          const complete = !gap && !reportRejected
+          complete = !gap && !reportRejected
           const limitations = [...(gap ? ['independent-worker-coverage-incomplete'] : []), ...(summaryStale && plan.presentation !== 'panel' ? ['verified-after-summary'] : [])]
-          if (limitations.length || complete !== snapshot.coverage.complete) await this.store.submitLedger(runId, crypto.randomUUID(), { operation: 'coverage', coverage: { angles: [], limitations, complete } })
-        } else if (!plan.allowWholeFileReads && !plan.angles.length && !reportRejected
-          && access.manifest.files.every(file => file.status !== 'included' || live.patchesRead.has(file.path))
-          && !(await this.store.getSnapshot(runId)).coverage.complete) {
-          // Contract (F-38): a diff-only run with no selected angles that read every included patch is complete; the coordinator's notes stay as limitations.
-          await this.store.submitLedger(runId, crypto.randomUUID(), { operation: 'coverage', coverage: { angles: [], limitations: [], complete: true } })
+          if (limitations.length) await this.store.addLimitations(runId, limitations)
+        } else {
+          // A run that reads for itself is complete when a diff read returned every included patch and it recorded coverage; angle coverage is the store's check.
+          const unread = access.manifest.files.some(file => file.status === 'included' && !!file.patch && !live.patchesRead.has(file.path))
+          const stated = await this.store.coverageStated(runId)
+          complete = !unread && stated && !reportRejected
+          if (unread || !stated) await this.store.addLimitations(runId, [...(unread ? ['included-patch-unread'] : []), ...(stated ? [] : ['coverage-not-recorded'])])
         }
+        await this.store.setComplete(runId, complete && access.manifest.complete)
         if (hostVerified && (await this.store.getSnapshot(runId)).structured) await this.store.submitRecord(runId, crypto.randomUUID(), await this.store.expectedRecord(runId))
-        if (!access.manifest.complete) await this.store.submitLedger(runId, crypto.randomUUID(), { operation: 'coverage', coverage: { angles: [], limitations: access.manifest.notices.concat('scope-incomplete'), complete: false } })
+        if (!access.manifest.complete) await this.store.addLimitations(runId, access.manifest.notices.concat('scope-incomplete'))
       }
       await this.store.setStage(runId, 'report'); this.changed()
-      if (plan.notices.length || access.manifest.notices.length) await this.store.submitLedger(runId, crypto.randomUUID(), { operation: 'coverage',
-        coverage: { angles: [], limitations: [...plan.notices.map(notice => notice.code), ...access.manifest.notices], complete: (await this.store.getSnapshot(runId)).coverage.complete } })
+      if (plan.notices.length || access.manifest.notices.length) await this.store.addLimitations(runId, [...plan.notices.map(notice => notice.code), ...access.manifest.notices])
       if (live.args.fix && (await this.store.getSnapshot(runId)).retainedIds.length) {
         try { await this.repairActive(runId, live) }
         catch (error) { if (controller.signal.aborted) throw error }
@@ -391,7 +395,7 @@ export class LocalReviewService {
         try { await this.publishActive(runId, live) }
         catch (error) { if (controller.signal.aborted) throw error }
       }
-      else if (live.args.comment) await this.store.submitLedger(runId, crypto.randomUUID(), { operation: 'coverage', coverage: { angles: [], limitations: ['publication-target-required'], complete: (await this.store.getSnapshot(runId)).coverage.complete } })
+      else if (live.args.comment) await this.store.addLimitations(runId, ['publication-target-required'])
       if (shouldRunAutomaticVerification(plan, { permitted: this.options.automaticVerificationPermitted === true,
         adapterAvailable: !!this.options.verify, runtimeBehaviorChanged: access.manifest.files.some(f => !isTestOrFixturePath(f.path) && !/(?:^|\/)docs?\/|\.(?:md|txt)$/i.test(f.path)), alreadyVerified: await this.options.alreadyVerified?.(await this.store.getSnapshot(runId)) ?? false })) {
         await this.store.setStage(runId, 'verify')
@@ -405,7 +409,8 @@ export class LocalReviewService {
       const snapshot = await this.store.getSnapshot(runId)
       if (snapshot.run.progress.status === 'active') {
         const reason = controller.signal.aborted ? this.userCancelled.has(controller) ? USER_CANCELLED : 'review-cancelled' : error instanceof Error ? error.message : 'review-failed'
-        await this.store.submitLedger(runId, crypto.randomUUID(), { operation: 'coverage', coverage: { angles: [], limitations: [reason], complete: false } })
+        await this.store.addLimitations(runId, [reason])
+        await this.store.setComplete(runId, false)
         if (!snapshot.structured) await this.store.submitRecord(runId, crypto.randomUUID(), await this.store.expectedRecord(runId))
         await this.store.finish(runId, controller.signal.aborted ? 'cancelled' : 'partial')
       }
@@ -655,7 +660,7 @@ export class LocalReviewService {
           const value: Record<string, any> = answer!
           if (role !== 'verifier') {
             const limitations: string[] = [...(value.coverage?.limitations ?? []), ...(rejectedCandidates.length ? ['worker-candidates-rejected'] : []), ...(whole ? [] : ['review-step-limit'])]
-            await this.store.submitLedger(runId, `${taskId}-coverage`, { operation: 'coverage', coverage: { angles: value.coverage?.angles ?? [], limitations, complete: false } })
+            await this.store.submitLedger(runId, `${taskId}-coverage`, { operation: 'coverage', coverage: { angles: value.coverage?.angles ?? [], limitations } })
             // A worker cut off by its step limit leaves its angles, or the sweep, uncovered.
             if (whole) {
               if (role === 'finder') for (const angle of value.coverage?.angles ?? []) live.completedAngles.add(angle)

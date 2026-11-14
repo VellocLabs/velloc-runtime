@@ -8,6 +8,7 @@ import type { ReviewPreferences } from './contracts'
 import type { ToolCallContext } from '../toolkit/toolCallContext'
 import type { PermissionDecider } from '../toolkit/permissionVerdict'
 import type { Message } from '../runtime/RuntimeTypes'
+import { readingPatchesFirst, servingPatches } from './patch-read.testkit'
 
 const coverage = { angles: [], limitations: [], complete: true }
 const manifest = (empty = false): ScopeManifest => ({
@@ -20,7 +21,7 @@ async function invoke(request: ReviewModelRequest, name: string, input: Record<s
   const row = { type: 'assistant', message: { content: [{ type: 'tool_use', id: crypto.randomUUID(), name, input }] } } as Message
   return tool.call(input, {} as ToolCallContext, vi.fn() as unknown as PermissionDecider, row)
 }
-function fixture(overrides: Partial<ReviewServiceOptions> = {}) {
+function fixture(overrides: Partial<ReviewServiceOptions> = {}, fakes: { readsPatchesFirst?: boolean } = {}) {
   const persisted = new Map<string, string>()
   let preferences: ReviewPreferences = {}
   const savePreferences = vi.fn(async (next: ReviewPreferences) => { preferences = next })
@@ -35,6 +36,8 @@ function fixture(overrides: Partial<ReviewServiceOptions> = {}) {
     storage: { listRunIds: async () => [...persisted.keys()], load: async id => persisted.get(id) ?? null, save: async (id, data) => { persisted.set(id, data) } },
     sanitizeExcerpt: text => text, resolveScope, runModel, ...overrides,
   }
+  options.resolveScope = servingPatches(options.resolveScope)
+  if (fakes.readsPatchesFirst !== false) options.runModel = readingPatchesFirst(options.runModel)
   return { service: new LocalReviewService(options), options, runModel, resolveScope, savePreferences }
 }
 
@@ -1013,14 +1016,14 @@ describe('single-context step limit', () => {
     const f = fixture({ resolveScope: async () => ({ manifest: manifest(), trustedGuidance: '', read: async () => ({ files: [] }) }), runModel: async request => {
       budget = JSON.parse(request.blocks.find(block => block.source === 'budget')!.text)
       const tool = request.tools.find(t => t.name === 'ReviewRead')!
-      const readAt = (row: Message) => tool.call({ operation: 'diff' }, {} as ToolCallContext, vi.fn() as unknown as PermissionDecider, row)
+      const readAt = (row: Message) => tool.call({ operation: 'diff', paths: ['src/a.ts'] }, {} as ToolCallContext, vi.fn() as unknown as PermissionDecider, row)
         .then(result => { left.push((result.data as { readStepsLeft?: number }).readStepsLeft); return 'ok' }, (error: Error) => error.message)
       const shared = { uuid: crypto.randomUUID(), type: 'assistant', message: { content: [] } } as unknown as Message
       outcomes.push(await readAt(shared), await readAt(shared))
       for (let step = 0; step < 48; step++) outcomes.push(await readAt({ uuid: crypto.randomUUID(), type: 'assistant', message: { content: [] } } as unknown as Message))
       await invoke(request, 'ReviewLedger', { operation: 'coverage', coverage: { angles: anglesOf(request), limitations: [], complete: true } })
       return { text: 'Reviewed src/a.ts.', interrupted: false, end: { kind: 'completed' as const } }
-    } })
+    } }, { readsPatchesFirst: false })
     const snapshot = await f.service.wait((await f.service.startUser('high')).runId)
     expect(budget).toEqual({ concurrency: 4, maxTurns: 64, readSteps: 48 })
     expect(outcomes).toEqual([...Array(49).fill('ok'), 'review-step-budget'])
@@ -1040,7 +1043,7 @@ describe('single-context step limit', () => {
       await readAt()
       await invoke(request, 'ReviewLedger', { operation: 'coverage', coverage: { angles: anglesOf(request), limitations: [], complete: true } })
       return { text: 'Reviewed src/a.ts.', interrupted: false, end: { kind: 'completed' as const } }
-    } })
+    } }, { readsPatchesFirst: false })
     await f.service.wait((await f.service.startUser('high')).runId)
     expect(left).toEqual(['review-context-unavailable', 46])
   })

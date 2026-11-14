@@ -117,6 +117,8 @@ async function invoke(request: ReviewModelRequest, name: string, input: Record<s
 async function report(request: ReviewModelRequest, withCandidates = false) {
   const manifest = JSON.parse(request.blocks.find(block => block.source === 'scope-manifest')!.text)
   const plan = JSON.parse(request.blocks.find(block => block.source === 'resolved-policy')!.text)
+  const included = manifest.files.filter((file: { status: string }) => file.status === 'included').map((file: { path: string }) => file.path)
+  if (included.length) await invoke(request, 'ReviewRead', { operation: 'diff', paths: included })
   const candidates = withCandidates ? manifest.files.map((file: { path: string; anchors: Array<{ anchorKey: string; side: string; span: { start: number } }> }) => {
     const anchor = file.anchors.find(anchor => anchor.side === 'working-copy')!
     return { location: { anchorKey: anchor.anchorKey, path: file.path, line: anchor.span.start }, statement: { headline: 'Incorrect value', details: `Changed value in ${file.path}`, scenario: 'Caller receives an incorrect value' }, kind: 'correctness', impact: 'major', support: [{ path: file.path, quote: '2', relevance: 'Changed value' }], assessment: { disposition: 'plausible', reason: 'Supported by the changed expression' }, angle: 'lines' }

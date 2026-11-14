@@ -146,6 +146,8 @@ interface RunState extends Omit<ReportSnapshot, 'verifications'> {
   publications: PublicationOperation[]
   rawResults: RawResult[]
   actionPhase?: ReportActionPhase
+  /** A coverage statement was recorded through a model write. */
+  coverageStated?: boolean
   usedActionGrants?: string[]
   independentVerifications?: IndependentVerificationReceipt[]
   evidenceSources?: ReportEvidenceSource[]
@@ -520,6 +522,25 @@ export class ReviewReportStore {
     })
   }
   /** A failed worker leaves its angles unavailable; a later worker that covers one makes it available again. */
+  /** Contract: the host's verdict on whether the run covered its scope; no model-written statement reaches it (F-38). */
+  async setComplete(runId: string, complete: boolean): Promise<void> {
+    return this.mutate(runId, state => {
+      if (state.run.progress.status !== 'active') return fail('run-not-active')
+      state.coverage.complete = complete
+    })
+  }
+  /** Contract: limits the host observed; they are not a coverage statement and leave `coverageStated` as it is. */
+  async addLimitations(runId: string, limitations: readonly string[]): Promise<void> {
+    const added = strings(clone(limitations))
+    return this.mutate(runId, state => {
+      if (state.run.progress.status !== 'active') return fail('run-not-active')
+      state.coverage.limitations = unique([...state.coverage.limitations, ...added])
+    })
+  }
+  /** Whether a model write recorded a coverage statement in this run. */
+  async coverageStated(runId: string): Promise<boolean> {
+    return this.serial(runId, async () => (await this.load(runId)).coverageStated === true)
+  }
   async noteWorker(runId: string, event: 'started' | 'finished', unavailableAngles: string[] = [], coveredAngles: string[] = []): Promise<void> {
     return this.mutate(runId, state => {
       if (state.run.progress.status !== 'active') return fail('run-not-active')
@@ -650,10 +671,10 @@ export class ReviewReportStore {
       assessment: { disposition: enumeration(assessment.disposition, dispositions), reason: text(assessment.reason) }, angle: text(item.angle),
     }
   }
-  private coverage(value: unknown): ReportCoverage {
+  /** A coverage statement's angles and limitations. A `complete` field is tolerated and never read: completeness is the host's (F-38). */
+  private coverage(value: unknown): Omit<ReportCoverage, 'complete'> {
     const coverage = object(value, ['angles', 'limitations', 'complete'])
-    if (typeof coverage.complete !== 'boolean') return fail('invalid-completeness')
-    return { angles: unique(strings(coverage.angles)), limitations: unique(strings(coverage.limitations)), complete: coverage.complete }
+    return { angles: unique(strings(coverage.angles)), limitations: unique(strings(coverage.limitations)) }
   }
   private addEvidence(state: RunState, id: string, support: ReportSupport[], toolCallKey: string): string[] {
     const diagnostic = state.diagnostics.find(item => item.id === id)!
@@ -872,11 +893,12 @@ export class ReviewReportStore {
     const kept = [...state.unverified ?? [], ...items].filter(item => !recorded(item))
     if (kept.length || state.unverified) state.unverified = kept.slice(-64)
   }
-  /** Merges a coverage statement into the ledger: angles and limitations accumulate, `complete` is the latest claim. */
+  /** Merges a coverage statement into the ledger: angles and limitations accumulate; `complete` changes only through setComplete. */
   private recordCoverage(state: RunState, value: unknown): void {
     const coverage = this.coverage(value)
     if (state.expectedAngles.length && coverage.angles.some(angle => !state.expectedAngles.includes(angle))) return fail('unknown-angle')
-    state.coverage = { angles: unique([...state.coverage.angles, ...coverage.angles]), limitations: unique([...state.coverage.limitations, ...coverage.limitations]), complete: coverage.complete }
+    state.coverage = { angles: unique([...state.coverage.angles, ...coverage.angles]), limitations: unique([...state.coverage.limitations, ...coverage.limitations]), complete: state.coverage.complete }
+    state.coverageStated = true
     state.run.progress.coveredAngles = [...state.coverage.angles]
   }
   /** Contract: commits the retained ledger as the report. */
@@ -894,7 +916,8 @@ export class ReviewReportStore {
     select(state)
     const expected = state.retainedIds.map(id => state.candidates.find(item => item.diagnosticId === id)!.input)
     if (canonical(expected) !== canonical(candidates)) return fail('ledger-mismatch')
-    if (canonical(this.coverage(record.coverage)) !== canonical(effectiveCoverage(state))) return fail('ledger-mismatch')
+    const { angles, limitations } = effectiveCoverage(state)
+    if (canonical(this.coverage(record.coverage)) !== canonical({ angles, limitations })) return fail('ledger-mismatch')
     return this.commitLedger(state)
   }
   async submitRecord(runId: string, toolCallId: string, input: unknown): Promise<ReportWriteResult> {

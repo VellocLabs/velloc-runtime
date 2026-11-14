@@ -40,7 +40,8 @@ async function populate(store: ReviewReportStore, id: string, anchorKey: string,
     await store.submitLedger(id, `batch-${start}`, { operation: 'append-candidates',
       candidates: Array.from({ length: Math.min(32, count - start) }, (_, i) => candidate(anchorKey, start + i + 1, `Mechanism ${start + i}`)) })
   }
-  await store.submitLedger(id, 'coverage', { operation: 'coverage', coverage: { angles: ['lines'], limitations: [], complete: true } })
+  await store.submitLedger(id, 'coverage', { operation: 'coverage', coverage: { angles: ['lines'], limitations: [] } })
+  await store.setComplete(id, true)
   await store.submitRecord(id, 'record', await store.expectedRecord(id))
 }
 
@@ -197,7 +198,8 @@ describe('review report store', () => {
     const { store, run } = fixture()
     const { id, anchorKey } = await run()
     await store.submitLedger(id, 'add', { operation: 'append-candidates', candidates: [candidate(anchorKey)] })
-    await store.submitLedger(id, 'coverage', { operation: 'coverage', coverage: { angles: ['lines'], limitations, complete: true } })
+    await store.submitLedger(id, 'coverage', { operation: 'coverage', coverage: { angles: ['lines'], limitations } })
+    await store.setComplete(id, true)
     const { operation: _, ...json } = await store.expectedRecord(id)
     return { store, id, json, anchorKey }
   }
@@ -210,14 +212,14 @@ describe('review report store', () => {
     expect(snapshot.coverage.limitations).toEqual(['spec.ts skipped (tests/fixtures policy)', 'spec.ts was skipped by the tests policy'])
     expect(snapshot.coverage.complete).toBe(true)
   })
-  it('takes coverage from a final answer when the ledger recorded none', async () => {
+  it('takes angles and limitations from a final answer when the ledger recorded none, and never its completeness', async () => {
     const { store, run } = fixture()
     const { id, anchorKey } = await run()
     await store.submitLedger(id, 'add', { operation: 'append-candidates', candidates: [candidate(anchorKey)] })
     const { operation: _, ...json } = await store.expectedRecord(id)
     expect(json.coverage).toEqual({ angles: [], limitations: [], complete: false })
     await store.submitFinalAnswer(id, 'final', JSON.stringify({ ...json, coverage: { angles: ['lines'], limitations: ['no tests run'], complete: true } }))
-    expect((await store.getSnapshot(id)).coverage).toEqual({ angles: ['lines'], limitations: ['no tests run'], complete: true })
+    expect((await store.getSnapshot(id)).coverage).toEqual({ angles: ['lines'], limitations: ['no tests run'], complete: false })
   })
   it('never lets a final answer change the ledger\'s candidates, and keeps coverage a ledger write would refuse as a raw result', async () => {
     const { store, id, json } = await ledgerWithoutRecord(['kept'])
@@ -247,7 +249,7 @@ describe('review report store', () => {
     const { store, id, json } = await ledgerWithoutRecord(['kept'])
     const report = JSON.stringify({ ...json, coverage: { angles: ['lines'], limitations: ['src/b.ts unread'], complete: false } })
     await store.submitFinalAnswer(id, 'final', `Ledger: ${JSON.stringify(json)}\nReport: ${report}`)
-    expect((await store.getSnapshot(id)).coverage).toEqual({ angles: ['lines'], limitations: ['kept', 'src/b.ts unread'], complete: false })
+    expect((await store.getSnapshot(id)).coverage).toEqual({ angles: ['lines'], limitations: ['kept', 'src/b.ts unread'], complete: true })
   })
   it('ignores a quoted example before the last report-shaped object', async () => {
     const { store, id, json } = await ledgerWithoutRecord(['kept'])
@@ -712,7 +714,8 @@ describe('review report store', () => {
   it('supports zero-finding verification-only epochs without allowing repair or model verification writes', async () => {
     const { store, run } = fixture()
     const { id } = await run()
-    await store.submitLedger(id, 'complete-empty', { operation: 'coverage', coverage: { angles: ['lines'], limitations: [], complete: true } })
+    await store.submitLedger(id, 'complete-empty', { operation: 'coverage', coverage: { angles: ['lines'], limitations: [] } })
+    await store.setComplete(id, true)
     await store.submitRecord(id, 'empty-record', await store.expectedRecord(id))
     await store.finish(id, 'finished')
     const grantId = await store.grantAction(id, { kind: 'verification', workspaceKey: 'workspace', headRevision: 'head', diagnosticIds: [], paths: ['src/a.ts'], expiresAt: 200 })
@@ -1101,7 +1104,7 @@ describe('explicit semantic duplicate merges', () => {
     expect((await h.store.getSnapshot(h.id)).coverage.limitations).toEqual(expect.arrayContaining(['Sent beside the operation.', 'Operation repeated inside.']))
     await expect(invoke({ operation: 'coverage' }, 'empty')).rejects.toThrow('missing-coverage')
   })
-  it('reads a coverage statement whose fields or whole came as JSON text, and says how to correct a completeness it cannot read', async () => {
+  it('reads a coverage statement whose fields or whole came as JSON text, and ignores any completeness it carries', async () => {
     const h = await pair()
     const tool = createReviewTools({ runId: h.id, store: h.store, signal: new AbortController().signal, read: async () => ({}), changed: () => {}, allowOutput: true }).find(tool => tool.name === 'ReviewLedger')!
     const invoke = (input: Record<string, unknown>, id: string) => tool.call(input, undefined as never, undefined as never, { type: 'assistant', message: { content: [{ type: 'tool_use', id, name: 'ReviewLedger', input }] } } as unknown as Message)
@@ -1110,14 +1113,17 @@ describe('explicit semantic duplicate merges', () => {
     expect((await invoke({ operation: 'coverage', coverage: '{"angles": [], "limitations": ["Whole statement as text."], "complete": false}' }, 'whole-text')).data).toMatchObject({ coverageRecorded: true })
     expect((await h.store.getSnapshot(h.id)).coverage.limitations).toEqual(expect.arrayContaining(['Fields as text beside the operation.', 'Fields as text inside.', 'Whole statement as text.']))
     expect((await invoke({ operation: 'coverage', angles: '["lines"]', limitations: '[]', complete: 'true' }, 'complete-text')).data).toMatchObject({ coverageRecorded: true })
+    expect((await h.store.getSnapshot(h.id)).coverage.complete).toBe(false)
+    expect((await invoke({ operation: 'coverage', angles: '[]', limitations: '[]', complete: 'partial' }, 'not-boolean')).data).toMatchObject({ coverageRecorded: true })
+    await h.store.setComplete(h.id, true)
+    expect((await invoke({ operation: 'coverage', coverage: { angles: [], limitations: ['Said incomplete.'], complete: false } }, 'claims-false')).data).toMatchObject({ coverageRecorded: true })
     expect((await h.store.getSnapshot(h.id)).coverage.complete).toBe(true)
-    await expect(invoke({ operation: 'coverage', angles: '[]', limitations: '[]', complete: 'partial' }, 'not-boolean')).rejects.toThrow(/^invalid-completeness: coverage\.complete is the JSON boolean/)
     await expect(invoke({ operation: 'coverage', angles: 'lines', limitations: '[]', complete: 'true' }, 'not-array')).rejects.toThrow(/^invalid-array: coverage\.angles and coverage\.limitations/)
     await expect(invoke({ operation: 'coverage', coverage: "{'angles': []}" }, 'not-json')).rejects.toThrow(/^invalid-object: coverage is an object/)
     await expect(invoke({ operation: 'coverage', coverage: { angles: [], limitations: [], complete: false, extra: 1 } }, 'extra-field')).rejects.toThrow(/^unknown-field: coverage takes only/)
-    const refused = await invoke({ operation: 'coverage', angles: '[]', limitations: '[]', complete: 'partial' }, 'kept-class').catch((error: unknown) => error)
+    const refused = await invoke({ operation: 'coverage', angles: 'lines', limitations: '[]' }, 'kept-class').catch((error: unknown) => error)
     expect(refused).toBeInstanceOf(ReportStoreError)
-    expect(refused).toMatchObject({ code: 'invalid-completeness' })
+    expect(refused).toMatchObject({ code: 'invalid-array' })
   })
   it('names the field an operation is missing, says a coverage write was recorded, and asks a finder for its angles', async () => {
     const h = await pair()

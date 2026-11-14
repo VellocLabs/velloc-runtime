@@ -198,8 +198,8 @@ describe('typed single-pass template assembly', () => {
     expect(actions).toContain('Model assertions cannot replace edit receipts.')
     expect(actions).toContain('separate repair phase')
     expect(output).toContain('so do not repeat them as JSON in your answer')
-    expect(output).toContain('complete=true only when every included file was read and every selected angle was covered')
-    for (const name of ['panel', 'terminal']) expect(output.split(`## ${name}`)[1].split('## ')[0]).toContain('they do not make the review incomplete')
+    expect(output).not.toMatch(/complete=|coverage\.complete/)
+    for (const name of ['panel', 'terminal']) expect(output.split(`## ${name}`)[1].split('## ')[0]).toContain('Whether the review is complete is decided by the client from what was read; do not state it.')
   })
 })
 
