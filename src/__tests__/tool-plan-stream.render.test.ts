@@ -1032,8 +1032,17 @@ describe('ToolPlanStream unified header', () => {
       '[data-slot="tool-plan-stream-trigger-label"]',
     )!
     expect(label.getAttribute('data-state')).toBe('running')
-    // The whole line sweeps, so a short title still shows the band.
-    expect(label.className).toContain('nexus-sheen')
+    // The whole drawn line sweeps, so a short title still shows the band.
+    const sweep = label.querySelector(
+      '[data-slot="tool-plan-stream-trigger-sweep"]',
+    )!
+    expect(sweep.className).toContain('nexus-sheen')
+    expect(sweep.contains(headerTitle(root))).toBe(true)
+    // The spoken state word sits outside the sweep: a text-clipped background
+    // paints an sr-only descendant's glyphs too, drawing it over the title.
+    const spoken = label.querySelector('.sr-only')!
+    expect(spoken.textContent).toBe('Working')
+    expect(spoken.closest('.nexus-sheen')).toBeNull()
     expect(headerTitle(root).className).not.toContain('text-muted-foreground')
     const text = (label.textContent ?? '').replace(/\s+/g, ' ')
     expect(text).not.toContain('1/2')

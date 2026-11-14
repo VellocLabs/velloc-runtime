@@ -612,8 +612,10 @@ describe('AssistantMessageBody — a turn\'s closing reply renders top-level', (
       '[data-slot="tool-plan-stream-trigger-label"]',
     )!
     expect(label.getAttribute('data-state')).toBe('running')
-    // The whole summary line sweeps, so a short one still shows the band.
-    expect(label.className).toContain('nexus-sheen')
+    // The whole drawn summary line sweeps, so a short one still shows the band.
+    expect(
+      label.querySelector('[data-slot="tool-plan-stream-trigger-sweep"]')!.className,
+    ).toContain('nexus-sheen')
     expect(container.querySelector('[data-slot="tool-plan-stream-running"]')).toBeNull()
     expect(container.querySelector('[data-slot="tool-plan-stream-lead"]')).toBeNull()
   })

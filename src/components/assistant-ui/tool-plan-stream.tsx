@@ -601,31 +601,38 @@ const ToolPlanStreamImpl: FC<ToolPlanStreamProps> = ({
     <span
       data-slot="tool-plan-stream-trigger-label"
       data-state={headerState}
-      className={cn(
-        "aui-tool-plan-stream-trigger-label-wrapper relative flex min-w-0 items-baseline gap-2 overflow-hidden text-left leading-6",
-        headerState === "running" && "nexus-sheen",
-      )}
+      className="aui-tool-plan-stream-trigger-label-wrapper relative flex min-w-0 text-left leading-6"
     >
       {leadText === verb ? null : <span className="sr-only">{verb}</span>}
+      {/* The spoken word stays outside the sweep: a text-clipped background
+          paints every descendant glyph, an sr-only one included. */}
       <span
-        data-slot="tool-plan-stream-title"
+        data-slot="tool-plan-stream-trigger-sweep"
         className={cn(
-          "min-w-0 truncate font-medium",
-          headerState !== "running" &&
-            "text-muted-foreground group-hover/trigger:text-foreground",
+          "flex min-w-0 items-baseline gap-2 overflow-hidden",
+          headerState === "running" && "nexus-sheen",
         )}
       >
-        {leadText}
-      </span>
-      {trailingText ? (
         <span
-          data-slot="tool-plan-stream-summary"
-          className="min-w-0 shrink-[999] truncate text-muted-foreground"
+          data-slot="tool-plan-stream-title"
+          className={cn(
+            "min-w-0 truncate font-medium",
+            headerState !== "running" &&
+              "text-muted-foreground group-hover/trigger:text-foreground",
+          )}
         >
-          <span className="mr-2 text-muted-foreground">·</span>
-          {trailingText}
+          {leadText}
         </span>
-      ) : null}
+        {trailingText ? (
+          <span
+            data-slot="tool-plan-stream-summary"
+            className="min-w-0 shrink-[999] truncate text-muted-foreground"
+          >
+            <span className="mr-2 text-muted-foreground">·</span>
+            {trailingText}
+          </span>
+        ) : null}
+      </span>
     </span>
   );
 
