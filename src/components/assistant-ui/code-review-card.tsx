@@ -197,16 +197,12 @@ const ReviewCardHeader: FC<{
   summary?: string
 }> = ({ level, range, status, variant, running, collapsed = false, bodyId, onToggle, statusInBody = false, action, summary }) => {
   const t = useT()
-  const title = t('reviewCard.title')
   return <header className="relative flex items-center gap-3 px-4 py-3">
     <span aria-hidden data-testid="review-icon" className={cn('flex size-10 shrink-0 items-center justify-center rounded-xl border transition-colors',
       running ? 'border-primary/20 bg-primary/10 text-primary' : 'border-border/60 bg-muted/60 text-muted-foreground')}><SearchCheckIcon className="size-5" /></span>
     <div className="flex min-w-0 flex-1 flex-col gap-0.5">
       <div data-testid="review-heading" className="flex min-h-6 min-w-0 items-center gap-2">
-        <span className="relative min-w-0">
-          <h3 className="truncate font-medium">{title}</h3>
-          {running && <span aria-hidden data-testid="review-title-shimmer" className="shimmer pointer-events-none absolute inset-0 truncate font-medium motion-reduce:animate-none">{title}</span>}
-        </span>
+        <h3 className="truncate font-medium">{t('reviewCard.title')}</h3>
         {level && <span data-testid="review-level" className="shrink-0 whitespace-nowrap text-xs text-muted-foreground">{level}</span>}
         {range && <>
           <span aria-hidden className="shrink-0 text-xs text-muted-foreground">·</span>
