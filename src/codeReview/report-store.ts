@@ -363,6 +363,11 @@ export class ReviewReportStore {
     let state: RunState
     try { state = JSON.parse(serialized) as RunState } catch { return fail('invalid-storage') }
     if (state.version !== 1 || state.run?.id !== runId || !Array.isArray(state.calls) || !Array.isArray(state.publications)) return fail('invalid-storage')
+    // A run released by `releaseSettled` reloads exactly as saved: nothing to restore, no write, no change event.
+    if (terminal(state.run.progress.status) && !state.grants.length && !state.actionPhase && !state.publications.some(operation => operation.state === 'pending')) {
+      this.states.set(runId, state)
+      return state
+    }
     if (!terminal(state.run.progress.status)) {
       state.run.progress.status = 'partial'
       state.coverage.complete = false
@@ -382,6 +387,20 @@ export class ReviewReportStore {
     state.actionPhase = undefined
     await this.save(state)
     return state
+  }
+  /**
+   * Drops the cached state of each ended run that `idle` accepts and that holds no grant, action phase, pending
+   * publication or queued write; the next read reloads it from the adapter unchanged.
+   */
+  releaseSettled(idle: (runId: string) => boolean): number {
+    let released = 0
+    for (const [runId, state] of this.states) {
+      if (!terminal(state.run.progress.status) || state.grants.length || state.actionPhase || this.tails.has(runId)) continue
+      if (state.publications.some(operation => operation.state === 'pending') || this.diffSources.has(runId) || !idle(runId)) continue
+      this.states.delete(runId)
+      released++
+    }
+    return released
   }
   private async mutate<T>(runId: string, work: (state: RunState) => T): Promise<T> {
     return this.serial(runId, async () => {

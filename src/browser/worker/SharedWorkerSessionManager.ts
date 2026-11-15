@@ -157,6 +157,7 @@ import {
 import { DiagnosticsHub } from './DiagnosticsHub'
 import { SharedWorkerPortHub } from './SharedWorkerPortHub'
 import { TaskRegistry } from './TaskRegistry'
+import { releaseIdleReviewSessions } from '../../codeReview/review-channel'
 import { TaskDeliveryQueue } from './TaskDeliveryQueue'
 import { SideTaskCoordinator } from './SideTaskCoordinator'
 import { RoutineCoordinator } from './RoutineCoordinator'
@@ -1132,6 +1133,10 @@ export class SharedWorkerSessionManager {
       scheduleSummary: () => this.feed.scheduleSummary(),
       isAnySessionBusy: () =>
         [...this.sessions.values()].some(entry => entry.worker.isBusy()),
+      releaseIdleSessionCaches: () => {
+        releaseIdleReviewSessions(sessionId => this.sessions.get(sessionId)?.worker.isBusy() ?? false)
+        this.taskRegistry.compactSharedText()
+      },
       getSessionCwd: sessionId => this.sessionTerminalCwd(sessionId),
       cliConversations: this.cliConversationStore(),
       trace: (event, data) =>

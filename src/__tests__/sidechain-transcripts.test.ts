@@ -42,10 +42,9 @@ function makeMessage(uuid: string, text = 'hi'): Message {
 /**
  * Build a minimal in-memory RuntimeFs that supports
  * mkdir / writeFile / appendFileSync / readFile / readdir / unlink — the
- * methods the fs-backed store actually calls. (`writeFile` is the real
- * append path now — the bridge has no working synchronous append, so the
- * store accumulates and async-`writeFile`s the whole file; `appendFileSync`
- * is kept only for tests that seed a file out-of-band.)
+ * methods the fs-backed store actually calls. It has no async `appendFile`,
+ * so the store takes its read + `writeFile` path; `appendFileSync` is only
+ * for tests that seed a file out-of-band.
  */
 function makeFakeFs(): RuntimeFs {
   const dirs = new Set<string>()
@@ -293,6 +292,51 @@ runStoreContractTests(
 runStoreContractTests('createFsSidechainTranscriptStore', () =>
   createFsSidechainTranscriptStore({ fs: makeFakeFs(), basePath: '/base' }),
 )
+
+/** `makeFakeFs` plus the async `appendFile` the bridge fs offers. */
+function makeAppendingFakeFs(): RuntimeFs {
+  const fs = makeFakeFs()
+  fs.appendFile = async (path, data) => {
+    fs.appendFileSync(path, typeof data === 'string' ? data : new TextDecoder().decode(data))
+  }
+  return fs
+}
+
+runStoreContractTests('createFsSidechainTranscriptStore with appendFile', () =>
+  createFsSidechainTranscriptStore({ fs: makeAppendingFakeFs(), basePath: '/base' }),
+)
+
+describe('createFsSidechainTranscriptStore — no in-memory copy', () => {
+  it('sends only the new line through appendFile and never rewrites the file', async () => {
+    const fs = makeAppendingFakeFs()
+    const appendSpy = vi.spyOn(fs, 'appendFile')
+    const writeSpy = vi.spyOn(fs, 'writeFile')
+    const store = createFsSidechainTranscriptStore({ fs, basePath: '/base' })
+    await store.append('s', 'agent_a', makeMeta({ agentId: 'agent_a' }))
+    await store.append('s', 'agent_a', makeMessage('u1'))
+    expect(writeSpy).not.toHaveBeenCalled()
+    const sent = appendSpy.mock.calls.map(([, data]) => new TextDecoder().decode(data as Uint8Array))
+    expect(sent).toEqual([
+      JSON.stringify(makeMeta({ agentId: 'agent_a' })) + '\n',
+      JSON.stringify(makeMessage('u1')) + '\n',
+    ])
+  })
+
+  it.each([
+    ['with appendFile', makeAppendingFakeFs],
+    ['without appendFile', makeFakeFs],
+  ])('extends what is on disk, not a remembered copy (%s)', async (_label, makeFs) => {
+    // A line written by someone else between two appends survives the second one.
+    const fs = makeFs()
+    const store = createFsSidechainTranscriptStore({ fs, basePath: '/base' })
+    const path = getSubagentTranscriptPath('/base', 's', 'agent_a')
+    await store.append('s', 'agent_a', makeMeta({ agentId: 'agent_a' }))
+    fs.appendFileSync(path, JSON.stringify(makeMessage('outside')) + '\n')
+    await store.append('s', 'agent_a', makeMessage('u1'))
+    const uuids = (await store.load('s', 'agent_a')).map(entry => (entry as { uuid?: string }).uuid)
+    expect(uuids).toEqual([undefined, 'outside', 'u1'])
+  })
+})
 
 // ============================================================================
 // RuntimeFs-backed store: failure-mode specifics

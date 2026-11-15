@@ -62,6 +62,11 @@ interface LiveRun {
   /** Included paths whose patch a diff read returned. */
   patchesRead: Set<string>
 }
+/** What a run keeps once its work has settled: the card's presentation and task list, never its scope or patches. */
+interface SettledRun {
+  presentation: { notices: ReviewPlan['notices']; emptyScope: boolean; target?: string }
+  args: ReviewArguments; tasks: Map<string, ReviewTaskView>; agentIds: Map<string, string>; end?: ReviewRunEnd
+}
 export class ReviewGatewayError extends Error { constructor(readonly code: string) { super(code) } }
 const onlyTestsSkipped = (manifest: ScopeManifest): boolean => !manifest.files.some(file => file.status === 'included') && manifest.files.some(file => file.status === 'skipped' && isTestOrFixturePath(file.path))
 const block = (text: string, source: string): ReviewPromptBlock => ({ type: 'text', text, source, provenance: 'trusted-task' })
@@ -130,6 +135,7 @@ export function reviewMaterial(manifest: ScopeManifest, paths?: readonly string[
 export class LocalReviewService {
   readonly store: ReviewReportStore
   private readonly live = new Map<string, LiveRun>()
+  private readonly settled = new Map<string, SettledRun>()
   private readonly pending = new Map<string, { toolCallId: string; controller: AbortController }>()
   /** Controllers aborted by the card's cancel action; a start and its run share one, so both read the same cause. */
   private readonly userCancelled = new WeakSet<AbortController>()
@@ -174,11 +180,26 @@ export class LocalReviewService {
   changed = (): void => { this.sequence++; for (const listener of this.listeners) listener() }
   presentation(runId: string): { notices: ReviewPlan['notices']; emptyScope: boolean; target?: string } | undefined {
     const live = this.live.get(runId)
-    return live ? { notices: live.plan.notices, emptyScope: live.access.manifest.status === 'empty', target: live.args.target } : undefined
+    return live ? { notices: live.plan.notices, emptyScope: live.access.manifest.status === 'empty', target: live.args.target } : this.settled.get(runId)?.presentation
+  }
+  /**
+   * Contract: called once `live.done` settles. Drops the run's scope access (manifest, patches, read closure);
+   * a later action on the run resolves its scope again, as for a restored run.
+   */
+  private settle(runId: string, live: LiveRun): void {
+    if (this.live.get(runId) !== live) return
+    this.live.delete(runId)
+    this.settled.set(runId, { presentation: { notices: live.plan.notices, emptyScope: live.access.manifest.status === 'empty', target: live.args.target },
+      args: live.args, tasks: live.tasks, agentIds: live.agentIds, end: live.end })
+  }
+  /** Releases cached report state of runs with no work in flight; reads reload it from storage. */
+  releaseIdle(): void {
+    if (this.disposed) return
+    this.store.releaseSettled(id => !this.live.has(id) && !this.actionsInFlight.has(id))
   }
   /** The run's model tasks with their drawer handles, and the coordinator's end when it did not complete. */
   tasks(runId: string): { tasks: ReviewTaskView[]; end?: ReviewRunEnd } | undefined {
-    const live = this.live.get(runId)
+    const live = this.live.get(runId) ?? this.settled.get(runId)
     if (!live) return undefined
     const tasks = [...live.tasks.values()].map(task => {
       const agentId = live.agentIds.get(task.key)
@@ -288,6 +309,8 @@ export class LocalReviewService {
     const live = newLive({ access, plan, args: parsed.arguments, controller, done: Promise.resolve(), source })
     this.live.set(runId, live); this.known.add(runId)
     live.done = this.execute(runId, live)
+    const settle = () => this.settle(runId, live)
+    void live.done.then(settle, settle)
     return { runId }
   }
   async wait(runId: string): Promise<ReportSnapshot> { await this.live.get(runId)?.done; return this.store.getSnapshot(runId) }
@@ -736,7 +759,10 @@ export class LocalReviewService {
   private async actionContext(runId: string, controller: AbortController): Promise<LiveRun> {
     this.admit(controller.signal)
     const existing = this.live.get(runId)
-    if (existing) { await existing.done.catch(() => {}); this.admit(controller.signal); return existing }
+    if (existing) {
+      await existing.done.catch(() => {}); this.admit(controller.signal)
+      if (this.live.get(runId) === existing) return existing
+    }
     const snapshot = await this.store.getSnapshot(runId)
     const target = await this.options.loadTarget?.(runId)
     if (!target && snapshot.run.scope.kind !== 'workspace') throw new ReviewGatewayError('review-target-needs-selection')
@@ -754,6 +780,8 @@ export class LocalReviewService {
     }
     if (access.manifest.scope.repository.projectKey !== snapshot.run.scope.repository.projectKey || access.manifest.scope.revision.head !== snapshot.run.scope.revision.head) throw new ReviewGatewayError('snapshot-changed')
     const live = newLive({ access, plan, args, controller, done: Promise.resolve(), source: 'model' })
+    const prior = this.settled.get(runId)
+    if (prior) { live.tasks = prior.tasks; live.agentIds = prior.agentIds; live.end = prior.end }
     this.live.set(runId, live)
     return live
   }
@@ -762,14 +790,18 @@ export class LocalReviewService {
     if (this.actionsInFlight.has(runId)) throw new ReviewGatewayError('review-action-in-progress')
     this.actionsInFlight.add(runId)
     const operation = this.operation()
+    let live: LiveRun | undefined
     try {
-      const live = await this.actionContext(runId, operation.controller)
+      live = await this.actionContext(runId, operation.controller)
       this.admit(operation.controller.signal)
       live.controller = operation.controller
       live.done = task(live)
       await live.done
       this.admit()
-    } finally { operation.release(); this.actionsInFlight.delete(runId); this.changed() }
+    } finally {
+      if (live) this.settle(runId, live)
+      operation.release(); this.actionsInFlight.delete(runId); this.changed()
+    }
   }
   async requestRepair(runId: string, ids: string[]): Promise<void> {
     await this.followup(runId, live => this.repairActive(runId, live, ids, true))
@@ -805,7 +837,7 @@ export class LocalReviewService {
   async rerun(runId: string, presentation?: OutputMode): Promise<{ runId: string }> {
     this.admit()
     const snapshot = await this.store.getSnapshot(runId)
-    const live = this.live.get(runId)
+    const live = this.live.get(runId) ?? this.settled.get(runId)
     const target = live?.args.target ?? await this.options.loadTarget?.(runId)
     if (!live && !target && snapshot.run.scope.kind !== 'workspace') throw new ReviewGatewayError('review-target-needs-selection')
     const directory = live?.args.directory ?? await this.options.loadDirectory?.(runId)

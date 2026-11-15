@@ -12,6 +12,8 @@ export interface ReviewSessionFacade {
   rerun(runId: string, presentation?: OutputMode): Promise<unknown>
   verify?(runId: string): Promise<unknown>
   locate?(runId: string, diagnosticId: string): Promise<ReviewFileLocation>
+  /** Drops cached state of runs with no work in flight; later reads reload it. */
+  releaseIdle?(): void
 }
 const sessions = new Map<string, { service: ReviewSessionFacade; unsubscribe: () => void }>()
 const listeners = new Set<(sessionId: string) => void>()
@@ -27,6 +29,15 @@ export function registerReviewSession(sessionId: string, service: ReviewSessionF
     sessions.delete(sessionId)
     changed(sessionId)
   }
+}
+/** Calls `releaseIdle` on each registered session that `isRunning` rejects; returns how many were asked. */
+export function releaseIdleReviewSessions(isRunning: (sessionId: string) => boolean): number {
+  let asked = 0
+  for (const [sessionId, entry] of sessions) {
+    if (!entry.service.releaseIdle || isRunning(sessionId)) continue
+    try { entry.service.releaseIdle(); asked++ } catch { /* One session's release never blocks the others. */ }
+  }
+  return asked
 }
 export function getReviewSession(sessionId: string): ReviewSessionFacade | undefined { return sessions.get(sessionId)?.service }
 export function onReviewSessionsChanged(listener: (sessionId: string) => void): () => void {

@@ -86,6 +86,8 @@ export interface ManagerBootServicesHost {
   scheduleSummary(): void
   /** Some session is running a turn (the render-cache purge waits for none). */
   isAnySessionBusy?(): boolean
+  /** Drops runtime caches held for sessions not running a turn; called before each render-cache purge. */
+  releaseIdleSessionCaches?(): void
   /** Where a session's terminal starts (F-31): its worktree when it runs in one, else its project
    *  root; undefined for a session the runtime does not hold. Absent: no terminal can be created. */
   getSessionCwd?(sessionId: string): string | undefined
@@ -344,6 +346,7 @@ export class ManagerBootServices {
       manifest: () => this.host.getHostManifest?.() ?? null,
       createRequestId: () => this.host.createBridgeRequestId(),
       isAnyBusy: () => this.host.isAnySessionBusy?.() ?? false,
+      releaseIdleCaches: () => this.host.releaseIdleSessionCaches?.(),
       idlePurgeEnabled: async () => {
         const homeDir = this.host.getHomeDir()
         if (!homeDir) return true

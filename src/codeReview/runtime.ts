@@ -1095,6 +1095,7 @@ async function buildReviewService(incomingContext: ToolCallContext, decidePermis
       return started
     },
     verify: id => service.requestVerification(id),
+    releaseIdle: () => service.releaseIdle(),
     async locate(id, diagnosticId) {
       const snapshot = await service.store.getSnapshot(id)
       const diagnostic = snapshot.diagnostics.find(item => item.id === diagnosticId && snapshot.retainedIds.includes(item.id))

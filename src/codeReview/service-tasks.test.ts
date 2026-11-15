@@ -97,6 +97,44 @@ describe('review runs as an observable task tree', () => {
   })
 })
 
+describe('settled runs', () => {
+  const liveRuns = (service: LocalReviewService) => (service as unknown as { live: Map<string, unknown> }).live
+  it('drops a finished run from the live set but keeps its card presentation and task tree', async () => {
+    const h = setup()
+    const { runId } = await h.service.startUser('medium')
+    await h.service.wait(runId)
+    expect(liveRuns(h.service).has(runId)).toBe(false)
+    expect(h.service.presentation(runId)).toEqual({ notices: expect.any(Array), emptyScope: false, target: undefined })
+    expect(h.service.tasks(runId)!.tasks).toEqual([expect.objectContaining({ key: runId, status: 'finished' })])
+  })
+  it('releases cached report state of idle runs and reloads it unchanged without a write', async () => {
+    const h = setup()
+    const { runId } = await h.service.startUser('medium')
+    const before = await h.service.wait(runId)
+    const states = (h.service.store as unknown as { states: Map<string, unknown> }).states
+    expect(states.has(runId)).toBe(true)
+    const saves = vi.spyOn((h.service.store as unknown as { adapter: { save: () => Promise<void> } }).adapter, 'save')
+    h.service.releaseIdle()
+    expect(states.has(runId)).toBe(false)
+    expect(await h.service.store.getSnapshot(runId)).toEqual(before)
+    expect(saves).not.toHaveBeenCalled()
+  })
+  it('keeps the state of a run that is still running', async () => {
+    const h = setup()
+    let finish!: () => void
+    h.runModel.mockImplementationOnce(async request => {
+      await new Promise<void>(resolve => { finish = resolve })
+      return { text: '', interrupted: true, end: { kind: 'cancelled' as const } }
+    })
+    const { runId } = await h.service.startUser('medium')
+    await vi.waitFor(() => expect(finish).toBeTypeOf('function'))
+    h.service.releaseIdle()
+    expect((h.service.store as unknown as { states: Map<string, unknown> }).states.has(runId)).toBe(true)
+    finish()
+    await h.service.wait(runId)
+  })
+})
+
 describe('worker material', () => {
   const manifest = setup().manifest
   it('lists each anchor once, under its file, as key, side and span', () => {

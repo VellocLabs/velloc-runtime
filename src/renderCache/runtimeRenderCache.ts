@@ -35,7 +35,7 @@ export function onRenderCachePolicyChanged(listener: () => void): () => void {
   return holder.onChanged(listener)
 }
 
-export type RuntimeRenderCacheDeps = Pick<RenderCachePolicyDeps, 'isAnyBusy' | 'idlePurgeEnabled'> & {
+export type RuntimeRenderCacheDeps = Pick<RenderCachePolicyDeps, 'isAnyBusy' | 'idlePurgeEnabled' | 'releaseIdleCaches'> & {
   /** Read per purge, so a replaced port is used. */
   transport(): BrowserBridgeTransport | null
   manifest(): Pick<BrowserHostManifest, 'capabilities' | 'primitives'> | null
@@ -53,6 +53,7 @@ export function installRuntimeRenderCache(deps: RuntimeRenderCacheDeps): string 
   if (!deps.transport()) return 'no_transport'
   const next = new RenderCachePolicy({
     isAnyBusy: deps.isAnyBusy,
+    releaseIdleCaches: deps.releaseIdleCaches,
     idlePurgeEnabled: deps.idlePurgeEnabled,
     purge: async (targets, trimWorkingSet) => {
       const transport = deps.transport()

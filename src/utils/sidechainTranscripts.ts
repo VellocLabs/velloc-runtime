@@ -338,17 +338,15 @@ export type FsSidechainStoreOptions = {
 
 /**
  * Disk-backed store using the `sidechainStoragePaths` layout. Each `agentId`
- * owns its file; appends to one agentId must be sequential.
+ * owns its file; appends to one agentId must be sequential. Holds no transcript
+ * content in memory: an append sends only the new line (`fs.appendFile`), or
+ * re-reads the file and rewrites it when the fs has no append.
  */
 export function createFsSidechainTranscriptStore(
   options: FsSidechainStoreOptions,
 ): SidechainTranscriptStore {
   const { fs, basePath } = options
   const ensuredSessionDirs = new Set<string>()
-  // Full JSONL content per path: the bridge fs has no synchronous append, so each
-  // append rewrites the whole file. Seeded from disk on first append, so an
-  // existing transcript is never truncated.
-  const contentCache = new Map<string, string>()
 
   async function readRawOrEmpty(path: string): Promise<string> {
     try {
@@ -410,18 +408,18 @@ export function createFsSidechainTranscriptStore(
     async append(sessionId, agentId, entry) {
       await ensureSessionSubagentsDir(sessionId)
       const path = getSubagentTranscriptPath(basePath, sessionId, agentId)
-      let existing = contentCache.get(path)
-      if (existing === undefined) {
-        // First append to this path this process: seed the mirror from disk so
-        // we extend (never truncate) any transcript already there.
-        existing = await readRawOrEmpty(path)
-        contentCache.set(path, existing)
+      const line = TEXT_ENCODER.encode(JSON.stringify(entry) + '\n')
+      if (fs.appendFile) {
+        await fs.appendFile(path, line)
+        return
       }
-      const next = existing + JSON.stringify(entry) + '\n'
-      contentCache.set(path, next)
-      // Async, bridge-backed write (the path the main transcript uses). Encode
-      // once so the binary fs port carries bytes, not a re-encoded string.
-      await fs.writeFile(path, TEXT_ENCODER.encode(next))
+      // No append on this fs: extend what is on disk, never truncate it.
+      const existing = await readRawOrEmpty(path)
+      const head = TEXT_ENCODER.encode(existing)
+      const next = new Uint8Array(head.length + line.length)
+      next.set(head)
+      next.set(line, head.length)
+      await fs.writeFile(path, next)
     },
 
     async load(sessionId, agentId) {
@@ -455,7 +453,6 @@ export function createFsSidechainTranscriptStore(
 
     async delete(sessionId, agentId) {
       const path = getSubagentTranscriptPath(basePath, sessionId, agentId)
-      contentCache.delete(path)
       try {
         await fs.unlink(path)
       } catch {

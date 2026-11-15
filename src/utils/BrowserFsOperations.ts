@@ -186,6 +186,12 @@ export function createBrowserFsOperations(
         content,
       })
     },
+    async appendFile(path: string, data: string | Uint8Array) {
+      await send(createBridgeRoute('fs', 'appendFile'), {
+        path,
+        data: typeof data === 'string' ? TEXT_ENCODER.encode(data) : data,
+      })
+    },
     statSync() {
       return unsupportedSync('statSync')
     },

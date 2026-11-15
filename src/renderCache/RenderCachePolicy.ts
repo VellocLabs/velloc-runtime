@@ -32,6 +32,8 @@ export type RenderCachePolicyDeps = {
   /** One host purge of `targets` at `RENDER_CACHE_PURGE_LEVEL`. */
   purge(targets: readonly RenderCacheTarget[], trimWorkingSet: boolean): Promise<RenderCachePurgeOutcome>
   isAnyBusy(): boolean
+  /** Drops the runtime's own caches held for sessions not running a turn; runs before every purge. */
+  releaseIdleCaches?(): void
   /** The settings flag, read fresh; a failed read counts as on. */
   idlePurgeEnabled(): Promise<boolean>
   idleMs?: number
@@ -207,6 +209,11 @@ export class RenderCachePolicy {
     targets: readonly RenderCacheTarget[],
     trimWorkingSet: boolean,
   ): Promise<RenderCachePurgeRecord> {
+    try {
+      this.deps.releaseIdleCaches?.()
+    } catch (error) {
+      console.warn('[render-cache] releasing idle session caches failed:', error)
+    }
     try {
       const outcome = await this.deps.purge(targets, trimWorkingSet)
       const record: RenderCachePurgeRecord = {

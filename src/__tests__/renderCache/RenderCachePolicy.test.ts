@@ -13,7 +13,7 @@ import {
 } from '../../renderCache/RenderCachePolicy'
 import type { RenderCacheState } from '../../renderCache/renderCacheProtocol'
 
-function harness(options: { busy?: boolean; enabled?: boolean; fail?: string } = {}) {
+function harness(options: { busy?: boolean; enabled?: boolean; fail?: string; releaseIdleCaches?: () => void } = {}) {
   let busy = options.busy ?? false
   let enabled = options.enabled ?? true
   let now = 1_000
@@ -26,6 +26,7 @@ function harness(options: { busy?: boolean; enabled?: boolean; fail?: string } =
   const policy = new RenderCachePolicy({
     isAnyBusy: () => busy,
     idlePurgeEnabled: async () => enabled,
+    releaseIdleCaches: options.releaseIdleCaches,
     purge: async (asked, trimWorkingSet) => {
       purges.push(now)
       targets.push([...asked])
@@ -189,6 +190,27 @@ describe('RenderCachePolicy', () => {
     expect(record.reason).toBe('manual')
     expect(h.purges).toHaveLength(1)
     expect(h.states.at(-1)?.last?.reason).toBe('manual')
+  })
+
+  it('every purge first releases the idle sessions\' caches, idle, hidden and manual alike', async () => {
+    const order: string[] = []
+    const h = harness({ releaseIdleCaches: () => order.push('release') })
+    h.policy.start()
+    await h.elapse()
+    h.policy.noteVisibility(true)
+    h.policy.noteVisibility(false)
+    await h.settle()
+    await h.policy.purgeNow()
+    expect(order).toEqual(['release', 'release', 'release'])
+    expect(h.purges).toHaveLength(3)
+  })
+
+  it('a failing cache release never blocks the host purge', async () => {
+    const h = harness({ releaseIdleCaches: () => { throw new Error('boom') } })
+    h.policy.start()
+    const record = await h.policy.purgeNow()
+    expect(record.reason).toBe('manual')
+    expect(h.purges).toHaveLength(1)
   })
 
   it('a failed purge is recorded and the manual call rejects', async () => {

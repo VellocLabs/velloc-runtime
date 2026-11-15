@@ -45,6 +45,11 @@ type FsAsyncOps = {
     data: string | Uint8Array,
     options?: { encoding?: string },
   ): Promise<void>
+  /**
+   * Optional append to the end of a file, creating it when missing. Callers
+   * probe for it and fall back to read + `writeFile` when it is absent.
+   */
+  appendFile?(path: string, data: string | Uint8Array): Promise<void>
   stat(path: string): Promise<RuntimeFsStat>
   readdir(path: string): Promise<RuntimeFsEntry[]>
   mkdir(path: string, options?: { mode?: number }): Promise<void>

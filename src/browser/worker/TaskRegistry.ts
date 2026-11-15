@@ -3,7 +3,11 @@
  * the public-to-native id index. Invariants:
  * - eviction is per-type FIFO and cleans the index for evicted records
  * - resolveNative is idempotent (native ids pass through)
+ * - finished records with equal `prompt` / `systemPrompt` text share one string
  */
+
+/** Finished-record fields whose text repeats across tasks (one system prompt, one skill directive). */
+const SHARED_TEXT_FIELDS = ['prompt', 'systemPrompt'] as const
 
 export class TaskRegistry<
   TLive extends { type: string },
@@ -12,6 +16,35 @@ export class TaskRegistry<
   private readonly live = new Map<string, TLive>()
   private readonly finished = new Map<string, TFinished>()
   private readonly taskIdToNative = new Map<string, string>()
+  /** Content → the one string finished records hold for it. */
+  private readonly sharedText = new Map<string, string>()
+
+  private shareText(record: TFinished): void {
+    const fields = record as Record<string, unknown>
+    for (const field of SHARED_TEXT_FIELDS) {
+      const value = fields[field]
+      if (typeof value !== 'string' || value.length === 0) continue
+      const shared = this.sharedText.get(value)
+      if (shared === undefined) this.sharedText.set(value, value)
+      else fields[field] = shared
+    }
+    if (this.sharedText.size > 2 * SHARED_TEXT_FIELDS.length * this.finished.size + 32) this.compactSharedText()
+  }
+
+  /** Forgets shared text no finished record holds any more. */
+  compactSharedText(): void {
+    const held = new Set<string>()
+    for (const record of this.finished.values()) {
+      const fields = record as Record<string, unknown>
+      for (const field of SHARED_TEXT_FIELDS) {
+        const value = fields[field]
+        if (typeof value === 'string') held.add(value)
+      }
+    }
+    for (const value of this.sharedText.keys()) {
+      if (!held.has(value)) this.sharedText.delete(value)
+    }
+  }
 
   // --- Registration ---
 
@@ -55,6 +88,7 @@ export class TaskRegistry<
       }
     }
     this.finished.set(nativeId, record)
+    this.shareText(record)
   }
 
   // --- Eviction ---
