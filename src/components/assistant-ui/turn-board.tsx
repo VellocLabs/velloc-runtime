@@ -18,8 +18,8 @@ const STATUS_LABEL: Record<TurnStepStatus, MessageKey> = {
   completed: "turnBoard.stepCompleted",
 };
 
-/** A step's status mark. A step in progress spins only while the turn runs. */
-const StepMark: FC<{ status: TurnStepStatus; running: boolean }> = ({ status, running }) => {
+/** A step's status mark. */
+const StepMark: FC<{ status: TurnStepStatus }> = ({ status }) => {
   if (status === "completed") {
     return (
       <span
@@ -30,27 +30,21 @@ const StepMark: FC<{ status: TurnStepStatus; running: boolean }> = ({ status, ru
       </span>
     );
   }
-  if (status === "in_progress" && running) {
+  if (status === "in_progress") {
     return <Loader2 data-testid="turn-step-spinner" className="size-4 shrink-0 animate-spin text-foreground" aria-hidden="true" />;
   }
   return (
-    <CircleDashed
-      className={
-        status === "in_progress"
-          ? "size-4 shrink-0 text-foreground"
-          : "size-4 shrink-0 text-muted-foreground"
-      }
-      aria-hidden="true"
-    />
+    <CircleDashed className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
   );
 };
 
-/** Where the running-tasks chip sits: under the step in progress, else under the last step. */
+/** Which step carries the running-tasks chip after its text: the step in progress, else the last step. */
 export function runningTasksAnchor(steps: readonly TurnStep[]): number {
   const current = steps.findIndex((step) => step.status === "in_progress");
   return current >= 0 ? current : steps.length - 1;
 }
 
+/** The step list belongs to the running turn: it draws nothing once the turn has ended (F-41). */
 export const TurnPlanCardView: FC<{
   steps: readonly TurnStep[];
   running: boolean;
@@ -58,7 +52,7 @@ export const TurnPlanCardView: FC<{
   onOpenTasks?: () => void;
 }> = ({ steps, running, runningTaskCount, onOpenTasks }) => {
   const t = useT();
-  if (steps.length === 0) return null;
+  if (!running || steps.length === 0) return null;
   const anchor = runningTaskCount > 0 ? runningTasksAnchor(steps) : -1;
   const tasksLabel =
     runningTaskCount === 1
@@ -71,43 +65,43 @@ export const TurnPlanCardView: FC<{
         aria-label={t("turnBoard.planLabel")}
         className="flex flex-col gap-2 rounded-[10px] border border-border bg-background px-4 py-3 text-sm text-foreground"
       >
-        {steps.map((step, index) => (
-          <li key={index} data-status={step.status} className="flex flex-col gap-1.5">
-            <div className="flex items-start gap-2">
-              <span className="flex h-5 items-center">
-                <StepMark status={step.status} running={running} />
+        {steps.map((step, index) => {
+          const withChip = index === anchor;
+          const chipClass = "shrink-0 rounded-md border border-border px-2 py-0.5 text-xs text-foreground";
+          return (
+            <li key={index} data-status={step.status} className="flex items-start gap-2">
+              <span className="flex h-5 shrink-0 items-center">
+                <StepMark status={step.status} />
               </span>
               <span
                 data-testid="turn-step-text"
-                className={step.status === "completed" ? "text-muted-foreground" : undefined}
+                className={[
+                  step.status === "completed" ? "text-muted-foreground" : "",
+                  withChip ? "min-w-0 truncate" : "",
+                ].join(" ").trim() || undefined}
               >
                 <span className="sr-only">{t(STATUS_LABEL[step.status])} </span>
                 {step.text}
               </span>
-            </div>
-            {index === anchor ? (
-              <div className="ps-6">
-                {onOpenTasks ? (
+              {withChip ? (
+                onOpenTasks ? (
                   <button
                     type="button"
                     data-testid="turn-plan-running-tasks"
                     onClick={onOpenTasks}
-                    className="rounded-md border border-border px-2 py-0.5 text-xs text-foreground hover:bg-muted"
+                    className={`${chipClass} hover:bg-muted`}
                   >
                     {tasksLabel}
                   </button>
                 ) : (
-                  <span
-                    data-testid="turn-plan-running-tasks"
-                    className="inline-block rounded-md border border-border px-2 py-0.5 text-xs text-foreground"
-                  >
+                  <span data-testid="turn-plan-running-tasks" className={chipClass}>
                     {tasksLabel}
                   </span>
-                )}
-              </div>
-            ) : null}
-          </li>
-        ))}
+                )
+              ) : null}
+            </li>
+          );
+        })}
       </ol>
     </div>
   );

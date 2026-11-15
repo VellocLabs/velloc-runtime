@@ -1,6 +1,6 @@
 /**
  * Contract: a session's turn board (F-41) holds the plan the model keeps
- * while it works and the closing it leaves when the turn's work is done.
+ * while a turn works and the closing it leaves when the turn's work is done.
  * Runtime-owned and in-memory: it lives as long as the realm and is not
  * stored with the session. The latest accepted call is the state: a refused
  * call writes nothing. Every mutation that writes a session's state calls the
@@ -116,12 +116,18 @@ export class TurnBoard {
   }
 
   /**
-   * The person sent a new message: the closing is answered. The plan stays
-   * until a new one replaces it or the session ends.
+   * The person sent a new message: the closing is answered. A message that
+   * starts a new turn (`turnStarts`) also drops the plan, which belongs to the
+   * turn that set it; one typed into a running turn leaves the plan alone.
    */
-  personWrote(sessionId: string): void {
+  personWrote(sessionId: string, turnStarts = false): void {
     const state = this.states.get(sessionId)
-    if (!state || state.closing === null) return
+    if (!state) return
+    if (turnStarts) {
+      this.write(sessionId, EMPTY)
+      return
+    }
+    if (state.closing === null) return
     this.write(sessionId, { steps: state.steps, closing: null })
   }
 

@@ -153,6 +153,27 @@ describe('TurnBoard', () => {
     expect(changes).toEqual([])
   })
 
+  it('a message that starts a new turn drops the plan and the closing', () => {
+    const { board, changes } = tracked()
+    board.setPlan('s1', plan('completed', 'in_progress'))
+    board.close('s1', { summary: 'S.', question: 'Q?', replies: ['Yes'], waiting: false })
+    changes.length = 0
+    board.personWrote('s1', true)
+    expect(board.read('s1')).toEqual({ steps: [], closing: null })
+    expect(changes).toEqual(['s1'])
+    board.personWrote('s1', true)
+    expect(changes).toEqual(['s1'])
+  })
+
+  it('a message typed into a running turn keeps an unfinished plan', () => {
+    const { board, changes } = tracked()
+    board.setPlan('s1', plan('in_progress', 'pending'))
+    changes.length = 0
+    board.personWrote('s1', false)
+    expect(statuses(board)).toEqual(['in_progress', 'pending'])
+    expect(changes).toEqual([])
+  })
+
   it('forget drops a session and notifies only when it held something', () => {
     const { board, changes } = tracked()
     board.forget('s1')

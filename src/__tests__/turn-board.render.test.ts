@@ -48,12 +48,16 @@ describe('TurnPlanCardView', () => {
       .toEqual([true, false, false])
   })
 
-  it('spins the step in progress only while the turn runs', () => {
-    const live = card({ running: true })
-    expect(live.queryAllByTestId('turn-step-spinner')).toHaveLength(1)
+  it('spins the step in progress', () => {
+    const { getAllByTestId } = card()
+    expect(getAllByTestId('turn-step-spinner')).toHaveLength(1)
+  })
+
+  it('draws nothing once the turn has ended, finished or not', () => {
+    expect(card({ running: false }).container.firstChild).toBeNull()
     cleanup()
-    const idle = card({ running: false })
-    expect(idle.queryAllByTestId('turn-step-spinner')).toHaveLength(0)
+    const done = steps.map(step => ({ ...step, status: 'completed' as const }))
+    expect(card({ steps: done, running: false }).container.firstChild).toBeNull()
   })
 
   it('shows no chip without running tasks', () => {
@@ -61,21 +65,29 @@ describe('TurnPlanCardView', () => {
     expect(queryByTestId('turn-plan-running-tasks')).toBeNull()
   })
 
-  it('puts the running-tasks chip under the step in progress and opens the task list', () => {
+  it('puts the running-tasks chip after the text of the step in progress, on its row, and opens the task list', () => {
     const onOpenTasks = vi.fn()
-    const { getByTestId } = card({ runningTaskCount: 3, onOpenTasks })
+    const { getByTestId, getAllByTestId } = card({ runningTaskCount: 3, onOpenTasks })
     const chip = getByTestId('turn-plan-running-tasks')
-    expect(chip.closest('li')!.getAttribute('data-status')).toBe('in_progress')
+    const row = chip.closest('li')!
+    expect(row.getAttribute('data-status')).toBe('in_progress')
+    const text = row.querySelector('[data-testid="turn-step-text"]')!
+    expect(chip.parentElement).toBe(text.parentElement)
+    expect(text.nextElementSibling).toBe(chip)
+    // Only the row with the chip cuts its text to keep one line.
+    expect(getAllByTestId('turn-step-text').map(each => each.classList.contains('truncate')))
+      .toEqual([false, true, false])
     expect(chip.textContent).toContain('3')
     fireEvent.click(chip)
     expect(onOpenTasks).toHaveBeenCalledTimes(1)
   })
 
-  it('puts the chip under the last step when none is in progress, as plain text without a task list', () => {
+  it('puts the chip after the last step when none is in progress, as plain text without a task list', () => {
     const done = steps.map(step => ({ ...step, status: 'completed' as const }))
     const { getByTestId } = card({ steps: done, runningTaskCount: 1 })
     const chip = getByTestId('turn-plan-running-tasks')
     expect(chip.tagName).toBe('SPAN')
+    expect(chip.previousElementSibling!.getAttribute('data-testid')).toBe('turn-step-text')
     expect(chip.closest('li')!.textContent).toContain('Run the tests')
     expect(runningTasksAnchor(done)).toBe(2)
     expect(runningTasksAnchor(steps)).toBe(1)
