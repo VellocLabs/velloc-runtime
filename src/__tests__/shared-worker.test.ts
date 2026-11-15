@@ -5742,7 +5742,7 @@ describe('SharedWorkerSessionManager — pendingMessage (next message)', () => {
     manager.handleConnect(port)
     await initSession(port)
     const worker = workerFactory.instances[0]
-    const steps = [{ text: 'Read the code', status: 'in_progress' as const }]
+    const steps = [{ text: 'Read the code', status: 'pending' as const }]
     const submit = async (prompt: string) => {
       port._simulateMessage({ type: 'worker.submitMessage', sessionId: SESSION, payload: { prompt } })
       await new Promise(resolve => setTimeout(resolve, 10))
