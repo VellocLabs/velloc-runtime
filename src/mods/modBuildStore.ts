@@ -184,10 +184,12 @@ function isGraph(value: unknown): value is ModCompileGraph {
  * instead of each runtime keeping its own. One entry per record file.
  */
 const sharedRecordText = new Map<string, { source: string; entrySource: string }>()
+let sharedRecordTextHits = 0
 
 function shareRecordText(recordPath: string, record: ModBuildRecord): ModBuildRecord {
   const held = sharedRecordText.get(recordPath)
   if (held && held.source === record.source && held.entrySource === record.entrySource) {
+    sharedRecordTextHits += 1
     return { ...record, source: held.source, entrySource: held.entrySource }
   }
   sharedRecordText.set(recordPath, { source: record.source, entrySource: record.entrySource })
@@ -197,6 +199,11 @@ function shareRecordText(recordPath: string, record: ModBuildRecord): ModBuildRe
 /** Number of record files whose text is pooled (tests). */
 export function sharedModBuildTextCount(): number {
   return sharedRecordText.size
+}
+
+/** Number of record reads answered with the pooled text (tests). */
+export function sharedModBuildTextHitCount(): number {
+  return sharedRecordTextHits
 }
 
 /** The store over `<modsDir>/builds/`. */
