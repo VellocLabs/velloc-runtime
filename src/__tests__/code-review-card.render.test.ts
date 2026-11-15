@@ -603,6 +603,37 @@ describe('a model-requested review found by its Skill call', () => {
     render(card('r2'))
     await waitFor(() => expect(screen.getByTestId('code-review-card').dataset.status).toBe('partial'))
   })
+  it('holds one subscription for two cards, releases it on the last, and re-subscribes fresh', async () => {
+    const second = { ...report(), run: { ...report().run, id: 'r2' } }
+    const wire = new Map<string, Set<(event: unknown) => void>>()
+    const stats = { subscribed: 0, unsubscribed: 0 }
+    let emit = true
+    const connection = { can: vi.fn(() => true), request: vi.fn(), subscribe: (topic: string, listener: (event: unknown) => void) => {
+      let listeners = wire.get(topic)
+      if (!listeners) { listeners = new Set(); wire.set(topic, listeners) }
+      const first = listeners.size === 0
+      listeners.add(listener)
+      stats.subscribed++
+      if (first && emit) listener({ payload: { sessionId: 's1', sequence: 1, reports: [report(), second] } })
+      return () => { listeners!.delete(listener); stats.unsubscribed++; if (!listeners!.size) wire.delete(topic) }
+    } }
+    const card = (runId: string) => createElement(CodeReviewProvider, { value: { sessionId: 's1', connection: async () => connection as never } }, createElement(CodeReviewCard, { runId }))
+    const a = render(card('r1'))
+    const b = render(card('r2'))
+    await waitFor(() => expect(screen.getAllByTestId('code-review-card').map(item => item.dataset.status)).toEqual(['partial', 'partial']))
+    expect([stats.subscribed, stats.unsubscribed, wire.size]).toEqual([1, 0, 1])
+    b.unmount()
+    expect([stats.subscribed, stats.unsubscribed, wire.size]).toEqual([1, 0, 1])
+    a.unmount()
+    expect([stats.subscribed, stats.unsubscribed, wire.size]).toEqual([1, 1, 0])
+    // The payload went with the subscription: a card that re-subscribes before anything new arrives stays Loading.
+    emit = false
+    const c = render(card('r1'))
+    await waitFor(() => expect(screen.getByTestId('code-review-card').dataset.status).toBeUndefined())
+    expect([stats.subscribed, stats.unsubscribed, wire.size]).toEqual([2, 1, 1])
+    c.unmount()
+    expect([stats.subscribed, stats.unsubscribed, wire.size]).toEqual([2, 2, 0])
+  })
   it('gives up the preparing card for the fallback once a later snapshot still lists nothing for the call', async () => {
     let publish: ((event: unknown) => void) | undefined
     const connection = { can: vi.fn(() => true), request: vi.fn(), subscribe: (_topic: string, listener: (event: unknown) => void) => { publish = listener; listener({ payload: { sessionId: 's1', sequence: 1, reports: [] } }); return () => {} } }
