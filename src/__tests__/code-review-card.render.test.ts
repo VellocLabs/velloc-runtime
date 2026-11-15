@@ -572,32 +572,54 @@ describe('a model-requested review found by its Skill call', () => {
   })
 })
 
-it('counts candidates and verified candidates while the review is active, without showing findings', () => {
+const diagnosticFixture = { id: 'd1', runId: 'r1', anchor: { path: 'src/a.ts', revision: 'b', side: 'working-copy' as const, span: { start: 2, end: 2 } }, claim: { title: 'Unsafe branch', explanation: 'Mechanism', trigger: 'Input' }, classification: { kind: 'security' as const, impact: 'major' as const }, evidenceKeys: [], origin: { angle: 'lines' } }
+const stepOf = (step: string) => screen.getByTestId('review-stages').querySelector<HTMLElement>(`[data-step="${step}"]`)!
+
+it('puts the found, merged and verified counts on their steps, without a progress line or findings', () => {
   const value = report()
-  value.diagnostics = [{ id: 'd1', runId: 'r1', anchor: { path: 'src/a.ts', revision: 'b', side: 'working-copy', span: { start: 2, end: 2 } }, claim: { title: 'Unsafe branch', explanation: 'Mechanism', trigger: 'Input' }, classification: { kind: 'security', impact: 'major' }, evidenceKeys: [], origin: { angle: 'lines' } }]
-  value.assessments = [
-    { id: 'a1', diagnosticId: 'd2', disposition: 'plausible', rationale: 'Looks real', evidenceKeys: [] },
-    { id: 'a2', diagnosticId: 'd2', disposition: 'dismissed', rationale: 'Guard present', evidenceKeys: [] },
-    { id: 'a3', diagnosticId: 'd1', disposition: 'proven', rationale: 'Reproduced', evidenceKeys: [] },
-  ]
-  value.run.progress = { ...value.run.progress, status: 'active', stage: 'assess', verifiedCandidates: 3, omittedByLimit: 2 }
+  value.run.policy = { ...value.run.policy, recipe: 'team-eight-precise', agentMode: 'parallel' }
+  value.diagnostics = [diagnosticFixture]
+  value.candidateCounts = { recorded: 6, merged: 4 }
+  value.run.progress = { ...value.run.progress, status: 'active', stage: 'assess', verifiedCandidates: 3, omittedByLimit: 0 }
   renderReport(value)
-  // One retained, two over the report limit, one dismissed: verified never outruns found.
-  expect(screen.getByTestId('review-progress').textContent).toBe(t('reviewCard.progressFound', { found: 4, verified: 3 }))
+  expect(stepOf('find').dataset.count).toBe('6')
+  expect(stepOf('find').textContent).toBe(t('reviewCard.stageCount', { step: t('reviewCard.stage.find'), count: 6 }))
+  expect(stepOf('merge').dataset.count).toBe('4')
+  expect(stepOf('verify').dataset.count).toBe('3')
+  expect(stepOf('summarize').dataset.count).toBeUndefined()
+  expect(screen.queryByTestId('review-progress')).toBeNull()
   expect(screen.queryByTestId('review-finding')).toBeNull()
+  cleanup()
+  // While merging, only the find step has a count: merge shows its count once done, verify once it starts.
+  value.run.progress.stage = 'merge'
+  renderReport(value)
+  expect(stepOf('find').dataset.count).toBe('6')
+  expect(stepOf('merge').dataset.count).toBeUndefined()
+  expect(stepOf('merge').textContent).toBe(t('reviewCard.stage.merge'))
+  expect(stepOf('verify').dataset.count).toBeUndefined()
   cleanup()
   value.run.progress.status = 'queued'
   renderReport(value)
-  expect(screen.queryByTestId('review-progress')).toBeNull()
+  expect(stepOf('find').dataset.count).toBeUndefined()
 })
 
-it('uses the singular progress line for exactly one candidate', () => {
+it('shows no count while a step has found nothing, and counts kept findings on the inspect step without candidate counts', () => {
   const value = report()
-  value.run.progress = { ...value.run.progress, status: 'active', stage: 'assess', verifiedCandidates: 0, omittedByLimit: 0 }
-  value.diagnostics = [{ id: 'd1', runId: 'r1', anchor: { path: 'src/a.ts', revision: 'b', side: 'working-copy', span: { start: 2, end: 2 } }, claim: { title: 'Unsafe branch', explanation: 'Mechanism', trigger: 'Input' }, classification: { kind: 'security', impact: 'major' }, evidenceKeys: [], origin: { angle: 'lines' } }]
-  value.assessments = []
+  value.run.progress = { ...value.run.progress, status: 'active', stage: 'inspect', verifiedCandidates: 0, omittedByLimit: 0 }
+  value.diagnostics = []
   renderReport(value)
-  expect(screen.getByTestId('review-progress').textContent).toBe(t('reviewCard.progressFoundOne', { verified: 0 }))
+  expect(stepOf('inspect').dataset.count).toBeUndefined()
+  expect(stepOf('inspect').textContent).toBe(t('reviewCard.stage.inspect'))
+  cleanup()
+  value.diagnostics = [diagnosticFixture]
+  value.assessments = [
+    { id: 'a1', diagnosticId: 'd2', disposition: 'plausible', rationale: 'Looks real', evidenceKeys: [] },
+    { id: 'a2', diagnosticId: 'd2', disposition: 'dismissed', rationale: 'Guard present', evidenceKeys: [] },
+  ]
+  value.run.progress.omittedByLimit = 2
+  renderReport(value)
+  // One retained, two over the report limit, one dismissed.
+  expect(stepOf('inspect').dataset.count).toBe('4')
 })
 
 describe('review card header and live activity', () => {
@@ -670,7 +692,7 @@ describe('review card header and live activity', () => {
     // The stop button sits in the steps row, not in a row of its own under the details.
     expect(screen.getByTestId('review-stages').contains(screen.getByTestId('review-cancel'))).toBe(true)
     expect(screen.getByTestId('review-cancel').textContent).toBe('')
-    expect(screen.getByTestId('review-progress').textContent).toBe(t('reviewCard.progressNone'))
+    expect(screen.queryByTestId('review-progress')).toBeNull()
   })
   it('keeps the same header collapsed, toggled by one button covering the row', () => {
     renderReport(running())
@@ -687,17 +709,15 @@ describe('review card header and live activity', () => {
     expect(screen.getByTestId('review-status').textContent).toBe(t('reviewCard.value.inspect'))
     expect(screen.getByTestId('review-status').querySelector('.animate-spin')).toBeTruthy()
   })
-  it('shows no task counts or task tree while the coordinator is the only task', () => {
+  it('shows no task tree while the coordinator is the only task', () => {
     const value = running()
     value.tasks = [{ key: 'c', role: 'coordinator', status: 'running', startedAt: 1, lastActivityAt: 2, lastAction: 'ReviewRead diff src/a.ts' }]
     renderReport(value)
     expect(screen.getByTestId('review-current-task').textContent).toContain(t('reviewCard.task.role.coordinator'))
     expect(screen.getByTestId('review-current-task').textContent).toContain(t('reviewCard.task.lastAction', { action: 'ReviewRead diff src/a.ts' }))
-    expect(screen.queryByTestId('review-task-counts')).toBeNull()
     expect(screen.queryByTestId('review-tasks')).toBeNull()
-    expect(screen.getByTestId('review-progress')).toBeTruthy()
   })
-  it('shows the most recently active task and task counts, with the full tree folded', () => {
+  it('shows the most recently active task, with the task counts on the folded tree', () => {
     const value = running()
     value.tasks = [
       { key: 'c', role: 'coordinator', status: 'running', startedAt: 1, lastActivityAt: 2, lastAction: 'ReviewLedger' },
@@ -709,12 +729,13 @@ describe('review card header and live activity', () => {
     expect(current.textContent).toContain(t('reviewCard.task.role.finder'))
     expect(current.textContent).toContain(t('reviewCard.angle.calls'))
     expect(current.textContent).toContain(t('reviewCard.task.lastAction', { action: 'ReviewRead diff src/a.ts' }))
-    expect(screen.getByTestId('review-task-counts').textContent).toBe(t('reviewCard.tasksDone', { finished: 1, running: 2 }))
+    expect(screen.queryByTestId('review-task-counts')).toBeNull()
+    expect(screen.getByTestId('review-tasks').querySelector('summary')!.textContent).toBe(`${t('reviewCard.tasks')} · ${t('reviewCard.tasksCompleted', { count: 1 })} · ${t('reviewCard.tasksRunning', { count: 2 })}`)
     cleanup()
     value.tasks[2] = { ...value.tasks[2], status: 'failed' }
     renderReport(value)
     // A failed task ended but did not finish.
-    expect(screen.getByTestId('review-task-counts').textContent).toBe(`${t('reviewCard.tasksDone', { finished: 0, running: 2 })} · ${t('reviewCard.tasksNotCompleted', { count: 1 })}`)
+    expect(screen.getByTestId('review-tasks').querySelector('summary')!.textContent).toBe(`${t('reviewCard.tasks')} · ${t('reviewCard.tasksCompleted', { count: 0 })} · ${t('reviewCard.tasksRunning', { count: 2 })} · ${t('reviewCard.tasksNotCompleted', { count: 1 })}`)
     value.tasks[2] = { ...value.tasks[2], status: 'finished' }
     cleanup()
     renderReport(value)
@@ -729,14 +750,18 @@ describe('review card header and live activity', () => {
     expect(tree.open).toBe(false)
     expect(tree.querySelector('summary')!.textContent).toBe(`${t('reviewCard.tasks')} · ${t('reviewCard.tasksCompleted', { count: 2 })} · ${t('reviewCard.tasksNotCompleted', { count: 1 })}`)
   })
-  it('keeps the method in review details while running, and in the scope block once finished', () => {
+  it('keeps the method and notices in review details while running, and in the scope block once finished', () => {
     const value = running()
+    value.notices = [{ code: 'level-reused', level: 'high' }]
     renderReport(value)
-    expect(screen.getByTestId('review-details').contains(screen.getByTestId('review-method'))).toBe(true)
+    const details = screen.getByTestId('review-details') as HTMLDetailsElement
+    expect(details.contains(screen.getByTestId('review-method'))).toBe(true)
+    // The notice is folded into the closed details, not shown as a block of its own.
+    expect(details.open).toBe(false)
+    expect(details.contains(screen.getByTestId('review-notices'))).toBe(true)
     cleanup()
     value.run.progress.status = 'finished'
     value.run.progress.stage = 'report'
-    value.notices = [{ code: 'level-reused', level: 'high' }]
     renderReport(value)
     const scope = screen.getByTestId('review-scope')
     expect(scope.contains(screen.getByTestId('review-method'))).toBe(true)

@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { ReportStoreError, ReviewReportStore, type ReportCandidateInput, type ReportPolicy, type ReportStorageAdapter } from './report-store'
 import { presentReviewJson, presentReviewTerminal, projectReviewReport } from './presenter'
 import { createReviewTools } from './tools'
+import { candidateCounts } from './ledger-lookups'
 import type { Message } from '../runtime/RuntimeTypes'
 
 function fixture() {
@@ -964,8 +965,10 @@ describe('explicit semantic duplicate merges', () => {
     const snapshot = await h.store.getSnapshot(h.id)
     expect(snapshot.diagnostics).toHaveLength(3); expect(snapshot.retainedIds).toHaveLength(3)
     expect(snapshot.duplicateIds).toBeUndefined()
+    expect(candidateCounts(snapshot)).toEqual({ recorded: 3, merged: 3 })
     await h.store.submitLedger(h.id, 'merge', merge(h.ids[0], [h.ids[1]]))
     const after = await h.store.getSnapshot(h.id)
+    expect(candidateCounts(after)).toEqual({ recorded: 3, merged: 2 })
     expect(after.retainedIds).toHaveLength(2)
     expect(after.retainedIds).toContain(snapshot.diagnostics[2].id)
     expect(after.diagnostics).toHaveLength(3)

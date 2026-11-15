@@ -42,10 +42,9 @@ export const ReviewTaskTree: FC<{ tasks: ReviewTaskView[]; open?: boolean }> = (
   if (!tasks.length) return null
   const counts = reviewTaskCounts(tasks)
   return <details open={open} data-testid="review-tasks" className="group/fold text-xs">
-    <FoldSummary>{t('reviewCard.tasks')} · {counts.running > 0 ? tasks.length : <>
-      {t('reviewCard.tasksCompleted', { count: counts.finished })}
-      {counts.notCompleted > 0 && <> · {t('reviewCard.tasksNotCompleted', { count: counts.notCompleted })}</>}
-    </>}</FoldSummary>
+    <FoldSummary>{t('reviewCard.tasks')} · {t('reviewCard.tasksCompleted', { count: counts.finished })}
+      {counts.running > 0 && <> · {t('reviewCard.tasksRunning', { count: counts.running })}</>}
+      {counts.notCompleted > 0 && <> · {t('reviewCard.tasksNotCompleted', { count: counts.notCompleted })}</>}</FoldSummary>
     <ul className="mt-1.5 space-y-1 pl-[1.125rem]">{tasks.map(task => {
       const end = task.end && task.end.kind !== 'cancelled' ? reviewEndMessage(t, task.end) : undefined
       const detail = taskDetail(t, task)
@@ -228,10 +227,9 @@ const ReviewCardHeader: FC<{
 /** Text with a light sweeping across it while work runs. */
 const Shimmer: FC<{ text: string }> = ({ text }) => <span className="relative inline-block">{text}<span aria-hidden className="shimmer pointer-events-none absolute inset-0 motion-reduce:animate-none">{text}</span></span>
 
-/** What the review is doing now: the most recently active running task with the run's status; with worker tasks, how many finished, are running or did not complete, and the full tree folded away. */
+/** What the review is doing now: the most recently active running task with the run's status; with worker tasks, the full tree folded away under its counts. */
 const ReviewActivity: FC<{ tasks: ReviewTaskView[]; status: string }> = ({ tasks, status }) => {
   const t = useT()
-  const counts = reviewTaskCounts(tasks)
   const workers = tasks.some(task => task.role !== 'coordinator')
   const current = tasks.filter(task => task.status === 'running').reduce<ReviewTaskView | undefined>((latest, task) => !latest || task.lastActivityAt >= latest.lastActivityAt ? task : latest, undefined)
   const detail = current && taskDetail(t, current)
@@ -240,8 +238,6 @@ const ReviewActivity: FC<{ tasks: ReviewTaskView[]; status: string }> = ({ tasks
       <p aria-live="polite">{current && <><span className="sr-only">{t('reviewCard.currentTask')} </span><span className="font-medium">{reviewTaskRoleMessage(t, current.role)}</span> · </>}<span data-testid="review-status-line"><Shimmer text={status} /></span>{detail && <> · {detail}</>}</p>
       {current?.lastAction && <p className="truncate text-muted-foreground" title={current.lastAction}>{t('reviewCard.task.lastAction', { action: current.lastAction })}</p>}
     </div>
-    {workers && <p data-testid="review-task-counts" className="text-muted-foreground">{t('reviewCard.tasksDone', { finished: counts.finished, running: counts.running })}
-      {counts.notCompleted > 0 && <> · {t('reviewCard.tasksNotCompleted', { count: counts.notCompleted })}</>}</p>}
     {workers && <ReviewTaskTree tasks={tasks} open={false} />}
   </div>
 }
@@ -265,7 +261,6 @@ const ReviewStop: FC<{ disabled: boolean; onConfirm: () => void }> = ({ disabled
   </div>
 }
 
-const SCOPE_BLOCK_CLASS = 'rounded-lg bg-muted/50 px-3 py-2 text-xs text-muted-foreground'
 const CORRECTNESS_KINDS = ['correctness', 'security']
 const IMPACT_VARIANT = { critical: 'destructive', major: 'warning', minor: 'muted' } as const
 const STATUS_VARIANT = { queued: 'muted', active: 'info', finished: 'success', partial: 'warning', cancelled: 'muted', failed: 'destructive' } as const
@@ -335,13 +330,26 @@ export const CodeReviewCard: FC<{ runId?: string; toolCallId?: string; starting?
   }} />
 }
 
-/** Candidates found so far, counting those over the report limit and those dismissed, beside how many were verified. */
-export function reviewProgressCounts(report: ReviewReportView): { found: number; verified: number } {
+type StageCounts = { found: number; merged: number; verified: number }
+/**
+ * Candidates found so far, those left once duplicates are merged, and those verified. Without the runtime's candidate
+ * counts, the findings kept, over the report limit and dismissed stand in for both found and merged.
+ */
+export function reviewStageCounts(report: ReviewReportView): StageCounts {
   const latest = new Map<string, string>()
   for (const assessment of report.assessments) latest.set(assessment.diagnosticId, assessment.disposition)
   const dismissed = [...latest.values()].filter(disposition => disposition === 'dismissed').length
-  const found = report.diagnostics.length + report.run.progress.omittedByLimit + dismissed
-  return { found, verified: Math.min(report.run.progress.verifiedCandidates, found) }
+  const kept = report.diagnostics.length + report.run.progress.omittedByLimit + dismissed
+  const found = report.candidateCounts?.recorded ?? kept
+  const merged = report.candidateCounts?.merged ?? kept
+  return { found, merged, verified: Math.min(report.run.progress.verifiedCandidates, merged) }
+}
+/** The count a step shows: find and inspect once they start, merge once it is done, verify once it starts; never zero. */
+export function reviewStepCount(step: Step, state: 'done' | 'current' | 'pending', counts: StageCounts): number | undefined {
+  const count = step === 'find' || step === 'inspect' ? (state !== 'pending' ? counts.found : 0)
+    : step === 'merge' ? (state === 'done' ? counts.merged : 0)
+      : step === 'verify' ? (state !== 'pending' ? counts.verified : 0) : 0
+  return count > 0 ? count : undefined
 }
 
 /** A model-requested review before its run exists: the scope is still being read; only cancel is offered. */
@@ -363,8 +371,8 @@ const ReviewPreparingCard: FC<{ canCancel: boolean; onCancel: () => Promise<void
   </Card>
 }
 
-/** The steps of a running review; a follow-up stage shows them all done. */
-const ReviewStages: FC<{ recipe: string; agentMode?: string; stage: Stage; queued: boolean; action?: ReactNode }> = ({ recipe, agentMode, stage, queued, action }) => {
+/** The steps of a running review, each with its count once it has one; a follow-up stage shows them all done. */
+const ReviewStages: FC<{ recipe: string; agentMode?: string; stage: Stage; queued: boolean; counts?: StageCounts; action?: ReactNode }> = ({ recipe, agentMode, stage, queued, counts, action }) => {
   const t = useT()
   const steps = reviewSteps(recipe, agentMode)
   const current = queued ? -1 : stepOfStage(steps, stage)
@@ -372,12 +380,14 @@ const ReviewStages: FC<{ recipe: string; agentMode?: string; stage: Stage; queue
     <ol className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-1">
     {steps.map((step, index) => {
       const state = index < current ? 'done' : index === current ? 'current' : 'pending'
-      return <li key={step} data-state={state} className="flex items-center gap-1.5">
+      const count = counts && reviewStepCount(step, state, counts)
+      const label = t(`reviewCard.stage.${step}`)
+      return <li key={step} data-step={step} data-state={state} data-count={count} className="flex items-center gap-1.5">
         {index > 0 && <span aria-hidden className="mr-0.5 h-px w-6 bg-border" />}
         <span aria-hidden className={cn('flex size-4 items-center justify-center rounded-full border', state === 'done' && 'border-success/40 bg-success/15 text-success', state === 'current' && 'border-primary bg-primary text-primary-foreground', state === 'pending' && 'border-border text-transparent')}>
           {state === 'done' ? <CheckIcon className="size-2.5" /> : state === 'current' ? <Loader2Icon data-testid="review-stage-spinner" className="size-2.5 animate-spin motion-reduce:animate-none" /> : <span className="size-1.5 rounded-full bg-current" />}
         </span>
-        <span className={cn(state === 'current' ? 'font-medium text-foreground' : 'text-muted-foreground')}>{t(`reviewCard.stage.${step}`)}</span>
+        <span className={cn(state === 'current' ? 'font-medium text-foreground' : 'text-muted-foreground')}>{count === undefined ? label : t('reviewCard.stageCount', { step: label, count })}</span>
       </li>
     })}
     </ol>
@@ -467,7 +477,7 @@ export const ReviewReportCard: FC<{
   const menuItem = (label: 'preview' | 'publish' | 'verify', action: ReviewAction, handler: () => void, disabled = false): ReactNode => (
     <DropdownMenuPrimitive.Item data-testid={`review-${label}`} className={MENU_ITEM_CLASS} disabled={busy || !can(action) || disabled} onSelect={handler}>{t(`reviewCard.${label}`)}</DropdownMenuPrimitive.Item>
   )
-  const progress = reviewProgressCounts(report)
+  const stageCounts = reviewStageCounts(report)
   const stop = running ? <ReviewStop disabled={busy || !can('cancel')} onConfirm={() => act('cancel')} /> : undefined
   const clean = report.coverage.complete && status === 'finished'
   const notices = report.notices && report.notices.length > 0 ? <ul data-testid="review-notices" className="space-y-1">{report.notices.map((notice, index) => <li key={index} className="flex items-start gap-1.5"><InfoIcon aria-hidden className="mt-px size-3.5 shrink-0 opacity-70" /><span className="min-w-0">{reviewMessage(t, notice)}</span></li>)}</ul> : null
@@ -485,9 +495,8 @@ export const ReviewReportCard: FC<{
           <Button type="button" variant="ghost" size="xs" data-testid="review-show-rerun" onClick={rerun.show}>{t('reviewCard.showRerun')}</Button>
         </div>}
         {reviewing ? <>
-          <ReviewStages recipe={run.policy.recipe} agentMode={run.policy.agentMode} stage={stage} queued={status === 'queued'} action={stop} />
+          <ReviewStages recipe={run.policy.recipe} agentMode={run.policy.agentMode} stage={stage} queued={status === 'queued'} counts={stageCounts} action={stop} />
           <ReviewActivity tasks={report.tasks ?? []} status={enumText(reviewStatusValue(status, stage))} />
-          {status === 'active' && <p className="text-xs text-muted-foreground" aria-live="polite" data-testid="review-progress">{progress.found === 0 ? t('reviewCard.progressNone') : progress.found === 1 ? t('reviewCard.progressFoundOne', progress) : t('reviewCard.progressFound', progress)}</p>}
         </> : <>
           {cancelled && <div data-testid="review-cancelled" data-by-user={cancelledByUser} className="flex items-start gap-3 rounded-lg bg-muted/50 px-3 py-2.5">
             <CircleSlashIcon aria-hidden className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
@@ -511,7 +520,6 @@ export const ReviewReportCard: FC<{
           </div>
         </>}
         {endMessage && <p role="status" data-testid="review-end" className="rounded-lg bg-warning/10 px-3 py-2 text-xs text-warning-emphasis">{endMessage}</p>}
-        {reviewing && notices && <div className={SCOPE_BLOCK_CLASS}>{notices}</div>}
         {finished && !cancelled && !report.coverage.complete && !report.emptyScope && hasFindings && <p data-testid="review-incomplete" className="rounded-lg bg-warning/10 px-3 py-2 text-xs text-warning-emphasis">{t('reviewCard.notice.incomplete')}</p>}
         {!reviewing && report.diagnostics.length > 0 && <>
           {(repairable || filters.some(Boolean)) && <div data-testid="review-toolbar" className="flex flex-wrap items-center gap-x-3 gap-y-1">
@@ -577,6 +585,7 @@ export const ReviewReportCard: FC<{
               {report.coverage.limitations.length === 0 && run.progress.unavailableAngles.length === 0 ? <span>{t(report.coverage.complete ? 'reviewCard.coverageComplete' : 'reviewCard.notice.incomplete')}</span> : <ul className="list-disc pl-4">{report.coverage.limitations.map((text, index) => <li key={index}>{reviewDetailMessage(t, text)}</li>)}{run.progress.unavailableAngles.length > 0 && <li>{t('reviewCard.uncovered', { angles: run.progress.unavailableAngles.map(angle => reviewAngleMessage(t, angle)).join(', ') })}</li>}</ul>}
             </dd>
           </dl>
+          {reviewing && notices && <div data-testid="review-details-notices" className="mt-1.5 pl-[1.125rem] text-muted-foreground">{notices}</div>}
           <p className="mt-1.5 pl-[1.125rem] text-muted-foreground">{t('reviewCard.workers', { started: run.progress.spawnedTasks, finished: report.finishedTasks ?? 0 })}</p>
           {report.exportJson !== undefined && <details className="group/fold mt-2 pl-[1.125rem]"><FoldSummary>{t('reviewCard.exportJson')}</FoldSummary><pre data-testid="review-export-json" className="mt-1 overflow-auto whitespace-pre-wrap rounded-lg bg-muted/50 p-2">{report.exportJson}</pre></details>}
         </details>

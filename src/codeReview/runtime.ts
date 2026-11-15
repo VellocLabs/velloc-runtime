@@ -11,6 +11,7 @@ import { createPublicationReceiptStore } from './publication-store'
 import { parseReviewArguments, isReviewLevel } from './arguments'
 import { planVerification, runVerification, startVerificationServer, type VerificationServerHandle } from './verification'
 import { presentReviewJson, projectReviewReport } from './presenter'
+import { candidateCounts } from './ledger-lookups'
 import { findConfiguredModel } from '../config/nexusModelConfig/findConfiguredModel'
 import { resolveModelId } from '../config/nexusModelConfig/modelEntryResolution'
 import type { ToolCallContext } from '../toolkit/toolCallContext'
@@ -1063,6 +1064,7 @@ async function buildReviewService(incomingContext: ToolCallContext, decidePermis
       targetLabel: presentation?.target ?? snapshot.run.scope.repository.projectKey,
       publicationPreview: previews.get(snapshot.run.id), exportJson: presentReviewJson(snapshot),
       finishedTasks: snapshot.events.filter(e => e.type === 'worker-finished').length,
+      candidateCounts: candidateCounts(snapshot),
       ...(service.tasks(snapshot.run.id) ?? {}),
       permissions: { cancel: active, repair: !active && snapshot.structured && ['workspace', 'paths'].includes(snapshot.run.scope.kind), publish: !active && snapshot.structured && snapshot.run.scope.kind === 'change-request', publishConfirmation: true, rerun: !active, verify: !active && snapshot.structured, locate: !active && snapshot.structured },
     }

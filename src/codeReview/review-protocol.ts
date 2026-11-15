@@ -17,6 +17,8 @@ export type ReviewReportView = {
   targetLabel?: string
   emptyScope?: boolean
   finishedTasks?: number
+  /** Candidates recorded so far, and how many remain once duplicates are merged; absent on a cold projection. */
+  candidateCounts?: { recorded: number; merged: number }
   /** The run's model tasks, coordinator first; absent on a cold projection. */
   tasks?: ReviewTaskView[]
   /** The coordinating task's end when the run did not complete normally. */
