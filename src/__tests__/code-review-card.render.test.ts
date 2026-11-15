@@ -629,8 +629,8 @@ describe('a model-requested review found by its Skill call', () => {
     // The payload went with the subscription: a card that re-subscribes before anything new arrives stays Loading.
     emit = false
     const c = render(card('r1'))
-    await waitFor(() => expect(screen.getByTestId('code-review-card').dataset.status).toBeUndefined())
-    expect([stats.subscribed, stats.unsubscribed, wire.size]).toEqual([2, 1, 1])
+    await waitFor(() => expect([stats.subscribed, stats.unsubscribed, wire.size]).toEqual([2, 1, 1]))
+    expect(screen.getByTestId('code-review-card').textContent).toBe(t('reviewCard.loading'))
     c.unmount()
     expect([stats.subscribed, stats.unsubscribed, wire.size]).toEqual([2, 2, 0])
   })
