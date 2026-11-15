@@ -105,6 +105,7 @@ describe('workspace disclosure', () => {
     const caret = header.querySelector('[data-slot="disclosure-caret"]')!
     expect(caret.getAttribute('title')).toBe(en['sidebar.expandSection'])
     expect(header.lastElementChild).toBe(caret)
+    expectChevron(caret, 'right')
   })
 
   it('puts the project caret after the name and flips its tip on toggle', () => {
