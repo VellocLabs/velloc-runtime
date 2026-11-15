@@ -36,6 +36,7 @@ import {
 } from './AgentTurnController'
 import { AgentModelController, type AgentModelControllerHost } from './AgentModelController'
 import {
+  ABORTED_CONFIRM_FEEDBACK,
   AgentPermissionCoordinator,
   type AgentPermissionCoordinatorHost,
 } from './AgentPermissionCoordinator'
@@ -61,6 +62,8 @@ import {
 } from './AgentRuntimeBoot'
 import { AgentTurnExecutor, type AgentTurnExecutorHost } from './AgentTurnExecutor'
 import { withTranscriptLines } from './transcriptLineStamp'
+import { confirmRejectionMessage } from '../../toolkit/run/toolPermissionGate'
+import { CANCELLED_CALL_TEXT } from '../../engine/turnRows'
 
 /** How long a session sits idle before it lets go of its tool payloads. */
 export const IDLE_PAYLOAD_RELEASE_MS = 5 * 60_000
@@ -668,7 +671,9 @@ export class AgentRuntimeWorker {
           async runtime => {
             // A running turn is ended by `worker.interrupt`; this is only for a halt whose turn is over.
             if (this.turns.isBusy()) return
-            const cancelled = await runtime.engine.cancelStagedPlanApproval(message.payload.toolCallId)
+            // The answer a Reject during the turn gives: the gate's text for a confirmation aborted by Stop.
+            const answer = confirmRejectionMessage('abort', ABORTED_CONFIRM_FEEDBACK, CANCELLED_CALL_TEXT)
+            const cancelled = await runtime.engine.cancelStagedPlanApproval(message.payload.toolCallId, answer)
             if (!cancelled) return
             await this.scopePermissions.clearPendingPlanApprovalMarker(message.payload.toolCallId)
             this.scopeRecovery.setTerminalState(TERMINAL_ABORTED, Date.now())

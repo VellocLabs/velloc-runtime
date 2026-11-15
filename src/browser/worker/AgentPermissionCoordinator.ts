@@ -22,6 +22,9 @@ import {
   updateSectionInSource,
 } from '../../settings/settingsStore'
 
+/** The feedback a confirmation aborted by the user resolves with. */
+export const ABORTED_CONFIRM_FEEDBACK = 'User aborted'
+
 /** A saved permission mode, resolved; `mode` is absent when none is saved. */
 export type PersistedModeResolution = { mode?: SessionMode }
 
@@ -172,7 +175,7 @@ export class AgentPermissionCoordinator {
       resolve({
         approvalCallId,
         behavior: 'abort',
-        feedback: 'User aborted',
+        feedback: ABORTED_CONFIRM_FEEDBACK,
       })
     }
   }

@@ -116,13 +116,14 @@ export function answerUnansweredCalls(
 
 /**
  * The rows a call halted for the user gets when the user cancels it after its
- * turn has ended: the cancelled answer, then the stop note, the same pair a
- * Stop during that call writes. Empty when `toolCallId` is not a call in
+ * turn has ended: the error result `answer`, then the stop note, the same pair
+ * a Stop during that call writes. Empty when `toolCallId` is not a call in
  * `rows` or is already answered. `newId` mints each row's uuid.
  */
 export function cancelledHaltRows(
   rows: readonly Message[],
   toolCallId: string,
+  answer: string,
   newId: () => string,
 ): Message[] {
   let reply: Message | undefined
@@ -133,19 +134,19 @@ export function cancelledHaltRows(
     }
   }
   if (!reply) return []
-  const answer = {
+  const answerRow = {
     type: MSG_TYPE_USER,
     uuid: newId(),
     message: {
       role: ROLE_USER,
       content: [
-        { type: PART_TOOL_RESULT_CANONICAL, result: CANCELLED_CALL_TEXT, isError: true, toolCallId },
+        { type: PART_TOOL_RESULT_CANONICAL, result: answer, isError: true, toolCallId },
       ],
     },
-    toolUseResult: CANCELLED_CALL_TEXT,
+    toolUseResult: answer,
     sourceToolAssistantUUID: reply.uuid,
   } as Message
-  return [answer, makeStopRow(newId(), { toolUse: true })]
+  return [answerRow, makeStopRow(newId(), { toolUse: true })]
 }
 
 export function interruptionRow(d: Draft, afterToolUse: boolean): Message {

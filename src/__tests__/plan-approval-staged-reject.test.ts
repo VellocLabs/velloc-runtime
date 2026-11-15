@@ -24,6 +24,12 @@ import {
 } from '../runtime/VercelModelConstants'
 import { STOPPED_DURING_TOOL_TEXT } from '../messages/messageFactories'
 import { CANCELLED_CALL_TEXT, cancelledHaltRows } from '../engine/turnRows'
+import { buildModelRequest } from '../engine/turn/modelTransport'
+import type { QueryModelCallParams } from '../engine/turn/modelCallTypes'
+import { openaiResponsesDriver } from '../models/drivers/openaiResponsesDriver'
+import { ABORTED_CONFIRM_FEEDBACK } from '../browser/worker/AgentPermissionCoordinator'
+import { ExitPlanModeTool } from '../toolkit/builtin/planExit'
+import type { ToolUseConfirmResolution } from '../runtime/RuntimeTypes'
 import { installProcessFs, resetProcessFs } from '../utils/fs/runtimeFs'
 
 vi.mock('../browser/runtime/createAgentRuntime', () => ({
@@ -34,8 +40,8 @@ import { createAgentRuntime } from '../browser/runtime/createAgentRuntime'
 
 /**
  * Reject on a plan approval staged after its turn ended (restored from the metadata marker after a restart, or
- * the no-dialog halt) (F-13): the ExitPlanMode call is paired as cancelled in the transcript, the approval and its
- * marker are cleared, the mode stays `plan`, and no model turn runs.
+ * the no-dialog halt) (F-13): the ExitPlanMode call is paired with the result a Reject during the turn gives, the
+ * approval and its marker are cleared, the mode stays `plan`, and no model turn runs.
  */
 
 const CALL_ID = 'call-plan-1'
@@ -61,7 +67,7 @@ function setup() {
     ...createEmptyAppState(),
     permissionRules: { ...createEmptyAppState().permissionRules, mode: 'plan', modeBeforePlan: 'default' },
   } as WorkingState
-  const callModel = vi.fn(async function* () {
+  const callModel = vi.fn(async function* (_params: QueryModelCallParams) {
     yield {
       type: MSG_TYPE_ASSISTANT,
       uuid: 'never',
@@ -161,7 +167,7 @@ describe('Reject on a staged plan approval', () => {
     const [answer, stop] = rows.slice(2)
     expect(rows).toHaveLength(4)
     expect((answer.message as { content: unknown }).content).toEqual([
-      { type: PART_TOOL_RESULT_CANONICAL, result: CANCELLED_CALL_TEXT, isError: true, toolCallId: CALL_ID },
+      { type: PART_TOOL_RESULT_CANONICAL, result: ABORTED_CONFIRM_FEEDBACK, isError: true, toolCallId: CALL_ID },
     ])
     expect((answer as { sourceToolAssistantUUID?: string }).sourceToolAssistantUUID).toBe('a-1')
     expect((stop.message as { content: unknown }).content).toEqual([{ type: 'text', text: STOPPED_DURING_TOOL_TEXT }])
@@ -196,12 +202,106 @@ describe('Reject on a staged plan approval', () => {
   })
 })
 
+/** The Responses API `function_call_output` text each model call carried for `callId`. */
+function wireOutputs(calls: ReadonlyArray<[QueryModelCallParams]>, callId: string): unknown[] {
+  return calls.map(([params]) => {
+    const request = buildModelRequest(params, [])
+    const built = openaiResponsesDriver.buildRequest(request.payload as never, {
+      providerId: 'responses-wire',
+      baseUrl: 'https://wire.example.test/v1',
+      model: 'wire-model',
+    })
+    const body = JSON.parse(new TextDecoder().decode(built.body as Uint8Array)) as {
+      input: Array<{ type: string; call_id?: string; output?: unknown }>
+    }
+    return body.input.find(item => item.type === 'function_call_output' && item.call_id === callId)?.output
+  })
+}
+
+/** The wire text of a Reject during a live turn: Stop aborts the queued confirmation, then the turn. */
+async function liveRejectWireOutput(): Promise<unknown> {
+  let appState: WorkingState = {
+    ...createEmptyAppState(),
+    permissionRules: { ...createEmptyAppState().permissionRules, mode: 'plan', modeBeforePlan: 'default' },
+  } as WorkingState
+  let replies = 0
+  const callModel = vi.fn(async function* (_params: QueryModelCallParams) {
+    replies++
+    yield (replies === 1
+      ? planCall
+      : {
+          type: MSG_TYPE_ASSISTANT,
+          uuid: `a-${replies}`,
+          message: { role: ROLE_ASSISTANT, content: [{ type: 'text', text: 'ok' }] },
+        }) as Message
+  })
+  installProcessFs({
+    readFile: vi.fn(async () => '# Plan'),
+    stat: vi.fn(async () => ({})),
+    mkdir: vi.fn(async () => {}),
+    writeFile: vi.fn(async () => {}),
+  } as never)
+  const engineRef: { current?: ConversationEngine } = {}
+  const engine = new ConversationEngine({
+    cwd: '/workspace',
+    projectRoot: '/workspace',
+    tools: [ExitPlanModeTool as never],
+    commands: [],
+    mcpClients: [],
+    agents: [],
+    decidePermission: async () => ({ behavior: 'allow' }),
+    readAppState: () => appState,
+    writeAppState: updater => {
+      appState = updater(appState)
+    },
+    fileReadSeed: createMemoryFileStateCache(),
+    platformCapabilities: new NoopPlatformCapabilities(),
+    queryRuntimeDeps: assembleTurnDependencies(runtimeConfig, { callModel: callModel as never }),
+    promptContextProvider: new NoopPromptContextProvider(),
+    conversationStore: new MemoryConversationStore('live-plan'),
+    userInputPipeline: new NoopUserInputPipeline(runtimeConfig, true),
+    systemInitEmitter: new NoopSystemInitEmitter(),
+    runtimeConfig,
+    titleServices: { generateName: async () => null },
+    // The worker's Stop order: the queued confirmation resolves as aborted, then the turn is cancelled.
+    requestToolUseConfirm: item =>
+      new Promise<ToolUseConfirmResolution>(resolve => {
+        setTimeout(() => {
+          resolve({ approvalCallId: item.approvalCallId, behavior: 'abort', feedback: ABORTED_CONFIRM_FEEDBACK })
+          engineRef.current?.cancelTurn()
+        }, 0)
+      }),
+  })
+  engineRef.current = engine
+  for await (const _ of engine.submitTurn('plan the split')) void _
+  for await (const _ of engine.submitTurn('continue')) void _
+  expect(callModel).toHaveBeenCalledTimes(2)
+  return wireOutputs(callModel.mock.calls, CALL_ID)[1]
+}
+
+describe('the next request after Reject on a staged plan approval', () => {
+  it('carries the same ExitPlanMode result as a Reject during the turn', async () => {
+    const live = await liveRejectWireOutput()
+    resetProcessFs()
+
+    const emitted: Emitted[] = []
+    const { engine, runtime, callModel } = setup()
+    const worker = await initWorker(emitted, runtime)
+    await worker.receiveFrame({ type: 'worker.rejectPlanApproval', payload: { toolCallId: CALL_ID } })
+    expect(callModel).not.toHaveBeenCalled()
+    for await (const _ of engine.submitTurn('continue')) void _
+
+    expect(live).toBe(ABORTED_CONFIRM_FEEDBACK)
+    expect(wireOutputs(callModel.mock.calls, CALL_ID)).toEqual([live])
+  })
+})
+
 describe('cancelledHaltRows', () => {
   let n = 0
   const id = () => `r-${++n}`
 
-  it('answers the call and adds the stop note', () => {
-    const rows = cancelledHaltRows([prompt, planCall], CALL_ID, id)
+  it('answers the call with the given text and adds the stop note', () => {
+    const rows = cancelledHaltRows([prompt, planCall], CALL_ID, CANCELLED_CALL_TEXT, id)
     expect(rows).toHaveLength(2)
     expect((rows[0] as { toolUseResult?: unknown }).toolUseResult).toBe(CANCELLED_CALL_TEXT)
   })
@@ -212,7 +312,7 @@ describe('cancelledHaltRows', () => {
       uuid: 'u-2',
       message: { role: ROLE_USER, content: [{ type: PART_TOOL_RESULT_CANONICAL, toolCallId: CALL_ID, result: 'ok' }] },
     } as Message
-    expect(cancelledHaltRows([prompt, planCall, answered], CALL_ID, id)).toEqual([])
-    expect(cancelledHaltRows([prompt], CALL_ID, id)).toEqual([])
+    expect(cancelledHaltRows([prompt, planCall, answered], CALL_ID, CANCELLED_CALL_TEXT, id)).toEqual([])
+    expect(cancelledHaltRows([prompt], CALL_ID, CANCELLED_CALL_TEXT, id)).toEqual([])
   })
 })
