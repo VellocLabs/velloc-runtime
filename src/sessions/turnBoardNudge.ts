@@ -10,14 +10,7 @@
 import type { Message, UserRow } from '../runtime/RuntimeTypes'
 import type { ToolCallContext } from '../toolkit/toolCallContext'
 import { createGeneratedUserMessage } from '../messages/messageFactories'
-import {
-  LEGACY_PART_TOOL_USE,
-  PART_REASONING,
-  PART_REDACTED_THINKING,
-  PART_THINKING,
-  PART_TOOL_CALL,
-  isAssistantMessage,
-} from '../runtime/VercelModelConstants'
+import { callsTool, countModelSteps, type ScanPart } from '../messages/modelStepScan'
 import { SET_PLAN_TOOL_NAME, isNestedCaller } from './sessionTurnServer'
 import { turnBoard, type TurnBoard, type TurnStep } from './turnBoard'
 
@@ -28,23 +21,6 @@ export const STEP_LIST_NUDGE = {
 } as const
 
 const NUDGE_OPENING = 'The step list on screen has not changed for a while.'
-
-type Part = { type?: string; toolName?: string; name?: string }
-
-const REASONING_KINDS = new Set<string>([PART_THINKING, PART_REDACTED_THINKING, PART_REASONING])
-
-function partsOf(message: Message): Part[] {
-  const content = (message as { message?: { content?: unknown } }).message?.content
-  return Array.isArray(content) ? (content as Part[]) : []
-}
-
-function callsSetPlan(parts: Part[]): boolean {
-  return parts.some(
-    part =>
-      (part?.type === PART_TOOL_CALL && part.toolName === SET_PLAN_TOOL_NAME) ||
-      (part?.type === LEGACY_PART_TOOL_USE && part.name === SET_PLAN_TOOL_NAME),
-  )
-}
 
 function isNudge(message: Message): boolean {
   if (message.type !== 'user' || !(message as { isMeta?: boolean }).isMeta) return false
@@ -57,7 +33,8 @@ function isPersonMessage(message: Message): boolean {
   if (message.type !== 'user' || (message as { isMeta?: boolean }).isMeta) return false
   const content = (message as { message?: { content?: unknown } }).message?.content
   if (typeof content === 'string') return true
-  return Array.isArray(content) && !(content as Part[]).some(part => part?.type === 'tool-result' || part?.type === 'tool_result')
+  if (!Array.isArray(content)) return false
+  return !(content as ScanPart[]).some(part => part?.type === 'tool-result' || part?.type === 'tool_result')
 }
 
 /** Nudges sent since the person's last message. */
@@ -74,23 +51,11 @@ export function nudgesThisTurn(messages: readonly Message[]): number {
 
 /** Model steps (reasoning-only replies left out) newer than the last `set_plan` call and the last nudge. */
 export function stepsSinceStepListActivity(messages: readonly Message[]): { sinceUpdate: number; sinceNudge: number } {
-  let steps = 0
-  let sinceUpdate: number | null = null
-  let sinceNudge: number | null = null
-  for (let i = messages.length - 1; i >= 0 && (sinceUpdate === null || sinceNudge === null); i--) {
-    const message = messages[i]
-    if (!message) continue
-    if (isNudge(message)) {
-      sinceNudge ??= steps
-      continue
-    }
-    if (!isAssistantMessage(message)) continue
-    const parts = partsOf(message)
-    if (parts.length > 0 && parts.every(part => REASONING_KINDS.has(part?.type ?? ''))) continue
-    if (callsSetPlan(parts)) sinceUpdate ??= steps
-    steps++
-  }
-  return { sinceUpdate: sinceUpdate ?? steps, sinceNudge: sinceNudge ?? steps }
+  const { sinceCall, sinceMarker } = countModelSteps(messages, {
+    calls: parts => callsTool(parts, SET_PLAN_TOOL_NAME),
+    isMarker: isNudge,
+  })
+  return { sinceUpdate: sinceCall, sinceNudge: sinceMarker }
 }
 
 function currentStepLine(steps: readonly TurnStep[]): string {

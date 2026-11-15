@@ -129,9 +129,9 @@ function describeSteps(steps: readonly TurnStep[]): string {
   const total = steps.length
   const current = steps.flatMap((step, index) => (step.status === 'in_progress' ? [index + 1] : []))
   if (current.length === 1) {
-    const following = steps.findIndex((step, index) => index >= current[0]! && step.status === 'pending')
+    const following = steps.findIndex(step => step.status === 'pending')
     return following < 0
-      ? `step ${current[0]} of ${total} is in progress; it is the last one, and close checks it off`
+      ? `step ${current[0]} of ${total} is in progress; no step is left to start, and close checks it off`
       : `step ${current[0]} of ${total} is in progress; when it is done, send {"next": true} beside the call that begins step ${following + 1}`
   }
   if (current.length > 1) {

@@ -1,8 +1,15 @@
 import { describe, expect, it } from 'vitest'
 import type { Message } from '../runtime/RuntimeTypes'
 import type { ToolCallContext } from '../toolkit/toolCallContext'
+import { collectQueuedAttachmentMessages } from '../messages/contextAttachments'
+import {
+  DefaultRuntimeConfig,
+  NoopPlatformCapabilities,
+  createEmptyAppState,
+  createNoopToolUseContext,
+} from '../runtime/testing/noopAdapters'
 import { CLOSE_TURN_TOOL_NAME, SET_PLAN_TOOL_NAME } from '../sessions/sessionTurnServer'
-import { TurnBoard, type TurnStep } from '../sessions/turnBoard'
+import { TurnBoard, turnBoard, type TurnStep } from '../sessions/turnBoard'
 import { STEP_LIST_NUDGE, createStepListNudge, nudgesThisTurn, stepsSinceStepListActivity } from '../sessions/turnBoardNudge'
 
 // The stale step-list reminder (F-41): when it fires, how often, and what it says.
@@ -129,5 +136,42 @@ describe('createStepListNudge', () => {
     expect(createStepListNudge(context(), history, closed)).toBeNull()
     expect(createStepListNudge(context({ agentId: 'a1' }), history, board())).toBeNull()
     expect(createStepListNudge(context({ tools: ['Bash'] }), history, board())).toBeNull()
+  })
+})
+
+describe('the reminder in the drain', () => {
+  const drain = async (history: Message[]): Promise<Message[]> => {
+    const toolUseContext = createNoopToolUseContext({
+      tools: [{ name: SET_PLAN_TOOL_NAME }] as never,
+      platformCapabilities: new NoopPlatformCapabilities(),
+      appState: createEmptyAppState(),
+      setAppState: () => undefined,
+      sessionId: SESSION,
+    })
+    const rows: Message[] = []
+    for await (const row of collectQueuedAttachmentMessages({
+      messages: history,
+      toolUseContext,
+      runtimeConfig: new DefaultRuntimeConfig(),
+    })) {
+      rows.push(row)
+    }
+    return rows
+  }
+
+  it('hands over the reminder last, for the board\'s list', async () => {
+    turnBoard.setPlan(SESSION, plan)
+    try {
+      const rows = await drain([call(SET_PLAN_TOOL_NAME), ...steps(quiet)])
+      expect(rows).toHaveLength(1)
+      expect((rows[0] as { isMeta?: boolean }).isMeta).toBe(true)
+      expect(textOf(rows[0]!)).toContain('step 1 of 2 in progress')
+    } finally {
+      turnBoard.forget(SESSION)
+    }
+  })
+
+  it('hands over nothing when the board holds no list', async () => {
+    expect(await drain([call(SET_PLAN_TOOL_NAME), ...steps(quiet)])).toEqual([])
   })
 })
