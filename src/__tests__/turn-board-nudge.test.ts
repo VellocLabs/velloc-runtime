@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { Message } from '../runtime/RuntimeTypes'
+import type { ContextRow, Message } from '../runtime/RuntimeTypes'
 import type { ToolCallContext } from '../toolkit/toolCallContext'
 import { collectQueuedAttachmentMessages } from '../messages/contextAttachments'
 import {
@@ -140,7 +140,13 @@ describe('createStepListNudge', () => {
 })
 
 describe('the reminder in the drain', () => {
-  const drain = async (history: Message[]): Promise<Message[]> => {
+  const drain = async (
+    history: Message[],
+    extra: {
+      querySource?: string
+      drainInjectMessages?: () => Array<{ uuid: string; prompt: string; enqueuedAt: number }>
+    } = {},
+  ): Promise<Message[]> => {
     const toolUseContext = createNoopToolUseContext({
       tools: [{ name: SET_PLAN_TOOL_NAME }] as never,
       platformCapabilities: new NoopPlatformCapabilities(),
@@ -153,19 +159,24 @@ describe('the reminder in the drain', () => {
       messages: history,
       toolUseContext,
       runtimeConfig: new DefaultRuntimeConfig(),
+      ...extra,
     })) {
       rows.push(row)
     }
     return rows
   }
 
-  it('hands over the reminder last, for the board\'s list', async () => {
+  it('hands over the reminder after the rows ahead of it', async () => {
     turnBoard.setPlan(SESSION, plan)
     try {
-      const rows = await drain([call(SET_PLAN_TOOL_NAME), ...steps(quiet)])
-      expect(rows).toHaveLength(1)
-      expect((rows[0] as { isMeta?: boolean }).isMeta).toBe(true)
-      expect(textOf(rows[0]!)).toContain('step 1 of 2 in progress')
+      const rows = await drain([call(SET_PLAN_TOOL_NAME), ...steps(quiet)], {
+        querySource: 'sdk',
+        drainInjectMessages: () => [{ uuid: 'u1', prompt: 'typed', enqueuedAt: 1 }],
+      })
+      expect(rows).toHaveLength(2)
+      expect((rows[0] as ContextRow).attachment).toMatchObject({ commandMode: 'prompt' })
+      expect((rows[1] as { isMeta?: boolean }).isMeta).toBe(true)
+      expect(textOf(rows[1]!)).toContain('step 1 of 2 in progress')
     } finally {
       turnBoard.forget(SESSION)
     }

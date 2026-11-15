@@ -27,6 +27,7 @@ import {
   isUserMessage,
 } from '../runtime/VercelModelConstants'
 import { createGeneratedUserMessage } from './messageFactories'
+import { partsOf as contentParts } from './modelStepScan'
 import { renderAttachmentMessage } from './renderAttachments'
 
 type Part = Record<string, unknown>
@@ -41,8 +42,7 @@ const MEDIA_FAILURE = /image|document|pdf|too large|size/i
 // ── small accessors ─────────────────────────────────────────────────────────
 
 function partsOf(msg: Message): Part[] | undefined {
-  const body = (msg as { message?: { content?: unknown } }).message?.content
-  return Array.isArray(body) ? (body as Part[]) : undefined
+  return contentParts<Part>(msg) ?? undefined
 }
 
 function rawBody(msg: Message): unknown {

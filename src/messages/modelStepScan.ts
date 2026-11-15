@@ -20,9 +20,9 @@ export type ScanPart = { type?: string; toolName?: string; name?: string }
 const REASONING_KINDS = new Set<string>([PART_THINKING, PART_REDACTED_THINKING, PART_REASONING])
 
 /** The content of a message when it is a list of parts, `null` when it is text. */
-export function partsOf(message: Message): ScanPart[] | null {
+export function partsOf<T = ScanPart>(message: Message): T[] | null {
   const content = (message as { message?: { content?: unknown } }).message?.content
-  return Array.isArray(content) ? (content as ScanPart[]) : null
+  return Array.isArray(content) ? (content as T[]) : null
 }
 
 /** True for parts that carry nothing but reasoning. */

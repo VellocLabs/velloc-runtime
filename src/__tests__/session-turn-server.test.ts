@@ -192,6 +192,12 @@ describe('close', () => {
     expect(statuses()).toEqual(Array(7).fill('completed'))
   })
 
+  it('with no pending step left, says close checks it off rather than naming one', async () => {
+    const { run } = rig()
+    const out = await run(SET_PLAN_TOOL_NAME, { steps: [{ text: 'a', status: 'completed' }, { text: 'b', status: 'in_progress' }] })
+    expect(out.data).toContain('step 2 of 2 is in progress; no step is left to start, and close checks it off')
+  })
+
   it('names the step next starts even when a pending step sits before the one in progress', async () => {
     const { run } = rig()
     const out = await run(SET_PLAN_TOOL_NAME, {
