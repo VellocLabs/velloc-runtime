@@ -40,9 +40,6 @@ export const KIMI_PROVIDER_MODEL_CONFIG: NexusProviderModelConfig = {
       model: createExactModelPattern('k3\\.1-pro'),
       name: 'K3.1 Pro',
       minVersion: '3.1',
-      // Current-generation flagship tier — no TodoWrite (see `todoTools` in
-      // ../types.ts).
-      todoTools: false,
       // Thinking is always on: the endpoint rejects a request that disables
       // it (HTTP 400), so there is no `none` pill. Documented default `high`.
       defaultThinkingTier: 'high',
@@ -56,9 +53,6 @@ export const KIMI_PROVIDER_MODEL_CONFIG: NexusProviderModelConfig = {
       model: createExactModelPattern('k3\\.1-pro-highspeed'),
       name: 'K3.1 Pro Highspeed',
       minVersion: '3.1',
-      // Current-generation flagship tier — no TodoWrite (see `todoTools` in
-      // ../types.ts).
-      todoTools: false,
       defaultThinkingTier: 'high',
       availableThinkingTiers: ['low', 'high', 'max'],
       defaultMaxOutputTokens: 65_536,
@@ -68,9 +62,6 @@ export const KIMI_PROVIDER_MODEL_CONFIG: NexusProviderModelConfig = {
       model: createExactModelPattern('k3'),
       name: 'K3',
       minVersion: '3',
-      // Current-generation flagship/balanced tier — no TodoWrite (see
-      // `todoTools` in ../types.ts).
-      todoTools: false,
       // The page's documented default moved `max` → `high`.
       defaultThinkingTier: 'high',
       availableThinkingTiers: ['none', 'low', 'high', 'max'],
@@ -84,9 +75,6 @@ export const KIMI_PROVIDER_MODEL_CONFIG: NexusProviderModelConfig = {
       model: createExactModelPattern('k3-256k'),
       name: 'K3 256K',
       minVersion: '3',
-      // Current-generation flagship/balanced tier — no TodoWrite (see
-      // `todoTools` in ../types.ts).
-      todoTools: false,
       defaultThinkingTier: 'high',
       availableThinkingTiers: ['none', 'low', 'high', 'max'],
       defaultMaxOutputTokens: 65_536,
@@ -96,9 +84,6 @@ export const KIMI_PROVIDER_MODEL_CONFIG: NexusProviderModelConfig = {
       // efficiency"), 1M context, effort low/high/max with default `max`.
       model: createExactModelPattern('kimi-for-coding'),
       name: 'K2.8 Preview',
-      // Current-generation flagship/balanced tier — no TodoWrite (see
-      // `todoTools` in ../types.ts).
-      todoTools: false,
       defaultThinkingTier: 'max',
       availableThinkingTiers: ['none', 'low', 'high', 'max'],
       defaultMaxOutputTokens: 32_000,
@@ -108,9 +93,6 @@ export const KIMI_PROVIDER_MODEL_CONFIG: NexusProviderModelConfig = {
       // FIXED.
       model: createExactModelPattern('kimi-for-coding-highspeed'),
       name: 'K2.7 Code Highspeed', /* 6x speed, 3x consumption */
-      // Current-generation flagship/balanced tier — no TodoWrite (see
-      // `todoTools` in ../types.ts).
-      todoTools: false,
       defaultMaxOutputTokens: 32_000,
       maxOutputTokens: 32_000,
     },

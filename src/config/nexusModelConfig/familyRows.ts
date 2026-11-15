@@ -2,7 +2,7 @@
  * FAMILY rows (F-28): one row for every version of a model family. A version reads,
  * first that states it: the row's `versions[<v>]`, the provider's listing, the row.
  * A matching FIXED row answers first. The opt-in flags (`promptProfile`,
- * `todoTools`, `supportsStrictTools`) are never read from a listing.
+ * `supportsStrictTools`) are never read from a listing.
  */
 import { firstRequestOutputTokens } from './firstRequestOutput'
 import type { ModelWire, ProviderModelInfo } from './providerDefinition'

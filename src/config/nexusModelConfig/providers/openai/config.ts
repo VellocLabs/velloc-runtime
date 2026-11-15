@@ -31,9 +31,6 @@ export const OPENAI_PROVIDER_MODEL_CONFIG: NexusProviderModelConfig = {
       model: createOpenAiModelPattern('gpt-6-astra'),
       name: 'GPT-6 Astra',
       minVersion: '6',
-      // Current-generation flagship/balanced tier — no TodoWrite (see
-      // `todoTools` in ../types.ts).
-      todoTools: false,
       defaultThinkingTier: 'medium',
       // No `none`: Astra rejects it with HTTP 400 (reasoning guide). A stale persisted `none` from another row is dropped by
       // the deps.ts `availableTiers` gate before it reaches the wire.
@@ -53,9 +50,6 @@ export const OPENAI_PROVIDER_MODEL_CONFIG: NexusProviderModelConfig = {
       model: createOpenAiModelPattern('gpt-6\\.1-sol'),
       name: 'GPT-6.1 Sol',
       minVersion: '5.6',
-      // Current-generation flagship/balanced tier — no TodoWrite (see
-      // `todoTools` in ../types.ts).
-      todoTools: false,
       defaultThinkingTier: 'medium',
       availableThinkingTiers: ['low', 'medium', 'high', 'xhigh', 'max'],
       defaultMaxOutputTokens: 64_000,
@@ -97,9 +91,6 @@ export const OPENAI_PROVIDER_MODEL_CONFIG: NexusProviderModelConfig = {
       model: createOpenAiModelPattern('gpt-5\\.6-terra'),
       name: 'GPT-5.6 Terra',
       minVersion: '5.6',
-      // Current-generation flagship/balanced tier — no TodoWrite (see
-      // `todoTools` in ../types.ts).
-      todoTools: false,
       defaultThinkingTier: 'medium',
       availableThinkingTiers: ['none', 'low', 'medium', 'high', 'xhigh', 'max'],
       defaultMaxOutputTokens: 64_000,
@@ -157,9 +148,6 @@ export const OPENAI_PROVIDER_MODEL_CONFIG: NexusProviderModelConfig = {
       // `low` / `minimal`, so users can't dial reasoning down on this tier.)
       model: createOpenAiModelPattern('gpt-5\\.5-pro'),
       name: 'GPT-5.5 Pro',
-      // Current-generation flagship/balanced tier — no TodoWrite (see
-      // `todoTools` in ../types.ts).
-      todoTools: false,
       defaultThinkingTier: 'high',
       availableThinkingTiers: ['medium', 'high', 'xhigh'],
       defaultMaxOutputTokens: 64_000,

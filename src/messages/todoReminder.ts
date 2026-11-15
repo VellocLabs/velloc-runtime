@@ -5,7 +5,6 @@ import type {
 import { resolveToolByName } from '../toolkit/toolContract'
 import { type ToolCallContext } from '../toolkit/toolCallContext'
 import { CHECKLIST_TOOL_ID } from '../toolkit/builtin/todoWrite'
-import { isToolWithheldForModel } from '../utils/todoTools'
 import {
   LEGACY_PART_TOOL_USE,
   PART_REASONING,
@@ -91,9 +90,6 @@ export function collectTodoReminderAttachments(
 ): TodoReminderAttachment[] {
   const { options } = context
   if (!resolveToolByName(options.tools, CHECKLIST_TOOL_ID)) return []
-  if (isToolWithheldForModel(CHECKLIST_TOOL_ID, options.mainLoopModel, options.mainLoopProviderId)) {
-    return []
-  }
   if (!messages?.length) return []
   const counts = turnsSinceTodoActivity(messages)
   if (counts.turnsSinceLastTodoWrite < TODO_NUDGE_CADENCE.TURNS_SINCE_WRITE) return []

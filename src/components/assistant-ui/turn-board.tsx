@@ -77,7 +77,10 @@ export const TurnPlanCardView: FC<{
               <span className="flex h-5 items-center">
                 <StepMark status={step.status} running={running} />
               </span>
-              <span className={step.status === "completed" ? "text-muted-foreground" : undefined}>
+              <span
+                data-testid="turn-step-text"
+                className={step.status === "completed" ? "text-muted-foreground" : undefined}
+              >
                 <span className="sr-only">{t(STATUS_LABEL[step.status])} </span>
                 {step.text}
               </span>

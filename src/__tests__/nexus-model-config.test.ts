@@ -1108,7 +1108,6 @@ describe('nexus model config helpers', () => {
     expect(kimi?.models[5]?.availableThinkingTiers).toBeUndefined()
     // A version of the Pro line the vendor has not shipped reads the same row.
     expect(findConfiguredModel('kimi', 'k4-pro')).toMatchObject({
-      todoTools: false,
       defaultThinkingTier: 'high',
       availableThinkingTiers: ['low', 'high', 'max'],
     })
@@ -1399,7 +1398,6 @@ describe('sub-session model tier helpers', () => {
     expect(findConfiguredModel('anthropic', 'claude-opus-5-5'))
       .toMatchObject({
         promptProfile: 'lean',
-        todoTools: false,
         defaultThinkingTier: 'medium',
         availableThinkingTiers: ['low', 'medium', 'high', 'extra-high', 'max'],
         contextWindow: 1_000_000,

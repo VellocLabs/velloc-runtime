@@ -33,9 +33,6 @@ export const ANTHROPIC_PROVIDER_MODEL_CONFIG: NexusProviderModelConfig = {
       minVersion: '5',
       // Trained on the lean prompt.
       promptProfile: 'lean',
-      // Plans and tracks long work unaided — no TodoWrite (see `todoTools` in
-      // ../types.ts).
-      todoTools: false,
       // Thinking is always on for the Fable line (the legacy
       // `enabled`/`disabled` shapes both 400); adaptive + effort is the only
       // accepted shape. The default is the API's own default effort, `high`
@@ -67,9 +64,6 @@ export const ANTHROPIC_PROVIDER_MODEL_CONFIG: NexusProviderModelConfig = {
       minVersion: '4.6',
       // Trained on the lean prompt.
       promptProfile: 'lean',
-      // Plans and tracks long work unaided — no TodoWrite (see `todoTools` in
-      // ../types.ts).
-      todoTools: false,
       defaultThinkingTier: 'medium',
       availableThinkingTiers: ['low', 'medium', 'high', 'extra-high', 'max'],
       defaultMaxOutputTokens: 64_000,
@@ -88,7 +82,6 @@ export const ANTHROPIC_PROVIDER_MODEL_CONFIG: NexusProviderModelConfig = {
           name: 'Opus 4.7',
           defaultThinkingTier: 'high',
           promptProfile: undefined,
-          todoTools: undefined,
         },
         '4.6': {
           id: 'claude-opus-4-6',
@@ -96,7 +89,6 @@ export const ANTHROPIC_PROVIDER_MODEL_CONFIG: NexusProviderModelConfig = {
           defaultThinkingTier: 'high',
           availableThinkingTiers: ['low', 'medium', 'high', 'max'],
           promptProfile: undefined,
-          todoTools: undefined,
         },
       },
     },
@@ -115,9 +107,6 @@ export const ANTHROPIC_PROVIDER_MODEL_CONFIG: NexusProviderModelConfig = {
       minVersion: '4.6',
       // Sonnet and Haiku get the long sectioned prompt.
       promptProfile: 'standard',
-      // Plans and tracks long work unaided — no TodoWrite (see `todoTools` in
-      // ../types.ts).
-      todoTools: false,
       // Default stays at `high` (the API default) per the migration guide.
       defaultThinkingTier: 'high',
       availableThinkingTiers: ['low', 'medium', 'high', 'extra-high', 'max'],
@@ -131,7 +120,6 @@ export const ANTHROPIC_PROVIDER_MODEL_CONFIG: NexusProviderModelConfig = {
           id: 'claude-sonnet-4-6',
           name: 'Sonnet 4.6',
           availableThinkingTiers: ['low', 'medium', 'high', 'max'],
-          todoTools: undefined,
         },
       },
     },

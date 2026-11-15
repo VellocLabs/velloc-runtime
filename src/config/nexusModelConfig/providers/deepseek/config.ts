@@ -40,9 +40,6 @@ export const DEEPSEEK_PROVIDER_MODEL_CONFIG: NexusProviderModelConfig = {
       model: createExactModelPattern('deepseek-v4-pro'),
       name: 'V4 Pro',
       minVersion: '4',
-      // Current-generation flagship/balanced tier — no TodoWrite (see
-      // `todoTools` in ../types.ts).
-      todoTools: false,
       defaultThinkingTier: 'high',
       availableThinkingTiers: ['none', 'low', 'high', 'max'],
       defaultMaxOutputTokens: 131_072,

@@ -39,18 +39,15 @@ export const MINIMAX_PROVIDER_MODEL_CONFIG: NexusProviderModelConfig = {
       model: createExactModelPattern('MiniMax-M3'),
       name: 'MiniMax M3',
       minVersion: '2',
-      // Current-generation flagship/balanced tier — no TodoWrite (see
-      // `todoTools` in ../types.ts).
-      todoTools: false,
       defaultMaxOutputTokens: 16_384,
       maxOutputTokens: 16_384,
       versions: {
         // The M2.x line: 204,800 tokens, text + tool calls only — see the
-        // M2.x note in the header. Before M2.7 they keep the todo tools.
+        // M2.x note in the header.
         '2.7': { id: 'MiniMax-M2.7', name: 'MiniMax M2.7', supportsImageInput: false },
-        '2.5': { id: 'MiniMax-M2.5', name: 'MiniMax M2.5', todoTools: undefined, supportsImageInput: false },
-        '2.1': { id: 'MiniMax-M2.1', name: 'MiniMax M2.1', todoTools: undefined, supportsImageInput: false },
-        '2': { id: 'MiniMax-M2', name: 'MiniMax M2', todoTools: undefined, supportsImageInput: false },
+        '2.5': { id: 'MiniMax-M2.5', name: 'MiniMax M2.5', supportsImageInput: false },
+        '2.1': { id: 'MiniMax-M2.1', name: 'MiniMax M2.1', supportsImageInput: false },
+        '2': { id: 'MiniMax-M2', name: 'MiniMax M2', supportsImageInput: false },
       },
     },
     {
@@ -59,17 +56,14 @@ export const MINIMAX_PROVIDER_MODEL_CONFIG: NexusProviderModelConfig = {
       model: createExactModelPattern('MiniMax-M2\\.7-highspeed'),
       name: 'MiniMax M2.7 Highspeed',
       minVersion: '2.1',
-      // Current-generation flagship/balanced tier — no TodoWrite (see
-      // `todoTools` in ../types.ts).
-      todoTools: false,
       defaultMaxOutputTokens: 16_384,
       maxOutputTokens: 16_384,
       supportsImageInput: false,
       versions: {
-        '2.5': { id: 'MiniMax-M2.5-highspeed', name: 'MiniMax M2.5 Highspeed', todoTools: undefined },
+        '2.5': { id: 'MiniMax-M2.5-highspeed', name: 'MiniMax M2.5 Highspeed' },
         // The catalog does not list the M2.1 twin: it reads the verified
         // M2.7 twin's record (204,800), as any unlisted version does.
-        '2.1': { id: 'MiniMax-M2.1-highspeed', name: 'MiniMax M2.1 Highspeed', todoTools: undefined },
+        '2.1': { id: 'MiniMax-M2.1-highspeed', name: 'MiniMax M2.1 Highspeed' },
       },
     },
   ],

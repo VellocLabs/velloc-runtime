@@ -67,9 +67,6 @@ export const CHATGPT_PRO_PROVIDER_MODEL_CONFIG: NexusProviderModelConfig = {
       model: createOpenAiModelPattern('gpt-6-astra'),
       name: 'GPT-6 Astra',
       minVersion: '6',
-      // Current-generation flagship/balanced tier — no TodoWrite (see
-      // `todoTools` in ../types.ts).
-      todoTools: false,
       defaultThinkingTier: 'low',
       availableThinkingTiers: ['low', 'medium', 'high', 'xhigh', 'max'],
       contextWindow: 272_000,
@@ -86,9 +83,6 @@ export const CHATGPT_PRO_PROVIDER_MODEL_CONFIG: NexusProviderModelConfig = {
       model: createOpenAiModelPattern('gpt-6-sol'),
       name: 'GPT-6 Sol',
       minVersion: '5.6',
-      // Current-generation flagship/balanced tier — no TodoWrite (see
-      // `todoTools` in ../types.ts).
-      todoTools: false,
       defaultThinkingTier: 'medium',
       availableThinkingTiers: ['low', 'medium', 'high', 'xhigh', 'max'],
       contextWindow: 272_000,
@@ -106,9 +100,6 @@ export const CHATGPT_PRO_PROVIDER_MODEL_CONFIG: NexusProviderModelConfig = {
       model: createOpenAiModelPattern('gpt-5\\.6-terra'),
       name: 'GPT-5.6 Terra',
       minVersion: '5.6',
-      // Current-generation flagship/balanced tier — no TodoWrite (see
-      // `todoTools` in ../types.ts).
-      todoTools: false,
       defaultThinkingTier: 'medium',
       availableThinkingTiers: ['low', 'medium', 'high', 'xhigh', 'max'],
       contextWindow: 272_000,

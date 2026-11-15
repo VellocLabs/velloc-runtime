@@ -9,7 +9,6 @@ import type {
 
 import { NEXUS_MODEL_CONFIG } from '../../config/nexusModelConfig'
 
-import { isToolWithheldForModel } from '../../utils/todoTools'
 import { modelSupportsStrictTools } from '../../utils/strictTools'
 import {
   resolveToolByName,
@@ -442,11 +441,6 @@ export async function serializeToolsForModel(
       tool.name === PLAN_OFF_TOOL_ID &&
       params.callContext.readAppState().permissionRules.mode !== 'plan'
     ) {
-      return false
-    }
-    // Model gate (utils/todoTools.ts): a todo tool is withheld from a model
-    // whose catalog row opts out. Same effective model as the strict gate.
-    if (isToolWithheldForModel(tool.name, effectiveModelForStrict, params.providerId)) {
       return false
     }
     return !shouldHideToolFromModel(tool, appStateForDeferral, deferralKey)

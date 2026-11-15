@@ -42,6 +42,12 @@ describe('TurnPlanCardView', () => {
     ])
   })
 
+  it('greys the text of a done step only', () => {
+    const { getAllByTestId } = card()
+    expect(getAllByTestId('turn-step-text').map(text => text.classList.contains('text-muted-foreground')))
+      .toEqual([true, false, false])
+  })
+
   it('spins the step in progress only while the turn runs', () => {
     const live = card({ running: true })
     expect(live.queryAllByTestId('turn-step-spinner')).toHaveLength(1)

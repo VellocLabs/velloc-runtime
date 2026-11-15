@@ -780,14 +780,10 @@ describe('batch bundled skill', () => {
     }
   })
 
-  it('requires only the tools its body drives — nothing the per-model todo gate withholds', async () => {
+  it('requires only the tools its body drives, and never names the unregistered TodoWrite', async () => {
     // `requiredTools` is the type-level guard ("a type that admits /batch
-    // must run these"). TodoWrite is ALSO withheld per MODEL
-    // (utils/todoTools.ts, `todoTools: false`), and that gate cannot be
-    // stated as a type requirement — so the only consistent shape is a body
-    // that never drives TodoWrite and a requirement list that never names it.
-    // The list once named it; every required tool must appear in the prompt
-    // it is required for.
+    // must run these"): every required tool must appear in the prompt it is
+    // required for, and TodoWrite is offered to no session type.
     installProcessFs(
       stubFsWithExistingDirs(new Set(['/workspace/.git'])),
     )

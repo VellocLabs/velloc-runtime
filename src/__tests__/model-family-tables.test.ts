@@ -27,7 +27,6 @@ import {
 } from '../engine/contextWindow'
 import { resetSessionModelSettingsSnapshot } from '../models/tierSettingsSnapshot'
 import { modelSupportsStrictTools } from '../utils/strictTools'
-import { modelUsesTodoTools } from '../utils/todoTools'
 import before from './fixtures/model-rows-before-family-rows.json'
 import { installBuiltinCatalogFigures } from './_helpers/builtinCatalogFigures'
 import { resetCatalogFigures } from '../config/nexusModelConfig/catalogFigures'
@@ -51,7 +50,6 @@ const GPT_TIERS = ['none', 'low', 'medium', 'high', 'xhigh', 'max']
 
 type Frozen = {
   promptProfile?: 'lean' | 'standard'
-  todoTools?: false
   defaultThinkingTier?: string
   availableThinkingTiers?: string[]
   contextWindow: number
@@ -59,11 +57,11 @@ type Frozen = {
   maxOutputTokens: number
   supportsStrictTools?: boolean
 }
-const FABLE: Frozen = { promptProfile: 'lean', todoTools: false, defaultThinkingTier: 'high', availableThinkingTiers: FIVE_STEP_TIERS, contextWindow: 1_000_000, defaultMaxOutputTokens: 64_000, maxOutputTokens: 128_000, supportsStrictTools: true }
-const SONNET: Frozen = { promptProfile: 'standard', todoTools: false, defaultThinkingTier: 'high', availableThinkingTiers: FIVE_STEP_TIERS, contextWindow: 1_000_000, defaultMaxOutputTokens: 32_000, maxOutputTokens: 128_000, supportsStrictTools: true }
+const FABLE: Frozen = { promptProfile: 'lean', defaultThinkingTier: 'high', availableThinkingTiers: FIVE_STEP_TIERS, contextWindow: 1_000_000, defaultMaxOutputTokens: 64_000, maxOutputTokens: 128_000, supportsStrictTools: true }
+const SONNET: Frozen = { promptProfile: 'standard', defaultThinkingTier: 'high', availableThinkingTiers: FIVE_STEP_TIERS, contextWindow: 1_000_000, defaultMaxOutputTokens: 32_000, maxOutputTokens: 128_000, supportsStrictTools: true }
 const HAIKU: Frozen = { promptProfile: 'standard', contextWindow: 200_000, defaultMaxOutputTokens: 32_000, maxOutputTokens: 64_000, supportsStrictTools: true }
-const GPT: Frozen = { todoTools: false, defaultThinkingTier: 'medium', availableThinkingTiers: GPT_TIERS, contextWindow: 1_050_000, defaultMaxOutputTokens: 32_000, maxOutputTokens: 128_000, supportsStrictTools: true }
-const { todoTools: _t, ...GPT_LUNA } = GPT
+const GPT: Frozen = { defaultThinkingTier: 'medium', availableThinkingTiers: GPT_TIERS, contextWindow: 1_050_000, defaultMaxOutputTokens: 32_000, maxOutputTokens: 128_000, supportsStrictTools: true }
+const GPT_LUNA = GPT
 
 // What every curated model read from its OWN row before the tables became
 // family rows — dumped from the pre-migration catalog (`findConfiguredModel`
@@ -71,7 +69,7 @@ const { todoTools: _t, ...GPT_LUNA } = GPT
 // snapshots), every per-model field that was stated.
 const BEFORE: Record<string, Record<string, Record<string, unknown>>> = before
 const FROZEN_FIELDS = [
-  'name', 'promptProfile', 'todoTools', 'defaultThinkingTier', 'availableThinkingTiers',
+  'name', 'promptProfile', 'defaultThinkingTier', 'availableThinkingTiers',
   'contextWindow', 'defaultMaxOutputTokens', 'maxOutputTokens', 'compactionTriggerCharCount',
   'supportsStrictTools', 'supportsImageInput', 'documentInput',
 ] as const
@@ -125,19 +123,19 @@ const UNSHIPPED: ReadonlyArray<readonly [string, string, Frozen]> = [
   ['openai', 'gpt-6-terra', GPT],
   ['openai', 'gpt-6.5-luna-2027-01-01', GPT_LUNA],
   ['chatgpt-pro', 'gpt-6-luna', { defaultThinkingTier: 'medium', availableThinkingTiers: GPT_TIERS, contextWindow: 272_000, defaultMaxOutputTokens: 32_000, maxOutputTokens: 128_000, supportsStrictTools: true }],
-  ['deepseek', 'deepseek-v5-pro', { todoTools: false, defaultThinkingTier: 'high', availableThinkingTiers: ['none', 'low', 'high', 'max'], contextWindow: 1_000_000, defaultMaxOutputTokens: 32_000, maxOutputTokens: 393_216 }], // The vendor's cap
+  ['deepseek', 'deepseek-v5-pro', { defaultThinkingTier: 'high', availableThinkingTiers: ['none', 'low', 'high', 'max'], contextWindow: 1_000_000, defaultMaxOutputTokens: 32_000, maxOutputTokens: 393_216 }], // The vendor's cap
   // The output caps below are the vendor's (131,072, was 128,000).
-  ['glm', 'glm-5.4', { todoTools: false, contextWindow: 1_000_000, defaultMaxOutputTokens: 32_000, maxOutputTokens: 131_072, supportsStrictTools: true }],
+  ['glm', 'glm-5.4', { contextWindow: 1_000_000, defaultMaxOutputTokens: 32_000, maxOutputTokens: 131_072, supportsStrictTools: true }],
   ['glm', 'glm-6-flash', { contextWindow: 1_000_000, defaultMaxOutputTokens: 32_000, maxOutputTokens: 131_072, supportsStrictTools: true }],
-  ['google', 'gemini-3.9-flash', { todoTools: false, contextWindow: 1_048_576, defaultMaxOutputTokens: 32_000, maxOutputTokens: 65_536 }],
+  ['google', 'gemini-3.9-flash', { contextWindow: 1_048_576, defaultMaxOutputTokens: 32_000, maxOutputTokens: 65_536 }],
   ['google', 'gemini-3.5-pro', { contextWindow: 1_048_576, defaultMaxOutputTokens: 32_000, maxOutputTokens: 65_536 }],
-  ['kimi', 'k4', { todoTools: false, defaultThinkingTier: 'high', availableThinkingTiers: ['none', 'low', 'high', 'max'], contextWindow: 1_048_576, defaultMaxOutputTokens: 64_000, maxOutputTokens: 131_072 }],
-  ['kimi', 'k4-pro', { todoTools: false, defaultThinkingTier: 'high', availableThinkingTiers: ['low', 'high', 'max'], contextWindow: 1_048_576, defaultMaxOutputTokens: 64_000, maxOutputTokens: 131_072 }],
-  ['kimi', 'k3.2-pro-highspeed', { todoTools: false, defaultThinkingTier: 'high', availableThinkingTiers: ['low', 'high', 'max'], contextWindow: 1_048_576, defaultMaxOutputTokens: 64_000, maxOutputTokens: 131_072 }],
-  ['minimax', 'MiniMax-M3.5', { todoTools: false, contextWindow: 1_000_000, defaultMaxOutputTokens: 8_192, maxOutputTokens: 16_384 }],
-  ['minimax', 'minimax-m4', { todoTools: false, contextWindow: 1_000_000, defaultMaxOutputTokens: 8_192, maxOutputTokens: 16_384 }],
+  ['kimi', 'k4', { defaultThinkingTier: 'high', availableThinkingTiers: ['none', 'low', 'high', 'max'], contextWindow: 1_048_576, defaultMaxOutputTokens: 64_000, maxOutputTokens: 131_072 }],
+  ['kimi', 'k4-pro', { defaultThinkingTier: 'high', availableThinkingTiers: ['low', 'high', 'max'], contextWindow: 1_048_576, defaultMaxOutputTokens: 64_000, maxOutputTokens: 131_072 }],
+  ['kimi', 'k3.2-pro-highspeed', { defaultThinkingTier: 'high', availableThinkingTiers: ['low', 'high', 'max'], contextWindow: 1_048_576, defaultMaxOutputTokens: 64_000, maxOutputTokens: 131_072 }],
+  ['minimax', 'MiniMax-M3.5', { contextWindow: 1_000_000, defaultMaxOutputTokens: 8_192, maxOutputTokens: 16_384 }],
+  ['minimax', 'minimax-m4', { contextWindow: 1_000_000, defaultMaxOutputTokens: 8_192, maxOutputTokens: 16_384 }],
   // The window and cap below are the vendor's (were 983,616 / 32,768).
-  ['qwen', 'qwen3.9-max', { todoTools: false, defaultThinkingTier: 'max', availableThinkingTiers: ['max'], contextWindow: 1_000_000, defaultMaxOutputTokens: 16_384, maxOutputTokens: 131_072, supportsStrictTools: true }],
+  ['qwen', 'qwen3.9-max', { defaultThinkingTier: 'max', availableThinkingTiers: ['max'], contextWindow: 1_000_000, defaultMaxOutputTokens: 16_384, maxOutputTokens: 131_072, supportsStrictTools: true }],
   ['qwen', 'qwen4-flash', { contextWindow: 1_000_000, defaultMaxOutputTokens: 16_384, maxOutputTokens: 131_072 }],
 ]
 
@@ -146,16 +144,16 @@ const UNSHIPPED: ReadonlyArray<readonly [string, string, Frozen]> = [
 // frozen copy above predates them.
 const ADDED: ReadonlyArray<readonly [string, string, Frozen & { name: string }]> = [
   ['anthropic', 'claude-sonnet-5-5', { ...SONNET, name: 'Sonnet 5.5' }],
-  ['anthropic', 'claude-sonnet-4-6', { ...SONNET, name: 'Sonnet 4.6', todoTools: undefined, availableThinkingTiers: ['low', 'medium', 'high', 'max'] }],
-  ['anthropic', 'claude-opus-4-7', { ...FABLE, name: 'Opus 4.7', promptProfile: undefined, todoTools: undefined, defaultThinkingTier: 'high' }],
-  ['anthropic', 'claude-opus-4-6', { ...FABLE, name: 'Opus 4.6', promptProfile: undefined, todoTools: undefined, defaultThinkingTier: 'high', availableThinkingTiers: ['low', 'medium', 'high', 'max'] }],
+  ['anthropic', 'claude-sonnet-4-6', { ...SONNET, name: 'Sonnet 4.6', availableThinkingTiers: ['low', 'medium', 'high', 'max'] }],
+  ['anthropic', 'claude-opus-4-7', { ...FABLE, name: 'Opus 4.7', promptProfile: undefined, defaultThinkingTier: 'high' }],
+  ['anthropic', 'claude-opus-4-6', { ...FABLE, name: 'Opus 4.6', promptProfile: undefined, defaultThinkingTier: 'high', availableThinkingTiers: ['low', 'medium', 'high', 'max'] }],
   ['openai', 'gpt-6.1-sol', { ...GPT, name: 'GPT-6.1 Sol', availableThinkingTiers: ['low', 'medium', 'high', 'xhigh', 'max'] }],
   ['openai', 'gpt-5.5', { ...GPT_LUNA, name: 'GPT-5.5', availableThinkingTiers: ['none', 'low', 'medium', 'high', 'xhigh'] }],
   ['openai', 'gpt-5.4', { ...GPT_LUNA, name: 'GPT-5.4', defaultThinkingTier: 'none', availableThinkingTiers: ['none', 'low', 'medium', 'high', 'xhigh'] }],
   ['openai', 'gpt-5.4-mini', { ...GPT_LUNA, name: 'GPT-5.4 mini', defaultThinkingTier: 'none', availableThinkingTiers: ['none', 'low', 'medium', 'high', 'xhigh'], contextWindow: 400_000 }],
   ['openai', 'gpt-5.4-pro', { ...GPT_LUNA, name: 'GPT-5.4 Pro', availableThinkingTiers: ['medium', 'high', 'xhigh'] }],
-  ['kimi', 'k3.1-pro', { ...{ todoTools: false, defaultThinkingTier: 'high', availableThinkingTiers: ['low', 'high', 'max'], contextWindow: 1_048_576, defaultMaxOutputTokens: 64_000, maxOutputTokens: 131_072 }, name: 'K3.1 Pro' }],
-  ['kimi', 'k3.1-pro-highspeed', { ...{ todoTools: false, defaultThinkingTier: 'high', availableThinkingTiers: ['low', 'high', 'max'], contextWindow: 1_048_576, defaultMaxOutputTokens: 64_000, maxOutputTokens: 131_072 }, name: 'K3.1 Pro Highspeed' }],
+  ['kimi', 'k3.1-pro', { ...{ defaultThinkingTier: 'high', availableThinkingTiers: ['low', 'high', 'max'], contextWindow: 1_048_576, defaultMaxOutputTokens: 64_000, maxOutputTokens: 131_072 }, name: 'K3.1 Pro' }],
+  ['kimi', 'k3.1-pro-highspeed', { ...{ defaultThinkingTier: 'high', availableThinkingTiers: ['low', 'high', 'max'], contextWindow: 1_048_576, defaultMaxOutputTokens: 64_000, maxOutputTokens: 131_072 }, name: 'K3.1 Pro Highspeed' }],
 ]
 const ADDED_IDS: Record<string, string[]> = {}
 for (const [providerId, id] of ADDED) (ADDED_IDS[providerId] ??= []).push(id)
@@ -192,7 +190,7 @@ const expectFrozen = (providerId: string, id: string, stated: Frozen) => {
   const frozen = withAllowance(stated)
   const row = findConfiguredModel(providerId, id)
   expect(row, `${providerId}/${id} is covered`).toBeDefined()
-  for (const field of ['promptProfile', 'todoTools', 'defaultThinkingTier', 'availableThinkingTiers', 'contextWindow', 'defaultMaxOutputTokens', 'maxOutputTokens'] as const) {
+  for (const field of ['promptProfile', 'defaultThinkingTier', 'availableThinkingTiers', 'contextWindow', 'defaultMaxOutputTokens', 'maxOutputTokens'] as const) {
     expect(row![field], `${providerId}/${id}.${field}`).toEqual(frozen[field])
   }
   expect(row!.supportsStrictTools, `${providerId}/${id}.supportsStrictTools`).toBe(frozen.supportsStrictTools)
@@ -259,22 +257,19 @@ describe('every provider table as family rows', () => {
     // The consumers of the opt-in flags agree (they share the lookup).
     expect(modelSupportsStrictTools(id, providerId)).toBe(frozen.supportsStrictTools === true)
     expect(resolvePromptProfile({ providerId, modelId: id })).toBe(frozen.promptProfile ?? 'standard')
-    expect(modelUsesTodoTools(id, providerId)).toBe(frozen.todoTools !== false)
   })
 
   it.each(ADDED)('%s/%s — added 2026-10-07 — reads its vendor\'s figures', (providerId, id, frozen) => {
     expectFrozen(providerId, id, frozen)
     expect(findConfiguredModel(providerId, id)!.name).toBe(frozen.name)
     expect(resolvePromptProfile({ providerId, modelId: id })).toBe(frozen.promptProfile ?? 'standard')
-    expect(modelUsesTodoTools(id, providerId)).toBe(frozen.todoTools !== false)
   })
 
   it.each(UNCOVERED)('%s/%s is not covered: %s', (providerId, id) => {
     expect(findConfiguredModel(providerId, id)).toBeUndefined()
-    // …so it fails safe: no strict tools, the standard prompt, the todo tools.
+    // …so it fails safe: no strict tools, the standard prompt.
     expect(modelSupportsStrictTools(id, providerId)).toBe(false)
     expect(resolvePromptProfile({ providerId, modelId: id })).toBe('standard')
-    expect(modelUsesTodoTools(id, providerId)).toBe(true)
   })
 
   it('a family row is this provider\'s only: a gateway id of the same model reads nothing here', () => {
@@ -317,7 +312,7 @@ describe('a family row names the versions it knows (`versions[<v>].id`)', () => 
     // version's window is the catalog's, its image flag the row's own.
     const m27 = knownModelRows(catalogRows('minimax'), versionParser('minimax'), 'minimax')
       .find(row => deriveCanonicalModelId(row.model) === 'MiniMax-M2.7')!
-    expect(m27).toMatchObject({ contextWindow: 204_800, supportsImageInput: false, todoTools: false })
+    expect(m27).toMatchObject({ contextWindow: 204_800, supportsImageInput: false })
   })
 
   it('the host is told of exactly the models it was told of before', () => {
@@ -431,7 +426,7 @@ describe('a migrated table in the entry catalog', () => {
     builtInEntryRow(openai(), undefined)
     builtInEntryRow(openai(), undefined)
     expect(catalogRows('openai')).toHaveLength(before)
-    expect(findConfiguredModel('openai', 'gpt-*-sol@latest')).toMatchObject({ contextWindow: 1_050_000, supportsStrictTools: true, todoTools: false })
+    expect(findConfiguredModel('openai', 'gpt-*-sol@latest')).toMatchObject({ contextWindow: 1_050_000, supportsStrictTools: true })
   })
 
   it('an added Other model still gets its conservative row, and only that', () => {
@@ -512,7 +507,7 @@ describe('no table grafts a row for a discovered version', () => {
     builtInEntryRow(host('google', 'gemini-2.5-pro', 'gemini-3.1-pro-preview'), undefined)
     expect(getTierModelForProvider('google', 'best')).toBe('gemini-2.5-pro')
     // The preview reads its own fixed row, not the Pro family's.
-    expect(findConfiguredModel('google', 'gemini-3.1-pro-preview')).toMatchObject({ name: 'Gemini 3.1 Pro Preview', todoTools: false })
+    expect(findConfiguredModel('google', 'gemini-3.1-pro-preview')).toMatchObject({ name: 'Gemini 3.1 Pro Preview' })
     builtInEntryRow(host('google', 'gemini-2.5-pro', 'gemini-3.1-pro-preview', 'gemini-3.5-pro'), undefined)
     expect(getTierModelForProvider('google', 'best')).toBe('gemini-3.5-pro')
   })

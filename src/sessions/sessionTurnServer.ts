@@ -104,13 +104,13 @@ const CLOSE_SCHEMA: ToolArgsJsonShape = {
   required: ['summary'],
 }
 
-const NESTED_CALLER_NOTE =
+export const NESTED_CALLER_NOTE =
   'Not shown: only the main conversation has a step list and a closing box, and you are working under it. Do not call set_plan or close again; continue your task and report your result the usual way.'
 
 const refused = (text: string): BuiltinMcpToolResult => ({ text, isError: true })
 
 /** Whether the call comes from a loop under the session rather than its main conversation. */
-function isNestedCaller(context: ToolCallContext): boolean {
+export function isNestedCaller(context: ToolCallContext): boolean {
   const sessionId = context.options.sessionId ?? ''
   return (
     context.agentId !== undefined ||

@@ -21,7 +21,6 @@ import {
 import { gatherSystemPromptSources } from './systemPromptSources'
 import { resolvePromptProfile } from '../prompting/promptProfile'
 import { composeSectionsOf, instructionKindOf, memoryTypeOf } from '../mods/promptEvents'
-import { isToolWithheldForModel } from '../utils/todoTools'
 import { augmentedAppStateForDeferral, shouldHideToolFromModel } from '../toolkit/run/deferredTools'
 import { PLAN_OFF_TOOL_ID } from '../toolkit/builtin/planExit'
 import type { SessionLedger } from './sessionLedger'
@@ -50,7 +49,6 @@ export function visibleToolNames(
   return config.tools
     .filter(tool => {
       if (tool.name === PLAN_OFF_TOOL_ID && appState.permissionRules.mode !== 'plan') return false
-      if (isToolWithheldForModel(tool.name, model, providerId)) return false
       return !shouldHideToolFromModel(
         tool,
         augmentedAppStateForDeferral({

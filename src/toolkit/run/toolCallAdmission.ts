@@ -1,6 +1,5 @@
 /**
- * Stage 1 (F-26). Refused with a recoverable error: an unknown name; a tool withheld
- * from this turn's model; a deferred-and-inactive or sealed owner (same inputs as
+ * Stage 1 (F-26). Refused with a recoverable error: an unknown name; a deferred-and-inactive or sealed owner (same inputs as
  * the schema serializer); an interrupted turn. Also decides whether `tool.call` is
  * raised.
  */
@@ -8,7 +7,6 @@ import type { QueryToolUseBlock } from '../../runtime/interfaces/QueryRuntimeDep
 import { resolveToolByName, type ToolContract } from '../toolContract'
 import type { ToolCallContext } from '../toolCallContext'
 import { traceLine } from '../../utils/debugLog'
-import { isToolWithheldForModel, withheldToolCallMessage } from '../../utils/todoTools'
 import {
   augmentedAppStateForDeferral,
   deferralKeyFromContext,
@@ -24,20 +22,12 @@ export type ToolCallAdmission =
   | { tool: ToolContract; refusal?: undefined }
   | { tool?: ToolContract; refusal: { content: string; data: string } }
 
-/** Whether `tool` is one the model can call now (withheld or deferred
- *  tools are not). */
+/** Whether `tool` is one the model can call now (a deferred tool is not). */
 export function isToolOffered(tool: ToolContract, callContext: ToolCallContext): boolean {
-  return !(
-    isToolWithheldForModel(
-      tool.name,
-      callContext.options.mainLoopModel,
-      callContext.options.mainLoopProviderId,
-    ) ||
-    shouldHideToolFromModel(
-      tool,
-      augmentedAppStateForDeferral(callContext),
-      deferralKeyFromContext(callContext),
-    )
+  return !shouldHideToolFromModel(
+    tool,
+    augmentedAppStateForDeferral(callContext),
+    deferralKeyFromContext(callContext),
   )
 }
 
@@ -87,16 +77,6 @@ export function admitToolCall(
         data: `Unknown tool: ${block.toolName}`,
       },
     }
-  }
-  if (
-    isToolWithheldForModel(
-      tool.name,
-      callContext.options.mainLoopModel,
-      callContext.options.mainLoopProviderId,
-    )
-  ) {
-    const withheld = withheldToolCallMessage(tool.name)
-    return { tool, refusal: { content: withheld, data: withheld } }
   }
   if (
     !(options.fromExtension && isExtensionToolUnit(tool.name, deferralKeyFromContext(callContext))) &&

@@ -123,8 +123,8 @@ export type PromptChunk = { name?: string; text: string }
 // (marker stripped, every other byte intact) when `<ToolName>` is in the
 // turn's visible tool set, and dropped whole — newline included — when it is
 // not. It exists for a bullet that names one tool inside a section that must
-// otherwise stay: a tool can be absent for THIS turn only (the per-model todo
-// gate, utils/todoTools.ts), and prose telling the model to use a tool whose
+// otherwise stay: a tool can be absent for THIS session only (a built-in server
+// that is off for it), and prose telling the model to use a tool whose
 // schema it was not sent is worse than no prose. Written at the very start of
 // the line so stripping it restores the ungated text byte for byte.
 const IF_TOOL_LINE = /^\{\{IF_TOOL:([A-Za-z0-9_]+)\}\}(.*(?:\r?\n|$))/gm

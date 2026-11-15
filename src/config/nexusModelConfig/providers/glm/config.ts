@@ -51,9 +51,6 @@ export const GLM_PROVIDER_MODEL_CONFIG: NexusProviderModelConfig = {
       model: createExactModelPattern('glm-5\\.3'),
       name: 'GLM-5.3',
       minVersion: '4',
-      // Current-generation flagship/balanced tier — no TodoWrite (see
-      // `todoTools` in ../types.ts).
-      todoTools: false,
       defaultMaxOutputTokens: 65_536,
       supportsStrictTools: true,
       // Text-only per its model page, like every plain GLM row.
@@ -64,14 +61,13 @@ export const GLM_PROVIDER_MODEL_CONFIG: NexusProviderModelConfig = {
         // GLM-4.6: 200K context, 128K output (the catalog's 131,072). Hybrid thinking on by default
         // at the model level, with only a binary `thinking.type` toggle — no
         // effort gradient to surface. Honours `strict: true` (Z.AI developer
-        // docs). Text-only (docs.z.ai/guides/llm/glm-4.6). Keeps the todo tools.
-        '4.6': { id: 'glm-4.6', name: 'GLM-4.6', todoTools: undefined, contextWindow: 200_000 },
+        // docs). Text-only (docs.z.ai/guides/llm/glm-4.6).
+        '4.6': { id: 'glm-4.6', name: 'GLM-4.6', contextWindow: 200_000 },
         // GLM-4: legacy, 4K output, no strict tools. Input modality: text
         // (docs.bigmodel.cn GLM-4 family page).
         '4': {
           id: 'glm-4',
           name: 'GLM-4',
-          todoTools: undefined,
           contextWindow: 128_000,
           defaultMaxOutputTokens: 4_096,
           maxOutputTokens: 4_096,

@@ -297,7 +297,6 @@ describe("a custom model the dialect vendor's catalog covers", () => {
     expect(modelSupportsStrictTools('claude-opus-5-5', 'custom-relay')).toBe(false)
     const row = findConfiguredModel('custom-relay', 'claude-opus-5-5')!
     expect(row.promptProfile).toBeUndefined()
-    expect(row.todoTools).toBeUndefined()
   })
 
   it('no reasoning, no tiers; an id no vendor row covers keeps the generic three', () => {

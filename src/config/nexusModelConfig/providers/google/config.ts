@@ -48,17 +48,13 @@ export const GOOGLE_PROVIDER_MODEL_CONFIG: NexusProviderModelConfig = {
       model: createExactModelPattern('gemini-3\\.8-flash'),
       name: 'Gemini 3.8 Flash',
       minVersion: '2.5',
-      // Current-generation flagship/balanced tier — no TodoWrite (see
-      // `todoTools` in ../types.ts).
-      todoTools: false,
       defaultMaxOutputTokens: 32_768,
       compactionTriggerCharCount: 200_000,
       versions: {
         '3.7': { id: 'gemini-3.7-flash', name: 'Gemini 3.7 Flash' },
         '3.6': { id: 'gemini-3.6-flash', name: 'Gemini 3.6 Flash' },
-        // 3.5 and 2.5 Flash keep the todo tools.
-        '3.5': { id: 'gemini-3.5-flash', name: 'Gemini 3.5 Flash', todoTools: undefined },
-        '2.5': { id: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash', todoTools: undefined },
+        '3.5': { id: 'gemini-3.5-flash', name: 'Gemini 3.5 Flash' },
+        '2.5': { id: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash' },
       },
     },
     {
@@ -90,9 +86,6 @@ export const GOOGLE_PROVIDER_MODEL_CONFIG: NexusProviderModelConfig = {
     {
       model: /gemini-3(?:\.1)?-pro(?:-preview(?:-[\w-]+)?)?/i,
       name: 'Gemini 3.1 Pro Preview',
-      // Current-generation flagship/balanced tier — no TodoWrite (see
-      // `todoTools` in ../types.ts).
-      todoTools: false,
       contextWindow: 1_048_576,
       defaultMaxOutputTokens: 32_768,
       maxOutputTokens: 65_536,

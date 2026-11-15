@@ -179,7 +179,6 @@ const FABLE: NexusConfiguredModel = {
   name: 'Fable 5.1',
   minVersion: '5',
   promptProfile: 'lean',
-  todoTools: false,
   supportsStrictTools: true,
   defaultThinkingTier: 'extra-high',
   availableThinkingTiers: ['low', 'medium', 'high', 'extra-high', 'max'],
@@ -275,19 +274,19 @@ describe('resolveFamilyRow — versions[<v>] > the listing > the row', () => {
 
   it('a field no layer states stays unstated — the consumer keeps its own default', () => {
     const out = resolve('claude-fable-5-2', undefined, { family: 'claude-fable-*', model: 'claude-fable-5-1' })
-    for (const field of [...FIELDS, 'promptProfile', 'todoTools', 'supportsStrictTools', 'defaultThinkingTier'] as const) {
+    for (const field of [...FIELDS, 'promptProfile', 'supportsStrictTools', 'defaultThinkingTier'] as const) {
       expect(out[field], field).toBeUndefined()
     }
   })
 
   it('the opt-in flags are the catalog\'s alone: a new version keeps them, no listing can set them', () => {
     // THE regression this change exists for: 5.2 used to read a grafted row
-    // that carried figures but not these three.
+    // that carried figures but not these two.
     const out = resolve('claude-fable-5-2', { contextWindow: 2_000_000 })
-    expect(out).toMatchObject({ promptProfile: 'lean', todoTools: false, supportsStrictTools: true })
+    expect(out).toMatchObject({ promptProfile: 'lean', supportsStrictTools: true })
     // …and an override is the only thing that changes one.
     const off = resolve('claude-fable-5-2', undefined, { ...FABLE, versions: { '5.2': { supportsStrictTools: false, promptProfile: 'standard' } } })
-    expect(off).toMatchObject({ promptProfile: 'standard', todoTools: false, supportsStrictTools: false })
+    expect(off).toMatchObject({ promptProfile: 'standard', supportsStrictTools: false })
     // A listing has no way to say any of them (the type has no such field).
     const listed: ListedModelFigures = { contextWindow: 1 }
     expect(Object.keys(listed)).not.toContain('supportsStrictTools')
@@ -311,10 +310,10 @@ describe('resolveFamilyRow — versions[<v>] > the listing > the row', () => {
   it('an override written `undefined` takes the field away for that version', () => {
     const row: NexusConfiguredModel = {
       ...FABLE,
-      versions: { '5.2': { todoTools: undefined, availableThinkingTiers: undefined, defaultThinkingTier: undefined } },
+      versions: { '5.2': { availableThinkingTiers: undefined, defaultThinkingTier: undefined } },
     }
     const out = resolve('claude-fable-5-2', undefined, row)
-    for (const field of ['todoTools', 'availableThinkingTiers', 'defaultThinkingTier'] as const) {
+    for (const field of ['availableThinkingTiers', 'defaultThinkingTier'] as const) {
       expect(field in out, field).toBe(false)
     }
     expect(out.supportsStrictTools).toBe(true) // left out: the row's
@@ -430,7 +429,6 @@ describe('findConfiguredModelIn — a fixed row that names the model, else its f
       defaultThinkingTier: 'extra-high',
       availableThinkingTiers: ['low', 'medium', 'high', 'extra-high', 'max'],
       promptProfile: 'lean',
-      todoTools: false,
       supportsStrictTools: true,
     })
     // …and so does a dated snapshot of it, and a major the catalog never saw.

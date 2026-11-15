@@ -44,9 +44,6 @@ export const QWEN_PROVIDER_MODEL_CONFIG: NexusProviderModelConfig = {
       model: createExactModelPattern('qwen3\\.8-max'),
       name: '3.8 Max',
       minVersion: '3.7',
-      // Current-generation flagship/balanced tier — no TodoWrite (see
-      // `todoTools` in ../types.ts).
-      todoTools: false,
       defaultMaxOutputTokens: 65_536,
       compactionTriggerCharCount: 60_000,
       defaultThinkingTier: 'max',

@@ -68,12 +68,6 @@ export type NexusConfiguredModel = {
    */
   promptProfile?: PromptProfile
   /**
-   * Whether this model is offered `TodoWrite` (tool, prose line and nudge together).
-   * `false` is opt-out and this field its ONLY source; omitted means the tool is
-   * offered. Not derived from `promptProfile`.
-   */
-  todoTools?: boolean
-  /**
    * Hard-coded context window (total input tokens the model accepts) in
    * tokens. Source of truth for UI token meters and request-size gating.
    * Providers do not reliably expose this via `/v1/models` (only Google

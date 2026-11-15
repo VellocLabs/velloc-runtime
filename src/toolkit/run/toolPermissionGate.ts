@@ -1,8 +1,9 @@
 /**
  * Contract: permission for one tool call (F-26). `decideToolPermission` answers
  * allow, deny, or the ONE next ask, with no side effect or wait, in a fixed order:
- * resume → plan-mode gate → file pipeline or rule gate → path-safety ask →
- * explicit allow → the tool's selfVerdict. `settlePermissionAsk` settles an ask.
+ * nested step-list call → confined session → resume → plan-mode gate → file
+ * pipeline or rule gate → path-safety ask → explicit allow → the tool's
+ * selfVerdict. `settlePermissionAsk` settles an ask.
  * Security: a path-safety ask is never cleared by an extension's allow
  * (`assertSafetyAskStands` fails closed).
  */
@@ -25,6 +26,7 @@ import {
 import { applyRuleEdits } from '../../permissions/ruleUpdates'
 import { isToolAllowedInPlanMode, planModeRejectMessage } from '../../permissions/planMode'
 import { confinedFileAccessDenial, isLocalAccessConfined } from '../../permissions/chatLocalAccess'
+import { nestedTurnBoardDenial } from '../../permissions/turnBoardCallers'
 import { planDocPath } from '../../utils/planFiles'
 import {
   getScratchpadDirectoryPath,
@@ -244,6 +246,18 @@ function planModeGate({ tool, rawInput, callContext, ruleSet }: GateInputs): Too
   }
 }
 
+/** A step-list tool called from a loop under the session is denied before it runs (F-41). */
+function nestedTurnBoardGate({ tool, callContext }: GateInputs): ToolPermissionVerdict | null {
+  const message = nestedTurnBoardDenial(tool, callContext)
+  if (!message) return null
+  return {
+    decision: 'deny',
+    message,
+    log: `[tool] ${tool.name} denied: called from a loop under the session`,
+    reason: message,
+  }
+}
+
 /** A chat session's file tools stay inside its memory, skill and upload roots, in every mode. */
 function confinedSessionGate({ tool, rawInput, callContext }: GateInputs): ToolPermissionVerdict | null {
   if (!isLocalAccessConfined(callContext.options.templateType)) return null
@@ -422,6 +436,9 @@ export async function decideToolPermission(
   const isFileTool = FILE_READ_TOOLS.has(tool.name) || FILE_WRITE_TOOLS.has(tool.name)
   const safetyAsk = (hasExplicitAllowRule: boolean) =>
     filePathSafetyAsk(tool, rawInput, callContext, ruleSet, hasExplicitAllowRule)
+
+  const nestedDenial = nestedTurnBoardGate(inputs)
+  if (nestedDenial) return nestedDenial
 
   const confinedDenial = confinedSessionGate(inputs)
   if (confinedDenial) return confinedDenial
