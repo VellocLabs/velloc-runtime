@@ -175,15 +175,16 @@ export async function buildSlotModRuntime(
     // Every module: one that is TypeScript / TSX or imports is compiled to
     // one module from its graph, read through the session's fs, within the
     // plugin's folder alone; any other is verified and loads as written.
-    compile: (ref, source) =>
+    compile: (ref, source, previous) =>
       compileModModule({
         entry: ref.path,
         entrySource: source,
+        previous,
         root: ref.root ?? ref.path.replace(/[\\/][^\\/]*[\\/][^\\/]*$/, ''),
         fs: {
           readFile: (path, o) => slot.installedFs.readFile(path, o).then(String),
         },
-      }).then(result => ({ source: result.source, files: result.files, uses: result.uses })),
+      }).then(({ source, files, uses, compiler, missing, digest }) => ({ source, files, uses, graph: { compiler, missing, digest } })),
     ...(modBuilds ? { builds: modBuilds } : {}),
     // The scan for a module whose compile answered no `uses`: the same
     // parser, over its one file.

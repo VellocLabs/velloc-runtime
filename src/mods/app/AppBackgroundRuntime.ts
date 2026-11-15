@@ -18,7 +18,7 @@
 import { errorMessage } from '../chainRules'
 import { ModDispatcher } from '../ModDispatcher'
 import { ModInstance, type ModCall } from '../ModInstance'
-import type { ModBuildStore } from '../modBuildStore'
+import type { ModBuildStore, ModCompileFn } from '../modBuildStore'
 import { fileModFs } from '../modFs'
 import type { ModHttpHost } from '../modHttp'
 import { normalizeModLocale } from '../modLocale'
@@ -86,7 +86,7 @@ export type AppBackgroundWindow = {
 
 export type AppBackgroundRuntimeOptions = {
   readModule: (path: string) => Promise<string>
-  compile?: (ref: ModModuleRef, source: string) => Promise<string | { source: string; files: readonly string[]; uses?: ModUses }>
+  compile?: ModCompileFn
   scan?: (ref: ModModuleRef, source: string) => Promise<ModUses>
   builds?: ModBuildStore
   /** Spawn a module's worker. Default: the isolated-worker kernel, kind `mod`. */

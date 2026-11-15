@@ -8,6 +8,7 @@
  */
 
 import type * as TS from 'typescript'
+import typescriptPackage from 'typescript/package.json' with { type: 'json' }
 import { MODS_ABI } from './modAdmission'
 import { scanModuleUses, type ModUses } from './modScan'
 
@@ -68,9 +69,21 @@ export type ModCompileFs = {
   readFile(path: string, options: { encoding: string }): Promise<string>
 }
 
-export type ModCompileCache = {
-  read(digest: string): Promise<string | null>
-  write(digest: string, text: string): Promise<void>
+/** What identifies a compile's inputs beyond the files it read. */
+export type ModCompileGraph = {
+  /** `typescript <version>` of the compile. */
+  compiler: string
+  /** The paths the resolution tried and found no file at. */
+  missing: readonly string[]
+  /** SHA-256 over the ABI, `compiler`, each file's path and text, and `missing`. */
+  digest: string
+}
+
+/** An earlier compile of the same entry, as the build store kept it. */
+export type ModCompileRecord = ModCompileGraph & {
+  files: readonly string[]
+  source: string
+  uses: ModUses
 }
 
 export type ModCompileOptions = {
@@ -79,7 +92,11 @@ export type ModCompileOptions = {
   /** The plugin's directory, absolute: nothing outside it is read. */
   root: string
   fs: ModCompileFs
-  cache?: ModCompileCache
+  /** The last compile of this entry (F-25). Answered as it is, with no
+   *  compiler loaded, when `compiler` is this build's, every file it lists
+   *  inside `root` reads the same text, and every `missing` path still reads
+   *  nothing (the inputs a discovery would see); else a full compile. */
+  previous?: ModCompileRecord | null
   /** The compiler, loaded lazily. Defaults to `import('typescript')`. */
   loadTypeScript?: () => Promise<typeof TS>
   /** The entry's text as the runtime read it: what is verified is what
@@ -88,15 +105,15 @@ export type ModCompileOptions = {
   entrySource?: string
 }
 
-export type ModCompileResult = {
+export type ModCompileResult = ModCompileGraph & {
   /** One self-contained ES module. */
   source: string
   /** Every file of the graph, the entry first, the rest in discovery order. */
   files: string[]
-  /** What the module uses, scanned over the graph's SOURCE — never
-   *  from the cache, since the files were read for the digest anyway. */
+  /** What `source` uses: scanned over the graph's source, or `previous`'s
+   *  own scan of the same files. */
   uses: ModUses
-  digest: string
+  /** Answered from `previous`, the compiler not loaded. */
   fromCache: boolean
 }
 
@@ -295,6 +312,7 @@ async function resolveRelative(
   root: string,
   fs: ModCompileFs,
   texts: Map<string, string>,
+  missing: Set<string>,
 ): Promise<{ path: string; text: string } | null> {
   const base = normalize(`${dirname(importer)}/${specifier}`)
   const written = extensionOf(base)
@@ -312,7 +330,7 @@ async function resolveRelative(
       texts.set(candidate, text)
       return { path: candidate, text }
     } catch {
-      /* next suffix */
+      missing.add(candidate)
     }
   }
   return null
@@ -334,6 +352,55 @@ async function sha256Hex(text: string): Promise<string> {
   return h.toString(16).padStart(16, '0')
 }
 
+/** The compiler identity a digest covers. */
+const compilerOf = (version: string) => `typescript ${version}`
+
+function graphDigest(
+  compiler: string,
+  files: ReadonlyArray<readonly [string, string]>,
+  missing: readonly string[],
+): Promise<string> {
+  return sha256Hex(JSON.stringify([MODS_ABI, compiler, files, missing]))
+}
+
+/**
+ * `previous` when its inputs are unchanged, else null. Security: reads only
+ * normalized paths inside `root`; `source` and `uses` are the pair the
+ * verifier and the scan produced together from those inputs.
+ */
+async function reuseEarlierCompile(
+  previous: ModCompileRecord,
+  entry: string,
+  root: string,
+  entryText: string,
+  fs: ModCompileFs,
+): Promise<ModCompileResult | null> {
+  const compiler = compilerOf(typescriptPackage.version)
+  const { files, missing } = previous
+  if (previous.compiler !== compiler || files[0] !== entry) return null
+  const listed = new Set(files)
+  if (listed.size !== files.length || missing.some(path => listed.has(path))) return null
+  if (![...files, ...missing].every(path => path === normalize(path) && isInside(root, path))) return null
+  const read = (path: string) => fs.readFile(path, { encoding: 'utf-8' }).then(String)
+  const [texts, appeared] = await Promise.all([
+    Promise.all(files.slice(1).map(path => read(path).catch(() => null))),
+    Promise.all(missing.map(path => read(path).then(() => true, () => false))),
+  ])
+  if (texts.some(text => text === null) || appeared.some(Boolean)) return null
+  const pairs = files.map((path, i) => [path, i === 0 ? entryText : texts[i - 1]!] as const)
+  const digest = await graphDigest(compiler, pairs, missing)
+  if (digest !== previous.digest) return null
+  return {
+    source: previous.source,
+    files: [...files],
+    uses: previous.uses,
+    compiler,
+    missing: [...missing],
+    digest,
+    fromCache: true,
+  }
+}
+
 /** The compiler, loaded lazily: a session with no TypeScript mod pays nothing. */
 export const loadTypeScript = (): Promise<typeof TS> =>
   import('typescript').then(module => (module as unknown as { default?: typeof TS }).default ?? (module as unknown as typeof TS))
@@ -341,7 +408,7 @@ const defaultLoadTypeScript = loadTypeScript
 
 /** Compile the hooks module at `entry` and its import graph to one module. */
 export async function compileModModule(options: ModCompileOptions): Promise<ModCompileResult> {
-  const { fs, cache } = options
+  const { fs } = options
   const root = normalize(options.root)
   const entry = normalize(options.entry)
   if (!MOD_MODULE_EXTENSIONS.includes(extensionOf(entry))) {
@@ -353,7 +420,6 @@ export async function compileModModule(options: ModCompileOptions): Promise<ModC
   if (!isInside(root, entry)) {
     throw new ModCompileError(`the hooks module is outside the plugin (${root})`, { file: entry })
   }
-  const ts = await (options.loadTypeScript ?? defaultLoadTypeScript)()
 
   // ── discover ──
   const texts = new Map<string, string>()
@@ -365,6 +431,13 @@ export async function compileModModule(options: ModCompileOptions): Promise<ModC
       { file: entry },
     )
   }
+  if (options.previous) {
+    const reused = await reuseEarlierCompile(options.previous, entry, root, texts.get(entry)!, fs).catch(() => null)
+    if (reused) return reused
+  }
+  const ts = await (options.loadTypeScript ?? defaultLoadTypeScript)()
+  const compiler = compilerOf(ts.version)
+  const missing = new Set<string>()
   // A plain module whose tree holds no import loads as written, but only once
   // it parses and its own syntax tree passes the verifier: the text check
   // never decides alone.
@@ -377,12 +450,13 @@ export async function compileModModule(options: ModCompileOptions): Promise<ModC
     })
     refuseSyntaxError(ts, entry, parsed.diagnostics)
     verifyCompiledModule(ts, entryText, line => ({ file: entry, line }))
-    const digest = await sha256Hex([MODS_ABI, `typescript ${ts.version}`, `${entry}\u0000${entryText}`].join('\u0001'))
     return {
       source: entryText,
       files: [entry],
       uses: scanModuleUses(ts, [{ path: entry, text: entryText }]),
-      digest,
+      compiler,
+      missing: [],
+      digest: await graphDigest(compiler, [[entry, entryText]], []),
       fromCache: false,
     }
   }
@@ -420,7 +494,7 @@ export async function compileModModule(options: ModCompileOptions): Promise<ModC
       if (!isInside(root, candidate)) {
         throw new ModCompileError(`"${specifier}" is outside the plugin (${root})`, { file: path, line })
       }
-      const resolved = await resolveRelative(specifier, path, root, fs, texts)
+      const resolved = await resolveRelative(specifier, path, root, fs, texts, missing)
       if (!resolved) {
         throw new ModCompileError(`"${specifier}" names no file of the plugin`, { file: path, line })
       }
@@ -429,20 +503,11 @@ export async function compileModModule(options: ModCompileOptions): Promise<ModC
     }
   }
 
-  // ── the scan: over the source, cache or no cache ──
+  // ── the scan: over the source ──
   const uses = scanModuleUses(
     ts,
     order.map(path => ({ path, text: texts.get(path)! })),
   )
-
-  // ── the digest, and the cache ──
-  const digest = await sha256Hex(
-    [MODS_ABI, `typescript ${ts.version}`, ...order.map(path => `${path}\u0000${texts.get(path)!}`)].join('\u0001'),
-  )
-  if (cache) {
-    const cached = await cache.read(digest).catch(() => null)
-    if (cached) return { source: cached, files: order, uses, digest, fromCache: true }
-  }
 
   // ── compile ──
   const compiled = new Map<string, string>()
@@ -469,7 +534,7 @@ export async function compileModModule(options: ModCompileOptions): Promise<ModC
 
   // ── link ──
   const lines: string[] = []
-  lines.push(`// Compiled by the Velloc mods compiler (${MODS_ABI}, typescript ${ts.version}).`)
+  lines.push(`// Compiled by the Velloc mods compiler (${MODS_ABI}, ${compiler}).`)
   lines.push(`// Entry: ${entry}`)
   lines.push('const __modules = Object.create(null);')
   lines.push('const __links = Object.create(null);')
@@ -518,8 +583,9 @@ export async function compileModModule(options: ModCompileOptions): Promise<ModC
       : { compiledLine: line }
   })
 
-  if (cache) await cache.write(digest, source).catch(() => undefined)
-  return { source, files: order, uses, digest, fromCache: false }
+  const misses = [...missing]
+  const digest = await graphDigest(compiler, order.map(path => [path, texts.get(path)!] as const), misses)
+  return { source, files: order, uses, compiler, missing: misses, digest, fromCache: false }
 }
 
 /**

@@ -6,7 +6,8 @@
 
 import { errorMessage } from './chainRules'
 import { refuseModuleSource } from './modAdmission'
-import type { ModBuildStore } from './modBuildStore'
+import type { ModBuildStore, ModCompileFn } from './modBuildStore'
+import type { ModCompileGraph } from './modCompiler'
 import type { ModModuleRef } from './ModRuntime'
 import type { ModUses } from './modScan'
 
@@ -27,7 +28,7 @@ export class ModuleRefused extends Error {
 
 export type ModulePrepareDeps = {
   readModule: (path: string) => Promise<string>
-  compile?: (ref: ModModuleRef, source: string) => Promise<string | { source: string; files: readonly string[]; uses?: ModUses }>
+  compile?: ModCompileFn
   scan?: (ref: ModModuleRef, source: string) => Promise<ModUses>
   builds?: ModBuildStore
   report: (line: string) => void
@@ -61,17 +62,16 @@ export async function prepareModule(
   if (refused) throw new ModuleRefused('refused', refused)
   const original = source
   let uses: ModUses | undefined
+  let graph: ModCompileGraph | undefined
   let files: readonly string[] = [ref.path]
   // Every module goes through the compiler when there is one: it compiles
   // what needs it and verifies the rest (`compileModModule`).
   if (deps.compile) {
     try {
-      const built = await deps.compile(ref, source)
+      const previous = await deps.builds?.previous?.(ref).catch(() => null)
+      const built = await deps.compile(ref, source, previous)
       source = typeof built === 'string' ? built : built.source
-      if (typeof built !== 'string') {
-        uses = built.uses
-        files = built.files
-      }
+      if (typeof built !== 'string') ({ uses, files, graph } = built)
     } catch (error) {
       throw new ModuleRefused('refused', `it did not compile — ${errorMessage(error)}`)
     }
@@ -90,6 +90,7 @@ export async function prepareModule(
       compiled: source !== original,
       files,
       ...(uses ? { uses } : {}),
+      ...(graph ? { graph } : {}),
     })
   }
   if (uses) {

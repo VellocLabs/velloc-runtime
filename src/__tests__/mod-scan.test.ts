@@ -204,7 +204,7 @@ describe('the runtime\'s two readings', () => {
     }
   })
 
-  it('the compiler scans the whole graph, cache or no cache', async () => {
+  it('the compiler scans the whole graph; a previous compile answers its own scan', async () => {
     const files: Record<string, string> = {
       '/p/hooks/register.ts': `
         import { helper } from './helper'
@@ -213,11 +213,9 @@ describe('the runtime\'s two readings', () => {
       '/p/hooks/helper.ts': `export async function helper($) { await $.ui.toast('x'); await $.env.get('HOME') }`,
     }
     const fs = { readFile: async (path: string) => files[path] ?? Promise.reject(new Error('ENOENT')) }
-    const entries = new Map<string, string>()
-    const cache = { read: async (d: string) => entries.get(d) ?? null, write: async (d: string, t: string) => void entries.set(d, t) }
-    const first = await compileModModule({ entry: '/p/hooks/register.ts', root: '/p', fs, cache })
+    const first = await compileModModule({ entry: '/p/hooks/register.ts', root: '/p', fs })
     expect(first.uses).toEqual({ events: ['prompt.submit'], calls: ['env.get', 'ui.toast'], env: { reads: ['HOME'], writes: [] } })
-    const second = await compileModModule({ entry: '/p/hooks/register.ts', root: '/p', fs, cache })
+    const second = await compileModModule({ entry: '/p/hooks/register.ts', root: '/p', fs, previous: first })
     expect(second.fromCache).toBe(true)
     expect(second.uses).toEqual(first.uses)
   })

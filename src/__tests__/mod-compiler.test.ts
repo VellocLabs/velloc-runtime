@@ -7,8 +7,9 @@ import {
   MOD_API_SPECIFIER,
   ModCompileError,
   compileModModule,
+  loadTypeScript,
   needsCompiler,
-  type ModCompileCache,
+  type ModCompileResult,
 } from '../mods/modCompiler'
 import { refuseModuleSource } from '../mods/modAdmission'
 import { ModRuntime, type ModModuleRef, type ModWorkerHandle } from '../mods/ModRuntime'
@@ -34,21 +35,19 @@ function fsOf(files: Record<string, string>) {
   }
 }
 
-function memoryCache(): ModCompileCache & { entries: Map<string, string>; reads: number } {
-  const entries = new Map<string, string>()
-  const cache = {
-    entries,
-    reads: 0,
-    read: async (digest: string) => {
-      cache.reads += 1
-      return entries.get(digest) ?? null
-    },
-    write: async (digest: string, text: string) => {
-      entries.set(digest, text)
+/** The real compiler, each load counted. */
+function countingCompiler() {
+  const counter = {
+    loads: 0,
+    load: () => {
+      counter.loads += 1
+      return loadTypeScript()
     },
   }
-  return cache
+  return counter
 }
+
+const noCompiler = () => Promise.reject(new Error('the compiler was loaded'))
 
 const ROOT = '/plugins/typed'
 
@@ -336,25 +335,96 @@ describe('compileModModule', () => {
     })
   })
 
-  describe('the cache', () => {
-    it('is keyed by the content of every file: a hit skips the compiler, a changed dependency misses', async () => {
-      const files: Record<string, string> = {
-        [`${ROOT}/hooks/register.ts`]: `import { v } from './dep'\nexport function register() { return v }`,
-        [`${ROOT}/hooks/dep.ts`]: `export const v = 1`,
-      }
-      const cache = memoryCache()
-      const first = await compileModModule({ entry: `${ROOT}/hooks/register.ts`, root: ROOT, fs: fsOf(files), cache })
+  describe('a previous compile', () => {
+    const ENTRY = `${ROOT}/hooks/register.ts`
+    const DEP = `${ROOT}/hooks/dep.ts`
+    const DEP_JS = `${ROOT}/hooks/dep.js`
+    const graph = (): Record<string, string> => ({
+      [ENTRY]: `import { v } from './dep.js'\nexport function register(on) { on('prompt.submit', ($, e, next) => $.ui.toast(v).then(() => next(e))) }`,
+      [DEP]: `export const v: string = 'one'`,
+    })
+
+    it('of unchanged files is answered as it was, and TypeScript is never loaded', async () => {
+      const files = graph()
+      const first = await compileModModule({ entry: ENTRY, root: ROOT, fs: fsOf(files) })
       expect(first.fromCache).toBe(false)
-      expect(cache.entries.size).toBe(1)
-      const second = await compileModModule({ entry: `${ROOT}/hooks/register.ts`, root: ROOT, fs: fsOf(files), cache })
+      expect(first.files).toEqual([ENTRY, DEP])
+      expect(first.missing, 'the emitted name the resolution tried first').toEqual([DEP_JS])
+      const fs = fsOf(files)
+      const second = await compileModModule({ entry: ENTRY, root: ROOT, fs, previous: first, loadTypeScript: noCompiler })
       expect(second.fromCache).toBe(true)
-      expect(second.digest).toBe(first.digest)
-      expect(second.source).toBe(first.source)
-      files[`${ROOT}/hooks/dep.ts`] = `export const v = 2`
-      const third = await compileModModule({ entry: `${ROOT}/hooks/register.ts`, root: ROOT, fs: fsOf(files), cache })
-      expect(third.fromCache).toBe(false)
-      expect(third.digest).not.toBe(first.digest)
-      expect(cache.entries.size).toBe(2)
+      expect({ ...second, fromCache: false }).toEqual(first)
+      expect(new Set(fs.reads), 'the listed files and the missed name, nothing else').toEqual(new Set([ENTRY, DEP, DEP_JS]))
+
+      // The runtime hands the entry's text: only the imports are read.
+      const withText = fsOf(files)
+      const third = await compileModModule({
+        entry: ENTRY,
+        root: ROOT,
+        fs: withText,
+        entrySource: files[ENTRY],
+        previous: first,
+        loadTypeScript: noCompiler,
+      })
+      expect(third.fromCache).toBe(true)
+      expect(withText.reads).not.toContain(ENTRY)
+    })
+
+    it('of a plain module is answered without TypeScript too', async () => {
+      const entry = `${ROOT}/hooks/register.js`
+      const files = { [entry]: `export function register(on) { on('session.start', ($, e, next) => next(e)) }` }
+      const first = await compileModModule({ entry, root: ROOT, fs: fsOf(files) })
+      expect(first).toMatchObject({ source: files[entry], files: [entry], missing: [], fromCache: false })
+      const second = await compileModModule({ entry, root: ROOT, fs: fsOf(files), previous: first, loadTypeScript: noCompiler })
+      expect(second).toMatchObject({ source: files[entry], uses: first.uses, digest: first.digest, fromCache: true })
+    })
+
+    const changes: Array<[string, (files: Record<string, string>, first: ModCompileResult) => ModCompileResult]> = [
+      ['the entry changed', (files, first) => ((files[ENTRY] = `${files[ENTRY]}\n// saved`), first)],
+      ['an imported file changed', (files, first) => ((files[DEP] = `export const v: string = 'two'`), first)],
+      ['an imported file is gone', (files, first) => (delete files[DEP], first)],
+      ['a name the resolution missed now exists', (files, first) => ((files[DEP_JS] = `export const v = 'js'`), first)],
+      ['another compiler wrote it', (_files, first) => ({ ...first, compiler: 'typescript 0.0.1' })],
+      ['its digest does not match', (_files, first) => ({ ...first, digest: '0'.repeat(64) })],
+      ['it lists another entry', (_files, first) => ({ ...first, files: [DEP, ENTRY] })],
+    ]
+    it.each(changes)('falls back to a full compile when %s', async (_name, change) => {
+      const files = graph()
+      const first = await compileModModule({ entry: ENTRY, root: ROOT, fs: fsOf(files) })
+      const previous = change(files, first)
+      const compiler = countingCompiler()
+      const outcome = await compileModModule({ entry: ENTRY, root: ROOT, fs: fsOf(files), previous, loadTypeScript: compiler.load }).then(
+        result => result,
+        (error: unknown) => error,
+      )
+      expect(compiler.loads).toBe(1)
+      if (outcome instanceof ModCompileError) {
+        expect(outcome.message, 'a gone import is refused afresh').toMatch(/names no file/)
+        return
+      }
+      const result = outcome as ModCompileResult
+      expect(result.fromCache).toBe(false)
+      expect(result, 'what a compile with no record answers').toEqual(await compileModModule({ entry: ENTRY, root: ROOT, fs: fsOf(files) }))
+      if (files[DEP_JS] !== undefined) expect(result.files).toEqual([ENTRY, DEP_JS])
+    })
+
+    it('naming a file outside the plugin never reads it, and compiles afresh', async () => {
+      const files = graph()
+      const first = await compileModModule({ entry: ENTRY, root: ROOT, fs: fsOf(files) })
+      for (const outside of ['/etc/secret.ts', `${ROOT}/hooks/../../other/secret.ts`]) {
+        for (const previous of [
+          { ...first, files: [ENTRY, outside] },
+          { ...first, missing: [outside] },
+        ]) {
+          const fs = fsOf({ ...files, [outside]: 'export const x = 1' })
+          const compiler = countingCompiler()
+          const result = await compileModModule({ entry: ENTRY, root: ROOT, fs, previous, loadTypeScript: compiler.load })
+          expect(fs.reads).not.toContain(outside)
+          expect(compiler.loads).toBe(1)
+          expect(result.fromCache).toBe(false)
+          expect(result.source).toBe(first.source)
+        }
+      }
     })
   })
 })

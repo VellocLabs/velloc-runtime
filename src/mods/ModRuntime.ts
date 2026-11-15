@@ -23,7 +23,8 @@ import { implementedNouns, isOpResult, serveNoun, serveNounStream, type ModEnvHo
 import { HEADLESS_COMPOSER, ModComposerBridge } from './modComposer'
 import { EMPTY_USES, ENGINE_NOUNS, pluginNounCalls, unsupportedEngineCalls, type ModUses } from './modScan'
 import { isBuiltinModPath } from './builtinMods'
-import type { ModBuildStore } from './modBuildStore'
+import type { ModBuildStore, ModCompileFn } from './modBuildStore'
+import type { ModCompileGraph } from './modCompiler'
 import { isEngineTable, type EngineTable } from './modEngineTable'
 import { ModStateStore, type ModStateAddress } from './modState'
 import { MemoryModStore, type ModStoreHost } from './modStore'
@@ -135,11 +136,9 @@ export type ModRuntimeOptions = {
    *  that imports, becomes one JavaScript module. Rejects with the reason
    *  (file and line) when it cannot. Absent: such a module is refused. May
    *  answer the graph's files too (`{ source, files }`), which the dev loop
-   *  polls. */
-  compile?: (
-    ref: ModModuleRef,
-    source: string,
-  ) => Promise<string | { source: string; files: readonly string[]; uses?: ModUses }>
+   *  polls, and `graph`, kept with the build so the next compile of
+   *  unchanged files is answered from it (`previous`). */
+  compile?: ModCompileFn
   /** The scan for a module whose compile answered no `uses` (or a runtime
    *  with no compiler): what it hooks and calls, read off its text. Absent,
    *  and with no `uses` from the compiler: nothing is known of the module
@@ -835,7 +834,8 @@ export class ModRuntime extends ModUiSurface implements TurnExtensions {
         if (!changed && seat.compiled !== undefined && this.options.compile) {
           // The entry is as it was; a file it imports may not be.
           try {
-            const built = await this.options.compile(seat.ref, text)
+            const previous = await this.options.builds?.previous?.(seat.ref).catch(() => null)
+            const built = await this.options.compile(seat.ref, text, previous)
             changed = (typeof built === 'string' ? built : built.source) !== seat.compiled
           } catch {
             changed = true
@@ -954,6 +954,7 @@ export class ModRuntime extends ModUiSurface implements TurnExtensions {
     // below replaces them — or `absent` / `unload` drops them.
     let source: string
     let uses: ModUses | undefined
+    let graph: ModCompileGraph | undefined
     // Unchanged files: the last load's text and scan, nothing read or compiled.
     const kept = isBuiltinModPath(ref.path) ? null : await this.options.builds?.lookup(ref).catch(() => null)
     if (kept) {
@@ -977,11 +978,12 @@ export class ModRuntime extends ModUiSurface implements TurnExtensions {
       // compiles what needs it and verifies the rest.
       if (this.options.compile) {
         try {
-          const built = await this.options.compile(ref, source)
+          const previous = await this.options.builds?.previous?.(ref).catch(() => null)
+          const built = await this.options.compile(ref, source, previous)
           source = typeof built === 'string' ? built : built.source
           if (source !== seat.source) seat.compiled = source
           seat.files = typeof built === 'string' ? [ref.path] : [...built.files]
-          if (typeof built !== 'string') uses = built.uses
+          if (typeof built !== 'string') ({ uses, graph } = built)
         } catch (error) {
           seat.compileFailed = true
           return absent('refused', `it did not compile — ${errorMessage(error)}`)
@@ -1003,6 +1005,7 @@ export class ModRuntime extends ModUiSurface implements TurnExtensions {
           compiled: seat.compiled !== undefined,
           files: seat.files,
           ...(uses ? { uses } : {}),
+          ...(graph ? { graph } : {}),
         })
       }
     }

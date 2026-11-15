@@ -26,13 +26,14 @@ export function providerModuleLoaders(deps: ProviderModuleLoaderDeps): ProviderM
   const { fs, report } = deps
   return {
     readModule: async path => String(await fs.readFile(path, { encoding: 'utf-8' })),
-    compile: (ref, source) =>
+    compile: (ref, source, previous) =>
       compileModModule({
         entry: ref.path,
         entrySource: source,
+        previous,
         root: ref.root ?? ref.path.replace(/[\\/][^\\/]*[\\/][^\\/]*$/, ''),
         fs: { readFile: (path, o) => fs.readFile(path, o).then(String) },
-      }).then(result => ({ source: result.source, files: result.files, uses: result.uses })),
+      }).then(({ source, files, uses, compiler, missing, digest }) => ({ source, files, uses, graph: { compiler, missing, digest } })),
     scan: (ref, source) => loadTypeScript().then(ts => scanModuleUses(ts, [{ path: ref.path, text: source }])),
     report,
   }

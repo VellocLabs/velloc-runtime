@@ -9,6 +9,7 @@
 import type { RuntimeFs } from '../utils/fs/runtimeFs'
 import { isAbsoluteRuntimePath, joinRuntimePath, normalizeRuntimePath, relativeRuntimePath } from '../utils/runtimePaths'
 import { MODS_ABI } from './modAdmission'
+import type { ModCompileGraph, ModCompileRecord } from './modCompiler'
 import type { ModModuleRef } from './ModRuntime'
 import type { ModUses } from './modScan'
 
@@ -20,6 +21,22 @@ export const MOD_BUILD_STAMP = `${MODS_ABI}; build ${MOD_BUILD_REVISION}`
 
 export type ModBuildFile = { path: string; size: number; mtimeMs: number }
 
+/** What a compile answers: its text, the files it read, and what lets the
+ *  next compile of unchanged files skip the compiler (`graph`). */
+export type ModBuiltModule = {
+  source: string
+  files: readonly string[]
+  uses?: ModUses
+  graph?: ModCompileGraph
+}
+
+/** A loader's compile: `previous` is the module's last compile, when kept. */
+export type ModCompileFn = (
+  ref: ModModuleRef,
+  source: string,
+  previous?: ModCompileRecord | null,
+) => Promise<string | ModBuiltModule>
+
 export type ModBuild = {
   /** The text the worker runs. */
   source: string
@@ -30,6 +47,7 @@ export type ModBuild = {
   /** The files the build read, entry first. */
   files: readonly string[]
   uses?: ModUses
+  graph?: ModCompileGraph
 }
 
 type ModBuildRecord = {
@@ -41,11 +59,15 @@ type ModBuildRecord = {
   entrySource: string
   compiled: boolean
   uses?: ModUses
+  graph?: ModCompileGraph
 }
 
 export type ModBuildStore = {
   /** The record for `ref` when its files are as they were; else null. */
   lookup(ref: ModModuleRef): Promise<ModBuild | null>
+  /** The module's last compile whatever its files' stats, for the compiler
+   *  to check by content (`compileModModule`'s `previous`); else null. */
+  previous?(ref: ModModuleRef): Promise<ModCompileRecord | null>
   /** Keep what a successful load produced (failures are dropped). */
   remember(ref: ModModuleRef, build: ModBuild): Promise<void>
   /** Drop the module's record (its plugin was switched off or on). */
@@ -142,6 +164,17 @@ function isRecord(value: unknown): value is ModBuildRecord {
   )
 }
 
+function isGraph(value: unknown): value is ModCompileGraph {
+  if (typeof value !== 'object' || value === null) return false
+  const g = value as Partial<ModCompileGraph>
+  return (
+    typeof g.compiler === 'string' &&
+    typeof g.digest === 'string' &&
+    Array.isArray(g.missing) &&
+    g.missing.every(path => typeof path === 'string')
+  )
+}
+
 /** The store over `<modsDir>/builds/`. */
 export function fileModBuildStore(
   fs: Pick<RuntimeFs, 'readFile' | 'writeFile' | 'stat' | 'unlink'>,
@@ -161,15 +194,20 @@ export function fileModBuildStore(
     }
   }
 
+  const recordOf = async (ref: ModModuleRef): Promise<ModBuildRecord | null> => {
+    let record: unknown
+    try {
+      record = JSON.parse(String(await fs.readFile(fileOf(ref), { encoding: 'utf-8' })))
+    } catch {
+      return null
+    }
+    return isRecord(record) && record.stamp === MOD_BUILD_STAMP && record.path === ref.path ? record : null
+  }
+
   return {
     async lookup(ref) {
-      let record: unknown
-      try {
-        record = JSON.parse(String(await fs.readFile(fileOf(ref), { encoding: 'utf-8' })))
-      } catch {
-        return null
-      }
-      if (!isRecord(record) || record.stamp !== MOD_BUILD_STAMP || record.path !== ref.path) return null
+      const record = await recordOf(ref)
+      if (!record) return null
       const pin = pinOf(ref)
       const pinned =
         pin !== undefined && record.pinned?.provenance === pin.provenance && record.pinned.version === pin.version
@@ -189,6 +227,13 @@ export function fileModBuildStore(
       }
     },
 
+    async previous(ref) {
+      const record = await recordOf(ref)
+      if (!record?.uses || !isGraph(record.graph)) return null
+      const { compiler, missing, digest } = record.graph
+      return { compiler, missing, digest, files: record.files.map(file => file.path), source: record.source, uses: record.uses }
+    },
+
     async remember(ref, build) {
       const files = await Promise.all(build.files.map(statOf))
       // A file that cannot be stat'ed cannot be checked next time: keep nothing.
@@ -203,6 +248,7 @@ export function fileModBuildStore(
         entrySource: build.entrySource,
         compiled: build.compiled,
         ...(build.uses ? { uses: build.uses } : {}),
+        ...(build.graph ? { graph: build.graph } : {}),
       }
       try {
         await options.ensureDir(dir)

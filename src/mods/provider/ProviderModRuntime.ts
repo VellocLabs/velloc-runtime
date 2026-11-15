@@ -25,7 +25,7 @@ import {
   type ModWorkerHandle,
 } from '../ModRuntime'
 import type { ModUses } from '../modScan'
-import type { ModBuildStore } from '../modBuildStore'
+import type { ModBuildStore, ModCompileFn } from '../modBuildStore'
 import { MemoryModStore, type ModStoreHost } from '../modStore'
 import { MOD_WORKER_KIND, type HookRegistration } from '../modTypes'
 import { selectsEvent } from '../eventPattern'
@@ -87,10 +87,7 @@ export type ProviderNounTable = Readonly<Record<string, (call: ProviderNounCall)
 export type ProviderModRuntimeOptions = {
   readModule: (path: string) => Promise<string>
   /** As `ModRuntimeOptions.compile`. Absent: a module that needs it is refused. */
-  compile?: (
-    ref: ModModuleRef,
-    source: string,
-  ) => Promise<string | { source: string; files: readonly string[]; uses?: ModUses }>
+  compile?: ModCompileFn
   /** As `ModRuntimeOptions.scan`: what a module calls, read before it runs. */
   scan?: (ref: ModModuleRef, source: string) => Promise<ModUses>
   /** As `ModRuntimeOptions.builds`: a load of unchanged files reads,

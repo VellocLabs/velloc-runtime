@@ -5,6 +5,7 @@
 
 import { afterEach, describe, expect, it } from 'vitest'
 import { fileModBuildStore, forgetModBuilds, MOD_BUILD_STAMP, type ModBuild } from '../mods/modBuildStore'
+import { compileModModule, loadTypeScript, type ModCompileGraph } from '../mods/modCompiler'
 import { RUNTIME_DIR_NAME } from '../branding/runtimeDir'
 import { pluginsHandlers } from '../browser/bridge/adapter/pluginsBridgeAdapter'
 import { makeMemFs } from './_helpers/memFs'
@@ -134,6 +135,21 @@ describe('fileModBuildStore', () => {
     await store.remember(local, BUILD)
     expect([...world.files.keys()].some(path => path.includes('/.builds/'))).toBe(false)
   })
+
+  it('previous: the last compile whatever the stats say (the compiler checks the content); none without a graph', async () => {
+    const graph: ModCompileGraph = { compiler: 'typescript 9.9.9', missing: ['/plugins/acme/hooks/lib.js'], digest: 'd' }
+    const world = memoryFs({ [ENTRY]: 'entry', [LIB]: 'lib' })
+    const store = storeOver(world)
+    await store.remember(local, { ...BUILD, graph })
+    world.touch(LIB)
+    expect(await store.lookup(local)).toBeNull()
+    expect(await store.previous!(local)).toEqual({ ...graph, files: [ENTRY, LIB], source: 'compiled', uses: USES })
+    expect(await store.previous!({ ...local, path: LIB }), 'another module').toBeNull()
+    await store.remember(local, BUILD)
+    expect(await store.previous!(local), 'a build kept without one').toBeNull()
+    await store.forget(local)
+    expect(await store.previous!(local)).toBeNull()
+  })
 })
 
 const MODULE = `
@@ -191,6 +207,69 @@ describe('a session runtime over the store', () => {
     const three = session(world, third)
     await three.runtime.ready
     expect(third, 'an imported file changed: built again').toEqual([`read ${ENTRY}`, 'compile'])
+  })
+})
+
+describe('a session runtime over the store and the real compiler', () => {
+  const TYPED_ENTRY = '/plugins/acme/hooks/register.ts'
+  const TYPED_LIB = '/plugins/acme/hooks/lib.ts'
+
+  function session(world: ReturnType<typeof memoryFs>, compiler: { loads: number }) {
+    const reports: string[] = []
+    const store = storeOver(world)
+    const runtime = new ModRuntime({
+      modules: [{ plugin: 'acme', path: TYPED_ENTRY, root: '/plugins/acme', provenance: 'acme@inline' }],
+      readModule: async path => String(await world.fs.readFile(path, { encoding: 'utf-8' })),
+      compile: (ref, source, previous) =>
+        compileModModule({
+          entry: ref.path,
+          entrySource: source,
+          root: ref.root!,
+          previous,
+          fs: { readFile: (path, o) => world.fs.readFile(path, o).then(String) },
+          loadTypeScript: () => ((compiler.loads += 1), loadTypeScript()),
+        }).then(({ source: text, files, uses, compiler: version, missing, digest }) => ({
+          // A load's own text: identical `data:` text is one cached module in this realm.
+          source: `${text}\n// load ${++uniq}`,
+          files,
+          uses,
+          graph: { compiler: version, missing, digest },
+        })),
+      builds: store,
+      openWorker,
+      session: { id: () => 's', cwd: () => '/work' },
+      report: line => reports.push(line),
+    })
+    disposers.push(() => runtime.dispose())
+    return { runtime, reports }
+  }
+
+  it('files saved again unchanged load without TypeScript; an edited import compiles again', async () => {
+    const world = memoryFs({
+      [TYPED_ENTRY]: `import { note } from './lib'\nexport function register(on) {\n  on('prompt.submit', async ($, e, next) => { await $.ui.log(note); return next(e) })\n}\n`,
+      [TYPED_LIB]: `export const note: string = 'ran'\n`,
+    })
+    const compiler = { loads: 0 }
+    const one = session(world, compiler)
+    await one.runtime.ready
+    expect(compiler.loads).toBe(1)
+    await new Promise(resolve => setTimeout(resolve, 0)) // the record is written after the load
+
+    world.touch(TYPED_ENTRY)
+    world.touch(TYPED_LIB)
+    const two = session(world, compiler)
+    await two.runtime.ready
+    expect(compiler.loads, 'every stat moved, no text did').toBe(1)
+    await two.runtime.promptSubmit('go')
+    expect(two.reports).toContain('acme: ran')
+    await new Promise(resolve => setTimeout(resolve, 0))
+
+    world.edit(TYPED_LIB, `export const note: string = 'ran again'\n`)
+    const three = session(world, compiler)
+    await three.runtime.ready
+    expect(compiler.loads, 'an import changed: compiled afresh').toBe(2)
+    await three.runtime.promptSubmit('go')
+    expect(three.reports).toContain('acme: ran again')
   })
 })
 
