@@ -145,7 +145,10 @@ export async function forgetModBuilds(
         drop = false
       }
     }
-    if (drop) await fs.unlink(file).catch(() => undefined)
+    if (drop) {
+      sharedRecordText.delete(file)
+      await fs.unlink(file).catch(() => undefined)
+    }
   }
 }
 
@@ -175,6 +178,27 @@ function isGraph(value: unknown): value is ModCompileGraph {
   )
 }
 
+/**
+ * Record file path → the text last read from it. Every mod runtime in the
+ * worker reads the same records; equal text is answered with this one copy
+ * instead of each runtime keeping its own. One entry per record file.
+ */
+const sharedRecordText = new Map<string, { source: string; entrySource: string }>()
+
+function shareRecordText(recordPath: string, record: ModBuildRecord): ModBuildRecord {
+  const held = sharedRecordText.get(recordPath)
+  if (held && held.source === record.source && held.entrySource === record.entrySource) {
+    return { ...record, source: held.source, entrySource: held.entrySource }
+  }
+  sharedRecordText.set(recordPath, { source: record.source, entrySource: record.entrySource })
+  return record
+}
+
+/** Number of record files whose text is pooled (tests). */
+export function sharedModBuildTextCount(): number {
+  return sharedRecordText.size
+}
+
 /** The store over `<modsDir>/builds/`. */
 export function fileModBuildStore(
   fs: Pick<RuntimeFs, 'readFile' | 'writeFile' | 'stat' | 'unlink'>,
@@ -195,13 +219,16 @@ export function fileModBuildStore(
   }
 
   const recordOf = async (ref: ModModuleRef): Promise<ModBuildRecord | null> => {
+    const file = fileOf(ref)
     let record: unknown
     try {
-      record = JSON.parse(String(await fs.readFile(fileOf(ref), { encoding: 'utf-8' })))
+      record = JSON.parse(String(await fs.readFile(file, { encoding: 'utf-8' })))
     } catch {
       return null
     }
-    return isRecord(record) && record.stamp === MOD_BUILD_STAMP && record.path === ref.path ? record : null
+    return isRecord(record) && record.stamp === MOD_BUILD_STAMP && record.path === ref.path
+      ? shareRecordText(file, record)
+      : null
   }
 
   return {
@@ -253,12 +280,14 @@ export function fileModBuildStore(
       try {
         await options.ensureDir(dir)
         await fs.writeFile(fileOf(ref), JSON.stringify(record), { encoding: 'utf-8' })
+        sharedRecordText.set(fileOf(ref), { source: build.source, entrySource: build.entrySource })
       } catch {
         // A speed-up only: the next load builds again.
       }
     },
 
     async forget(ref) {
+      sharedRecordText.delete(fileOf(ref))
       await fs.unlink(fileOf(ref)).catch(() => undefined)
     },
   }

@@ -4,7 +4,7 @@
  */
 
 import { afterEach, describe, expect, it } from 'vitest'
-import { fileModBuildStore, forgetModBuilds, MOD_BUILD_STAMP, type ModBuild } from '../mods/modBuildStore'
+import { fileModBuildStore, forgetModBuilds, MOD_BUILD_STAMP, sharedModBuildTextCount, type ModBuild } from '../mods/modBuildStore'
 import { compileModModule, loadTypeScript, type ModCompileGraph } from '../mods/modCompiler'
 import { RUNTIME_DIR_NAME } from '../branding/runtimeDir'
 import { pluginsHandlers } from '../browser/bridge/adapter/pluginsBridgeAdapter'
@@ -149,6 +149,42 @@ describe('fileModBuildStore', () => {
     expect(await store.previous!(local), 'a build kept without one').toBeNull()
     await store.forget(local)
     expect(await store.previous!(local)).toBeNull()
+  })
+})
+
+describe('one copy of a record\'s text across the stores of a worker', () => {
+  const ref: ModModuleRef = { plugin: 'shared-text', path: '/plugins/shared-text/hooks/register.ts' }
+  const files = { [ref.path]: 'entry' }
+
+  it('stores over the same record pool its text once; the record file stays the truth', async () => {
+    const world = memoryFs(files)
+    const first = storeOver(world)
+    const second = storeOver(world)
+    const before = sharedModBuildTextCount()
+    await first.remember(ref, { ...BUILD, files: [ref.path] })
+    expect(sharedModBuildTextCount()).toBe(before + 1)
+    expect((await first.lookup(ref))!.source).toBe('compiled')
+    expect((await second.lookup(ref))!.source).toBe('compiled')
+    expect(sharedModBuildTextCount(), 'two readers, one entry').toBe(before + 1)
+
+    const [recordPath, record] = [...world.files].find(([path]) => path.includes('shared-text@'))!
+    world.files.set(recordPath, { ...record, text: JSON.stringify({ ...JSON.parse(record.text), source: 'rebuilt elsewhere' }) })
+    expect((await second.lookup(ref))!.source, 'the pool never answers text the file no longer holds').toBe('rebuilt elsewhere')
+    expect((await first.lookup(ref))!.source).toBe('rebuilt elsewhere')
+    expect(sharedModBuildTextCount()).toBe(before + 1)
+
+    await first.forget(ref)
+    expect(sharedModBuildTextCount(), 'a forgotten record leaves the pool').toBe(before)
+  })
+
+  it('dropping a plugin\'s builds by name drops its pooled text', async () => {
+    const world = memoryFs(files)
+    const store = storeOver(world)
+    const before = sharedModBuildTextCount()
+    await store.remember(ref, { ...BUILD, files: [ref.path] })
+    expect(sharedModBuildTextCount()).toBe(before + 1)
+    await forgetModBuilds(world.fs, '/home/u/.velloc/mods', { plugin: 'shared-text' })
+    expect(sharedModBuildTextCount()).toBe(before)
   })
 })
 
