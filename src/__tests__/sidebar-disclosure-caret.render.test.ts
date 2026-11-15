@@ -13,8 +13,9 @@ import { ja } from '../browser/webview/i18n/messages/ja'
 import { ko } from '../browser/webview/i18n/messages/ko'
 import { zh } from '../browser/webview/i18n/messages/zh'
 
-// Every collapsible sidebar item uses one solid caret, drawn after its label,
-// with a hover tip and a hover background; no outline chevrons remain.
+// Every collapsible sidebar item uses one outline chevron, drawn after its
+// label, with a hover tip and a hover background: right while collapsed,
+// down while expanded, never a filled triangle.
 
 const memoryStorage = new Map<string, string>()
 vi.stubGlobal('localStorage', {
@@ -28,8 +29,11 @@ const NOW = Date.now()
 const item = (sessionId: string, extra: Partial<SessionListItem> = {}): SessionListItem =>
   ({ sessionId, title: sessionId, previewText: '', updatedAt: NOW - 1000, ...extra })
 
-const noLucideChevrons = (root: ParentNode) =>
-  expect(root.querySelector('svg[class*="lucide-chevron"]')).toBeNull()
+const expectChevron = (caret: Element, dir: 'right' | 'down') => {
+  const svg = caret.querySelector('svg')!
+  expect(svg.getAttribute('class')).toContain(`lucide-chevron-${dir}`)
+  expect(svg.getAttribute('class')).not.toContain('fill-current')
+}
 
 /** True when `a` comes before `b` in document order. */
 const precedes = (a: Element, b: Element) =>
@@ -74,7 +78,14 @@ describe('nested-session toggle', () => {
     const caret = header.querySelector('[data-slot="disclosure-caret"]')!
     expect(caret.getAttribute('title')).toBe(en['sidebar.expandSection'])
     expect(header.lastElementChild).toBe(caret)
-    noLucideChevrons(document)
+    expectChevron(caret, 'right')
+  })
+
+  it('draws the nested-session toggle as a down chevron, right once collapsed', () => {
+    renderTree()
+    expectChevron(toggle(), 'down')
+    fireEvent.click(toggle())
+    expectChevron(toggle(), 'right')
   })
 })
 
@@ -106,10 +117,11 @@ describe('workspace disclosure', () => {
     expect(row.lastElementChild).toBe(caret)
     expect(caret.getAttribute('title')).toBe(en['sidebar.expandProject'])
     expect(caret.className).toContain('hover:bg-muted')
+    expectChevron(caret, 'right')
     fireEvent.click(row)
-    expect(row.querySelector('[data-slot="disclosure-caret"]')!.getAttribute('title'))
-      .toBe(en['sidebar.collapseProject'])
-    noLucideChevrons(document)
+    const open = row.querySelector('[data-slot="disclosure-caret"]')!
+    expect(open.getAttribute('title')).toBe(en['sidebar.collapseProject'])
+    expectChevron(open, 'down')
   })
 })
 

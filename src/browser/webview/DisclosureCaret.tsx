@@ -1,3 +1,4 @@
+import { ChevronDownIcon, ChevronRightIcon } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 /** Hover treatment shared by every sidebar disclosure caret. */
@@ -5,7 +6,7 @@ export const DISCLOSURE_CARET_HOVER =
   'rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground'
 
 /**
- * Solid triangle that marks a collapsible sidebar item: points right while
+ * Outline chevron that marks a collapsible sidebar item: points right while
  * collapsed, down while expanded. Placed after the item's label. `title`
  * is the hover tip; the owning control carries the accessible name.
  */
@@ -34,11 +35,8 @@ export function DisclosureCaret({
   )
 }
 
-/** The bare triangle, for a caller that is itself the hover target. */
+/** The bare chevron, for a caller that is itself the hover target. */
 export function DisclosureCaretGlyph({ expanded }: { expanded: boolean }) {
-  return (
-    <svg aria-hidden viewBox="0 0 12 12" className="size-3 fill-current">
-      <path d={expanded ? 'M2 4 10 4 6 9Z' : 'M4 2 9 6 4 10Z'} />
-    </svg>
-  )
+  const Icon = expanded ? ChevronDownIcon : ChevronRightIcon
+  return <Icon aria-hidden className="size-3.5" />
 }
