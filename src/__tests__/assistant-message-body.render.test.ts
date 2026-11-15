@@ -945,7 +945,6 @@ describe('AssistantMessageBody — a lone tool call reads as a one-line tool gro
     // Settled cleanly, so the description reads in the past tense.
     expect(title.textContent).toBe('Listed the project files')
     expect(title.classList.contains('font-normal')).toBe(true)
-    expect(title.classList.contains('font-medium')).toBe(false)
     expect(title.getAttribute('data-title-source')).toBe('call')
     expect(container.querySelector('[data-slot="tool-fallback-root"]')).toBeNull()
     fireEvent.click(

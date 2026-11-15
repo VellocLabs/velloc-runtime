@@ -139,21 +139,32 @@ describe('PlanCard shell', () => {
         status: 'completed',
         label: createElement('span', null, 'ROW-WEIGHT'),
         showConnector: false,
-      } as never)
-    const card = render({
-      slotPrefix: 'todo-section',
-      persistKey: 'k-row-weight-card',
-      defaultOpen: true,
-      children: row(),
-    })
-    expect(card).toContain('text-sm leading-6 break-words font-medium')
-    const line = render({
-      slotPrefix: 'tool-plan-stream',
-      persistKey: 'k-row-weight-line',
-      defaultOpen: true,
-      look: 'line',
-      children: row(),
-    })
-    expect(line).toContain('text-sm leading-6 break-words font-normal')
+      })
+    const classesOnLabel = (html: string): string => {
+      const at = html.indexOf('ROW-WEIGHT')
+      const start = html.lastIndexOf('class="', at) + 'class="'.length
+      return html.slice(start, html.indexOf('"', start))
+    }
+    const card = classesOnLabel(
+      render({
+        slotPrefix: 'todo-section',
+        persistKey: 'k-row-weight-card',
+        defaultOpen: true,
+        children: row(),
+      }),
+    )
+    expect(card).toContain('font-medium')
+    expect(card).not.toContain('font-normal')
+    const line = classesOnLabel(
+      render({
+        slotPrefix: 'tool-plan-stream',
+        persistKey: 'k-row-weight-line',
+        defaultOpen: true,
+        look: 'line',
+        children: row(),
+      }),
+    )
+    expect(line).toContain('font-normal')
+    expect(line).not.toContain('font-medium')
   })
 })

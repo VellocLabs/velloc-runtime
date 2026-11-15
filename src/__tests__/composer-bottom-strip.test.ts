@@ -31,9 +31,11 @@ function px(value: string | undefined): number {
   const n = arbitrary ? Number(arbitrary[1]) : Number(raw) * SPACING
   return neg ? -n : n
 }
-// A second spell of the same prefix, or a breakpoint this arithmetic does not
-// model, would change the rendered spacing without changing the sum, so both
-// are refused rather than silently ignored.
+// Only the base and `md` widths are arithmetic this test can do. A breakpoint
+// outside them, or a second spell of the same prefix, would change the
+// rendered spacing without changing the sum, so both are refused rather than
+// silently ignored. State variants (hover, print) do not touch that sum.
+const BREAKPOINTS = ['sm', 'lg', 'xl', '2xl']
 function pick(list: string[], prefix: string, md: boolean): string | undefined {
   const matches = (c: string) =>
     c.slice(c.lastIndexOf(':') + 1).replace(/^-/, '').startsWith(prefix)
@@ -41,7 +43,9 @@ function pick(list: string[], prefix: string, md: boolean): string | undefined {
   const wide = list.filter((c) => c.startsWith('md:') && matches(c))
   expect(base.length).toBeLessThanOrEqual(1)
   expect(wide.length).toBeLessThanOrEqual(1)
-  expect(list.filter((c) => c.includes(':') && !c.startsWith('md:') && matches(c))).toEqual([])
+  expect(
+    list.filter((c) => BREAKPOINTS.includes(c.slice(0, c.indexOf(':'))) && matches(c)),
+  ).toEqual([])
   const chosen = md && wide[0] ? wide[0].slice(3) : base[0]
   return chosen?.replace(new RegExp(`^(-?)${prefix}`), '$1')
 }
