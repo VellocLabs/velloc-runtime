@@ -1303,6 +1303,13 @@ describe('ToolPlanStream reasoning rows + header', () => {
     // Rows: 2 reasoning + 3 tools, all closed.
     const rowTriggers = document.querySelectorAll<HTMLElement>('[data-slot="plan-list-item-trigger"]')
     expect(rowTriggers.length).toBe(5)
+    // Header and row labels read at body weight inside a tool group.
+    const header = document.querySelector('[data-slot="tool-plan-stream-title"]')!
+    expect(header.classList.contains('font-normal')).toBe(true)
+    expect(header.classList.contains('font-medium')).toBe(false)
+    const rowLabel = labels[0]!.closest<HTMLElement>('.text-sm')!
+    expect(rowLabel.classList.contains('font-normal')).toBe(true)
+    expect(rowLabel.classList.contains('font-medium')).toBe(false)
     expect(document.querySelector('[data-slot="plan-reasoning-row-body"]')).toBeNull()
     fireEvent.click(rowTriggers[3]!) // the second thought
     await waitFor(() => {

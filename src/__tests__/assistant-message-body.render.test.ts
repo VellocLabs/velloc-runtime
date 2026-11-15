@@ -944,6 +944,7 @@ describe('AssistantMessageBody — a lone tool call reads as a one-line tool gro
     const title = container.querySelector('[data-slot="tool-call-line-title"]')!
     // Settled cleanly, so the description reads in the past tense.
     expect(title.textContent).toBe('Listed the project files')
+    expect(title.classList.contains('font-normal')).toBe(true)
     expect(title.getAttribute('data-title-source')).toBe('call')
     expect(container.querySelector('[data-slot="tool-fallback-root"]')).toBeNull()
     fireEvent.click(

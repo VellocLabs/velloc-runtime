@@ -177,7 +177,7 @@ export const ToolCallLine: FC<ToolCallLineProps> = ({
               data-slot="tool-call-line-title"
               data-title-source={titledByCall ? "call" : "work"}
               className={cn(
-                "min-w-0 truncate font-medium",
+                "min-w-0 truncate font-normal",
                 state === "running"
                   ? "nexus-sheen"
                   : "text-muted-foreground group-hover/trigger:text-foreground",

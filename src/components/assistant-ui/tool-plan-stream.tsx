@@ -616,7 +616,7 @@ const ToolPlanStreamImpl: FC<ToolPlanStreamProps> = ({
         <span
           data-slot="tool-plan-stream-title"
           className={cn(
-            "min-w-0 truncate font-medium",
+            "min-w-0 truncate font-normal",
             headerState !== "running" &&
               "text-muted-foreground group-hover/trigger:text-foreground",
           )}
