@@ -356,6 +356,13 @@ describe('compileModModule', () => {
       expect({ ...second, fromCache: false }).toEqual(first)
       expect(new Set(fs.reads), 'the listed files and the missed name, nothing else').toEqual(new Set([ENTRY, DEP, DEP_JS]))
 
+      // A miss reads each listed file once: discovery takes the texts it read.
+      const edited = { ...files, [ENTRY]: `${files[ENTRY]}\n// saved` }
+      const missFs = fsOf(edited)
+      const missed = await compileModModule({ entry: ENTRY, root: ROOT, fs: missFs, previous: first })
+      expect(missed.fromCache).toBe(false)
+      expect(missFs.reads.filter(path => path === DEP)).toEqual([DEP])
+
       // The runtime hands the entry's text: only the imports are read.
       const withText = fsOf(files)
       const third = await compileModModule({

@@ -107,7 +107,7 @@ export async function buildSlotModRuntime(
     { ModStateStore },
     { fileModStore },
     { ensureDirRecursive },
-    { compileModModule, loadTypeScript },
+    { builtModuleOf, compileModModule, loadTypeScript },
     { scanModuleUses },
     { fileModFs },
     { isBuiltinModPath, readBuiltinMod },
@@ -184,7 +184,7 @@ export async function buildSlotModRuntime(
         fs: {
           readFile: (path, o) => slot.installedFs.readFile(path, o).then(String),
         },
-      }).then(({ source, files, uses, compiler, missing, digest }) => ({ source, files, uses, graph: { compiler, missing, digest } })),
+      }).then(builtModuleOf),
     ...(modBuilds ? { builds: modBuilds } : {}),
     // The scan for a module whose compile answered no `uses`: the same
     // parser, over its one file.

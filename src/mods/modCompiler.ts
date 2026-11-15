@@ -117,6 +117,14 @@ export type ModCompileResult = ModCompileGraph & {
   fromCache: boolean
 }
 
+/** A compile as a loader answers it: the graph nested for the build store. */
+export const builtModuleOf = ({ source, files, uses, compiler, missing, digest }: ModCompileResult) => ({
+  source,
+  files,
+  uses,
+  graph: { compiler, missing, digest },
+})
+
 /** A refusal: `file` and `line` (1-based) where it is known. */
 export class ModCompileError extends Error {
   readonly file?: string
@@ -374,6 +382,7 @@ async function reuseEarlierCompile(
   root: string,
   entryText: string,
   fs: ModCompileFs,
+  seen: Map<string, string>,
 ): Promise<ModCompileResult | null> {
   const compiler = compilerOf(typescriptPackage.version)
   const { files, missing } = previous
@@ -386,6 +395,9 @@ async function reuseEarlierCompile(
     Promise.all(files.slice(1).map(path => read(path).catch(() => null))),
     Promise.all(missing.map(path => read(path).then(() => true, () => false))),
   ])
+  files.slice(1).forEach((path, i) => {
+    if (texts[i] !== null) seen.set(path, texts[i]!)
+  })
   if (texts.some(text => text === null) || appeared.some(Boolean)) return null
   const pairs = files.map((path, i) => [path, i === 0 ? entryText : texts[i - 1]!] as const)
   const digest = await graphDigest(compiler, pairs, missing)
@@ -432,7 +444,8 @@ export async function compileModModule(options: ModCompileOptions): Promise<ModC
     )
   }
   if (options.previous) {
-    const reused = await reuseEarlierCompile(options.previous, entry, root, texts.get(entry)!, fs).catch(() => null)
+    // A miss leaves the texts it read in `texts`: discovery reads them once.
+    const reused = await reuseEarlierCompile(options.previous, entry, root, texts.get(entry)!, fs, texts).catch(() => null)
     if (reused) return reused
   }
   const ts = await (options.loadTypeScript ?? defaultLoadTypeScript)()

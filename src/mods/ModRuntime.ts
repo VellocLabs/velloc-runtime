@@ -978,7 +978,7 @@ export class ModRuntime extends ModUiSurface implements TurnExtensions {
       // compiles what needs it and verifies the rest.
       if (this.options.compile) {
         try {
-          const previous = await this.options.builds?.previous?.(ref).catch(() => null)
+          const previous = isBuiltinModPath(ref.path) ? null : await this.options.builds?.previous?.(ref).catch(() => null)
           const built = await this.options.compile(ref, source, previous)
           source = typeof built === 'string' ? built : built.source
           if (source !== seat.source) seat.compiled = source

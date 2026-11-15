@@ -6,7 +6,7 @@
 import { RUNTIME_DIR_NAME } from '../../branding/runtimeDir'
 import type { RuntimeFs } from '../../utils/fs/runtimeFs'
 import { joinRuntimePath } from '../../utils/runtimePaths'
-import { compileModModule, loadTypeScript } from '../modCompiler'
+import { builtModuleOf, compileModModule, loadTypeScript } from '../modCompiler'
 import { scanModuleUses } from '../modScan'
 import type { ProviderModulePrepareDeps } from './ProviderModRuntime'
 
@@ -33,7 +33,7 @@ export function providerModuleLoaders(deps: ProviderModuleLoaderDeps): ProviderM
         previous,
         root: ref.root ?? ref.path.replace(/[\\/][^\\/]*[\\/][^\\/]*$/, ''),
         fs: { readFile: (path, o) => fs.readFile(path, o).then(String) },
-      }).then(({ source, files, uses, compiler, missing, digest }) => ({ source, files, uses, graph: { compiler, missing, digest } })),
+      }).then(builtModuleOf),
     scan: (ref, source) => loadTypeScript().then(ts => scanModuleUses(ts, [{ path: ref.path, text: source }])),
     report,
   }
