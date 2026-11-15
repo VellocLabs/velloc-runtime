@@ -31,11 +31,8 @@ function px(value: string | undefined): number {
   const n = arbitrary ? Number(arbitrary[1]) : Number(raw) * SPACING
   return neg ? -n : n
 }
-// The strip's spacing is the footer's, trimmed by the strip's own margins: the
-// arithmetic below models the base and `md` widths, the ones the footer and the
-// strip use. A second utility for the same prefix would leave the winner to the
-// stylesheet, so it is refused rather than silently mis-summed; another
-// breakpoint needs this test extended.
+// Only the base and `md` widths are summed; a second utility for the same
+// prefix would leave the winner to the stylesheet, so it is refused.
 function pick(list: string[], prefix: string, md: boolean): string | undefined {
   const matches = (c: string) =>
     c.slice(c.lastIndexOf(':') + 1).replace(/^-/, '').startsWith(prefix)
