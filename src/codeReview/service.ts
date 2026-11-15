@@ -600,7 +600,8 @@ export class LocalReviewService {
             if (count > live.plan.candidatesPerAngle) throw new ReviewGatewayError('worker-angle-candidate-limit')
             if (candidate.assessment?.disposition === 'proven') candidate.assessment = { disposition: 'plausible', reason: candidate.assessment.reason }
           }
-          const covered: string[] = value.coverage?.angles ?? []
+          // A finder's own angle list is not read: its angles are the ones it was given (F-38).
+          const covered: string[] = role === 'finder' ? [] : value.coverage?.angles ?? []
           if (covered.some(angle => !assigned.includes(angle))) throw new ReviewGatewayError('worker-angle-not-assigned')
           const refused: Array<{ index: number; code: string }> = []
           for (let i = 0; i < value.candidates.length; i += 32) {
@@ -686,14 +687,15 @@ export class LocalReviewService {
           const value: Record<string, any> = answer!
           if (role !== 'verifier') {
             const limitations: string[] = [...(value.coverage?.limitations ?? []), ...(rejectedCandidates.length ? ['worker-candidates-rejected'] : []), ...(whole ? [] : ['review-step-limit'])]
-            await this.store.submitLedger(runId, `${taskId}-coverage`, { operation: 'coverage', coverage: { angles: value.coverage?.angles ?? [], limitations } })
-            // A worker cut off by its step limit leaves its angles, or the sweep, uncovered.
+            // Contract (F-38): a finder that ended whole with an accepted answer covered the angles it was given; one cut off by its step limit covered none.
+            const finished = role === 'finder' ? whole ? assigned : [] : value.coverage?.angles ?? []
+            await this.store.submitLedger(runId, `${taskId}-coverage`, { operation: 'coverage', coverage: { angles: finished, limitations } })
             if (whole) {
-              if (role === 'finder') for (const angle of value.coverage?.angles ?? []) live.completedAngles.add(angle)
+              if (role === 'finder') for (const angle of assigned) live.completedAngles.add(angle)
               else live.swept = true
             }
           }
-          await this.store.noteWorker(runId, 'finished', [], role === 'finder' && whole ? value.coverage?.angles ?? [] : []); this.changed()
+          await this.store.noteWorker(runId, 'finished', [], role === 'finder' && whole ? assigned : []); this.changed()
           return { taskId, result: value, newIds, ...(rejectedCandidates.length ? { rejectedCandidates } : {}) }
         } catch (error) { await this.store.noteWorker(runId, 'finished', angles as string[]); this.changed(); throw error }
       })

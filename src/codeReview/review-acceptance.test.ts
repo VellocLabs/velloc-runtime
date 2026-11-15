@@ -1135,10 +1135,11 @@ describe('verification step retries', () => {
 })
 
 describe('team run completeness', () => {
-  const teamRun = (options: { verdict?: string; coordinatorComplete: boolean; skipAngle?: boolean; coordinatorVerifies?: boolean }) => fixture({ capabilities: { agentAvailable: true, agentPermitted: true, remainingDepth: 3, outputToolAvailable: false }, resolveScope: singleAnchorScope(NULL_DEREF), runModel: async request => {
+  const teamRun = (options: { verdict?: string; coordinatorComplete: boolean; skipAngle?: boolean; coordinatorVerifies?: boolean; finderCoverage?: 'none' | 'other-words' }) => fixture({ capabilities: { agentAvailable: true, agentPermitted: true, remainingDepth: 3, outputToolAvailable: false }, resolveScope: singleAnchorScope(NULL_DEREF), runModel: async request => {
     if (request.blocks.some(block => block.source === 'assigned-angles')) {
       const assigned = JSON.parse(request.blocks.find(block => block.source === 'assigned-angles')!.text) as string[]
-      return { text: JSON.stringify({ candidates: options.verdict ? [findingFor(request, assigned[0], 'Missing null guard')] : [], coverage: { angles: assigned, limitations: ['Translations were not checked for accuracy.'] } }), interrupted: false }
+      const coverage = { angles: options.finderCoverage === 'other-words' ? ['the assigned angle'] : assigned, limitations: ['Translations were not checked for accuracy.'] }
+      return { text: JSON.stringify({ candidates: options.verdict ? [findingFor(request, assigned[0], 'Missing null guard')] : [], ...(options.finderCoverage === 'none' ? {} : { coverage }) }), interrupted: false }
     }
     if (request.blocks.some(block => block.source === 'candidate')) return verdict(options.verdict ?? 'proven')
     if (request.blocks.some(block => block.source === 'existing-findings')) return emptySweep
@@ -1153,6 +1154,13 @@ describe('team run completeness', () => {
     expect(snapshot.run.progress.status).toBe('finished')
     expect(snapshot.coverage).toMatchObject({ complete: true, limitations: expect.arrayContaining(['The internal docs repository is outside the scope.', 'Translations were not checked for accuracy.']) })
     expect(snapshot.coverage.limitations).not.toContain('verified-after-summary')
+  })
+  it.each(['none', 'other-words'] as const)('credits each finder with the angles it was given when its answer states coverage as %s', async finderCoverage => {
+    const f = teamRun({ verdict: 'proven', coordinatorComplete: false, coordinatorVerifies: true, finderCoverage })
+    const snapshot = await f.service.wait((await f.service.startUser('max')).runId)
+    expect(snapshot.run.progress.status).toBe('finished')
+    expect(snapshot.coverage.limitations).not.toContain('independent-worker-coverage-incomplete')
+    expect(snapshot.coverage.angles).toEqual(expect.arrayContaining(TEN))
   })
   it('stays partial when an angle has no finder, even when the coordinator claims complete', async () => {
     const f = teamRun({ coordinatorComplete: true, coordinatorVerifies: true, skipAngle: true })
