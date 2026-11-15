@@ -57,14 +57,14 @@ export function TaskMetaLine({ row, now, leading, srStatus, usage = true, classN
   const locale = useLocale()
   const running = row.status === 'running'
   const timeItems: ReactNode[] = []
+  if (row.startedAt) {
+    const when = formatStartStamp(row.startedAt, locale, now)
+    timeItems.push(
+      <MetaItem key="started" icon={ClockIcon} testId="task-meta-started"
+        title={t('backgroundTasks.meta.startedTitle', { when })}>{when}</MetaItem>,
+    )
+  }
   if (running) {
-    if (row.startedAt) {
-      const span = durationLabel(Math.max(0, now - row.startedAt), 'largest')
-      timeItems.push(
-        <MetaItem key="elapsed" icon={TimerIcon} testId="task-meta-elapsed"
-          title={t('backgroundTasks.meta.elapsedTitle', { span })}>{span}</MetaItem>,
-      )
-    }
     if (row.lastActivityAt) {
       const age = durationLabel(Math.max(0, now - row.lastActivityAt), 'largest')
       timeItems.push(
@@ -75,13 +75,6 @@ export function TaskMetaLine({ row, now, leading, srStatus, usage = true, classN
       )
     }
   } else {
-    if (row.startedAt) {
-      const when = formatStartStamp(row.startedAt, locale, now)
-      timeItems.push(
-        <MetaItem key="started" icon={ClockIcon} testId="task-meta-started"
-          title={t('backgroundTasks.meta.startedTitle', { when })}>{when}</MetaItem>,
-      )
-    }
     if (row.startedAt && row.finishedAt) {
       const span = durationLabel(Math.max(0, row.finishedAt - row.startedAt))
       timeItems.push(

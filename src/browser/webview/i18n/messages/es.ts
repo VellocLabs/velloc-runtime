@@ -1296,7 +1296,6 @@ export const es: Messages = {
   'taskStats.cacheReadLabel': 'caché leída',
   'taskStats.cacheWriteLabel': 'caché escrita',
   'backgroundTasks.meta.agentTypeTitle': 'Tipo de agente: {type}',
-  'backgroundTasks.meta.elapsedTitle': 'En ejecución desde hace {span}',
   'backgroundTasks.meta.updatedTitle': 'Última actualización hace {age}',
   'backgroundTasks.meta.ago': 'hace {age}',
   'backgroundTasks.meta.startedTitle': 'Iniciado {when}',

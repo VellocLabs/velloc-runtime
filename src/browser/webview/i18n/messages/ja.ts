@@ -1283,7 +1283,6 @@ export const ja: Messages = {
   'taskStats.cacheReadLabel': 'キャッシュ読取',
   'taskStats.cacheWriteLabel': 'キャッシュ書込',
   'backgroundTasks.meta.agentTypeTitle': 'エージェント種別: {type}',
-  'backgroundTasks.meta.elapsedTitle': '{span} 実行中',
   'backgroundTasks.meta.updatedTitle': '最終更新 {age} 前',
   'backgroundTasks.meta.ago': '{age} 前',
   'backgroundTasks.meta.startedTitle': '{when} に開始',

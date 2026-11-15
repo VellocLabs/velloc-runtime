@@ -252,7 +252,7 @@ describe('BackgroundTasksDrawer row meta', () => {
 
   afterEach(() => vi.useRealTimers())
 
-  it('a running row shows its elapsed time and last update; a finished row its start and span, as icon items with no status word', () => {
+  it('a running row shows its start stamp and last update; a finished row its start and span, as icon items with no status word', () => {
     vi.useFakeTimers({ now: NOON, toFake: ['Date'] })
     const rows: NexusTaskSummaryRow[] = [
       { ...runningRow(), startedAt: NOON - 5_000, lastActivityAt: NOON - 1_000 }, // running → Running section (expanded)
@@ -281,12 +281,11 @@ describe('BackgroundTasksDrawer row meta', () => {
     const finished = rowButtons.find(b => b.title.includes('b-done'))!
     const item = (row: HTMLElement, id: string) =>
       row.querySelector<HTMLElement>(`[data-testid="${id}"]`)
-    // Running: elapsed + last update; no start stamp, no span.
-    expect(item(running, 'task-meta-elapsed')?.textContent).toBe('5s')
-    expect(item(running, 'task-meta-elapsed')?.getAttribute('title')).toBe('Running for 5s')
+    // Running: absolute start stamp + relative last update; no elapsed, no span.
+    expect(item(running, 'task-meta-started')?.textContent).toBe('11:59')
+    expect(item(running, 'task-meta-elapsed')).toBeNull()
     expect(item(running, 'task-meta-updated')?.textContent).toBe('1s ago')
     expect(item(running, 'task-meta-updated')?.getAttribute('title')).toBe('Last update 1s ago')
-    expect(item(running, 'task-meta-started')).toBeNull()
     expect(item(running, 'task-meta-took')).toBeNull()
     // Finished: a 24-hour start stamp and the span it took.
     expect(item(finished, 'task-meta-started')?.textContent).toBe('11:57')
@@ -305,7 +304,7 @@ describe('BackgroundTasksDrawer row meta', () => {
     expect(formatStartStamp(NOON - 60_000, 'en', NOON)).toBe('11:59')
   })
 
-  it('the detail header keeps a running task\'s elapsed time ticking', async () => {
+  it('the detail header keeps a running task\'s last-update age ticking', async () => {
     vi.useFakeTimers({ now: NOW, toFake: ['Date', 'setInterval', 'clearInterval'] })
     render(
       createElement(
@@ -316,24 +315,24 @@ describe('BackgroundTasksDrawer row meta', () => {
     await waitFor(() => expect(detailEl()).not.toBeNull())
     const elapsed = () =>
       document.querySelector('[data-testid="background-tasks-detail-back"]')!.parentElement!
-        .querySelector('[data-testid="task-meta-elapsed"]')!.textContent
-    expect(elapsed()).toBe('5s')
+        .querySelector('[data-testid="task-meta-updated"]')!.textContent
+    expect(elapsed()).toBe('1s ago')
     act(() => {
       vi.advanceTimersByTime(10_000)
     })
-    expect(elapsed()).toBe('15s')
+    expect(elapsed()).toBe('11s ago')
   })
 
-  it('the list row keeps a running task\'s elapsed time ticking', () => {
+  it('the list row keeps a running task\'s last-update age ticking', () => {
     vi.useFakeTimers({ now: NOW, toFake: ['Date', 'setInterval', 'clearInterval'] })
     render(createElement(BackgroundTasksDrawer, drawerProps({ rows: [runningRow()] })))
     const elapsed = () =>
-      document.querySelector('li [data-testid="task-meta-elapsed"]')!.textContent
-    expect(elapsed()).toBe('5s')
+      document.querySelector('li [data-testid="task-meta-updated"]')!.textContent
+    expect(elapsed()).toBe('1s ago')
     act(() => {
       vi.advanceTimersByTime(5_000)
     })
-    expect(elapsed()).toBe('10s')
+    expect(elapsed()).toBe('6s ago')
   })
 
   it('a shell row is titled by its description; the command stays in the detail', async () => {

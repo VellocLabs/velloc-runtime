@@ -1274,7 +1274,6 @@ export const zh: Messages = {
   'taskStats.cacheReadLabel': '缓存读取',
   'taskStats.cacheWriteLabel': '缓存写入',
   'backgroundTasks.meta.agentTypeTitle': '智能体类型：{type}',
-  'backgroundTasks.meta.elapsedTitle': '已运行 {span}',
   'backgroundTasks.meta.updatedTitle': '上次更新于 {age} 前',
   'backgroundTasks.meta.ago': '{age} 前',
   'backgroundTasks.meta.startedTitle': '开始于 {when}',
