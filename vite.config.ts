@@ -15,6 +15,7 @@ import { devCatalogSnapshotPlugin } from './vite/devCatalogSnapshotPlugin'
 import { devServerWatch } from './vite/devServerWatch'
 import { xtermHeadlessWorkerPlugin } from './vite/xtermHeadlessWorkerPlugin'
 import { thirdPartyNotices } from './vite/thirdPartyNoticesPlugin'
+import { asciiRegexLiteralsPlugin, BUNDLE_ESBUILD_OPTIONS } from './vite/bundleCharset'
 import { NEXUS_INTERFACE_VERSION } from './src/browser/bridge/protocol/interfaceVersion'
 import { BUILD_TIME_META_NAME, buildTimeFromCommit } from './src/branding/buildInfo'
 
@@ -284,6 +285,7 @@ const notices = thirdPartyNotices(__dirname)
 
 export default defineConfig(({ mode }) => ({
   base: resolvePagesBasePath(),
+  esbuild: BUNDLE_ESBUILD_OPTIONS,
   plugins: [
     devWatch.plugin,
     xtermHeadlessWorkerPlugin(),
@@ -298,6 +300,7 @@ export default defineConfig(({ mode }) => ({
     assetManifestPlugin(),
     buildTimeMetaPlugin(),
     notices.plugin,
+    asciiRegexLiteralsPlugin(),
   ],
   define: {
     'process.env.NODE_ENV': JSON.stringify(mode),
@@ -324,6 +327,7 @@ export default defineConfig(({ mode }) => ({
       builtinModsPlugin(),
       xtermHeadlessWorkerPlugin(),
       notices.collector(),
+      asciiRegexLiteralsPlugin(),
     ],
   },
   server: {
