@@ -36,10 +36,11 @@ function tree(
   value: PlanPanelContextValue,
   onCancel?: () => void,
   extra?: ReactNode,
+  turnRunning = true,
 ) {
   return createElement(
     ComposerCancelStateProvider,
-    { value: { isStopping: false, onCancel } },
+    { value: { isStopping: false, onCancel, turnRunning } },
     createElement(
       PlanPanelContext.Provider,
       { value },
@@ -107,6 +108,15 @@ describe('PlanApprovalFooterControl', () => {
     fireEvent.click(slot('plan-approval-reject')!)
     expect(onCancel).toHaveBeenCalledTimes(1)
     expect(resolve).not.toHaveBeenCalled()
+  })
+
+  it('hides Reject when no turn runs (a restored or halted plan); Revise… and Accept stay', () => {
+    const onCancel = vi.fn()
+    render(tree({ pending: entry('tc-1', 'p') }, onCancel, undefined, false))
+    expect(slot('plan-approval-reject')).toBeNull()
+    expect(slot('plan-approval-revise')).not.toBeNull()
+    expect(slot('plan-approval-approve')).not.toBeNull()
+    expect(onCancel).not.toHaveBeenCalled()
   })
 
   it('Revise… shows a three-row feedback box; Back returns to the three choices', () => {

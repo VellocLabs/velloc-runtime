@@ -16,6 +16,8 @@ export const ComposerCancelStateContext = createContext<{
    * `runtime.cancelRun()` — see the button's comment for why.
    */
   onCancel?: () => void;
+  /** True while the worker runs a turn, i.e. while `onCancel` has a turn to stop. */
+  turnRunning?: boolean;
 }>({
   isStopping: false,
 });

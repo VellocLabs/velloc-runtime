@@ -993,14 +993,16 @@ function InteractiveAssistantUiThread({
   // the just-sent text. Full reasoning at `handleCancelClick` in thread.tsx.
   // `onCancel` on the runtime below stays wired: it is what `cancelRun` calls
   // into if any other assistant-ui path ever reaches it.
+  const turnRunning = state.snapshot?.isBusy === true
   const composerCancelState = useMemo(
     () => ({
       isStopping,
       onCancel: () => {
         void handleCancel()
       },
+      turnRunning,
     }),
-    [isStopping, handleCancel],
+    [isStopping, handleCancel, turnRunning],
   )
 
   // Rows the virtualizer keeps get their content; the rest go to assistant-ui
