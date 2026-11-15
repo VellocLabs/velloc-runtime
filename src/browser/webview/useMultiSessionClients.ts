@@ -289,6 +289,7 @@ export type SessionBoundActions = Pick<
   | 'removeInjectMessage'
   | 'resolveToolUseConfirm'
   | 'clearPlanApproval'
+  | 'rejectPlanApproval'
   | 'interrupt'
 >
 
@@ -403,6 +404,8 @@ export type MultiSessionClientsResult = {
    *  engine and pull a fresh snapshot so the plan-approval control dismisses
    *  immediately (called before setPermissionMode + submitToolResult). */
   clearPlanApproval: (toolCallId?: string) => Promise<void>
+  /** Reject the active session's plan approval staged after its turn ended (no model turn). */
+  rejectPlanApproval: (toolCallId: string) => Promise<void>
   /** Grant an allow rule from the ask-modal banner: adds it
    *  to the active session's live rule list (+ settings.json when `persist`). */
   addPermissionRule: (params: {
@@ -966,6 +969,11 @@ export function useMultiSessionClients(
     await client?.clearPlanApproval(toolCallId)
   }, [])
 
+  const rejectPlanApproval = useCallback(async (toolCallId: string) => {
+    const client = clientsRef.current.get(optionsRef.current.activeSessionId)
+    await client?.rejectPlanApproval(toolCallId)
+  }, [])
+
   const refreshModelCatalog = useCallback(async () => {
     // Fan the refresh out to every live session's worker, not just the
     // active one. Background sessions stay warm across switches, so we want
@@ -1045,6 +1053,9 @@ export function useMultiSessionClients(
       },
       clearPlanApproval: async toolCallId => {
         await client()?.clearPlanApproval(toolCallId)
+      },
+      rejectPlanApproval: async toolCallId => {
+        await client()?.rejectPlanApproval(toolCallId)
       },
       interrupt: async () => {
         await client()?.interrupt()
@@ -1127,6 +1138,7 @@ export function useMultiSessionClients(
     removeInjectMessage,
     resolveToolUseConfirm,
     clearPlanApproval,
+    rejectPlanApproval,
     addPermissionRule,
     applyPermissionUpdate,
     refreshModelCatalog,

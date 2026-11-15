@@ -44,6 +44,7 @@ export interface ShellSessionThreadInputs {
   removeInjectMessage: ThreadProps['onRemoveInjectMessage']
   resolveToolUseConfirm: ThreadProps['resolveToolUseConfirm']
   clearPlanApproval: ThreadProps['clearPlanApproval']
+  rejectPlanApproval: ThreadProps['rejectPlanApproval']
   sessionItems: ThreadProps['sessions']
   /** Archive (`true`) or unarchive a session. (F-36) */
   handleArchiveThread: (sessionId: string, archived: boolean) => void
@@ -98,7 +99,7 @@ export function renderShellSessionThread(
     submitComposerMessage, pickComposerAttachmentFiles, submitToolResult,
     loadToolCallDetail, loadTurnDiffDetail, interrupt, setPermissionMode,
     setSkipDangerousMode, clearPendingMessage, removeInjectMessage, resolveToolUseConfirm,
-    clearPlanApproval, sessionItems, handleArchiveThread, handleOpenBackgroundTasks, subAgentRowsForSession,
+    clearPlanApproval, rejectPlanApproval, sessionItems, handleArchiveThread, handleOpenBackgroundTasks, subAgentRowsForSession,
     handleStopBackgroundTask, handleOpenBackgroundTasksList, openSidePane, openFile,
     openTerminalInPanel, statFilePaths, openDiffInPanel, openSkillInPanel, focusSession,
     handleDeleteThread, retitleSession, handlePendingQuestionsChange, openNewSession,
@@ -169,6 +170,7 @@ export function renderShellSessionThread(
                 onRemoveInjectMessage={bound?.removeInjectMessage ?? removeInjectMessage}
                 resolveToolUseConfirm={bound?.resolveToolUseConfirm ?? resolveToolUseConfirm}
                 clearPlanApproval={bound?.clearPlanApproval ?? clearPlanApproval}
+                rejectPlanApproval={bound?.rejectPlanApproval ?? rejectPlanApproval}
                 sessions={sessionItems}
                 activeSessionId={mount.foregroundSessionId}
                 onOpenBackgroundTasks={handleOpenBackgroundTasks}

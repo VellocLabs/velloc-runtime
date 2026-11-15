@@ -255,6 +255,7 @@ export const WORKER_ACTION_SCOPES = {
   addPermissionRule: 'control',
   applyPermissionUpdate: 'control',
   clearPlanApproval: 'control',
+  rejectPlanApproval: 'control',
   setModelSelection: 'control',
   setPermissionMode: 'control',
   setSkipDangerousMode: 'control',

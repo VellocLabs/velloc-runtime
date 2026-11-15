@@ -18,6 +18,7 @@ import { buildWorkerSnapshot } from './workerSnapshot'
 import { isAutoCompactWindow } from '../../settings/modelSettings'
 import { onModSlotsChanged } from '../../mods/modSlotRegistry'
 import type { Message } from '../../runtime/RuntimeTypes'
+import { TERMINAL_ABORTED } from '../../runtime/VercelModelConstants'
 import type {
   AgentWorkerInboundMessage,
   AgentWorkerOutboundMessage,
@@ -656,6 +657,24 @@ export class AgentRuntimeWorker {
             // open, and a turn held under the halt would start before the
             // answer; keep it closed until that answer dispatches.
             this.turns.holdForAnswer()
+          },
+          { emitStateAfter: true },
+        )
+        return
+      }
+
+      case 'worker.rejectPlanApproval': {
+        await this.runWithRuntime(
+          async runtime => {
+            // A running turn is ended by `worker.interrupt`; this is only for a halt whose turn is over.
+            if (this.turns.isBusy()) return
+            const cancelled = await runtime.engine.cancelStagedPlanApproval(message.payload.toolCallId)
+            if (!cancelled) return
+            await this.scopePermissions.clearPendingPlanApprovalMarker(message.payload.toolCallId)
+            this.scopeRecovery.setTerminalState(TERMINAL_ABORTED, Date.now())
+            // The same queue clean-up as Stop, then the idle flush the cleared halt was holding back.
+            this.turns.clearForInterrupt()
+            this.turns.haltCleared()
           },
           { emitStateAfter: true },
         )

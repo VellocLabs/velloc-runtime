@@ -16,6 +16,9 @@ import { SessionTitler } from './autoTitle'
 import { ExtensionHosts } from './extensionHosts'
 import type { ToolContract } from '../toolkit/toolContract'
 import { runTurn, type EngineParts } from './turnRunner'
+import { cancelledHaltRows } from './turnRows'
+import { createGeneratedUuid } from '../messages/messageFactories'
+import { TERMINAL_ABORTED } from '../runtime/VercelModelConstants'
 
 export type { ConversationEngineConfig, ModelSelection, SubmitTurnOptions } from './engineConfig'
 
@@ -235,6 +238,22 @@ export class ConversationEngine {
 
   clearPendingUserInteraction(toolCallId?: string): void {
     this.ledger.dropPending('pendingUserInteraction', toolCallId)
+  }
+
+  /**
+   * Contract: cancels a staged plan approval whose turn has ended, as Stop would have during it: drops the record,
+   * pairs the ExitPlanMode call with the cancelled answer and the stop note, and records the session as aborted.
+   * Starts no model turn and leaves the permission mode alone. Resolves false (nothing done) when no approval is
+   * staged for `toolCallId`.
+   */
+  async cancelStagedPlanApproval(toolCallId: string): Promise<boolean> {
+    if (!this.ledger.pending('pendingPlanApproval')?.[toolCallId]) return false
+    this.ledger.dropPending('pendingPlanApproval', toolCallId)
+    const rows = cancelledHaltRows(this.ledger.rows, toolCallId, createGeneratedUuid)
+    if (rows.length > 0) await this.appendBetweenTurns(rows)
+    const { conversationStore, runtimeConfig } = this.ledger.config
+    await conversationStore.saveTerminalState(TERMINAL_ABORTED, runtimeConfig.now())
+    return true
   }
 
   // Plugins and extensions

@@ -1290,6 +1290,7 @@ export function MultiSessionShell({
     removeInjectMessage,
     resolveToolUseConfirm,
     clearPlanApproval,
+    rejectPlanApproval,
     refreshModelCatalog,
     refreshProjectBranch,
     // applyRuntimeSettings was the WebUI-side handler for the legacy
@@ -3801,7 +3802,7 @@ export function MultiSessionShell({
     submitComposerMessage, pickComposerAttachmentFiles, submitToolResult,
     loadToolCallDetail, loadTurnDiffDetail, interrupt, setPermissionMode,
     setSkipDangerousMode, clearPendingMessage, removeInjectMessage, resolveToolUseConfirm,
-    clearPlanApproval, sessionItems, handleArchiveThread, handleOpenBackgroundTasks, subAgentRowsForSession,
+    clearPlanApproval, rejectPlanApproval, sessionItems, handleArchiveThread, handleOpenBackgroundTasks, subAgentRowsForSession,
     handleStopBackgroundTask, handleOpenBackgroundTasksList, openSidePane, openFile,
     openTerminalInPanel, statFilePaths, openDiffInPanel, openSkillInPanel, focusSession,
     handleDeleteThread, retitleSession, handlePendingQuestionsChange, openNewSession,

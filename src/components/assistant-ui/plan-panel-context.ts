@@ -22,6 +22,11 @@ export type PlanPanelContextValue = {
     decision: 'approve' | 'reject',
     feedback?: string,
   ) => void | Promise<void>
+  /**
+   * Set only for an approval staged after its turn ended (restored, or the no-dialog halt): Reject calls this
+   * instead of Stop's cancel, since no turn runs.
+   */
+  cancelStaged?: () => void | Promise<void>
   /** Open the full plan in the right-side panel (shell-level drawer). */
   openPanel?: () => void
 }

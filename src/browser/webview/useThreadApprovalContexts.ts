@@ -17,6 +17,7 @@ export function useThreadApprovalContexts({
   setPermissionMode,
   resolveToolUseConfirm,
   clearPlanApproval,
+  rejectPlanApproval,
   onOpenPlanPanel,
 }: {
   state: AssistantUiThreadProps['state']
@@ -27,6 +28,7 @@ export function useThreadApprovalContexts({
   setPermissionMode: AssistantUiThreadProps['setPermissionMode']
   resolveToolUseConfirm: AssistantUiThreadProps['resolveToolUseConfirm']
   clearPlanApproval: AssistantUiThreadProps['clearPlanApproval']
+  rejectPlanApproval: AssistantUiThreadProps['rejectPlanApproval']
   onOpenPlanPanel: AssistantUiThreadProps['onOpenPlanPanel']
 }) {
   // Per-session plan-approval state + actions for the footer plan control
@@ -83,6 +85,11 @@ export function useThreadApprovalContexts({
               feedback,
             )
         : undefined,
+      // Staged after its turn ended: no turn for Stop to end, so Reject asks the runtime to cancel the call itself.
+      cancelStaged:
+        pending && rejectPlanApproval
+          ? () => rejectPlanApproval(pending.toolCallId)
+          : undefined,
     }
   }, [
     queuedPlanConfirm,
@@ -90,6 +97,7 @@ export function useThreadApprovalContexts({
     onOpenPlanPanel,
     resolveToolUseConfirm,
     clearPlanApproval,
+    rejectPlanApproval,
     setPermissionMode,
     submitToolResult,
   ])

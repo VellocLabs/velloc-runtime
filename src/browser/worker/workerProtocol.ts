@@ -638,6 +638,14 @@ export type AgentWorkerInboundMessage =
       }
     }
   | {
+      // Reject on a plan approval staged after its turn ended (restored, or the no-dialog halt): pairs the call
+      // as cancelled and records the session as aborted, with no model turn. A no-op while a turn runs.
+      type: 'worker.rejectPlanApproval'
+      payload: {
+        toolCallId: string
+      }
+    }
+  | {
       // Generic live agent-config update. Carries the whole config dict; the
       // worker forwards it to `engine.applyRuntimeSettings`, which applies the
       // keys it recognizes (maxTurns, …). Model selection is

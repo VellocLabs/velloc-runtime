@@ -747,6 +747,17 @@ export class BrowserRuntimeClient {
     return this.getState()
   }
 
+  /** Reject a plan approval staged after its turn ended: the worker pairs the call as cancelled, with no model turn. */
+  async rejectPlanApproval(toolCallId: string): Promise<BrowserRuntimeClientState> {
+    await this.startOnce()
+    await this.transport?.postMessage({
+      type: 'worker.rejectPlanApproval',
+      payload: { toolCallId },
+    })
+    await this.requestState()
+    return this.getState()
+  }
+
   async refreshModelCatalog(): Promise<BrowserRuntimeClientState> {
     await this.startOnce()
     // Register the state waiter BEFORE posting the refresh message. The

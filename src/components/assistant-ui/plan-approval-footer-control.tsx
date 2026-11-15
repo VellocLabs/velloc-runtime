@@ -12,9 +12,10 @@ import { ComposerCancelStateContext } from './thread-contexts'
 /**
  * Plan-approval card that stands in for the composer while THIS session's
  * ExitPlanMode waits (F-13): headline, "Open plan" (the right-side Plan pane),
- * Reject (ends the turn, as Stop does; shown only while a turn runs), Revise…
- * (feedback box, then keep planning with it) and Accept. A background
- * session's plan never shows here.
+ * Reject (ends the turn, as Stop does; a plan staged after its turn ended is
+ * cancelled by the runtime with no model turn), Revise… (feedback box, then
+ * keep planning with it) and Accept. A background session's plan never shows
+ * here.
  */
 export function PlanApprovalFooterControl() {
   const { pending } = usePlanPanel()
@@ -25,8 +26,8 @@ export function PlanApprovalFooterControl() {
 
 function PlanApprovalCard({ pending }: { pending: PlanPanelEntry }) {
   const t = useT()
-  const { resolve, openPanel } = usePlanPanel()
-  const { onCancel, isStopping, turnRunning } = useContext(ComposerCancelStateContext)
+  const { resolve, openPanel, cancelStaged } = usePlanPanel()
+  const { onCancel, isStopping } = useContext(ComposerCancelStateContext)
   const draftKey = pending.toolCallId
   const [feedback, setDraft] = useState(() => readPlanFeedbackDraft(draftKey))
   const [revising, setRevising] = useState(() => feedback !== '')
@@ -48,10 +49,20 @@ function PlanApprovalCard({ pending }: { pending: PlanPanelEntry }) {
     }
   }
 
-  const reject = () => {
+  const reject = async () => {
     if (busy || isStopping) return
-    dropPlanFeedbackDraft(pending.toolCallId)
-    onCancel?.()
+    if (!cancelStaged) {
+      dropPlanFeedbackDraft(pending.toolCallId)
+      onCancel?.()
+      return
+    }
+    setBusy(true)
+    try {
+      await cancelStaged()
+      dropPlanFeedbackDraft(pending.toolCallId)
+    } finally {
+      setBusy(false)
+    }
   }
 
   const headline = useMemo(
@@ -140,18 +151,15 @@ function PlanApprovalCard({ pending }: { pending: PlanPanelEntry }) {
         </div>
       ) : (
         <div className="flex flex-wrap items-center gap-2 px-4 py-3">
-          {turnRunning ? (
-            // A restored or halted plan has no turn left for Stop to end.
-            <button
-              type="button"
-              data-slot="plan-approval-reject"
-              disabled={disabled || !onCancel}
-              onClick={reject}
-              className={secondaryButton}
-            >
-              {t('planApproval.reject')}
-            </button>
-          ) : null}
+          <button
+            type="button"
+            data-slot="plan-approval-reject"
+            disabled={disabled || (!cancelStaged && !onCancel)}
+            onClick={reject}
+            className={secondaryButton}
+          >
+            {t('planApproval.reject')}
+          </button>
           <button
             type="button"
             data-slot="plan-approval-revise"

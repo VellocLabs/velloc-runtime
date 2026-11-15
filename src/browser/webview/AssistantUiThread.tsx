@@ -249,6 +249,7 @@ export const AssistantUiThread = memo(function AssistantUiThread({
   setSkipDangerousMode,
   resolveToolUseConfirm,
   clearPlanApproval,
+  rejectPlanApproval,
   onOpenPlanPanel,
   onForkFromMessage,
   onForkAfterMessage,
@@ -314,6 +315,7 @@ export const AssistantUiThread = memo(function AssistantUiThread({
       setSkipDangerousMode={readOnly ? undefined : setSkipDangerousMode}
       resolveToolUseConfirm={readOnly ? undefined : resolveToolUseConfirm}
       clearPlanApproval={readOnly ? undefined : clearPlanApproval}
+      rejectPlanApproval={readOnly ? undefined : rejectPlanApproval}
       onOpenPlanPanel={readOnly ? undefined : onOpenPlanPanel}
       onForkFromMessage={readOnly ? undefined : onForkFromMessage}
       onForkAfterMessage={readOnly ? undefined : onForkAfterMessage}
@@ -378,6 +380,7 @@ function InteractiveAssistantUiThread({
   setSkipDangerousMode,
   resolveToolUseConfirm,
   clearPlanApproval,
+  rejectPlanApproval,
   onOpenPlanPanel,
   onForkFromMessage,
   onForkAfterMessage,
@@ -633,6 +636,7 @@ function InteractiveAssistantUiThread({
     setPermissionMode,
     resolveToolUseConfirm,
     clearPlanApproval,
+    rejectPlanApproval,
     onOpenPlanPanel,
   })
 
@@ -993,16 +997,14 @@ function InteractiveAssistantUiThread({
   // the just-sent text. Full reasoning at `handleCancelClick` in thread.tsx.
   // `onCancel` on the runtime below stays wired: it is what `cancelRun` calls
   // into if any other assistant-ui path ever reaches it.
-  const turnRunning = state.snapshot?.isBusy === true
   const composerCancelState = useMemo(
     () => ({
       isStopping,
       onCancel: () => {
         void handleCancel()
       },
-      turnRunning,
     }),
-    [isStopping, handleCancel, turnRunning],
+    [isStopping, handleCancel],
   )
 
   // Rows the virtualizer keeps get their content; the rest go to assistant-ui

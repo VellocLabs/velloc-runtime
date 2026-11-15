@@ -105,6 +105,8 @@ export type AssistantUiThreadProps = {
    * planning.
    */
   clearPlanApproval?: (toolCallId?: string) => void | Promise<void>
+  /** Reject a plan approval staged after its turn ended: paired as cancelled, no model turn (F-13). */
+  rejectPlanApproval?: (toolCallId: string) => void | Promise<void>
   /**
    * Open the right-side plan-details panel (shell-level drawer) for this
    * session's pending plan. Wired from MultiSessionShell; absent on embeds

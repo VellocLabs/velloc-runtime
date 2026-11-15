@@ -36,11 +36,10 @@ function tree(
   value: PlanPanelContextValue,
   onCancel?: () => void,
   extra?: ReactNode,
-  turnRunning = true,
 ) {
   return createElement(
     ComposerCancelStateProvider,
-    { value: { isStopping: false, onCancel, turnRunning } },
+    { value: { isStopping: false, onCancel } },
     createElement(
       PlanPanelContext.Provider,
       { value },
@@ -110,13 +109,22 @@ describe('PlanApprovalFooterControl', () => {
     expect(resolve).not.toHaveBeenCalled()
   })
 
-  it('hides Reject when no turn runs (a restored or halted plan); Revise… and Accept stay', () => {
+  it('Reject on a plan staged after its turn ended cancels it through the runtime, not Stop', async () => {
     const onCancel = vi.fn()
-    render(tree({ pending: entry('tc-1', 'p') }, onCancel, undefined, false))
-    expect(slot('plan-approval-reject')).toBeNull()
-    expect(slot('plan-approval-revise')).not.toBeNull()
-    expect(slot('plan-approval-approve')).not.toBeNull()
+    const resolve = vi.fn()
+    const cancelStaged = vi.fn(async () => {})
+    writePlanFeedbackDraft('tc-1', 'half a thought')
+    render(tree({ pending: entry('tc-1', 'p'), resolve, cancelStaged }, onCancel))
+    // The kept draft reopens the revise box; Back returns to the choices.
+    fireEvent.click(slot('plan-approval-back')!)
+    expect(slot('plan-approval-reject')!.hasAttribute('disabled')).toBe(false)
+    await act(async () => {
+      fireEvent.click(slot('plan-approval-reject')!)
+    })
+    expect(cancelStaged).toHaveBeenCalledTimes(1)
     expect(onCancel).not.toHaveBeenCalled()
+    expect(resolve).not.toHaveBeenCalled()
+    expect(readPlanFeedbackDraft('tc-1')).toBe('')
   })
 
   it('Revise… shows a three-row feedback box; Back returns to the three choices', () => {
