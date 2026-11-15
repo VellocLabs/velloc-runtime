@@ -1251,6 +1251,25 @@ describe('ToolPlanStream reasoning rows + header', () => {
     expect((label.textContent ?? '').replace(/\s+/g, ' ')).toContain('Read 2 files, edited a file')
   })
 
+  it('the header thought sits a full row gap below the summary line, not a sub-line gap', () => {
+    const Harness = makeHarness(
+      REASONING_RUN,
+      { startIndex: 0, endIndex: 4, callTotal: 3 },
+      true,
+    )
+    render(createElement(Harness))
+    const description = document.querySelector('[data-slot="tool-plan-stream-description"]')!
+    expect(description).not.toBeNull()
+    expect(
+      description.querySelector('[data-slot="tool-plan-stream-current-update"]'),
+    ).not.toBeNull()
+    const trigger = description.parentElement!
+    expect(trigger.getAttribute('data-slot')).toBe('tool-plan-stream-trigger')
+    const classes = trigger.className.split(/\s+/)
+    expect(classes).toContain('gap-4')
+    expect(classes).not.toContain('gap-1')
+  })
+
   it('later narration text replaces the thought (and drops the glyph)', () => {
     const message: ThreadMessageLike = {
       role: 'assistant',

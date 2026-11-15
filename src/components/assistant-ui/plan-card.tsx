@@ -261,7 +261,9 @@ const PlanCardImpl: FC<PlanCardProps> = ({
       <CollapsibleTrigger
         data-slot={`${slotPrefix}-trigger`}
         className={cn(
-          `aui-${slotPrefix}-trigger group/trigger flex w-full min-w-0 flex-col gap-1 py-1`,
+          // The description reads as the transcript's next row, so it sits
+          // the message body's row gap (gap-3 + this trigger's py-1) below.
+          `aui-${slotPrefix}-trigger group/trigger flex w-full min-w-0 flex-col gap-4 py-1`,
           "text-left text-body",
         )}
       >
@@ -272,7 +274,12 @@ const PlanCardImpl: FC<PlanCardProps> = ({
           {chevron}
         </span>
         {headerDescription && (
-          <span className="min-w-0 text-left">{headerDescription}</span>
+          <span
+            data-slot={`${slotPrefix}-description`}
+            className="min-w-0 text-left"
+          >
+            {headerDescription}
+          </span>
         )}
       </CollapsibleTrigger>
       <CollapsibleContent
