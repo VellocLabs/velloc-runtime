@@ -108,7 +108,7 @@ export const de: Messages = {
   "reviewCard.loading": "Review wird geladen…",
   "reviewCard.preparing": "Review wird vorbereitet: Änderung und Vorgaben werden gelesen…",
   "reviewCard.stageCount": "{step} ({count})",
-  "reviewCard.tasksRunning": "{count} laufen",
+  "reviewCard.tasksRunning": "{count} laufend",
   "reviewCard.currentTask": "Aktuelle Aufgabe:",
   "reviewCard.method": "Methode",
   "reviewCard.copyRange": "Revisionsbereich kopieren",

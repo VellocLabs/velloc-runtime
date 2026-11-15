@@ -588,6 +588,8 @@ it('puts the found, merged and verified counts on their steps, without a progres
   expect(stepOf('verify').dataset.count).toBe('3')
   expect(stepOf('summarize').dataset.count).toBeUndefined()
   expect(screen.queryByTestId('review-progress')).toBeNull()
+  // The counts are the live region the removed progress line used to be.
+  expect(screen.getByTestId('review-stages').querySelector('ol')!.getAttribute('aria-live')).toBe('polite')
   expect(screen.queryByTestId('review-finding')).toBeNull()
   cleanup()
   // While merging, only the find step has a count: merge shows its count once done, verify once it starts.
@@ -620,6 +622,12 @@ it('shows no count while a step has found nothing, and counts kept findings on t
   renderReport(value)
   // One retained, two over the report limit, one dismissed.
   expect(stepOf('inspect').dataset.count).toBe('4')
+  cleanup()
+  // Merge stands in with the same kept count once its step is done.
+  value.run.policy = { ...value.run.policy, recipe: 'team-eight-precise', agentMode: 'parallel' }
+  value.run.progress.stage = 'assess'
+  renderReport(value)
+  expect(stepOf('merge').dataset.count).toBe('4')
 })
 
 describe('review card header and live activity', () => {

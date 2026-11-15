@@ -377,7 +377,7 @@ const ReviewStages: FC<{ recipe: string; agentMode?: string; stage: Stage; queue
   const steps = reviewSteps(recipe, agentMode)
   const current = queued ? -1 : stepOfStage(steps, stage)
   return <div data-testid="review-stages" className="flex items-center gap-x-3 rounded-lg bg-muted/50 px-3 py-2 text-xs">
-    <ol className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-1">
+    <ol aria-live="polite" className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-1">
     {steps.map((step, index) => {
       const state = index < current ? 'done' : index === current ? 'current' : 'pending'
       const count = counts && reviewStepCount(step, state, counts)
