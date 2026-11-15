@@ -241,6 +241,15 @@ describe('close', () => {
     expect(out.data).not.toContain('Every step of the list is checked off.')
   })
 
+  it('a waiting close with no step in progress checks nothing off and says so', async () => {
+    const { run, statuses } = rig()
+    await run(SET_PLAN_TOOL_NAME, { steps: [{ text: 'a', status: 'pending' }, { text: 'b', status: 'pending' }] })
+    const out = await run(CLOSE_TURN_TOOL_NAME, { summary: 'S.', question: 'Ship it?', replies: ['Ship'], waiting: true })
+    expect(statuses()).toEqual(['pending', 'pending'])
+    expect(out.data).toContain('the list stands at 0 of 2 done')
+    expect(out.data).toContain('Steps 1, 2 stay open')
+  })
+
   it('a waiting close with only the last step left checks the list off whole', async () => {
     const { run, statuses } = rig()
     await run(SET_PLAN_TOOL_NAME, { steps: [{ text: 'a', status: 'completed' }, { text: 'b', status: 'in_progress' }] })

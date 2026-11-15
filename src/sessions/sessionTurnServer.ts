@@ -148,7 +148,8 @@ function describeClosedList(steps: readonly TurnStep[]): string[] {
   const open = steps.flatMap((step, index) => (step.status === 'completed' ? [] : [index + 1]))
   if (open.length === 0) return ['Every step of the list is checked off.']
   const named = open.length === 1 ? `Step ${open[0]} stays` : `Steps ${open.join(', ')} stay`
-  return [`The work waits on the person, so the list is checked off up to the step in progress. ${named} open; carry on from there once they answer.`]
+  const done = steps.length - open.length
+  return [`The work waits on the person, so the list stands at ${done} of ${steps.length} done. ${named} open; carry on from there once they answer.`]
 }
 
 /** The entries of `raw` that are steps: text and a known status. The rest are left out. */
