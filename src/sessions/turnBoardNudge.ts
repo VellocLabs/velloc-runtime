@@ -3,7 +3,8 @@
  * `STEP_LIST_NUDGE.STEPS_SINCE_UPDATE` model steps with no `set_plan` call,
  * while the list still has a step not done and no closing is standing, the
  * main conversation gets one meta row naming the step shown in progress and
- * how to advance it. Repeats at most every `STEPS_BETWEEN_NUDGES` steps.
+ * how to advance it. Repeats at most every `STEPS_BETWEEN_NUDGES` steps and
+ * `MAX_PER_TURN` times in one turn (since the person's last message).
  * Nothing for a loop that cannot call `set_plan` or a nested caller.
  */
 import type { Message, UserRow } from '../runtime/RuntimeTypes'
@@ -21,8 +22,9 @@ import { SET_PLAN_TOOL_NAME, isNestedCaller } from './sessionTurnServer'
 import { turnBoard, type TurnBoard, type TurnStep } from './turnBoard'
 
 export const STEP_LIST_NUDGE = {
-  STEPS_SINCE_UPDATE: 5,
-  STEPS_BETWEEN_NUDGES: 5,
+  STEPS_SINCE_UPDATE: 10,
+  STEPS_BETWEEN_NUDGES: 10,
+  MAX_PER_TURN: 3,
 } as const
 
 const NUDGE_OPENING = 'The step list on screen has not changed for a while.'
@@ -48,6 +50,26 @@ function isNudge(message: Message): boolean {
   if (message.type !== 'user' || !(message as { isMeta?: boolean }).isMeta) return false
   const content = (message as { message?: { content?: unknown } }).message?.content
   return typeof content === 'string' && content.includes(NUDGE_OPENING)
+}
+
+/** A message the person wrote: not meta, not a tool result. */
+function isPersonMessage(message: Message): boolean {
+  if (message.type !== 'user' || (message as { isMeta?: boolean }).isMeta) return false
+  const content = (message as { message?: { content?: unknown } }).message?.content
+  if (typeof content === 'string') return true
+  return Array.isArray(content) && !(content as Part[]).some(part => part?.type === 'tool-result' || part?.type === 'tool_result')
+}
+
+/** Nudges sent since the person's last message. */
+export function nudgesThisTurn(messages: readonly Message[]): number {
+  let count = 0
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const message = messages[i]
+    if (!message) continue
+    if (isNudge(message)) count++
+    else if (isPersonMessage(message)) break
+  }
+  return count
 }
 
 /** Model steps (reasoning-only replies left out) newer than the last `set_plan` call and the last nudge. */
@@ -95,6 +117,7 @@ export function createStepListNudge(
   const { sinceUpdate, sinceNudge } = stepsSinceStepListActivity(messages)
   if (sinceUpdate < STEP_LIST_NUDGE.STEPS_SINCE_UPDATE) return null
   if (sinceNudge < STEP_LIST_NUDGE.STEPS_BETWEEN_NUDGES) return null
+  if (nudgesThisTurn(messages) >= STEP_LIST_NUDGE.MAX_PER_TURN) return null
 
   const text = [
     '<system-reminder>',
