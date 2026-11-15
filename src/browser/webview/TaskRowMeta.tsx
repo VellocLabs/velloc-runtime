@@ -65,8 +65,9 @@ export function TaskMetaLine({ row, now, leading, srStatus, usage = true, classN
     )
   }
   if (running) {
-    if (row.lastActivityAt) {
-      const age = durationLabel(Math.max(0, now - row.lastActivityAt), 'largest')
+    const since = row.lastActivityAt ?? row.startedAt
+    if (since) {
+      const age = durationLabel(Math.max(0, now - since), 'largest')
       timeItems.push(
         <MetaItem key="updated" icon={HistoryIcon} testId="task-meta-updated"
           title={t('backgroundTasks.meta.updatedTitle', { age })}>

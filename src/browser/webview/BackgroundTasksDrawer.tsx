@@ -392,9 +392,9 @@ export function BackgroundTasksDrawer({
   const [transcriptLoading, setTranscriptLoading] = useState(false)
   const detailReqRef = useRef<string | null>(null)
 
-  // 5s ticker so a running task's elapsed time and last-update age stay fresh
-  // between broadcasts: in the list while any row runs, in the detail view while
-  // the opened row runs. Nothing else renders ages, so otherwise it stays off.
+  // 5s ticker so a running task's last-update age stays fresh between
+  // broadcasts: in the list while any row runs, in the detail view while the
+  // opened row runs. Nothing else renders ages, so otherwise it stays off.
   const hasRunningRows = rows.some((r) => r.status === 'running')
   const detailRunning =
     view.kind === 'detail' &&

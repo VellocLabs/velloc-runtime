@@ -335,6 +335,19 @@ describe('BackgroundTasksDrawer row meta', () => {
     expect(elapsed()).toBe('6s ago')
   })
 
+  it('a running row that has not reported yet counts its age from the start', () => {
+    vi.useFakeTimers({ now: NOW, toFake: ['Date', 'setInterval', 'clearInterval'] })
+    const quiet = { ...runningRow(), startedAt: NOW - 3_000 }
+    delete quiet.lastActivityAt
+    render(createElement(BackgroundTasksDrawer, drawerProps({ rows: [quiet] })))
+    const age = () => document.querySelector('li [data-testid="task-meta-updated"]')!.textContent
+    expect(age()).toBe('3s ago')
+    act(() => {
+      vi.advanceTimersByTime(5_000)
+    })
+    expect(age()).toBe('8s ago')
+  })
+
   it('a shell row is titled by its description; the command stays in the detail', async () => {
     const row = { ...runningRow(), description: 'Build the web app' }
     render(
