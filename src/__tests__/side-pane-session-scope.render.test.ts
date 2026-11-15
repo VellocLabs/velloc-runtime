@@ -7,7 +7,6 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import type { NexusTaskDetail, NexusTaskSummaryRow } from '../browser/bridge/protocol/ui'
 import { SidePaneBody, type SidePaneContentProps } from '../browser/webview/panes/sidePanes'
 import { createShellDismissDiffTarget, EMPTY_PANE_UI, type PaneSessionUi } from '../browser/webview/shellPaneActions'
-import type { PlanPanelEntry } from '../components/assistant-ui/plan-panel-context'
 import type { RightPanelDiffTarget } from '../components/assistant-ui/right-panel-content-context'
 import type { TurnDiffMeta, TurnFileChange } from '../utils/turnDiffs'
 
@@ -63,9 +62,6 @@ function taskRow(sessionId: string, description: string): NexusTaskSummaryRow {
   }
 }
 
-function plan(planText: string): PlanPanelEntry {
-  return { toolCallId: `call-${planText}`, request: { toolName: 'ExitPlanMode', planText } } as PlanPanelEntry
-}
 
 const historyView = () => screen.getByTestId('turn-diff-history').getAttribute('data-view')
 

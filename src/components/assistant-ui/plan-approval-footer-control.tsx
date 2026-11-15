@@ -1,4 +1,4 @@
-import { useContext, useState, type ReactNode } from 'react'
+import { useContext, useMemo, useState, type ReactNode } from 'react'
 import { useT } from '@/browser/webview/i18n'
 import { usePlanPanel, type PlanPanelEntry } from './plan-panel-context'
 import {
@@ -53,7 +53,10 @@ function PlanApprovalCard({ pending }: { pending: PlanPanelEntry }) {
     onCancel?.()
   }
 
-  const headline = planHeadline(pending.request.planText)
+  const headline = useMemo(
+    () => planHeadline(pending.request.planText),
+    [pending.request.planText],
+  )
   const disabled = busy || isStopping
   const secondaryButton =
     'shrink-0 rounded-lg bg-muted px-3.5 py-1.5 text-body font-medium hover:bg-muted/70 disabled:opacity-50'
@@ -100,7 +103,9 @@ function PlanApprovalCard({ pending }: { pending: PlanPanelEntry }) {
             onChange={e => setFeedback(e.target.value)}
             onKeyDown={e => {
               if (e.key === 'Escape') {
+                // Back to the three choices only: the Plan pane listens for Escape on document and would close with it.
                 e.preventDefault()
+                e.stopPropagation()
                 setRevising(false)
               }
             }}
