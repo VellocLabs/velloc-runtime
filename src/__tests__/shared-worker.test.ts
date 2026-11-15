@@ -5737,7 +5737,7 @@ describe('SharedWorkerSessionManager — pendingMessage (next message)', () => {
     expect(pendingEvents(port2, 'worker.pendingMessageUpdated')).toHaveLength(1)
   })
 
-  it('drops the turn plan only for a submit that starts a turn', async () => {
+  it('keeps the plan mid-turn and under a halt, and drops it for a submit that starts a turn', async () => {
     const port = createMockPort()
     manager.handleConnect(port)
     await initSession(port)
