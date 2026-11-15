@@ -624,16 +624,18 @@ describe('review card header and live activity', () => {
     fireEvent.focus(screen.getByTestId('review-range-short'))
     expect((await screen.findByRole('tooltip')).textContent).toContain(`${base} → ${head}`)
   })
-  it('sweeps a shimmer over the title only while the review runs', () => {
+  it('sweeps a shimmer over the title and tints the icon only while the review runs', () => {
     renderReport(running())
     expect(screen.getByTestId('review-title-shimmer').textContent).toBe(t('reviewCard.title'))
     expect(screen.getByTestId('review-title-shimmer').classList.contains('shimmer')).toBe(true)
     expect(screen.getByTestId('review-title-shimmer').getAttribute('aria-hidden')).toBe('true')
+    expect(screen.getByTestId('review-icon').classList.contains('text-primary')).toBe(true)
     cleanup()
     const done = running()
     done.run.progress = { ...done.run.progress, status: 'finished', stage: 'report' }
     renderReport(done)
     expect(screen.queryByTestId('review-title-shimmer')).toBeNull()
+    expect(screen.getByTestId('review-icon').classList.contains('text-primary')).toBe(false)
     expect(screen.getByTestId('review-heading').querySelector('h3')!.textContent).toBe(t('reviewCard.title'))
   })
   it('names the repository on the title line after the level, not on the range line', () => {
