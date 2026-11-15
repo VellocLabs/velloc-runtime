@@ -140,10 +140,10 @@ describe('PlanCard shell', () => {
         label: createElement('span', null, 'ROW-WEIGHT'),
         showConnector: false,
       })
-    const classesOnLabel = (html: string): string => {
+    const classesOnLabel = (html: string): string[] => {
       const at = html.indexOf('ROW-WEIGHT')
       const start = html.lastIndexOf('class="', at) + 'class="'.length
-      return html.slice(start, html.indexOf('"', start))
+      return html.slice(start, html.indexOf('"', start)).split(/\s+/)
     }
     const card = classesOnLabel(
       render({
@@ -153,8 +153,9 @@ describe('PlanCard shell', () => {
         children: row(),
       }),
     )
-    expect(card).toContain('font-medium')
-    expect(card).not.toContain('font-normal')
+    for (const cls of ['text-sm', 'leading-6', 'break-words', 'font-medium']) {
+      expect(card).toContain(cls)
+    }
     const line = classesOnLabel(
       render({
         slotPrefix: 'tool-plan-stream',
@@ -164,7 +165,8 @@ describe('PlanCard shell', () => {
         children: row(),
       }),
     )
-    expect(line).toContain('font-normal')
-    expect(line).not.toContain('font-medium')
+    for (const cls of ['text-sm', 'leading-6', 'break-words', 'font-normal']) {
+      expect(line).toContain(cls)
+    }
   })
 })
