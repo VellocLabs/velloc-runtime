@@ -665,7 +665,7 @@ export function NexusTopBar({
                     <SquareChartGanttIcon aria-hidden className="size-4 text-muted-foreground" />
                     <span className="flex-1">{t("topbar.sessionRail")}</span>
                     <DropdownMenuPrimitive.ItemIndicator>
-                      <CheckIcon aria-hidden className="size-4 text-primary" />
+                      <CheckIcon aria-hidden className="size-4 text-info" />
                     </DropdownMenuPrimitive.ItemIndicator>
                   </DropdownMenuPrimitive.CheckboxItem>
                 ) : null}
@@ -699,17 +699,20 @@ export function NexusTopBar({
                               {backgroundTaskCount}
                             </span>
                           ) : null}
+                          <span
+                            data-testid={`topbar-pane-row-${kind}-check`}
+                            className="flex size-4 shrink-0 items-center justify-center"
+                          >
+                            <DropdownMenuPrimitive.ItemIndicator>
+                              <CheckIcon aria-hidden className="size-4 text-info" />
+                            </DropdownMenuPrimitive.ItemIndicator>
+                          </span>
                           {paneShortcutLabel(kind) ? (
                             <kbd className="font-sans text-caption text-muted-foreground">
                               {paneShortcutLabel(kind)}
                             </kbd>
                           ) : null}
                         </span>
-                      </span>
-                      <span className="flex size-4 shrink-0 items-center justify-center">
-                        <DropdownMenuPrimitive.ItemIndicator>
-                          <CheckIcon aria-hidden className="size-4 text-primary" />
-                        </DropdownMenuPrimitive.ItemIndicator>
                       </span>
                     </DropdownMenuPrimitive.CheckboxItem>
                   );
@@ -771,7 +774,7 @@ export function NexusTopBar({
                       >
                         {item.icon}
                         <span className="flex-1">{item.label}</span>
-                        {item.pressed ? <CheckIcon aria-hidden className="size-4 text-primary" /> : null}
+                        {item.pressed ? <CheckIcon aria-hidden className="size-4 text-info" /> : null}
                       </DropdownMenuPrimitive.Item>
                     ))
                   : null}

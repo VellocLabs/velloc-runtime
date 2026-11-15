@@ -175,6 +175,19 @@ describe('NexusTopBar on a narrow window', () => {
     expect(screen.queryByTestId('topbar-pane-row-tasks-count')).toBeNull()
   })
 
+  it('an open pane row shows its blue check before its shortcut', async () => {
+    renderBar(1200, { openPanes: ['sidechat'] })
+    openMore()
+    const row = await screen.findByTestId('topbar-pane-row-sidechat')
+    const check = screen.getByTestId('topbar-pane-row-sidechat-check')
+    const kbd = row.querySelector('kbd')
+    expect(kbd?.textContent).toBe('Ctrl+;')
+    expect(check.compareDocumentPosition(kbd!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    const icon = check.querySelector('svg')
+    expect(icon?.getAttribute('class')).toContain('text-info')
+    expect(icon?.getAttribute('class')).not.toContain('text-primary')
+  })
+
   it('narrowest: the right group is down to More, then the left extras fold too', async () => {
     const { onOpenImport, onToggleRail } = renderBar(150)
     for (const id of ['topbar-session-rail', 'topbar-pane-terminal', 'topbar-import-acme-agent']) {
