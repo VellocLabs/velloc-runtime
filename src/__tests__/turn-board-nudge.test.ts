@@ -84,6 +84,36 @@ describe('createStepListNudge', () => {
     expect(createStepListNudge(context(), history, board())).not.toBeNull()
   })
 
+  it('over one long turn, reminds at steps 10, 20 and 30 only', () => {
+    let history: Message[] = [person('go'), call(SET_PLAN_TOOL_NAME)]
+    const remindedAt: number[] = []
+    for (let step = 1; step <= 45; step++) {
+      history = [...history, call('Bash')]
+      const row = createStepListNudge(context(), history, board())
+      if (row) {
+        remindedAt.push(step)
+        history = [...history, row]
+      }
+    }
+    expect(STEP_LIST_NUDGE.STEPS_SINCE_UPDATE).toBe(10)
+    expect(remindedAt).toEqual([10, 20, 30])
+  })
+
+  it('a set_plan update restarts the count', () => {
+    let history: Message[] = [person('go'), call(SET_PLAN_TOOL_NAME)]
+    const remindedAt: number[] = []
+    for (let step = 1; step <= 25; step++) {
+      history = [...history, call(step === 8 ? SET_PLAN_TOOL_NAME : 'Bash')]
+      const row = createStepListNudge(context(), history, board())
+      if (row) {
+        remindedAt.push(step)
+        history = [...history, row]
+      }
+    }
+    // The update at step 8 is itself a step; ten quiet ones after it end at 18.
+    expect(remindedAt).toEqual([18])
+  })
+
   it('a tool result is not the person writing', () => {
     const toolResult = { type: 'user', message: { role: 'user', content: [{ type: 'tool-result', toolCallId: 'x' }] } } as unknown as Message
     const nudge = createStepListNudge(context(), [call(SET_PLAN_TOOL_NAME), ...steps(quiet)], board())!
