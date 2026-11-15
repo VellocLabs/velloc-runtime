@@ -300,17 +300,12 @@ class MockRuntimeWorker implements AgentRuntimeWorkerHandle {
     return this.mockPhase.kind === 'running'
   }
 
-  /** Test control: the turn has ended halted on the person (an open question
-   *  or a staged plan approval). */
-  haltedOnUser = false
-
   isStopping(): boolean {
     return false
   }
 
-  isHaltedOnUser(): boolean {
-    return this.haltedOnUser
-  }
+  haltedOnUser = false
+  isHaltedOnUser = (): boolean => this.haltedOnUser
 
   getPhase(): SessionPhase {
     return this.mockPhase
@@ -5742,36 +5737,25 @@ describe('SharedWorkerSessionManager — pendingMessage (next message)', () => {
     expect(pendingEvents(port2, 'worker.pendingMessageUpdated')).toHaveLength(1)
   })
 
-  it('drops the turn plan only for a submit that starts a turn: one sent mid-turn or under a halt keeps it', async () => {
+  it('drops the turn plan only for a submit that starts a turn', async () => {
     const port = createMockPort()
     manager.handleConnect(port)
     await initSession(port)
     const worker = workerFactory.instances[0]
-    const steps = [
-      { text: 'Read the code', status: 'in_progress' as const },
-      { text: 'Run the tests', status: 'pending' as const },
-    ]
-    turnBoard.forget(SESSION)
-    const settle = () => new Promise(resolve => setTimeout(resolve, 10))
+    const steps = [{ text: 'Read the code', status: 'in_progress' as const }]
     const submit = async (prompt: string) => {
       port._simulateMessage({ type: 'worker.submitMessage', sessionId: SESSION, payload: { prompt } })
-      await settle()
+      await new Promise(resolve => setTimeout(resolve, 10))
     }
-
-    // Idle and not halted: the message starts the next turn, so the plan goes.
     turnBoard.setPlan(SESSION, steps)
-    await submit('start')
+    await submit('starts a turn')
     expect(turnBoard.read(SESSION).steps).toEqual([])
-
-    // Mid-turn: the plan belongs to the running turn and stays.
     worker.submitBehavior = 'silent'
     await submit('first')
     manager.markStreamStart(SESSION)
     turnBoard.setPlan(SESSION, steps)
-    await submit('typed into the running turn')
+    await submit('typed mid-turn')
     expect(turnBoard.read(SESSION).steps).toEqual(steps)
-
-    // Halted on the person: the answer continues the same turn, so it stays.
     manager.markStreamEnd(SESSION)
     turnBoard.setPlan(SESSION, steps)
     worker.haltedOnUser = true

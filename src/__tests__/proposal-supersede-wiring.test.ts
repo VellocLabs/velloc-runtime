@@ -18,6 +18,7 @@ function makeWorker(): AgentRuntimeWorkerHandle {
     pumpSubmits() {},
     isBusy: () => true,
     isStopping: () => false,
+    isHaltedOnUser: () => false,
     getPhase: () => ({ kind: 'idle' }),
   } as unknown as AgentRuntimeWorkerHandle
 }
