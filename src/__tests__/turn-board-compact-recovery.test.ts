@@ -80,13 +80,12 @@ describe('createPostCompactTurnBoardMessage', () => {
     expect(createPostCompactTurnBoardMessage(context(), board)).toBeNull()
   })
 
-  it('a closing answered by the person leaves the unfinished list to be told again', () => {
+  it('a list checked off by a closing is not told again once the person answers', () => {
     const board = new TurnBoard()
     board.setPlan(SESSION, steps)
     board.close(SESSION, { summary: 'Asked first.', question: 'Go on?', replies: ['Yes'], waiting: true })
     board.personWrote(SESSION)
-    // The closing completed the step in progress; the pending one is left.
-    expect(textOf(createPostCompactTurnBoardMessage(context(), board))).toContain('3. [not started] Add a test')
+    expect(createPostCompactTurnBoardMessage(context(), board)).toBeNull()
   })
 
   it('says nothing to a loop without set_plan, a nested caller, or no session', () => {

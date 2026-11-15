@@ -48,7 +48,7 @@ const SET_PLAN_DESCRIPTION = [
 ].join('\n')
 
 const CLOSE_DESCRIPTION = [
-  'End the turn\'s work with a summary and, when the next move is the person\'s, one question with reply buttons. Call it once in every turn where you kept a step list, changed files, ran commands or finished multi-step work, after the work is done and before your closing message. It also completes the step in progress, so no final set_plan call is needed. Skip it for short answers and plain conversation.',
+  'End the turn\'s work with a summary and, when the next move is the person\'s, one question with reply buttons. Call it once in every turn where you kept a step list, changed files, ran commands or finished multi-step work, after the work is done and before your closing message. It also checks off every step of the list, so no final set_plan call is needed. Skip it for short answers and plain conversation.',
   '',
   'Your closing message comes after this call as ordinary text and is your full answer; the summary does not replace it. The result tells you whether the question is on screen: ask in your message only a question it does not show.',
   '',
@@ -124,11 +124,16 @@ export function isNestedCaller(context: ToolCallContext): boolean {
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value)
 
-/** Where the list stands, with the next move when it is not one step in progress. */
+/** Where the list stands, with the next move. */
 function describeSteps(steps: readonly TurnStep[]): string {
   const total = steps.length
   const current = steps.flatMap((step, index) => (step.status === 'in_progress' ? [index + 1] : []))
-  if (current.length === 1) return `step ${current[0]} of ${total} is in progress`
+  if (current.length === 1) {
+    const following = steps.findIndex((step, index) => index >= current[0]! && step.status === 'pending')
+    return following < 0
+      ? `step ${current[0]} of ${total} is in progress; it is the last one, and close checks it off`
+      : `step ${current[0]} of ${total} is in progress; when it is done, send {"next": true} beside the call that begins step ${following + 1}`
+  }
   if (current.length > 1) {
     return `steps ${current.join(', ')} of ${total} are in progress; keep one and send {"done": [n]} for each one you finished`
   }
@@ -261,7 +266,8 @@ export function runCloseTurn(board: TurnBoard, sessionId: string, args: Record<s
   const outcome = question
     ? 'Shown: the question and its reply buttons are on screen; do not ask it again in your closing message.'
     : 'Nothing waits on the person, so no box is drawn. Write your closing message now.'
-  return { text: [outcome, ...notes].join(' ') }
+  const checkedOff = board.read(sessionId).steps.length > 0 ? ['Every step of the list is checked off.'] : []
+  return { text: [outcome, ...checkedOff, ...notes].join(' ') }
 }
 
 /** The server over `board`; the bundled one uses the realm's board. */

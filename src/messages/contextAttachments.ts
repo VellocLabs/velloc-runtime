@@ -30,6 +30,7 @@ import { type PermissionDecider } from '../toolkit/permissionVerdict'
 import { type ToolCallContext } from '../toolkit/toolCallContext'
 import * as sessionTranscriptModule from '../sessions/transcriptWriter'
 import { createPostCompactTurnBoardMessage } from '../sessions/turnBoardRecovery'
+import { createStepListNudge } from '../sessions/turnBoardNudge'
 import {
   discoverRelevantSkills,
   getModelInvocableCommands,
@@ -1384,6 +1385,8 @@ export async function* collectQueuedAttachmentMessages(
   for (const attachment of attachments) {
     yield makeContextRow(params.runtimeConfig, attachment)
   }
+  const nudge = createStepListNudge(params.toolUseContext, [...params.messages, ...(params.assistantMessages ?? [])])
+  if (nudge) yield nudge
 }
 
 async function collectQueuedThroughMods(params: QueuedAttachmentParams): Promise<AttachmentPayload[]> {

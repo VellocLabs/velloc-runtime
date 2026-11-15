@@ -100,11 +100,11 @@ describe('TurnBoard', () => {
     expect(statuses(board)).toEqual(['in_progress', 'in_progress', 'pending'])
   })
 
-  it('close records the closing and completes only the step in progress', () => {
+  it('close records the closing and checks off every step', () => {
     const { board } = tracked()
     board.setPlan('s1', plan('completed', 'in_progress', 'pending'))
     board.close('s1', { summary: 'Done so far.', question: 'Ship it?', replies: ['Ship', 'Not yet'], waiting: true })
-    expect(statuses(board)).toEqual(['completed', 'completed', 'pending'])
+    expect(statuses(board)).toEqual(['completed', 'completed', 'completed'])
     expect(board.read('s1').closing).toEqual({
       summary: 'Done so far.',
       question: 'Ship it?',

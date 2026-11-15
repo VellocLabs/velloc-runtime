@@ -102,14 +102,15 @@ export class TurnBoard {
   }
 
   /**
-   * Record the turn's closing; the steps in progress count as done. Answers
+   * Record the turn's closing; it checks off the list, so every step counts as
+   * done whether or not the model advanced it. Answers
    * whether an earlier closing was still standing, which is a second close
    * with no plan change and no message from the person in between.
    */
   close(sessionId: string, closing: TurnClosing): { repeated: boolean } {
     const before = this.read(sessionId)
     const steps = before.steps.map((step): TurnStep =>
-      step.status === 'in_progress' ? { ...step, status: 'completed' } : step,
+      step.status === 'completed' ? step : { ...step, status: 'completed' },
     )
     this.write(sessionId, { steps, closing: { ...closing, replies: Object.freeze([...closing.replies]) } })
     return { repeated: before.closing !== null }

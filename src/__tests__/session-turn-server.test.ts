@@ -182,6 +182,27 @@ describe('set_plan', () => {
 })
 
 describe('close', () => {
+  it('a list sent once and never advanced is checked off whole by close', async () => {
+    const { run, statuses } = rig()
+    const steps = Array.from({ length: 7 }, (_, index) => ({ text: `step ${index + 1}`, status: index === 0 ? 'in_progress' : 'pending' }))
+    const shown = await run(SET_PLAN_TOOL_NAME, { steps })
+    expect(shown.data).toContain('when it is done, send {"next": true} beside the call that begins step 2')
+    const out = await run(CLOSE_TURN_TOOL_NAME, { summary: 'All done.' })
+    expect(out.data).toContain('Every step of the list is checked off.')
+    expect(statuses()).toEqual(Array(7).fill('completed'))
+  })
+
+  it('the last step in progress is named as the one close checks off', async () => {
+    const { run } = rig()
+    const out = await run(SET_PLAN_TOOL_NAME, { steps: [{ text: 'a', status: 'completed' }, { text: 'b', status: 'in_progress' }] })
+    expect(out.data).toContain('step 2 of 2 is in progress; it is the last one, and close checks it off')
+  })
+
+  it('close with no list says nothing about one', async () => {
+    const { run } = rig()
+    expect((await run(CLOSE_TURN_TOOL_NAME, { summary: 'S.' })).data).not.toContain('checked off')
+  })
+
   it('records the summary alone and tells the model no box is drawn', async () => {
     const { board, run, statuses } = rig()
     await run(SET_PLAN_TOOL_NAME, { steps: [{ text: 'a', status: 'in_progress' }] })
