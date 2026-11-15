@@ -31,10 +31,18 @@ function px(value: string | undefined): number {
   const n = arbitrary ? Number(arbitrary[1]) : Number(raw) * SPACING
   return neg ? -n : n
 }
+// A second spell of the same prefix, or a breakpoint this arithmetic does not
+// model, would change the rendered spacing without changing the sum, so both
+// are refused rather than silently ignored.
 function pick(list: string[], prefix: string, md: boolean): string | undefined {
-  const base = list.find((c) => !c.includes(':') && c.replace(/^-/, '').startsWith(prefix))
-  const wide = list.find((c) => c.startsWith('md:') && c.slice(3).replace(/^-/, '').startsWith(prefix))
-  const chosen = md && wide ? wide.slice(3) : base
+  const matches = (c: string) =>
+    c.slice(c.lastIndexOf(':') + 1).replace(/^-/, '').startsWith(prefix)
+  const base = list.filter((c) => !c.includes(':') && matches(c))
+  const wide = list.filter((c) => c.startsWith('md:') && matches(c))
+  expect(base.length).toBeLessThanOrEqual(1)
+  expect(wide.length).toBeLessThanOrEqual(1)
+  expect(list.filter((c) => c.includes(':') && !c.startsWith('md:') && matches(c))).toEqual([])
+  const chosen = md && wide[0] ? wide[0].slice(3) : base[0]
   return chosen?.replace(new RegExp(`^(-?)${prefix}`), '$1')
 }
 

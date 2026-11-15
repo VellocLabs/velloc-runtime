@@ -3,6 +3,7 @@ import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 
 import { PlanCard } from '../components/assistant-ui/plan-card'
+import { PlanListItem } from '../components/tool-ui/plan/parts/ListItem'
 
 /**
  * `PlanCard`, the shell behind `TodoSection` and `ToolPlanStream`: root / trigger / content carry `${slotPrefix}-*`
@@ -130,5 +131,29 @@ describe('PlanCard shell', () => {
     })
     expect(start).toContain('items-start')
     expect(center).toContain('items-center')
+  })
+
+  it('keeps body rows at medium weight on the card look and at body weight on the line look', () => {
+    const row = () =>
+      createElement(PlanListItem, {
+        status: 'completed',
+        label: createElement('span', null, 'ROW-WEIGHT'),
+        showConnector: false,
+      } as never)
+    const card = render({
+      slotPrefix: 'todo-section',
+      persistKey: 'k-row-weight-card',
+      defaultOpen: true,
+      children: row(),
+    })
+    expect(card).toContain('text-sm leading-6 break-words font-medium')
+    const line = render({
+      slotPrefix: 'tool-plan-stream',
+      persistKey: 'k-row-weight-line',
+      defaultOpen: true,
+      look: 'line',
+      children: row(),
+    })
+    expect(line).toContain('text-sm leading-6 break-words font-normal')
   })
 })
