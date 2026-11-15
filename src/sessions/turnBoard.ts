@@ -128,12 +128,14 @@ export class TurnBoard {
   /**
    * The person sent a new message: the closing is answered. A message that
    * starts a new turn (`turnStarts`) also drops the plan, which belongs to the
-   * turn that set it; one typed into a running turn leaves the plan alone.
+   * turn that set it; one typed into a running turn leaves the plan alone, and
+   * so does the answer a waiting closing asked for, whose open steps the new
+   * turn carries on.
    */
   personWrote(sessionId: string, turnStarts = false): void {
     const state = this.states.get(sessionId)
     if (!state) return
-    if (turnStarts) {
+    if (turnStarts && !state.closing?.waiting) {
       this.write(sessionId, EMPTY)
       return
     }

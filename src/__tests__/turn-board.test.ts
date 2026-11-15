@@ -182,6 +182,17 @@ describe('TurnBoard', () => {
     expect(changes).toEqual(['s1'])
   })
 
+  it('an answer to a waiting closing keeps the steps it left open', () => {
+    const { board, changes } = tracked()
+    board.setPlan('s1', plan('completed', 'in_progress', 'pending'))
+    board.close('s1', { summary: 'S.', question: 'Ship it?', replies: ['Ship'], waiting: true })
+    changes.length = 0
+    board.personWrote('s1', true)
+    expect(board.read('s1').closing).toBeNull()
+    expect(statuses(board)).toEqual(['completed', 'completed', 'pending'])
+    expect(changes).toEqual(['s1'])
+  })
+
   it('a message typed into a running turn keeps an unfinished plan', () => {
     const { board, changes } = tracked()
     board.setPlan('s1', plan('in_progress', 'pending'))
