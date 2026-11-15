@@ -364,7 +364,7 @@ export class ReviewReportStore {
     try { state = JSON.parse(serialized) as RunState } catch { return fail('invalid-storage') }
     if (state.version !== 1 || state.run?.id !== runId || !Array.isArray(state.calls) || !Array.isArray(state.publications)) return fail('invalid-storage')
     // A run released by `releaseSettled` reloads exactly as saved: nothing to restore, no write, no change event.
-    if (terminal(state.run.progress.status) && !state.grants.length && !state.actionPhase && !state.publications.some(operation => operation.state === 'pending')) {
+    if (this.atRest(state)) {
       this.states.set(runId, state)
       return state
     }
@@ -389,18 +389,23 @@ export class ReviewReportStore {
     return state
   }
   /**
-   * Drops the cached state of each ended run that `idle` accepts and that holds no grant, action phase, pending
-   * publication or queued write; the next read reloads it from the adapter unchanged.
+   * Drops the cached state of each ended run that `idle` accepts and that holds no unexpired grant, action phase,
+   * pending publication or queued write; the next read reloads it from the adapter unchanged.
    */
   releaseSettled(idle: (runId: string) => boolean): number {
     let released = 0
     for (const [runId, state] of this.states) {
-      if (!terminal(state.run.progress.status) || state.grants.length || state.actionPhase || this.tails.has(runId)) continue
-      if (state.publications.some(operation => operation.state === 'pending') || this.diffSources.has(runId) || !idle(runId)) continue
+      if (!this.atRest(state) || this.tails.has(runId) || this.diffSources.has(runId) || !idle(runId)) continue
       this.states.delete(runId)
       released++
     }
     return released
+  }
+  /** Ended, with no unexpired grant, action phase or pending publication: storage holds all of it and a reload restores nothing. */
+  private atRest(state: RunState): boolean {
+    const now = this.now()
+    return terminal(state.run.progress.status) && !state.actionPhase && state.grants.every(grant => grant.expiresAt <= now)
+      && !state.publications.some(operation => operation.state === 'pending')
   }
   private async mutate<T>(runId: string, work: (state: RunState) => T): Promise<T> {
     return this.serial(runId, async () => {

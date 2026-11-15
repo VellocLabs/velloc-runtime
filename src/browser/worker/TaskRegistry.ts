@@ -16,8 +16,8 @@ export class TaskRegistry<
   private readonly live = new Map<string, TLive>()
   private readonly finished = new Map<string, TFinished>()
   private readonly taskIdToNative = new Map<string, string>()
-  /** Content → the one string finished records hold for it. */
-  private readonly sharedText = new Map<string, string>()
+  /** Content → the one string finished records hold for it, and how many record fields hold it. */
+  private readonly sharedText = new Map<string, { value: string; refs: number }>()
 
   private shareText(record: TFinished): void {
     const fields = record as Record<string, unknown>
@@ -25,24 +25,36 @@ export class TaskRegistry<
       const value = fields[field]
       if (typeof value !== 'string' || value.length === 0) continue
       const shared = this.sharedText.get(value)
-      if (shared === undefined) this.sharedText.set(value, value)
-      else fields[field] = shared
+      if (shared === undefined) this.sharedText.set(value, { value, refs: 1 })
+      else { fields[field] = shared.value; shared.refs++ }
     }
-    if (this.sharedText.size > 2 * SHARED_TEXT_FIELDS.length * this.finished.size + 32) this.compactSharedText()
   }
 
-  /** Forgets shared text no finished record holds any more. */
+  private unshareText(record: TFinished | undefined): void {
+    if (!record) return
+    const fields = record as Record<string, unknown>
+    for (const field of SHARED_TEXT_FIELDS) {
+      const value = fields[field]
+      if (typeof value !== 'string' || value.length === 0) continue
+      const shared = this.sharedText.get(value)
+      if (shared && --shared.refs <= 0) this.sharedText.delete(value)
+    }
+  }
+
+  /** Recounts shared text from the finished records, forgetting text none holds (also after a record was edited in place). */
   compactSharedText(): void {
-    const held = new Set<string>()
+    const counts = new Map<string, number>()
     for (const record of this.finished.values()) {
       const fields = record as Record<string, unknown>
       for (const field of SHARED_TEXT_FIELDS) {
         const value = fields[field]
-        if (typeof value === 'string') held.add(value)
+        if (typeof value === 'string' && value.length > 0) counts.set(value, (counts.get(value) ?? 0) + 1)
       }
     }
-    for (const value of this.sharedText.keys()) {
-      if (!held.has(value)) this.sharedText.delete(value)
+    for (const [value, shared] of this.sharedText) {
+      const refs = counts.get(value)
+      if (refs === undefined) this.sharedText.delete(value)
+      else shared.refs = refs
     }
   }
 
@@ -83,6 +95,7 @@ export class TaskRegistry<
         )
       }
       this.finished.delete(nativeId)
+      this.unshareText(prior)
       if (prior.taskId && prior.taskId !== record.taskId) {
         this.taskIdToNative.delete(prior.taskId)
       }
@@ -124,6 +137,7 @@ export class TaskRegistry<
       if (!oldestId) break
       const evicted = this.finished.get(oldestId)
       this.finished.delete(oldestId)
+      this.unshareText(evicted)
       // Drop the public-taskId index entry so it doesn't linger forever.
       if (evicted?.taskId) {
         this.taskIdToNative.delete(evicted.taskId)
@@ -203,6 +217,7 @@ export class TaskRegistry<
   }
 
   deleteFinished(nativeId: string): void {
+    this.unshareText(this.finished.get(nativeId))
     this.finished.delete(nativeId)
   }
 

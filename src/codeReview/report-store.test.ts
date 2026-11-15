@@ -614,6 +614,32 @@ describe('review report store', () => {
     await expect(store.assertActionAuthorized(runId, grantId, 'repair', diagnosticIds, ['src/a.ts'])).rejects.toThrow('action-not-authorized')
   })
 
+  it('releases an ended run once its grants have expired, and reloads it without a write', async () => {
+    let now = 100
+    let id = 0
+    const data = new Map<string, string>()
+    const adapter: ReportStorageAdapter = { listRunIds: async () => [...data.keys()], load: async key => data.get(key) ?? null, save: async (key, value) => { data.set(key, value) } }
+    const store = new ReviewReportStore(adapter, { now: () => now, id: () => `host-${++id}`, sanitizeExcerpt: value => value })
+    const runId = await store.createRun({ conversationKey: 'conversation', scope: { kind: 'workspace', workspaceKey: 'workspace', repository: { projectKey: 'project' }, revision: { base: 'base', head: 'head' }, pathFilter: [] },
+      policy: { level: 'high', recipe: 'local-eight', recipeRevision: 1, execution: 'inline', presentation: 'terminal', reportLimit: 8 } })
+    const anchorKey = await store.registerAnchor(runId, { path: 'src/a.ts', revision: 'head', side: 'after', span: { start: 1, end: 2 } })
+    await store.start(runId)
+    await populate(store, runId, anchorKey)
+    await store.finish(runId, 'finished')
+    await store.grantAction(runId, { kind: 'repair', workspaceKey: 'workspace', headRevision: 'head', diagnosticIds: (await store.getSnapshot(runId)).retainedIds, paths: ['src/a.ts'], expiresAt: 200 })
+    const states = (store as unknown as { states: Map<string, unknown> }).states
+    await vi.waitFor(() => expect((store as unknown as { tails: Map<string, unknown> }).tails.size).toBe(0))
+    expect(store.releaseSettled(() => true)).toBe(0)
+    expect(states.has(runId)).toBe(true)
+    now = 200
+    const before = await store.getSnapshot(runId)
+    expect(store.releaseSettled(() => true)).toBe(1)
+    expect(states.has(runId)).toBe(false)
+    const save = vi.spyOn(adapter, 'save')
+    expect(await store.getSnapshot(runId)).toEqual(before)
+    expect(save).not.toHaveBeenCalled()
+  })
+
   it('records blocked, failed and skipped host outcomes without allowing forged success states', async () => {
     const { store, run } = fixture()
     const { id, anchorKey } = await run()

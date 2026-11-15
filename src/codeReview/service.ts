@@ -179,17 +179,20 @@ export class LocalReviewService {
   subscribe = (listener: () => void): (() => void) => { this.admit(); this.listeners.add(listener); return () => this.listeners.delete(listener) }
   changed = (): void => { this.sequence++; for (const listener of this.listeners) listener() }
   presentation(runId: string): { notices: ReviewPlan['notices']; emptyScope: boolean; target?: string } | undefined {
+    const settled = this.settled.get(runId)?.presentation
+    if (settled) return settled
     const live = this.live.get(runId)
-    return live ? { notices: live.plan.notices, emptyScope: live.access.manifest.status === 'empty', target: live.args.target } : this.settled.get(runId)?.presentation
+    return live ? { notices: live.plan.notices, emptyScope: live.access.manifest.status === 'empty', target: live.args.target } : undefined
   }
   /**
    * Contract: called once `live.done` settles. Drops the run's scope access (manifest, patches, read closure);
-   * a later action on the run resolves its scope again, as for a restored run.
+   * a later action on the run resolves its scope again, as for a restored run. The card keeps the presentation
+   * of the run's first settle; a follow-up's re-resolved plan does not replace it.
    */
   private settle(runId: string, live: LiveRun): void {
     if (this.live.get(runId) !== live) return
     this.live.delete(runId)
-    this.settled.set(runId, { presentation: { notices: live.plan.notices, emptyScope: live.access.manifest.status === 'empty', target: live.args.target },
+    this.settled.set(runId, { presentation: this.settled.get(runId)?.presentation ?? { notices: live.plan.notices, emptyScope: live.access.manifest.status === 'empty', target: live.args.target },
       args: live.args, tasks: live.tasks, agentIds: live.agentIds, end: live.end })
   }
   /** Releases cached report state of runs with no work in flight; reads reload it from storage. */

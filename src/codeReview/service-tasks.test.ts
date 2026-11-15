@@ -135,6 +135,21 @@ describe('settled runs', () => {
   })
 })
 
+describe('settled run presentation', () => {
+  it('keeps the first settle presentation when a later follow-up settles with another plan', async () => {
+    const h = setup()
+    const { runId } = await h.service.startUser('medium')
+    await h.service.wait(runId)
+    const first = h.service.presentation(runId)
+    const internals = h.service as unknown as { live: Map<string, unknown>; settle(runId: string, live: unknown): void }
+    const followup = { plan: { notices: [{ code: 'max-not-authorized' }] }, access: { manifest: { status: 'reviewable' } }, args: { target: 'other' }, tasks: [], agentIds: new Map() }
+    internals.live.set(runId, followup)
+    expect(h.service.presentation(runId)).toEqual(first)
+    internals.settle(runId, followup)
+    expect(h.service.presentation(runId)).toEqual(first)
+  })
+})
+
 describe('worker material', () => {
   const manifest = setup().manifest
   it('lists each anchor once, under its file, as key, side and span', () => {

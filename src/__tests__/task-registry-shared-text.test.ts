@@ -31,6 +31,20 @@ describe('TaskRegistry shared finished-record text', () => {
     expect(registry.getFinished('b')!.prompt).toBe(text('two'))
   })
 
+  it('forgets the text of evicted and deleted records at once', () => {
+    const registry = new TaskRegistry<{ type: string }, Finished>()
+    registry.recordFinished('a', { type: 'fork', prompt: text('one'), systemPrompt: text('system') })
+    registry.recordFinished('b', { type: 'fork', prompt: text('two'), systemPrompt: text('system') })
+    registry.recordFinished('c', { type: 'fork', prompt: text('three'), systemPrompt: text('system') })
+    registry.evictFinishedOverCap('fork', 2)
+    expect(sharedTextSize(registry)).toBe(3)
+    registry.deleteFinished('b')
+    expect(sharedTextSize(registry)).toBe(2)
+    registry.recordFinished('c', { type: 'fork', prompt: text('four'), systemPrompt: text('system') })
+    expect(sharedTextSize(registry)).toBe(2)
+    expect(registry.getFinished('c')!.systemPrompt).toBe(text('system'))
+  })
+
   it('stays bounded as evicted records come and go', () => {
     const registry = new TaskRegistry<{ type: string }, Finished>()
     for (let i = 0; i < 200; i++) {
@@ -38,6 +52,6 @@ describe('TaskRegistry shared finished-record text', () => {
       registry.evictFinishedOverCap('fork', 5)
     }
     expect(registry.finishedSize).toBe(5)
-    expect(sharedTextSize(registry)).toBeLessThanOrEqual(4 * 5 + 32 + 1)
+    expect(sharedTextSize(registry)).toBe(5)
   })
 })
