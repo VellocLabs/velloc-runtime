@@ -1,14 +1,10 @@
 import { type RefObject, type Dispatch, type SetStateAction } from 'react'
-import type { PendingApproval } from '@/runtime/RuntimeTypes'
-import type { RuleEdit } from '@/permissions/ruleUpdates'
 import type { SessionCardPrefs } from './layout/sessionCards'
-import type { BrowserRuntimeToolResultSubmission } from './BrowserRuntimeClient'
 import { setSessionCardsShown } from './layout/sessionCards'
 import { setMaximized, type SessionPaneRecord, type SidePaneKind } from './layout/paneLayout'
 import { type RightPanelSkillTarget } from '@/components/assistant-ui/right-panel-content-context'
 import { filterSubAgentRowsBySession, subAgentsEqual } from './backgroundSubAgents'
 import { loopTimerStopRequest } from './loopTimers'
-import { resolvePlanApproval } from '@/permissions/planApproval'
 import type { NexusTaskSummaryRow } from '../bridge/protocol/ui'
 import { type SkillPanelListRow } from './sessionSkills'
 
@@ -98,34 +94,6 @@ export function createShellHandleTaskFocusConsumed(
 ) {
   return () => {
     setBackgroundTaskFocusSessionId(null)
-  }
-}
-export function createShellResolveActivePlan(
-  activePlanEntry: { toolCallId: string; request: { toolName: string; planText: string; planFilePath: string; restoreMode: string; }; } | null,
-  activeQueuedPlanConfirm: PendingApproval | null,
-  resolveToolUseConfirm: (params: { approvalCallId: string; behavior: "allow" | "reject" | "abort"; updatedInput?: Record<string, unknown>; feedback?: string; ruleEdits?: RuleEdit[]; }) => Promise<void>,
-  clearPlanApproval: (toolCallId?: string) => Promise<void>,
-  setPermissionMode: (mode: string) => Promise<void>,
-  submitToolResult: (submission: BrowserRuntimeToolResultSubmission) => Promise<void>,
-) {
-  return (decision: 'approve' | 'reject', feedback?: string) => {
-    if (!activePlanEntry) return
-    if (activeQueuedPlanConfirm) {
-      return resolveToolUseConfirm({
-        approvalCallId: activeQueuedPlanConfirm.approvalCallId,
-        behavior: decision === 'approve' ? 'allow' : 'reject',
-        updatedInput:
-          decision === 'approve' ? activeQueuedPlanConfirm.input : undefined,
-        feedback,
-      })
-    }
-    return resolvePlanApproval(
-      decision,
-      activePlanEntry.toolCallId,
-      activePlanEntry.request,
-      { clearPlanApproval, setPermissionMode, submitToolResult },
-      feedback,
-    )
   }
 }
 export function createShellHandleToggleSessionCards(

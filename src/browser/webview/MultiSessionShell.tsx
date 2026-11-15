@@ -334,7 +334,6 @@ import {
   createShellHandleOpenBackgroundTasks,
   createShellHandleOpenBackgroundTasksList,
   createShellHandleTaskFocusConsumed,
-  createShellResolveActivePlan,
   createShellHandleToggleSessionCards,
   createShellCloseSessionCardsPopover,
 } from './shellTaskActions'
@@ -2277,17 +2276,6 @@ export function MultiSessionShell({
     activeQueuedPlanConfirm,
     activeState.snapshot?.pendingPlanApproval,
   ])
-  const resolveActivePlan = useMemo(
-    () => createShellResolveActivePlan(activePlanEntry, activeQueuedPlanConfirm, resolveToolUseConfirm, clearPlanApproval, setPermissionMode, submitToolResult),
-    [
-      activePlanEntry,
-      activeQueuedPlanConfirm,
-      resolveToolUseConfirm,
-      clearPlanApproval,
-      setPermissionMode,
-      submitToolResult,
-    ],
-  )
   // The Plan pane closes once its approval resolves (a plan gives way to
   // none in the same session), and that plan's feedback draft goes with it; a session restored with a Plan pane and no
   // plan keeps it. The close is DEFERRED a tick: a session switch / snapshot
@@ -3837,7 +3825,7 @@ export function MultiSessionShell({
     rightPanelFileReveal, readFileText, writeFileText, runningSessionIds, openFileFromTree,
     openFileTabInWindow, listDir, startFileSearch, filesTreeRoots, activeSessionTabs,
     activateBrowserTab, closeBrowserTab, activeNexusTabCount, t, navigateBrowserTab,
-    shellChannel, openBrowserTab, activePlanEntry, resolveActivePlan, activeSessionSubAgentRows,
+    shellChannel, openBrowserTab, activePlanEntry, activeSessionSubAgentRows,
     backgroundTaskFocusSessionId, backgroundTaskListRequest, handleTaskFocusConsumed,
     handleStopBackgroundTask, handleResumeSubAgent, handleLoadSubAgentTranscript,
     rightPanelDiffTarget, rightPanelSkillTarget, activeLoadedSkills, handleSelectSkill,

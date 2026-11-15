@@ -89,7 +89,7 @@ describe('Escape handlers inside the session area', () => {
     const { unmount } = render(
       inArea(
         false,
-        createElement(PlanDetailsPanel, { entry: planEntry, onResolve: async () => {}, onClose }),
+        createElement(PlanDetailsPanel, { entry: planEntry, onClose }),
       ),
     )
     escape()
@@ -99,7 +99,7 @@ describe('Escape handlers inside the session area', () => {
     render(
       inArea(
         true,
-        createElement(PlanDetailsPanel, { entry: planEntry, onResolve: async () => {}, onClose }),
+        createElement(PlanDetailsPanel, { entry: planEntry, onClose }),
       ),
     )
     escape()

@@ -1074,15 +1074,15 @@ export const ko: Messages = {
     '{product}이(가) 구현 방향을 살펴보고 설계하기 위해 계획 모드로 전환하려고 합니다. 계획을 승인하기 전까지는 코드를 변경하지 않습니다.',
   'planEnter.approve': '네, 계획 모드로 전환',
   'planEnter.reject': '아니요, 바로 구현 시작',
-  'planApproval.title': '코드를 작성할까요?',
-  'planApproval.viewPlan': '계획 보기',
+  'planApproval.title': '제안된 계획',
+  'planApproval.openPlan': '계획 열기',
   'planApproval.panelTitle': '계획',
-  'planApproval.close': '계획 닫기',
-  'planApproval.description':
-    '이 계획을 승인하면 구현을 시작합니다. 계획을 더 다듬을 수도 있습니다.',
-  'planApproval.approve': '승인하고 시작',
-  'planApproval.keepPlanning': '아니요, 계획을 계속',
-  'planApproval.feedbackPlaceholder': '선택 사항: 무엇을 바꿀까요?',
+  'planApproval.reject': '거절',
+  'planApproval.revise': '수정 요청…',
+  'planApproval.accept': '수락',
+  'planApproval.back': '뒤로',
+  'planApproval.sendRevision': '수정 요청',
+  'planApproval.feedbackPlaceholder': '무엇을 바꿀까요? (선택 사항)',
 
   // ── 토큰 사용량 표시기 ────────────────────────────────────────────────
   'tokenUsage.contextUsed': '컨텍스트 {pct}% 사용',

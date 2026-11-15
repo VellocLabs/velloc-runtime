@@ -24,7 +24,6 @@ import { SkillPanel } from '../SkillPanel'
 /** The content the shell threads into the pane bodies (F-9). */
 export type SidePaneContentProps = {
   planEntry: PlanPanelEntry | null
-  onPlanResolve: (decision: 'approve' | 'reject', feedback?: string) => void | Promise<void>
   onClosePlan: () => void
   taskRows: readonly NexusTaskSummaryRow[]
   taskFocusSessionId?: string | null
@@ -107,7 +106,6 @@ function SessionPaneBody({ kind, ...props }: SidePaneBodyProps): ReactElement {
         <PlanDetailsPanel
           key={props.planEntry.toolCallId}
           entry={props.planEntry}
-          onResolve={props.onPlanResolve}
           onClose={props.onClosePlan}
         />
       ) : (

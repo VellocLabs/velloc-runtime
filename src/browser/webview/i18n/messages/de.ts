@@ -1084,15 +1084,15 @@ export const de: Messages = {
     '{product} möchte in den Planungsmodus wechseln, um einen Umsetzungsansatz zu erkunden und zu entwerfen. Bis du den Plan freigibst, wird kein Code geändert.',
   'planEnter.approve': 'Ja, Planungsmodus starten',
   'planEnter.reject': 'Nein, jetzt mit der Umsetzung beginnen',
-  'planApproval.title': 'Bereit zum Programmieren?',
-  'planApproval.viewPlan': 'Plan ansehen',
+  'planApproval.title': 'Vorgeschlagener Plan',
+  'planApproval.openPlan': 'Plan öffnen',
   'planApproval.panelTitle': 'Plan',
-  'planApproval.close': 'Plan schließen',
-  'planApproval.description':
-    'Gib diesen Plan frei, um mit der Umsetzung zu beginnen, oder plane weiter.',
-  'planApproval.approve': 'Freigeben & starten',
-  'planApproval.keepPlanning': 'Nein, weiter planen',
-  'planApproval.feedbackPlaceholder': 'Optional: Was soll sich ändern?',
+  'planApproval.reject': 'Ablehnen',
+  'planApproval.revise': 'Überarbeiten…',
+  'planApproval.accept': 'Annehmen',
+  'planApproval.back': 'Zurück',
+  'planApproval.sendRevision': 'Überarbeiten',
+  'planApproval.feedbackPlaceholder': 'Was soll sich ändern? (optional)',
 
   // ── Token-Verbrauchsanzeige ────────────────────────────────────────────
   'tokenUsage.contextUsed': 'Kontext zu {pct} % genutzt',

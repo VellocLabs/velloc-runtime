@@ -29,7 +29,7 @@ import { registerAttachSelectionOwner } from "@/browser/webview/attachSelectionS
 import { ComposerEffortPicker } from "@/browser/webview/ComposerEffortPicker";
 import { PendingQuestionsContext, createPendingQuestionsStore, usePendingQuestionCount } from "@/browser/webview/pendingQuestionsStore";
 import { useNexusSessionStatus, useSessionStatusChannel } from "@/browser/webview/topbar/useNexusSessionStatus";
-import { PlanApprovalFooterControl } from "./plan-approval-footer-control";
+import { PlanApprovalFooterControl, PlanGatedComposer } from "./plan-approval-footer-control";
 import { PermissionAskFooterControl } from "./permission-ask-footer-control";
 import {
   ModAsks,
@@ -625,7 +625,9 @@ export const Thread: FC<{
           {/* A mod's questions (F-25 `$.ui.ask`), one card each until the
               person answers or dismisses it. */}
           <ModAsks />
-          <Composer />
+          <PlanGatedComposer>
+            <Composer />
+          </PlanGatedComposer>
           {/* Folder chip (left) and context ring (right) on one line below the
               composer, centred with 3px above and below: the negative
               margins trim the footer's gap and bottom padding to 3px each. */}

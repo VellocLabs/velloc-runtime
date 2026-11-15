@@ -1085,15 +1085,15 @@ export const fr: Messages = {
     '{product} souhaite passer en mode planification pour explorer et concevoir une approche de mise en œuvre. Aucun code ne sera modifié tant que vous n’avez pas validé le plan.',
   'planEnter.approve': 'Oui, passer en mode planification',
   'planEnter.reject': 'Non, commencer la mise en œuvre maintenant',
-  'planApproval.title': 'Prêt à coder ?',
-  'planApproval.viewPlan': 'Voir le plan',
+  'planApproval.title': 'Plan proposé',
+  'planApproval.openPlan': 'Ouvrir le plan',
   'planApproval.panelTitle': 'Plan',
-  'planApproval.close': 'Fermer le plan',
-  'planApproval.description':
-    'Validez ce plan pour commencer la mise en œuvre, ou poursuivez la planification.',
-  'planApproval.approve': 'Valider et démarrer',
-  'planApproval.keepPlanning': 'Non, continuer à planifier',
-  'planApproval.feedbackPlaceholder': 'Facultatif : que faut-il changer ?',
+  'planApproval.reject': 'Refuser',
+  'planApproval.revise': 'Réviser…',
+  'planApproval.accept': 'Accepter',
+  'planApproval.back': 'Retour',
+  'planApproval.sendRevision': 'Réviser',
+  'planApproval.feedbackPlaceholder': 'Que faut-il changer ? (facultatif)',
 
   // ── Indicateur de consommation de jetons ───────────────────────────────
   'tokenUsage.contextUsed': 'Contexte utilisé à {pct} %',

@@ -1118,15 +1118,15 @@ export const en = {
     '{product} wants to enter plan mode to explore and design an implementation approach. No code changes will be made until you approve the plan.',
   'planEnter.approve': 'Yes, enter plan mode',
   'planEnter.reject': 'No, start implementing now',
-  'planApproval.title': 'Ready to code?',
-  'planApproval.viewPlan': 'View plan',
+  'planApproval.title': 'Proposed plan',
+  'planApproval.openPlan': 'Open plan',
   'planApproval.panelTitle': 'Plan',
-  'planApproval.close': 'Close plan',
-  'planApproval.description':
-    'Approve this plan to start implementing, or keep planning.',
-  'planApproval.approve': 'Approve & start',
-  'planApproval.keepPlanning': 'No, keep planning',
-  'planApproval.feedbackPlaceholder': 'Optional: what should change?',
+  'planApproval.reject': 'Reject',
+  'planApproval.revise': 'Revise…',
+  'planApproval.accept': 'Accept',
+  'planApproval.back': 'Back',
+  'planApproval.sendRevision': 'Revise',
+  'planApproval.feedbackPlaceholder': 'What should change? (optional)',
 
   // ── Token-usage indicator ──────────────────────────────────────────────
   'tokenUsage.contextUsed': 'Context {pct}% used',

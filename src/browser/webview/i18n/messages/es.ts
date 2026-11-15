@@ -1085,15 +1085,15 @@ export const es: Messages = {
     '{product} quiere entrar en el modo de planificación para explorar y diseñar un enfoque de implementación. No se modificará ningún código hasta que apruebe el plan.',
   'planEnter.approve': 'Sí, entrar en el modo de planificación',
   'planEnter.reject': 'No, empezar a implementar ahora',
-  'planApproval.title': '¿Todo listo para programar?',
-  'planApproval.viewPlan': 'Ver el plan',
+  'planApproval.title': 'Plan propuesto',
+  'planApproval.openPlan': 'Abrir el plan',
   'planApproval.panelTitle': 'Plan',
-  'planApproval.close': 'Cerrar el plan',
-  'planApproval.description':
-    'Apruebe este plan para empezar a implementarlo, o siga planificando.',
-  'planApproval.approve': 'Aprobar y empezar',
-  'planApproval.keepPlanning': 'No, seguir planificando',
-  'planApproval.feedbackPlaceholder': 'Opcional: ¿qué debería cambiar?',
+  'planApproval.reject': 'Rechazar',
+  'planApproval.revise': 'Revisar…',
+  'planApproval.accept': 'Aceptar',
+  'planApproval.back': 'Atrás',
+  'planApproval.sendRevision': 'Revisar',
+  'planApproval.feedbackPlaceholder': '¿Qué debería cambiar? (opcional)',
 
   // ── Indicador de uso de tokens ─────────────────────────────────────────
   'tokenUsage.contextUsed': 'Contexto usado al {pct} %',

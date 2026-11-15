@@ -151,8 +151,9 @@ describe('where the mods\' rows sit in the composer footer', () => {
     expect(thread).not.toMatch(/BackgroundTasksFooterControl|background-tasks-footer/)
     expect(mods).toEqual([...mods].sort((a, b) => a - b))
     expect(Math.max(...mods)).toBeLessThan(composer)
-    // Nothing between the last mod row and the composer.
-    expect(thread.slice(Math.max(...mods), composer).trim()).toMatch(/^<ModAsks \/>$/)
+    // Nothing between the last mod row and the composer but the plan gate,
+    // which wraps the composer and draws no row of its own.
+    expect(thread.slice(Math.max(...mods), composer).trim()).toMatch(/^<ModAsks \/>(\s*<PlanGatedComposer>)?$/)
   })
 
   it('the status lines are the prompt box\'s top row, and the turn note sits in the transcript under the last answer', () => {

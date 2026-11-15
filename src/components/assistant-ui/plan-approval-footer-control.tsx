@@ -1,32 +1,64 @@
-import { useState } from 'react'
-import { ChevronRightIcon, ClipboardListIcon } from 'lucide-react'
+import { useContext, useState, type ReactNode } from 'react'
 import { useT } from '@/browser/webview/i18n'
-import { usePlanPanel } from './plan-panel-context'
-import { dropPlanFeedbackDraft } from './planFeedbackDrafts'
+import { usePlanPanel, type PlanPanelEntry } from './plan-panel-context'
+import {
+  dropPlanFeedbackDraft,
+  readPlanFeedbackDraft,
+  writePlanFeedbackDraft,
+} from './planFeedbackDrafts'
+import { planHeadline } from './planHeadline'
+import { ComposerCancelStateContext } from './thread-contexts'
 
 /**
- * Plan-approval control in the composer footer: status + "View plan" (opens
- * PlanDetailsPanel), then feedback input + Keep planning / Approve. Reads THIS
- * session's pending approval only; a background session's plan must not surface here.
+ * Plan-approval card that stands in for the composer while THIS session's
+ * ExitPlanMode waits (F-13): headline, "Open plan" (the right-side Plan pane),
+ * Reject (ends the turn, as Stop does), Revise… (feedback box, then keep
+ * planning with it) and Accept. A background session's plan never shows here.
  */
 export function PlanApprovalFooterControl() {
+  const { pending } = usePlanPanel()
+  if (!pending) return null
+  // Keyed by plan: the revise state and draft never carry over to the next plan.
+  return <PlanApprovalCard key={pending.toolCallId} pending={pending} />
+}
+
+function PlanApprovalCard({ pending }: { pending: PlanPanelEntry }) {
   const t = useT()
-  const { pending, resolve, openPanel } = usePlanPanel()
-  const [feedback, setFeedback] = useState('')
+  const { resolve, openPanel } = usePlanPanel()
+  const { onCancel, isStopping } = useContext(ComposerCancelStateContext)
+  const draftKey = pending.toolCallId
+  const [feedback, setDraft] = useState(() => readPlanFeedbackDraft(draftKey))
+  const [revising, setRevising] = useState(() => feedback !== '')
   const [busy, setBusy] = useState(false)
 
-  if (!pending) return null
+  const setFeedback = (text: string) => {
+    writePlanFeedbackDraft(draftKey, text)
+    setDraft(text)
+  }
 
-  const act = async (decision: 'approve' | 'reject') => {
+  const act = async (decision: 'approve' | 'reject', text?: string) => {
     if (busy) return
     setBusy(true)
     try {
-      await resolve?.(decision, feedback)
+      await resolve?.(decision, text)
       dropPlanFeedbackDraft(pending.toolCallId)
     } finally {
       setBusy(false)
     }
   }
+
+  const reject = () => {
+    if (busy || isStopping) return
+    dropPlanFeedbackDraft(pending.toolCallId)
+    onCancel?.()
+  }
+
+  const headline = planHeadline(pending.request.planText)
+  const disabled = busy || isStopping
+  const secondaryButton =
+    'shrink-0 rounded-lg bg-muted px-3.5 py-1.5 text-body font-medium hover:bg-muted/70 disabled:opacity-50'
+  const primaryButton =
+    'shrink-0 rounded-lg bg-primary px-3.5 py-1.5 text-body font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50'
 
   return (
     <div
@@ -34,60 +66,124 @@ export function PlanApprovalFooterControl() {
       // Halted on the user: an attention reveal targets this (attentionSource.ts).
       data-attention-source="plan-approval"
       data-tool-name={pending.request.toolName}
-      // Full width (w-full, no mx) so its edges align with the composer below —
-      // same horizontal extent as the other footer bars. Keep the sky style +
-      // color; the border SHAPE uses the standard rounded-lg (like the other
-      // cards/panels), NOT the composer's big pill radius (--composer-radius).
-      className="flex w-full flex-col gap-2 rounded-lg border border-info/40 bg-info/10 px-3 py-1.5 text-sm"
+      data-revising={revising ? 'true' : undefined}
+      className="flex w-full flex-col overflow-hidden rounded-xl border bg-background text-body shadow-sm"
     >
-      <div className="flex items-center gap-2">
-        <ClipboardListIcon
-          className="size-4 shrink-0 text-info"
-          aria-hidden="true"
-        />
-        <span className="font-medium text-info-emphasis">
+      <div className="flex flex-col gap-0.5 bg-muted/60 px-4 py-3">
+        <span className="font-medium text-foreground">
           {t('planApproval.title')}
         </span>
-        <span className="flex-1" />
-        <button
-          type="button"
-          data-slot="plan-approval-view"
-          onClick={() => openPanel?.()}
-          className="flex items-center gap-0.5 rounded-md px-2 py-0.5 text-xs text-info hover:bg-info/15"
-        >
-          {t('planApproval.viewPlan')}
-          <ChevronRightIcon className="size-3.5" aria-hidden="true" />
-        </button>
+        <div className="flex items-start gap-3">
+          <span
+            data-slot="plan-approval-headline"
+            className="min-w-0 flex-1 line-clamp-2 text-muted-foreground"
+          >
+            {headline}
+          </span>
+          <button
+            type="button"
+            data-slot="plan-approval-view"
+            onClick={() => openPanel?.()}
+            className="shrink-0 text-info underline underline-offset-4 hover:opacity-80"
+          >
+            {t('planApproval.openPlan')}
+          </button>
+        </div>
       </div>
-      <div className="flex items-center gap-2">
-        <input
-          type="text"
-          data-slot="plan-approval-feedback"
-          value={feedback}
-          onChange={e => setFeedback(e.target.value)}
-          placeholder={t('planApproval.feedbackPlaceholder')}
-          disabled={busy}
-          className="min-w-0 flex-1 rounded-md border bg-background px-2 py-1 text-xs outline-none focus:border-ring disabled:opacity-50"
-        />
-        <button
-          type="button"
-          data-slot="plan-approval-keep-planning"
-          disabled={busy}
-          onClick={() => act('reject')}
-          className="shrink-0 rounded-md border px-2.5 py-1 text-xs font-medium hover:bg-muted disabled:opacity-50"
-        >
-          {t('planApproval.keepPlanning')}
-        </button>
-        <button
-          type="button"
-          data-slot="plan-approval-approve"
-          disabled={busy}
-          onClick={() => act('approve')}
-          className="shrink-0 rounded-md bg-primary px-3 py-1 text-xs font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50"
-        >
-          {t('planApproval.approve')}
-        </button>
-      </div>
+
+      {revising ? (
+        <div className="flex flex-col gap-3 px-4 py-3">
+          <textarea
+            data-slot="plan-approval-feedback"
+            aria-label={t('planApproval.feedbackPlaceholder')}
+            value={feedback}
+            onChange={e => setFeedback(e.target.value)}
+            onKeyDown={e => {
+              if (e.key === 'Escape') {
+                e.preventDefault()
+                setRevising(false)
+              }
+            }}
+            placeholder={t('planApproval.feedbackPlaceholder')}
+            disabled={disabled}
+            rows={3}
+            autoFocus
+            className="w-full resize-none rounded-lg border border-input bg-muted/40 px-3 py-2 outline-none focus:border-ring disabled:opacity-50"
+          />
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              data-slot="plan-approval-back"
+              disabled={disabled}
+              onClick={() => setRevising(false)}
+              className={secondaryButton}
+            >
+              {t('planApproval.back')}
+            </button>
+            <span className="flex-1" />
+            <button
+              type="button"
+              data-slot="plan-approval-send-revision"
+              disabled={disabled}
+              onClick={() => act('reject', feedback)}
+              className={primaryButton}
+            >
+              {t('planApproval.sendRevision')}
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div className="flex flex-wrap items-center gap-2 px-4 py-3">
+          <button
+            type="button"
+            data-slot="plan-approval-reject"
+            disabled={disabled || !onCancel}
+            onClick={reject}
+            className={secondaryButton}
+          >
+            {t('planApproval.reject')}
+          </button>
+          <button
+            type="button"
+            data-slot="plan-approval-revise"
+            disabled={disabled}
+            onClick={() => setRevising(true)}
+            className={secondaryButton}
+          >
+            {t('planApproval.revise')}
+          </button>
+          <span className="flex-1" />
+          <button
+            type="button"
+            data-slot="plan-approval-approve"
+            disabled={disabled}
+            onClick={() => act('approve')}
+            className={primaryButton}
+          >
+            {t('planApproval.accept')}
+          </button>
+        </div>
+      )}
+    </div>
+  )
+}
+
+/**
+ * Wraps the composer: while this session's plan waits, the plan card is the
+ * only input, so the composer stays mounted (draft and attachments survive)
+ * but is hidden and inert until the plan is resolved (F-13).
+ */
+export function PlanGatedComposer({ children }: { children: ReactNode }) {
+  const { pending } = usePlanPanel()
+  return (
+    <div
+      data-slot="plan-gated-composer"
+      data-plan-pending={pending ? 'true' : undefined}
+      hidden={pending ? true : undefined}
+      inert={pending ? true : undefined}
+      className={pending ? 'hidden' : 'contents'}
+    >
+      {children}
     </div>
   )
 }

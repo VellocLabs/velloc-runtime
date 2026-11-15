@@ -77,7 +77,6 @@ export interface ShellSidePaneInputs {
   shellChannel: ComponentProps<typeof WebviewArea>['shell'] | undefined
   openBrowserTab: (sessionId: string) => void
   activePlanEntry: PaneBodyProps['planEntry']
-  resolveActivePlan: PaneBodyProps['onPlanResolve']
   activeSessionSubAgentRows: PaneBodyProps['taskRows']
   backgroundTaskFocusSessionId: PaneBodyProps['taskFocusSessionId']
   backgroundTaskListRequest: PaneBodyProps['taskListRequest']
@@ -115,7 +114,7 @@ export function renderShellSidePane(inputs: ShellSidePaneInputs, kind: SidePaneK
     rightPanelFileReveal, readFileText, writeFileText, runningSessionIds, openFileFromTree,
     openFileTabInWindow, listDir, startFileSearch, filesTreeRoots, activeSessionTabs,
     activateBrowserTab, closeBrowserTab, activeNexusTabCount, t, navigateBrowserTab,
-    shellChannel, openBrowserTab, activePlanEntry, resolveActivePlan, activeSessionSubAgentRows,
+    shellChannel, openBrowserTab, activePlanEntry, activeSessionSubAgentRows,
     backgroundTaskFocusSessionId, backgroundTaskListRequest, handleTaskFocusConsumed,
     handleStopBackgroundTask, handleResumeSubAgent, handleLoadSubAgentTranscript,
     rightPanelDiffTarget, rightPanelSkillTarget, activeLoadedSkills, handleSelectSkill,
@@ -281,7 +280,6 @@ export function renderShellSidePane(inputs: ShellSidePaneInputs, kind: SidePaneK
     <SidePaneBody
       kind={kind}
       planEntry={activePlanEntry}
-      onPlanResolve={resolveActivePlan}
       onClosePlan={() => closePaneFor('plan')}
       taskRows={activeSessionSubAgentRows}
       taskFocusSessionId={backgroundTaskFocusSessionId}

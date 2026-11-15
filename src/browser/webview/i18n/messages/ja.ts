@@ -1077,15 +1077,15 @@ export const ja: Messages = {
     '{product} が計画モードに入り、実装方針を調べて設計しようとしています。あなたが計画を承認するまで、コードは変更されません。',
   'planEnter.approve': 'はい、計画モードに入る',
   'planEnter.reject': 'いいえ、すぐに実装を始める',
-  'planApproval.title': 'コードを書き始めますか？',
-  'planApproval.viewPlan': '計画を表示',
+  'planApproval.title': '提案された計画',
+  'planApproval.openPlan': '計画を開く',
   'planApproval.panelTitle': '計画',
-  'planApproval.close': '計画を閉じる',
-  'planApproval.description':
-    'この計画を承認すると実装を開始します。計画を続けることもできます。',
-  'planApproval.approve': '承認して開始',
-  'planApproval.keepPlanning': 'いいえ、計画を続ける',
-  'planApproval.feedbackPlaceholder': '任意：どこを変えますか？',
+  'planApproval.reject': '却下',
+  'planApproval.revise': '修正を依頼…',
+  'planApproval.accept': '承認',
+  'planApproval.back': '戻る',
+  'planApproval.sendRevision': '修正を依頼',
+  'planApproval.feedbackPlaceholder': 'どこを変えますか？（任意）',
 
   // ── トークン使用量インジケーター ──────────────────────────────────────
   'tokenUsage.contextUsed': 'コンテキスト {pct}% 使用',
