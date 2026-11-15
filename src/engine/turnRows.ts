@@ -117,7 +117,9 @@ export function answerUnansweredCalls(
 /**
  * The rows a call halted for the user gets when the user cancels it after its
  * turn has ended: the error result `answer`, then the stop note, the same pair
- * a Stop during that call writes. Empty when `toolCallId` is not a call in
+ * a Stop during that call writes, detail record included: the store answers
+ * a call that has a detail record from that record, so a result row without
+ * one would reach the model empty. Empty when `toolCallId` is not a call in
  * `rows` or is already answered. `newId` mints each row's uuid.
  */
 export function cancelledHaltRows(
@@ -127,13 +129,18 @@ export function cancelledHaltRows(
   newId: () => string,
 ): Message[] {
   let reply: Message | undefined
+  let call: QueryToolUseBlock | undefined
   for (const row of rows) {
     if (resultPartsOf(row).some(part => part.toolCallId === toolCallId)) return []
-    if (row.type === MSG_TYPE_ASSISTANT && toolCallsOf(row).some(call => call.toolCallId === toolCallId)) {
+    const match = row.type === MSG_TYPE_ASSISTANT
+      ? toolCallsOf(row).find(part => part.toolCallId === toolCallId)
+      : undefined
+    if (match) {
       reply = row
+      call = match
     }
   }
-  if (!reply) return []
+  if (!reply || !call) return []
   const answerRow = {
     type: MSG_TYPE_USER,
     uuid: newId(),
@@ -145,6 +152,14 @@ export function cancelledHaltRows(
     },
     toolUseResult: answer,
     sourceToolAssistantUUID: reply.uuid,
+    toolCallDetailRef: { toolCallId, toolName: call.toolName },
+    toolCallDetail: {
+      toolCallId,
+      toolName: call.toolName,
+      ...(call.args !== undefined ? { args: call.args } : {}),
+      result: answer,
+      isError: true,
+    },
   } as Message
   return [answerRow, makeStopRow(newId(), { toolUse: true })]
 }

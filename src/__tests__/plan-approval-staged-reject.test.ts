@@ -31,6 +31,8 @@ import { ABORTED_CONFIRM_FEEDBACK } from '../browser/worker/AgentPermissionCoord
 import { ExitPlanModeTool } from '../toolkit/builtin/planExit'
 import type { ToolUseConfirmResolution } from '../runtime/RuntimeTypes'
 import { installProcessFs, resetProcessFs } from '../utils/fs/runtimeFs'
+import { BridgeFsConversationStorageBackend } from '../browser/storage/BridgeFsSessionStorage'
+import { BrowserConversationStore } from '../sessions/sessionStore'
 
 vi.mock('../browser/runtime/createAgentRuntime', () => ({
   createAgentRuntime: vi.fn(),
@@ -62,7 +64,10 @@ const planCall: Message = {
   },
 } as Message
 
-function setup() {
+function setup(
+  base: MemoryConversationStore | BrowserConversationStore = new MemoryConversationStore('staged-plan'),
+  seedTranscript: Message[] = [prompt, planCall],
+) {
   let appState: WorkingState = {
     ...createEmptyAppState(),
     permissionRules: { ...createEmptyAppState().permissionRules, mode: 'plan', modeBeforePlan: 'default' },
@@ -74,7 +79,7 @@ function setup() {
       message: { role: ROLE_ASSISTANT, content: [{ type: 'text', text: 'should not run' }] },
     } as Message
   })
-  const store = new MemoryConversationStore('staged-plan')
+  const store = base
   const saveTerminalState = vi.spyOn(store, 'saveTerminalState')
   let metadata: Record<string, unknown> = { pendingPlanApprovalToolCallId: CALL_ID }
   const updateSessionMetadata = vi.fn(async (patch: Record<string, unknown>) => {
@@ -106,7 +111,7 @@ function setup() {
     systemInitEmitter: new NoopSystemInitEmitter(),
     runtimeConfig,
     titleServices: { generateName: async () => null },
-    seedTranscript: [prompt, planCall],
+    seedTranscript,
   })
   const installedFs = {
     readFile: vi.fn(async () => '# Plan\n1. Split the store'),
@@ -219,7 +224,9 @@ function wireOutputs(calls: ReadonlyArray<[QueryModelCallParams]>, callId: strin
 }
 
 /** The wire text of a Reject during a live turn: Stop aborts the queued confirmation, then the turn. */
-async function liveRejectWireOutput(): Promise<unknown> {
+async function liveRejectWireOutput(
+  conversationStore: MemoryConversationStore | BrowserConversationStore = new MemoryConversationStore('live-plan'),
+): Promise<unknown> {
   let appState: WorkingState = {
     ...createEmptyAppState(),
     permissionRules: { ...createEmptyAppState().permissionRules, mode: 'plan', modeBeforePlan: 'default' },
@@ -258,7 +265,7 @@ async function liveRejectWireOutput(): Promise<unknown> {
     platformCapabilities: new NoopPlatformCapabilities(),
     queryRuntimeDeps: assembleTurnDependencies(runtimeConfig, { callModel: callModel as never }),
     promptContextProvider: new NoopPromptContextProvider(),
-    conversationStore: new MemoryConversationStore('live-plan'),
+    conversationStore,
     userInputPipeline: new NoopUserInputPipeline(runtimeConfig, true),
     systemInitEmitter: new NoopSystemInitEmitter(),
     runtimeConfig,
@@ -296,6 +303,77 @@ describe('the next request after Reject on a staged plan approval', () => {
   })
 })
 
+/** The session store the browser uses, over an in-memory bridge filesystem. */
+function bridgeFsBackend(): () => BridgeFsConversationStorageBackend {
+  const files = new Map<string, Uint8Array>()
+  const transport = {
+    async request(request: { id: string; route: { capability: string; action: string }; payload?: any }) {
+      await Promise.resolve()
+      const p = request.payload ?? {}
+      const ok = (result: unknown) => ({ id: request.id, ok: true, result })
+      switch (`${request.route.capability}.${request.route.action}`) {
+        case 'fs.appendFile': {
+          const prev = files.get(p.path) ?? new Uint8Array(0)
+          const next = new Uint8Array(prev.length + p.data.length)
+          next.set(prev)
+          next.set(p.data, prev.length)
+          files.set(p.path, next)
+          return ok(null)
+        }
+        case 'fs.writeFile':
+          files.set(p.path, p.content)
+          return ok(null)
+        case 'fs.readFile': {
+          const file = files.get(p.path)
+          return file ? ok(file) : { id: request.id, ok: false, error: { code: 'NOT_FOUND', message: 'not found' } }
+        }
+        default:
+          return ok(null)
+      }
+    },
+  }
+  return () => new BridgeFsConversationStorageBackend({ transport: transport as never, basePath: '/p' })
+}
+
+const browserStore = (backend: () => BridgeFsConversationStorageBackend, sessionId: string) => {
+  let n = 0
+  return new BrowserConversationStore({
+    runtimeConfig: {
+      createUUID: () => `${sessionId}-${n++}`,
+      createTimestamp: () => '2026-11-15T00:00:00.000Z',
+      now: () => 1_000,
+    } as never,
+    sessionId,
+    storageBackend: backend(),
+  })
+}
+
+describe('the next request after Reject on a staged plan approval, through the browser session store', () => {
+  it('carries the live Reject result, not the call record the store hydrates from', async () => {
+    const live = await liveRejectWireOutput(browserStore(bridgeFsBackend(), 'live-plan'))
+    resetProcessFs()
+
+    // Before the restart: the plan call is stored, with its detail record.
+    const backend = bridgeFsBackend()
+    const before = browserStore(backend, 'staged-plan')
+    await before.saveTranscriptRows([prompt, planCall])
+    await before.drainWrites()
+    // After it: a fresh store reads the session back.
+    const after = browserStore(backend, 'staged-plan')
+    const restored = [...(await after.getRecordedMessages())]
+
+    const emitted: Emitted[] = []
+    const { engine, runtime, callModel } = setup(after, restored)
+    const worker = await initWorker(emitted, runtime)
+    await worker.receiveFrame({ type: 'worker.rejectPlanApproval', payload: { toolCallId: CALL_ID } })
+    expect(callModel).not.toHaveBeenCalled()
+    for await (const _ of engine.submitTurn('continue')) void _
+
+    expect(live).toBe(ABORTED_CONFIRM_FEEDBACK)
+    expect(wireOutputs(callModel.mock.calls, CALL_ID)).toEqual([live])
+  })
+})
+
 describe('cancelledHaltRows', () => {
   let n = 0
   const id = () => `r-${++n}`
@@ -304,6 +382,16 @@ describe('cancelledHaltRows', () => {
     const rows = cancelledHaltRows([prompt, planCall], CALL_ID, CANCELLED_CALL_TEXT, id)
     expect(rows).toHaveLength(2)
     expect((rows[0] as { toolUseResult?: unknown }).toolUseResult).toBe(CANCELLED_CALL_TEXT)
+    expect((rows[0] as { toolCallDetailRef?: unknown }).toolCallDetailRef).toEqual({
+      toolCallId: CALL_ID,
+      toolName: 'ExitPlanMode',
+    })
+    expect((rows[0] as { toolCallDetail?: unknown }).toolCallDetail).toEqual({
+      toolCallId: CALL_ID,
+      toolName: 'ExitPlanMode',
+      result: CANCELLED_CALL_TEXT,
+      isError: true,
+    })
   })
 
   it('adds nothing for an answered call or one not in the transcript', () => {
