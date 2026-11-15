@@ -2681,7 +2681,7 @@ export class SharedWorkerSessionManager {
       // A person's new message closes the session's open offers (F-36).
       this.proposals.supersedeOpenOffers(sessionId)
       // It also answers the turn's closing; one that starts a turn drops the plan (F-41).
-      turnBoard.personWrote(sessionId, !session.worker.isBusy())
+      turnBoard.personWrote(sessionId, !session.worker.isBusy() && !session.worker.isHaltedOnUser?.())
     }
 
     // The worker owns the submit queue and the pending message; the manager

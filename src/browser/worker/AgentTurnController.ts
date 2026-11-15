@@ -372,7 +372,7 @@ export class AgentTurnController {
    * or a staged plan approval (the engine's records), or the page has just
    * cleared such a record and its answer has not dispatched yet.
    */
-  private isHalted(): boolean {
+  isHaltedOnUser(): boolean {
     return this.answerExpected || (this.options.isAwaitingUser?.() ?? false)
   }
 
@@ -438,7 +438,7 @@ export class AgentTurnController {
     const heldByHalt =
       !busy &&
       !AgentTurnController.admittedUnderHalt(message.payload.prompt) &&
-      this.isHalted()
+      this.isHaltedOnUser()
     if (!busy && !heldByHalt) {
       const { delivery, promptUuid, isMeta, prompt, displayPrompt } = message.payload
       if (
@@ -551,7 +551,7 @@ export class AgentTurnController {
     if (this.queue.length === 0) return
     // Halted on the user: only the ANSWER (a tool-result submit) or a local slash command may start;
     // held turns run when the answer's turn settles. This is the single dispatch gate.
-    const halted = this.isHalted()
+    const halted = this.isHaltedOnUser()
     // Highest priority (lowest number), FIFO within a priority via sequence.
     let bestIdx = -1
     for (let i = 0; i < this.queue.length; i++) {
@@ -680,7 +680,7 @@ export class AgentTurnController {
     if (this.pendingUserEntries.length === 0 && this.injectEntries.length === 0) {
       return
     }
-    if (this.isHalted()) {
+    if (this.isHaltedOnUser()) {
       return
     }
     // Both parked queues flush together, in SUBMIT order: an inject message

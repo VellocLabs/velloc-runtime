@@ -1061,6 +1061,12 @@ export class AgentRuntimeWorker {
     return this.turns.isStopping()
   }
 
+  /** Whether the turn has ended halted on the person: an open question or a
+   *  staged plan approval, answered or not yet. */
+  isHaltedOnUser(): boolean {
+    return this.turns.isHaltedOnUser()
+  }
+
   /** Full phase for Manager's broadcast/snapshot needs. */
   getPhase(): AgentSessionPhase {
     return this.turns.getPhase()
