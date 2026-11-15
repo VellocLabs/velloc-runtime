@@ -191,6 +191,7 @@ export const zh: Messages = {
   "reviewCard.value.xhigh": "很高",
   "reviewCard.workers": "子智能体：已启动 {started}，已结束 {finished}",
   "reviewCard.notice.stepLimit": "审查任务在完成前达到了步数上限。",
+  "reviewCard.notice.readBudget": "某个审查任务用完了读取步数，因此它负责的角度不计为已覆盖。",
   "reviewCard.notice.verifiedAfterSummary": "验证在摘要写完后才结束：发现列表是最新的，摘要可能仍描述已剔除的发现。",
   "reviewCard.notice.outputCap": "审查任务在完成前达到了输出上限。",
   "reviewCard.notice.contextOverflow": "审查任务的上下文窗口已用尽。",

@@ -191,6 +191,7 @@ export const es: Messages = {
   "reviewCard.value.xhigh": "Muy alto",
   "reviewCard.workers": "Subagentes: {started} iniciados, {finished} finalizados",
   "reviewCard.notice.stepLimit": "La tarea de revisión alcanzó su límite de pasos antes de terminar.",
+  "reviewCard.notice.readBudget": "Una tarea de revisión agotó sus pasos de lectura, así que sus enfoques no cuentan como cubiertos.",
   "reviewCard.notice.verifiedAfterSummary": "La verificación terminó después del resumen: los hallazgos están al día, el resumen puede describir algunos descartados.",
   "reviewCard.notice.outputCap": "La tarea de revisión alcanzó su límite de salida antes de terminar.",
   "reviewCard.notice.contextOverflow": "La tarea de revisión agotó la ventana de contexto.",

@@ -468,7 +468,7 @@ export class LocalReviewService {
     }
     return result
   }
-  private tools(runId: string, live: LiveRun, delegate: boolean, readSteps?: number, submit?: ReviewToolBindings['submit']): ToolContract[] {
+  private tools(runId: string, live: LiveRun, delegate: boolean, readSteps?: number, submit?: ReviewToolBindings['submit'], readBudgetSpent?: () => void): ToolContract[] {
     const pool = new ReviewWorkerPool(Math.min(4, live.plan.workerConcurrency))
     let launched = 0
     const verifications = new Map<string, Promise<WorkerOutcome>>()
@@ -636,6 +636,8 @@ export class LocalReviewService {
         }
         // A worker hands in through ReviewSubmit: once, and once more when the first call left something refused.
         let handed = 0, wholeRefusals = 0, open = true
+        // Set by the host when a read of this worker was refused for its read budget.
+        let readsRanOut = false
         const hand = async (value: Record<string, unknown>) => {
           if (!open) throw new ReviewGatewayError('already-submitted')
           const final = handed > 0
@@ -671,7 +673,7 @@ export class LocalReviewService {
             next: final ? 'final: nothing more to hand in' : role === 'verifier' ? 'correct the verdict and call ReviewSubmit once more' : 'call ReviewSubmit once more with only the rejected candidates, corrected' }
         }
         try {
-          const result = await this.runModel({ blocks, tools: this.tools(runId, live, false, WORKER_READ_STEPS, { role: role as 'finder' | 'verifier' | 'sweeper', hand }).filter(t => t.name === 'ReviewRead' || t.name === 'ReviewSubmit'), signal: live.controller.signal, taskId, maxTurns: WORKER_STEPS,
+          const result = await this.runModel({ blocks, tools: this.tools(runId, live, false, WORKER_READ_STEPS, { role: role as 'finder' | 'verifier' | 'sweeper', hand }, () => { readsRanOut = true }).filter(t => t.name === 'ReviewRead' || t.name === 'ReviewSubmit'), signal: live.controller.signal, taskId, maxTurns: WORKER_STEPS,
             role: role as 'finder' | 'verifier' | 'sweeper', ...(role === 'verifier' ? { label: candidate!.claim.title } : role === 'finder' ? { angles: angles as string[] } : {}), observer: this.observer(live) })
           const end = endOf(result)
           const answered = end.kind === 'completed' || end.kind === 'step-limit'
@@ -685,24 +687,24 @@ export class LocalReviewService {
             await record(found, true)
           } else if (!answered) throw new ReviewGatewayError(endCode(end))
           const value: Record<string, any> = answer!
+          // Contract (F-38): a finder covered the angles it was given when it ended whole and no read of it was refused
+          // for its read budget; otherwise it covered none.
+          const credited = role === 'finder' && whole && !readsRanOut
           if (role !== 'verifier') {
-            const limitations: string[] = [...(value.coverage?.limitations ?? []), ...(rejectedCandidates.length ? ['worker-candidates-rejected'] : []), ...(whole ? [] : ['review-step-limit'])]
-            // Contract (F-38): a finder that ended whole covered the angles it was given; one cut off at its step limit before it handed in covered none.
-            const finished = role === 'finder' ? whole ? assigned : [] : value.coverage?.angles ?? []
+            const limitations: string[] = [...(value.coverage?.limitations ?? []), ...(rejectedCandidates.length ? ['worker-candidates-rejected'] : []), ...(whole ? [] : ['review-step-limit']), ...(role === 'finder' && readsRanOut ? ['worker-read-budget-exhausted'] : [])]
+            const finished = role === 'finder' ? credited ? assigned : [] : value.coverage?.angles ?? []
             await this.store.submitLedger(runId, `${taskId}-coverage`, { operation: 'coverage', coverage: { angles: finished, limitations } })
-            if (whole) {
-              if (role === 'finder') for (const angle of assigned) live.completedAngles.add(angle)
-              else live.swept = true
-            }
+            if (credited) for (const angle of assigned) live.completedAngles.add(angle)
+            else if (role === 'sweeper' && whole) live.swept = true
           }
-          await this.store.noteWorker(runId, 'finished', [], role === 'finder' && whole ? assigned : []); this.changed()
+          await this.store.noteWorker(runId, 'finished', [], credited ? assigned : []); this.changed()
           return { taskId, result: value, newIds, ...(rejectedCandidates.length ? { rejectedCandidates } : {}) }
         } catch (error) { await this.store.noteWorker(runId, 'finished', angles as string[]); this.changed(); throw error }
       })
     }
     return createReviewTools({ runId, store: this.store, signal: live.controller.signal,
       read: input => this.read(runId, live, input), changed: this.changed,
-      independentAssessments: live.plan.independentVerification, diffOnly: !live.plan.allowWholeFileReads, ...(readSteps !== undefined ? { readSteps } : {}), ...(submit ? { submit } : {}),
+      independentAssessments: live.plan.independentVerification, diffOnly: !live.plan.allowWholeFileReads, ...(readSteps !== undefined ? { readSteps } : {}), ...(submit ? { submit } : {}), ...(readBudgetSpent ? { readBudgetSpent } : {}),
       allowOutput: live.plan.presentation === 'panel', launch: delegate && live.plan.agentMode === 'parallel' ? launch : undefined })
   }
   private async actionGrant(runId: string, kind: 'repair' | 'publication', ids?: string[]): Promise<ReportGrant> {

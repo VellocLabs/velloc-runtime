@@ -190,6 +190,7 @@ export const de: Messages = {
   "reviewCard.value.xhigh": "Sehr hoch",
   "reviewCard.workers": "Sub-Agenten: {started} gestartet, {finished} beendet",
   "reviewCard.notice.stepLimit": "Die Review-Aufgabe hat ihr Schrittlimit erreicht, bevor sie fertig war.",
+  "reviewCard.notice.readBudget": "Eine Review-Aufgabe hat ihre Leseschritte aufgebraucht, daher gelten ihre Blickwinkel nicht als abgedeckt.",
   "reviewCard.notice.verifiedAfterSummary": "Die Prüfung endete nach der Zusammenfassung: Die Befunde sind aktuell, die Zusammenfassung kann verworfene beschreiben.",
   "reviewCard.notice.outputCap": "Die Review-Aufgabe hat ihr Ausgabelimit erreicht, bevor sie fertig war.",
   "reviewCard.notice.contextOverflow": "Der Review-Aufgabe ist das Kontextfenster ausgegangen.",

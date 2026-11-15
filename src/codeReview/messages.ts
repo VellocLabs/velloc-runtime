@@ -17,6 +17,7 @@ const groups = {
   interrupted: ['review-budget-or-model-interrupted', 'review-budget-exhausted', 'review-time-limit', 'review-task-budget', 'worker-interrupted', 'repair-interrupted'],
   gitTimeout: ['timeout'],
   stepLimit: ['review-step-limit'],
+  readBudget: ['worker-read-budget-exhausted'],
   verifiedAfterSummary: ['verified-after-summary'],
   outputCap: ['review-output-cap'],
   contextOverflow: ['review-context-overflow'],

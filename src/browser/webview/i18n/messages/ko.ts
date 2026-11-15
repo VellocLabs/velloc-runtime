@@ -188,6 +188,7 @@ export const ko: Messages = {
   "reviewCard.value.xhigh": "매우 높음",
   "reviewCard.workers": "하위 에이전트: 시작 {started}, 완료 {finished}",
   "reviewCard.notice.stepLimit": "검토 작업이 완료 전에 단계 한도에 도달했습니다.",
+  "reviewCard.notice.readBudget": "검토 작업이 읽기 단계를 모두 써서 해당 관점은 검토된 것으로 처리되지 않습니다.",
   "reviewCard.notice.verifiedAfterSummary": "검증이 요약 작성 후에 끝났습니다. 발견 사항은 최신이지만 요약에는 제외된 항목이 포함될 수 있습니다.",
   "reviewCard.notice.outputCap": "검토 작업이 완료 전에 출력 한도에 도달했습니다.",
   "reviewCard.notice.contextOverflow": "검토 작업의 컨텍스트 창이 부족해졌습니다.",

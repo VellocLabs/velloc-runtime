@@ -188,6 +188,7 @@ export const ja: Messages = {
   "reviewCard.value.xhigh": "非常に高い",
   "reviewCard.workers": "サブエージェント: 開始 {started}、終了 {finished}",
   "reviewCard.notice.stepLimit": "レビュータスクは完了前にステップ上限に達しました。",
+  "reviewCard.notice.readBudget": "レビュータスクが読み取りステップを使い切ったため、その観点はカバー済みとして扱われません。",
   "reviewCard.notice.verifiedAfterSummary": "検証は要約の作成後に完了しました。指摘は最新ですが、要約には除外された指摘が含まれている場合があります。",
   "reviewCard.notice.outputCap": "レビュータスクは完了前に出力上限に達しました。",
   "reviewCard.notice.contextOverflow": "レビュータスクのコンテキストウィンドウが不足しました。",

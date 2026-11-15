@@ -191,6 +191,7 @@ export const en = {
   "reviewCard.value.xhigh": "Very high",
   "reviewCard.workers": "Sub-agents: {started} started, {finished} finished",
   "reviewCard.notice.stepLimit": "The review task reached its step limit before finishing.",
+  "reviewCard.notice.readBudget": "A review task ran out of read steps, so its angles do not count as covered.",
   "reviewCard.notice.verifiedAfterSummary": "Verification finished after the summary was written: the findings are current, the summary may describe dropped ones.",
   "reviewCard.notice.outputCap": "The review task reached its output limit before finishing.",
   "reviewCard.notice.contextOverflow": "The review task ran out of context window.",

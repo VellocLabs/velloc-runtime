@@ -1135,9 +1135,15 @@ describe('verification step retries', () => {
 })
 
 describe('team run completeness', () => {
-  const teamRun = (options: { verdict?: string; coordinatorComplete: boolean; skipAngle?: boolean; coordinatorVerifies?: boolean; finderCoverage?: 'none' | 'other-words'; coordinatorAngles?: boolean }) => fixture({ capabilities: { agentAvailable: true, agentPermitted: true, remainingDepth: 3, outputToolAvailable: false }, resolveScope: singleAnchorScope(NULL_DEREF), runModel: async request => {
+  const teamRun = (options: { verdict?: string; coordinatorComplete: boolean; skipAngle?: boolean; coordinatorVerifies?: boolean; finderCoverage?: 'none' | 'other-words'; coordinatorAngles?: boolean; finderReadsRunOut?: boolean }) => fixture({ capabilities: { agentAvailable: true, agentPermitted: true, remainingDepth: 3, outputToolAvailable: false }, resolveScope: singleAnchorScope(NULL_DEREF), runModel: async request => {
     if (request.blocks.some(block => block.source === 'assigned-angles')) {
       const assigned = JSON.parse(request.blocks.find(block => block.source === 'assigned-angles')!.text) as string[]
+      if (options.finderReadsRunOut) {
+        const read = request.tools.find(t => t.name === 'ReviewRead')!
+        const step = () => read.call({ operation: 'diff' }, {} as ToolCallContext, vi.fn() as unknown as PermissionDecider, { uuid: crypto.randomUUID(), type: 'assistant', message: { content: [] } } as unknown as Message)
+        while (await step().then(() => true, () => false));
+        return { text: JSON.stringify({ candidates: [], coverage: { angles: assigned.slice(0, 1), limitations: ['Ran out of read steps before the other angles.'] } }), interrupted: false }
+      }
       const coverage = { angles: options.finderCoverage === 'other-words' ? ['the assigned angle'] : assigned, limitations: ['Translations were not checked for accuracy.'] }
       return { text: JSON.stringify({ candidates: options.verdict ? [findingFor(request, assigned[0], 'Missing null guard')] : [], ...(options.finderCoverage === 'none' ? {} : { coverage }) }), interrupted: false }
     }
@@ -1161,6 +1167,14 @@ describe('team run completeness', () => {
     expect(snapshot.run.progress.status).toBe('finished')
     expect(snapshot.coverage.limitations).not.toContain('independent-worker-coverage-incomplete')
     expect(snapshot.coverage.angles).toEqual(expect.arrayContaining(TEN))
+  })
+  it('credits no angle to a finder whose read was refused for its read budget, whatever its answer claims', async () => {
+    const f = teamRun({ coordinatorComplete: true, coordinatorVerifies: true, finderReadsRunOut: true, coordinatorAngles: false })
+    const snapshot = await f.service.wait((await f.service.startUser('max')).runId)
+    expect(snapshot.run.progress.status).toBe('partial')
+    expect(snapshot.coverage.complete).toBe(false)
+    expect(snapshot.coverage.limitations).toEqual(expect.arrayContaining(['independent-worker-coverage-incomplete', 'worker-read-budget-exhausted', 'Ran out of read steps before the other angles.']))
+    expect(snapshot.coverage.angles).toEqual([])
   })
   it('stays partial when an angle has no finder, even when the coordinator claims complete', async () => {
     const f = teamRun({ coordinatorComplete: true, coordinatorVerifies: true, skipAngle: true })

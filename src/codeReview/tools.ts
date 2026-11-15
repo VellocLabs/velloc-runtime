@@ -15,6 +15,8 @@ export interface ReviewToolBindings {
   independentAssessments?: boolean
   /** A read budget in model steps: at most `readSteps` distinct steps may call ReviewRead, a further step fails with `review-step-budget`, and each object a read returns carries `readStepsLeft`. A read that fails still spends its step. */
   readSteps?: number
+  /** Called each time ReviewRead answers `review-step-budget`. */
+  readBudgetSpent?(): void
   /** The run reads patches only: ReviewRead offers neither context nor search. */
   diffOnly?: boolean
   /** A worker's hand-in: `hand` records the answer and returns what the host refused. */
@@ -120,7 +122,7 @@ export function createReviewTools(bindings: ReviewToolBindings): ToolContract[] 
   const read = async (input: Record<string, unknown>, row: Message) => {
     if (bindings.readSteps === undefined) return bindings.read(input)
     readRows.add(row.uuid ?? row)
-    if (readRows.size > bindings.readSteps) throw new Error('review-step-budget')
+    if (readRows.size > bindings.readSteps) { bindings.readBudgetSpent?.(); throw new Error('review-step-budget') }
     const readStepsLeft = bindings.readSteps - readRows.size
     const result = await bindings.read(input)
     return result && typeof result === 'object' && !Array.isArray(result) ? { ...result, readStepsLeft } : result

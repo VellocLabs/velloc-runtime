@@ -187,6 +187,7 @@ export const fr: Messages = {
   "reviewCard.value.xhigh": "Très élevé",
   "reviewCard.workers": "Sous-agents : {started} démarrés, {finished} terminés",
   "reviewCard.notice.stepLimit": "La tâche de revue a atteint sa limite d’étapes avant de terminer.",
+  "reviewCard.notice.readBudget": "Une tâche de revue a épuisé ses étapes de lecture ; ses angles ne comptent donc pas comme couverts.",
   "reviewCard.notice.verifiedAfterSummary": "La vérification s’est terminée après le résumé : les constats sont à jour, le résumé peut en décrire d’écartés.",
   "reviewCard.notice.outputCap": "La tâche de revue a atteint sa limite de sortie avant de terminer.",
   "reviewCard.notice.contextOverflow": "La tâche de revue a épuisé sa fenêtre de contexte.",
