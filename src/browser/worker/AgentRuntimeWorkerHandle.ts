@@ -37,7 +37,7 @@ export interface AgentRuntimeWorkerHandle {
   isStopping(): boolean
   /** Whether the turn has ended halted on the person (an open question or a
    *  staged plan approval); the answer to it continues that turn. */
-  isHaltedOnUser?(): boolean
+  isHaltedOnUser(): boolean
   getPhase(): AgentSessionPhase
   markStreamStart(): void
   markStreamEnd(): void
