@@ -48,7 +48,7 @@ const SET_PLAN_DESCRIPTION = [
 ].join('\n')
 
 const CLOSE_DESCRIPTION = [
-  'End the turn\'s work with a summary and, when the next move is the person\'s, one question with reply buttons. Call it once in every turn where you kept a step list, changed files, ran commands or finished multi-step work, after the work is done and before your closing message. It also checks off every step of the list, so no final set_plan call is needed. Skip it for short answers and plain conversation.',
+  'End the turn\'s work with a summary and, when the next move is the person\'s, one question with reply buttons. Call it once in every turn where you kept a step list, changed files, ran commands or finished multi-step work, after the work is done and before your closing message. It also checks off every step of the list, so no final set_plan call is needed; with waiting: true it checks off only up to the step in progress and leaves the rest open for after the answer. Skip it for short answers and plain conversation.',
   '',
   'Your closing message comes after this call as ordinary text and is your full answer; the summary does not replace it. The result tells you whether the question is on screen: ask in your message only a question it does not show.',
   '',
@@ -140,6 +140,15 @@ function describeSteps(steps: readonly TurnStep[]): string {
   const done = steps.filter(step => step.status === 'completed').length
   if (done === total) return 'every step is done'
   return `no step is in progress (${done} of ${total} done); {"start": n} starts one`
+}
+
+/** What `close` left of the list: all checked off, or the steps still open. */
+function describeClosedList(steps: readonly TurnStep[]): string[] {
+  if (steps.length === 0) return []
+  const open = steps.flatMap((step, index) => (step.status === 'completed' ? [] : [index + 1]))
+  if (open.length === 0) return ['Every step of the list is checked off.']
+  const named = open.length === 1 ? `Step ${open[0]} stays` : `Steps ${open.join(', ')} stay`
+  return [`The work waits on the person, so the list is checked off up to the step in progress. ${named} open; carry on from there once they answer.`]
 }
 
 /** The entries of `raw` that are steps: text and a known status. The rest are left out. */
@@ -266,8 +275,7 @@ export function runCloseTurn(board: TurnBoard, sessionId: string, args: Record<s
   const outcome = question
     ? 'Shown: the question and its reply buttons are on screen; do not ask it again in your closing message.'
     : 'Nothing waits on the person, so no box is drawn. Write your closing message now.'
-  const checkedOff = board.read(sessionId).steps.length > 0 ? ['Every step of the list is checked off.'] : []
-  return { text: [outcome, ...checkedOff, ...notes].join(' ') }
+  return { text: [outcome, ...describeClosedList(board.read(sessionId).steps), ...notes].join(' ') }
 }
 
 /** The server over `board`; the bundled one uses the realm's board. */

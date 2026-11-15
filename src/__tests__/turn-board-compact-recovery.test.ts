@@ -83,9 +83,19 @@ describe('createPostCompactTurnBoardMessage', () => {
   it('a list checked off by a closing is not told again once the person answers', () => {
     const board = new TurnBoard()
     board.setPlan(SESSION, steps)
-    board.close(SESSION, { summary: 'Asked first.', question: 'Go on?', replies: ['Yes'], waiting: true })
+    board.close(SESSION, { summary: 'Done.', question: 'Ship it?', replies: ['Yes'], waiting: false })
     board.personWrote(SESSION)
     expect(createPostCompactTurnBoardMessage(context(), board)).toBeNull()
+  })
+
+  it('the steps a waiting closing left open are told again once the person answers', () => {
+    const board = new TurnBoard()
+    board.setPlan(SESSION, steps)
+    board.close(SESSION, { summary: 'Asked first.', question: 'Go on?', replies: ['Yes'], waiting: true })
+    board.personWrote(SESSION)
+    const text = textOf(createPostCompactTurnBoardMessage(context(), board))
+    expect(text).toContain('2. [done] Fix the off-by-one')
+    expect(text).toContain('3. [not started] Add a test')
   })
 
   it('says nothing to a loop without set_plan, a nested caller, or no session', () => {

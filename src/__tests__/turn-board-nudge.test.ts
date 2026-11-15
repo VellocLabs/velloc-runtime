@@ -139,6 +139,17 @@ describe('createStepListNudge', () => {
   })
 })
 
+describe('after a waiting closing', () => {
+  it('the steps it left open are reminded once the person answers', () => {
+    const waited = board()
+    waited.close(SESSION, { summary: 'S.', question: 'Ship it?', replies: ['Ship'], waiting: true })
+    const history = [call(SET_PLAN_TOOL_NAME), ...steps(quiet), person('not yet'), ...steps(quiet)]
+    expect(createStepListNudge(context(), history, waited)).toBeNull()
+    waited.personWrote(SESSION)
+    expect(textOf(createStepListNudge(context(), history, waited))).toContain('No step is shown in progress (1 of 2 done).')
+  })
+})
+
 describe('the reminder in the drain', () => {
   const drain = async (
     history: Message[],

@@ -100,11 +100,28 @@ describe('TurnBoard', () => {
     expect(statuses(board)).toEqual(['in_progress', 'in_progress', 'pending'])
   })
 
-  it('close records the closing and checks off every step', () => {
+  it('close with nothing waiting checks off every step', () => {
+    const { board } = tracked()
+    board.setPlan('s1', plan('pending', 'in_progress', 'pending'))
+    board.close('s1', { summary: 'Done.', replies: [], waiting: false })
+    expect(statuses(board)).toEqual(['completed', 'completed', 'completed'])
+  })
+
+  it('a waiting close checks off up to the last step in progress and leaves the later ones', () => {
+    const { board } = tracked()
+    board.setPlan('s1', plan('pending', 'in_progress', 'pending', 'pending'))
+    board.close('s1', { summary: 'S.', question: 'Q?', replies: ['Yes'], waiting: true })
+    expect(statuses(board)).toEqual(['completed', 'completed', 'pending', 'pending'])
+    board.setPlan('s1', plan('completed', 'pending', 'pending'))
+    board.close('s1', { summary: 'S.', question: 'Q?', replies: ['Yes'], waiting: true })
+    expect(statuses(board)).toEqual(['completed', 'pending', 'pending'])
+  })
+
+  it('close records the closing; a waiting one leaves the step not reached', () => {
     const { board } = tracked()
     board.setPlan('s1', plan('completed', 'in_progress', 'pending'))
     board.close('s1', { summary: 'Done so far.', question: 'Ship it?', replies: ['Ship', 'Not yet'], waiting: true })
-    expect(statuses(board)).toEqual(['completed', 'completed', 'completed'])
+    expect(statuses(board)).toEqual(['completed', 'completed', 'pending'])
     expect(board.read('s1').closing).toEqual({
       summary: 'Done so far.',
       question: 'Ship it?',

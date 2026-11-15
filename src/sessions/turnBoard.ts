@@ -103,14 +103,23 @@ export class TurnBoard {
 
   /**
    * Record the turn's closing; it checks off the list, so every step counts as
-   * done whether or not the model advanced it. Answers
-   * whether an earlier closing was still standing, which is a second close
-   * with no plan change and no message from the person in between.
+   * done whether or not the model advanced it. A `waiting` closing stops
+   * mid-work, so it checks off only up to the last step in progress and
+   * leaves the later steps as they were. Answers whether an earlier closing
+   * was still standing, which is a second close with no plan change and no
+   * message from the person in between.
    */
   close(sessionId: string, closing: TurnClosing): { repeated: boolean } {
     const before = this.read(sessionId)
-    const steps = before.steps.map((step): TurnStep =>
-      step.status === 'completed' ? step : { ...step, status: 'completed' },
+    let reached = before.steps.length - 1
+    if (closing.waiting) {
+      reached = -1
+      before.steps.forEach((step, index) => {
+        if (step.status === 'in_progress') reached = index
+      })
+    }
+    const steps = before.steps.map((step, index): TurnStep =>
+      step.status === 'completed' || index > reached ? step : { ...step, status: 'completed' },
     )
     this.write(sessionId, { steps, closing: { ...closing, replies: Object.freeze([...closing.replies]) } })
     return { repeated: before.closing !== null }

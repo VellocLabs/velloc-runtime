@@ -225,6 +225,30 @@ describe('close', () => {
     expect(board.read('s1').closing).toEqual({ summary: 'The parser is fixed.', replies: [], waiting: false })
   })
 
+  it('a waiting close leaves the steps not reached open and names them', async () => {
+    const { run, statuses } = rig()
+    await run(SET_PLAN_TOOL_NAME, {
+      steps: [
+        { text: 'a', status: 'completed' },
+        { text: 'b', status: 'in_progress' },
+        { text: 'c', status: 'pending' },
+        { text: 'd', status: 'pending' },
+      ],
+    })
+    const out = await run(CLOSE_TURN_TOOL_NAME, { summary: 'S.', question: 'Ship it?', replies: ['Ship'], waiting: true })
+    expect(statuses()).toEqual(['completed', 'completed', 'pending', 'pending'])
+    expect(out.data).toContain('Steps 3, 4 stay open')
+    expect(out.data).not.toContain('Every step of the list is checked off.')
+  })
+
+  it('a waiting close with only the last step left checks the list off whole', async () => {
+    const { run, statuses } = rig()
+    await run(SET_PLAN_TOOL_NAME, { steps: [{ text: 'a', status: 'completed' }, { text: 'b', status: 'in_progress' }] })
+    const out = await run(CLOSE_TURN_TOOL_NAME, { summary: 'S.', question: 'Ship it?', replies: ['Ship'], waiting: true })
+    expect(statuses()).toEqual(['completed', 'completed'])
+    expect(out.data).toContain('Every step of the list is checked off.')
+  })
+
   it('records a question with its replies and tells the model it is on screen', async () => {
     const { board, run } = rig()
     const out = await run(CLOSE_TURN_TOOL_NAME, {
