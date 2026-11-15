@@ -84,15 +84,17 @@ export function pickSideChat(
  * session gate, the folder chip and the bottom lock all read the foreground
  * id, which must be the side chat's, not the viewed session's) and carries
  * light controls: no model or effort picker, no settings, no folder controls.
+ * A pane thread draws no session card stack, docked or as a popover (F-9).
  */
 export function threadMount(
   sessionId: string,
   inPane: boolean,
   activeSessionId: string | null | undefined,
-): { foregroundSessionId: string | undefined; lightControls: boolean } {
+): { foregroundSessionId: string | undefined; lightControls: boolean; sessionCards: boolean } {
   return {
     foregroundSessionId: inPane ? sessionId : activeSessionId ?? undefined,
     lightControls: inPane,
+    sessionCards: !inPane,
   }
 }
 

@@ -159,4 +159,14 @@ describe('a side chat mounted in the pane', () => {
       expect(block).toContain(`${prop}={mount.lightControls ? undefined : `)
     }
   })
+
+  it('draws no session card stack: neither docked beside the transcript nor as a popover', () => {
+    expect(threadMount('side', true, 'parent').sessionCards).toBe(false)
+    expect(threadMount('viewed', false, 'viewed').sessionCards).toBe(true)
+    const shell = readFileSync(join(__dirname, '..', 'browser', 'webview', 'shellSessionThread.tsx'), 'utf8')
+    const start = shell.indexOf('export function renderShellSessionThread(')
+    const block = shell.slice(start, shell.indexOf('</ThreadErrorBoundary>', start))
+    expect(block).toContain('sessionCardsDocked={mount.sessionCards && sessionCardsDocked}')
+    expect(block).toContain('sessionCardsPopoverOpen={mount.sessionCards && ')
+  })
 })

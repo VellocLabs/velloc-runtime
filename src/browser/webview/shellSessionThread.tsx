@@ -199,8 +199,8 @@ export function renderShellSessionThread(
                 openSettings={mount.lightControls ? undefined : handleOpenSettings}
                 onOpenPluginSettings={handleOpenPluginSettings}
                 modPanesDocked={modPanesDocked}
-                sessionCardsDocked={sessionCardsDocked}
-                sessionCardsPopoverOpen={!inPane && isActive && !sessionCardsFit && sessionCardsPopoverOpen}
+                sessionCardsDocked={mount.sessionCards && sessionCardsDocked}
+                sessionCardsPopoverOpen={mount.sessionCards && isActive && !sessionCardsFit && sessionCardsPopoverOpen}
                 onSessionCardsPopoverClose={closeSessionCardsPopover}
                 runtimeConnection={runtimeConnection}
                 loadProviderMissingPrompt={handleLoadProviderMissingPrompt}
