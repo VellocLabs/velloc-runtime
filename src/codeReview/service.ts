@@ -687,7 +687,7 @@ export class LocalReviewService {
           const value: Record<string, any> = answer!
           if (role !== 'verifier') {
             const limitations: string[] = [...(value.coverage?.limitations ?? []), ...(rejectedCandidates.length ? ['worker-candidates-rejected'] : []), ...(whole ? [] : ['review-step-limit'])]
-            // Contract (F-38): a finder that ended whole with an accepted answer covered the angles it was given; one that ended without an accepted answer covered none.
+            // Contract (F-38): a finder that ended whole covered the angles it was given; one cut off at its step limit before it handed in covered none.
             const finished = role === 'finder' ? whole ? assigned : [] : value.coverage?.angles ?? []
             await this.store.submitLedger(runId, `${taskId}-coverage`, { operation: 'coverage', coverage: { angles: finished, limitations } })
             if (whole) {
