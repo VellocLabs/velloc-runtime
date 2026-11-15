@@ -82,7 +82,7 @@ export function turnsSinceTodoActivity(messages: readonly Message[]): {
 
 /**
  * Yields one reminder holding the current todo list once both thresholds are
- * reached, provided TodoWrite is available to the active model.
+ * reached, provided TodoWrite is in the session's tool set.
  */
 export function collectTodoReminderAttachments(
   messages: readonly Message[] | undefined,

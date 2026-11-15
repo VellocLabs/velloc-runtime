@@ -36,13 +36,10 @@ export type PromptRenderChoice = {
 type InstructionFile = Awaited<ReturnType<typeof gatherInstructionDocs>>[number]
 
 /** The tools the model sees on this render: plan exit only in plan mode,
- *  none the model withholds, none still deferred. The request's tool list
- *  applies the same filter. */
+ *  none still deferred. The request's tool list applies the same filter. */
 export function visibleToolNames(
   ledger: SessionLedger,
-  model: string,
   rows: readonly Message[],
-  providerId: string | undefined,
   appState: WorkingState = ledger.config.readAppState(),
 ): string[] {
   const { config } = ledger
@@ -185,7 +182,7 @@ export async function assemblePrompt(
   const { config } = ledger
   const appState = config.readAppState()
   const roots = appState.permissionRules.extraWorkspaceRoots
-  const tools = visibleToolNames(ledger, model, rows, providerId, appState).filter(
+  const tools = visibleToolNames(ledger, rows, appState).filter(
     name => !render.onlyTools || render.onlyTools.includes(name),
   )
   const parts = await gatherSystemPromptSources(

@@ -7,14 +7,10 @@
  */
 import type { ToolContract } from '../toolkit/toolContract'
 import type { ToolCallContext } from '../toolkit/toolCallContext'
-import {
-  CLOSE_TURN_TOOL_NAME,
-  NESTED_CALLER_NOTE,
-  SET_PLAN_TOOL_NAME,
-  isNestedCaller,
-} from '../sessions/sessionTurnServer'
+import { NESTED_CALLER_NOTE, isNestedCaller } from '../sessions/sessionTurnServer'
+import { TURN_BOARD_TOOL_NAMES } from '../toolkit/builtin/toolGroups'
 
-const TURN_BOARD_TOOLS: ReadonlySet<string> = new Set([SET_PLAN_TOOL_NAME, CLOSE_TURN_TOOL_NAME])
+const TURN_BOARD_TOOLS: ReadonlySet<string> = new Set(TURN_BOARD_TOOL_NAMES)
 
 /** The denial text for `tool` called from `context`, or null when the call may go on. */
 export function nestedTurnBoardDenial(tool: ToolContract, context: ToolCallContext): string | null {

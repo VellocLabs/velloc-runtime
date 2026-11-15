@@ -10,11 +10,10 @@ import type { ToolCallContext } from '../toolkit/toolCallContext'
 import { decideToolPermission } from '../toolkit/run/toolPermissionGate'
 import { builtinMcpOffering } from '../mcp/builtinServers'
 import {
-  CLOSE_TURN_TOOL_NAME,
   NESTED_CALLER_NOTE,
-  SET_PLAN_TOOL_NAME,
   createSessionTurnServer,
 } from '../sessions/sessionTurnServer'
+import { TURN_BOARD_TOOL_NAMES } from '../toolkit/builtin/toolGroups'
 import { TurnBoard } from '../sessions/turnBoard'
 
 // A loop under the session that lists the step-list tools (a fork keeps the
@@ -34,7 +33,7 @@ const readTool = declareTool({
   description: async () => 'Read test tool',
   call: async () => ({ data: 'ok' }),
   readsOnly: () => true,
-}) as unknown as ToolContract
+})
 
 function caller(options: { sessionId?: string; agentId?: string; teammateName?: string } = {}): ToolCallContext {
   const appState: WorkingState = {
@@ -64,7 +63,7 @@ const nested: Array<[string, ToolCallContext]> = [
 ]
 
 describe('step-list tools called from a loop under the session', () => {
-  for (const name of [SET_PLAN_TOOL_NAME, CLOSE_TURN_TOOL_NAME]) {
+  for (const name of TURN_BOARD_TOOL_NAMES) {
     it.each(nested)(`${name} from %s is denied before it runs`, async (_label, context) => {
       const verdict = await decideToolPermission(tool(name), { summary: 'S.', steps: [] }, context)
       expect(verdict).toMatchObject({ decision: 'deny', message: NESTED_CALLER_NOTE, reason: NESTED_CALLER_NOTE })
@@ -72,7 +71,7 @@ describe('step-list tools called from a loop under the session', () => {
   }
 
   it('the main conversation is not denied by this gate', async () => {
-    for (const name of [SET_PLAN_TOOL_NAME, CLOSE_TURN_TOOL_NAME]) {
+    for (const name of TURN_BOARD_TOOL_NAMES) {
       const verdict = await decideToolPermission(tool(name), { summary: 'S.' }, caller())
       expect(verdict.decision, name).toBe('allow')
     }

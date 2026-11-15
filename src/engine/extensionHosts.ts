@@ -464,7 +464,7 @@ function promptHost({ ledger }: HostParts): Pick<ModPromptHost, 'compose'> {
     compose: async (args, raise) => {
       const model = args.model ?? ledger.activeModel()
       const providerId = ledger.config.userSpecifiedProviderId
-      const tools = visibleToolNames(ledger, model, ledger.rows, providerId).filter(name => !args.tools || args.tools.includes(name))
+      const tools = visibleToolNames(ledger, ledger.rows).filter(name => !args.tools || args.tools.includes(name))
       const parts = await assemblePrompt(ledger, model, ledger.rows, providerId, {
         withMods: false,
         ...(args.tools ? { onlyTools: args.tools } : {}),
