@@ -167,6 +167,6 @@ describe('a side chat mounted in the pane', () => {
     const start = shell.indexOf('export function renderShellSessionThread(')
     const block = shell.slice(start, shell.indexOf('</ThreadErrorBoundary>', start))
     expect(block).toContain('sessionCardsDocked={mount.sessionCards && sessionCardsDocked}')
-    expect(block).toContain('sessionCardsPopoverOpen={mount.sessionCards && ')
+    expect(block).toContain('sessionCardsPopoverOpen={mount.sessionCards && isActive && !sessionCardsFit && sessionCardsPopoverOpen}')
   })
 })
