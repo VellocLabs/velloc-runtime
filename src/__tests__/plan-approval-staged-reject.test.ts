@@ -176,7 +176,7 @@ describe('Reject on a staged plan approval', () => {
     ])
     expect((answer as { sourceToolAssistantUUID?: string }).sourceToolAssistantUUID).toBe('a-1')
     expect((stop.message as { content: unknown }).content).toEqual([{ type: 'text', text: STOPPED_DURING_TOOL_TEXT }])
-    expect(store.getRecordedMessages().map(row => row.uuid)).toEqual(expect.arrayContaining([answer.uuid, stop.uuid]))
+    expect((await store.getRecordedMessages()).map(row => row.uuid)).toEqual(expect.arrayContaining([answer.uuid, stop.uuid]))
 
     expect(callModel, 'no model turn runs').not.toHaveBeenCalled()
     expect(engine.getPendingPlanApproval()?.[CALL_ID]).toBeUndefined()
