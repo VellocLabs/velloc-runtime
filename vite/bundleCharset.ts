@@ -1,8 +1,8 @@
-import type { Plugin } from 'vite'
-import { parseAst } from 'rollup/parseAst'
+import { parseAst, type Plugin } from 'vite'
 
 /**
- * esbuild options shared by every bundle (page and worker builds).
+ * esbuild options shared by the page and worker builds (Vite sets `utf8`;
+ * esbuild's own default, used by the isolated worker builds, is already ASCII).
  *
  * `charset: 'ascii'` writes each non-ASCII character as an escape. A script
  * source holding even one character above U+00FF is kept by the browser at two
@@ -73,7 +73,17 @@ export function escapeNonAsciiRegexLiterals(code: string): string {
   return out + code.slice(at)
 }
 
-/** Runs after minification: escapes the regex literals esbuild's ASCII charset leaves as written. */
+/** Names of the emitted chunks whose code still holds a non-ASCII character (a kept comment, say). */
+export function nonAsciiChunkNames(bundle: Record<string, { type: string; code?: string }>): string[] {
+  return Object.entries(bundle)
+    .filter(([, output]) => output.type === 'chunk' && /[^\x00-\x7f]/.test(output.code ?? ''))
+    .map(([fileName]) => fileName)
+}
+
+/**
+ * Runs after minification: escapes the regex literals esbuild's ASCII charset
+ * leaves as written, then warns about any chunk that is still not ASCII-only.
+ */
 export function asciiRegexLiteralsPlugin(): Plugin {
   return {
     name: 'velloc:ascii-regex-literals',
@@ -84,6 +94,11 @@ export function asciiRegexLiteralsPlugin(): Plugin {
         const next = escapeNonAsciiRegexLiterals(code)
         return next === code ? null : { code: next, map: null }
       },
+    },
+    generateBundle(_options, bundle) {
+      for (const name of nonAsciiChunkNames(bundle)) {
+        this.warn(`${name} holds a non-ASCII character; its source is stored at two bytes per character`)
+      }
     },
   }
 }

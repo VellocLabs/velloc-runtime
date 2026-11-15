@@ -4,7 +4,12 @@
  */
 import { transform } from 'esbuild'
 import { describe, expect, it } from 'vitest'
-import { BUNDLE_ESBUILD_OPTIONS, escapeNonAsciiRegexLiterals, escapeRegexLiteral } from '../../vite/bundleCharset'
+import {
+  BUNDLE_ESBUILD_OPTIONS,
+  escapeNonAsciiRegexLiterals,
+  escapeRegexLiteral,
+  nonAsciiChunkNames,
+} from '../../vite/bundleCharset'
 
 const nonAscii = (code: string) => [...code].filter(c => c.charCodeAt(0) >= 0x80)
 const evalRegex = (literal: string): RegExp => new Function(`return ${literal}`)() as RegExp
@@ -38,6 +43,15 @@ describe('regex literal escaping', () => {
   it('returns ASCII code untouched', () => {
     const code = 'export const r=/[\\u2500]/'
     expect(escapeNonAsciiRegexLiterals(code)).toBe(code)
+  })
+
+  it('names the chunks that are still not ASCII-only, and only chunks', () => {
+    const bundle = {
+      'a.js': { type: 'chunk', code: 'var a=1' },
+      'b.js': { type: 'chunk', code: '/*! \u00a9 x */var b=1' },
+      'c.css': { type: 'asset' },
+    }
+    expect(nonAsciiChunkNames(bundle)).toEqual(['b.js'])
   })
 })
 
