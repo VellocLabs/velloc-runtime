@@ -627,9 +627,9 @@ export const Thread: FC<{
           <ModAsks />
           <Composer />
           {/* Folder chip (left) and context ring (right) on one line below the
-              composer; the negative bottom margin cancels the footer's padding so
-              the row hugs its bottom edge. */}
-          <div className="flex items-center gap-1.5 pr-1 -mb-2.5 md:-mb-[18px]">
+              composer, centred with 3px above and below: the negative
+              margins trim the footer's gap and bottom padding to 3px each. */}
+          <div data-slot="composer-bottom-strip" className="flex items-center gap-1.5 pr-1 -mt-[3px] -mb-[13px] md:-mb-[21px]">
             <CurrentProjectFolderChip />
             <div className="ml-auto flex items-center gap-1">
               {/* This session's model (read-only) + effort — a pick here is
