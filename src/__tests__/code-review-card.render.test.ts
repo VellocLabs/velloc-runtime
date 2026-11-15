@@ -1,6 +1,6 @@
 import { RightPanelContentContext } from '../components/assistant-ui/right-panel-content-context'
 // @vitest-environment happy-dom
-import { createElement } from 'react'
+import { Fragment, createElement, useState } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { CodeReviewCard, CodeReviewProvider, CodeReviewRow, ReviewReportCard, currentReviewLocation, reviewFindingState, reviewTargetExtra } from '../components/assistant-ui/code-review-card'
@@ -552,6 +552,56 @@ describe('a model-requested review found by its Skill call', () => {
       createElement(CodeReviewCard, { toolCallId: 'call-1' }), createElement(CodeReviewCard, { toolCallId: 'call-2' })))
     await waitFor(() => expect(screen.getAllByTestId('code-review-card').map(card => card.dataset.status)).toEqual(['partial', 'partial']))
     expect(subscribe).toHaveBeenCalledTimes(1)
+  })
+  /** A connection that holds a topic while it has a listener and sends the snapshot only to the listener that makes it held. */
+  const topicConnection = (next: () => Partial<ReviewSessionSnapshot>) => {
+    const listeners = new Set<(event: unknown) => void>()
+    return {
+      listeners,
+      connection: { can: vi.fn(() => true), request: vi.fn(), subscribe: (_topic: string, listener: (event: unknown) => void) => {
+        listeners.add(listener)
+        if (listeners.size === 1) listener({ payload: { sessionId: 's1', sequence: 1, reports: [], ...next() } })
+        return () => { listeners.delete(listener) }
+      } },
+    }
+  }
+  it('gives a card mounted after rows unmount and remount in one commit the snapshot too', async () => {
+    const second = { ...report(), run: { ...report().run, id: 'r2' } }
+    const { connection } = topicConnection(() => ({ reports: [report(), second] }))
+    let gate: Promise<void> | undefined
+    let open: () => void = () => {}
+    const connect = async () => { if (gate) await gate; return connection as never }
+    let setRows: (rows: string[]) => void = () => {}
+    const Rows = () => {
+      const [rows, set] = useState(['a'])
+      setRows = set
+      return createElement(Fragment, null, rows.map(row => createElement(CodeReviewCard, { key: row, runId: row === 'c' ? 'r2' : 'r1' })))
+    }
+    render(createElement(CodeReviewProvider, { value: { sessionId: 's1', connection: connect } }, createElement(Rows)))
+    await waitFor(() => expect(screen.getByTestId('code-review-card').dataset.status).toBe('partial'))
+    gate = new Promise(resolve => { open = resolve })
+    act(() => setRows(['a', 'b']))
+    await act(async () => {
+      setRows(['b'])
+      open()
+      for (let i = 0; i < 5; i++) await Promise.resolve()
+    })
+    gate = undefined
+    act(() => setRows(['b', 'c']))
+    await waitFor(() => expect(screen.getAllByTestId('code-review-card').map(card => card.dataset.status)).toEqual(['partial', 'partial']))
+  })
+  it('takes a fresh snapshot once every card has gone, even one with a lower sequence', async () => {
+    const second = { ...report(), run: { ...report().run, id: 'r2' } }
+    let snapshot: Partial<ReviewSessionSnapshot> = { sequence: 5, reports: [report()] }
+    const { connection, listeners } = topicConnection(() => snapshot)
+    const card = (runId: string) => createElement(CodeReviewProvider, { value: { sessionId: 's1', connection: async () => connection as never } }, createElement(CodeReviewCard, { runId }))
+    const first = render(card('r1'))
+    await waitFor(() => expect(screen.getByTestId('code-review-card').dataset.status).toBe('partial'))
+    first.unmount()
+    expect(listeners.size).toBe(0)
+    snapshot = { sequence: 2, reports: [second] }
+    render(card('r2'))
+    await waitFor(() => expect(screen.getByTestId('code-review-card').dataset.status).toBe('partial'))
   })
   it('gives up the preparing card for the fallback once a later snapshot still lists nothing for the call', async () => {
     let publish: ((event: unknown) => void) | undefined

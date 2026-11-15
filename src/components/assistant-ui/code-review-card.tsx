@@ -62,13 +62,16 @@ type SnapshotStore = { get(): ReviewSessionSnapshot | null; subscribe(listener: 
 const snapshotStores = new WeakMap<RuntimeConnection, Map<string, SnapshotStore>>()
 const noSnapshotStore: SnapshotStore = { get: () => null, subscribe: () => () => {} }
 
-/** One topic subscription per connection and session, shared by every card: the runtime sends a snapshot to the first subscriber only. */
+/**
+ * Contract: one store per connection and session for the connection's life, shared by every card, so a topic never has
+ * two readers on one connection (the runtime sends a snapshot to the first subscriber only). It holds the topic and the
+ * snapshot only while a card reads it; the last card to leave releases both, and the next one subscribes afresh.
+ */
 function snapshotStoreFor(conn: RuntimeConnection, sessionId: string): SnapshotStore {
   let bySession = snapshotStores.get(conn)
   if (!bySession) snapshotStores.set(conn, bySession = new Map())
   const existing = bySession.get(sessionId)
   if (existing) return existing
-  const sessions = bySession
   let snapshot: ReviewSessionSnapshot | null = null
   let unsubscribeTopic: (() => void) | undefined
   const listeners = new Set<() => void>()
@@ -90,7 +93,7 @@ function snapshotStoreFor(conn: RuntimeConnection, sessionId: string): SnapshotS
         if (listeners.size > 0) return
         unsubscribeTopic?.()
         unsubscribeTopic = undefined
-        sessions.delete(sessionId)
+        snapshot = null
       }
     },
   }
