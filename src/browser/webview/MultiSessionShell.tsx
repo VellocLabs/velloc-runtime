@@ -95,8 +95,6 @@ import {
 import {
   hiddenSessionIds,
   pickVisibleSession,
-  withoutHidden,
-  withoutHiddenKeys,
 } from './sessionVisibility'
 import { createOpenApp, unlistedAppSessionIds, unlistedAppSessionKey, unlistedAppSessionSet } from './apps/appLaunch'
 import { useShownApp } from './apps/appView'
@@ -130,17 +128,6 @@ import {
 import type { RuntimeConnection } from '../runtimeClient/RuntimeConnection'
 import { ForbiddenScopeNotice } from './forbiddenScopeNotice'
 import {
-  attentionDelivery,
-  clearAttentionForSession,
-  deliveryConsumesEvent,
-  createEndedQuestionTracker,
-  detectEndedWithQuestion,
-  reconcileAttention,
-  type AttentionEvent,
-} from './sessionAttention'
-import { showHostNotification } from './nexusBridgeActions'
-import { sessionDisplayTitle } from './SessionRows'
-import {
   createGlobalDefaultMirror,
   followGlobalDefault,
 } from './globalDefaultSelection'
@@ -168,7 +155,6 @@ import {
   subscribeE2eTestCode,
 } from './windowTitle'
 import { getProductName } from '../../branding/productName'
-import { signalFirstScreen } from '../boot/firstScreenSignal'
 import {
   removeProject,
 } from './projectsStorage'
@@ -238,7 +224,8 @@ import {
 } from './nexusSettingsBridge'
 import { useSessionManager } from './useSessionManager'
 import { useMultiSessionClients } from './useMultiSessionClients'
-import { shouldDismissBootWelcome } from './assistantUiAdapter'
+import { useGuestReadySignal } from './useGuestReadySignal'
+import { useSessionAttention } from './useSessionAttention'
 import { createSessionMessageCallbackFactory } from './sessionMessageCallbacks'
 import {
   mountedWithSideChat,
@@ -374,9 +361,6 @@ import {
   createShellHandleStartSideChat,
   createShellHandleDetachSideChat,
   createShellHandleArchiveSideChat,
-  createShellPublishAttentionQueue,
-  createShellRevealAttentionInSession,
-  createShellHandleAttentionSelect,
   createShellHandleSearchOpenSession,
   createShellHandleSearchJump,
 } from './shellSelectionActions'
@@ -1486,212 +1470,14 @@ export function MultiSessionShell({
     }
   }, [bodyHydrated])
 
-  const guestReadyFiredRef = useRef(false)
-  useEffect(() => {
-    if (guestReadyFiredRef.current) return
-    // The status / snapshot preconditions belong to `shouldDismissBootWelcome` alone. Hold the
-    // host overlay until painted content shows; event-driven, no wall-clock cap.
-    if (
-      !shouldDismissBootWelcome(activeState, {
-        threadWelcomeUnmounted,
-        bodyHydrated,
-      })
-    ) {
-      return
-    }
-
-    guestReadyFiredRef.current = true
-    if (typeof window !== 'undefined') signalFirstScreen(window)
-    // E2e seam (a one-shot global write): record the active session's state at the instant
-    // the host boot splash is dismissed, read after the boot completes.
-    ;(globalThis as { __NEXUS_E2E_BOOT_DISMISS__?: unknown }).__NEXUS_E2E_BOOT_DISMISS__ = {
-      status: activeState.status,
-      initialized: activeState.snapshot?.initialized ?? null,
-      // UI-ready split: with the provisional dismiss the snapshot at hand-off
-      // is EXPECTED to be uninitialized-but-uiReady (the MCP connect + engine
-      // build are still running). The e2e asserts initialized OR uiReady —
-      // never the bare pre-runtime snapshot.
-      uiReady: activeState.snapshot?.uiReady ?? null,
-      messageCount: activeState.snapshot?.messageCount ?? null,
-      transcriptLength: activeState.transcriptMessages.length,
-      threadWelcomeUnmounted,
-      bodyHydrated,
-    }
-    // Boot instrumentation: absolute marks from earlier layers (C++ and JS) combined into
-    // per-transition sub-deltas in one trace event.
-    const marks = (globalThis as { __nexusBootMarks?: Record<string, number> })
-      .__nexusBootMarks ?? {}
-    const signalAtMs = Date.now()
-    const cppStart = marks.nexusViewContainerFirstCreatedMs ?? null
-    const cppLoadUrl = marks.loadInitialUrlReturnedMs ?? null
-    const cppGlicNav = marks.glicNavigationCommittedMs ?? null
-    // chrome://glic intermediate marks, passed via URL search params on the webview navigation.
-    const glicMainStarted = marks.glicMainStartedMs ?? null
-    const webviewSrcSet = marks.webviewSrcSetMs ?? null
-    const html = marks.htmlParsedMs ?? null
-    const dcl = marks.domContentLoadedMs ?? null
-    const reactModule = marks.reactModuleStartMs ?? null
-    const transportReady = marks.transportReadyMs ?? null
-    const reactImported = marks.reactImportResolvedMs ?? null
-    const reactDomImported = marks.reactDomImportResolvedMs ?? null
-    const createRootDone = marks.createRootDoneMs ?? null
-    const shellImported = marks.shellImportResolvedMs ?? null
-    const renderStart = marks.renderCallStartMs ?? null
-    const renderReturned = marks.renderCallReturnedMs ?? null
-    const twMount = marks.threadWelcomeMountedMs ?? null
-    const snapshotReady = marks.workerSnapshotReadyMs ?? null
-    const firstMsgs = marks.firstWorkerMessagesReceivedMs ?? null
-    const transcriptMerged = marks.transcriptMergedMs ?? null
-    // Use the "real" unmount captured by the gated listener above —
-    // threadWelcomeFirstUnmountedMs would catch the loading→ready
-    // transient unmount that fires before snapshot is loaded.
-    const twUnmount = marks.threadWelcomeRealUnmountedMs ?? null
-    // Keep the "first" unmount available for diagnostic purposes (so we
-    // can see if the transient unmount happened at all and when).
-    const twFirstUnmount = marks.threadWelcomeFirstUnmountedMs ?? null
-    // Direction B3: subdivide ms_merged_to_unmount (~1087 ms) across
-    // assistant-ui's render pipeline. Marks captured in:
-    //   AssistantUiThread.tsx (useMemo for `messages`)
-    //   components/assistant-ui/thread.tsx (Thread + first-message useEffect)
-    const transcriptConvertStart = marks.transcriptConvertStartMs ?? null
-    const transcriptConvertEnd = marks.transcriptConvertEndMs ?? null
-    const transcriptConvertResultLength =
-      marks.transcriptConvertResultLength ?? null
-    const auiThreadFirstCommit = marks.auiThreadFirstCommitMs ?? null
-    const auiThreadCommitCount = marks.auiThreadCommitCount ?? null
-    const firstMessageRenderProp = marks.firstMessageRenderPropMs ?? null
-    const lastMessageRenderProp = marks.lastMessageRenderPropMs ?? null
-    const firstMessageMounted = marks.firstMessageMountedMs ?? null
-    const firstMessageRole =
-      (marks as { firstMessageMountedRole?: string })
-        .firstMessageMountedRole ?? null
-    const delta = (a: number | null, b: number | null) =>
-      a != null && b != null ? a - b : null
-    installSessionTracer({ context: 'ui' }).event('boot.guestReady.signaled', {
-      traceId: getBootDiagnosticTraceId(),
-      attrs: {
-        sessionId: activeSessionId,
-        sessionsCount: sessions.length,
-        transcriptLength: activeState.transcriptMessages.length,
-        threadWelcomeUnmounted,
-        snapshotMessageCount: activeState.snapshot?.messageCount ?? null,
-        // Absolute marks (ms since Unix epoch).
-        nexusViewContainerFirstCreatedMs: cppStart,
-        loadInitialUrlReturnedMs: cppLoadUrl,
-        glicNavigationCommittedMs: cppGlicNav,
-        glicMainStartedMs: glicMainStarted,
-        webviewSrcSetMs: webviewSrcSet,
-        htmlParsedMs: html,
-        domContentLoadedMs: dcl,
-        reactModuleStartMs: reactModule,
-        transportReadyMs: transportReady,
-        reactImportResolvedMs: reactImported,
-        reactDomImportResolvedMs: reactDomImported,
-        createRootDoneMs: createRootDone,
-        shellImportResolvedMs: shellImported,
-        renderCallStartMs: renderStart,
-        renderCallReturnedMs: renderReturned,
-        threadWelcomeMountedMs: twMount,
-        workerSnapshotReadyMs: snapshotReady,
-        firstWorkerMessagesReceivedMs: firstMsgs,
-        transcriptMergedMs: transcriptMerged,
-        threadWelcomeRealUnmountedMs: twUnmount,
-        threadWelcomeFirstUnmountedMs: twFirstUnmount,
-        // Direction B3 absolute marks.
-        transcriptConvertStartMs: transcriptConvertStart,
-        transcriptConvertEndMs: transcriptConvertEnd,
-        transcriptConvertResultLength,
-        auiThreadFirstCommitMs: auiThreadFirstCommit,
-        auiThreadCommitCount,
-        firstMessageRenderPropMs: firstMessageRenderProp,
-        lastMessageRenderPropMs: lastMessageRenderProp,
-        firstMessageMountedMs: firstMessageMounted,
-        firstMessageRole,
-        signalAtMs,
-        bootTimingsRoundTripMs: marks.bootTimingsRoundTripMs ?? null,
-        // Macro deltas — same as before, for at-a-glance.
-        ms_pre_react_layer: delta(html, cppStart),
-        ms_bundle_parse: delta(reactModule, html),
-        ms_react_init: delta(transportReady, reactModule),
-        ms_react_mount_to_ready: delta(signalAtMs, transportReady),
-        ms_total_observable_boot: delta(signalAtMs, cppStart),
-        // Fine-grained sub-deltas (pre-React layer).
-        ms_cpp_setup: delta(cppLoadUrl, cppStart),
-        ms_glic_load: delta(cppGlicNav, cppLoadUrl),
-        ms_inner_webview_spawn_and_fetch: delta(html, cppGlicNav),
-        // Subdivide ms_inner_webview_spawn_and_fetch: glic page parse + script start; glic JS
-        // top-level work before navigating; Chromium guest spawn + Vite serve.
-        ms_glic_committed_to_main_script:
-          delta(glicMainStarted, cppGlicNav),
-        ms_main_script_to_webview_src:
-          delta(webviewSrcSet, glicMainStarted),
-        ms_webview_src_to_html_parsed:
-          delta(html, webviewSrcSet),
-        ms_html_parse_to_module: delta(reactModule, html),
-        ms_module_to_dcl: delta(dcl, reactModule),
-        // Fine-grained sub-deltas — Direction B (React mount → ready).
-        ms_mount_to_first_paint: delta(twMount, transportReady),
-        // Sub-deltas inside ms_mount_to_first_paint (5 segments):
-        ms_transport_to_react_import:
-          delta(reactImported, transportReady),
-        ms_react_to_reactdom_import:
-          delta(reactDomImported, reactImported),
-        ms_reactdom_to_create_root:
-          delta(createRootDone, reactDomImported),
-        ms_create_root_to_shell_import:
-          delta(shellImported, createRootDone),
-        ms_shell_import_to_render_start:
-          delta(renderStart, shellImported),
-        ms_render_call_duration:
-          delta(renderReturned, renderStart),
-        ms_render_returned_to_first_paint:
-          delta(twMount, renderReturned),
-        ms_first_paint_to_snapshot: delta(snapshotReady, twMount),
-        ms_snapshot_to_messages: delta(firstMsgs, snapshotReady),
-        ms_messages_to_merged: delta(transcriptMerged, firstMsgs),
-        ms_merged_to_unmount: delta(twUnmount, transcriptMerged),
-        ms_unmount_to_signal: delta(signalAtMs, twUnmount),
-        // Direction B3 — subdivide ms_merged_to_unmount across assistant-ui's
-        // pipeline. Note: transcriptConvertStartMs is captured during render
-        // (inside useMemo), while transcriptMergedMs is captured in a useEffect
-        // AFTER the commit that produced the merged transcript — so
-        // ms_merged_to_convert_start can be NEGATIVE (convert ran first within
-        // the same render cycle) by ~ a few ms. That's expected; the absolute
-        // value is the post-commit→post-effect lag for that render cycle.
-        ms_merged_to_convert_start:
-          delta(transcriptConvertStart, transcriptMerged),
-        ms_convert_duration:
-          delta(transcriptConvertEnd, transcriptConvertStart),
-        ms_convert_to_aui_committed:
-          delta(auiThreadFirstCommit, transcriptConvertEnd),
-        ms_aui_committed_to_first_message:
-          delta(firstMessageMounted, auiThreadFirstCommit),
-        // Inside ms_aui_committed_to_first_message: split into the gap
-        // assistant-ui takes to start iterating its message list (store
-        // propagation + render kickoff), the iteration time itself
-        // (rendering 65 message subtrees), and the post-iteration
-        // commit + paint + effect-queue tail.
-        ms_aui_committed_to_render_prop:
-          delta(firstMessageRenderProp, auiThreadFirstCommit),
-        ms_render_prop_iteration:
-          delta(lastMessageRenderProp, firstMessageRenderProp),
-        ms_render_prop_to_first_message_mount:
-          delta(firstMessageMounted, lastMessageRenderProp),
-        ms_first_message_to_unmount:
-          delta(twUnmount, firstMessageMounted),
-      },
-    })
-    onGuestFullyReady?.()
-  }, [
-    sessions.length,
-    activeState.status,
-    activeState.snapshot,
-    activeState.transcriptMessages.length,
-    activeSessionId,
+  useGuestReadySignal({
+    activeState,
     threadWelcomeUnmounted,
     bodyHydrated,
+    activeSessionId,
+    sessions,
     onGuestFullyReady,
-  ])
+  })
 
   const activeCatalog = activeState.snapshot?.modelCatalog
   // Display fallback: while a freshly-switched / cold session's `worker.ready`
@@ -3277,134 +3063,20 @@ export function MultiSessionShell({
     else openNewSession()
   }, [hiddenIds, activeSessionId, sessions, focusSession, openNewSession])
 
-  // --- Session attention: "a session wants you, and you are not looking" ---
-  // The queue lives here because this is where all three inputs already meet:
-  // `needsAnswerSessionIds` (halted sessions, teammates included), the running
-  // set, and the session rows carrying the last message. `sessionAttention.ts`
-  // owns the rules; everything below is the shell's half - focus, the OS
-  // notification, the switch.
-  const [attentionQueue, setAttentionQueue] = useState<AttentionEvent[]>([])
-  // The queue is ALSO held in a ref, and the ref is the one both writers read.
-  // The reconcile below has to send an OS notification for each newly raised
-  // event, and a side effect must never sit inside a `setState` updater: React
-  // double-invokes updaters in StrictMode, which would fire every toast twice.
-  // So the effects compute against the ref, run their side effects once, and
-  // publish the result to state for rendering.
-  const attentionQueueRef = useRef<AttentionEvent[]>(attentionQueue)
-  const publishAttentionQueue = useMemo(
-    () => createShellPublishAttentionQueue(attentionQueueRef, setAttentionQueue),
-    [],
-  )
+  const { attentionQueue, windowFocused, handleAttentionSelect, attentionSessions } = useSessionAttention({
+    sessions,
+    runningSeenSinceDetectRef,
+    runningSessionIds,
+    allSessionItems,
+    t,
+    needsAnswerSessionIds,
+    hiddenIds,
+    needsInputAskKeys,
+    activeSessionId,
+    hostBridgeTransport,
+    focusSession,
+  })
 
-  // Event ids already DELIVERED, pruned to those still desired. A `focus` reveal is marked
-  // only once it found the control, so a not-yet-mounted card is retried.
-  const deliveredAttentionRef = useRef<Set<string>>(new Set())
-
-  // Event ids the user has ACKNOWLEDGED by going to the session (one raised where the user
-  // already was is not); an acknowledged event never comes back. Pruned like the delivered marks.
-  const acknowledgedAttentionRef = useRef<Set<string>>(new Set())
-
-  // When each marked id was first seen missing from the derived set. Both
-  // mark sets above end with their event, but "missing" is not "ended": a
-  // remount of a halted session's thread makes its thread-reported ask blink
-  // out and back, and forgetting the acknowledgement on that blink re-raised
-  // an ask the user had already visited. `reconcileAttention` forgets a mark
-  // only once its absence outlasts `ATTENTION_DROP_GRACE_MS`.
-  const attentionAbsentSinceRef = useRef<Map<string, number>>(new Map())
-
-  // The ask each live / marked id was last seen producing — what a returning
-  // id is measured against, so a re-ask within the grace is not mistaken for
-  // the blink the grace exists for.
-  const attentionAskKeysRef = useRef<Map<string, string>>(new Map())
-
-  // Scope the reveal to the session's OWN section: every mounted thread is in
-  // the DOM at once (hidden ones are `display: none`), so an unscoped query
-  // would happily focus a sibling session's pending control. Returns whether a
-  // control was found. Synchronous on purpose: these run from effects, after
-  // the commit that put the control in the DOM, and a deferral through
-  // `requestAnimationFrame` never fires while the page is occluded — which is
-  // exactly the state a window the user is not looking at is in.
-  const revealAttentionInSession = useMemo(
-    () => createShellRevealAttentionInSession(),
-    [],
-  )
-
-  // Is the Velloc window the user's ACTIVE surface? Both halves matter: a
-  // window can be visible but not focused (a second monitor the user is not
-  // typing into). The initial read is synchronous so the first event delivered
-  // after boot is not classified against a guessed value.
-  const [windowFocused, setWindowFocused] = useState(
-    () =>
-      typeof document === 'undefined' ||
-      (document.visibilityState !== 'hidden' && document.hasFocus()),
-  )
-  useEffect(() => {
-    const sync = () => {
-      setWindowFocused(
-        document.visibilityState !== 'hidden' && document.hasFocus(),
-      )
-    }
-    window.addEventListener('focus', sync)
-    window.addEventListener('blur', sync)
-    document.addEventListener('visibilitychange', sync)
-    return () => {
-      window.removeEventListener('focus', sync)
-      window.removeEventListener('blur', sync)
-      document.removeEventListener('visibilitychange', sync)
-    }
-  }, [])
-
-  // Sessions whose last turn ENDED on a question without halting: latched on the running →
-  // stopped edge until visited or run again. `detectEndedWithQuestion` orders the two feeds.
-  const endedQuestionTrackerRef = useRef(createEndedQuestionTracker())
-  const [endedWithQuestion, setEndedWithQuestion] = useState<
-    ReadonlyMap<string, string>
-  >(() => new Map())
-  useEffect(() => {
-    // One index for every lookup below, instead of a linear scan per session.
-    const rowById = new Map(
-      sessions.map(item => [item.sessionId, item] as const),
-    )
-    // Mutates the tracker ref only — never inside the `setEndedWithQuestion`
-    // updater, which StrictMode double-invokes.
-    const ranSince = runningSeenSinceDetectRef.current
-    runningSeenSinceDetectRef.current = new Set()
-    const raised = detectEndedWithQuestion(
-      endedQuestionTrackerRef.current,
-      runningSessionIds,
-      sessionId => rowById.get(sessionId)?.previewText,
-      sessionId => rowById.has(sessionId),
-      ranSince,
-    )
-
-    setEndedWithQuestion(current => {
-      let next: Map<string, string> | null = null
-      for (const [sessionId, preview] of raised) {
-        if (current.get(sessionId) === preview) continue
-        next = next ?? new Map(current)
-        next.set(sessionId, preview)
-      }
-      // A session that started running again has superseded its own question.
-      for (const sessionId of current.keys()) {
-        if (!runningSessionIds.has(sessionId)) continue
-        next = next ?? new Map(current)
-        next.delete(sessionId)
-      }
-      return next ?? current
-    })
-  }, [runningSessionIds, sessions])
-
-  // What a row needs to be recognised: the title, and the launcher type for
-  // the same icon the sidebar row shows.
-  const attentionSessions = useMemo(() => {
-    const titles = new Map<string, string>()
-    const templateTypes = new Map<string, string | undefined>()
-    for (const item of allSessionItems) {
-      titles.set(item.sessionId, sessionDisplayTitle(item, t))
-      templateTypes.set(item.sessionId, item.templateType)
-    }
-    return { titles, templateTypes }
-  }, [allSessionItems, t])
   // The shown session's app title names its A2UI pane; other sessions keep the pane's own name.
   const locale = useLocale()
   const shownTemplateType = activeSessionId ? attentionSessions.templateTypes.get(activeSessionId) : undefined
@@ -3414,164 +3086,6 @@ export function MultiSessionShell({
   )
   const sidePaneName = (kind: SidePaneKind): string =>
     (kind === 'a2ui' ? shownAppTitle : null) ?? t(PANE_LABEL_KEY[kind])
-
-  // Reconcile, then deliver whatever is NEW. Delivery is decided per event by
-  // `attentionDelivery`, and only `bar` actually needs the queue - a `focus`
-  // event is consumed on the spot, and a `notify` event stays queued precisely
-  // because the user is not there to consume it.
-  useEffect(() => {
-    // A session this channel hides never asks for attention: the bar would
-    // offer a switch to a row the sidebar does not have, and the OS
-    // notification would name one the user cannot find.
-    // An event still derivable keeps its marks; one that has gone away — for
-    // longer than a remount's blink — loses them, so the same session asking
-    // again is delivered again. `reconcileAttention` owns that lifetime and
-    // updates the three refs in place.
-    const { queue, added, suppressed } = reconcileAttention(
-      attentionQueueRef.current,
-      {
-        needsInputSessionIds: withoutHidden(needsAnswerSessionIds, hiddenIds),
-        // Keyed by session and only ever read for a halted one, so the hidden
-        // filter above already scopes it.
-        needsInputKeys: needsInputAskKeys,
-        endedWithQuestion: withoutHiddenKeys(endedWithQuestion, hiddenIds),
-        titles: attentionSessions.titles,
-        templateTypes: attentionSessions.templateTypes,
-        now: Date.now(),
-      },
-      {
-        acknowledged: acknowledgedAttentionRef.current,
-        delivered: deliveredAttentionRef.current,
-        absentSince: attentionAbsentSinceRef.current,
-        askKeys: attentionAskKeysRef.current,
-      },
-    )
-
-    // An acknowledged event is never delivered again — but the user may be
-    // standing in the very session whose control the arrival could not find
-    // (a session evicted from the mount LRU mounts on arrival and renders its
-    // card a moment later). Retry that one reveal here, on the same terms as
-    // the `focus` route below: it is the reveal that is outstanding, not the
-    // notification.
-    for (const event of suppressed) {
-      if (!windowFocused || event.sessionId !== activeSessionId) continue
-      if (deliveredAttentionRef.current.has(event.id)) continue
-      if (revealAttentionInSession(event.sessionId)) {
-        deliveredAttentionRef.current.add(event.id)
-      }
-    }
-
-    let result = queue
-    for (const event of added) {
-      const delivery = attentionDelivery(event, {
-        activeSessionId,
-        windowFocused,
-      })
-      const alreadyDelivered = deliveredAttentionRef.current.has(event.id)
-      // A route that DELIVERS the event where the user already is also spends
-      // it (`deliveryConsumesEvent`). Marked before the branches below so the
-      // rule is one line in one place rather than a property of whichever
-      // branch happens to run.
-      if (deliveryConsumesEvent(delivery)) {
-        acknowledgedAttentionRef.current.add(event.id)
-      }
-      if (delivery === 'focus') {
-        // The user is already here, so this never enters the queue — which
-        // is why the clearing runs on EVERY pass while the ask is live, but
-        // the reveal only on the first that finds the control. The
-        // acknowledgement above is what makes the clearing STICK: without it
-        // the derived queue re-raised the same event on the next pass and,
-        // once the user had moved to another session, announced it there.
-        const sessionId = event.sessionId
-        result = clearAttentionForSession(result, sessionId)
-        if (alreadyDelivered) continue
-        if (revealAttentionInSession(sessionId)) {
-          deliveredAttentionRef.current.add(event.id)
-        }
-        continue
-      }
-      deliveredAttentionRef.current.add(event.id)
-      if (delivery === 'notify' && !alreadyDelivered) {
-        // Reuse of the existing host surface: `ui.showNotification` is the
-        // OS toast the turn-end nudge already uses, and the host suppresses
-        // it whenever the window is active - so this cannot double up with
-        // the bar even if our own focus read were stale.
-        void showHostNotification(hostBridgeTransport, {
-          title: t('attention.notificationTitle', { title: event.title }),
-          message:
-            event.kind === 'needs_input'
-              ? t('attention.notificationNeedsInput')
-              : (event.detail ?? t('attention.notificationQuestion')),
-          notificationType: `session_attention_${event.kind}`,
-        })
-      }
-    }
-    publishAttentionQueue(result)
-  }, [
-    needsAnswerSessionIds,
-    needsInputAskKeys,
-    endedWithQuestion,
-    hiddenIds,
-    attentionSessions,
-    activeSessionId,
-    windowFocused,
-    hostBridgeTransport,
-    t,
-    publishAttentionQueue,
-    revealAttentionInSession,
-  ])
-
-  // THE clearing rule, and the only one: arriving at a session drops its
-  // events. Keyed on (active session, window focus) rather than on the click,
-  // so every route in - the bar, the OS notification, the sidebar, a teammate
-  // jump, a plain tab switch - clears identically, and none of them has to
-  // remember to. The focus half matters: a notification click raises the
-  // window and selects the session in either order, and only the second of
-  // those two events means the user has actually seen it.
-  useEffect(() => {
-    if (!activeSessionId || !windowFocused) return
-    const before = attentionQueueRef.current
-    const next = clearAttentionForSession(before, activeSessionId)
-    publishAttentionQueue(next)
-    // Arriving at a waiting session reveals its control, whatever the route, and marks its
-    // events delivered; if the control is not mounted yet, the marks are dropped so the
-    // reconcile retries.
-    if (next !== before) {
-      const revealed = revealAttentionInSession(activeSessionId)
-      for (const event of before) {
-        if (event.sessionId !== activeSessionId) continue
-        // The visit IS the acknowledgement, whether or not a control was
-        // found: the user went where they were sent. Re-raising it the
-        // moment they move on is the "it never goes away" defect, and the
-        // case where nothing was found is precisely the one that must not
-        // be advertised a second time.
-        acknowledgedAttentionRef.current.add(event.id)
-        if (revealed) deliveredAttentionRef.current.add(event.id)
-        else deliveredAttentionRef.current.delete(event.id)
-      }
-    }
-    setEndedWithQuestion(current => {
-      if (!current.has(activeSessionId)) return current
-      const next = new Map(current)
-      next.delete(activeSessionId)
-      return next
-    })
-  }, [
-    activeSessionId,
-    windowFocused,
-    publishAttentionQueue,
-    revealAttentionInSession,
-  ])
-
-  const handleAttentionSelect = useMemo(
-    () => createShellHandleAttentionSelect(activeSessionId, revealAttentionInSession, attentionQueueRef, acknowledgedAttentionRef, publishAttentionQueue, focusSession),
-    [
-      activeSessionId,
-      focusSession,
-      publishAttentionQueue,
-      revealAttentionInSession,
-    ],
-  )
 
   // The transcript's teammate cards — a peer's message, and the `Agent` call
   // that spawned it — jump to that teammate's session. They sit deep inside
