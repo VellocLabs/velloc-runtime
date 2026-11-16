@@ -166,6 +166,22 @@ describe('AbovePromptList through the runtime', () => {
     ])
   })
 
+  it('$.state.set while arranging is denied, and the band draws as it settled', async () => {
+    const { runtime, reports } = world({
+      ...TWO_ROWS,
+      writer: `on('ui.render', { component: 'AbovePromptList' }, async ($, e, next) => {
+        await $.state.set({ plugin: 'writer', key: 'n' }, 1)
+        return next(e)
+      })`,
+    })
+    await runtime.ready
+    const drawn = await band(runtime)
+    expect(drawn.kind).toBe('tree')
+    if (drawn.kind !== 'tree') return
+    expect(drawn.sections?.map(section => section.plugin)).toEqual(['weather', 'bar'])
+    expect(reports.some(line => /\$\.state\.set while drawing is denied/.test(line))).toBe(true)
+  })
+
   it('a ui.render hook naming no component does not hear the arrangement', async () => {
     const { runtime } = world({
       ...TWO_ROWS,

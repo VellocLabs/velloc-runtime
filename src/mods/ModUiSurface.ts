@@ -264,7 +264,7 @@ export abstract class ModUiSurface extends ModEngineEvents {
     if (input.component === 'AbovePrompt' && this.dispatcher.hasHooksFor('ui.render', hearsBandList)) {
       // A later ask for the band, arriving while it is arranged, overtakes it.
       this.latestRender.set(key, ask)
-      const arranged = await this.arrangeBand(e, bandRowsOf(tree, sections, plugin ?? plugins[0]), signal)
+      const arranged = await this.arrangeBand(e, key, bandRowsOf(tree, sections, plugin ?? plugins[0]), signal)
       const isOvertaken = overtaken()
       if (!isOvertaken) this.latestRender.delete(key)
       if (isOvertaken) {
@@ -311,6 +311,7 @@ export abstract class ModUiSurface extends ModEngineEvents {
    */
   protected async arrangeBand(
     band: RenderInput,
+    key: string,
     rows: RenderSection[],
     signal?: AbortSignal,
   ): Promise<{ tree: RenderElement | null; sections?: RenderSection[]; plugins: string[] } | undefined> {
@@ -332,6 +333,7 @@ export abstract class ModUiSurface extends ModEngineEvents {
         },
         {
           ...(signal ? { signal } : {}),
+          scope: { render: { key } },
           admits: hearsBandList,
           accepts: answer => isRenderAnswer(answer) && validateRenderTree(answer).ok,
           trace: entries => {
