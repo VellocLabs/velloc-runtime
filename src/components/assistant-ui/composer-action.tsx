@@ -33,7 +33,10 @@ import { ComposerModePicker } from './composer-mode-picker';
 // The Send button's tooltip: one row per send mode, label on the left and its
 // shortcut on the right. "Queue for later" only while the turn runs — see
 // `resolveComposerSendShortcuts`.
-export const ComposerSendTooltip: FC<{ isRunning: boolean }> = ({ isRunning }) => {
+export const ComposerSendTooltip: FC<{ isRunning: boolean; enterSends?: boolean }> = ({
+  isRunning,
+  enterSends = true,
+}) => {
   const t = useT();
   // An empty session has nothing to fork, so the fork row is left out — see
   // `resolveComposerSendShortcuts`.
@@ -46,14 +49,18 @@ export const ComposerSendTooltip: FC<{ isRunning: boolean }> = ({ isRunning }) =
       data-testid="composer-send-tooltip"
       className="grid grid-cols-[auto_auto] items-center gap-x-4 gap-y-1"
     >
-      {resolveComposerSendShortcuts({ isRunning, hasMessages }).map((shortcut) => (
-        <Fragment key={shortcut.id}>
-          <span data-shortcut={shortcut.id}>{t(shortcut.labelKey)}</span>
-          <kbd className="justify-self-end font-sans opacity-70">
-            {t(shortcut.keysKey, glyphs)}
-          </kbd>
-        </Fragment>
-      ))}
+      {resolveComposerSendShortcuts({ isRunning, hasMessages })
+        // Where Enter does not send, the Send row would advertise a key that
+        // does nothing; the other rows are modifiers and still send.
+        .filter((shortcut) => enterSends || shortcut.id !== "send")
+        .map((shortcut) => (
+          <Fragment key={shortcut.id}>
+            <span data-shortcut={shortcut.id}>{t(shortcut.labelKey)}</span>
+            <kbd className="justify-self-end font-sans opacity-70">
+              {t(shortcut.keysKey, glyphs)}
+            </kbd>
+          </Fragment>
+        ))}
     </div>
   );
 };
@@ -65,7 +72,7 @@ export const ComposerSendTooltip: FC<{ isRunning: boolean }> = ({ isRunning }) =
 // rewrites the line, adds a dim `tail` after it, or draws its own tree in its
 // place — raised for the empty prompt too (`hint: ""`), so a mod may fill the
 // line where the engine draws nothing.
-export const ComposerInputHintLine: FC = () => {
+export const ComposerInputHintLine: FC<{ enterSends?: boolean }> = ({ enterSends = true }) => {
   const t = useT();
   const text = useAssistantState((s) => s.composer.text);
   const isRunning = useAssistantState((s) => s.thread.isRunning);
@@ -78,6 +85,12 @@ export const ComposerInputHintLine: FC = () => {
   let line = "";
   switch (hint?.kind) {
     case "send":
+      // Enter is a newline where the host says so, so the shortcut list would
+      // teach a key that does not send.
+      if (!enterSends) {
+        line = t("composer.hint.sendButton");
+        break;
+      }
       // An empty session has nothing to fork, so the fork shortcut is left
       // out of the hint — the Empty variants carry no fork clause.
       line = hint.isRunning
@@ -139,7 +152,7 @@ export const ComposerInputHintLine: FC = () => {
 // real `useExternalStoreRuntime` to pin that Stop does NOT route through
 // `ComposerPrimitive.Cancel` (see `handleCancelClick`). Not part of the public
 // surface — Thread renders it.
-export const ComposerAction: FC = () => {
+export const ComposerAction: FC<{ enterSends?: boolean }> = ({ enterSends = true }) => {
   const t = useT();
   const { isStopping, onCancel } = useContext(ComposerCancelStateContext);
   // Track the click locally so the disable lands on the click's frame, before the worker
@@ -248,7 +261,7 @@ export const ComposerAction: FC = () => {
           <ComposerAddAttachment />
         </AuiIf>
       </div>
-      {!awaitingAnswer && <ComposerInputHintLine />}
+      {!awaitingAnswer && <ComposerInputHintLine enterSends={enterSends} />}
       <div className="ml-auto flex items-center gap-1">
         {showContinue && (
           <TooltipIconButton
@@ -301,7 +314,7 @@ export const ComposerAction: FC = () => {
               </Button>
             </TooltipTrigger>
             <TooltipContent side="bottom">
-              <ComposerSendTooltip isRunning={isRunning} />
+              <ComposerSendTooltip isRunning={isRunning} enterSends={enterSends} />
             </TooltipContent>
           </Tooltip>
         )}

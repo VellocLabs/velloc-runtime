@@ -361,6 +361,7 @@ export const zh: Messages = {
   'composer.hint.sendRunning': 'Enter 插入当前回合 · {modifier}+Enter 排队稍后发送 · {modifier}+{alt}+Enter 在分叉会话中发送',
   // 空会话的变体：不含分叉提示——空会话没有可分叉的内容。
   'composer.hint.sendEmpty': 'Enter 发送 · Shift+Enter 换行',
+  'composer.hint.sendButton': 'Enter 换行 · 用发送按钮发送',
   'composer.hint.sendRunningEmpty': 'Enter 插入当前回合 · {modifier}+Enter 排队稍后发送',
   'composer.hint.commandPick': '↑↓ 选择命令 · Enter 确认 · Esc 关闭',
   'composer.hint.commandUsage': '用法：{usage}',

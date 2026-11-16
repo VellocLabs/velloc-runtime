@@ -237,7 +237,7 @@ export const UserMessage: FC = () => {
         {injectPending && removeInjectMessage && (
           // Overlaid on the bubble's corner (the column is as wide as the
           // bubble), shown on hover / keyboard focus — no line of its own.
-          // Always shown on a screen that cannot hover (M9).
+          // Always shown on a screen that cannot hover (F-24).
           <button
             type="button"
             data-testid="inject-message-remove"
@@ -274,7 +274,7 @@ export const UserMessage: FC = () => {
         <div
           className={cn(
             "aui-user-action-bar-wrapper absolute top-full right-0 z-10 flex opacity-0 transition-opacity pointer-events-none group-hover:pointer-events-auto group-hover:opacity-100 focus-within:pointer-events-auto focus-within:opacity-100 peer-empty:hidden",
-            // Without hover: always shown, on its own line (M9).
+            // Without hover: always shown, on its own line (F-24).
             IN_FLOW_WITHOUT_HOVER,
             SHOWN_WITHOUT_HOVER,
             actionsOpen && "opacity-100 pointer-events-auto",

@@ -289,7 +289,7 @@ export const Composer: FC<ComposerProps> = ({ enterSends = true }) => {  const t
                 interceptLargeTextPaste(e, composer);
               }}
               onKeyDown={handleComposerKeyDown}
-              submitMode={enterSends ? "enter" : "none"}
+              submitMode={enterSends ? "enter" : "ctrlEnter"}
               cancelOnEscape={false}
               // The send shortcuts live in the Send button's tooltip and the
               // hint line; the empty composer invites a first task in a new
@@ -311,7 +311,7 @@ export const Composer: FC<ComposerProps> = ({ enterSends = true }) => {  const t
             {/* The mods' virtual text (F-25), drawn over the box after the
                 draft; the box holds and sends the draft alone. */}
             <ModPromptVirtualText input={composerInput} shown={modVirtualText} />
-            <ComposerAction />
+            <ComposerAction enterSends={enterSends} />
           </div>
         </ComposerPrimitive.AttachmentDropzone>
       </SlashCommandPicker>

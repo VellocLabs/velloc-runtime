@@ -360,6 +360,7 @@ export const ja: Messages = {
   // 空のセッション向けのバリアント。フォークの案内は出さない — 空のセッションには
   // フォークするものがないため。
   'composer.hint.sendEmpty': 'Enter で送信 · Shift+Enter で改行',
+  'composer.hint.sendButton': 'Enter で改行 · 送信は送信ボタンから',
   'composer.hint.sendRunningEmpty': 'Enter でこのターンに追加 · {modifier}+Enter で後で送信するよう予約',
   'composer.hint.commandPick': '↑↓ でコマンドを選択 · Enter で決定 · Esc で閉じる',
   'composer.hint.commandUsage': '使い方: {usage}',

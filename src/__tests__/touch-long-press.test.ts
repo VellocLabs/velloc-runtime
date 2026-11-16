@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 /**
- * The touch long-press that stands in for a right-click (M9): a still finger
+ * The touch long-press that stands in for a right-click (F-24): a still finger
  * held `LONG_PRESS_MS` dispatches one `contextmenu` at the touch point; mouse,
  * movement, lifting early and a cancelled pointer do not; a browser's own
  * `contextmenu` for the same press is not doubled.
@@ -101,6 +101,18 @@ describe('attachTouchLongPress', () => {
     row.dispatchEvent(echo)
     expect(menus).toHaveLength(2)
     expect(echo.defaultPrevented).toBe(true)
+  })
+
+  it('a real right-click after a long press still opens its own menu', () => {
+    row.dispatchEvent(pointer('pointerdown'))
+    vi.advanceTimersByTime(LONG_PRESS_MS)
+    expect(menus).toHaveLength(1)
+    row.dispatchEvent(pointer('pointerup'))
+
+    row.dispatchEvent(pointer('pointerdown', { pointerType: 'mouse' }))
+    const right = new MouseEvent('contextmenu', { bubbles: true, cancelable: true })
+    row.dispatchEvent(right)
+    expect(menus).toHaveLength(2)
   })
 
   it('the click that ends a long press is swallowed; a later tap clicks', () => {

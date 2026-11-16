@@ -1,5 +1,5 @@
 /**
- * The phone shell's `--thread-bottom-inset` (F-24, M9): the keyboard's height
+ * The phone shell's `--thread-bottom-inset` (F-24): the keyboard's height
  * while it covers the page, else the bottom safe area.
  */
 import { describe, expect, it } from 'vitest'

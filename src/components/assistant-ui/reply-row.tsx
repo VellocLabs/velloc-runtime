@@ -133,7 +133,7 @@ export const ReplyRow: FC = () => {
         <div
           className={cn(
             "aui-assistant-message-footer absolute top-full left-2 flex opacity-0 transition-opacity pointer-events-none group-hover:pointer-events-auto group-hover:opacity-100 focus-within:pointer-events-auto focus-within:opacity-100",
-            // Without hover: always shown, on its own line (M9).
+            // Without hover: always shown, on its own line (F-24).
             IN_FLOW_WITHOUT_HOVER,
             SHOWN_WITHOUT_HOVER,
             actionsOpen && "opacity-100 pointer-events-auto",

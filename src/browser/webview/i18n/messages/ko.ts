@@ -359,6 +359,7 @@ export const ko: Messages = {
   'composer.hint.sendRunning': 'Enter로 이번 턴에 추가 · {modifier}+Enter로 나중에 보내도록 대기 · {modifier}+{alt}+Enter로 포크한 세션에서 보내기',
   // 빈 세션용 변형 — 빈 세션은 포크할 내용이 없으므로 포크 안내를 뺍니다.
   'composer.hint.sendEmpty': 'Enter로 보내기 · Shift+Enter로 줄바꿈',
+  'composer.hint.sendButton': 'Enter로 줄바꿈 · 보내기는 보내기 버튼으로',
   'composer.hint.sendRunningEmpty': 'Enter로 이번 턴에 추가 · {modifier}+Enter로 나중에 보내도록 대기',
   'composer.hint.commandPick': '↑↓로 명령 선택 · Enter로 선택 · Esc로 닫기',
   'composer.hint.commandUsage': '사용법: {usage}',

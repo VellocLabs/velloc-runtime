@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 /**
  * A conversation whose host has no pane or native picker for a control never
- * shows that control as a dead button (M10): the plan card opens the plan in
+ * shows that control as a dead button (F-24): the plan card opens the plan in
  * place when there is no plan pane, and the folder chip drops "Show in
  * Explorer" and "Open folder…" when the host cannot do them.
  */
@@ -72,6 +72,16 @@ describe('plan card without a plan pane', () => {
     })
     expect(slot('plan-approval-inline-plan')).toBeNull()
     expect(view.textContent).toBe('Open plan')
+  })
+
+  it('offers no Open plan when the approval carries no plan text', () => {
+    const empty = {
+      ...pending,
+      request: { ...pending.request, planText: '' },
+    } as PlanPanelEntry
+    render(planCard({ pending: empty, resolve: vi.fn() }))
+    expect(slot('plan-approval-view')).toBeNull()
+    expect(slot('plan-approval-inline-plan')).toBeNull()
   })
 
   it('with a plan pane, Open plan opens the pane and never the inline plan', () => {

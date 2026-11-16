@@ -1,7 +1,7 @@
 /**
  * Class sets for controls the conversation shows only on hover. On a screen
  * that cannot hover (`(hover: none)`: touch) they are always shown instead;
- * a hover-capable screen keeps its hover reveal unchanged (M9).
+ * a hover-capable screen keeps its hover reveal unchanged (F-24).
  */
 
 /** Shown and tappable without hover. */

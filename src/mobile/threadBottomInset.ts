@@ -1,6 +1,6 @@
 /**
  * The room the phone covers at the bottom of the page, as the conversation
- * view's `--thread-bottom-inset` (F-24, M9): the soft keyboard's height while
+ * view's `--thread-bottom-inset` (F-24): the soft keyboard's height while
  * it is up, else the bottom safe area (the home indicator).
  */
 import { useEffect, useState } from 'react'
@@ -33,13 +33,23 @@ export function useThreadBottomInset(): string {
   useEffect(() => {
     const viewport = window.visualViewport
     if (!viewport) return undefined
-    const update = () => setKeyboardPx(readKeyboardInset())
+    // The keyboard animates over many frames; one state update per frame is the
+    // most this single custom property can use.
+    let frame = 0
+    const update = () => {
+      if (frame !== 0) return
+      frame = requestAnimationFrame(() => {
+        frame = 0
+        setKeyboardPx(readKeyboardInset())
+      })
+    }
     viewport.addEventListener('resize', update)
     viewport.addEventListener('scroll', update)
     update()
     return () => {
       viewport.removeEventListener('resize', update)
       viewport.removeEventListener('scroll', update)
+      if (frame !== 0) cancelAnimationFrame(frame)
     }
   }, [])
   return threadBottomInset(keyboardPx)

@@ -362,6 +362,7 @@ export const de: Messages = {
   // Leere-Sitzung-Varianten ohne den Verzweigungs-Hinweis — eine leere
   // Sitzung hat nichts zu verzweigen.
   'composer.hint.sendEmpty': 'Enter zum Senden · Umschalt+Enter für eine neue Zeile',
+  'composer.hint.sendButton': 'Enter für eine neue Zeile · Senden mit der Schaltfläche',
   'composer.hint.sendRunningEmpty': 'Enter fügt zu diesem Durchgang hinzu · {modifier}+Enter reiht für später ein',
   'composer.hint.commandPick': '↑↓ wählt einen Befehl · Enter übernimmt · Esc schließt',
   'composer.hint.commandUsage': 'Verwendung: {usage}',

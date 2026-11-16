@@ -368,7 +368,7 @@ export function MobileShell(props: MobileShellProps): ReactNode {
     sessionDraftBySessionId,
     composerInsert: null,
     handleComposerEdit,
-    // No Shift on a soft keyboard: Enter is a newline and only Send sends (M9).
+    // No Shift on a soft keyboard: Enter is a newline and only Send sends (F-24).
     composerEnterSends: false,
   }
 

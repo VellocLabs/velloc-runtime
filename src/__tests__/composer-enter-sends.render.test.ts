@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 /**
- * The composer's `enterSends` parameter (M9): true (the default) sends on a
+ * The composer's `enterSends` parameter (F-24): true (the default) sends on a
  * plain Enter; false leaves Enter to the text box (a newline) so only the Send
  * button sends. A key pressed during IME composition never sends.
  */
@@ -112,6 +112,33 @@ describe('composer enterSends', () => {
     await new Promise(resolve => setTimeout(resolve, 50))
     expect(onNew).not.toHaveBeenCalled()
     expect(box.value).toBe('more context')
+  })
+
+  it('sends on Ctrl/Cmd+Enter when false, which the shortcut list still offers', async () => {
+    const onNew = vi.fn(async () => {})
+    const { container } = render(createElement(Harness, { onNew, enterSends: false }))
+    const box = input(container)
+    await typeInto(box, 'hello')
+    act(() => {
+      fireEvent.keyDown(box, { key: 'Enter', ctrlKey: true })
+    })
+    await waitFor(() => expect(onNew).toHaveBeenCalledTimes(1))
+  })
+
+  it('teaches Enter as a send key by default', async () => {
+    const onNew = vi.fn(async () => {})
+    const { container } = render(createElement(Harness, { onNew }))
+    await typeInto(input(container), 'hello')
+    expect(container.textContent).toContain('Enter to send')
+    expect(container.textContent).not.toContain('Enter starts a new line')
+  })
+
+  it('teaches the Send button instead of Enter when false', async () => {
+    const onNew = vi.fn(async () => {})
+    const { container } = render(createElement(Harness, { onNew, enterSends: false }))
+    await typeInto(input(container), 'hello')
+    expect(container.textContent).toContain('Enter starts a new line')
+    expect(container.textContent).not.toContain('Enter to send')
   })
 
   it.each([true, false])('never sends during IME composition (enterSends %s)', async enterSends => {

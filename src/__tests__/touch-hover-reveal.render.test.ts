@@ -2,7 +2,7 @@
 /**
  * Controls the conversation reveals only on hover carry the `(hover: none)`
  * classes that show them on a touch screen, and keep their hover reveal for a
- * mouse (M9). The media query itself is applied by the browser; the phone
+ * mouse (F-24). The media query itself is applied by the browser; the phone
  * e2e checks the computed result under touch emulation.
  */
 import { createElement as h, type FC } from 'react'

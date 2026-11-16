@@ -33,7 +33,7 @@ function PlanApprovalCard({ pending }: { pending: PlanPanelEntry }) {
   const [feedback, setDraft] = useState(() => readPlanFeedbackDraft(draftKey))
   const [revising, setRevising] = useState(() => feedback !== '')
   const [busy, setBusy] = useState(false)
-  // Without a plan pane the plan opens inside this card (M10).
+  // Without a plan pane the plan opens inside this card (F-24).
   const [planShown, setPlanShown] = useState(false)
 
   const setFeedback = (text: string) => {
@@ -98,18 +98,20 @@ function PlanApprovalCard({ pending }: { pending: PlanPanelEntry }) {
           >
             {headline}
           </span>
-          <button
-            type="button"
-            data-slot="plan-approval-view"
-            aria-expanded={openPanel ? undefined : planShown}
-            onClick={() => (openPanel ? openPanel() : setPlanShown(shown => !shown))}
-            className="shrink-0 text-info underline underline-offset-4 hover:opacity-80"
-          >
-            {!openPanel && planShown ? t('planApproval.hidePlan') : t('planApproval.openPlan')}
-          </button>
+          {(openPanel || pending.request.planText) && (
+            <button
+              type="button"
+              data-slot="plan-approval-view"
+              aria-expanded={openPanel ? undefined : planShown}
+              onClick={() => (openPanel ? openPanel() : setPlanShown(shown => !shown))}
+              className="shrink-0 text-info underline underline-offset-4 hover:opacity-80"
+            >
+              {!openPanel && planShown ? t('planApproval.hidePlan') : t('planApproval.openPlan')}
+            </button>
+          )}
         </div>
       </div>
-      {!openPanel && planShown && (
+      {!openPanel && planShown && pending.request.planText && (
         <div
           data-slot="plan-approval-inline-plan"
           className="max-h-[40dvh] overflow-y-auto border-b px-4 py-3"

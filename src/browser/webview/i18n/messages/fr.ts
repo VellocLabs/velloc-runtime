@@ -359,6 +359,7 @@ export const fr: Messages = {
   // Variantes pour une session vide, sans la clause de bifurcation — une
   // session vide n'a rien à bifurquer.
   'composer.hint.sendEmpty': 'Entrée pour envoyer · Maj+Entrée pour un retour à la ligne',
+  'composer.hint.sendButton': "Entrée pour un retour à la ligne · Envoyer avec le bouton Envoyer",
   'composer.hint.sendRunningEmpty': 'Entrée pour ajouter à ce tour · {modifier}+Entrée pour mettre en file pour plus tard',
   'composer.hint.commandPick': '↑↓ pour choisir une commande · Entrée pour sélectionner · Échap pour fermer',
   'composer.hint.commandUsage': 'Utilisation : {usage}',

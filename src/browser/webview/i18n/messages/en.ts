@@ -381,6 +381,7 @@ export const en = {
   // The empty-session variants: no fork clause — an empty session has
   // nothing to fork.
   'composer.hint.sendEmpty': 'Enter to send · Shift+Enter for a new line',
+  'composer.hint.sendButton': 'Enter starts a new line · the Send button sends',
   'composer.hint.sendRunningEmpty': 'Enter to add to this turn · {modifier}+Enter to queue for later',
   'composer.hint.commandPick': '↑↓ to choose a command · Enter to select · Esc to dismiss',
   'composer.hint.commandUsage': 'Usage: {usage}',

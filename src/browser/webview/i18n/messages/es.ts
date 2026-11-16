@@ -363,6 +363,7 @@ export const es: Messages = {
   // Variantes para sesión vacía, sin la cláusula de bifurcación — una sesión
   // vacía no tiene nada que bifurcar.
   'composer.hint.sendEmpty': 'Enter para enviar · Mayús+Enter para una nueva línea',
+  'composer.hint.sendButton': 'Enter para una nueva línea · Enviar con el botón Enviar',
   'composer.hint.sendRunningEmpty': 'Enter para añadir a este turno · {modifier}+Enter para poner en cola para después',
   'composer.hint.commandPick': '↑↓ para elegir un comando · Enter para seleccionar · Esc para cerrar',
   'composer.hint.commandUsage': 'Uso: {usage}',

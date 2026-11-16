@@ -507,7 +507,7 @@ export const Thread: FC<{
     />
     {/* `--thread-bottom-inset` (set by the host, default 0): room the host
         covers at the bottom edge, such as a soft keyboard or a safe area; the
-        conversation and its composer end above it (M9). */}
+        conversation and its composer end above it (F-24). */}
     <ThreadPrimitive.Root
       data-thread-session={sessionId}
       className="aui-root aui-thread-root @container relative flex h-full flex-col bg-background pb-[var(--thread-bottom-inset,0px)] has-[[data-slot=session-card-stack]]:[--thread-end-reserve:clamp(24px,calc(var(--thread-max-width)+654px-100cqw),315px)]"

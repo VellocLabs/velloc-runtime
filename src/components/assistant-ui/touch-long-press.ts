@@ -1,6 +1,6 @@
 /**
  * A touch long-press opens what a right-click would: a still finger held
- * `LONG_PRESS_MS` dispatches `contextmenu` at the touch point (M9).
+ * `LONG_PRESS_MS` dispatches `contextmenu` at the touch point (F-24).
  */
 export const LONG_PRESS_MS = 500;
 export const LONG_PRESS_SLOP_PX = 10;
@@ -28,6 +28,9 @@ export function attachTouchLongPress(target: HTMLElement): () => void {
   const onPointerDown = (event: PointerEvent) => {
     clear();
     swallowClick = false;
+    // A fresh press ends the echo window for the last one: only a browser's own
+    // contextmenu for the press we just answered arrives without a press.
+    firedAt = -Infinity;
     if (event.pointerType !== "touch" || !event.isPrimary) return;
     const pressed = event.target;
     if (!(pressed instanceof Element)) return;
