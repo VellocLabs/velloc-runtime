@@ -6,10 +6,7 @@
  * - a lead drain never preempts an in-flight turn
  */
 import type { AgentRuntimeWorkerHandle } from './AgentRuntimeWorkerHandle'
-import type {
-  AgentRuntimeWorkerInitPayload,
-  AgentWorkerInboundMessage,
-} from './workerProtocol'
+import type { AgentRuntimeWorkerInitPayload } from './workerProtocol'
 import type { SessionWorkerInboundMessage } from './sharedWorkerProtocol'
 import type { BrowserConversationStorageBackend } from '../../sessions/sessionStore'
 import { setConversationStore } from '../../sessions/sessionStore'
