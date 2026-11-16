@@ -566,7 +566,7 @@ export const ReviewReportCard: FC<{
         </>}
         {!reviewing && (report.unverified?.length ?? 0) > 0 && <details data-testid="review-unverified" className="group/fold text-xs">
           <FoldSummary>{t('reviewCard.unverified')} · {report.unverified!.length}</FoldSummary>
-          <div className="mt-1 space-y-2 pl-[1.125rem]">
+          <div className="mt-1.5 space-y-2 pl-[1.125rem]">
             <p className="text-muted-foreground">{t('reviewCard.unverifiedNote')}</p>
             <ul className="space-y-2">{report.unverified!.map(item => <li key={item.id} data-testid="review-unverified-item" className="space-y-0.5">
               <div className="flex flex-wrap items-center gap-x-2">
