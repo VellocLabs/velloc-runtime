@@ -186,14 +186,14 @@ export const PassageTile: FC<{
       data-passage-key={model.identity}
       aria-label={model.presentation.accessibleName}
       onKeyDown={onKeyDown}
-      className="aui-passage-tile group/passage relative flex size-[7.5rem] shrink-0 flex-col overflow-hidden rounded-lg border bg-muted/50 text-muted-foreground focus-within:ring-2 focus-within:ring-ring/50"
+      className="aui-passage-tile group/passage relative flex size-[7.5rem] shrink-0 flex-col overflow-hidden rounded-lg border bg-muted/50 text-muted-foreground"
     >
       <button
         type="button"
         data-passage-open=""
         aria-label={openLabel}
         title={openLabel}
-        className="absolute inset-0 z-0 rounded-lg outline-none hover:bg-accent/40"
+        className="absolute inset-0 z-0 rounded-lg outline-none hover:bg-accent/40 focus-visible:focus-ring-inset"
         onClick={() => emit({ intent: "inspect", identity: model.identity })}
       />
       {model.presentation.note ? (

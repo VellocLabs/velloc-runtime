@@ -131,7 +131,7 @@ export function SideChatPane({
                   title={label}
                   onClick={() => onSelect(item.sessionId)}
                   className={cn(
-                    'flex w-max min-w-[6rem] max-w-[12rem] items-center gap-1.5 rounded-md ps-1.5 outline-none focus-visible:focus-ring',
+                    'flex w-max min-w-[6rem] max-w-[12rem] items-center gap-1.5 rounded-md ps-1.5 outline-none focus-visible:focus-ring-inset',
                     selected ? 'font-medium text-foreground' : 'text-muted-foreground',
                   )}
                 >

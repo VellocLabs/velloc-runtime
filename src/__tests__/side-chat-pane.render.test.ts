@@ -144,8 +144,11 @@ describe('SideChatPane', () => {
 
   it('the tab and its close show a keyboard focus ring', () => {
     render(pane({ items: [idle], selectedId: 'c0' }))
-    expect(screen.getByTestId('side-chat-tab-c0').className).toContain('focus-visible:focus-ring')
-    expect(screen.getByTestId('side-chat-archive-c0').className).toContain('focus-visible:focus-ring')
+    const hasClass = (testId: string, name: string) =>
+      screen.getByTestId(testId).className.split(/\s+/).includes(name)
+    // The strip clips its overflow, so the tab's line is drawn inside its edge.
+    expect(hasClass('side-chat-tab-c0', 'focus-visible:focus-ring-inset')).toBe(true)
+    expect(hasClass('side-chat-archive-c0', 'focus-visible:focus-ring')).toBe(true)
   })
 
   it('with many side chats the strip scrolls instead of clipping: pills keep a readable width, every one selects and archives, the selected one is brought into view', () => {

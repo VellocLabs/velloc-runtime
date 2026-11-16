@@ -563,7 +563,7 @@ function InfoCard({
           type="button"
           data-grip=""
           {...handle}
-          className="absolute inset-y-0 right-0 flex w-12 cursor-grab touch-none items-center justify-end pe-0.5 text-muted-foreground opacity-0 outline-none transition-opacity hover:text-foreground focus-visible:opacity-100 active:cursor-grabbing group-hover/card:opacity-100 [&:focus-visible>span]:ring-2 [&:focus-visible>span]:ring-ring"
+          className="absolute inset-y-0 right-0 flex w-12 cursor-grab touch-none items-center justify-end pe-0.5 text-muted-foreground opacity-0 outline-none transition-opacity hover:text-foreground focus-visible:opacity-100 active:cursor-grabbing group-hover/card:opacity-100 [&:focus-visible>span]:focus-ring"
         >
           <span className="flex size-5 items-center justify-center rounded">
             <GripVerticalIcon aria-hidden strokeWidth={2} className="size-3.5" />

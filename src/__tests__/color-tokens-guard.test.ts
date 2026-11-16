@@ -69,11 +69,20 @@ describe('colour tokens guard', () => {
     expect(offenders(RAW_COLOR_LITERAL)).toEqual([])
   })
 
-  /** Keyboard focus has one look: the `focus-ring` utility (globals.css), also the `:focus-visible` default. */
+  /**
+   * Keyboard focus has one look: the `focus-ring` / `focus-ring-inset` utilities in globals.css, also the
+   * `:focus-visible` default. The second pattern covers a focus style written inside an arbitrary variant
+   * (`[&:focus-visible>span]:ring-*`), where the utility name does not directly follow the state.
+   */
   it('keyboard focus is drawn only by the focus-ring utility', () => {
     expect(offenders(/\bfocus(?:-visible)?:(?:[\w-]+:)*(?:ring-|border-ring\b)/g)).toEqual([])
+    expect(offenders(/\[[^\]]*:focus(?:-visible)?[^\]]*\]:[^\s"']*?(?<![\w-])(?:ring-|border-ring\b)/g)).toEqual([])
     const css = readFileSync(join(SRC, 'styles/globals.css'), 'utf8')
     expect(css).toMatch(/:focus-visible\s*\{\s*@apply focus-ring;/)
+    const light = css.slice(css.indexOf('\n:root {'), css.indexOf('\n.dark {'))
+    const dark = css.slice(css.indexOf('\n.dark {'), css.indexOf('\n@layer base'))
+    expect(light).toMatch(/^  --focus-ring: /m)
+    expect(dark).toMatch(/^  --focus-ring: /m)
   })
 
   it('every semantic token is defined for both themes and mapped for Tailwind', () => {
@@ -93,7 +102,6 @@ describe('colour tokens guard', () => {
       'diff-added-bg',
       'diff-removed-bg',
       'destructive',
-      'focus-ring',
     ]) {
       expect(light, `light --${token}`).toMatch(new RegExp(`^  --${token}: `, 'm'))
       expect(dark, `dark --${token}`).toMatch(new RegExp(`^  --${token}: `, 'm'))

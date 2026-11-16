@@ -57,6 +57,14 @@ describe('quote cards', () => {
     expect(tile.querySelectorAll('button button')).toHaveLength(0)
   })
 
+  it('the open control shows keyboard focus inside the tile, which clips its edges', () => {
+    const store = createPassageDraftStore()
+    add(store, 'a quote')
+    renderStrip(store)
+    const open = screen.getByTestId('passage-tile').querySelector<HTMLElement>('[data-passage-open]')!
+    expect(open.className.split(/\s+/)).toContain('focus-visible:focus-ring-inset')
+  })
+
   it('opens the whole body with its line breaks and count, and closes back to the card', () => {
     const store = createPassageDraftStore()
     const body = `first line\n${'x'.repeat(400)}`
