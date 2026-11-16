@@ -35,6 +35,8 @@ export interface ShellSidePaneInputs {
   focusPane: (kind: SidePaneKind) => void
   settingsSection: SettingsSectionId | null
   customizeOpen: boolean
+  /** The Sessions page covers the panes (F-17). */
+  sessionsPageOpen: boolean
   shellRightPanelContentValue: ComponentProps<typeof RightPanelContentContext.Provider>['value']
   shellFilePathContextValue: ComponentProps<typeof FilePathContext.Provider>['value']
   shellModUi: ComponentProps<typeof ModsPane>['modUi']
@@ -105,7 +107,7 @@ export interface ShellSidePaneInputs {
 export function renderShellSidePane(inputs: ShellSidePaneInputs, kind: SidePaneKind): ReactNode {
   const {
     sidePaneName, paneMaximized, updatePaneRecord, closePaneFor, focusPane, settingsSection,
-    customizeOpen, shellRightPanelContentValue, shellFilePathContextValue, shellModUi,
+    customizeOpen, sessionsPageOpen, shellRightPanelContentValue, shellFilePathContextValue, shellModUi,
     handleCloseModTab, activeSideChats, shownSideChatId, handleSelectSideChat, canAddSideChat,
     handleAddSideChat, handleDetachSideChat, handleArchiveSideChat, activeSessionId,
     renderSessionThread, runtimeConnection, openTerminalLink, activePaneRecord,
@@ -142,7 +144,7 @@ export function renderShellSidePane(inputs: ShellSidePaneInputs, kind: SidePaneK
       onFocus={() => focusPane(kind)}
       className="h-full"
     >
-      <SessionAreaVisibleContext.Provider value={!settingsSection && !customizeOpen}>
+      <SessionAreaVisibleContext.Provider value={!settingsSection && !customizeOpen && !sessionsPageOpen}>
       <RightPanelContentContext.Provider value={shellRightPanelContentValue}>
       <FilePathContext.Provider value={shellFilePathContextValue}>
       <Suspense fallback={null}>{body}</Suspense>

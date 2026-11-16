@@ -13,6 +13,7 @@ const loadTerminalPane = () => import('./terminal/TerminalPane')
 const loadCliSessionView = () => import('./terminal/CliSessionView')
 const loadImportDialog = () => import('./sessionImport/ImportDialog')
 const loadCustomizeScreen = () => import('./customize/CustomizeScreen')
+const loadSessionsPage = () => import('./SessionsPage')
 
 export const SettingsScreen = lazy(async () => {
   const module = await loadSettingsScreen()
@@ -49,6 +50,11 @@ export const CustomizeScreen = lazy(async () => {
   return { default: module.CustomizeScreen }
 })
 
+export const SessionsPage = lazy(async () => {
+  const module = await loadSessionsPage()
+  return { default: module.SessionsPage }
+})
+
 /**
  * Upper bound on how long the warm-up waits for an idle window. The shell is
  * mounted and interactive well before this; the timeout only guarantees the
@@ -72,6 +78,7 @@ export function prefetchColdUi(): () => void {
     void loadTerminalPane()
     void loadImportDialog()
     void loadCustomizeScreen()
+    void loadSessionsPage()
   }
 
   if (typeof requestIdleCallback === 'function') {

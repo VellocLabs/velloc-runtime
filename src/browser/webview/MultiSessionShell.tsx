@@ -216,6 +216,7 @@ import {
 import {
   CustomizeScreen,
   ImportDialog,
+  SessionsPage,
   SettingsScreen,
   prefetchColdUi,
 } from './coldUi'
@@ -356,6 +357,12 @@ import {
   createShellHandleLoadProviderMissingPrompt,
   createShellSettingsHostActions,
 } from './shellSettingsActions'
+import {
+  createShellHandleCloseSessionsPage,
+  createShellHandleNewSessionFromList,
+  createShellHandleOpenListedSession,
+  createShellHandleOpenSessionsPage,
+} from './shellSessionsPage'
 import {
   createShellHealActiveSessionSelection,
   createShellHandleAdoptDefaultSelection,
@@ -1212,6 +1219,29 @@ export function MultiSessionShell({
   // The Customize screen (F-35) takes the window like Settings and shows its
   // utility tab in the native tab view; exclusive with Settings.
   const [customizeOpen, setCustomizeOpen] = useState(false)
+  // The Sessions page ("View all", F-17) takes the conversation's place beside
+  // the sidebar; the mounted threads stay mounted under it. Any switch of the
+  // active session closes it.
+  const [sessionsPageOpen, setSessionsPageOpen] = useState(false)
+  useEffect(() => {
+    setSessionsPageOpen(false)
+  }, [activeSessionId])
+  const openSessionsPage = useMemo(
+    () => createShellHandleOpenSessionsPage(setSessionsPageOpen),
+    [],
+  )
+  const closeSessionsPage = useMemo(
+    () => createShellHandleCloseSessionsPage(setSessionsPageOpen),
+    [],
+  )
+  const openSessionFromList = useMemo(
+    () => createShellHandleOpenListedSession(setSessionsPageOpen, focusSession),
+    [focusSession],
+  )
+  const openNewSessionFromPage = useMemo(
+    () => createShellHandleNewSessionFromList(setSessionsPageOpen, openNewSession),
+    [openNewSession],
+  )
 
   // Mirror the active session to the HOST (boot + every switch), which seeds
   // the map above. Not sent without `session.setActiveSession`. Paused while
@@ -3817,7 +3847,7 @@ export function MultiSessionShell({
   // One pane's frame and body (F-9).
   const sidePaneInputs: ShellSidePaneInputs = {
     sidePaneName, paneMaximized, updatePaneRecord, closePaneFor, focusPane, settingsSection,
-    customizeOpen, shellRightPanelContentValue, shellFilePathContextValue, shellModUi,
+    customizeOpen, sessionsPageOpen, shellRightPanelContentValue, shellFilePathContextValue, shellModUi,
     handleCloseModTab, activeSideChats, shownSideChatId, handleSelectSideChat, canAddSideChat,
     handleAddSideChat, handleDetachSideChat, handleArchiveSideChat, activeSessionId,
     renderSessionThread, runtimeConnection, openTerminalLink, activePaneRecord,
@@ -4016,7 +4046,7 @@ export function MultiSessionShell({
       /* Full-bleed below the topbar: no radius and no outer border. */
       // Hidden is not gone: keyboard listeners stay live under Settings, so the area's
       // visibility is published as one flag, `SessionAreaVisibleContext`.
-      <SessionAreaVisibleContext.Provider value={!settingsSection && !customizeOpen}>
+      <SessionAreaVisibleContext.Provider value={!settingsSection && !customizeOpen && !sessionsPageOpen}>
       <div
         ref={sessionAreaRef}
         data-testid="nexus-session-area"
@@ -4045,13 +4075,16 @@ export function MultiSessionShell({
         <Sidebar
           title="Conversation"
           sessionId={activeSessionId}
-          activeSessionId={sidebarActiveId}
+          // While the Sessions page shows, no row is the one on screen: every
+          // row is clickable and opens its session.
+          activeSessionId={sessionsPageOpen ? '' : sidebarActiveId}
           collapsed={sidebarRail && !sidebarPeek}
           sessions={sessionItems}
-          onNewThread={openNewSession}
+          onNewThread={openNewSessionFromPage}
           onLaunchThread={handleLaunchThread}
           installedClis={terminalsState?.clis ?? NO_CLIS}
-          onSwitchThread={focusSession}
+          onSwitchThread={openSessionFromList}
+          onViewAll={openSessionsPage}
           onDeleteThread={requestSessionDelete}
           onRenameThread={retitleSession}
           onPinThread={handlePinThread}
@@ -4087,6 +4120,19 @@ export function MultiSessionShell({
           with `display: none`). Hidden trees stay in the React tree so
           switching is a paint-toggle, not an unmount/remount.
         */}
+        {sessionsPageOpen ? (
+          <Suspense fallback={null}>
+            <SessionsPage
+              sessions={sessionItems}
+              onOpenSession={openSessionFromList}
+              onNewSession={openNewSessionFromPage}
+              onClose={closeSessionsPage}
+            />
+          </Suspense>
+        ) : null}
+        {/* `contents` keeps PaneArea a flex child of the session area; hidden,
+            never unmounted, under the Sessions page. */}
+        <div className={sessionsPageOpen ? 'hidden' : 'contents'}>
         <PaneArea
           layout={paneLayout}
           maximized={paneMaximized}
@@ -4105,6 +4151,7 @@ export function MultiSessionShell({
           </>
           }
         />
+        </div>
       </div>
       </SessionAreaVisibleContext.Provider>}
       <SessionDeleteConfirm

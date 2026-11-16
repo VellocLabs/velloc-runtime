@@ -51,6 +51,11 @@ const COLD_PANELS = [
     './customize/CustomizeScreen',
     join(SRC, 'browser', 'webview', 'customize', 'CustomizeScreen.tsx'),
   ],
+  [
+    'SessionsPage',
+    './SessionsPage',
+    join(SRC, 'browser', 'webview', 'SessionsPage.tsx'),
+  ],
 ]
 
 /**

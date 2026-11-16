@@ -120,21 +120,24 @@ function useDayClock(): number {
   return now
 }
 
-/** The Sort by / Group by / Reset menu, hover-revealed on a section header. */
+/** The Sort by / Group by / View all / Reset menu, hover-revealed on a section header. */
 function ListMenuOnHeader({
   view,
   onViewChange,
   onReset,
+  onViewAll,
 }: {
   view: SessionListView
   onViewChange: (next: SessionListView) => void
   onReset: () => void
+  onViewAll?: () => void
 }) {
   return (
     <SessionListMenu
       view={view}
       onViewChange={onViewChange}
       onReset={onReset}
+      onViewAll={onViewAll}
       className="absolute right-1.5 bottom-0.5 opacity-0 focus-visible:opacity-100 group-hover/section:opacity-100 data-[state=open]:opacity-100"
     />
   )
@@ -222,6 +225,8 @@ type SessionListBodyProps = SidebarProjectProps & {
   view: SessionListView
   onViewChange: (next: SessionListView) => void
   onReset: () => void
+  /** Open the Sessions page (the list menu's "View all"). */
+  onViewAll?: () => void
   /** The time day groups are computed against (`useDayClock`). */
   now: number
   /**
@@ -258,6 +263,7 @@ export function SessionListBody({
   view,
   onViewChange,
   onReset,
+  onViewAll,
   now,
   titlesOnly = false,
   collapsedParents,
@@ -424,7 +430,7 @@ export function SessionListBody({
               />
               {/* With no Recents header to carry it, the list menu sits here. */}
               {recentGroups.length === 0 && (
-                <ListMenuOnHeader view={view} onViewChange={onViewChange} onReset={onReset} />
+                <ListMenuOnHeader view={view} onViewChange={onViewChange} onReset={onReset} onViewAll={onViewAll} />
               )}
             </div>
             {!pinnedCollapsed && (
@@ -456,7 +462,7 @@ export function SessionListBody({
               onCollapsedChange={applyRecentsCollapsed}
             />
             {/* Hover-revealed, like the row actions; stays visible while open. */}
-            <ListMenuOnHeader view={view} onViewChange={onViewChange} onReset={onReset} />
+            <ListMenuOnHeader view={view} onViewChange={onViewChange} onReset={onReset} onViewAll={onViewAll} />
           </div>
         )}
 
@@ -681,6 +687,7 @@ export function Sidebar({
   onCopyTranscriptPath,
   onForkThread,
   onArchiveThread,
+  onViewAll,
   width,
   isResizing,
   runtimeConnection,
@@ -710,6 +717,8 @@ export function Sidebar({
   onForkThread?: (sessionId: string) => void
   /** Archive or unarchive a session (a failed start's dismiss, Unarchive). (F-36) */
   onArchiveThread?: (sessionId: string, archived: boolean) => void
+  /** Open the Sessions page from the list menu's "View all". */
+  onViewAll?: () => void
   /**
    * Resting width in px when not collapsed. Driven by MultiSessionShell's
    * draggable splitter. Falls back to 256 (matches the previous `w-64`).
@@ -789,6 +798,7 @@ export function Sidebar({
             view={view}
             onViewChange={applyView}
             onReset={resetView}
+            onViewAll={onViewAll}
             now={now}
             collapsedParents={collapsedParents}
             onToggleChildren={toggleChildren}

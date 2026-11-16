@@ -35,13 +35,14 @@ const SESSIONS: SessionListItem[] = [
   { sessionId: 'legacy', title: 'Legacy', previewText: '', updatedAt: NOW - 50 * DAY },
 ]
 
-function renderSidebar() {
+function renderSidebar(onViewAll?: () => void) {
   return render(
     createElement(Sidebar, {
       title: 'Conversation',
       sessionId: 'b',
       activeSessionId: 'b',
       sessions: SESSIONS,
+      onViewAll,
     }),
   )
 }
@@ -203,5 +204,36 @@ describe('Sidebar list menu', () => {
     expect(headers()).toEqual(['sidebar.timePrevious7Days', 'sidebar.timeOlder'])
     openSubmenu('sidebar-group-by')
     expect(checked('sidebar-group-by-week')).toBe('true')
+  })
+})
+
+describe('Sidebar list menu: View all', () => {
+  beforeEach(() => memoryStorage.clear())
+  afterEach(() => cleanup())
+
+  const openMenu = () =>
+    act(() => {
+      fireEvent.keyDown(screen.getByTestId('sidebar-list-options'), { key: 'Enter' })
+    })
+
+  it('sits directly above Reset to defaults and opens the Sessions page', () => {
+    const onViewAll = vi.fn()
+    renderSidebar(onViewAll)
+    openMenu()
+    const items = Array.from(document.querySelectorAll('[role="menuitem"]')).map(el =>
+      el.getAttribute('data-testid'),
+    )
+    expect(items.slice(-2)).toEqual(['sidebar-list-view-all', 'sidebar-list-reset'])
+    pick('sidebar-list-view-all')
+    expect(onViewAll).toHaveBeenCalledTimes(1)
+    // Picking it changes nothing about the list's own view.
+    expect(memoryStorage.has('nexus:sidebar:sessionListView')).toBe(false)
+  })
+
+  it('is left out when the shell offers no Sessions page', () => {
+    renderSidebar()
+    openMenu()
+    expect(screen.queryByTestId('sidebar-list-view-all')).toBeNull()
+    expect(screen.getByTestId('sidebar-list-reset')).toBeTruthy()
   })
 })
