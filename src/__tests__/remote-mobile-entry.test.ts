@@ -7,7 +7,6 @@ import { describe, expect, it, vi } from 'vitest'
 import {
   MOBILE_SHELL_MAX_SCREEN_PX,
   REMOTE_SHELL_CHOICE_KEY,
-  isPhoneDevice,
   openMobileEntryIfWanted,
   readDeviceTraits,
   readRemoteShellChoice,
@@ -45,8 +44,6 @@ describe('wantsMobileShell', () => {
   it('lets a stored choice override the device in both directions', () => {
     expect(wantsMobileShell(PHONE, 'desktop')).toBe(false)
     expect(wantsMobileShell(DESKTOP, 'mobile')).toBe(true)
-    expect(isPhoneDevice(PHONE)).toBe(true)
-    expect(isPhoneDevice(TABLET)).toBe(false)
   })
 })
 

@@ -16,7 +16,7 @@ import {
 // failure is a finding and a pass is not a clean bill.
 
 const ROOT = join(__dirname, '..')
-const UI_DIRS = ['browser/webview', 'components/assistant-ui']
+const UI_DIRS = ['browser/webview', 'components/assistant-ui', 'mobile']
 
 /**
  * Files that legitimately still carry English literals, with the reason.

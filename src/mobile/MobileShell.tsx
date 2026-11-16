@@ -378,7 +378,7 @@ export function MobileShell(props: MobileShellProps): ReactNode {
           <main data-testid="mobile-shell" className="flex h-full w-full flex-col bg-background text-foreground">
             <header
               data-testid="mobile-topbar"
-              className="flex h-12 shrink-0 items-center border-border border-b px-4"
+              className="flex min-h-12 shrink-0 items-center border-border border-b px-4"
               style={{ paddingTop: 'env(safe-area-inset-top)' }}
             >
               <h1 data-testid="mobile-topbar-title" className="min-w-0 flex-1 truncate font-medium text-body">

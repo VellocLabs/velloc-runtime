@@ -75,11 +75,6 @@ export function wantsMobileShell(traits: DeviceTraits, choice: RemoteShellChoice
   return traits.coarsePointer && traits.screenShortSide < MOBILE_SHELL_MAX_SCREEN_PX
 }
 
-/** Whether a device with these traits counts as a phone, ignoring any stored choice. */
-export function isPhoneDevice(traits: DeviceTraits): boolean {
-  return wantsMobileShell(traits, null)
-}
-
 export type MobileEntryEnv = {
   win: Pick<Window, 'matchMedia' | 'screen'> & { location: Pick<Location, 'pathname' | 'replace'> }
   baseUri: string

@@ -72,6 +72,8 @@ describe('the phone shell imports', () => {
   it('do not carry the desktop shell into the phone bundle', () => {
     const shell = join(MOBILE_DIR, 'MobileShell.tsx')
     const desktop = join(WEBVIEW_DIR, 'MultiSessionShell.tsx')
-    expect(staticClosure([shell]).has(desktop), staticImportPath(shell, desktop).join(' -> ')).toBe(false)
+    if (staticClosure([shell]).has(desktop)) {
+      throw new Error(`MobileShell reaches MultiSessionShell: ${staticImportPath(shell, desktop).join(' -> ')}`)
+    }
   })
 })
