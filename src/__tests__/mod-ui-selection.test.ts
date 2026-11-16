@@ -1,13 +1,15 @@
 /**
  * `$.ui.selection()` (F-25): the person's last selection a page holds, raised as
  * the op event `ui.selection` (a hook may scrub or deny it); none without a page,
- * and none once the person's next prompt has run.
+ * and none once the person's next prompt has run. Across pages, the newest by
+ * `at` wins once the grace ends; a page with none never beats one with a
+ * selection.
  */
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { ModRuntime, type ModModuleRef, type ModWorkerHandle } from '../mods/ModRuntime'
 import { installModWorkerHost } from '../mods/ModWorkerHost'
 import type { ModNounHost } from '../mods/modNouns'
-import { isUiSelectionResult, uiSelectionCore, type ModPageHost } from '../mods/modPage'
+import { MOD_PAGE_GRACE_MS, ModPageBridge, isUiSelectionResult, uiSelectionCore, type ModPageHost, type ModPageRequest } from '../mods/modPage'
 
 const open: MessagePort[] = []
 const runtimes: ModRuntime[] = []
@@ -145,5 +147,71 @@ describe('$.ui.selection', () => {
     expect(isUiSelectionResult({ text: 'a', requestId: 'r' })).toBe(true)
     expect(isUiSelectionResult({ text: 'a', at: 1 })).toBe(false)
     expect(isUiSelectionResult({ text: 'a', requestId: '' })).toBe(false)
+  })
+})
+
+describe('a selection asked of several pages', () => {
+  afterEach(() => vi.useRealTimers())
+
+  function bridge() {
+    const asked: ModPageRequest[] = []
+    return { asked, pages: new ModPageBridge(request => void asked.push(request)) }
+  }
+
+  it('waits out the grace after the first answer and returns the newest by at, whatever the order', async () => {
+    vi.useFakeTimers()
+    const { asked, pages } = bridge()
+    let settled: unknown = 'pending'
+    void pages.ask({ op: 'selection' }).then(answer => (settled = answer))
+    const requestId = asked[0]!.requestId
+    expect(pages.answer({ requestId, op: 'selection', selection: { text: 'newer', at: 200 } })).toBe(true)
+    await vi.advanceTimersByTimeAsync(MOD_PAGE_GRACE_MS - 1)
+    expect(settled).toBe('pending')
+    pages.answer({ requestId, op: 'selection', selection: { text: 'older', at: 100 } })
+    await vi.advanceTimersByTimeAsync(1)
+    expect(settled).toEqual({ requestId, op: 'selection', selection: { text: 'newer', at: 200 } })
+  })
+
+  it('a later answer with a newer at wins over an earlier one', async () => {
+    vi.useFakeTimers()
+    const { asked, pages } = bridge()
+    const answer = pages.ask({ op: 'selection' })
+    const requestId = asked[0]!.requestId
+    pages.answer({ requestId, op: 'selection', selection: { text: 'older', at: 100 } })
+    pages.answer({ requestId, op: 'selection', selection: { text: 'newer', at: 300 } })
+    await vi.advanceTimersByTimeAsync(MOD_PAGE_GRACE_MS)
+    expect((await answer)?.op === 'selection' && (await answer)).toMatchObject({ selection: { text: 'newer' } })
+  })
+
+  it('a page with none never beats a page with a selection, before or after it', async () => {
+    vi.useFakeTimers()
+    const { asked, pages } = bridge()
+    const first = pages.ask({ op: 'selection' })
+    const second = pages.ask({ op: 'selection' })
+    const [a, b] = [asked[0]!.requestId, asked[1]!.requestId]
+    pages.answer({ requestId: a, op: 'selection' })
+    pages.answer({ requestId: a, op: 'selection', selection: { text: 'real', at: 1 } })
+    pages.answer({ requestId: b, op: 'selection', selection: { text: 'real', at: 1 } })
+    pages.answer({ requestId: b, op: 'selection' })
+    await vi.advanceTimersByTimeAsync(MOD_PAGE_GRACE_MS)
+    expect(await first).toMatchObject({ selection: { text: 'real' } })
+    expect(await second).toMatchObject({ selection: { text: 'real' } })
+  })
+
+  it('none from every page settles as none when the grace ends', async () => {
+    vi.useFakeTimers()
+    const { asked, pages } = bridge()
+    const answer = pages.ask({ op: 'selection' })
+    pages.answer({ requestId: asked[0]!.requestId, op: 'selection' })
+    await vi.advanceTimersByTimeAsync(MOD_PAGE_GRACE_MS)
+    expect(await answer).toEqual({ requestId: asked[0]!.requestId, op: 'selection' })
+  })
+
+  it('a copy still settles on the first page that took it, without the grace', async () => {
+    vi.useFakeTimers()
+    const { asked, pages } = bridge()
+    const answer = pages.ask({ op: 'copy', text: 't', hostCopied: false })
+    pages.answer({ requestId: asked[0]!.requestId, op: 'copy', isCopied: true })
+    expect(await answer).toMatchObject({ isCopied: true })
   })
 })

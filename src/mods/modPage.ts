@@ -12,7 +12,8 @@ import type { DispatchContext } from './modTypes'
  *  thread for the session never answers. */
 export const MOD_PAGE_TIMEOUT_MS = 4_000
 /** After one page failed, how long another has to succeed before the
- *  failure is the answer. */
+ *  failure is the answer; for a selection, how long every page has to
+ *  answer after the first one did. */
 export const MOD_PAGE_GRACE_MS = 300
 /** How long the host's clipboard write may take before it counts as failed. */
 export const MOD_HOST_CLIPBOARD_TIMEOUT_MS = 2_000
@@ -103,8 +104,16 @@ function named(name: string, message: string): Error {
  *  failed (a remote page's clipboard, the window that shows the pane). */
 function succeeded(answer: ModPageAnswer): boolean {
   if (answer.op === 'copy') return answer.isCopied
-  if (answer.op === 'selection') return answer.selection !== undefined
+  if (answer.op === 'selection') return false
   return answer.deny === undefined
+}
+
+/** Whether selection `answer` beats `held`: a selection beats none, and a
+ *  later `at` beats an earlier one. Each `at` is its own page's clock. */
+function newerSelection(answer: ModPageAnswer, held: ModPageAnswer): boolean {
+  if (answer.op !== 'selection' || !answer.selection) return false
+  if (held.op !== 'selection' || !held.selection) return true
+  return answer.selection.at > held.selection.at
 }
 
 function isMeasured(value: unknown): value is ModScrollMeasured {
@@ -122,7 +131,9 @@ function isMeasured(value: unknown): value is ModScrollMeasured {
  * The page round trip. Every page drawing the session hears each request;
  * the first that succeeds settles it, and a failure settles it only once no
  * other page succeeded within `MOD_PAGE_GRACE_MS` — or at the timeout, with
- * null when no page answered at all.
+ * null when no page answered at all. A selection is collected from every page
+ * until `MOD_PAGE_GRACE_MS` after the first answer, and the newest by `at`
+ * settles it; a page with none never beats one with a selection.
  */
 export class ModPageBridge {
   private readonly pending = new Map<
@@ -179,6 +190,11 @@ export class ModPageBridge {
     if (!waiting || waiting.op !== answer.op) return false
     if (answer.op === 'scrollMeasure' && answer.deny === undefined && !isMeasured(answer.measured) && typeof answer.row !== 'string') {
       return false
+    }
+    if (answer.op === 'selection') {
+      if (waiting.failed === undefined || newerSelection(answer, waiting.failed)) waiting.failed = answer
+      waiting.grace ??= setTimeout(() => waiting.settle(waiting.failed ?? null), this.graceMs)
+      return true
     }
     if (succeeded(answer)) {
       waiting.settle(answer)

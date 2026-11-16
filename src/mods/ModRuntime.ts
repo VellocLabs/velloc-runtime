@@ -73,7 +73,7 @@ import type {
 import { refusedStream, type DispatchedStream } from './streamChain'
 import { normalizeModLocale } from './modLocale'
 import type { DispatchContext, PluginTier, TraceEntry } from './modTypes'
-import type { ModNotifyHost } from './modNotify'
+import { ModNotifyBookings, type ModNotice, type ModNotifyHost } from './modNotify'
 import type { ModAgentView } from './modAgentView'
 import type { PluginPromptArgs, PluginPromptOrigin, PluginPromptResult, PluginPromptTurn } from './promptNouns'
 import {
@@ -412,9 +412,20 @@ export class ModRuntime extends ModUiSurface implements TurnExtensions {
   private personRanAt = 0
   /** The plugins that painted the prompt box: their runs come off when they go. */
   private readonly painters = new Set<string>()
+  /** `$.ui.notify`'s booked notices; absent where the session runs no
+   *  `Notification` hooks. */
+  private readonly bookings: ModNotifyBookings | undefined
+
+  /** The person's own prompt or command began at `startedAt`, marked
+   *  `mark`, and ran. */
+  private personRan(startedAt: number, mark: number): void {
+    this.personRanAt = Math.max(this.personRanAt, startedAt)
+    this.bookings?.personBack(mark)
+  }
 
   protected override pluginGone(plugin: string): void {
     super.pluginGone(plugin)
+    this.bookings?.dropPlugin(plugin)
     if (!this.painters.delete(plugin) || !this.composer) return
     void this.composer.paint({ plugin, decorations: [] }).catch(() => {
       // No page answered: no box holds the runs.
@@ -477,6 +488,17 @@ export class ModRuntime extends ModUiSurface implements TurnExtensions {
     // `$.prompt.read`, as scanned (`PromptFilled`).
     const readsBox = (plugin: string): boolean =>
       this.seats.some(seat => seat.ref.plugin === plugin && seat.uses?.calls.includes('prompt.read') === true)
+    // A session that is ending, or gone, runs no `Notification` hooks for a
+    // notice, booked or not.
+    const sessionNotifications = options.session.notifications
+    const runNotice = async (notice: ModNotice, context: DispatchContext): Promise<void> => {
+      if (this.ending || this.disposed || !sessionNotifications) return
+      await sessionNotifications.runHooks(notice, context)
+    }
+    this.bookings = sessionNotifications ? new ModNotifyBookings(runNotice, line => options.report(line)) : undefined
+    const notifications: ModNotifyHost | undefined = sessionNotifications
+      ? { runHooks: runNotice, ...(this.bookings ? { bookings: this.bookings } : {}) }
+      : undefined
     this.nounHost = Object.assign(
       Object.create(Object.getPrototypeOf(options.session)),
       options.session,
@@ -568,17 +590,7 @@ export class ModRuntime extends ModUiSurface implements TurnExtensions {
               } satisfies ModAudioHost,
             }
           : {}),
-        // A session that is ending runs no `Notification` hooks for a notice.
-        ...(options.session.notifications
-          ? {
-              notifications: {
-                runHooks: async (notice: { message: string; title: string }, context: DispatchContext) => {
-                  if (this.ending) return
-                  await options.session.notifications!.runHooks(notice, context)
-                },
-              } satisfies ModNotifyHost,
-            }
-          : {}),
+        ...(notifications ? { notifications } : {}),
         env: options.session.env ?? new SlotEnv(),
         state: options.session.state ?? this.state,
         composer: options.session.composer ?? Object.assign(Object.create(null), {
@@ -1764,10 +1776,11 @@ export class ModRuntime extends ModUiSurface implements TurnExtensions {
    */
   async promptSubmit(text: string, signal?: AbortSignal): Promise<PromptSubmitOutcome> {
     const startedAt = Date.now()
+    const mark = this.bookings?.personRunBegins() ?? 0
     try {
       return await this.promptSubmitThroughHooks(text, signal)
     } finally {
-      this.personRanAt = Math.max(this.personRanAt, startedAt)
+      this.personRan(startedAt, mark)
     }
   }
 
@@ -2128,10 +2141,12 @@ export class ModRuntime extends ModUiSurface implements TurnExtensions {
     origin: ModCommandOrigin = { kind: 'composer' },
   ): Promise<CommandRunSettlement> {
     const startedAt = Date.now()
+    const person = !context && origin.kind !== 'plugin'
+    const mark = person ? (this.bookings?.personRunBegins() ?? 0) : 0
     try {
       return await this.commandRunThroughHooks(input, core, signal, context, origin)
     } finally {
-      if (!context && origin.kind !== 'plugin') this.personRanAt = Math.max(this.personRanAt, startedAt)
+      if (person) this.personRan(startedAt, mark)
     }
   }
 
@@ -2423,6 +2438,7 @@ export class ModRuntime extends ModUiSurface implements TurnExtensions {
       /* the registry's failure is its own */
     }
     this.unwatchState()
+    this.bookings?.clear()
     this.commands.clear()
     for (const plugin of new Set(this.seats.map(seat => seat.ref.plugin))) this.forgetTools(plugin)
     this.ui.clear()

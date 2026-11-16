@@ -601,17 +601,18 @@ const NOUNS: Record<string, Record<string, NounMethod>> = Object.assign(Object.c
         uiHost(session).toast(call.plugin, text, timeoutMs)
       },
     },
-    // `e` is `{ text, title? }`: the `Notification` hooks run, then no
-    // channel writes on the desktop (`modNotify.ts`).
+    // `e` is `{ text, title?, key?, delayMs?, at?, untilBack? }`: the
+    // `Notification` hooks run, now or when booked, then no channel writes on
+    // the desktop (`modNotify.ts`).
     notify: {
       input: (args: readonly unknown[]) => uiNotifyArgsOf(args[0], args[1]),
       run: (e: unknown, { call, session }: NounContext) => uiNotifyCore(e, call, session.notifications),
       accepts: isUiNotifyResult,
     },
-    // `e` is `{ key }`; no host holds one to take back (`modNotify.ts`).
+    // `e` is `{ key }`: drops the caller's booking not yet due (`modNotify.ts`).
     cancelNotify: {
       input: (args: readonly unknown[]) => uiCancelNotifyArgsOf(args[0]),
-      run: () => uiCancelNotifyCore(),
+      run: (e: unknown, { call, session }: NounContext) => uiCancelNotifyCore(e, call, session.notifications),
       accepts: isUiCancelNotifyResult,
     },
     // `e` is `{ agentId? }`: the view published on the slot's state for the

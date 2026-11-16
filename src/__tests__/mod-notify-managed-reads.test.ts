@@ -2,7 +2,8 @@
  * `$.ui.notify` (F-25) — the `Notification` hooks run under the caller's
  * context, then no channel writes on the desktop: `{ isSent: false, reason:
  * 'no-surface' }`; raised as `ui.notify`, rewritable, deniable, answerable; a
- * `classic.Notification` hook that notifies is left out of its own call.
+ * `classic.Notification` hook that notifies is left out of its own call. A
+ * booked notice's hooks run when it falls due (`mod-notify-bookings`).
  * `$.session.identity()` and `$.prompt.media()` — answered to a managed
  * install (`prepend` / `append`) alone, `{ deny }` to any other.
  */
@@ -169,7 +170,7 @@ describe('$.ui.notify', () => {
     expect(() => uiNotifyArgsOf('t', { untilBack: 'yes' }, now)).toThrow('untilBack must be a boolean')
   })
 
-  it('cancelNotify is raised as ui.cancelNotify and, with no host holding notifications, resolves isSent false', async () => {
+  it('cancelNotify is raised as ui.cancelNotify and drops a booking not yet due', async () => {
     const seen: string[] = []
     const { runtime, reports } = world({
       watch: {
@@ -189,10 +190,11 @@ describe('$.ui.notify', () => {
             on('prompt.submit', async ($, e, next) => {
               const booked = await $.ui.notify('later', { key: 'k1', delayMs: 60000 });
               const plain = await $.ui.cancelNotify('k1');
+              const again = await $.ui.cancelNotify('k1');
               const answered = await $.ui.cancelNotify('mine');
               const denied = await $.ui.cancelNotify('never').catch(err => 'rejected: ' + err.message);
               const bad = await $.ui.cancelNotify('').catch(err => err.name + ': ' + err.message);
-              await $.ui.log(JSON.stringify({ booked, plain, answered, denied, bad }));
+              await $.ui.log(JSON.stringify({ booked, plain, again, answered, denied, bad }));
               return next(e);
             });
           }
@@ -204,11 +206,12 @@ describe('$.ui.notify', () => {
     const line = reports.find(r => r.startsWith('ci: {'))!
     const got = JSON.parse(line.slice('ci: '.length)) as Record<string, unknown>
     expect(got.booked).toEqual({ isSent: false, reason: 'no-surface' })
-    expect(got.plain).toEqual({ isSent: false })
+    expect(got.plain).toEqual({ isSent: true })
+    expect(got.again).toEqual({ isSent: false })
     expect(got.answered).toEqual({ isSent: true })
     expect(got.denied).toMatch(/^rejected: .*kept/)
     expect(got.bad).toBe('TypeError: $.ui.cancelNotify(key): key must be a non-empty string')
-    expect(seen).toEqual(['later'])
+    expect(seen).toEqual([])
     expect(isUiCancelNotifyResult({ isSent: 1 })).toBe(false)
   })
 
