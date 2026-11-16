@@ -213,11 +213,11 @@ function getLastTurnCachePct(
 
 function ProgressBar({
   pct,
-  tone = 'primary',
+  tone = 'normal',
   label,
 }: {
   pct: number
-  tone?: 'primary' | 'warning' | 'destructive'
+  tone?: 'normal' | 'warning' | 'destructive'
   label: string
 }) {
   const clamped = Math.min(100, Math.max(0, pct))
@@ -237,7 +237,7 @@ function ProgressBar({
             ? 'bg-destructive'
             : tone === 'warning'
               ? 'bg-warning'
-              : 'bg-primary',
+              : 'bg-info',
         )}
         style={{ width: `${clamped}%` }}
       />
@@ -428,7 +428,7 @@ export function TokenUsageIndicator({
       ? 'destructive'
       : warning === 'warning'
         ? 'warning'
-        : 'primary'
+        : 'normal'
 
   // Only the part of the usage that meters THIS model, on every surface —
   // the trigger, its tooltip and the popover. OpenRouter's free-request
@@ -626,13 +626,13 @@ export function TokenUsageIndicator({
         side="top"
         align="end"
         // Every row is one label and one figure: let the card grow to fit
-        // (w-80 floor) instead of wrapping "886k until auto-compact" or
+        // (24rem floor) instead of wrapping "886k until auto-compact" or
         // "Weekly · all models" in two. The Radix popper wrapper is
         // `min-width: max-content`, so w-auto already lays each row out on
         // one line; only at the viewport cap (a narrow window, the remote
         // client, a long translation) do rows wrap — a forced nowrap there
         // pushed the figures out of the card.
-        className="w-auto min-w-80 max-w-[calc(100vw-2rem)] p-0 text-sm"
+        className="w-auto min-w-96 max-w-[calc(100vw-2rem)] p-0 text-[13px] font-normal leading-5"
         data-testid="composer-context-popover"
         // Escape mid-drag (or over unsaved keys) cancels the handle's preview,
         // not the popover. The layer hears Escape first (document, capture).
@@ -640,7 +640,7 @@ export function TokenUsageIndicator({
           if (previewChoice !== null) e.preventDefault()
         }}
       >
-        <div className="space-y-2 p-3">
+        <div className="space-y-2.5 px-4 py-3.5">
           <div className="flex items-baseline justify-between gap-3">
             <span className="text-muted-foreground">
               {t('tokenUsage.contextWindow')}
@@ -732,7 +732,7 @@ export function TokenUsageIndicator({
         </div>
         {(windows.length > 0 || amounts.length > 0 || balanceNote) && (
           <div
-            className="space-y-2 border-t p-3"
+            className="space-y-3 border-t px-4 py-3.5"
             data-testid="composer-plan-usage"
           >
             <div className="text-muted-foreground">
@@ -761,7 +761,7 @@ export function TokenUsageIndicator({
               return (
                 <div
                   key={rowKey}
-                  className={cn('space-y-1', exhausted && 'text-destructive')}
+                  className={cn('space-y-1.5', exhausted && 'text-destructive')}
                   data-exhausted={exhausted || undefined}
                   data-testid={testId}
                 >
@@ -773,7 +773,7 @@ export function TokenUsageIndicator({
                   </div>
                   <ProgressBar
                     pct={w.usedPercent}
-                    tone={exhausted ? 'destructive' : 'primary'}
+                    tone={exhausted ? 'destructive' : 'normal'}
                     label={name}
                   />
                 </div>

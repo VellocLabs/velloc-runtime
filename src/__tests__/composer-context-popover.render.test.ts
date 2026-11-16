@@ -142,6 +142,21 @@ describe('composer context popover', () => {
     expect(section.textContent).toContain('6%')
   })
 
+  it('lays the card out at 13px regular weight with a 24rem floor and blue bars', () => {
+    const popover = renderRing({
+      planUsage: { windows: [{ kind: 'five_hour', usedPercent: 26 }] },
+    })
+    expect(popover.className).toContain('min-w-96')
+    expect(popover.className).toContain('text-[13px]')
+    expect(popover.className).toContain('font-normal')
+    for (const bar of popover.querySelectorAll('[role="progressbar"]')) {
+      const fill = bar.firstElementChild as HTMLElement
+      expect(fill.className).toContain('bg-info')
+      expect(fill.className).not.toContain('bg-primary')
+    }
+    expect(popover.querySelectorAll('[role="progressbar"]').length).toBe(2)
+  })
+
   it('renders money figures — a prepaid balance has no windows, so the section reads Credits', () => {
     renderRing({
       planUsage: {
