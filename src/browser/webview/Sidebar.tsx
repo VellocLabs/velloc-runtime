@@ -387,7 +387,7 @@ export function SessionListBody({
           Projects node, the "Recents" header and the rows all scroll together.
           (The header used to be pinned too, but with a Projects node above it
           a fixed header would pin the middle of the tree.) */}
-      <div className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto pe-0.5 [scrollbar-gutter:stable]">
+      <div className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto pe-0.5 [scrollbar-gutter:stable]">
         {/* Projects — the project-grouped view of the same sessions Recents
             shows by time. Derived from `projectRoot` on rows the sidebar
             already holds, so it costs no extra fs reads. */}

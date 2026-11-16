@@ -53,10 +53,12 @@ describe('panel and code surfaces carry the type-scale utilities', () => {
 
   it('every sidebar row shares one height constant', () => {
     // Session, project, collapsed-summary and show-more rows share one height.
-    const count = (rel: string) => read(rel).split('h-[26px]').length - 1
-    expect(count('browser/webview/SessionRows.tsx')).toBe(1) // the constant
-    expect(count('browser/webview/ProjectSection.tsx')).toBe(0)
-    expect(read('browser/webview/SessionRows.tsx')).toContain("export const SIDEBAR_ROW_HEIGHT = 'h-[26px]'")
+    // 32 px rows with a 2 px gap; no row hard-codes a pixel height of its own.
+    const literals = (rel: string) => read(rel).match(/\bh-\[\d+px\]/g) ?? []
+    expect(literals('browser/webview/ProjectSection.tsx')).toEqual([])
+    expect(literals('browser/webview/SessionRows.tsx')).toEqual(['h-[18px]', 'h-[18px]']) // connector elbows
+    expect(read('browser/webview/SessionRows.tsx')).toContain("export const SIDEBAR_ROW_HEIGHT = 'h-8'")
+    expect(read('browser/webview/Sidebar.tsx')).toContain('flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto')
     expect(read('browser/webview/SessionRows.tsx').match(/SIDEBAR_ROW_HEIGHT,/g)).toHaveLength(3)
     expect(read('browser/webview/ProjectSection.tsx')).toContain('SIDEBAR_ROW_HEIGHT,')
   })

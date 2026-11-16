@@ -174,7 +174,7 @@ export function ProjectSection({
   )
 
   return (
-    <div className="flex shrink-0 flex-col gap-1">
+    <div className="flex shrink-0 flex-col gap-0.5">
       {/* Section header: label + collapse caret on the left, the
           add-workspace folder button on the right. Not a session row (no `span.min-w-0.flex-1`), so the e2e
           row-count harness ignores it. */}
@@ -562,7 +562,7 @@ function ProjectRow({
           data-testid="sidebar-project-child"
           data-project-path={node.path}
           data-revealed-active={!expanded || undefined}
-          className="flex flex-col gap-1"
+          className="flex flex-col gap-0.5"
         >
           {node.sessions.length > 0 ? (
             <SessionRowList

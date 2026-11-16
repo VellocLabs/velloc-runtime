@@ -52,7 +52,7 @@ import {
 /** The one height every sidebar row shares — a session row, a project row
  *  (`ProjectSection`) and the "show more" row — so the tree reads as one
  *  list. Fixed, like the client's: rows do not step with Text size. */
-export const SIDEBAR_ROW_HEIGHT = 'h-[26px]'
+export const SIDEBAR_ROW_HEIGHT = 'h-8'
 
 export type SessionListItem = {
   sessionId: string
@@ -377,7 +377,7 @@ function SessionRowSubtree(props: SessionRowProps) {
         <div
           data-testid="sidebar-children"
           data-parent-session-id={session.sessionId}
-          className="flex flex-col gap-1"
+          className="flex flex-col gap-0.5"
         >
           {expanded ? children.map((child, index) => (
             <div key={child.sessionId} className="relative">
@@ -385,10 +385,10 @@ function SessionRowSubtree(props: SessionRowProps) {
                 aria-hidden
                 style={{ left: connectorLeft }}
                 className={cn(
-                  'pointer-events-none absolute -top-1 border-l border-border',
+                  'pointer-events-none absolute -top-0.5 border-l border-border',
                   index === children.length - 1
-                    ? 'h-[17px] w-2 rounded-bl-lg border-b'
-                    : '-bottom-1',
+                    ? 'h-[18px] w-2 rounded-bl-lg border-b'
+                    : '-bottom-0.5',
                 )}
               />
               <SessionRowSubtree
@@ -403,7 +403,7 @@ function SessionRowSubtree(props: SessionRowProps) {
                 <span
                   aria-hidden
                   style={{ left: connectorLeft }}
-                  className="pointer-events-none absolute -bottom-1 -top-1 border-l border-border"
+                  className="pointer-events-none absolute -bottom-0.5 -top-0.5 border-l border-border"
                 />
                 <SessionRow {...props} session={revealed} depth={depth + 1} nesting={revealedNesting} />
               </div>
@@ -412,7 +412,7 @@ function SessionRowSubtree(props: SessionRowProps) {
               <span
                 aria-hidden
                 style={{ left: connectorLeft }}
-                className="pointer-events-none absolute -top-1 h-[17px] w-2 rounded-bl-lg border-b border-l border-border"
+                className="pointer-events-none absolute -top-0.5 h-[18px] w-2 rounded-bl-lg border-b border-l border-border"
               />
               <button
                 type="button"
@@ -582,7 +582,7 @@ function SessionRow({
             }
             onEditingChange?.(null)
           }}
-          className="h-7 w-full rounded-md border border-input bg-background px-3 text-body leading-tight outline-none focus-visible:focus-ring-inset"
+          className="h-8 w-full rounded-md border border-input bg-background px-3 text-body leading-tight outline-none focus-visible:focus-ring-inset"
         />
       ) : (
         <>
