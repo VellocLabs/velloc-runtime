@@ -284,6 +284,7 @@ export const MODS_RENDER_SITES = [
   'ToolGroup',
   'PromptHint',
   'Placed',
+  'Backdrop',
 ] as const
 export type ModsRenderSite = (typeof MODS_RENDER_SITES)[number]
 
@@ -327,6 +328,18 @@ export type ModsUiPlacedRow = { plugin: string; id: string; requestId: string }
  *  sites alone. */
 export type ModsUiHookedSite = { plugin: string; component?: string; requestId?: string }
 
+/** The session's one theme (`$.theme.set`), as the runtime holds it: who
+ *  set it, the instance a scene is drawn under (`backdrop`, else `theme`),
+ *  and its attributes. Security: shape only; a page judges every value
+ *  before it paints one. */
+export type ModsUiTheme = {
+  plugin: string
+  requestId: string
+  backdrop?: Record<string, unknown>
+  overrideColorScheme?: 'light' | 'dark'
+  colors?: Record<string, unknown>
+}
+
 /** The snapshot and every `state` delta: the slot's status lines (one per
  *  plugin), the notices under open tool-call dialogs (one per call), the
  *  open panes and the hooked sites (absent from an older runtime). */
@@ -336,6 +349,8 @@ export type ModsUiState = {
   panes?: ModsUiPane[]
   /** The rows placed in the transcript; absent from an older runtime. */
   placed?: ModsUiPlacedRow[]
+  /** The standing theme; absent when none, and from an older runtime. */
+  theme?: ModsUiTheme
   hooked?: ModsUiHookedSite[]
   /** Some loaded hook selects `prompt.edit`: the page asks for each edit
    *  of its box. Absent when none, and from an older runtime. */
@@ -818,6 +833,17 @@ function isModsUiPlacedRow(value: unknown): value is ModsUiPlacedRow {
   return isRecord(value) && isNonEmpty(value.plugin) && isNonEmpty(value.id) && isNonEmpty(value.requestId)
 }
 
+export function isModsUiTheme(value: unknown): value is ModsUiTheme {
+  return (
+    isRecord(value) &&
+    isNonEmpty(value.plugin) &&
+    isNonEmpty(value.requestId) &&
+    (value.backdrop === undefined || isRecord(value.backdrop)) &&
+    (value.overrideColorScheme === undefined || value.overrideColorScheme === 'light' || value.overrideColorScheme === 'dark') &&
+    (value.colors === undefined || isRecord(value.colors))
+  )
+}
+
 export function isModsUiState(value: unknown): value is ModsUiState {
   return (
     isRecord(value) &&
@@ -827,6 +853,7 @@ export function isModsUiState(value: unknown): value is ModsUiState {
     value.notices.every(isModNoticeLine) &&
     (value.panes === undefined || (Array.isArray(value.panes) && value.panes.every(isModsUiPane))) &&
     (value.placed === undefined || (Array.isArray(value.placed) && value.placed.every(isModsUiPlacedRow))) &&
+    (value.theme === undefined || isModsUiTheme(value.theme)) &&
     (value.hooked === undefined || (Array.isArray(value.hooked) && value.hooked.every(isModsUiHookedSite))) &&
     (value.editHooked === undefined || value.editHooked === true) &&
     (value.autocompleteHooked === undefined || value.autocompleteHooked === true) &&

@@ -204,6 +204,7 @@ export {
   isModsUiHookedSite,
   isModsUiInputPayload,
   isModsUiPane,
+  isModsUiTheme,
   isModsUiStalePayload,
   isModsUiState,
   isModStateRow,
@@ -232,6 +233,7 @@ export {
   type ModsUiInputResult,
   type ModsUiPane,
   type ModsUiPlacedRow,
+  type ModsUiTheme,
   type ModsUiStalePayload,
   type ModsUiState,
 } from './mods'

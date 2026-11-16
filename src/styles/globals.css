@@ -1040,3 +1040,9 @@
     animation: nexus-pane-open-flash 1.2s steps(1, end) forwards;
   }
 }
+
+/* A mod theme's scene glass (F-25 `$.theme.set`): the thread's panels, their
+ * surface tokens already made translucent, frost what is behind them. */
+[data-mod-glass] :is(.bg-background, .bg-card, .bg-toolbar, .bg-base-surface, .bg-sidebar) {
+  backdrop-filter: blur(var(--mod-glass-blur, 16px));
+}

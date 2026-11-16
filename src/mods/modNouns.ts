@@ -77,6 +77,7 @@ import {
 import { uiBlit, uiBlitArgsOf, type UiBlitArgs } from './modBlit'
 import { isPaneId } from './modRender'
 import { isUiPlaceResult, uiPlaceArgsOf, type UiPlaceArgs, type UiPlaceResult } from './modPlaces'
+import { isThemeResult, themeSetArgsOf, type ThemeResult, type ThemeSetArgs } from './modTheme'
 import type { ModPane, ModPaneOpenArgs, ModPaneOpenResult } from './modPanes'
 import type { ModToolHost } from './toolCallEvent'
 import type { StoredRow } from './sessionAppendEvent'
@@ -253,6 +254,9 @@ export type ModNounHost = {
   /** `$.ui.place` — the session's placed rows (`modPlaces.ts`), supplied by
    *  `ModRuntime`. Absent: the noun is refused by name. */
   places?: { place(plugin: string, id: string): UiPlaceResult }
+  /** `$.theme.set` / `.clear` — the session's one theme (`modTheme.ts`),
+   *  supplied by `ModRuntime`. Absent: the nouns are refused by name. */
+  theme?: { set(plugin: string, args: ThemeSetArgs): ThemeResult; clear(): ThemeResult }
   /** `$.ui.copy` / `.focus` / `.scroll` — the clipboards, the focus ring and
    *  the windows of the page drawing the session (`modPage.ts`), supplied by
    *  `ModRuntime`. Absent: the nouns are refused by name. */
@@ -822,6 +826,26 @@ const NOUNS: Record<string, Record<string, NounMethod>> = Object.assign(Object.c
   // `$.prompt.submit` and `.compose` are "the event `prompt.<x>`" itself, the
   // plugin's own call of it: raised with the caller's context (the calling
   // hook skipped), as `$.tool.call` raises `tool.call`.
+  // `$.theme.set` / `.clear`: op events, `e` the attributes (none for a
+  // clear); core the session's one theme.
+  theme: Object.assign(Object.create(null), {
+    set: {
+      input: (args: readonly unknown[]) => themeSetArgsOf(args[0]),
+      run: (e: unknown, { call, session }: NounContext) => {
+        if (!session.theme) return notSupported('$.theme.set is not available: this session draws no theme')
+        return session.theme.set(call.plugin, themeSetArgsOf(e))
+      },
+      accepts: isThemeResult,
+    },
+    clear: {
+      input: () => ({}),
+      run: (_e: unknown, { session }: NounContext) => {
+        if (!session.theme) return notSupported('$.theme.clear is not available: this session draws no theme')
+        return session.theme.clear()
+      },
+      accepts: isThemeResult,
+    },
+  }),
   prompt: Object.assign(Object.create(null), {
     submit: {
       raisesItself: true as const,

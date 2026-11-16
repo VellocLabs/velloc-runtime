@@ -35,7 +35,7 @@ import type { RuntimeConnection } from '../../runtimeClient/RuntimeConnection'
 import type { ModUiContextValue, ModUiToastRow } from '../../../components/assistant-ui/mod-ui-context'
 import { EMPTY_MOD_UI, staleKeyOf } from '../../../components/assistant-ui/mod-ui-context'
 
-export type ModsUiView = Pick<ModUiContextValue, 'isLoaded' | 'status' | 'notices' | 'toasts' | 'panes' | 'placed' | 'hooked' | 'editHooked' | 'autocompleteHooked' | 'changeHooked' | 'stale' | 'turnNote' | 'asks' | 'view'>
+export type ModsUiView = Pick<ModUiContextValue, 'isLoaded' | 'status' | 'notices' | 'toasts' | 'panes' | 'placed' | 'theme' | 'hooked' | 'editHooked' | 'autocompleteHooked' | 'changeHooked' | 'stale' | 'turnNote' | 'asks' | 'view'>
 
 type Listener = (view: ModsUiView) => void
 
@@ -171,7 +171,7 @@ export function holdModsUiView(
         return
       }
       if (!isModsUiState(event.payload)) return
-      const { turnNote: _previousNote, ...kept } = store.view
+      const { turnNote: _previousNote, theme: _previousTheme, ...kept } = store.view
       store.view = {
         ...kept,
         isLoaded: true,
@@ -179,6 +179,7 @@ export function holdModsUiView(
         notices: event.payload.notices,
         panes: event.payload.panes ?? [],
         placed: event.payload.placed ?? [],
+        ...(event.payload.theme ? { theme: event.payload.theme } : {}),
         hooked: event.payload.hooked ?? [],
         editHooked: event.payload.editHooked === true,
         autocompleteHooked: event.payload.autocompleteHooked === true,

@@ -128,6 +128,9 @@ export const RAISED_EVENTS: readonly string[] = Object.freeze([
   // `$.ui.blit`: admitted and raised; the desktop mounts no Raster or
   // Image, so its core answers `{ deny }` (modBlit.ts)
   'ui.blit',
+  // the session's one theme (modTheme.ts)
+  'theme.set',
+  'theme.clear',
   'turn.abort',
   'clock.now',
   'clock.sleep',

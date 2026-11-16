@@ -472,6 +472,8 @@ describe('ModRuntime — $', () => {
       'task.start',
       'telemetry.log',
       'telemetry.mark',
+      'theme.clear',
+      'theme.set',
       'tool.call',
       'tool.check',
       'tool.list',

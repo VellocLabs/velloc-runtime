@@ -51,6 +51,7 @@ import { createModScriptHost, type ModScriptCaller } from './modScript'
 import type { ModAgentOutcome } from './modAgents'
 import type { PluginTaskStopEvent } from '../browser/worker/PluginTaskCoordinator'
 import { ModPaneRegistry, type ModPane, type ModPaneOpenArgs } from './modPanes'
+import { ModThemeState, themeClearCore, themeSetCore, type ThemeSetArgs } from './modTheme'
 import type { PluginUserConfigField } from '../pluginHost/pluginModel'
 import {
   ModCommandRegistry,
@@ -404,6 +405,8 @@ export class ModRuntime extends ModUiSurface implements TurnExtensions {
   /** The panes the slot's plugins opened. */
   readonly panes: ModPaneRegistry
   readonly places: ModPlaceRegistry
+  /** The session's one theme (`$.theme.set`). */
+  readonly theme: ModThemeState
   /** The prompt box's round trip, where a page draws one. */
   protected readonly composer: ModComposerBridge | undefined
   /** The page's clipboard, focus ring and windows (`$.ui.copy` / `.focus` /
@@ -464,6 +467,7 @@ export class ModRuntime extends ModUiSurface implements TurnExtensions {
     })
     this.panes = new ModPaneRegistry(() => this.emitUiState())
     this.places = new ModPlaceRegistry(() => this.emitUiState())
+    this.theme = new ModThemeState(() => this.emitUiState())
     this.commands = new ModCommandRegistry(() => {
       try {
         options.onCommandsChanged?.()
@@ -529,6 +533,14 @@ export class ModRuntime extends ModUiSurface implements TurnExtensions {
         },
         places: options.session.places ?? {
           place: (plugin: string, id: string) => uiPlaceCore(this.places, plugin, id, this.page !== undefined),
+        },
+        theme: options.session.theme ?? {
+          set: (plugin: string, args: ThemeSetArgs) => themeSetCore(this.theme, plugin, args, this.page !== undefined),
+          clear: () => {
+            const scene = this.theme.current()?.backdrop
+            if (scene && 'scene' in scene) this.forgetBackdrop()
+            return themeClearCore(this.theme)
+          },
         },
         commands: options.session.commands ?? {
           register: (spec: ModCommandSpec, plugin: string, calling?: string): string => {

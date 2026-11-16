@@ -6,6 +6,7 @@
  */
 
 import type { ModPlacedRow } from './modPlaces'
+import type { ModThemeSnapshot } from './modTheme'
 import type { ModComposerRequest } from './modComposer'
 import type { ModPageRequest } from './modPage'
 import type { ModAgentView } from './modAgentView'
@@ -130,6 +131,8 @@ export type ModUiSnapshot = {
   panes?: ModUiPane[]
   /** The rows placed in the transcript (`$.ui.place`). */
   placed?: ModPlacedRow[]
+  /** The session's one theme (`$.theme.set`); absent when none stands. */
+  theme?: ModThemeSnapshot
   hooked?: ModUiHookedSite[]
   /** Some loaded hook selects `prompt.edit`; absent when none. */
   editHooked?: true

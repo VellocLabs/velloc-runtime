@@ -501,7 +501,7 @@ function paddingOf(node: HTMLElement): { across: number; down: number } {
 /** The site's width in character cells and height in rows, from the window or the
  *  site's own box (`node`), measured inside the tree box's padding; a default where
  *  nothing measures. `isFullscreen`: the page docks panes beside the transcript. */
-function useCellViewport(
+export function useCellViewport(
   ref: React.RefObject<HTMLElement | null>,
   rowsFrom: "window" | "node" = "window",
   cellsRef?: React.RefObject<HTMLElement | null>,

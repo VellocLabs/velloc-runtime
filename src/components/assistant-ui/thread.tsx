@@ -39,6 +39,7 @@ import {
 } from "./mod-ui";
 import { ModAbovePrompt, ModPanes } from "./mod-render";
 import { ModPlacedProvider } from "./mod-placed";
+import { ModAppLook, ModBackdrop, useModThemeLook } from "./mod-theme";
 import { EnterPlanModeFooterControl } from "./enter-plan-mode-footer-control";
 import { SessionCardStack } from "./session-card-stack";
 import { NextMessageStrip } from "./next-message-strip";
@@ -485,6 +486,7 @@ export const Thread: FC<{
   // aren't the active input target).
   const statusChannel = useSessionStatusChannel();
   const { sessionPhase } = useNexusSessionStatus(statusChannel, sessionId);
+  const modThemeLook = useModThemeLook();
   const injectContext = useMemo(
     () => ({
       restore: injectRestore ?? null,
@@ -512,12 +514,17 @@ export const Thread: FC<{
     <ThreadPrimitive.Root
       data-thread-session={sessionId}
       className="aui-root aui-thread-root @container relative flex h-full flex-col bg-background pb-[var(--thread-bottom-inset,0px)] has-[[data-slot=session-card-stack]]:[--thread-end-reserve:clamp(24px,calc(var(--thread-max-width)+654px-100cqw),315px)]"
+      {...modThemeLook.attributes}
       style={{
+        ...modThemeLook.style,
         ["--thread-max-width" as string]: "48rem",
         ["--composer-radius" as string]: "24px",
         ["--composer-padding" as string]: "10px",
       }}
     >
+      {/* The session's mod theme (F-25 `$.theme.set`): its scene or still
+          ground, behind the conversation; presses pass through. */}
+      <ModBackdrop />
       {/* The transcript's top right corner: the session card stack (F-9; the
           mods' docked panes are its last cards, F-25), then the mods' toasts
           (`$.ui.toast`) beneath it. While the stack shows, the column keeps
@@ -617,7 +624,10 @@ export const Thread: FC<{
           <NextMessageStrip />
           {/* Permission ask + plan-approval controls, each on its own line above the
               composer. */}
-          <PermissionAskFooterControl />
+          {/* Permission prompts keep the app's own look under a mod theme. */}
+          <ModAppLook>
+            <PermissionAskFooterControl />
+          </ModAppLook>
           <PlanApprovalFooterControl />
           <EnterPlanModeFooterControl />
           {/* An archived session: why the composer is held, and Unarchive. */}

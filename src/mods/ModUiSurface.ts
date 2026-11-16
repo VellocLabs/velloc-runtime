@@ -23,6 +23,7 @@ import {
 import { ModPageBridge, type ModPageAnswer } from './modPage'
 import type { ModPlaceRegistry } from './modPlaces'
 import { ModPaneRegistry, type ModPaneSeat } from './modPanes'
+import { BACKDROP_REQUEST_ID, type ModThemeState } from './modTheme'
 import { ModUiState, type ModUiAskAnswer, type ModUiEvent, type ModUiSnapshot, type ModUiStale } from './modUi'
 import {
   RENDER_SURFACE,
@@ -56,6 +57,7 @@ export abstract class ModUiSurface extends ModEngineEvents {
   abstract readonly ui: ModUiState
   abstract readonly panes: ModPaneRegistry
   abstract readonly places: ModPlaceRegistry
+  abstract readonly theme: ModThemeState
   protected abstract readonly composer: ModComposerBridge | undefined
   protected abstract readonly page: ModPageBridge | undefined
   protected abstract instanceOf(plugin: string): ModInstance | undefined
@@ -96,6 +98,7 @@ export abstract class ModUiSurface extends ModEngineEvents {
         ...(pane.columns !== undefined ? { columns: pane.columns } : {}),
       })),
       placed: this.places.list(),
+      ...(this.theme.current() ? { theme: this.theme.current() } : {}),
       hooked: this.renderSites(),
       ...(this.hasPromptEditHooks() ? { editHooked: true } : {}),
       ...(this.hasPromptAutocompleteHooks() ? { autocompleteHooked: true } : {}),
@@ -691,6 +694,17 @@ export abstract class ModUiSurface extends ModEngineEvents {
   /** A plugin unloaded or lost its worker: its panes and placed rows go ("`unload` drops a
    *  pane nothing draws any more … gone before the hooks hear of it"), and
    *  its drawings are forgotten. */
+  /** The theme's scene went: its drawings are nobody's. */
+  protected forgetBackdrop(): void {
+    for (const key of this.keysOfSite('Backdrop', BACKDROP_REQUEST_ID)) {
+      this.drawings.delete(key)
+      this.unsubscribeAll(key)
+    }
+  }
+
+  /** A plugin unloaded or lost its worker: its panes and its theme go
+   *  ("`unload` drops a pane nothing draws any more … gone before the hooks
+   *  hear of it"), and its drawings are forgotten. */
   protected pluginGone(plugin: string): void {
     for (const id of this.panes.clearPlugin(plugin)) {
       for (const key of this.keysOfSite('Pane', id)) {
@@ -704,6 +718,7 @@ export abstract class ModUiSurface extends ModEngineEvents {
         this.unsubscribeAll(key)
       }
     }
+    if (this.theme.clearPlugin(plugin)) this.forgetBackdrop()
     for (const [key, held] of [...this.drawings]) {
       if (held.delete(plugin) && held.size === 0) {
         this.drawings.delete(key)

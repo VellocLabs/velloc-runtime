@@ -13,6 +13,7 @@ import type {
   ModsPromptSuggestion,
   ModsPromptVirtualText,
   ModsUiPlacedRow,
+  ModsUiTheme,
 } from '@/browser/runtimeProtocol'
 
 export type ModUiStatusLine = { plugin: string; text: string }
@@ -70,6 +71,7 @@ export type ModUiRenderSite =
   | 'ToolGroup'
   | 'PromptHint'
   | 'Placed'
+  | 'Backdrop'
 
 export type ModUiViewport = { columns: number; rows: number; isFullscreen?: boolean }
 
@@ -155,6 +157,8 @@ export type ModUiContextValue = {
   panes: readonly ModUiPaneRow[]
   /** The rows plugins placed in the transcript, in placing order. */
   placed: readonly ModsUiPlacedRow[]
+  /** The session's one theme (`$.theme.set`); absent when none stands. */
+  theme?: ModsUiTheme
   /** True where the page docks the panes in its Plugins side pane
    *  (`placement: 'dock'`): the thread then draws none above the prompt. */
   panesDocked?: boolean

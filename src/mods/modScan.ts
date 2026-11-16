@@ -385,6 +385,7 @@ export const ENGINE_NOUNS: readonly string[] = Object.freeze([
   'settings',
   'script',
   'task',
+  'theme',
 ])
 
 /** `$` calls the WORKER answers without the runtime: not events, not nouns
