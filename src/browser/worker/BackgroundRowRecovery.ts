@@ -37,7 +37,7 @@ export class BackgroundRowRecovery {
     }
   }
 
-  async recoverBackgroundRows(sessionId: string): Promise<void> {
+  private async recoverBackgroundRows(sessionId: string): Promise<void> {
     let messages: unknown[] = []
     try {
       // The request can precede the first `worker.init` (a pane restored open

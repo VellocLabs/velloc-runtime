@@ -52,7 +52,6 @@ import {
   type SessionLineageInput,
 } from '../../sessions/sessionLineage'
 import { recordedForkPrompt } from '../../utils/sidechainTranscripts'
-import { sanitizeChildReportText } from '../../sessions/childReports'
 import {
   setChildSessionSpawner,
   setParentSelectionGetter,
@@ -64,7 +63,6 @@ import {
   notifyProposalsChanged,
   setProposalBoard,
 } from '../../sessions/proposalBoard'
-import { turnBoard } from '../../sessions/turnBoard'
 import {
   ChapterBook,
   notifyChaptersChanged,
@@ -114,18 +112,16 @@ import {
   registerFsxCapability,
   registerTerminalCapability,
   type HostEnvironment,
-  type SessionOpenPayload,
   type SessionProjectRoot,
   type SessionSurface,
 } from '../runtimeHub'
-import { wireError } from '../runtimeProtocol'
 import { CustomizePageService } from '../../customize/CustomizePageService'
 import { createCustomizePageHostSource } from '../../customize/customizePageHost'
 import { createFileViewerWindow } from '../runtimeHub/fileViewerWindow'
 import { createDirectoryOfferDeps } from '../../customize/directoryOfferHost'
 import { getWebUiBridgeHandler } from './webUiBridge/registry'
 import { initBuiltinWebUiBridgeHandlers } from './webUiBridge/initBuiltinHandlers'
-import { composeSessionInit, hostEnvironmentOf } from './sessionOpenComposer'
+import { hostEnvironmentOf } from './sessionOpenComposer'
 import { NEXUS_INTERFACE_VERSION } from '../bridge/protocol/interfaceVersion'
 import { setTeammateSpawner } from '../../team/teammateSpawner'
 import {
@@ -145,7 +141,7 @@ import { ChildSessionCoordinator } from './ChildSessionCoordinator'
 import { SessionFamilyCoordinator } from './SessionFamilyCoordinator'
 import { firstSentence } from '../../sessions/replyExcerpt'
 import { setSessionDirectory } from '../../sessions/sessionDirectory'
-import { ChildReportCoordinator, type ChildReportHost } from './ChildReportCoordinator'
+import { ChildReportCoordinator } from './ChildReportCoordinator'
 import type { SpawnTeammateParams } from '../../team/teamTypes'
 import {
   raiseDesktopAlert,
@@ -216,15 +212,6 @@ import {
   isTeammateSessionId,
 } from './taskProjection'
 import { currentRenderCachePolicy } from '../../renderCache/runtimeRenderCache'
-import {
-  archivedWorktreeLogLine,
-  insideFolder,
-  settleWorktreeOnArchive,
-  settleWorktreeOnUnarchive,
-  worktreeRecordOf,
-  type ArchivedWorktreeDeps,
-} from './archivedWorktree'
-import { managerHostCommand } from './managerHostCommand'
 
 const TOOL_DETAIL_CACHE_MAX = 64
 
@@ -774,7 +761,6 @@ export class SharedWorkerSessionManager {
     taskIdOf: (result) => result.taskId,
   })
 
-  /** Session-list mutations and the shared session disposal (`SessionListMutations`). */
   private readonly metaRecords: SessionMetaRecords = new SessionMetaRecords({
     sessions: this.sessions,
     runtimeHub: this.runtimeHub,
@@ -831,6 +817,7 @@ export class SharedWorkerSessionManager {
     interruptCascade: (...args) => this.interruptCascade(...args),
   })
 
+  /** Session-list mutations and the shared session disposal (`SessionListMutations`). */
   private readonly listMutations = new SessionListMutations({
     sessions: this.sessions,
     deletingSessions: this.deletingSessions,

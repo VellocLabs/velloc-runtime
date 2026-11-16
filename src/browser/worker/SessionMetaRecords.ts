@@ -39,8 +39,8 @@ export type SessionMetaRecordsDeps = {
 export class SessionMetaRecords {
   constructor(private readonly deps: SessionMetaRecordsDeps) {}
 
-  /** A session's stored chapter marks: a list stashed for a bind that has not
-   *  written it yet, else its live store, else disk (F-37). */
+  /** A session's stored code-review snapshot, or undefined when it has none.
+   *  Throws on a malformed id or a meta file that names another session. */
   async readStoredReviewSnapshot(sessionId: string): Promise<import('../../codeReview/review-protocol').ReviewSessionSnapshot | undefined> {
     if (!/^[A-Za-z0-9_-]{1,300}$/.test(sessionId)) throw new Error('invalid-review-session')
     const storage = await this.routedStorageFor(sessionId)
@@ -54,6 +54,8 @@ export class SessionMetaRecords {
     return readStoredReviewSnapshot({ fs: this.deps.runtimeHub.context.fs, sessionBase: base, sessionId })
   }
 
+  /** A session's stored chapter marks: a list stashed for a bind that has not
+   *  written it yet, else its live store, else disk (F-37). */
   async readChapterMarks(sessionId: string): Promise<unknown> {
     const entry = this.deps.sessions.get(sessionId)
     if (entry?.pendingChapterMarks !== undefined) return entry.pendingChapterMarks

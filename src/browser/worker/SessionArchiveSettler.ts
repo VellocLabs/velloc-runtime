@@ -62,7 +62,7 @@ export class SessionArchiveSettler {
     return run
   }
 
-  async settleArchivedWorktreeNow(sessionId: string, archived: boolean): Promise<void> {
+  private async settleArchivedWorktreeNow(sessionId: string, archived: boolean): Promise<void> {
     const deps: ArchivedWorktreeDeps = {
       readWorktree: async id => worktreeRecordOf((await this.deps.getStorage()?.readSessionMeta(id))?.metadata?.worktree),
       writeWorktree: (id, record) => this.deps.patchSessionRecord(id, { worktree: record }),

@@ -109,13 +109,8 @@ export class SessionFrameRouter {
     // in-context forks aren't worker sessions — they stop via the interrupt's
     // child-abort, not here.)
     if (message.type === 'worker.interrupt') {
-      // Suppress background-task re-activation: a task finishing moments after
-      // Stop must not inject a `<task-notification>` turn that revives the
-      // conversation the user just halted. Drop anything already queued (it
-      // would otherwise flush the instant the interrupted turn unwinds) and set
-      // the flag to suppress results that finalize during the stopping window.
-      // Both clear on the next genuine user submit.
-      // Suppression is now owned by TaskDeliveryQueue.
+      // Holding background-task results back after a Stop, until the next
+      // submit, is TaskDeliveryQueue's.
       this.deps.interruptCascade(sessionId)
     }
   }
@@ -142,7 +137,7 @@ export class SessionFrameRouter {
       turnBoard.personWrote(sessionId, !session.worker.isBusy() && !session.worker.isHaltedOnUser())
     }
 
-    // The worker owns the submit queue and the pending message; the manager
+    // The worker owns the submit queue and the pending message; the router
     // only adds the cross-session concerns.
     void session.worker.receiveFrame(message).catch(error => {
       if (
