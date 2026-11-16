@@ -132,6 +132,8 @@ export interface TaskControlSurfaceHost {
    *  from the transcript after an app restart: the title the call stored.
    *  Null when no recovered row matches. */
   loadRecoveredTitle?(taskId: string): { title: string } | null
+  /** A finished fork's prompt read from its sidechain transcript; undefined when it cannot be read. */
+  loadForkPrompt?(spawnerSessionId: string, agentId: string): Promise<string | undefined>
 }
 
 /**
@@ -377,6 +379,11 @@ export class TaskControlSurface {
 
   async loadInfoWithOutput(publicId: string): Promise<NexusTaskInfo | null> {
     const info = this.loadInfo(publicId)
+    const fork = info?.type === 'local_fork' ? this.finishedFork(this.resolveNative(publicId)) : undefined
+    if (info && fork?.promptRecorded && !fork.prompt) {
+      const prompt = await this.host.loadForkPrompt?.(fork.spawnerSessionId, fork.agentId).catch(() => undefined)
+      return prompt ? { ...info, task: prompt } : info
+    }
     if (info?.outputFilePath) {
       try {
         const text = await this.outputFs().readFile(info.outputFilePath, {

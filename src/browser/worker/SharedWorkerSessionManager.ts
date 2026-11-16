@@ -46,6 +46,7 @@ import {
   type ChildStartState,
   type SessionLineageInput,
 } from '../../sessions/sessionLineage'
+import { recordedForkPrompt } from '../../utils/sidechainTranscripts'
 import { sanitizeChildReportText } from '../../sessions/childReports'
 import {
   setChildSessionSpawner,
@@ -1371,6 +1372,11 @@ export class SharedWorkerSessionManager {
         loadRecoveredShellDetail: toolCallId =>
           this.toolDetailLoader.loadRecoveredShellDetail(toolCallId),
         loadRecoveredTitle: taskId => this.toolDetailLoader.loadRecoveredTitle(taskId),
+        loadForkPrompt: async (spawnerSessionId, agentId) => {
+          const owner = this.sessions.get(spawnerSessionId)
+          const store = (owner?.runtimeGlobals ?? owner?.worker.getRuntimeGlobals?.())?.sidechainStore
+          return store ? recordedForkPrompt(await store.load(spawnerSessionId, agentId)) : undefined
+        },
       },
       [this.superShells, this.pluginTasks],
     )

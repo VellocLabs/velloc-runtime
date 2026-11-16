@@ -32,6 +32,8 @@ export type ForkTaskStart = {
   /** The fork's effective system prompt, serialized for display (the custom
    *  override when set, else the inherited parent prompt). Detail-view only. */
   systemPrompt?: string
+  /** The opening rows `prompt` is read from are written to the fork's sidechain transcript. */
+  promptRecorded?: boolean
   startedAt: number
   /** Aborts the fork's child AbortController — powers the drawer's Stop. */
   abort: () => void

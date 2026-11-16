@@ -27,6 +27,7 @@ import { snapshotTurnForCall } from '../utils/turnDiffs'
 import { runSubagentStartHooks } from '../lifecycleHooks/sessionLifecycleHooks'
 import {
   createSidechainAgentId,
+  openingPromptText,
   type SidechainEntry,
   type SidechainMetadata,
   type SidechainTranscriptStore,
@@ -396,6 +397,12 @@ export async function launchFork(
     agentId,
   })
 
+  const shouldRecord =
+    sidechainStore !== undefined &&
+    spawnerSessionId !== undefined &&
+    offRecord !== true
+  const promptRows = params.recordedOpeningRows ?? openingRows
+
   notifyForkStarted({
     agentId,
     spawnerSessionId,
@@ -404,16 +411,12 @@ export async function launchFork(
     agentType,
     description,
     model: isolatedToolUseContext.options.mainLoopModel,
-    prompt: extractPromptText(params.recordedOpeningRows ?? openingRows),
+    prompt: openingPromptText(promptRows),
     systemPrompt: serializeSystemPromptForDisplay(forkSystemPrompt),
+    promptRecorded: shouldRecord,
     startedAt: Date.now(),
     abort: () => isolatedToolUseContext.cancelSource.abort(),
   })
-
-  const shouldRecord =
-    sidechainStore !== undefined &&
-    spawnerSessionId !== undefined &&
-    offRecord !== true
 
   const recordEntry = async (entry: SidechainEntry): Promise<void> => {
     if (!shouldRecord || !sidechainStore || !spawnerSessionId) return
@@ -441,9 +444,10 @@ export async function launchFork(
         agentType,
         description,
         modelSource,
+        openingRows: promptRows.length,
       }
       await recordEntry(metadata)
-      for (const promptMessage of params.recordedOpeningRows ?? openingRows) {
+      for (const promptMessage of promptRows) {
         await recordEntry(promptMessage)
       }
     }
@@ -582,23 +586,3 @@ export async function launchFork(
   return { messages: outputMessages, agentId }
 }
 
-function extractPromptText(openingRows: Message[]): string | undefined {
-  const parts: string[] = []
-  for (const msg of openingRows) {
-    const content = (msg as { message?: { content?: unknown } })?.message
-      ?.content
-    if (typeof content === 'string') {
-      parts.push(content)
-      continue
-    }
-    if (!Array.isArray(content)) continue
-    for (const block of content) {
-      if (block && typeof block === 'object') {
-        const b = block as { type?: string; text?: string }
-        if (b.type === 'text' && typeof b.text === 'string') parts.push(b.text)
-      }
-    }
-  }
-  const joined = parts.join('\n').trim()
-  return joined.length > 0 ? joined : undefined
-}

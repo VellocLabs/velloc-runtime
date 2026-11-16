@@ -275,6 +275,8 @@ export type FinishedForkRecord = {
   agentType?: string
   model?: string
   prompt?: string
+  /** `prompt` is not held: it is read from the fork's sidechain transcript. */
+  promptRecorded?: boolean
   systemPrompt?: string
   status: 'success' | 'error' | 'stopped'
   summary: string

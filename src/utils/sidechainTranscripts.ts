@@ -61,6 +61,8 @@ export type SidechainMetadata = {
    * and degraded to the parent). Absent for unrouted forks. Audit-only.
    */
   modelSource?: string
+  /** How many rows after this header are the fork's opening prompt. */
+  openingRows?: number
 }
 
 /** Anything that can appear on a single line of a sidechain JSONL file. */
@@ -74,6 +76,39 @@ export function isSidechainMetadata(
     entry !== null &&
     (entry as { type?: unknown }).type === '__sidechain_meta'
   )
+}
+
+/** The text blocks of a fork's opening rows, joined by newlines; undefined when there is none. */
+export function openingPromptText(openingRows: readonly Message[]): string | undefined {
+  const parts: string[] = []
+  for (const row of openingRows) {
+    const content = (row as { message?: { content?: unknown } })?.message?.content
+    if (typeof content === 'string') {
+      parts.push(content)
+      continue
+    }
+    if (!Array.isArray(content)) continue
+    for (const block of content) {
+      const item = block as { type?: string; text?: string } | null
+      if (item && item.type === 'text' && typeof item.text === 'string') parts.push(item.text)
+    }
+  }
+  const joined = parts.join('\n').trim()
+  return joined.length > 0 ? joined : undefined
+}
+
+/**
+ * The prompt a fork's transcript recorded: the opening rows after its header
+ * (the header's `openingRows` count, else the rows before the first assistant
+ * row). Undefined when the transcript holds none.
+ */
+export function recordedForkPrompt(entries: readonly SidechainEntry[]): string | undefined {
+  const at = entries.findIndex(isSidechainMetadata)
+  if (at === -1) return undefined
+  const header = entries[at] as SidechainMetadata
+  const rows = entries.slice(at + 1).filter((entry): entry is Message => !isSidechainMetadata(entry))
+  const count = header.openingRows ?? rows.findIndex(row => (row as { type?: string }).type === 'assistant')
+  return openingPromptText(count === -1 ? rows : rows.slice(0, count))
 }
 
 /**

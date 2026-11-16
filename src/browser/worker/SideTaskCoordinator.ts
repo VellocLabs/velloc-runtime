@@ -61,6 +61,7 @@ export class SideTaskCoordinator {
     model?: string
     prompt?: string
     systemPrompt?: string
+    promptRecorded?: boolean
     startedAt: number
     abort: () => void
   }): void {
@@ -87,6 +88,7 @@ export class SideTaskCoordinator {
       model: start.model,
       prompt: start.prompt,
       systemPrompt: start.systemPrompt,
+      promptRecorded: start.promptRecorded === true,
       messages: [] as unknown[],
       startedAt: start.startedAt,
       lastActivityAt: start.startedAt,
@@ -119,13 +121,16 @@ export class SideTaskCoordinator {
       | {
           taskId: string; agentId: string; spawnerSessionId: string
           querySource: string; forkLabel: string; description: string; agentType?: string
-          model?: string; prompt?: string; systemPrompt?: string
+          model?: string; prompt?: string; systemPrompt?: string; promptRecorded: boolean
           messages: unknown[]; startedAt: number; stopRequested: boolean
         }
       | undefined
     if (!run) return
     this.registry.deleteLive(finish.agentId)
     const status = run.stopRequested ? 'stopped' : finish.status
+    const reviewFork = run.forkLabel === REVIEW_FORK_LABEL
+    // A finished review fork's prompt is read back from its transcript when its detail opens (F-38).
+    const promptOnDisk = reviewFork && run.promptRecorded && run.spawnerSessionId !== ''
     const record = {
       type: 'local_fork' as const,
       taskId: run.taskId,
@@ -136,7 +141,7 @@ export class SideTaskCoordinator {
       description: run.description,
       agentType: run.agentType,
       model: finish.model ?? run.model,
-      prompt: run.prompt,
+      ...(promptOnDisk ? { promptRecorded: true } : { prompt: run.prompt }),
       systemPrompt: run.systemPrompt,
       status,
       summary:
@@ -150,7 +155,6 @@ export class SideTaskCoordinator {
       finishedAt: finish.finishedAt,
     }
     this.registry.recordFinished(run.agentId, record)
-    const reviewFork = run.forkLabel === REVIEW_FORK_LABEL
     this.host.evictFinishedOverCap('local_fork', reviewFork ? MAX_FINISHED_REVIEW_FORKS : MAX_FINISHED_FORKS, undefined,
       (record: { forkLabel?: string; spawnerSessionId?: string }) => reviewFork
         ? record.forkLabel === REVIEW_FORK_LABEL && record.spawnerSessionId === run.spawnerSessionId

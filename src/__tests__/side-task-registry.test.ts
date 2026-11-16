@@ -27,6 +27,9 @@ import {
   launchFork,
 } from '../agents/forkedRun'
 import { runTurnLoop } from '../engine/turnInterpreter'
+import { REVIEW_FORK_LABEL } from '../backgroundTasks/sideTaskSink'
+import { recordedForkPrompt, type SidechainEntry, type SidechainMetadata } from '../utils/sidechainTranscripts'
+import type { Message } from '../runtime/RuntimeTypes'
 import {
   queryFastModel,
 } from '../models/fastModelCall'
@@ -413,6 +416,61 @@ describe('side-task registry — local_fork', () => {
     const finished = [...i.taskRegistry.allFinished()].filter(r => r.type === 'local_fork') as Array<{ spawnerSessionId?: string }>
     expect(finished.filter(r => r.spawnerSessionId === 'P1')).toHaveLength(100)
     expect(finished.filter(r => r.spawnerSessionId === 'P2')).toHaveLength(160)
+  })
+})
+
+describe('side-task registry — a finished review fork reads its prompt from its transcript', () => {
+  const PROMPT = 'Review src/a.ts lines 1-40 for missing guards.'
+  const transcript: SidechainEntry[] = [
+    { type: '__sidechain_meta', agentId: 'fork-native-1', spawnerSessionId: 'P1', forkLabel: REVIEW_FORK_LABEL, startedAt: 1_000, model: 'model-x', openingRows: 1 },
+    { type: 'user', uuid: 'u-1', message: { role: 'user', content: [{ type: 'text', text: PROMPT }] } } as unknown as Message,
+    { type: 'user', uuid: 'u-2', message: { role: 'user', content: 'a start hook note' } } as unknown as Message,
+    ASSISTANT_MSG as unknown as Message,
+  ]
+  const reviewStart = (overrides: Partial<ForkTaskStart> = {}) =>
+    forkStart({ forkLabel: REVIEW_FORK_LABEL, querySource: 'skill_fork', agentType: 'review-finder', description: 'Review finder', prompt: PROMPT, promptRecorded: true, ...overrides })
+  const finish = () => notifyForkFinished({ agentId: 'fork-native-1', status: 'success', finishedAt: 2_000 })
+  const finishedPrompt = (i: ManagerInternals) =>
+    ([...i.taskRegistry.allFinished()].find(r => r.type === 'local_fork') as { prompt?: string } | undefined)?.prompt
+  const detail = (m: SharedWorkerSessionManager, i: ManagerInternals, load: () => Promise<SidechainEntry[]>) => {
+    const id = rowByType(i, 'local_fork')!.sessionId
+    i.sessions.set('P1', { runtimeGlobals: { sidechainStore: { load } } })
+    const taskControl = (m as unknown as { taskControl: { loadInfoWithOutput(id: string): Promise<{ task?: string } | null> } }).taskControl
+    return taskControl.loadInfoWithOutput(id).finally(() => i.sessions.delete('P1'))
+  }
+
+  it('holds no prompt once finished, and the detail reads the opening rows back', async () => {
+    const { m, i } = manager()
+    notifyForkStarted(reviewStart())
+    expect(i.loadSubAgentInfo('fork-native-1')?.task, 'running: held').toBe(PROMPT)
+    finish()
+    expect(finishedPrompt(i)).toBeUndefined()
+    expect(i.loadSubAgentInfo('fork-native-1')?.task, 'without a read: the description').toBe('Review finder')
+    expect((await detail(m, i, async () => transcript))?.task).toBe(PROMPT)
+  })
+
+  it('an unreadable transcript shows the description', async () => {
+    const { m, i } = manager()
+    notifyForkStarted(reviewStart())
+    finish()
+    expect((await detail(m, i, async () => { throw new Error('ENOENT') }))?.task).toBe('Review finder')
+  })
+
+  it('keeps the prompt of a review fork with no transcript, and of every other fork', () => {
+    for (const start of [reviewStart({ promptRecorded: false }), forkStart({ prompt: PROMPT, promptRecorded: true })]) {
+      const { i } = manager()
+      notifyForkStarted(start)
+      finish()
+      expect(finishedPrompt(i)).toBe(PROMPT)
+    }
+  })
+
+  it('the recorded prompt: the counted opening rows, else the rows before the first reply', () => {
+    expect(recordedForkPrompt(transcript)).toBe(PROMPT)
+    const [header, ...rows] = transcript
+    const { openingRows: _, ...uncounted } = header as SidechainMetadata
+    expect(recordedForkPrompt([uncounted, ...rows])).toBe(`${PROMPT}\na start hook note`)
+    expect(recordedForkPrompt(rows)).toBeUndefined()
   })
 })
 
