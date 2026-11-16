@@ -60,7 +60,7 @@ export const useComposerModelCapabilities = (): ComposerModelCapabilities =>
 
 export const ComposerAttachments: FC = () => {
   return (
-    <div className="aui-composer-attachments flex flex-wrap gap-2 px-1">
+    <div className="aui-composer-attachments flex flex-wrap items-center gap-2 px-1">
       <ComposerPrimitive.Attachments
         components={{
           Attachment: ComposerAttachmentItem,
@@ -139,8 +139,67 @@ export const ComposerAddAttachment: FC = () => {
 
 const ComposerAttachmentItem: FC = () => {
   const name = useAssistantState((s) => s.attachment.name);
+  const type = useAssistantState((s) => s.attachment.type);
+  const file = useAssistantState((s) =>
+    "file" in s.attachment ? s.attachment.file : undefined,
+  );
   if (isPastedTextAttachmentName(name)) return <PastedTextAttachmentCard />;
+  if (type === "image" && file instanceof Blob) {
+    return <ComposerImageAttachmentCard file={file} name={name} />;
+  }
   return <ComposerFileAttachmentChip />;
+};
+
+/** Object URL for `blob`, revoked when the blob changes or the caller unmounts. */
+function useBlobObjectUrl(blob: Blob): string | null {
+  const [url, setUrl] = useState<string | null>(null);
+  useEffect(() => {
+    const next = URL.createObjectURL(blob);
+    setUrl(next);
+    return () => {
+      URL.revokeObjectURL(next);
+    };
+  }, [blob]);
+  return url;
+}
+
+/** A pending image attachment shown as a thumbnail of the image itself. */
+const ComposerImageAttachmentCard: FC<{ file: Blob; name: string }> = ({
+  file,
+  name,
+}) => {
+  const t = useT();
+  const src = useBlobObjectUrl(file);
+  return (
+    <AttachmentPrimitive.Root
+      className="aui-composer-image-attachment relative shrink-0"
+      data-testid="composer-image-attachment"
+      role="group"
+      aria-label={name}
+      title={name}
+    >
+      <span className="block h-20 w-28 overflow-hidden rounded-xl border bg-muted">
+        {src && (
+          <img
+            src={src}
+            alt={name}
+            draggable={false}
+            data-testid="composer-image-attachment-thumbnail"
+            className="size-full object-cover"
+          />
+        )}
+      </span>
+      <AttachmentPrimitive.Remove asChild>
+        <button
+          type="button"
+          className="aui-composer-attachment-remove absolute -top-2 -right-2 flex size-5 items-center justify-center rounded-full bg-foreground text-background shadow-sm transition-opacity hover:opacity-80"
+          aria-label={t('attachment.remove')}
+        >
+          <XIcon className="size-3" />
+        </button>
+      </AttachmentPrimitive.Remove>
+    </AttachmentPrimitive.Root>
+  );
 };
 
 const ComposerFileAttachmentChip: FC = () => {
