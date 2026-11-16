@@ -14,9 +14,9 @@ import type { RuntimeFs } from '../../../utils/fs/runtimeFs'
 import type { NexusSettingsV1 } from '../../../settings/settingsTypes'
 import {
   readUserLayer,
-  normaliseProviderOrder,
   updateProvidersSettings,
 } from '../../../settings/settingsStore'
+import { normaliseProviderOrder } from '../../../settings/settingsNormalize'
 // Endpoint-trust view of the same write: a vendor provider with a baseUrl
 // override classifies as unofficial, so every publish point that pushes
 // configs to the broker also refreshes the trust map.
