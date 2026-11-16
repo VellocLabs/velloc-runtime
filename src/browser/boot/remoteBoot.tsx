@@ -37,7 +37,7 @@ import { attachProviderStatusStore } from '../webview/providerStatusStore'
 import { buildGlicInitPayload, resolveBootLocaleTag } from './nexusBoot'
 import { installPerClientTheme } from './perClientTheme'
 import { recoverLocaleCatalog } from './remoteLocaleRecovery'
-import type { RenderableBootContext, ShellBootFetches } from './renderShell'
+import type { RenderableBootContext, ShellBootFetches, ShellComponent } from './renderShell'
 import type { RemotePairing, RemotePairingError } from './remotePairing'
 import {
   clearStoredPairing,
@@ -346,9 +346,15 @@ export function watchForFreshRuntime(
   })
 }
 
+/** The shell a remote page mounts unless its entry names another (the mobile entry does). */
+export function loadDesktopShell(): Promise<ShellComponent> {
+  return import('../webview/MultiSessionShell').then(m => m.MultiSessionShell)
+}
+
 export async function remoteBootAndRender(
   container: HTMLElement,
   pairing: RemotePairing,
+  loadShell: () => Promise<ShellComponent> = loadDesktopShell,
 ): Promise<void> {
   // A re-run (retry, restarted runtime, log-out): whatever the previous shell
   // wired to ITS connection goes first, before this boot wires its own.
@@ -359,7 +365,7 @@ export async function remoteBootAndRender(
   const fetches: ShellBootFetches = {
     reactPromise: import('react'),
     reactDomPromise: import('react-dom/client'),
-    shellPromise: import('../webview/MultiSessionShell'),
+    shellPromise: loadShell(),
     localePromise: startLocalePreload(resolveBootLocaleTag()),
   }
   const localeTag = resolveBootLocaleTag()
@@ -384,7 +390,7 @@ export async function remoteBootAndRender(
    *  the page stuck on "connecting"; now it lands on the screen that names
    *  the failure, with a retry of its own. */
   const reboot = (): void => {
-    remoteBootAndRender(container, pairing).catch((error: unknown) => {
+    remoteBootAndRender(container, pairing, loadShell).catch((error: unknown) => {
       const state = stateForFailure(error)
       nexusTrace('remote boot failed', {
         state,

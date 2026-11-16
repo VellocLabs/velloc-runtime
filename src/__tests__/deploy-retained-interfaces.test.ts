@@ -289,6 +289,7 @@ describe('assembleSite — a whole local stage with a fake legacy release', () =
     const root = fresh('stage')
     const dist = join(root, 'dist')
     write(join(dist, 'index.html'), indexHtml(2))
+    write(join(dist, 'mobile.html'), '<!doctype html><div id="app"></div>')
     write(join(dist, 'assets', 'index-ABCDEF12.js'), 'console.log("v2")')
     write(join(dist, 'assets-manifest.json'), '{"buildId":"new","assets":[]}')
     const publicDir = join(root, 'public')

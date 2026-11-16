@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en" style="height: 100%; margin: 0;">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content"
+    />
+    <title>Velloc Code</title>
+    <meta name="color-scheme" content="light dark" />
+    <script>
+      if (window.matchMedia('(prefers-color-scheme: dark)').matches) {
+        document.documentElement.classList.add('dark');
+      }
+    </script>
+    <link rel="icon" type="image/png" href="/product_logo_128.png" />
+    <style>
+      :root {
+        --font-geist-sans: 'Geist Variable', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+        --font-geist-mono: 'Geist Mono Variable', ui-monospace, SFMono-Regular, Menlo, monospace;
+      }
+      html, body, #app {
+        height: 100%;
+        height: 100dvh;
+        margin: 0;
+        padding: 0;
+        overflow: hidden;
+      }
+      html {
+        background: light-dark(#ffffff, #3c3c3c);
+      }
+    </style>
+  </head>
+  <body>
+    <div id="app"></div>
+    <script type="module" src="/src/mobile/main.tsx"></script>
+  </body>
+</html>

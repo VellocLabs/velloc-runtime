@@ -3130,6 +3130,7 @@ export const fr: Messages = {
   'remote.protocolTitle': 'Rechargez pour continuer',
   'remote.protocolBody':
     'Cette page et le bureau parlent des versions différentes du protocole. Un rechargement récupère la version correspondante.',
+  'mobile.topbar.untitledSession': 'Nouvelle session',
   'remote.buildMismatchTitle': 'Le bureau exécute un build différent',
   'remote.buildMismatchBody':
     'Cette page provient d’un build différent de celui que le bureau exécute. Ouvrez celui qui correspond pour que les deux côtés se comportent pareil.',

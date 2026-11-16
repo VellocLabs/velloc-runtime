@@ -341,11 +341,11 @@ function countFiles(dir) {
 }
 
 /**
- * Stage this build's immutable entry: byte copies of index.html and
- * assets-manifest.json under `v<N>/b/<buildKey>/`, buildKey derived from the
- * staged index.html's nexus-build-time meta. `/v<N>/index.html` changes bytes
- * on a same-version redeploy; this URL names one build forever. Chunks are not
- * copied: the manifest's paths resolve against the version root
+ * Stage this build's immutable entry: byte copies of index.html, mobile.html
+ * (F-24) and assets-manifest.json under `v<N>/b/<buildKey>/`, buildKey derived
+ * from the staged index.html's nexus-build-time meta. `/v<N>/index.html`
+ * changes bytes on a same-version redeploy; this URL names one build forever.
+ * Chunks are not copied: the manifest's paths resolve against the version root
  * (manifestAssetBase.ts). Returns { key, entryPath }. Exported for tests.
  */
 export function stageBuildEntry(stagedDir) {
@@ -358,7 +358,7 @@ export function stageBuildEntry(stagedDir) {
   const stagedName = path.basename(stagedDir)
   const entryDir = path.join(stagedDir, 'b', key)
   fs.mkdirSync(entryDir, { recursive: true })
-  for (const name of ['index.html', 'assets-manifest.json']) {
+  for (const name of ['index.html', 'mobile.html', 'assets-manifest.json']) {
     const src = path.join(stagedDir, name)
     if (!fs.existsSync(src)) fail(`missing ${src} — cannot stage build entry`)
     fs.copyFileSync(src, path.join(entryDir, name))

@@ -65,6 +65,11 @@ function resolvePagesBasePath(): string {
   return normalizeBasePath(repoName)
 }
 
+/** The remote page's phone entry (F-24), built beside index.html. */
+function isMobileEntryHtml(path: string): boolean {
+  return path.endsWith('/mobile.html')
+}
+
 function processPolyfillPlugin(mode: string): Plugin {
   return {
     name: 'process-env-polyfill',
@@ -96,6 +101,8 @@ function injectWarmSharedWorkerPlugin(): Plugin {
     transformIndexHtml: {
       order: 'post',
       handler(_html, ctx) {
+        // The phone entry is always a remote client: no worker to warm.
+        if (isMobileEntryHtml(ctx.path)) return []
         let src = `${base}src/glic/warmSharedWorker.ts`
         if (ctx.bundle) {
           const entry = Object.values(ctx.bundle).find(
@@ -383,6 +390,7 @@ export default defineConfig(({ mode }) => ({
     rollupOptions: {
       input: {
         index: fileURLToPath(new URL('./index.html', import.meta.url)),
+        mobile: fileURLToPath(new URL('./mobile.html', import.meta.url)),
         // Separate entry so the SharedWorker warm-up loads as its own tiny
         // early <script> (injected by injectWarmSharedWorkerPlugin) instead of
         // being folded into the main index entry chunk.

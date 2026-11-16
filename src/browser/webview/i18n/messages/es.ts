@@ -3105,6 +3105,7 @@ export const es: Messages = {
   'remote.protocolTitle': 'Recargue para continuar',
   'remote.protocolBody':
     'Esta página y el escritorio hablan versiones distintas del protocolo. Al recargar se obtiene la correspondiente.',
+  'mobile.topbar.untitledSession': 'Nueva sesión',
   'remote.buildMismatchTitle': 'El escritorio ejecuta una compilación distinta',
   'remote.buildMismatchBody':
     'Esta página proviene de una compilación distinta de la que ejecuta el escritorio. Abra la correspondiente para que ambos lados se comporten igual.',

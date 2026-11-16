@@ -1087,18 +1087,19 @@ describe('stageBuildEntry', () => {
     mkdirSync(dir, { recursive: true })
     writeFileSync(join(dir, 'index.html'),
       `<!doctype html><meta name="${BUILD_TIME_META_NAME}" content="${isoFromKey(key)}">`)
+    writeFileSync(join(dir, 'mobile.html'), '<!doctype html><div id="app"></div>')
     writeFileSync(join(dir, 'assets-manifest.json'), '{"buildId":"x","assets":[]}\n')
     return dir
   }
 
-  it('stages byte-identical index.html and manifest under b/<key>/', () => {
+  it('stages byte-identical index.html, mobile.html and manifest under b/<key>/', () => {
     const key = keyFromIso('2026-09-08T03:38:46.000Z')
     const dir = stageTree(key)
     const result = stageBuildEntry(dir)
     expect(result.key).toBe(key)
     // entryPath is built from the staged dir's basename — the dir staged above.
     expect(result.entryPath).toBe(`/${dir.split(/[\\/]/).pop()}/b/${key}/`)
-    for (const name of ['index.html', 'assets-manifest.json']) {
+    for (const name of ['index.html', 'mobile.html', 'assets-manifest.json']) {
       const a = readFileSync(join(dir, name))
       const b = readFileSync(join(dir, 'b', key, name))
       expect(sha256(b), name).toBe(sha256(a))

@@ -3105,6 +3105,7 @@ export const de: Messages = {
   'remote.protocolTitle': 'Zum Fortfahren neu laden',
   'remote.protocolBody':
     'Diese Seite und der Desktop sprechen unterschiedliche Protokollversionen. Ein Neuladen holt die passende Version.',
+  'mobile.topbar.untitledSession': 'Neue Sitzung',
   'remote.buildMismatchTitle': 'Auf dem Desktop läuft ein anderer Build',
   'remote.buildMismatchBody':
     'Diese Seite stammt aus einem anderen Build, als der Desktop ausführt. Öffne den passenden, damit sich beide Seiten gleich verhalten.',

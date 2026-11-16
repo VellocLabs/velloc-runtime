@@ -3184,6 +3184,7 @@ export const en = {
   'remote.protocolTitle': 'Reload to continue',
   'remote.protocolBody':
     'This page and the desktop speak different versions of the protocol. Reloading picks up the matching one.',
+  'mobile.topbar.untitledSession': 'New session',
   'remote.buildMismatchTitle': 'The desktop is running a different build',
   'remote.buildMismatchBody':
     'This page came from a different build than the desktop is running. Open the matching one so both sides behave the same way.',

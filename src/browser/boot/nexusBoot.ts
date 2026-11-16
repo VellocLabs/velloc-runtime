@@ -949,7 +949,7 @@ export async function nexusBootAndRender(
   // Start the React + shell chunk imports now, in parallel with prepareNexusBoot's IPC waits.
   const reactPromise = import('react')
   const reactDomPromise = import('react-dom/client')
-  const shellPromise = import('../webview/MultiSessionShell')
+  const shellPromise = import('../webview/MultiSessionShell').then(m => m.MultiSessionShell)
   // Same reasoning, same moment: the catalog is a network fetch the first
   // render depends on, so start it here and let it overlap the imports and
   // the IPC waits rather than paying for it serially before render.

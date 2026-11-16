@@ -67,6 +67,11 @@ const ALLOWLIST: Record<string, Row> = {
     kind: 'client',
     why: "the pairing a listener link gave THIS device, so the bare address works again later; who this device is to one desktop, re-checked by the runtime on every connection",
   },
+  'browser/boot/mobileEntry.ts': {
+    keys: ['nexus.remoteShell'],
+    kind: 'view',
+    why: "which shell THIS device boots on the remote page (phone or desktop), when its person chose one; another device decides for itself",
+  },
   'browser/webview/remote/appInstall.ts': {
     keys: ['nexus.remoteInstallTip'],
     kind: 'view',

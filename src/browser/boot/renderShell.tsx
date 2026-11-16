@@ -1,13 +1,15 @@
 /**
- * The single place a prepared boot becomes `<MultiSessionShell />`, for both the desktop and the
- * remote path (F-24); desktop-only steps come in through `extras`. Await order: React, react-dom and
+ * The single place a prepared boot becomes a shell — `<MultiSessionShell />`, or the phone shell on
+ * the remote path's mobile entry (F-24); desktop-only steps come in through `extras`. Await order: React, react-dom and
  * the shell chunk, then the locale catalog (bounded), then createRoot + render.
  */
 
+import type { ComponentType } from 'react'
 import type { AgentRuntimeWorkerInitPayload } from '../worker/workerProtocol'
 import type { BrowserBridgeTransport } from '../bridge/browserBridgeProtocol'
 import type { BrowserWorkerClientTransport } from '../webview/BrowserRuntimeClient'
 import type { DrivenDesktop } from '../webview/remote/hostIdentity'
+import type { MultiSessionShellProps } from '../webview/MultiSessionShell'
 import type {
   RuntimeConnection,
   RuntimeFileAccess,
@@ -17,6 +19,9 @@ import type {
   ShellChannel,
 } from '../runtimeClient'
 
+/** A shell `renderShell` can mount: it takes the desktop shell's props and may ignore any. */
+export type ShellComponent = ComponentType<MultiSessionShellProps>
+
 /**
  * Everything `renderShell` needs that is NOT the JSX props themselves — the
  * in-flight imports the caller started at the top of boot.
@@ -24,7 +29,7 @@ import type {
 export type ShellBootFetches = {
   reactPromise: Promise<typeof import('react')>
   reactDomPromise: Promise<typeof import('react-dom/client')>
-  shellPromise: Promise<typeof import('../webview/MultiSessionShell')>
+  shellPromise: Promise<ShellComponent>
   /** Resolves when the active locale's catalog is installed (or its fallback
    *  attempt finished). renderShell races it against the deadline below. */
   localePromise: Promise<void>
@@ -96,7 +101,7 @@ export async function renderShell(
   const root = createRoot(container)
   markBoot('createRootDoneMs')
 
-  const { MultiSessionShell } = await fetches.shellPromise
+  const Shell = await fetches.shellPromise
   markBoot('shellImportResolvedMs')
 
   // The catalog must be installed BEFORE the first render, or a non-English
@@ -120,7 +125,7 @@ export async function renderShell(
     React.createElement(
       I18nProvider,
       { locale: ctx.initPayload.locale },
-      React.createElement(MultiSessionShell, {
+      React.createElement(Shell, {
         createWorkerTransport: ctx.createWorkerTransport,
         hostBridgeTransport: ctx.transport,
         files: ctx.files,

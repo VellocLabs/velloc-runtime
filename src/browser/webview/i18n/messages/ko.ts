@@ -3019,6 +3019,7 @@ export const ko: Messages = {
   'remote.protocolTitle': '계속하려면 새로고침하세요',
   'remote.protocolBody':
     '이 페이지와 데스크톱이 서로 다른 버전의 프로토콜을 사용합니다. 새로고침하면 일치하는 버전을 가져옵니다.',
+  'mobile.topbar.untitledSession': '새 세션',
   'remote.buildMismatchTitle': '데스크톱이 다른 빌드를 실행 중입니다',
   'remote.buildMismatchBody':
     '이 페이지는 데스크톱이 실행 중인 빌드와 다른 빌드에서 왔습니다. 양쪽이 동일하게 동작하도록 일치하는 빌드를 열어 주세요.',

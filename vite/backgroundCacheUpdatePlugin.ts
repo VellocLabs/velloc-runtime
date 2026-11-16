@@ -72,6 +72,8 @@ export function injectBackgroundCacheUpdatePlugin(): Plugin {
     transformIndexHtml: {
       order: 'post',
       handler(_html, ctx) {
+        // The phone entry (F-24) is a remote page: it keeps no app cache.
+        if (ctx.path.endsWith('/mobile.html')) return []
         return [backgroundCacheUpdateTag(base, ctx.bundle)]
       },
     },

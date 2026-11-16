@@ -2971,6 +2971,7 @@ export const zh: Messages = {
   'remote.protocolTitle': '刷新以继续',
   'remote.protocolBody':
     '此页面与桌面端使用不同版本的协议。刷新可获取匹配的版本。',
+  'mobile.topbar.untitledSession': '新会话',
   'remote.buildMismatchTitle': '桌面端正在运行不同的构建',
   'remote.buildMismatchBody':
     '此页面与桌面端运行的构建不同。请打开匹配的构建，确保两端行为一致。',

@@ -3031,6 +3031,7 @@ export const ja: Messages = {
   'remote.protocolTitle': '続行するには再読み込みしてください',
   'remote.protocolBody':
     'このページとデスクトップは異なるバージョンのプロトコルを使っています。再読み込みすると一致するバージョンが読み込まれます。',
+  'mobile.topbar.untitledSession': '新しいセッション',
   'remote.buildMismatchTitle': 'デスクトップは別のビルドを実行しています',
   'remote.buildMismatchBody':
     'このページはデスクトップが実行しているものとは別のビルドのものです。両側が同じように動作するよう、一致するビルドを開いてください。',

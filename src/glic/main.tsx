@@ -12,6 +12,7 @@ import {
   type RemotePairingParse,
 } from '../browser/boot/remotePairing'
 import { installGuestColorScheme } from '../browser/boot/guestColorScheme'
+import { openMobileEntryIfWanted } from '../browser/boot/mobileEntry'
 import { installChunkLoadFailureOverlay } from '../browser/boot/chunkLoadFailure'
 import { installGuestTextSize } from '../browser/boot/guestTextSize'
 import { installGuestWindowErrorLogging } from '../browser/boot/guestWindowErrors'
@@ -171,6 +172,12 @@ async function main(): Promise<void> {
   reloadOnPairingLink()
   if (remotePairing !== null) {
     if (remotePairing.ok) {
+      const leftForMobile = await openMobileEntryIfWanted({
+        win: window,
+        baseUri: document.baseURI,
+        fetch: (url, init) => fetch(url, init),
+      })
+      if (leftForMobile) return
       const { remoteBootAndRender } = await import(
         '../browser/boot/remoteBoot'
       )
