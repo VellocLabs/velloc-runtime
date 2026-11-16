@@ -99,8 +99,9 @@ export function buildMobileSessionGroups(
 const NO_IDS: ReadonlySet<string> = new Set()
 
 /**
- * The session the drawer lists first once `archivedId` is archived: the first row that is not it,
- * in the drawer's own order. `null` when nothing live is left.
+ * The first session the list holds that is not `archivedId`, in the list's order (pinned first,
+ * then by activity): where the phone goes once the session it views is archived. The drawer's
+ * title filter does not apply here. `null` when nothing live is left.
  */
 export function nextLiveSessionId(
   sessions: readonly MobileListSession[],
