@@ -564,17 +564,19 @@ export const ReviewReportCard: FC<{
           })}</ul>}
           {running && repairNote && <p data-testid="review-repair-unavailable" className="text-xs text-muted-foreground">{t('reviewCard.repairUnavailable')}</p>}
         </>}
-        {!reviewing && (report.unverified?.length ?? 0) > 0 && <details data-testid="review-unverified" className="group/fold rounded-lg border border-dashed px-3 py-2 text-xs">
+        {!reviewing && (report.unverified?.length ?? 0) > 0 && <details data-testid="review-unverified" className="group/fold text-xs">
           <FoldSummary>{t('reviewCard.unverified')} · {report.unverified!.length}</FoldSummary>
-          <p className="mt-1 text-muted-foreground">{t('reviewCard.unverifiedNote')}</p>
-          <ul className="mt-2 space-y-2">{report.unverified!.map(item => <li key={item.id} data-testid="review-unverified-item" className="space-y-0.5">
-            <div className="flex flex-wrap items-center gap-x-2">
-              {item.impact && <Badge variant={IMPACT_VARIANT[item.impact]} size="sm">{enumText(item.impact)}</Badge>}
-              <p className="font-medium leading-snug">{item.headline}</p>
-              {item.path && <span className="ml-auto max-w-full truncate font-mono text-muted-foreground">{item.path}{item.line ? `:${item.line}` : ''}</span>}
-            </div>
-            {item.details && <p className="line-clamp-3 whitespace-pre-wrap text-muted-foreground">{item.details}</p>}
-          </li>)}</ul>
+          <div className="mt-1 space-y-2 pl-[1.125rem]">
+            <p className="text-muted-foreground">{t('reviewCard.unverifiedNote')}</p>
+            <ul className="space-y-2">{report.unverified!.map(item => <li key={item.id} data-testid="review-unverified-item" className="space-y-0.5">
+              <div className="flex flex-wrap items-center gap-x-2">
+                {item.impact && <Badge variant={IMPACT_VARIANT[item.impact]} size="sm">{enumText(item.impact)}</Badge>}
+                <p className="font-medium leading-snug">{item.headline}</p>
+                {item.path && <span className="ml-auto max-w-full truncate font-mono text-muted-foreground">{item.path}{item.line ? `:${item.line}` : ''}</span>}
+              </div>
+              {item.details && <p className="line-clamp-3 whitespace-pre-wrap text-muted-foreground">{item.details}</p>}
+            </li>)}</ul>
+          </div>
         </details>}
         {(report.verifications ?? []).map(check => <details key={check.ref} data-testid="review-verification" className="group/fold text-xs"><FoldSummary>{t('reviewCard.verify')} · {enumText(check.afterLatestEdit ? check.succeeded ? 'passed' : 'failed' : 'not-run')}</FoldSummary>{check.command && <pre className="whitespace-pre-wrap">{check.command}</pre>}{check.codeRevision && <p className="break-all">{check.codeRevision}</p>}{check.evidence.map((evidence, index) => <pre key={index} className="overflow-auto whitespace-pre-wrap">{evidence.quote}</pre>)}{check.missingCases.map((item, index) => <p key={index}>{reviewDetailMessage(t, item)}</p>)}</details>)}
         {report.publicationPreview !== undefined && <details open className="group/fold text-xs"><FoldSummary>{t('reviewCard.preview')}</FoldSummary><pre className="mt-1 whitespace-pre-wrap rounded-lg bg-muted/50 p-2">{report.publicationPreview}</pre></details>}
