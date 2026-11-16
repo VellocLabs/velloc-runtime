@@ -292,6 +292,8 @@ export class ReviewReportStore {
   private readonly listeners = new Set<(snapshot: ReportSnapshot) => void>()
   private readonly tails = new Map<string, Promise<unknown>>()
   private publicationTail: Promise<unknown> = Promise.resolve()
+  /** Excerpt text → the one copy every cached run holds; a file read by many tasks is otherwise kept once per read. */
+  private readonly excerpts = new Map<string, string>()
   private readonly id: () => string
   private readonly now: () => number
   constructor(private readonly adapter: ReportStorageAdapter, private readonly options: ReportStoreOptions) {
@@ -347,7 +349,7 @@ export class ReviewReportStore {
     const serialized = JSON.stringify(state)
     if (this.states.has(state.run.id) && serialized === JSON.stringify(this.states.get(state.run.id))) return
     await this.adapter.save(state.run.id, serialized)
-    this.states.set(state.run.id, state)
+    this.cache(state)
     if (this.listeners.size) {
       const snapshot = this.snapshot(state)
       for (const listener of this.listeners) {
@@ -365,7 +367,7 @@ export class ReviewReportStore {
     if (state.version !== 1 || state.run?.id !== runId || !Array.isArray(state.calls) || !Array.isArray(state.publications)) return fail('invalid-storage')
     // A run released by `releaseSettled` reloads exactly as saved: nothing to restore, no write, no change event.
     if (this.atRest(state)) {
-      this.states.set(runId, state)
+      this.cache(state)
       return state
     }
     if (!terminal(state.run.progress.status)) {
@@ -399,7 +401,30 @@ export class ReviewReportStore {
       this.states.delete(runId)
       released++
     }
+    if (released) this.compactExcerpts()
     return released
+  }
+  /** Caches `state` with each source excerpt replaced by the store's copy of equal text. */
+  private cache(state: RunState): void {
+    for (const source of state.evidenceSources ?? []) {
+      if (source.excerpt === undefined) continue
+      const held = this.excerpts.get(source.excerpt)
+      if (held === undefined) this.excerpts.set(source.excerpt, source.excerpt)
+      else source.excerpt = held
+    }
+    this.states.set(state.run.id, state)
+  }
+  /** Forgets excerpt text no cached run holds. */
+  private compactExcerpts(): void {
+    const held = new Set<string>()
+    for (const state of this.states.values()) {
+      for (const source of state.evidenceSources ?? []) if (source.excerpt !== undefined) held.add(source.excerpt)
+    }
+    for (const text of this.excerpts.keys()) if (!held.has(text)) this.excerpts.delete(text)
+  }
+  /** Number of distinct excerpt texts held (tests). */
+  get excerptCount(): number {
+    return this.excerpts.size
   }
   /** Ended, with no unexpired grant, action phase or pending publication: storage holds all of it and a reload restores nothing. */
   private atRest(state: RunState): boolean {

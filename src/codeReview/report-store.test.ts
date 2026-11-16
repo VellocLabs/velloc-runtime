@@ -615,6 +615,31 @@ describe('review report store', () => {
     await expect(store.assertActionAuthorized(runId, grantId, 'repair', diagnosticIds, ['src/a.ts'])).rejects.toThrow('action-not-authorized')
   })
 
+  it('holds one copy of each excerpt text across reads and runs, and forgets it with the released runs', async () => {
+    const { store, run, data } = fixture()
+    const saved = (id: string) => (JSON.parse(data.get(id)!) as { evidenceSources: Array<{ excerpt: string }> }).evidenceSources.map(source => source.excerpt)
+    const guide = 'Read the guide first.\nThen change the code.'
+    const first = await run()
+    const second = await run()
+    await store.registerEvidenceSources(first.id, [
+      { path: 'AGENTS.md', revision: 'r1', toolCallKey: 'finder-1', excerpt: guide },
+      { path: 'AGENTS.md', revision: 'r1', toolCallKey: 'finder-2', excerpt: guide },
+      { path: 'src/b.ts', revision: 'head', toolCallKey: 'finder-1', excerpt: 'other text' },
+    ])
+    await store.registerEvidenceSource(second.id, { path: 'AGENTS.md', revision: 'r1', toolCallKey: 'verifier-1', excerpt: guide })
+    expect(store.excerptCount, 'four reads of two texts').toBe(2)
+    expect(saved(first.id)).toEqual([guide, guide, 'other text'])
+
+    await store.finish(first.id, 'finished')
+    expect(store.releaseSettled(runId => runId === first.id)).toBe(1)
+    expect(store.excerptCount, 'the second run still holds the guide').toBe(1)
+    await store.finish(second.id, 'finished')
+    expect(store.releaseSettled(() => true)).toBe(1)
+    expect(store.excerptCount).toBe(0)
+    expect(saved(first.id), 'storage holds every read').toEqual([guide, guide, 'other text'])
+    expect((await store.getSnapshot(first.id)).run.id).toBe(first.id)
+  })
+
   it('releases an ended run once its grants have expired, and reloads it without a write', async () => {
     let now = 100
     let id = 0
