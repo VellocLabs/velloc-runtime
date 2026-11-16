@@ -100,15 +100,23 @@ export function openingPromptText(openingRows: readonly Message[]): string | und
 /**
  * The prompt a fork's transcript recorded: the opening rows after its header
  * (the header's `openingRows` count, else the rows before the first assistant
- * row). Undefined when the transcript holds none.
+ * row). Undefined when the transcript holds none, or fewer rows than its header
+ * counts: a partial prompt is not the prompt the fork ran.
  */
 export function recordedForkPrompt(entries: readonly SidechainEntry[]): string | undefined {
   const at = entries.findIndex(isSidechainMetadata)
   if (at === -1) return undefined
   const header = entries[at] as SidechainMetadata
-  const rows = entries.slice(at + 1).filter((entry): entry is Message => !isSidechainMetadata(entry))
-  const count = header.openingRows ?? rows.findIndex(row => (row as { type?: string }).type === 'assistant')
-  return openingPromptText(count === -1 ? rows : rows.slice(0, count))
+  const end = entries.findIndex((entry, index) => index > at && (entry as { type?: string }).type === 'assistant')
+  const limit = header.openingRows
+  const rows: Message[] = []
+  for (let index = at + 1; index < (end === -1 ? entries.length : end); index++) {
+    if (limit !== undefined && rows.length >= limit) break
+    const entry = entries[index]!
+    if (!isSidechainMetadata(entry)) rows.push(entry)
+  }
+  if (limit !== undefined && rows.length < limit) return undefined
+  return openingPromptText(rows)
 }
 
 /**

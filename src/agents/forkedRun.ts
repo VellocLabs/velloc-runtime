@@ -403,6 +403,41 @@ export async function launchFork(
     offRecord !== true
   const promptRows = params.recordedOpeningRows ?? openingRows
 
+  const recordEntry = async (entry: SidechainEntry): Promise<boolean> => {
+    if (!shouldRecord || !sidechainStore || !spawnerSessionId) return false
+    try {
+      await sidechainStore.append(spawnerSessionId, agentId, entry)
+      return true
+    } catch {
+      return false
+    }
+  }
+
+  // Contract: `promptRecorded` reports opening rows that reached the transcript, not the intent to write them.
+  let promptRecorded = false
+  if (shouldRecord) {
+    const parentTail = forkContextMessages[forkContextMessages.length - 1] as
+      | (Message & { uuid?: string })
+      | undefined
+    const metadata: SidechainMetadata = {
+      type: '__sidechain_meta',
+      agentId,
+      spawnerSessionId: spawnerSessionId!,
+      forkLabel,
+      startedAt: Date.now(),
+      model: isolatedToolUseContext.options.mainLoopModel,
+      parentUuid: parentTail?.uuid,
+      agentType,
+      description,
+      modelSource,
+      openingRows: promptRows.length,
+    }
+    promptRecorded = await recordEntry(metadata)
+    for (const promptMessage of promptRows) {
+      promptRecorded = (await recordEntry(promptMessage)) && promptRecorded
+    }
+  }
+
   notifyForkStarted({
     agentId,
     spawnerSessionId,
@@ -413,45 +448,14 @@ export async function launchFork(
     model: isolatedToolUseContext.options.mainLoopModel,
     prompt: openingPromptText(promptRows),
     systemPrompt: serializeSystemPromptForDisplay(forkSystemPrompt),
-    promptRecorded: shouldRecord,
+    promptRecorded,
     startedAt: Date.now(),
     abort: () => isolatedToolUseContext.cancelSource.abort(),
   })
 
-  const recordEntry = async (entry: SidechainEntry): Promise<void> => {
-    if (!shouldRecord || !sidechainStore || !spawnerSessionId) return
-    try {
-      await sidechainStore.append(spawnerSessionId, agentId, entry)
-    } catch {
-    }
-  }
-
   const outputMessages: Message[] = []
 
   try {
-    if (shouldRecord) {
-      const parentTail = forkContextMessages[forkContextMessages.length - 1] as
-        | (Message & { uuid?: string })
-        | undefined
-      const metadata: SidechainMetadata = {
-        type: '__sidechain_meta',
-        agentId,
-        spawnerSessionId: spawnerSessionId!,
-        forkLabel,
-        startedAt: Date.now(),
-        model: isolatedToolUseContext.options.mainLoopModel,
-        parentUuid: parentTail?.uuid,
-        agentType,
-        description,
-        modelSource,
-        openingRows: promptRows.length,
-      }
-      await recordEntry(metadata)
-      for (const promptMessage of promptRows) {
-        await recordEntry(promptMessage)
-      }
-    }
-
     if (!params.skipStartHooks && SUBAGENT_START_QUERY_SOURCES.has(querySource)) {
       const startRows = await runSubagentStartHooks(agentId, agentType, toolUseContext)
       for (const row of startRows) {

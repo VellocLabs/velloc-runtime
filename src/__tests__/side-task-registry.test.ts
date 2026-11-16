@@ -472,6 +472,13 @@ describe('side-task registry — a finished review fork reads its prompt from it
     expect(recordedForkPrompt([uncounted, ...rows])).toBe(`${PROMPT}\na start hook note`)
     expect(recordedForkPrompt(rows)).toBeUndefined()
   })
+
+  it('a counted prompt that lost a row reads as no prompt, never as reply text', () => {
+    const [header, promptRow] = transcript
+    const twoRows = { ...(header as SidechainMetadata), openingRows: 2 }
+    expect(recordedForkPrompt([twoRows, promptRow!, ASSISTANT_MSG as unknown as Message])).toBeUndefined()
+    expect(recordedForkPrompt([header!, ASSISTANT_MSG as unknown as Message, transcript[2]!])).toBeUndefined()
+  })
 })
 
 // ============================================================================
@@ -968,6 +975,30 @@ describe('launchFork — sink lifecycle', () => {
     await launchFork({ ...forkParams(), recordedOpeningRows: recorded, skipStartHooks: true } as never)
     expect(log.started[0]!.prompt).toBe('material omitted')
     expect(JSON.stringify(queryMock.mock.calls.at(-1)![0].messages)).toContain('do the research')
+  })
+
+  it('flags a review fork prompt as recorded only when its rows reached the transcript', async () => {
+    queryMock.mockImplementation((async function* () {
+      yield ASSISTANT_MSG
+    }) as never)
+    const store = (append: () => Promise<void>) => ({
+      append, load: async () => [], loadMetadata: async () => null, list: async () => [],
+      delete: async () => {}, loadChain: async () => [],
+    }) as never
+    const recorded = recordingSink()
+    await launchFork({
+      ...(forkParams() as object), forkLabel: REVIEW_FORK_LABEL,
+      sidechainStore: store(async () => {}), spawnerSessionId: 'P-1', skipStartHooks: true,
+    } as never)
+    expect(recorded.started[0]?.promptRecorded).toBe(true)
+
+    const failed = recordingSink()
+    await launchFork({
+      ...(forkParams() as object), forkLabel: REVIEW_FORK_LABEL,
+      sidechainStore: store(async () => { throw new Error('disk full') }), spawnerSessionId: 'P-1', skipStartHooks: true,
+    } as never)
+    expect(failed.started[0]?.promptRecorded, 'nothing reached the transcript').toBe(false)
+    expect(failed.started[0]?.prompt).toBe('do the research')
   })
 
   it('announces an error finish and rethrows when the query loop throws', async () => {
