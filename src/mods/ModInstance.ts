@@ -16,6 +16,7 @@ import {
 } from './ModDispatcher'
 import { refusedStream as refusedCallStream, type ChainStream, type DispatchedStream, type StreamCatchCall, type StreamHookCall } from './streamChain'
 import {
+  settledFrameOf,
   HOOK_BUDGET,
   callRateError,
   type DispatchContext,
@@ -443,11 +444,7 @@ export class ModInstance {
    *  Not the dispatch's call count: a timer may outlive it by any number of
    *  calls. */
   private keepSettledFrame(invocationId: string, context: DispatchContext): void {
-    const { calls: _calls, frames, ...frame } = context
-    // Security: only the hook itself is still its own frame; the hooks that
-    // were pending above it have settled and run again.
-    const own = frames && frames.length > 0 ? { frames: frames.slice(-1) } : {}
-    this.settled.set(invocationId, { ...frame, ...own })
+    this.settled.set(invocationId, settledFrameOf(context))
     if (this.settled.size > SETTLED_FRAMES_KEPT) this.settled.delete(this.settled.keys().next().value!)
   }
 

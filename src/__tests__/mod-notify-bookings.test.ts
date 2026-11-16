@@ -29,7 +29,7 @@ describe('ModNotifyBookings', () => {
   it('fires a delayMs booking at its due time, not before, and once', async () => {
     vi.useFakeTimers()
     const { held, fired } = bookings()
-    held.book('ci', notice('later'), { delayMs: 5_000 }, {}, ROOT_DISPATCH_CONTEXT)
+    held.book({ plugin: 'ci' }, notice('later'), { delayMs: 5_000 }, {}, ROOT_DISPATCH_CONTEXT)
     await vi.advanceTimersByTimeAsync(4_999)
     expect(fired).toEqual([])
     await vi.advanceTimersByTimeAsync(1)
@@ -42,8 +42,8 @@ describe('ModNotifyBookings', () => {
   it('fires an at booking when the clock reads at; one in the past fires at once', async () => {
     vi.useFakeTimers()
     const { held, fired } = bookings(() => 10_000)
-    held.book('ci', notice('at'), { at: 12_000 }, {}, ROOT_DISPATCH_CONTEXT)
-    held.book('ci', notice('past'), { at: 5_000 }, {}, ROOT_DISPATCH_CONTEXT)
+    held.book({ plugin: 'ci' }, notice('at'), { at: 12_000 }, {}, ROOT_DISPATCH_CONTEXT)
+    held.book({ plugin: 'ci' }, notice('past'), { at: 5_000 }, {}, ROOT_DISPATCH_CONTEXT)
     await vi.advanceTimersByTimeAsync(0)
     expect(fired.map(f => f.notice.message)).toEqual(['past'])
     await vi.advanceTimersByTimeAsync(2_000)
@@ -53,8 +53,8 @@ describe('ModNotifyBookings', () => {
   it('cancel drops a booking before it is due and reports false after it fired or for another plugin', async () => {
     vi.useFakeTimers()
     const { held, fired } = bookings()
-    held.book('ci', notice('a'), { delayMs: 1_000 }, { key: 'a' }, ROOT_DISPATCH_CONTEXT)
-    held.book('ci', notice('b'), { delayMs: 1_000 }, { key: 'b' }, ROOT_DISPATCH_CONTEXT)
+    held.book({ plugin: 'ci' }, notice('a'), { delayMs: 1_000 }, { key: 'a' }, ROOT_DISPATCH_CONTEXT)
+    held.book({ plugin: 'ci' }, notice('b'), { delayMs: 1_000 }, { key: 'b' }, ROOT_DISPATCH_CONTEXT)
     expect(held.cancel('other', 'a')).toBe(false)
     expect(held.cancel('ci', 'a')).toBe(true)
     expect(held.cancel('ci', 'a')).toBe(false)
@@ -66,8 +66,8 @@ describe('ModNotifyBookings', () => {
   it('a second booking under the same key replaces the first', async () => {
     vi.useFakeTimers()
     const { held, fired } = bookings()
-    held.book('ci', notice('first'), { delayMs: 1_000 }, { key: 'k' }, ROOT_DISPATCH_CONTEXT)
-    held.book('ci', notice('second'), { delayMs: 2_000 }, { key: 'k' }, ROOT_DISPATCH_CONTEXT)
+    held.book({ plugin: 'ci' }, notice('first'), { delayMs: 1_000 }, { key: 'k' }, ROOT_DISPATCH_CONTEXT)
+    held.book({ plugin: 'ci' }, notice('second'), { delayMs: 2_000 }, { key: 'k' }, ROOT_DISPATCH_CONTEXT)
     await vi.advanceTimersByTimeAsync(5_000)
     expect(fired.map(f => f.notice.message)).toEqual(['second'])
   })
@@ -75,21 +75,21 @@ describe('ModNotifyBookings', () => {
   it('personBack drops untilBack bookings only', async () => {
     vi.useFakeTimers()
     const { held, fired } = bookings()
-    held.book('ci', notice('nag'), { delayMs: 1_000 }, { untilBack: true }, ROOT_DISPATCH_CONTEXT)
-    held.book('ci', notice('keep'), { delayMs: 1_000 }, {}, ROOT_DISPATCH_CONTEXT)
+    held.book({ plugin: 'ci' }, notice('nag'), { delayMs: 1_000 }, { untilBack: true }, ROOT_DISPATCH_CONTEXT)
+    held.book({ plugin: 'ci' }, notice('keep'), { delayMs: 1_000 }, {}, ROOT_DISPATCH_CONTEXT)
     const mark = held.personRunBegins()
-    held.book('ci', notice('made during the run'), { delayMs: 1_000 }, { untilBack: true }, ROOT_DISPATCH_CONTEXT)
+    held.book({ plugin: 'ci' }, notice('made during the run'), { delayMs: 1_000 }, { untilBack: true }, ROOT_DISPATCH_CONTEXT)
     held.personBack(mark)
     await vi.advanceTimersByTimeAsync(1_000)
     expect(fired.map(f => f.notice.message)).toEqual(['keep', 'made during the run'])
   })
 
-  it('dropPlugin and clear leave no timer behind', async () => {
+  it('dropSeat and clear leave no timer behind', async () => {
     vi.useFakeTimers()
     const { held, fired } = bookings()
-    held.book('ci', notice('ci'), { delayMs: MAX_NOTIFY_DELAY_MS }, {}, ROOT_DISPATCH_CONTEXT)
-    held.book('other', notice('other'), { delayMs: MAX_NOTIFY_DELAY_MS }, {}, ROOT_DISPATCH_CONTEXT)
-    held.dropPlugin('ci')
+    held.book({ plugin: 'ci' }, notice('ci'), { delayMs: MAX_NOTIFY_DELAY_MS }, {}, ROOT_DISPATCH_CONTEXT)
+    held.book({ plugin: 'other' }, notice('other'), { delayMs: MAX_NOTIFY_DELAY_MS }, {}, ROOT_DISPATCH_CONTEXT)
+    held.dropSeat('ci')
     expect(held.size).toBe(1)
     held.clear()
     expect(held.size).toBe(0)
@@ -102,17 +102,27 @@ describe('ModNotifyBookings', () => {
     vi.useFakeTimers()
     const { held, fired } = bookings()
     const context: DispatchContext = { origin: ROOT_DISPATCH_CONTEXT.origin, depth: 2, frames: ['above', 'mine'], skipPlugin: 'x' }
-    held.book('ci', notice('n'), { delayMs: 1 }, {}, context)
+    held.book({ plugin: 'ci' }, notice('n'), { delayMs: 1 }, {}, context)
     await vi.advanceTimersByTimeAsync(1)
-    expect(fired[0]!.context).toEqual({ origin: ROOT_DISPATCH_CONTEXT.origin, depth: 2, frames: ['mine'] })
+    expect(fired[0]!.context).toEqual({ origin: ROOT_DISPATCH_CONTEXT.origin, depth: 2, frames: ['mine'], skipPlugin: 'x' })
+  })
+
+  it("dropSeat takes only that module's bookings when one plugin has two modules", async () => {
+    vi.useFakeTimers()
+    const { held, fired } = bookings()
+    held.book({ plugin: 'ci', seat: 'ci#1' }, notice('one'), { delayMs: 1_000 }, {}, ROOT_DISPATCH_CONTEXT)
+    held.book({ plugin: 'ci', seat: 'ci#2' }, notice('two'), { delayMs: 1_000 }, {}, ROOT_DISPATCH_CONTEXT)
+    held.dropSeat('ci#1')
+    await vi.advanceTimersByTimeAsync(1_000)
+    expect(fired.map(f => f.notice.message)).toEqual(['two'])
   })
 
   it(`refuses a booking past ${MAX_NOTIFY_BOOKINGS_PER_PLUGIN} held for one plugin`, () => {
     vi.useFakeTimers()
     const { held } = bookings()
-    for (let i = 0; i < MAX_NOTIFY_BOOKINGS_PER_PLUGIN; i++) held.book('ci', notice(`n${i}`), { delayMs: 1_000 }, {}, ROOT_DISPATCH_CONTEXT)
-    expect(() => held.book('ci', notice('over'), { delayMs: 1_000 }, {}, ROOT_DISPATCH_CONTEXT)).toThrow(RangeError)
-    expect(() => held.book('other', notice('fine'), { delayMs: 1_000 }, {}, ROOT_DISPATCH_CONTEXT)).not.toThrow()
+    for (let i = 0; i < MAX_NOTIFY_BOOKINGS_PER_PLUGIN; i++) held.book({ plugin: 'ci' }, notice(`n${i}`), { delayMs: 1_000 }, {}, ROOT_DISPATCH_CONTEXT)
+    expect(() => held.book({ plugin: 'ci' }, notice('over'), { delayMs: 1_000 }, {}, ROOT_DISPATCH_CONTEXT)).toThrow(RangeError)
+    expect(() => held.book({ plugin: 'other' }, notice('fine'), { delayMs: 1_000 }, {}, ROOT_DISPATCH_CONTEXT)).not.toThrow()
   })
 })
 
@@ -208,6 +218,31 @@ describe('$.ui.notify bookings in the runtime', () => {
     await runtime.end('other')
     await vi.advanceTimersByTimeAsync(60_000)
     expect(heard).toEqual([])
+  })
+
+  it('a booking that falls due during a /clear session.end runs once it has finished', async () => {
+    const SLOW_END = `
+      export function register(on) {
+        on('session.end', async ($, e, next) => {
+          await new Promise(resolve => setTimeout(resolve, 2000));
+          return next(e);
+        });
+        on('prompt.submit', async ($, e, next) => {
+          await $.ui.notify('soon', { delayMs: 500 });
+          return next(e);
+        });
+      }
+    `
+    const { runtime, heard } = world({ ci: SLOW_END })
+    await runtime.ready
+    vi.useFakeTimers()
+    await runtime.promptSubmit('book')
+    const ending = runtime.sessionEnd('clear')
+    await vi.advanceTimersByTimeAsync(1_000)
+    expect(heard).toEqual([])
+    await vi.advanceTimersByTimeAsync(1_000)
+    await ending
+    expect(heard).toEqual(['soon'])
   })
 
   it('a /clear keeps the bookings, as it keeps the modules', async () => {

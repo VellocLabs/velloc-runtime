@@ -101,10 +101,10 @@ function named(name: string, message: string): Error {
 
 /** Whether an answer is the one the request wanted: a copy that took, a
  *  move that was not denied. Another page may still succeed where one
- *  failed (a remote page's clipboard, the window that shows the pane). */
-function succeeded(answer: ModPageAnswer): boolean {
+ *  failed (a remote page's clipboard, the window that shows the pane). A
+ *  selection is never settled here (`newerSelection`). */
+function succeeded(answer: Exclude<ModPageAnswer, { op: 'selection' }>): boolean {
   if (answer.op === 'copy') return answer.isCopied
-  if (answer.op === 'selection') return false
   return answer.deny === undefined
 }
 
@@ -138,7 +138,14 @@ function isMeasured(value: unknown): value is ModScrollMeasured {
 export class ModPageBridge {
   private readonly pending = new Map<
     string,
-    { op: ModPageAsk['op']; settle: (answer: ModPageAnswer | null) => void; failed?: ModPageAnswer; grace?: ReturnType<typeof setTimeout> }
+    {
+      op: ModPageAsk['op']
+      settle: (answer: ModPageAnswer | null) => void
+      /** The answer to settle with when the grace or the timeout ends: the
+       *  first failure, or the newest selection so far. */
+      held?: ModPageAnswer
+      grace?: ReturnType<typeof setTimeout>
+    }
   >()
   private next = 0
   private disposed = false
@@ -172,7 +179,7 @@ export class ModPageBridge {
         abort()
         return
       }
-      const timer = setTimeout(() => done(this.pending.get(requestId)?.failed ?? null), this.timeoutMs)
+      const timer = setTimeout(() => done(this.pending.get(requestId)?.held ?? null), this.timeoutMs)
       signal?.addEventListener('abort', abort, { once: true })
       this.pending.set(requestId, { op: request.op, settle: done })
       try {
@@ -192,16 +199,16 @@ export class ModPageBridge {
       return false
     }
     if (answer.op === 'selection') {
-      if (waiting.failed === undefined || newerSelection(answer, waiting.failed)) waiting.failed = answer
-      waiting.grace ??= setTimeout(() => waiting.settle(waiting.failed ?? null), this.graceMs)
+      if (waiting.held === undefined || newerSelection(answer, waiting.held)) waiting.held = answer
+      waiting.grace ??= setTimeout(() => waiting.settle(waiting.held ?? null), this.graceMs)
       return true
     }
     if (succeeded(answer)) {
       waiting.settle(answer)
       return true
     }
-    if (waiting.failed === undefined) {
-      waiting.failed = answer
+    if (waiting.held === undefined) {
+      waiting.held = answer
       waiting.grace = setTimeout(() => waiting.settle(answer), this.graceMs)
     }
     return true

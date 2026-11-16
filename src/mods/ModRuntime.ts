@@ -379,6 +379,8 @@ export class ModRuntime extends ModUiSurface implements TurnExtensions {
   /** `session.end` is running: its one short bound is not paused, so a
    *  question is refused rather than cut off. */
   private ending = false
+  /** Settles when the `session.end` in progress has finished. */
+  private endingDone: Promise<void> = Promise.resolve()
   /** The clients attached to the session (`session.attach`), by id, in the
    *  order they attached. */
   private readonly roster = new Map<string, ModRosterClient>()
@@ -425,7 +427,6 @@ export class ModRuntime extends ModUiSurface implements TurnExtensions {
 
   protected override pluginGone(plugin: string): void {
     super.pluginGone(plugin)
-    this.bookings?.dropPlugin(plugin)
     if (!this.painters.delete(plugin) || !this.composer) return
     void this.composer.paint({ plugin, decorations: [] }).catch(() => {
       // No page answered: no box holds the runs.
@@ -495,7 +496,14 @@ export class ModRuntime extends ModUiSurface implements TurnExtensions {
       if (this.ending || this.disposed || !sessionNotifications) return
       await sessionNotifications.runHooks(notice, context)
     }
-    this.bookings = sessionNotifications ? new ModNotifyBookings(runNotice, line => options.report(line)) : undefined
+    // A booking that falls due while `session.end` runs waits for it: a
+    // `/clear` keeps the slot and its bookings.
+    const runBooked = async (notice: ModNotice, context: DispatchContext): Promise<void> => {
+      await this.endingDone
+      if (this.disposed || !sessionNotifications) return
+      await sessionNotifications.runHooks(notice, context)
+    }
+    this.bookings = sessionNotifications ? new ModNotifyBookings(runBooked, line => options.report(line)) : undefined
     const notifications: ModNotifyHost | undefined = sessionNotifications
       ? { runHooks: runNotice, ...(this.bookings ? { bookings: this.bookings } : {}) }
       : undefined
@@ -735,6 +743,7 @@ export class ModRuntime extends ModUiSurface implements TurnExtensions {
       loaded.instance.dispose()
       loaded.worker.close()
     }
+    this.bookings?.dropSeat(seat.key)
     this.dispatcher.unregister(seat.key)
     this.commands.unregisterSeat(seat.key)
     this.dropNouns(seat)
@@ -901,6 +910,7 @@ export class ModRuntime extends ModUiSurface implements TurnExtensions {
           loaded.instance.dispose({ keepSeat: true })
           loaded.worker.close()
         }
+        this.bookings?.dropSeat(seat.key)
         if (seat.timer !== undefined) {
           clearTimeout(seat.timer)
           seat.timer = undefined
@@ -1381,6 +1391,7 @@ export class ModRuntime extends ModUiSurface implements TurnExtensions {
       loaded.instance.dispose()
       loaded.worker.close()
     }
+    this.bookings?.dropSeat(seat.key)
     this.dispatcher.unregister(seat.key)
     this.commands.unregisterSeat(seat.key)
     this.dropNouns(seat)
@@ -1499,6 +1510,7 @@ export class ModRuntime extends ModUiSurface implements TurnExtensions {
     seat.lostGeneration = seat.generation
     loaded.instance.dispose({ keepSeat: true })
     loaded.worker.close()
+    this.bookings?.dropSeat(seat.key)
     // "A removed one's commands disappear"; the restart's `session.start`
     // registers them again. Its status line and notices go the same way.
     this.commands.unregisterSeat(seat.key)
@@ -2296,6 +2308,10 @@ export class ModRuntime extends ModUiSurface implements TurnExtensions {
     const startedAt = Date.now()
     const timer = setTimeout(() => controller.abort(), timeoutMs)
     this.ending = true
+    let ended!: () => void
+    this.endingDone = new Promise<void>(resolve => {
+      ended = resolve
+    })
     try {
       if (this.dispatcher.hasHooksFor('session.end')) {
         const sessionId = this.options.session.id()
@@ -2341,6 +2357,7 @@ export class ModRuntime extends ModUiSurface implements TurnExtensions {
       )
     } finally {
       this.ending = false
+      ended()
       clearTimeout(timer)
     }
   }

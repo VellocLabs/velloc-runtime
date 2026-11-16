@@ -265,3 +265,13 @@ export const ROOT_DISPATCH_CONTEXT: DispatchContext = Object.freeze({
   origin: ENGINE_ORIGIN,
   depth: 0,
 })
+
+/** The context a `$` call made past its hook runs under: the hook's depth
+ *  and recursion skip, without the dispatch's call count (a timer may
+ *  outlive it by any number of calls). */
+export function settledFrameOf(context: DispatchContext): DispatchContext {
+  const { calls: _calls, frames, ...frame } = context
+  // Security: only the hook itself is still its own frame; the hooks that
+  // were pending above it have settled and run again.
+  return { ...frame, ...(frames && frames.length > 0 ? { frames: frames.slice(-1) } : {}) }
+}

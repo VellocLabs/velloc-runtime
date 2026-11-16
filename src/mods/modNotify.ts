@@ -6,7 +6,7 @@
  * Both are raised as events: a hook above may rewrite, `{ deny }` or answer.
  */
 
-import type { DispatchContext } from './modTypes'
+import { settledFrameOf, type DispatchContext } from './modTypes'
 
 /** The event's `e`: `title` the plugin's name when left out or empty;
  *  `key` names the notification within the plugin; `delayMs` / `at` book it
@@ -57,6 +57,8 @@ export type ModNotifyHost = {
 
 type Booking = {
   plugin: string
+  /** The module that booked it; it goes with that module's instance. */
+  seat: string
   key?: string
   untilBack: boolean
   /** The person runs begun before it was booked. */
@@ -68,7 +70,7 @@ type Booking = {
  * The booked notices of one session slot, in memory only (F-25). Each fires
  * once, at its due time, through `fire`. A plugin holds at most one booking
  * per `key`: a new one replaces it. A booking lives no longer than the
- * module instance that made it (`dropPlugin`) or the slot (`clear`); an app
+ * module instance that made it (`dropSeat`) or the slot (`clear`); an app
  * restart loses every booking.
  */
 export class ModNotifyBookings {
@@ -85,12 +87,13 @@ export class ModNotifyBookings {
    *  context kept is the caller's own frame, as for any `$` call made past
    *  its hook. */
   book(
-    plugin: string,
+    caller: { plugin: string; seat?: string },
     notice: ModNotice,
     when: { delayMs?: number; at?: number },
     options: { key?: string; untilBack?: boolean },
     context: DispatchContext,
   ): void {
+    const { plugin } = caller
     if (options.key !== undefined) this.cancel(plugin, options.key)
     let mine = 0
     for (const booking of this.held) if (booking.plugin === plugin) mine++
@@ -98,13 +101,10 @@ export class ModNotifyBookings {
       throw new RangeError(`$.ui.notify: ${MAX_NOTIFY_BOOKINGS_PER_PLUGIN} notifications are already booked`)
     }
     const wait = when.delayMs ?? Math.max(0, (when.at ?? 0) - this.now())
-    const kept: DispatchContext = {
-      origin: context.origin,
-      depth: context.depth,
-      ...(context.frames && context.frames.length > 0 ? { frames: context.frames.slice(-1) } : {}),
-    }
+    const kept = settledFrameOf(context)
     const booking: Booking = {
       plugin,
+      seat: caller.seat ?? plugin,
       ...(options.key !== undefined ? { key: options.key } : {}),
       untilBack: options.untilBack === true,
       runs: this.runs,
@@ -141,10 +141,10 @@ export class ModNotifyBookings {
     for (const booking of [...this.held]) if (booking.untilBack && booking.runs < mark) this.drop(booking)
   }
 
-  /** `plugin`'s module instance is gone (disabled, removed, reloaded or
-   *  lost): its bookings go with it. */
-  dropPlugin(plugin: string): void {
-    for (const booking of [...this.held]) if (booking.plugin === plugin) this.drop(booking)
+  /** The module instance in `seat` is gone (disabled, removed, refused,
+   *  reloaded or lost): its bookings go with it. */
+  dropSeat(seat: string): void {
+    for (const booking of [...this.held]) if (booking.seat === seat) this.drop(booking)
   }
 
   clear(): void {
@@ -233,7 +233,7 @@ export function isUiNotifyResult(value: unknown): value is UiNotifyResult {
  *  booking fields are read as numbers and nothing more. */
 export async function uiNotifyCore(
   e: unknown,
-  call: { plugin: string; context: DispatchContext },
+  call: { plugin: string; seat?: string; context: DispatchContext },
   host: ModNotifyHost | undefined,
 ): Promise<UiNotifyResult> {
   const fields = isRecord(e) ? e : {}
@@ -243,7 +243,7 @@ export async function uiNotifyCore(
   const at = delayMs === undefined && typeof fields.at === 'number' && Number.isFinite(fields.at) ? fields.at : undefined
   if (host?.bookings && (delayMs !== undefined || at !== undefined)) {
     host.bookings.book(
-      call.plugin,
+      { plugin: call.plugin, ...(call.seat !== undefined ? { seat: call.seat } : {}) },
       { message: text, title },
       { ...(delayMs !== undefined ? { delayMs } : {}), ...(at !== undefined ? { at } : {}) },
       {
