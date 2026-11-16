@@ -10,6 +10,11 @@ export const TURN_BOARD_TOOL_NAMES: readonly string[] = [
   'mcp__session_turn__close',
 ]
 
+/** True for a `session_turn` tool: its call is drawn by the step list and closing box, never as a transcript line (F-41). */
+export function isTurnBoardToolName(name: string): boolean {
+  return TURN_BOARD_TOOL_NAMES.includes(name)
+}
+
 export const TOOL_GROUPS = {
   // ── host file tools — split so a template can grant read-only access ──
   /** Inspect files: read contents, list, search. */

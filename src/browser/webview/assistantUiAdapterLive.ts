@@ -1,4 +1,5 @@
 import { reviewNoticeRunId } from '../../codeReview/review-protocol'
+import { isTurnBoardToolName } from '../../toolkit/builtin/toolGroups'
 import type { ThreadMessageLike } from '@assistant-ui/react'
 import type { ModelReplyRow, Message, StreamRecord, NoticeRow } from '../../runtime/RuntimeTypes'
 import {
@@ -61,6 +62,7 @@ function appendRunningToolPart(
     args?: unknown
   },
 ): void {
+  if (isTurnBoardToolName(params.toolName)) return
   const lazyDetail = shouldLazyLoadToolDetail(params.toolName)
   const args = normalizeToolArgs(params.args)
   const inlineArgs = lazyDetail

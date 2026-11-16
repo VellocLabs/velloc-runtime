@@ -1,6 +1,7 @@
 import type { ContextRow, Message } from '../../runtime/RuntimeTypes'
 import { A2UI_DELETE_SURFACE } from '../../toolkit/builtin/a2ui/a2uiToolNames'
 import { PLAN_OFF_TOOL_ID } from '../../toolkit/builtin/planExit'
+import { isTurnBoardToolName } from '../../toolkit/builtin/toolGroups'
 import { toRenderableImageUrl } from '../../utils/images/inlineImage'
 import { isImageSourceNoteText } from '../../utils/images/imageSourceNote'
 import {
@@ -113,7 +114,7 @@ export function convertAssistantBlock(
       // relocates the surface to its newest position, leaving a breadcrumb
       // behind.) The surface store / feeder read the RAW transcript, not these
       // adapter parts, so dropping delete is render-only.
-      if (toolName === A2UI_DELETE_SURFACE) {
+      if (toolName === A2UI_DELETE_SURFACE || isTurnBoardToolName(toolName)) {
         return []
       }
       const args = normalizeToolArgs(record.args)
