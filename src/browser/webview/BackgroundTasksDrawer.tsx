@@ -1025,7 +1025,7 @@ export function BackgroundTasksDrawer({
                       onClick={() => toggleCategory(group.category)}
                       data-testid={`subagent-category-${group.category}`}
                       aria-expanded={isOpen}
-                      className="flex w-full items-center gap-1.5 rounded-md px-1 py-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground outline-none transition-colors hover:bg-muted focus-visible:ring-1 focus-visible:ring-ring"
+                      className="flex w-full items-center gap-1.5 rounded-md px-1 py-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground outline-none transition-colors hover:bg-muted focus-visible:focus-ring"
                     >
                       {headerInner}
                     </button>
@@ -1089,7 +1089,7 @@ export function BackgroundTasksDrawer({
                             onClick={() => openDetail(item.sessionId)}
                             title={`${primaryLabel} · ${item.sessionId}`}
                             data-testid="subagent-row-open"
-                            className="min-w-0 flex-1 text-start outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                            className="min-w-0 flex-1 text-start outline-none focus-visible:focus-ring"
                           >
                             <div
                               className={cn(
@@ -1229,7 +1229,7 @@ export function BackgroundTasksDrawer({
               rows={3}
               value={resumeText}
               onChange={(e) => setResumeText(e.target.value)}
-              className="w-full resize-none rounded-md border bg-background p-2 text-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+              className="w-full resize-none rounded-md border bg-background p-2 text-sm focus-visible:focus-ring-inset"
             />
             <div className="mt-3 flex justify-end gap-2">
               <Button variant="ghost" size="sm" onClick={() => setResumeTarget(null)}>

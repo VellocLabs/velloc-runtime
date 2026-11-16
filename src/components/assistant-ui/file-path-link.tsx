@@ -70,7 +70,7 @@ export const PathChip: FC<{
         openFile?.({ path: resolved, line });
       }}
       className={cn(
-        "aui-file-path-link cursor-pointer rounded-sm hover:bg-accent/60 hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
+        "aui-file-path-link cursor-pointer rounded-sm hover:bg-accent/60 hover:text-foreground focus-visible:focus-ring",
         className,
       )}
     >

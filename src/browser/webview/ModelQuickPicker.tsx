@@ -473,7 +473,7 @@ function ModelQuickPickerImpl({
           data-stepped-width={stepped ? steppedPx : undefined}
           style={stepped && steppedPx !== undefined ? { width: steppedPx } : undefined}
           className={cn(
-            "inline-flex h-8 max-w-[16rem] items-center gap-1.5 rounded-md border bg-background px-2.5 text-sm outline-none transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-background",
+            "inline-flex h-8 max-w-[16rem] items-center gap-1.5 rounded-md border bg-background px-2.5 text-sm outline-none transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:focus-ring-inset disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-background",
             stepped &&
               "justify-between overflow-hidden motion-safe:transition-[width] motion-safe:duration-200 motion-safe:ease-out",
             triggerClassName,

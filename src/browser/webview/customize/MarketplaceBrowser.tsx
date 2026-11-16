@@ -315,7 +315,7 @@ function PluginCard({
             type="button"
             data-testid="customize-market-open"
             onClick={onOpen}
-            className="truncate text-left text-sm font-semibold text-foreground after:absolute after:inset-0 after:rounded-lg focus-visible:outline-none focus-visible:after:ring-2 focus-visible:after:ring-ring"
+            className="truncate text-left text-sm font-semibold text-foreground after:absolute after:inset-0 after:rounded-lg focus-visible:outline-none focus-visible:after:focus-ring"
           >
             {plugin.name}
           </button>

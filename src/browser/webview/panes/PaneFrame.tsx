@@ -138,7 +138,7 @@ export function PaneFrame(props: PaneFrameProps): ReactElement {
               aria-label={t('pane.move', { pane: name })}
               data-testid={`pane-${kind}-handle`}
               className={cn(
-                'flex h-6 w-4 shrink-0 touch-none select-none items-center justify-center rounded text-muted-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                'flex h-6 w-4 shrink-0 touch-none select-none items-center justify-center rounded text-muted-foreground outline-none focus-visible:focus-ring',
                 handle ? 'cursor-grab hover:bg-muted hover:text-foreground' : 'cursor-default',
               )}
               {...handle}

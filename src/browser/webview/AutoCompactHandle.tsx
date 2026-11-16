@@ -171,7 +171,7 @@ export function AutoCompactHandle({
         data-value={shown}
         className={cn(
           'absolute top-1/2 h-3.5 w-1.5 -translate-x-1/2 -translate-y-1/2 rounded-full',
-          'outline-none ring-offset-background focus-visible:ring-2 focus-visible:ring-ring',
+          'outline-none focus-visible:focus-ring',
           disabled
             ? 'bg-muted-foreground/50'
             : pastUsage

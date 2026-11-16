@@ -26,7 +26,7 @@ import { useBackgroundTasksContext } from "./background-tasks-context";
  */
 
 const ROW_CLASS =
-  "flex h-8 w-full min-w-0 items-center gap-1.5 rounded-lg px-1 text-start text-[13px] outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-default disabled:hover:bg-transparent";
+  "flex h-8 w-full min-w-0 items-center gap-1.5 rounded-lg px-1 text-start text-[13px] outline-none hover:bg-muted focus-visible:focus-ring disabled:cursor-default disabled:hover:bg-transparent";
 
 export function SessionTasksList() {
   const t = useT();
@@ -103,7 +103,7 @@ export function SessionTasksList() {
                   setStopping((prev) => new Set(prev).add(row.sessionId));
                   stopTask(row.sessionId);
                 }}
-                className="ms-0.5 flex size-6 shrink-0 items-center justify-center rounded text-muted-foreground outline-none hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60"
+                className="ms-0.5 flex size-6 shrink-0 items-center justify-center rounded text-muted-foreground outline-none hover:bg-muted hover:text-foreground focus-visible:focus-ring disabled:opacity-60"
               >
                 {isStopping ? (
                   <Loader2Icon aria-hidden className="size-3.5 animate-spin" />

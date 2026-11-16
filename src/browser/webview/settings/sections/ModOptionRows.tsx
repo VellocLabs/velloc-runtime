@@ -115,7 +115,7 @@ export function OptionFieldControl({
           id={id}
           data-testid={id}
           className={cn(
-            "h-8 cursor-pointer appearance-none truncate rounded-md border border-input bg-background pr-7 pl-2.5 text-xs outline-none transition-colors hover:bg-accent/40 focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50",
+            "h-8 cursor-pointer appearance-none truncate rounded-md border border-input bg-background pr-7 pl-2.5 text-xs outline-none transition-colors hover:bg-accent/40 focus-visible:focus-ring-inset disabled:cursor-not-allowed disabled:opacity-50",
             fill ? "w-full" : "min-w-[7rem] max-w-[14rem]",
           )}
           value={typeof value === "string" ? value : ""}

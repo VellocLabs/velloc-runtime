@@ -179,7 +179,7 @@ export function FilesPathBar(props: FilesPathBarProps): ReactElement {
           data-testid={`files-pathbar-segment:${isFile ? segment.file : segment.folder}`}
           data-kind={isFile ? 'file' : 'dir'}
           className={cn(
-            'min-w-0 shrink-0 whitespace-nowrap rounded px-1 py-0.5 outline-none hover:bg-muted focus-visible:ring-1 focus-visible:ring-ring data-[state=open]:bg-muted',
+            'min-w-0 shrink-0 whitespace-nowrap rounded px-1 py-0.5 outline-none hover:bg-muted focus-visible:focus-ring data-[state=open]:bg-muted',
             isFile ? 'text-foreground' : 'text-muted-foreground hover:text-foreground',
           )}
         >

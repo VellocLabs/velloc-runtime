@@ -169,7 +169,7 @@ export function BrowserAddressBar({ tab, onNavigate }: BrowserAddressBarProps): 
         onKeyDown={onKeyDown}
         className={cn(
           'h-7 w-full min-w-0 rounded-md border border-input bg-background px-2 text-[12px] outline-none',
-          'placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-[2px] focus-visible:ring-ring/40',
+          'placeholder:text-muted-foreground focus-visible:focus-ring',
           'disabled:cursor-not-allowed disabled:opacity-50',
         )}
       />

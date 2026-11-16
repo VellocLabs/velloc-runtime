@@ -258,7 +258,7 @@ export function ComposerEffortPicker({
                   type="button"
                   aria-label={t("composerEffort.helpAria")}
                   data-testid="composer-effort-help"
-                  className="ml-auto rounded-full text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50"
+                  className="ml-auto rounded-full text-muted-foreground outline-none hover:text-foreground focus-visible:focus-ring"
                 >
                   <CircleHelpIcon className="size-3.5" />
                 </button>
@@ -325,7 +325,7 @@ export function ComposerEffortPicker({
                     e.stopPropagation();
                     choose(index);
                   }}
-                  className="absolute inset-y-0 z-10 flex items-center justify-center rounded-full outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+                  className="absolute inset-y-0 z-10 flex items-center justify-center rounded-full outline-none focus-visible:focus-ring"
                   style={{ left: stopLeft(index, count), width: THUMB }}
                 >
                   {checked ? null : recommended ? (

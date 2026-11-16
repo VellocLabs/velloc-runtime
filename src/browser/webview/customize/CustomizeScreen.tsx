@@ -341,7 +341,7 @@ function MarketRow({
         aria-current={selected ? 'page' : undefined}
         onClick={onSelect}
         className={cn(
-          'flex min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-1.5 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+          'flex min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-1.5 text-left focus-visible:focus-ring',
           onRemove && 'pe-9',
         )}
       >

@@ -243,7 +243,7 @@ export function FolderDropdown(props: FolderDropdownProps): ReactElement {
                 title={row.path}
                 onClick={() => activate(row)}
                 className={cn(
-                  'flex h-6 shrink-0 cursor-default select-none items-center gap-1 rounded-md pe-2 text-body outline-none hover:bg-muted focus:ring-1 focus:ring-ring focus:ring-inset',
+                  'flex h-6 shrink-0 cursor-default select-none items-center gap-1 rounded-md pe-2 text-body outline-none hover:bg-muted focus-visible:focus-ring-inset',
                   selected && 'bg-muted font-medium',
                 )}
               >
@@ -263,7 +263,7 @@ export function FolderDropdown(props: FolderDropdownProps): ReactElement {
               {...shared}
               aria-disabled={focusable ? undefined : true}
               data-testid={`files-pathbar-dropdown-status:${row.kind}:${row.path}`}
-              className="flex h-6 shrink-0 select-none items-center gap-1.5 rounded-md pe-2 text-body text-muted-foreground outline-none focus:ring-1 focus:ring-ring focus:ring-inset"
+              className="flex h-6 shrink-0 select-none items-center gap-1.5 rounded-md pe-2 text-body text-muted-foreground outline-none focus-visible:focus-ring-inset"
             >
               <span aria-hidden className="size-4 shrink-0" />
               {row.kind === 'loading' && <Loader2Icon aria-hidden className="size-3.5 shrink-0 animate-spin" />}

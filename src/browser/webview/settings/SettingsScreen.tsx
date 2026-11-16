@@ -291,7 +291,7 @@ export function SettingsScreen({
                 // selected at once — hover is now a lighter wash, and the
                 // selected entry keeps its accent fill through hover as well.
                 "flex items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-sm outline-none transition-colors",
-                "hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring",
+                "hover:bg-muted focus-visible:focus-ring",
                 id === shown
                   ? "bg-accent font-medium text-accent-foreground hover:bg-accent"
                   : "text-muted-foreground hover:text-foreground",

@@ -1189,7 +1189,7 @@ export function PluginsSection({
                 <button
                   type="button"
                   data-testid={`mp-toggle-${m.name}`}
-                  className="-m-1 flex min-w-0 items-center gap-2 rounded-md p-1 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  className="-m-1 flex min-w-0 items-center gap-2 rounded-md p-1 text-left outline-none focus-visible:focus-ring"
                   onClick={() => toggleExpand(m.name)}
                 >
                   {isExpanded ? (

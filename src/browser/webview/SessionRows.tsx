@@ -582,7 +582,7 @@ function SessionRow({
             }
             onEditingChange?.(null)
           }}
-          className="h-7 w-full rounded-md border border-input bg-background px-3 text-body leading-tight outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="h-7 w-full rounded-md border border-input bg-background px-3 text-body leading-tight outline-none focus-visible:focus-ring-inset"
         />
       ) : (
         <>
@@ -616,7 +616,7 @@ function SessionRow({
                 ? cn('pr-8', hasRowActions && 'group-hover:pr-14')
                 : hasRowActions && 'group-hover:pr-8'),
               indented && 'pl-7',
-              'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+              'focus-visible:focus-ring',
             )}
             data-active={isActive || undefined}
             data-running={isRunning || undefined}
@@ -757,7 +757,7 @@ function SessionRow({
               }}
               title={t(collapsed ? 'sidebar.showNestedSessions' : 'sidebar.hideNestedSessions')}
               className={cn(
-                'relative z-10 ms-1 me-2 flex size-5 shrink-0 items-center justify-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                'relative z-10 ms-1 me-2 flex size-5 shrink-0 items-center justify-center focus-visible:focus-ring',
                 DISCLOSURE_CARET_HOVER,
               )}
             >

@@ -78,7 +78,7 @@ export function PermissionAskFooterControl() {
         disabled={busy}
         onChange={e => setFeedback(e.target.value)}
         placeholder={t('permission.feedbackPlaceholder')}
-        className="w-full rounded-md border bg-background px-2 py-1 text-xs outline-none focus:ring-1 focus:ring-warning disabled:opacity-50"
+        className="w-full rounded-md border bg-background px-2 py-1 text-xs outline-none focus-visible:focus-ring-inset disabled:opacity-50"
       />
       <div className="flex flex-wrap items-center gap-2">
         <button

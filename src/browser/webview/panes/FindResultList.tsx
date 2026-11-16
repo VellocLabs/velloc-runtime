@@ -106,7 +106,7 @@ export function FindResultList(props: FindResultListProps): ReactElement {
               'flex min-h-6 shrink-0 select-none items-center gap-1.5 rounded-md pe-2 text-body outline-none',
               row.inset ? 'ps-6' : 'ps-1.5',
               canFocus
-                ? 'cursor-default hover:bg-muted focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-inset'
+                ? 'cursor-default hover:bg-muted focus-visible:focus-ring-inset'
                 : 'text-muted-foreground',
             )}
           >

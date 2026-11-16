@@ -131,7 +131,7 @@ export function SideChatPane({
                   title={label}
                   onClick={() => onSelect(item.sessionId)}
                   className={cn(
-                    'flex w-max min-w-[6rem] max-w-[12rem] items-center gap-1.5 rounded-md ps-1.5 outline-none focus-visible:ring-2 focus-visible:ring-ring/50',
+                    'flex w-max min-w-[6rem] max-w-[12rem] items-center gap-1.5 rounded-md ps-1.5 outline-none focus-visible:focus-ring',
                     selected ? 'font-medium text-foreground' : 'text-muted-foreground',
                   )}
                 >
@@ -161,7 +161,7 @@ export function SideChatPane({
                   tabIndex={-1}
                   disabled={busy}
                   onClick={() => onArchive(item.sessionId)}
-                  className="flex size-4 shrink-0 items-center justify-center self-center rounded text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:text-muted-foreground"
+                  className="flex size-4 shrink-0 items-center justify-center self-center rounded text-muted-foreground outline-none hover:text-foreground focus-visible:focus-ring disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:text-muted-foreground"
                 >
                   <XIcon className="size-3" />
                 </button>

@@ -115,7 +115,7 @@ function TabsView({ tabs: items, open, buildChild }: TabsProps & { buildChild: (
               tabIndex={selected ? 0 : -1}
               onClick={() => setPicked(index)}
               className={cn(
-                'inline-flex shrink-0 items-center gap-1.5 border-b-2 px-3 py-1.5 text-sm font-medium outline-none transition-colors focus-visible:ring-1 focus-visible:ring-ring',
+                'inline-flex shrink-0 items-center gap-1.5 border-b-2 px-3 py-1.5 text-sm font-medium outline-none transition-colors focus-visible:focus-ring',
                 selected ? 'border-primary text-foreground' : 'border-transparent text-muted-foreground hover:text-foreground',
               )}
             >

@@ -319,7 +319,7 @@ export const ChapterRail: FC<{
           event.preventDefault();
           first.focus();
         }}
-        className="pointer-events-auto flex w-6 flex-col items-start rounded-sm py-1 ps-1.5 outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+        className="pointer-events-auto flex w-6 flex-col items-start rounded-sm py-1 ps-1.5 outline-none focus-visible:focus-ring"
       >
         {ids.map((id) => (
           <span key={id} aria-hidden="true" data-rail-line={id} className="flex h-2 w-full items-center">

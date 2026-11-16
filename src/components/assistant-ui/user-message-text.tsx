@@ -253,7 +253,7 @@ export const CollapsibleUserMessageText: FC<{
         <CollapsibleTrigger asChild>
           <button
             type="button"
-            className="aui-user-message-toggle text-xs font-medium text-muted-foreground underline-offset-2 hover:text-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60"
+            className="aui-user-message-toggle text-xs font-medium text-muted-foreground underline-offset-2 hover:text-foreground hover:underline focus-visible:focus-ring"
             aria-label={toggleLabel}
           >
             {toggleLabel}

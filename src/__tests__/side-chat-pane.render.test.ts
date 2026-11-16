@@ -144,8 +144,8 @@ describe('SideChatPane', () => {
 
   it('the tab and its close show a keyboard focus ring', () => {
     render(pane({ items: [idle], selectedId: 'c0' }))
-    expect(screen.getByTestId('side-chat-tab-c0').className).toContain('focus-visible:ring')
-    expect(screen.getByTestId('side-chat-archive-c0').className).toContain('focus-visible:ring')
+    expect(screen.getByTestId('side-chat-tab-c0').className).toContain('focus-visible:focus-ring')
+    expect(screen.getByTestId('side-chat-archive-c0').className).toContain('focus-visible:focus-ring')
   })
 
   it('with many side chats the strip scrolls instead of clipping: pills keep a readable width, every one selects and archives, the selected one is brought into view', () => {

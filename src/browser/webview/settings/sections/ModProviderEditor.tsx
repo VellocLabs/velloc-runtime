@@ -893,7 +893,7 @@ function ModProviderForm({
                     id={id}
                     data-testid={id}
                     className={cn(
-                      "h-8 w-full rounded-md border border-input bg-background px-2.5 text-xs outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50",
+                      "h-8 w-full rounded-md border border-input bg-background px-2.5 text-xs outline-none focus-visible:focus-ring-inset",
                       problem && "border-destructive",
                     )}
                     value={value}

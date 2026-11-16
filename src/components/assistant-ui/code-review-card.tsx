@@ -29,7 +29,7 @@ function reviewTaskCounts(tasks: ReviewTaskView[]): { running: number; finished:
 
 /** The summary of a folded section: one chevron for every section of the card, in place of the native marker. Its `details` carries `group/fold`. */
 const FoldSummary: FC<{ children: ReactNode }> = ({ children }) => (
-  <summary className="flex cursor-pointer list-none items-center gap-1 rounded-sm text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring [&::-webkit-details-marker]:hidden">
+  <summary className="flex cursor-pointer list-none items-center gap-1 rounded-sm text-muted-foreground outline-none hover:text-foreground focus-visible:focus-ring [&::-webkit-details-marker]:hidden">
     <ChevronDownIcon aria-hidden className="size-3.5 shrink-0 -rotate-90 transition-transform group-open/fold:rotate-0" />
     <span className="min-w-0">{children}</span>
   </summary>
@@ -164,12 +164,12 @@ const ReviewRange: FC<{ base: string; head: string; target?: string }> = ({ base
   return <div data-testid="review-range" className="relative z-10 flex min-w-0 max-w-full items-center gap-1 self-start text-xs text-muted-foreground">
     <Tooltip>
       <TooltipTrigger asChild>
-        <span tabIndex={0} data-testid="review-range-short" className="shrink-0 rounded-sm font-mono outline-none focus-visible:ring-2 focus-visible:ring-ring">{shortRevision(base)} → {shortRevision(head)}</span>
+        <span tabIndex={0} data-testid="review-range-short" className="shrink-0 rounded-sm font-mono outline-none focus-visible:focus-ring">{shortRevision(base)} → {shortRevision(head)}</span>
       </TooltipTrigger>
       <TooltipContent className="max-w-none font-mono">{full}</TooltipContent>
     </Tooltip>
     <button type="button" data-testid="review-range-copy" aria-label={t(copied ? 'messageMenu.copied' : 'reviewCard.copyRange')} title={t(copied ? 'messageMenu.copied' : 'reviewCard.copyRange')}
-      className="flex size-6 shrink-0 items-center justify-center rounded-md hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      className="flex size-6 shrink-0 items-center justify-center rounded-md hover:bg-muted hover:text-foreground focus-visible:focus-ring"
       onClick={event => {
         event.stopPropagation()
         copyToClipboard(full)
@@ -219,7 +219,7 @@ const ReviewCardHeader: FC<{
         {running && <Loader2Icon aria-hidden className="animate-spin" />}{status}
       </Badge>}
       {onToggle && <button type="button" data-testid="review-toggle" data-slot="review-card-trigger" aria-expanded={!collapsed} aria-controls={collapsed ? undefined : bodyId} aria-label={t(collapsed ? 'reviewCard.expand' : 'reviewCard.collapse')} title={t(collapsed ? 'reviewCard.expand' : 'reviewCard.collapse')} onClick={onToggle}
-        className="flex size-8 items-center justify-center rounded-md text-muted-foreground outline-none after:absolute after:inset-0 after:content-[''] hover:text-foreground focus-visible:after:ring-2 focus-visible:after:ring-inset focus-visible:after:ring-ring">
+        className="flex size-8 items-center justify-center rounded-md text-muted-foreground outline-none after:absolute after:inset-0 after:content-[''] hover:text-foreground focus-visible:after:focus-ring-inset">
         <ChevronDownIcon aria-hidden className={cn('size-4 transition-transform', collapsed && '-rotate-90')} />
       </button>}
     </div>
@@ -469,7 +469,7 @@ export const ReviewReportCard: FC<{
   const enumText = (value: string) => reviewValueMessage(t, value)
   const endMessage = report.end && !(cancelled && report.end.kind === 'cancelled') && reviewEndMessage(t, report.end)
   const filter = (name: 'severity' | 'kind' | 'state', change: (value: string) => void) => facets[name].options.length > 1 && (
-    <label className="flex items-center gap-1 text-xs text-muted-foreground">{t(`reviewCard.${name}`)}<select aria-label={t(`reviewCard.${name}`)} className="h-6 cursor-pointer rounded-md bg-transparent px-1 text-xs font-medium text-foreground outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring" value={facets[name].value} onChange={event => change(event.target.value)}>{['all', ...facets[name].options].map(item => <option key={item} value={item}>{enumText(item)}</option>)}</select></label>
+    <label className="flex items-center gap-1 text-xs text-muted-foreground">{t(`reviewCard.${name}`)}<select aria-label={t(`reviewCard.${name}`)} className="h-6 cursor-pointer rounded-md bg-transparent px-1 text-xs font-medium text-foreground outline-none hover:bg-muted focus-visible:focus-ring" value={facets[name].value} onChange={event => change(event.target.value)}>{['all', ...facets[name].options].map(item => <option key={item} value={item}>{enumText(item)}</option>)}</select></label>
   )
   const filters = [filter('severity', setSeverity), filter('kind', setKind), filter('state', setState)]
   const repairNote = !repairable && hasFindings && !['workspace', 'paths'].includes(run.scope.kind)
@@ -535,7 +535,7 @@ export const ReviewReportCard: FC<{
               <div className="flex items-start gap-2.5">
                 {repairable && <input type="checkbox" className="mt-0.5 size-4 shrink-0 accent-primary" checked={checked} disabled={busy} onChange={event => setSelected(ids => event.target.checked ? [...ids, diagnostic.id] : ids.filter(id => id !== diagnostic.id))} aria-label={t('reviewCard.select', { title: diagnostic.claim.title })} />}
                 <div className="min-w-0 flex-1 space-y-1">
-                  <button type="button" data-testid="review-finding-toggle" className="flex w-full items-start gap-2 rounded-sm text-start outline-none focus-visible:ring-2 focus-visible:ring-ring" aria-expanded={expanded} title={t('reviewCard.evidence')} onClick={() => setExpandedFindings(ids => expanded ? ids.filter(id => id !== diagnostic.id) : [...ids, diagnostic.id])}>
+                  <button type="button" data-testid="review-finding-toggle" className="flex w-full items-start gap-2 rounded-sm text-start outline-none focus-visible:focus-ring" aria-expanded={expanded} title={t('reviewCard.evidence')} onClick={() => setExpandedFindings(ids => expanded ? ids.filter(id => id !== diagnostic.id) : [...ids, diagnostic.id])}>
                     <span className="min-w-0 flex-1 leading-snug">{diagnostic.claim.title}</span>
                     <ChevronDownIcon aria-hidden className={cn('mt-0.5 size-4 shrink-0 text-muted-foreground transition-transform', !expanded && '-rotate-90')} />
                   </button>

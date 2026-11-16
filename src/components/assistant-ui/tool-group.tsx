@@ -308,6 +308,8 @@ const ToolGroupImpl: FC<ToolGroupProps> = ({
         onOpenChange={handleOpenChange}
         className={cn(
           "aui-tool-group-root group/tool-group-root w-full rounded-lg border py-3",
+          // Keyboard focus on the header rings the whole card, not the header strip.
+          "has-[>[data-slot=tool-group-trigger]:focus-visible]:focus-ring-inset [&>[data-slot=tool-group-trigger]:focus-visible]:outline-none",
           snapshot.allCancelled && "border-muted-foreground/30 bg-muted/30",
         )}
         style={

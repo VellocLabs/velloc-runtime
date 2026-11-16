@@ -125,7 +125,7 @@ function PlanApprovalCard({ pending }: { pending: PlanPanelEntry }) {
             disabled={disabled}
             rows={3}
             autoFocus
-            className="w-full resize-none rounded-lg border border-input bg-muted/40 px-3 py-2 outline-none focus:border-ring disabled:opacity-50"
+            className="w-full resize-none rounded-lg border border-input bg-muted/40 px-3 py-2 outline-none focus-visible:focus-ring-inset disabled:opacity-50"
           />
           <div className="flex items-center gap-2">
             <button

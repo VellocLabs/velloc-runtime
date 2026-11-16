@@ -574,7 +574,7 @@ export function McpSection({
                     title={t("settings.mcp.details")}
                     aria-label={t("settings.mcp.detailsAria", { id })}
                     onClick={() => void openDetail(id)}
-                    className="-m-2 min-w-0 flex-1 rounded-lg p-2 text-start outline-none hover:bg-muted/60 focus-visible:ring-2 focus-visible:ring-ring"
+                    className="-m-2 min-w-0 flex-1 rounded-lg p-2 text-start outline-none hover:bg-muted/60 focus-visible:focus-ring"
                   >
                     <div className="flex min-w-0 items-center gap-2 font-medium text-sm">
                       <span className="truncate">{id}</span>
@@ -787,7 +787,7 @@ export function McpSection({
                         setForm({ ...form, env: e.target.value })
                       }
                       rows={3}
-                      className="rounded-md border bg-transparent px-3 py-2 font-mono text-xs outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
+                      className="rounded-md border bg-transparent px-3 py-2 font-mono text-xs outline-none focus-visible:focus-ring-inset"
                     />
                   </label>
                 </>
@@ -815,7 +815,7 @@ export function McpSection({
                       }
                       rows={3}
                       placeholder={t("settings.mcp.headersPlaceholder")}
-                      className="rounded-md border bg-transparent px-3 py-2 font-mono text-xs outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
+                      className="rounded-md border bg-transparent px-3 py-2 font-mono text-xs outline-none focus-visible:focus-ring-inset"
                     />
                   </label>
                 </>

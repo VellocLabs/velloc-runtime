@@ -142,7 +142,7 @@ export function FileTreeView(props: FileTreeViewProps): ReactElement {
               title={row.path}
               onClick={() => activate(row)}
               className={cn(
-                'relative flex h-6 shrink-0 cursor-default select-none items-center gap-1 rounded-md pe-2 text-body outline-none hover:bg-muted focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-inset',
+                'relative flex h-6 shrink-0 cursor-default select-none items-center gap-1 rounded-md pe-2 text-body outline-none hover:bg-muted focus-visible:focus-ring-inset',
                 row.path === props.currentPath && 'bg-muted font-medium',
               )}
             >
@@ -157,7 +157,7 @@ export function FileTreeView(props: FileTreeViewProps): ReactElement {
             {...shared}
             aria-disabled={focusable ? undefined : true}
             data-testid={`files-tree-status:${row.kind}:${row.path}`}
-            className="relative flex h-6 shrink-0 select-none items-center gap-1.5 rounded-md pe-2 text-body text-muted-foreground outline-none focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-inset"
+            className="relative flex h-6 shrink-0 select-none items-center gap-1.5 rounded-md pe-2 text-body text-muted-foreground outline-none focus-visible:focus-ring-inset"
           >
             <IndentGuides depth={row.depth} />
             <StatusContent row={row} onRetry={() => props.onRetry(row.path)} />

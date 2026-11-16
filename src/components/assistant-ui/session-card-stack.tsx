@@ -121,7 +121,7 @@ const CARD_CLASS =
   "group/card pointer-events-auto flex flex-col rounded-[10px] border border-border bg-background p-2 text-foreground";
 const HEADER_CLASS = "relative flex min-h-[26px] items-center";
 const HEADER_BUTTON_CLASS =
-  "flex min-h-[26px] min-w-0 flex-1 items-center gap-1 rounded-md px-1 text-start outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-default";
+  "flex min-h-[26px] min-w-0 flex-1 items-center gap-1 rounded-md px-1 text-start outline-none focus-visible:focus-ring disabled:cursor-default";
 const TITLE_CLASS = "shrink-0 truncate font-medium text-[12px] leading-[15px]";
 const CHEVRON_CLASS = "size-3 shrink-0 text-muted-foreground transition-transform";
 const SUMMARY_CLASS =
@@ -271,7 +271,7 @@ function CardStack({
                             data-testid="session-card-output"
                             data-path={path}
                             onClick={() => openFile?.({ path })}
-                            className="flex h-8 w-full min-w-0 items-center gap-1.5 rounded-lg px-1 text-start text-[13px] outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-default disabled:hover:bg-transparent"
+                            className="flex h-8 w-full min-w-0 items-center gap-1.5 rounded-lg px-1 text-start text-[13px] outline-none hover:bg-muted focus-visible:focus-ring disabled:cursor-default disabled:hover:bg-transparent"
                           >
                             <Icon
                               aria-hidden
@@ -296,7 +296,7 @@ function CardStack({
                   data-testid="session-card-outputs-more"
                   aria-expanded={outputsAll}
                   onClick={() => setOutputsAll((all) => !all)}
-                  className="mt-0.5 flex h-8 w-full items-center rounded-lg px-1 text-start text-[13px] text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
+                  className="mt-0.5 flex h-8 w-full items-center rounded-lg px-1 text-start text-[13px] text-muted-foreground outline-none hover:text-foreground focus-visible:focus-ring"
                 >
                   {outputsAll ? t("sessionCards.showLess") : t("sessionCards.showMore")}
                 </button>
@@ -334,7 +334,7 @@ function CardStack({
                     data-testid="session-card-changes-agent"
                     aria-label={t("diff.agentSectionAria", { name: line.name })}
                     onClick={() => openDiff?.({ kind: "turnHistory" })}
-                    className="flex h-7 w-full min-w-0 items-center gap-1.5 rounded-lg px-1 text-start text-[13px] outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-default disabled:hover:bg-transparent"
+                    className="flex h-7 w-full min-w-0 items-center gap-1.5 rounded-lg px-1 text-start text-[13px] outline-none hover:bg-muted focus-visible:focus-ring disabled:cursor-default disabled:hover:bg-transparent"
                   >
                     <BotIcon aria-hidden strokeWidth={1.5} className="size-4 shrink-0 text-muted-foreground" />
                     <span className="min-w-0 flex-1 truncate">{line.name}</span>
@@ -382,7 +382,7 @@ function CardStack({
                       data-testid="session-card-connector"
                       data-status={needsAuth ? "needs-auth" : "connected"}
                       onClick={() => setDetailName(name)}
-                      className="flex h-8 w-full min-w-0 items-center gap-1.5 rounded-lg px-1 text-start text-[13px] outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring"
+                      className="flex h-8 w-full min-w-0 items-center gap-1.5 rounded-lg px-1 text-start text-[13px] outline-none hover:bg-muted focus-visible:focus-ring"
                     >
                       <PlugIcon aria-hidden strokeWidth={1.5} className="size-4 shrink-0 text-muted-foreground" />
                       <span className="truncate">{name}</span>

@@ -154,7 +154,7 @@ function Swatch({
       className={cn(
         "relative flex size-9 items-center justify-center overflow-hidden rounded-full border transition-shadow",
         "outline-none hover:opacity-90",
-        "focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
+        "focus-visible:focus-ring",
         swatch.seed ? "" : "border-border",
         selected
           ? "ring-2 ring-primary ring-offset-2 ring-offset-background"

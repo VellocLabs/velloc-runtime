@@ -157,7 +157,7 @@ export const ThreadSuggestions: FC<{ templateType?: string }> = ({ templateType 
           <ThreadPrimitive.Suggestion
             key={index}
             prompt={suggestion.prompt ?? suggestion.title}
-            className="aui-thread-welcome-suggestion-display fade-in slide-in-from-bottom-2 flex h-auto w-full animate-in flex-col items-start justify-start gap-1 rounded-3xl border bg-background px-4 py-3 text-left text-sm transition-colors duration-200 fill-mode-both hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="aui-thread-welcome-suggestion-display fade-in slide-in-from-bottom-2 flex h-auto w-full animate-in flex-col items-start justify-start gap-1 rounded-3xl border bg-background px-4 py-3 text-left text-sm transition-colors duration-200 fill-mode-both hover:bg-muted focus-visible:focus-ring-inset"
           >
             <span className="aui-thread-welcome-suggestion-text-1 font-medium text-foreground">
               {suggestion.title}

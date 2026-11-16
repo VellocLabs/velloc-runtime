@@ -12,7 +12,7 @@ import { cn } from "@/lib/utils";
  */
 
 export const selectTriggerVariants = cva(
-  "flex w-fit items-center justify-between gap-2 rounded-md text-sm whitespace-nowrap outline-none transition-colors focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50 data-[placeholder]:text-muted-foreground [&>span]:truncate [&_svg]:size-4 [&_svg]:shrink-0",
+  "flex w-fit items-center justify-between gap-2 rounded-md text-sm whitespace-nowrap outline-none transition-colors focus-visible:focus-ring disabled:cursor-not-allowed disabled:opacity-50 data-[placeholder]:text-muted-foreground [&>span]:truncate [&_svg]:size-4 [&_svg]:shrink-0",
   {
     variants: {
       variant: {

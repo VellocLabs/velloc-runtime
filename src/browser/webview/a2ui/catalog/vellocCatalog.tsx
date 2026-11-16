@@ -83,7 +83,7 @@ function AskButton({ slot, label, action, reveal, placement }: { slot: string; l
       data-placement={placement}
       aria-label={label}
       onClick={() => (action as () => void)()}
-      className={`inline-flex h-5 min-w-0 shrink items-center gap-1 whitespace-nowrap rounded-full border bg-background px-2 text-xs font-medium text-muted-foreground opacity-0 shadow-xs transition-opacity outline-none hover:bg-accent hover:text-foreground focus-visible:opacity-100 focus-visible:ring-1 focus-visible:ring-ring ${reveal}`}
+      className={`inline-flex h-5 min-w-0 shrink items-center gap-1 whitespace-nowrap rounded-full border bg-background px-2 text-xs font-medium text-muted-foreground opacity-0 shadow-xs transition-opacity outline-none hover:bg-accent hover:text-foreground focus-visible:opacity-100 focus-visible:focus-ring-inset ${reveal}`}
     >
       <SparklesIcon aria-hidden="true" className="size-3 shrink-0" />
       <span className="truncate">{label}</span>
@@ -347,7 +347,7 @@ export function MenuView({ label, children, buildChild }: { label?: unknown; chi
           aria-label={name}
           title={name}
           disabled={!name}
-          className="inline-flex size-8 shrink-0 items-center justify-center rounded-md text-muted-foreground outline-none transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50 data-[state=open]:bg-muted data-[state=open]:text-foreground"
+          className="inline-flex size-8 shrink-0 items-center justify-center rounded-md text-muted-foreground outline-none transition-colors hover:bg-muted hover:text-foreground focus-visible:focus-ring disabled:opacity-50 data-[state=open]:bg-muted data-[state=open]:text-foreground"
         >
           <EllipsisIcon aria-hidden="true" className="size-4" />
         </button>
@@ -384,7 +384,7 @@ export function AddCardView({ label, action }: { label?: unknown; action?: unkno
               aria-label={tip}
               disabled={!run}
               onClick={() => run?.()}
-              className="flex min-h-20 w-full items-center justify-center rounded-[var(--a2ui-card-border-radius,var(--a2ui-border-radius,8px))] border-2 border-dashed text-muted-foreground transition-colors outline-none hover:border-ring hover:bg-muted/40 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
+              className="flex min-h-20 w-full items-center justify-center rounded-[var(--a2ui-card-border-radius,var(--a2ui-border-radius,8px))] border-2 border-dashed text-muted-foreground transition-colors outline-none hover:border-ring hover:bg-muted/40 hover:text-foreground focus-visible:focus-ring disabled:opacity-50"
             >
               <svg aria-hidden="true" viewBox="0 0 24 24" className="size-14" fill="none" stroke="currentColor" strokeWidth={1} strokeLinejoin="round">
                 <path d="M9.5 3h5v6.5H21v5h-6.5V21h-5v-6.5H3v-5h6.5z" />

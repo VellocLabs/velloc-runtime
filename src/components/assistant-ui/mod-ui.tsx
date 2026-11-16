@@ -43,7 +43,7 @@ export function ModPluginLink({ plugin }: { plugin: string }) {
           type="button"
           aria-label={t("mods.plugin.open", { plugin })}
           data-testid={`mod-plugin-link-${plugin}`}
-          className="pointer-events-auto inline-flex size-4 shrink-0 items-center justify-center rounded text-muted-foreground opacity-0 transition-opacity hover:text-foreground focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring group-hover/mod-bar:opacity-100"
+          className="pointer-events-auto inline-flex size-4 shrink-0 items-center justify-center rounded text-muted-foreground opacity-0 transition-opacity hover:text-foreground focus-visible:opacity-100 focus-visible:focus-ring group-hover/mod-bar:opacity-100"
           onClick={() => openPluginSettings(plugin)}
         >
           <PuzzleIcon className="size-3.5" aria-hidden="true" />
@@ -204,7 +204,7 @@ export function ModComposerStatus() {
               type="button"
               data-testid="mod-status-more"
               aria-label={t("mods.status.more", { count: more })}
-              className="shrink-0 rounded px-1 font-mono text-[11px] hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+              className="shrink-0 rounded px-1 font-mono text-[11px] hover:bg-accent hover:text-foreground focus-visible:focus-ring"
             >
               +{more}
             </button>

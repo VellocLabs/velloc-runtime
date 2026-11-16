@@ -144,6 +144,9 @@ function ToolFallbackRoot({
       className={cn(
         "aui-tool-fallback-root group/tool-fallback-root w-full",
         variant === "card" && "rounded-lg border py-3",
+        // Keyboard focus on a card's header rings the whole card, not the header strip.
+        variant === "card" &&
+          "has-[>[data-slot=tool-fallback-trigger]:focus-visible]:focus-ring-inset [&>[data-slot=tool-fallback-trigger]:focus-visible]:outline-none",
         variant === "nested" && "py-2",
         className,
       )}
