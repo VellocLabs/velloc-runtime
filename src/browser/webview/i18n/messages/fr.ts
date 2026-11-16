@@ -94,8 +94,6 @@ export const fr: Messages = {
   "reviewCard.coverage": "Couverture et limites",
   "reviewCard.dismiss": "Retour",
   "reviewCard.emptyComplete": "Aucun problème à signaler n’a été trouvé dans le périmètre examiné.",
-  "reviewCard.emptyPartial": "Aucun problème trouvé dans la partie examinée ; la revue est incomplète.",
-  "reviewCard.emptyScope": "Cette cible ne contient aucune modification à examiner.",
   "reviewCard.evidence": "Détails et éléments probants",
   "reviewCard.unverified": "Non vérifiés",
   "reviewCard.unverifiedNote": "Le relecteur les a signalés, mais leurs éléments probants ne correspondaient pas au code lu. Vérifiez-les vous-même ; ils ne sont pas proposés pour correction ni publication.",

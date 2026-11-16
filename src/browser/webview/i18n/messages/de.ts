@@ -97,8 +97,6 @@ export const de: Messages = {
   "reviewCard.coverage": "Abdeckung und Einschränkungen",
   "reviewCard.dismiss": "Zurück",
   "reviewCard.emptyComplete": "Im geprüften Umfang wurden keine berichtenswerten Probleme gefunden.",
-  "reviewCard.emptyPartial": "Im untersuchten Teil bisher keine Probleme; die Prüfung ist unvollständig.",
-  "reviewCard.emptyScope": "Dieses Ziel enthält keine prüfbaren Änderungen.",
   "reviewCard.evidence": "Details und Belege",
   "reviewCard.unverified": "Nicht überprüft",
   "reviewCard.unverifiedNote": "Der Reviewer hat diese gemeldet, aber ihre Belege passten nicht zum gelesenen Code. Prüfen Sie sie selbst; sie werden nicht zum Beheben oder Veröffentlichen angeboten.",

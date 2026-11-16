@@ -98,8 +98,6 @@ export const en = {
   "reviewCard.coverage": "Coverage and limitations",
   "reviewCard.dismiss": "Go back",
   "reviewCard.emptyComplete": "No reportable issues found within the reviewed scope.",
-  "reviewCard.emptyPartial": "No issues found in the inspected portion yet; review coverage is incomplete.",
-  "reviewCard.emptyScope": "There are no reviewable changes in this target.",
   "reviewCard.evidence": "Details and evidence",
   "reviewCard.unverified": "Not verified",
   "reviewCard.unverifiedNote": "The reviewer reported these, but their evidence did not match the code it read. Check them yourself; they are not offered for fixing or publishing.",

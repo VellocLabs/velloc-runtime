@@ -37,19 +37,23 @@ describe('review report card', () => {
     expect(row.contains(screen.getByTestId('code-review-card'))).toBe(true)
     expect(row.className.split(' ')).toEqual(expect.arrayContaining(['mx-auto', 'w-full', 'max-w-(--thread-max-width)', 'px-2']))
   })
-  it('distinguishes incomplete zero findings, complete zero findings and empty scope', () => {
+  it('states a zero-finding result as the count alone, with no empty or scope line of its own', () => {
     const value = report()
     renderReport(value)
-    expect(screen.getByTestId('review-empty').textContent).toBe(t('reviewCard.emptyPartial'))
+    expect(screen.getByTestId('review-count').textContent).toBe(t('reviewCard.findingsMany', { count: 0 }))
+    expect(screen.queryByTestId('review-empty')).toBeNull()
+    expect(screen.queryByTestId('review-scope')).toBeNull()
     cleanup()
     value.coverage.complete = true
     value.run.progress.status = 'finished'
     renderReport(value)
-    expect(screen.getByTestId('review-empty').textContent).toBe(t('reviewCard.emptyComplete'))
+    expect(screen.getByTestId('review-count').textContent).toBe(t('reviewCard.findingsMany', { count: 0 }))
+    expect(screen.queryByTestId('review-empty')).toBeNull()
     cleanup()
     value.emptyScope = true
     renderReport(value)
-    expect(screen.getByTestId('review-empty').textContent).toBe(t('reviewCard.emptyScope'))
+    expect(screen.getByTestId('review-count').textContent).toBe(t('reviewCard.findingsMany', { count: 0 }))
+    expect(screen.queryByTestId('review-empty')).toBeNull()
   })
   it('shows a cancelled review as one notice, says when the user cancelled it, and offers only a rerun without findings', () => {
     const value = report()
@@ -132,10 +136,10 @@ describe('review report card', () => {
     fireEvent.keyDown(screen.getByRole('menu'), { key: 'Escape' })
     fireEvent.click(screen.getByLabelText(t('reviewCard.collapse')))
     expect(action).not.toHaveBeenCalled()
-    expect(screen.queryByTestId('review-empty')).toBeNull()
+    expect(screen.queryByTestId('review-count')).toBeNull()
     expect(screen.queryByTestId('review-repair')).toBeNull()
     fireEvent.click(screen.getByLabelText(t('reviewCard.expand')))
-    expect(screen.getByTestId('review-empty')).toBeTruthy()
+    expect(screen.getByTestId('review-count')).toBeTruthy()
   })
   it('shows stages and only cancel while the review runs, and keeps findings through a follow-up stage', () => {
     const value = report()
@@ -148,7 +152,6 @@ describe('review report card', () => {
     expect(Array.from(stages.querySelectorAll('li')).map(item => item.dataset.state)).toEqual(['done', 'current', 'pending'])
     expect(screen.getByTestId('code-review-card').dataset.status).toBe('active')
     expect(screen.queryByTestId('review-finding')).toBeNull()
-    expect(screen.queryByTestId('review-empty')).toBeNull()
     expect(screen.queryByTestId('review-count')).toBeNull()
     expect(screen.queryByTestId('review-repair')).toBeNull()
     expect(screen.queryByTestId('review-rerun')).toBeNull()
@@ -214,7 +217,6 @@ describe('review report card', () => {
     expect(screen.getByText(`${t('reviewCard.value.minor')} · 2`)).toBeTruthy()
     expect(screen.queryByText(`${t('reviewCard.value.major')} · 0`)).toBeNull()
     expect(screen.getByTestId('review-incomplete')).toBeTruthy()
-    expect(screen.queryByTestId('review-empty')).toBeNull()
     fireEvent.click(screen.getByLabelText(t('reviewCard.select', { title: 'd1' })))
     expect(screen.getByTestId('review-repair').textContent).toBe(t('reviewCard.repairCount', { count: 1 }))
     expect(screen.getByText(t('reviewCard.selected', { count: 1 }))).toBeTruthy()
@@ -845,7 +847,7 @@ describe('review card header and live activity', () => {
     expect(tree.open).toBe(false)
     expect(tree.querySelector('summary')!.textContent).toBe(`${t('reviewCard.tasks')} · ${t('reviewCard.tasksCompleted', { count: 2 })} · ${t('reviewCard.tasksNotCompleted', { count: 1 })}`)
   })
-  it('keeps the method and notices in review details while running, and in the scope block once finished', () => {
+  it('keeps the method and notices inside review details, running or finished', () => {
     const value = running()
     value.notices = [{ code: 'level-reused', level: 'high' }]
     renderReport(value)
@@ -858,21 +860,20 @@ describe('review card header and live activity', () => {
     value.run.progress.status = 'finished'
     value.run.progress.stage = 'report'
     renderReport(value)
-    const scope = screen.getByTestId('review-scope')
-    expect(scope.contains(screen.getByTestId('review-method'))).toBe(true)
-    expect(scope.contains(screen.getByTestId('review-notices'))).toBe(true)
+    const finished = screen.getByTestId('review-details') as HTMLDetailsElement
+    expect(finished.open).toBe(false)
+    expect(finished.contains(screen.getByTestId('review-method'))).toBe(true)
+    expect(finished.contains(screen.getByTestId('review-notices'))).toBe(true)
     expect(screen.getByTestId('review-method').textContent).toContain(t('reviewCard.revisionOnly'))
-    expect(screen.getByTestId('review-details').querySelector('[data-testid="review-method"]')).toBeNull()
   })
-  it('states a clean result as plain text under the count, with no Repair and no footer status', () => {
+  it('shows a clean result as the count and a check icon, with no Repair and no footer status', () => {
     const value = running()
     value.run.progress.status = 'finished'
     value.run.progress.stage = 'report'
     value.coverage.complete = true
     renderReport(value)
-    const empty = screen.getByTestId('review-empty')
-    expect(empty.textContent).toBe(t('reviewCard.emptyComplete'))
-    expect(empty.className).not.toMatch(/\bbg-/)
+    expect(screen.getByTestId('review-count').textContent).toBe(t('reviewCard.findingsMany', { count: 0 }))
+    expect(screen.queryByTestId('review-empty')).toBeNull()
     expect(screen.queryByTestId('review-repair')).toBeNull()
     expect(screen.getByTestId('review-rerun')).toBeTruthy()
     expect(screen.getByTestId('code-review-card').querySelector('footer')!.textContent).not.toContain(t('reviewCard.value.finished'))

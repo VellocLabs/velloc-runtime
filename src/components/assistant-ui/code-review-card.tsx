@@ -507,20 +507,13 @@ export const ReviewReportCard: FC<{
               <p className="text-xs text-muted-foreground">{t(hasFindings ? 'reviewCard.cancelledRetained' : 'reviewCard.cancelledEmpty')}</p>
             </div>
           </div>}
-          {(!cancelled || hasFindings) && <div className="flex flex-col gap-1">
-            <div className="flex flex-wrap items-center gap-2">
-              {!hasFindings && clean && !report.emptyScope && <CircleCheckIcon aria-hidden className="size-4 shrink-0 text-success" />}
-              <p className="text-base font-semibold leading-tight" data-testid="review-count">{summary}</p>
-              {impactCounts.map(([impact, count]) => <Badge key={impact} variant={IMPACT_VARIANT[impact]} size="sm">{enumText(impact)} · {count}</Badge>)}
-              {run.progress.omittedByLimit > 0 && <span className="text-xs text-muted-foreground">{t('reviewCard.omitted', { omitted: run.progress.omittedByLimit })}</span>}
-              {filters.some(Boolean) && <div data-testid="review-filters" className="ml-auto flex flex-wrap items-center gap-x-3 gap-y-1">{filters[0]}{filters[1]}{filters[2]}</div>}
-            </div>
-            {report.diagnostics.length === 0 && <p data-testid="review-empty" className={cn('text-xs', report.emptyScope || clean ? 'text-muted-foreground' : 'text-warning-emphasis')}>{t(report.emptyScope ? 'reviewCard.emptyScope' : clean ? 'reviewCard.emptyComplete' : 'reviewCard.emptyPartial')}</p>}
+          {(!cancelled || hasFindings) && <div className="flex flex-wrap items-center gap-2">
+            {!hasFindings && clean && !report.emptyScope && <CircleCheckIcon aria-hidden className="size-4 shrink-0 text-success" />}
+            <p className="text-base font-semibold leading-tight" data-testid="review-count">{summary}</p>
+            {impactCounts.map(([impact, count]) => <Badge key={impact} variant={IMPACT_VARIANT[impact]} size="sm">{enumText(impact)} · {count}</Badge>)}
+            {run.progress.omittedByLimit > 0 && <span className="text-xs text-muted-foreground">{t('reviewCard.omitted', { omitted: run.progress.omittedByLimit })}</span>}
+            {filters.some(Boolean) && <div data-testid="review-filters" className="ml-auto flex flex-wrap items-center gap-x-3 gap-y-1">{filters[0]}{filters[1]}{filters[2]}</div>}
           </div>}
-          <div data-testid="review-scope" className="space-y-1 text-xs text-muted-foreground">
-            <p data-testid="review-method">{method}</p>
-            {notices}
-          </div>
         </>}
         {endMessage && <p role="status" data-testid="review-end" className="rounded-lg bg-warning/10 px-3 py-2 text-xs text-warning-emphasis">{endMessage}</p>}
         {finished && !cancelled && !report.coverage.complete && !report.emptyScope && hasFindings && <p data-testid="review-incomplete" className="rounded-lg bg-warning/10 px-3 py-2 text-xs text-warning-emphasis">{t('reviewCard.notice.incomplete')}</p>}
@@ -583,13 +576,13 @@ export const ReviewReportCard: FC<{
         <details data-testid="review-details" className="group/fold text-xs">
           <FoldSummary>{t('reviewCard.details')}</FoldSummary>
           <dl className="mt-1.5 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 pl-[1.125rem] text-muted-foreground">
-            {reviewing && <><dt>{t('reviewCard.method')}</dt><dd data-testid="review-method">{method}</dd></>}
+            <dt>{t('reviewCard.method')}</dt><dd data-testid="review-method">{method}</dd>
             <dt>{t('reviewCard.policyLabel')}</dt><dd>{t('reviewCard.policy', { level: enumText(run.policy.level), recipe: enumText(run.policy.recipe), mode: enumText(run.policy.execution), cap: run.policy.reportLimit === 'unlimited' ? enumText('unlimited') : run.policy.reportLimit })}</dd>
             <dt>{t('reviewCard.coverage')}</dt><dd>
               {report.coverage.limitations.length === 0 && run.progress.unavailableAngles.length === 0 ? <span>{t(report.coverage.complete ? 'reviewCard.coverageComplete' : 'reviewCard.notice.incomplete')}</span> : <ul className="list-disc pl-4">{report.coverage.limitations.map((text, index) => <li key={index}>{reviewDetailMessage(t, text)}</li>)}{run.progress.unavailableAngles.length > 0 && <li>{t('reviewCard.uncovered', { angles: run.progress.unavailableAngles.map(angle => reviewAngleMessage(t, angle)).join(', ') })}</li>}</ul>}
             </dd>
           </dl>
-          {reviewing && notices && <div data-testid="review-details-notices" className="mt-1.5 pl-[1.125rem] text-muted-foreground">{notices}</div>}
+          {notices && <div data-testid="review-details-notices" className="mt-1.5 pl-[1.125rem] text-muted-foreground">{notices}</div>}
           <p className="mt-1.5 pl-[1.125rem] text-muted-foreground">{t('reviewCard.workers', { started: run.progress.spawnedTasks, finished: report.finishedTasks ?? 0 })}</p>
           {report.exportJson !== undefined && <details className="group/fold mt-2 pl-[1.125rem]"><FoldSummary>{t('reviewCard.exportJson')}</FoldSummary><pre data-testid="review-export-json" className="mt-1 overflow-auto whitespace-pre-wrap rounded-lg bg-muted/50 p-2">{report.exportJson}</pre></details>}
         </details>

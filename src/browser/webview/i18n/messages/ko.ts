@@ -95,8 +95,6 @@ export const ko: Messages = {
   "reviewCard.coverage": "검토 범위 및 제한",
   "reviewCard.dismiss": "돌아가기",
   "reviewCard.emptyComplete": "이번 검토 범위 내에서 보고할 문제를 발견하지 못했습니다.",
-  "reviewCard.emptyPartial": "확인한 부분에서는 아직 문제가 없지만 검토 범위가 불완전합니다.",
-  "reviewCard.emptyScope": "이 대상에 검토할 변경사항이 없습니다.",
   "reviewCard.evidence": "세부 내용 및 근거",
   "reviewCard.unverified": "검증되지 않음",
   "reviewCard.unverifiedNote": "리뷰어가 보고했지만 근거가 읽은 코드와 일치하지 않았습니다. 직접 확인하세요. 수정이나 게시 대상으로 제공되지 않습니다.",
