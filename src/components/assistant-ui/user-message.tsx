@@ -5,6 +5,7 @@ import { PartLineProvider } from "@/components/assistant-ui/part-line-context";
 import { CollapsibleUserMessageText, getCollapsibleUserMessageText, userMessageTranscriptLine } from "@/components/assistant-ui/user-message-text";
 import { UserMessageAttachments } from "@/components/assistant-ui/attachment";
 import { cn } from "@/lib/utils";
+import { HIDDEN_WITHOUT_HOVER, IN_FLOW_WITHOUT_HOVER, SHOWN_WITHOUT_HOVER } from "./touch-reveal";
 import {
   ActionBarPrimitive,
   MessagePartPrimitive,
@@ -236,10 +237,14 @@ export const UserMessage: FC = () => {
         {injectPending && removeInjectMessage && (
           // Overlaid on the bubble's corner (the column is as wide as the
           // bubble), shown on hover / keyboard focus — no line of its own.
+          // Always shown on a screen that cannot hover (M9).
           <button
             type="button"
             data-testid="inject-message-remove"
-            className="absolute -top-2 -left-2 z-10 flex size-5 items-center justify-center rounded-full border bg-background text-muted-foreground opacity-0 shadow-sm transition-opacity hover:text-foreground group-hover:opacity-100 focus-visible:opacity-100"
+            className={cn(
+              "absolute -top-2 -left-2 z-10 flex size-5 items-center justify-center rounded-full border bg-background text-muted-foreground opacity-0 shadow-sm transition-opacity hover:text-foreground group-hover:opacity-100 focus-visible:opacity-100",
+              SHOWN_WITHOUT_HOVER,
+            )}
             aria-label={t("composer.injectRemove")}
             title={t("composer.injectRemove")}
             onClick={handleRemoveInject}
@@ -251,7 +256,10 @@ export const UserMessage: FC = () => {
             below it. Interactive only while this message is hovered (`group-hover`), so
             it never sits live over the next message's clicks. */}
         <div
-          className="aui-user-action-bar-bridge pointer-events-none group-hover:pointer-events-auto absolute top-full right-0 h-2.5 w-12 opacity-0"
+          className={cn(
+            "aui-user-action-bar-bridge pointer-events-none group-hover:pointer-events-auto absolute top-full right-0 h-2.5 w-12 opacity-0",
+            HIDDEN_WITHOUT_HOVER,
+          )}
           onMouseEnter={() => setActionsOpen(true)}
           onMouseLeave={() => setActionsOpen(false)}
         />
@@ -266,6 +274,9 @@ export const UserMessage: FC = () => {
         <div
           className={cn(
             "aui-user-action-bar-wrapper absolute top-full right-0 z-10 flex opacity-0 transition-opacity pointer-events-none group-hover:pointer-events-auto group-hover:opacity-100 focus-within:pointer-events-auto focus-within:opacity-100 peer-empty:hidden",
+            // Without hover: always shown, on its own line (M9).
+            IN_FLOW_WITHOUT_HOVER,
+            SHOWN_WITHOUT_HOVER,
             actionsOpen && "opacity-100 pointer-events-auto",
           )}
           onMouseEnter={() => setActionsOpen(true)}

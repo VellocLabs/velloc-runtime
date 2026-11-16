@@ -8,6 +8,7 @@ import {
 import { CheckIcon, CopyIcon } from "lucide-react";
 
 import { cn } from "@/lib/utils";
+import { SHOWN_WITHOUT_HOVER } from "./touch-reveal";
 import { baseName } from "@/utils/paths";
 import { writeClipboard } from "@/utils/clipboard";
 import { useT } from "@/browser/webview/i18n";
@@ -256,7 +257,7 @@ export function CopyButton({
       className={cn(
         "flex size-6 shrink-0 items-center justify-center rounded text-muted-foreground transition-opacity hover:bg-muted hover:text-foreground",
         !alwaysVisible &&
-          "opacity-0 group-hover:opacity-100 focus-visible:opacity-100",
+          cn("opacity-0 group-hover:opacity-100 focus-visible:opacity-100", SHOWN_WITHOUT_HOVER),
         className,
       )}
     >

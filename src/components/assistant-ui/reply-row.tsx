@@ -3,6 +3,7 @@ import { ToolLineRangeProvider } from "@/components/assistant-ui/tool-line-range
 import { TOOL_LINE_RANGES_KEY } from "@/browser/webview/assistantUiAdapter";
 import { StaticMarkdown } from "@/components/assistant-ui/static-markdown";
 import { cn } from "@/lib/utils";
+import { HIDDEN_WITHOUT_HOVER, IN_FLOW_WITHOUT_HOVER, SHOWN_WITHOUT_HOVER } from "./touch-reveal";
 import {
   ActionBarPrimitive,
   ErrorPrimitive,
@@ -122,13 +123,19 @@ export const ReplyRow: FC = () => {
             while the bar is shown (opacity-0 hides it too), but it must stay
             mounted so mouseenter fires as the cursor enters the gap. */}
         <div
-          className="aui-assistant-message-footer-bridge pointer-events-auto absolute top-full left-2 h-2.5 w-64 opacity-0"
+          className={cn(
+            "aui-assistant-message-footer-bridge pointer-events-auto absolute top-full left-2 h-2.5 w-64 opacity-0",
+            HIDDEN_WITHOUT_HOVER,
+          )}
           onMouseEnter={() => setActionsOpen(true)}
           onMouseLeave={() => setActionsOpen(false)}
         />
         <div
           className={cn(
             "aui-assistant-message-footer absolute top-full left-2 flex opacity-0 transition-opacity pointer-events-none group-hover:pointer-events-auto group-hover:opacity-100 focus-within:pointer-events-auto focus-within:opacity-100",
+            // Without hover: always shown, on its own line (M9).
+            IN_FLOW_WITHOUT_HOVER,
+            SHOWN_WITHOUT_HOVER,
             actionsOpen && "opacity-100 pointer-events-auto",
           )}
           onMouseEnter={() => setActionsOpen(true)}

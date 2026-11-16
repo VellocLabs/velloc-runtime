@@ -55,6 +55,7 @@ import { RuntimeCapabilitiesContext, useCapabilityQuery } from '../browser/webvi
 import { useMultiSessionClients } from '../browser/webview/useMultiSessionClients'
 import { useSessionManager } from '../browser/webview/useSessionManager'
 import { randomUuid } from '../utils/randomUuid'
+import { useThreadBottomInset } from './threadBottomInset'
 
 /** What the phone shell reads of the props `renderShell` passes every shell. */
 export type MobileShellProps = {
@@ -88,6 +89,7 @@ export function MobileShell(props: MobileShellProps): ReactNode {
   } = props
   const t = useT()
   const runtimeCapabilities = useCapabilityQuery(runtimeConnection)
+  const threadBottomInset = useThreadBottomInset()
   const connectionState = useRuntimeConnectionState(runtimeConnection)
 
   const sessionChannelRef = useRef<SessionListChannel | null>(sessionChannel ?? null)
@@ -338,7 +340,7 @@ export function MobileShell(props: MobileShellProps): ReactNode {
     subAgentRowsForSession: noSubAgentRows,
     handleStopBackgroundTask: undefined,
     handleOpenBackgroundTasksList: undefined,
-    openSidePane: noop,
+    openSidePane: undefined,
     openFile: undefined,
     openTerminalInPanel: undefined,
     statFilePaths: clients.statFilePaths,
@@ -366,6 +368,8 @@ export function MobileShell(props: MobileShellProps): ReactNode {
     sessionDraftBySessionId,
     composerInsert: null,
     handleComposerEdit,
+    // No Shift on a soft keyboard: Enter is a newline and only Send sends (M9).
+    composerEnterSends: false,
   }
 
   const activeItem = sessions.find(s => s.sessionId === activeSessionId)
@@ -385,7 +389,15 @@ export function MobileShell(props: MobileShellProps): ReactNode {
                 {title}
               </h1>
             </header>
-            <div className="relative min-h-0 flex-1" data-testid="mobile-thread">
+            <div
+              className="relative min-h-0 flex-1"
+              data-testid="mobile-thread"
+              style={{
+                ['--thread-bottom-inset' as string]: threadBottomInset,
+                paddingLeft: 'env(safe-area-inset-left)',
+                paddingRight: 'env(safe-area-inset-right)',
+              }}
+            >
               {renderShellSessionThread(threadInputs, activeSessionId, false)}
             </div>
           </main>

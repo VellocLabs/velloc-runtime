@@ -1095,6 +1095,7 @@ export const zh: Messages = {
   'planEnter.reject': '不用，现在就开始实现',
   'planApproval.title': '拟定的计划',
   'planApproval.openPlan': '打开计划',
+  'planApproval.hidePlan': '收起计划',
   'planApproval.panelTitle': '计划',
   'planApproval.reject': '拒绝',
   'planApproval.revise': '修改…',

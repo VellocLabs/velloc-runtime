@@ -288,6 +288,7 @@ export const AssistantUiThread = memo(function AssistantUiThread({
   onOpenProjectFolder,
   onRevealProjectFolder,
   initialComposerDraft,
+  composerEnterSends,
   composerInsert,
   onComposerEdit,
   onPendingQuestionsChange,
@@ -354,6 +355,7 @@ export const AssistantUiThread = memo(function AssistantUiThread({
       onOpenProjectFolder={onOpenProjectFolder}
       onRevealProjectFolder={onRevealProjectFolder}
       initialComposerDraft={initialComposerDraft}
+      composerEnterSends={composerEnterSends}
       onComposerEdit={readOnly ? undefined : onComposerEdit}
       onPendingQuestionsChange={onPendingQuestionsChange}
     />
@@ -419,6 +421,7 @@ function InteractiveAssistantUiThread({
   onOpenProjectFolder,
   onRevealProjectFolder,
   initialComposerDraft,
+  composerEnterSends,
   composerInsert,
   onComposerEdit,
   onPendingQuestionsChange,
@@ -611,8 +614,8 @@ function InteractiveAssistantUiThread({
       locked: snapshot.messageCount > 0,
       onSelectFolder: (path: string) =>
         onSelectProjectFolder?.(activeSessionId, path),
-      onOpenFolder: () => onOpenProjectFolder?.(activeSessionId),
-      onRevealFolder: (path: string) => onRevealProjectFolder?.(path),
+      onOpenFolder: onOpenProjectFolder ? () => onOpenProjectFolder(activeSessionId) : undefined,
+      onRevealFolder: onRevealProjectFolder,
     }
   }, [
     state.snapshot,
@@ -1299,7 +1302,7 @@ function InteractiveAssistantUiThread({
                         <ContinueConversationProvider value={{ onContinueConversation: handleContinueConversation }}>
                         <IsResumableProvider value={isResumable}>
                         <LastTerminalReasonProvider value={state.snapshot?.lastTerminalReason}>
-                          <Thread templateType={activeTemplateType} sessionId={sessionId} isForeground={isForegroundSession} lockToBottomRef={lockToBottomRef} turnDiffHistory={state.turnDiffHistory} onPendingQuestionsChange={onPendingQuestionsChange} pendingMessage={state.pendingMessage} pendingMessageEntries={state.pendingMessageEntries} onClearPendingMessage={onClearPendingMessage} injectRestore={state.injectRestore} onRemoveInjectMessage={removeInjectMessageRestoringFiles} />
+                          <Thread templateType={activeTemplateType} sessionId={sessionId} isForeground={isForegroundSession} lockToBottomRef={lockToBottomRef} turnDiffHistory={state.turnDiffHistory} onPendingQuestionsChange={onPendingQuestionsChange} pendingMessage={state.pendingMessage} pendingMessageEntries={state.pendingMessageEntries} onClearPendingMessage={onClearPendingMessage} injectRestore={state.injectRestore} onRemoveInjectMessage={removeInjectMessageRestoringFiles} composerEnterSends={composerEnterSends} />
                         </LastTerminalReasonProvider>
                         </IsResumableProvider>
                         </ContinueConversationProvider>
@@ -1314,7 +1317,7 @@ function InteractiveAssistantUiThread({
                           <ContinueConversationProvider value={{ onContinueConversation: handleContinueConversation }}>
                           <IsResumableProvider value={isResumable}>
                           <LastTerminalReasonProvider value={state.snapshot?.lastTerminalReason}>
-                            <Thread templateType={activeTemplateType} sessionId={sessionId} isForeground={isForegroundSession} lockToBottomRef={lockToBottomRef} turnDiffHistory={state.turnDiffHistory} onPendingQuestionsChange={onPendingQuestionsChange} pendingMessage={state.pendingMessage} pendingMessageEntries={state.pendingMessageEntries} onClearPendingMessage={onClearPendingMessage} injectRestore={state.injectRestore} onRemoveInjectMessage={removeInjectMessageRestoringFiles} />
+                            <Thread templateType={activeTemplateType} sessionId={sessionId} isForeground={isForegroundSession} lockToBottomRef={lockToBottomRef} turnDiffHistory={state.turnDiffHistory} onPendingQuestionsChange={onPendingQuestionsChange} pendingMessage={state.pendingMessage} pendingMessageEntries={state.pendingMessageEntries} onClearPendingMessage={onClearPendingMessage} injectRestore={state.injectRestore} onRemoveInjectMessage={removeInjectMessageRestoringFiles} composerEnterSends={composerEnterSends} />
                           </LastTerminalReasonProvider>
                           </IsResumableProvider>
                           </ContinueConversationProvider>
@@ -1324,7 +1327,7 @@ function InteractiveAssistantUiThread({
                       <ContinueConversationProvider value={{ onContinueConversation: handleContinueConversation }}>
                       <IsResumableProvider value={isResumable}>
                       <LastTerminalReasonProvider value={state.snapshot?.lastTerminalReason}>
-                        <Thread templateType={activeTemplateType} sessionId={sessionId} isForeground={isForegroundSession} lockToBottomRef={lockToBottomRef} turnDiffHistory={state.turnDiffHistory} onPendingQuestionsChange={onPendingQuestionsChange} pendingMessage={state.pendingMessage} pendingMessageEntries={state.pendingMessageEntries} onClearPendingMessage={onClearPendingMessage} injectRestore={state.injectRestore} onRemoveInjectMessage={removeInjectMessageRestoringFiles} />
+                        <Thread templateType={activeTemplateType} sessionId={sessionId} isForeground={isForegroundSession} lockToBottomRef={lockToBottomRef} turnDiffHistory={state.turnDiffHistory} onPendingQuestionsChange={onPendingQuestionsChange} pendingMessage={state.pendingMessage} pendingMessageEntries={state.pendingMessageEntries} onClearPendingMessage={onClearPendingMessage} injectRestore={state.injectRestore} onRemoveInjectMessage={removeInjectMessageRestoringFiles} composerEnterSends={composerEnterSends} />
                       </LastTerminalReasonProvider>
                       </IsResumableProvider>
                       </ContinueConversationProvider>

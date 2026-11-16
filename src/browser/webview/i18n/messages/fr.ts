@@ -1108,6 +1108,7 @@ export const fr: Messages = {
   'planEnter.reject': 'Non, commencer la mise en œuvre maintenant',
   'planApproval.title': 'Plan proposé',
   'planApproval.openPlan': 'Ouvrir le plan',
+  'planApproval.hidePlan': 'Masquer le plan',
   'planApproval.panelTitle': 'Plan',
   'planApproval.reject': 'Refuser',
   'planApproval.revise': 'Réviser…',

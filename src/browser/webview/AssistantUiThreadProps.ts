@@ -120,6 +120,8 @@ export type AssistantUiThreadProps = {
    * we never overwrite the user's in-progress typing.
    */
   initialComposerDraft?: string
+  /** Whether a plain Enter in the composer sends; default true (M9). */
+  composerEnterSends?: boolean
   /** Text to add to the end of the composer, once per `nonce` (F-9 *Attach as context*). */
   composerInsert?: { text: string; nonce: number } | null
   /**

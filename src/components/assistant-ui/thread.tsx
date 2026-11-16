@@ -161,6 +161,8 @@ export const Thread: FC<{
   onRemoveInjectMessage?: (
     uuid: string,
   ) => Promise<{ ok: boolean; text?: string }>;
+  /** Whether a plain Enter sends (the composer's `enterSends`). */
+  composerEnterSends?: boolean;
 }> = ({
   templateType,
   sessionId,
@@ -173,6 +175,7 @@ export const Thread: FC<{
   onClearPendingMessage,
   injectRestore,
   onRemoveInjectMessage,
+  composerEnterSends,
 }) => {
   // Boot marks after each commit: `auiThreadFirstCommitMs` (first commit after a
   // non-empty transcript) and `auiThreadCommitCount` (commits until welcome unmount).
@@ -502,9 +505,12 @@ export const Thread: FC<{
       sessionId={sessionId}
       onChange={onPendingQuestionsChange}
     />
+    {/* `--thread-bottom-inset` (set by the host, default 0): room the host
+        covers at the bottom edge, such as a soft keyboard or a safe area; the
+        conversation and its composer end above it (M9). */}
     <ThreadPrimitive.Root
       data-thread-session={sessionId}
-      className="aui-root aui-thread-root @container relative flex h-full flex-col bg-background has-[[data-slot=session-card-stack]]:[--thread-end-reserve:clamp(24px,calc(var(--thread-max-width)+654px-100cqw),315px)]"
+      className="aui-root aui-thread-root @container relative flex h-full flex-col bg-background pb-[var(--thread-bottom-inset,0px)] has-[[data-slot=session-card-stack]]:[--thread-end-reserve:clamp(24px,calc(var(--thread-max-width)+654px-100cqw),315px)]"
       style={{
         ["--thread-max-width" as string]: "48rem",
         ["--composer-radius" as string]: "24px",
@@ -626,7 +632,7 @@ export const Thread: FC<{
               person answers or dismisses it. */}
           <ModAsks />
           <PlanGatedComposer>
-            <Composer />
+            <Composer enterSends={composerEnterSends} />
           </PlanGatedComposer>
           {/* Folder chip (left) and context ring (right) on one line below the
               composer, centred with 3px above and below: the negative

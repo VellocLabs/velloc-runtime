@@ -72,10 +72,18 @@ export const ComposerContextUsage: FC<{ isForeground?: boolean }> = ({ isForegro
   );
 };
 
+/**
+ * Contract: `enterSends` (default true) makes a plain Enter send. False, a
+ * plain Enter inserts a newline and only the Send button sends; the modifier
+ * shortcuts (Ctrl/Cmd+Enter, Ctrl/Cmd+Alt+Enter) keep working. A key pressed
+ * during IME composition never sends.
+ */
+export type ComposerProps = { enterSends?: boolean };
+
 // Exported for `remote-client-can-trimming.render.test.ts`, which mounts it to
 // pin that the runtime gate EXPLAINS itself (`remote.composer.disabled`) rather
 // than just going inert. Not part of the public surface — Thread renders it.
-export const Composer: FC = () => {  const t = useT();
+export const Composer: FC<ComposerProps> = ({ enterSends = true }) => {  const t = useT();
   const slashCommands = useContext(SlashCommandsContext);
   // Per-model gate for image paste. When the ACTIVE model is text-only
   // (`supportsImageInput: false` in the curated catalog) the library's
@@ -206,7 +214,7 @@ export const Composer: FC = () => {  const t = useT();
       sendComposer();
       return;
     }
-    if (!shouldSendOnRunningEnter(keyParams)) return;
+    if (!enterSends || !shouldSendOnRunningEnter(keyParams)) return;
     // Claim the key so the primitive's own (no-op while running) handler is
     // skipped, then send — plain Enter adds the message to the RUNNING turn.
     e.preventDefault();
@@ -281,6 +289,7 @@ export const Composer: FC = () => {  const t = useT();
                 interceptLargeTextPaste(e, composer);
               }}
               onKeyDown={handleComposerKeyDown}
+              submitMode={enterSends ? "enter" : "none"}
               cancelOnEscape={false}
               // The send shortcuts live in the Send button's tooltip and the
               // hint line; the empty composer invites a first task in a new

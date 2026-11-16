@@ -1141,6 +1141,7 @@ export const en = {
   'planEnter.reject': 'No, start implementing now',
   'planApproval.title': 'Proposed plan',
   'planApproval.openPlan': 'Open plan',
+  'planApproval.hidePlan': 'Hide plan',
   'planApproval.panelTitle': 'Plan',
   'planApproval.reject': 'Reject',
   'planApproval.revise': 'Revise…',

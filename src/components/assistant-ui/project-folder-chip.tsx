@@ -120,8 +120,8 @@ export const CurrentProjectFolderChip: FC = () => {
   // the folder switcher's known folders stay. A `full` grant and a tree with
   // no capability provider both answer true, so the desktop menu is unchanged.
   const capabilities = useCapabilities();
-  const canRevealFolder = capabilities.can("ui", "revealProjectFolder");
-  const canPickFolder = capabilities.can("ui", "pickProjectFolder");
+  const canRevealFolder = capabilities.can("ui", "revealProjectFolder") && !!controls?.onRevealFolder;
+  const canPickFolder = capabilities.can("ui", "pickProjectFolder") && !!controls?.onOpenFolder;
   const rootRef = useRef<HTMLDivElement>(null);
   // Last bound folder we displayed — keeps a locked session's chip stable
   // against transient snapshot flips (see `resolveChipFolder`).
@@ -190,7 +190,7 @@ export const CurrentProjectFolderChip: FC = () => {
     ? recent.filter((f) => !isSameFolderPath(f.path, displayProjectRoot))
     : recent;
   const handleReveal = () => {
-    if (displayProjectRoot) controls.onRevealFolder(displayProjectRoot);
+    if (displayProjectRoot) controls.onRevealFolder?.(displayProjectRoot);
     setOpen(false);
   };
   const handleCopyPath = () => {
@@ -310,7 +310,7 @@ export const CurrentProjectFolderChip: FC = () => {
                     type="button"
                     role="menuitem"
                     onClick={() => {
-                      controls.onOpenFolder();
+                      controls.onOpenFolder?.();
                       setOpen(false);
                     }}
                     className="aui-project-folder-menu-open flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-sm hover:bg-accent"

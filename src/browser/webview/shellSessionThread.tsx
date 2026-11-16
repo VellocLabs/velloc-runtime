@@ -52,7 +52,8 @@ export interface ShellSessionThreadInputs {
   subAgentRowsForSession: (sessionId: string) => NexusTaskSummaryRow[]
   handleStopBackgroundTask: ThreadProps['onStopBackgroundTask']
   handleOpenBackgroundTasksList: ThreadProps['onOpenBackgroundTasksList']
-  openSidePane: (kind: SidePaneKind) => void
+  /** Opens a side pane; absent where the shell has none, and their entry points hide. */
+  openSidePane?: (kind: SidePaneKind) => void
   openFile: ThreadProps['onOpenFileInPanel']
   openTerminalInPanel: ThreadProps['onOpenTerminalInPanel']
   statFilePaths: ThreadProps['statFilePaths']
@@ -80,6 +81,7 @@ export interface ShellSessionThreadInputs {
   sessionDraftBySessionId: ReadonlyMap<string, string>
   composerInsert: { sessionId: string; text: string; nonce: number } | null
   handleComposerEdit: ThreadProps['onComposerEdit']
+  composerEnterSends?: ThreadProps['composerEnterSends']
 }
 
 // One session's conversation: in the chat slot (shown when active, kept
@@ -108,6 +110,7 @@ export function renderShellSessionThread(
     handleLoadProviderMissingPrompt, handleAdoptDefaultSelection, handleSessionSelectModel,
     handleSetAutoCompactWindow, handleSelectProjectFolder, handleOpenProjectFolder,
     handleRevealProjectFolder, sessionDraftBySessionId, composerInsert, handleComposerEdit,
+    composerEnterSends,
   } = inputs
   const isActive = inPane || sessionId === activeSessionId
   const bound = inPane ? sessionActionsFor(sessionId) : null
@@ -181,7 +184,7 @@ export function renderShellSessionThread(
                 backgroundTaskRows={subAgentRowsForSession(sessionId)}
                 onStopBackgroundTask={handleStopBackgroundTask}
                 onOpenBackgroundTasksList={handleOpenBackgroundTasksList}
-                onOpenPlanPanel={() => openSidePane('plan')}
+                onOpenPlanPanel={openSidePane ? () => openSidePane('plan') : undefined}
                 onOpenFileInPanel={openFile}
                 onOpenTerminalInPanel={openTerminalInPanel}
                 statFilePaths={statFilePaths}
@@ -215,6 +218,7 @@ export function renderShellSessionThread(
                 initialComposerDraft={sessionDraftBySessionId.get(sessionId)}
                 composerInsert={composerInsert?.sessionId === sessionId ? composerInsert : null}
                 onComposerEdit={handleComposerEdit}
+                composerEnterSends={composerEnterSends}
               />
             </ThreadErrorBoundary>
             )}

@@ -24,6 +24,7 @@ import { composerShortcutModifiers } from "./composer-send-shortcuts";
 import { focusComposerNear, useComposerPassages } from "./composer-passages";
 import { userMessageOffersCutActions } from "./inject-message-context";
 import { useMessageActionsContext } from "./message-actions-context";
+import { attachTouchLongPress } from "./touch-long-press";
 
 /**
  * The transcript's message context menu (F-22). Opens on a right-click, the
@@ -141,7 +142,12 @@ export const MessageContextMenu: FC<{
       });
     };
     list.addEventListener("contextmenu", onContextMenu);
-    return () => list.removeEventListener("contextmenu", onContextMenu);
+    // A touch screen has no right-click: a long press opens the same menu.
+    const detachLongPress = attachTouchLongPress(list);
+    return () => {
+      detachLongPress();
+      list.removeEventListener("contextmenu", onContextMenu);
+    };
   }, [listRef]);
 
   // A menu belongs to the session it opened in: leaving that session closes it.

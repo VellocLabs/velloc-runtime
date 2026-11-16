@@ -109,10 +109,10 @@ export type ProjectFolderControls = {
   branch?: string;
   /** Re-bind to an already-known recent folder. */
   onSelectFolder: (path: string) => void;
-  /** Open the native picker to choose a new folder. */
-  onOpenFolder: () => void;
-  /** Reveal a folder in the native OS file manager ("Show in Explorer"). */
-  onRevealFolder: (path: string) => void;
+  /** Open the native picker to choose a new folder; absent → "Open folder…" is hidden. */
+  onOpenFolder?: () => void;
+  /** Reveal a folder in the native OS file manager ("Show in Explorer"); absent → hidden. */
+  onRevealFolder?: (path: string) => void;
 };
 export const ProjectFolderContext = createContext<ProjectFolderControls | null>(null);
 export const ProjectFolderProvider = ProjectFolderContext.Provider;

@@ -1100,6 +1100,7 @@ export const ja: Messages = {
   'planEnter.reject': 'いいえ、すぐに実装を始める',
   'planApproval.title': '提案された計画',
   'planApproval.openPlan': '計画を開く',
+  'planApproval.hidePlan': '計画を閉じる',
   'planApproval.panelTitle': '計画',
   'planApproval.reject': '却下',
   'planApproval.revise': '修正を依頼…',

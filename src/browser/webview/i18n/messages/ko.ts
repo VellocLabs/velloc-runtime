@@ -1097,6 +1097,7 @@ export const ko: Messages = {
   'planEnter.reject': '아니요, 바로 구현 시작',
   'planApproval.title': '제안된 계획',
   'planApproval.openPlan': '계획 열기',
+  'planApproval.hidePlan': '계획 접기',
   'planApproval.panelTitle': '계획',
   'planApproval.reject': '거절',
   'planApproval.revise': '수정 요청…',
