@@ -58,7 +58,7 @@ export function MobileShellSheets({
 
   const usageOpen = sheet === 'usage'
   const providerUsage = useProviderUsage(usageOpen ? providerId : undefined)
-  // The figures read the transcript and the auto-compact switch alone; a new snapshot object
+  // The figures read the transcript, the model and the auto-compact switch; a new snapshot object
   // arrives on every worker push, so it must not be a dependency.
   const hasSnapshot = snapshot !== undefined
   const autoCompactEnabled = snapshot?.autoCompact?.enabled

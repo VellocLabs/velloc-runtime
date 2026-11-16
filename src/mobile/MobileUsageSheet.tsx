@@ -58,9 +58,10 @@ export function MobileUsageSheet({ open, onOpenChange, context, planUsage, onRef
   const t = useT()
   const resetText = usePlanResetText()
   const windows = planUsage?.windows ?? []
-  // Reset labels are minute-grained; tick them while the sheet stays open.
-  const ticking = useTickingNow(open && windows.length > 0 && now === undefined, 30_000)
-  const clock = now ?? ticking
+  // Reset labels are minute-grained. The tick only drives a re-render; the clock itself is read
+  // during render, so the first paint after the sheet opens is current.
+  useTickingNow(open && windows.length > 0 && now === undefined, 30_000)
+  const clock = now ?? Date.now()
   const contextTone: BarTone =
     context?.warning === 'danger' ? 'destructive' : context?.warning === 'warning' ? 'warning' : 'primary'
   const refresh = onRefresh ? (
