@@ -200,8 +200,7 @@ const ReviewCardHeader: FC<{
 }> = ({ level, range, status, variant, running, collapsed = false, bodyId, onToggle, statusInBody = false, action, summary }) => {
   const t = useT()
   return <header className="relative flex items-center gap-3 px-4 py-3">
-    <span aria-hidden data-testid="review-icon" className={cn('flex size-10 shrink-0 items-center justify-center rounded-xl border transition-colors',
-      running ? 'border-primary/20 bg-primary/10 text-primary' : 'border-border/60 bg-muted/60 text-muted-foreground')}><SearchCheckIcon className="size-5" /></span>
+    <span aria-hidden data-testid="review-icon" className="flex size-10 shrink-0 items-center justify-center rounded-xl border border-border/60 bg-muted/60 text-muted-foreground"><SearchCheckIcon className="size-5" /></span>
     <div className="flex min-w-0 flex-1 flex-col gap-0.5">
       <div data-testid="review-heading" className="flex min-h-6 min-w-0 items-center gap-2">
         <h3 className="truncate font-medium">{t('reviewCard.title')}</h3>
@@ -514,6 +513,7 @@ export const ReviewReportCard: FC<{
               <p className="text-base font-semibold leading-tight" data-testid="review-count">{summary}</p>
               {impactCounts.map(([impact, count]) => <Badge key={impact} variant={IMPACT_VARIANT[impact]} size="sm">{enumText(impact)} · {count}</Badge>)}
               {run.progress.omittedByLimit > 0 && <span className="text-xs text-muted-foreground">{t('reviewCard.omitted', { omitted: run.progress.omittedByLimit })}</span>}
+              {filters.some(Boolean) && <div data-testid="review-filters" className="ml-auto flex flex-wrap items-center gap-x-3 gap-y-1">{filters[0]}{filters[1]}{filters[2]}</div>}
             </div>
             {report.diagnostics.length === 0 && <p data-testid="review-empty" className={cn('text-xs', report.emptyScope || clean ? 'text-muted-foreground' : 'text-warning-emphasis')}>{t(report.emptyScope ? 'reviewCard.emptyScope' : clean ? 'reviewCard.emptyComplete' : 'reviewCard.emptyPartial')}</p>}
           </div>}
@@ -525,9 +525,8 @@ export const ReviewReportCard: FC<{
         {endMessage && <p role="status" data-testid="review-end" className="rounded-lg bg-warning/10 px-3 py-2 text-xs text-warning-emphasis">{endMessage}</p>}
         {finished && !cancelled && !report.coverage.complete && !report.emptyScope && hasFindings && <p data-testid="review-incomplete" className="rounded-lg bg-warning/10 px-3 py-2 text-xs text-warning-emphasis">{t('reviewCard.notice.incomplete')}</p>}
         {!reviewing && report.diagnostics.length > 0 && <>
-          {(repairable || filters.some(Boolean)) && <div data-testid="review-toolbar" className="flex flex-wrap items-center gap-x-3 gap-y-1">
-            {repairable && <label className="flex items-center gap-1.5 text-xs text-muted-foreground"><input type="checkbox" data-testid="review-select-all" className="size-4 accent-primary" checked={allShown} disabled={busy || shown.length === 0} onChange={event => setSelected(ids => event.target.checked ? [...new Set([...ids, ...shown.map(item => item.id)])] : ids.filter(id => !shown.some(item => item.id === id)))} />{t('reviewCard.selectAll')}</label>}
-            <div className="ml-auto flex flex-wrap items-center gap-x-3 gap-y-1">{filters[0]}{filters[1]}{filters[2]}</div>
+          {repairable && <div data-testid="review-toolbar" className="flex flex-wrap items-center gap-x-3 gap-y-1">
+            <label className="flex items-center gap-1.5 text-xs text-muted-foreground"><input type="checkbox" data-testid="review-select-all" className="size-4 accent-primary" checked={allShown} disabled={busy || shown.length === 0} onChange={event => setSelected(ids => event.target.checked ? [...new Set([...ids, ...shown.map(item => item.id)])] : ids.filter(id => !shown.some(item => item.id === id)))} />{t('reviewCard.selectAll')}</label>
           </div>}
           {shown.length > 0 && <ul className="divide-y overflow-hidden rounded-lg border">{shown.map(diagnostic => {
             const assessment = latestAssessment(report, diagnostic.id)

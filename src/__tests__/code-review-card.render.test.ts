@@ -235,6 +235,10 @@ describe('review report card', () => {
     ]
     const action = renderReport(value)
     const titles = () => screen.queryAllByTestId('review-finding-toggle').map(item => item.textContent)
+    // The filters share the findings line with the count, pushed to its end.
+    const filters = screen.getByTestId('review-filters')
+    expect(filters.parentElement).toBe(screen.getByTestId('review-count').parentElement)
+    expect(filters.className).toContain('ml-auto')
     expect((screen.getByText('src/a.ts:2') as HTMLButtonElement).disabled).toBe(true)
     fireEvent.change(screen.getByLabelText(t('reviewCard.severity')), { target: { value: 'minor' } })
     expect(titles()).toEqual(['Repeated helper'])
@@ -735,14 +739,16 @@ describe('review card header and live activity', () => {
     fireEvent.focus(screen.getByTestId('review-range-short'))
     expect((await screen.findByRole('tooltip')).textContent).toContain(`${base} → ${head}`)
   })
-  it('tints the icon only while the review runs', () => {
+  it('keeps one icon background while the review runs and after it finishes', () => {
     renderReport(running())
-    expect(screen.getByTestId('review-icon').classList.contains('text-primary')).toBe(true)
+    const icon = screen.getByTestId('review-icon')
+    expect(icon.className).toContain('bg-muted/60')
+    expect(icon.className).not.toContain('bg-primary/10')
     cleanup()
     const done = running()
     done.run.progress = { ...done.run.progress, status: 'finished', stage: 'report' }
     renderReport(done)
-    expect(screen.getByTestId('review-icon').classList.contains('text-primary')).toBe(false)
+    expect(screen.getByTestId('review-icon').className).toBe(icon.className)
     expect(screen.getByTestId('review-heading').querySelector('h3')!.textContent).toBe(t('reviewCard.title'))
   })
   it('names the repository on the title line after the level, not on the range line', () => {
