@@ -147,6 +147,14 @@ describe('renderNotices', () => {
     expect(graphviz.license).toBe('EPL-1.0')
     expect(readFileSync(path.join(NOTICES_DIR, graphviz.file), 'utf8')).toMatch(/^Eclipse Public License - v 1\.0/)
   })
+
+  it('carries the MIT notice qrcode-generator only states in a source comment', () => {
+    const [qr] = COMPILED_IN['qrcode-generator']!
+    expect(qr!.license).toBe('MIT')
+    const text = readFileSync(path.join(NOTICES_DIR, qr!.file), 'utf8')
+    expect(text).toMatch(/^MIT License/)
+    expect(text).toContain('Copyright (c) 2009 Kazuhiko Arase')
+  })
 })
 
 describe('licenseFromText', () => {

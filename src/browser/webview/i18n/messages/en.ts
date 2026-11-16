@@ -1029,6 +1029,18 @@ export const en = {
   'customize.addDialog.close': 'Close',
   'topbar.remoteDevicesOne': '1 remote device connected',
   'topbar.remoteDevices': '{count} remote devices connected',
+  'topbar.remoteConnect.title': 'Connect a device',
+  'topbar.remoteConnect.hint': 'Scan with a phone camera, or copy the link to another device on the same network.',
+  'topbar.remoteConnect.copyLink': 'Copy link',
+  'topbar.remoteConnect.copied': 'Copied',
+  'topbar.remoteConnect.copyFailed': 'Copy failed',
+  'topbar.remoteConnect.settings': 'Remote access settings',
+  'topbar.remoteConnect.starting': 'Remote access is starting…',
+  'topbar.remoteConnect.error': 'Remote access couldn\'t start. Open its settings for details.',
+  'topbar.remoteConnect.noAddress': 'This computer has no network address to share yet.',
+  'topbar.remoteConnect.loading': 'Reading the access link…',
+  'topbar.remoteConnect.noLink': 'The access link isn\'t available. Open Remote access settings to create one.',
+  'topbar.remoteConnect.qrLabel': 'QR code of the access link',
 
   // ── Import dialog (sessionImport/ImportDialog) ────────────────────────
   // `{source}` is the third-party product's proper name, passed as data.

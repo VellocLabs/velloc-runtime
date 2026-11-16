@@ -30,13 +30,23 @@ export type CompiledInComponent = {
 
 /**
  * @viz-js/viz ships no licence file; its WebAssembly module is Graphviz and
- * Expat in object code form, named only in a banner comment.
+ * Expat in object code form, named only in a banner comment. qrcode-generator
+ * ships no licence file either; its MIT notice is a source comment the bundle
+ * drops.
  */
 export const COMPILED_IN: Record<string, CompiledInComponent[]> = {
   '@viz-js/viz': [
     { name: 'Viz.js', license: 'MIT', file: 'Viz.js-LICENSE.txt', source: 'https://github.com/mdaines/viz-js' },
     { name: 'Graphviz', license: 'EPL-1.0', file: 'EPL-1.0.txt', source: 'https://gitlab.com/graphviz/graphviz' },
     { name: 'Expat', license: 'MIT', file: 'Expat-COPYING.txt', source: 'https://github.com/libexpat/libexpat' },
+  ],
+  'qrcode-generator': [
+    {
+      name: 'QR Code Generator for JavaScript',
+      license: 'MIT',
+      file: 'qrcode-generator-LICENSE.txt',
+      source: 'https://github.com/kazuhikoarase/qrcode-generator',
+    },
   ],
 }
 

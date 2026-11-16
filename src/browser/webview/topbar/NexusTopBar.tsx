@@ -4,8 +4,8 @@ import {
   CheckIcon,
   DownloadIcon,
   EllipsisVerticalIcon,
-  Link2Icon,
   PanelLeftIcon,
+  QrCodeIcon,
   SettingsIcon,
   SquareChartGanttIcon,
 } from "lucide-react";
@@ -41,6 +41,7 @@ import {
   type DrivenDesktop,
 } from "../remote/RemoteHostIndicator";
 import { RemoteFullscreenToggle } from "../remote/RemoteFullscreenToggle";
+import { RemoteConnectButton, type RemoteConnectSource } from "./RemoteConnectButton";
 import { NexusModelPicker } from "./NexusModelPicker";
 import { AppPressMenu } from "./AppPressMenu";
 import {
@@ -162,6 +163,13 @@ export type NexusTopBarProps = {
    */
   remoteDeviceCount?: number;
   /**
+   * Remote access's state and link source (F-24), passed when this page may
+   * open Settings → Remote access. While `access.enabled`, the control above
+   * shows even with no device connected and opens the connect popover (QR
+   * code, Copy link, settings) instead of going straight to settings.
+   */
+  remoteConnect?: RemoteConnectSource;
+  /**
    * Present only when this page is a REMOTE client (F-24), as the boot path states.
    * Hides the connected-devices link; the right column carries the host indicator
    * and the fullscreen toggle instead of the caption reserve.
@@ -244,6 +252,7 @@ export function NexusTopBar({
   onOpenImport,
   onOpenCustomize,
   remoteDeviceCount,
+  remoteConnect,
   remoteHost,
   onRemoteLogOut,
   onPressPluginItem,
@@ -279,7 +288,9 @@ export function NexusTopBar({
           !(kind === "mods" && !hasModPanes && !open.has(kind)),
       )
     : [];
-  const showRemoteDevices = !remoteHost && !!remoteDeviceCount && remoteDeviceCount > 0;
+  const remoteConnectSource = !remoteHost && remoteConnect?.access.enabled ? remoteConnect : null;
+  const deviceCount = remoteDeviceCount && remoteDeviceCount > 0 ? remoteDeviceCount : 0;
+  const showRemoteDevices = !remoteHost && (remoteConnectSource !== null || deviceCount > 0);
   const importEntries = onOpenImport && importSources ? importSources : [];
   const canCustomize = useCan("customizePage", "show");
   // Beta channel only for now (F-35).
@@ -320,9 +331,11 @@ export function NexusTopBar({
     folded.has(pluginFoldKey(item.id)),
   );
   const remoteDevicesLabel =
-    remoteDeviceCount === 1
-      ? t("topbar.remoteDevicesOne")
-      : t("topbar.remoteDevices", { count: remoteDeviceCount ?? 0 });
+    deviceCount === 0
+      ? t("topbar.remoteConnect.title")
+      : deviceCount === 1
+        ? t("topbar.remoteDevicesOne")
+        : t("topbar.remoteDevices", { count: deviceCount });
   // Stable identity so the memoized NexusModelPicker isn't re-rendered every
   // turn just because this arrow was re-created (it opens the Models settings
   // section). Without it, React.memo on the picker can never skip.
@@ -465,10 +478,18 @@ export function NexusTopBar({
             <TooltipContent side="bottom">{t("topbar.customize")}</TooltipContent>
           </Tooltip>
         ) : null}
-        {/* Remote devices connected — only while there are some. Just before
-            the search control, so its appearing and going never shifts the
-            buttons to its left. */}
-        {showRemoteDevices && !remoteFolded ? (
+        {/* Remote access: the connect popover while it is enabled, else the
+            connected-device count alone. Just before the search control, so
+            its appearing and going never shifts the buttons to its left. */}
+        {showRemoteDevices && !remoteFolded && remoteConnectSource ? (
+          <RemoteConnectButton
+            source={remoteConnectSource}
+            deviceCount={deviceCount}
+            devicesLabel={deviceCount > 0 ? remoteDevicesLabel : null}
+            onOpenSettings={() => onOpenSettings("remoteAccess")}
+            foldProps={{ [FOLD_ATTR]: "remote" }}
+          />
+        ) : showRemoteDevices && !remoteFolded ? (
           <Tooltip>
             <TooltipTrigger asChild>
               <Button
@@ -476,18 +497,18 @@ export function NexusTopBar({
                 variant="ghost"
                 size="icon-sm"
                 data-testid="topbar-remote-devices"
-                data-count={remoteDeviceCount}
+                data-count={deviceCount}
                 {...{ [FOLD_ATTR]: "remote" }}
                 aria-label={remoteDevicesLabel}
                 onClick={() => onOpenSettings("remoteAccess")}
                 className="relative"
               >
-                <Link2Icon className="size-4" />
+                <QrCodeIcon className="size-4" />
                 <span
                   aria-hidden
                   className="absolute right-0.5 top-0.5 flex min-w-3.5 items-center justify-center rounded-full bg-primary px-1 text-[9px] font-medium leading-none text-primary-foreground"
                 >
-                  {remoteDeviceCount}
+                  {deviceCount}
                 </span>
               </Button>
             </TooltipTrigger>
@@ -755,7 +776,7 @@ export function NexusTopBar({
                     data-testid="topbar-folded-remote-devices"
                     className={MENU_ITEM_CLASS}
                   >
-                    <Link2Icon aria-hidden className="size-4 text-muted-foreground" />
+                    <QrCodeIcon aria-hidden className="size-4 text-muted-foreground" />
                     <span className="flex-1">{remoteDevicesLabel}</span>
                   </DropdownMenuPrimitive.Item>
                 ) : null}

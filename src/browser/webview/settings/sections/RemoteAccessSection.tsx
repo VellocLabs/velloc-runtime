@@ -23,6 +23,13 @@ import type { RemoteAccessState } from "../../../runtimeHub/remoteAccessDriver";
 import type { RemoteState } from "../../../runtimeHub/remoteCapability";
 import type { RuntimeConnection } from "../../../runtimeClient/RuntimeConnection";
 import { useT } from "../../i18n";
+import {
+  readCurrentPairing,
+  shareLinkRows,
+  splitAddresses,
+  type CurrentPairing,
+  type LinkRow,
+} from "../../remote/shareLink";
 import { describeUserAgent } from "../../remote/userAgentLabel";
 import {
   SettingsCard,
@@ -53,84 +60,6 @@ export type RemoteAccessPageState = {
 export type RemoteAccessConnection = Pick<RuntimeConnection, "request" | "subscribe">;
 
 type PairingRow = RemoteState["pairings"][number];
-
-/**
- * The one live pairing's URL fragment (`remote.currentPairing`). Security: the
- * published `pairings` deliberately omit the secret.
- */
-type CurrentPairing = { pairId: string; fragment: string };
-
-async function readCurrentPairing(
-  conn: RemoteAccessConnection,
-): Promise<CurrentPairing | null> {
-  try {
-    const result = await conn.request<CurrentPairing | null>("remote.currentPairing", {});
-    if (result && typeof result.fragment === "string" && result.fragment !== "") {
-      return result;
-    }
-    return null;
-  } catch {
-    // The page degrades to its "no link yet" note rather than erroring.
-    return null;
-  }
-}
-
-/** An address row's display class, decided once and shared by the label and
- *  the sort. */
-type AddressKind = "loopback" | "physical" | "virtual";
-
-/**
- * Cosmetic classification of an address for labelling and ordering (the bind is
- * 0.0.0.0 regardless): physical NIC vs virtual adapter, by address prefix and
- * interface name (`vEthernet (…)` is Hyper-V).
- */
-function classifyAddress(a: { address: string; interfaceName: string }): AddressKind {
-  if (a.address === "127.0.0.1" || a.address === "::1") return "loopback";
-  if (a.address.startsWith("172.26.")) return "virtual"; // WSL / Hyper-V
-  const name = a.interfaceName.toLowerCase();
-  if (
-    /(vethernet|wsl|hyper-v|default switch|docker|vmware|virtualbox|vbox|vpn|tailscale|zerotier|wireguard|tunnel|tap|tun)/.test(
-      name,
-    )
-  ) {
-    return "virtual";
-  }
-  return "physical";
-}
-
-/** RFC 1918 — the ranges a home or office LAN hands out. A physical NIC on
- *  one of these is the likeliest address another device can reach. */
-function isPrivateLan(address: string): boolean {
-  if (address.startsWith("192.168.") || address.startsWith("10.")) return true;
-  const m = /^172\.(\d+)\./.exec(address);
-  return m !== null && Number(m[1]) >= 16 && Number(m[1]) <= 31;
-}
-
-type LinkRow = {
-  address: string;
-  interfaceName: string;
-  kind: AddressKind;
-  url: string;
-};
-
-/**
- * Split the candidates into the ONE recommended address (the first physical NIC on
- * a private LAN range, else the first physical NIC) and the rest. No physical NIC →
- * no recommendation.
- */
-function splitAddresses(rows: LinkRow[]): {
-  recommended: LinkRow | null;
-  others: LinkRow[];
-} {
-  const physical = rows.filter((r) => r.kind === "physical");
-  const recommended = physical.find((r) => isPrivateLan(r.address)) ?? physical[0] ?? null;
-  const rest = rows.filter((r) => r !== recommended);
-  const order: Record<AddressKind, number> = { physical: 0, virtual: 1, loopback: 2 };
-  return {
-    recommended,
-    others: rest.sort((x, y) => order[x.kind] - order[y.kind]),
-  };
-}
 
 /**
  * How long a device has been connected, in whole minutes/hours — the coarsest
@@ -512,13 +441,7 @@ export function RemoteAccessSection({
   // The share links: the same pairing's fragment on every reachable address,
   // split into the one recommended address and the rest. The bind is 0.0.0.0
   // — these are display candidates, not a choice.
-  const linkRows: LinkRow[] = currentPairing
-    ? access.addresses.map((a) => ({
-        ...a,
-        kind: classifyAddress(a),
-        url: `http://${a.address}:${access.port}/#${currentPairing.fragment}`,
-      }))
-    : [];
+  const linkRows = currentPairing ? shareLinkRows(access, currentPairing.fragment) : [];
   const { recommended, others } = splitAddresses(linkRows);
 
   const resetLink = async () => {

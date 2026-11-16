@@ -228,8 +228,7 @@ import { WorkspaceProjectFolderDialog } from './ThreadDialogs'
 const NO_CLIS: readonly string[] = []
 // Type-only, so it adds no edge to the emitted graph and the split holds.
 import type { SettingsSectionId } from './settings/SettingsScreen'
-import { isSettingsSectionVisible } from './settings/settingsNav'
-import { useRemoteAccessView } from './remote/remoteAccessView'
+import { useTopbarRemoteAccess } from './remote/useTopbarRemoteAccess'
 import type { DrivenDesktop } from './remote/hostIdentity'
 import {
   NexusSettingsBridge,
@@ -533,26 +532,12 @@ export function MultiSessionShell({
     () => createShellHandlePressPluginItem(runtimeConnection),
     [runtimeConnection],
   )
-  // F-24: remote devices connected to this desktop, for the topbar's link
-  // button. Read from the page's shared remote/state store, and only by a
-  // connection that may read the topic at all (the desktop, a manager). The
-  // count is 0 unless the Remote access page is one this connection may open —
-  // the button's click goes there, and must not land anywhere else.
-  const { view: remoteAccessView } = useRemoteAccessView(
+  // F-24: the topbar's connected-device count and connect button source.
+  const { remoteDeviceCount, remoteConnect } = useTopbarRemoteAccess(
     runtimeConnection,
-    runtimeCapabilities.can('remote', 'pairList'),
+    runtimeCapabilities,
+    remoteHost !== undefined,
   )
-  const remoteDeviceCount =
-    remoteAccessView?.access.enabled &&
-    isSettingsSectionVisible(
-      'remoteAccess',
-      runtimeCapabilities,
-      remoteAccessView.access.supported === true,
-      undefined,
-      remoteHost !== undefined,
-    )
-      ? remoteAccessView.access.clients
-      : 0
   // The boot session, plus whether its id was RESTORED from the persisted
   // pointer rather than minted here. The distinction is load-bearing: a
   // restored id can name a session that no longer exists, so the runtime must
@@ -3968,6 +3953,7 @@ export function MultiSessionShell({
         // Customize shows this window's native tab view: never on a remote client page.
         onOpenCustomize={remoteHost !== undefined ? undefined : handleOpenCustomize}
         remoteDeviceCount={remoteDeviceCount}
+        remoteConnect={remoteConnect}
         remoteHost={remoteHost}
         onRemoteLogOut={onRemoteLogOut}
       />
