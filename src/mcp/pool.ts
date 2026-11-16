@@ -18,18 +18,42 @@ import type {
   MCPToolDescriptor,
 } from './types'
 
-/** JSON-RPC "Method not found" (-32601): the server doesn't implement the
- *  resources capability. The SDK surfaces it as an McpError with `.code`. */
 /** The MCP client (SDK and schema validator), loaded with the first server a pool connects rather than with the worker. */
 const loadMcpClient = (): Promise<typeof McpClient> => import('./client')
 
-const connectMCPServer: typeof McpClient.connectMCPServer = async (...args) =>
-  (await loadMcpClient()).connectMCPServer(...args)
-const disconnectMCPServer: typeof McpClient.disconnectMCPServer = async (...args) =>
-  (await loadMcpClient()).disconnectMCPServer(...args)
+/** Like the client's connect, never rejects: a client that fails to load is a failed server. */
+const connectMCPServer: typeof McpClient.connectMCPServer = async options => {
+  let client: typeof McpClient
+  try {
+    client = await loadMcpClient()
+  } catch (err) {
+    console.warn(`[mcp] Connection to "${options.name}" failed:`, err)
+    return {
+      name: options.name,
+      config: options.config,
+      status: 'failed',
+      tools: [],
+      error: err instanceof Error ? err.message : String(err),
+    }
+  }
+  return client.connectMCPServer(options)
+}
+
+/** A server that never connected holds no client, so closing it needs no load. */
+const disconnectMCPServer: typeof McpClient.disconnectMCPServer = async server => {
+  if (!server.client) {
+    server.status = 'closed'
+    server.transport = undefined
+    return
+  }
+  return (await loadMcpClient()).disconnectMCPServer(server)
+}
+
 const invokeServerTool: typeof McpClient.invokeServerTool = async (...args) =>
   (await loadMcpClient()).invokeServerTool(...args)
 
+/** JSON-RPC "Method not found" (-32601): the server doesn't implement the
+ *  resources capability. The SDK surfaces it as an McpError with `.code`. */
 function isMethodNotFound(err: unknown): boolean {
   const code = (err as { code?: unknown } | null)?.code
   if (code === -32601) return true

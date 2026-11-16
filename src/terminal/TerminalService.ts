@@ -405,6 +405,9 @@ export class TerminalService {
   /** Start a shell for `sessionId` in its folder; resolves with the id once the start settled (running or failed). */
   async create(input: TerminalCreatePayload): Promise<string> {
     this.requireAvailable()
+    // Loaded before the checks, so nothing awaits between them and the record being registered.
+    const mirror = await loadScreenMirror()
+    this.requireAvailable()
     const cwd = this.deps.sessionCwd(input.sessionId)
     if (cwd === undefined) {
       throw wireError('not_found', `terminal: the runtime holds no session '${input.sessionId}'`)
@@ -427,7 +430,6 @@ export class TerminalService {
       }
       shell = picked
     }
-    const mirror = await loadScreenMirror()
     const id = `term_${(this.deps.newId ?? randomId)()}`
     const record: TerminalRecord = {
       id,

@@ -129,6 +129,6 @@ describe('worker body chunk (F-31, F-10)', () => {
     [MCP_POOL, "import('./client')"],
     [MCP_WORKER_SERVERS, "import('./client')"],
   ])('%s loads its cold module with import()', (file, call) => {
-    expect(stripComments(read(file))).toContain(call)
+    expect(stripComments(read(file)).replaceAll(`typeof ${call}`, '')).toContain(call)
   })
 })

@@ -571,3 +571,16 @@ describe('TitleSequenceScanner', () => {
     expect(scanner.feed('plain')).toEqual([])
   })
 })
+
+describe('TerminalService create while the screen model loads', () => {
+  it('a session closed during create is checked after the load, so no orphan shell starts', async () => {
+    const sessions: Record<string, string> = { s1: '/proj/s1' }
+    const r = await ready({ sessions })
+    const pending = r.service.create({ sessionId: 's1', cols: 80, rows: 24 })
+    delete sessions.s1
+    r.service.closeForSession('s1')
+    await expect(pending).rejects.toSatisfy(e => codeOf(e) === 'not_found')
+    expect(r.service.list().terminals).toEqual([])
+    expect(r.shellRequests('spawn')).toEqual([])
+  })
+})
