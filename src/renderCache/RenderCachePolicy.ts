@@ -1,12 +1,10 @@
 /**
  * When the runtime asks the host to purge the desktop's render caches (P-3).
- * Idle: no turn and no client activity for `RENDER_CACHE_IDLE_PURGE_MS` purges
- * once; activity or a turn end re-arms it. Inactive: the last active client
- * window losing activation purges every target with a trim, once per
- * transition, even during a turn; one the host skipped because a window of its
- * own was in front is retried when the pages go hidden. Every purge, manual
- * included, waits out the startup grace and keeps
- * `RENDER_CACHE_MIN_INTERVAL_MS` from the previous one.
+ * Idle: no turn and no activity for `RENDER_CACHE_IDLE_PURGE_MS` purges once;
+ * activity or a turn end re-arms it. Inactive: the last active window losing
+ * activation purges every target with a trim, once per transition, even during
+ * a turn; a skipped purge is retried when the pages go hidden. Every purge
+ * waits out the startup grace and keeps the minimum interval from the last.
  */
 import type { RenderCacheTarget, WorkingSetTrimOutcome } from '../browser/bridge/protocol/appInfo'
 import type {
