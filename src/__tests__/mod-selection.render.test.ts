@@ -68,6 +68,22 @@ describe('the selection tracker', () => {
     expect(tracker.get()).toBeUndefined()
   })
 
+  it('a selection in the prompt box is marked as the draft; one in another field is not', () => {
+    const root = thread()
+    root.insertAdjacentHTML('beforeend', '<div class="aui-composer-root"><textarea id="box">my token abc</textarea></div><textarea id="edit">edit me</textarea>')
+    const tracker = new ModSelectionTracker(() => root, () => 7)
+    const box = document.getElementById('box') as HTMLTextAreaElement
+    box.focus()
+    box.setSelectionRange(3, 8)
+    tracker.selectionChanged(document.getSelection())
+    expect(tracker.get()).toEqual({ text: 'token', at: 7, inPromptBox: true })
+    const edit = document.getElementById('edit') as HTMLTextAreaElement
+    edit.focus()
+    edit.setSelectionRange(0, 4)
+    tracker.selectionChanged(document.getSelection())
+    expect(tracker.get()).toEqual({ text: 'edit', at: 7 })
+  })
+
   it('a selection outside the thread is not held', () => {
     const root = thread()
     const tracker = new ModSelectionTracker(() => root)

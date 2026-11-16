@@ -7,6 +7,9 @@
  */
 import type { ModsPageSelection } from '@/browser/runtimeProtocol'
 
+/** The prompt box: a selection in it is the draft. */
+const PROMPT_BOX = '.aui-composer-root'
+
 /** What a press lands on that keeps the held selection: a control. */
 const CONTROL = 'button, [role="button"], a, input, textarea, select, label, [data-mod-key]'
 
@@ -40,7 +43,7 @@ export class ModSelectionTracker {
   selectionChanged(selection: Pick<Selection, 'isCollapsed' | 'rangeCount' | 'toString' | 'getRangeAt'> | null): void {
     const field = this.selectedField()
     if (field) {
-      this.held = { text: field, at: this.now() }
+      this.held = { text: field.text, at: this.now(), ...(field.inPromptBox ? { inPromptBox: true as const } : {}) }
       return
     }
     if (!selection || selection.isCollapsed || selection.rangeCount === 0) return
@@ -69,8 +72,9 @@ export class ModSelectionTracker {
     if (key === 'Escape') this.held = undefined
   }
 
-  /** The text selected in the thread's focused text field, if any. */
-  private selectedField(): string | undefined {
+  /** The text selected in the thread's focused text field, if any, and
+   *  whether that field is the prompt box. */
+  private selectedField(): { text: string; inPromptBox: boolean } | undefined {
     if (typeof document === 'undefined') return undefined
     const active = document.activeElement
     if (!(active instanceof HTMLTextAreaElement || active instanceof HTMLInputElement)) return undefined
@@ -78,6 +82,6 @@ export class ModSelectionTracker {
     if (!root || !(root as Node).contains(active)) return undefined
     const { selectionStart, selectionEnd, value } = active
     if (selectionStart === null || selectionEnd === null || selectionStart === selectionEnd) return undefined
-    return value.slice(selectionStart, selectionEnd)
+    return { text: value.slice(selectionStart, selectionEnd), inPromptBox: active.closest(PROMPT_BOX) !== null }
   }
 }

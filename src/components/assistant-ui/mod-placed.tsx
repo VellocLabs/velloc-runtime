@@ -2,8 +2,9 @@
  * The page's half of `$.ui.place` (F-25): each placed row stands after the message
  * that was the transcript's last when this page first saw it, so it scrolls with the
  * conversation and later messages come after it. A row placed before any message
- * stands before the first. The anchors are the page's own, kept per session while the
- * page lives; nothing stores them.
+ * stands before the first; one whose message left the thread stands after the last, and
+ * one placed again after its plugin unloaded goes at the end. The anchors are the page's
+ * own, kept per session while the page lives; nothing stores them.
  */
 import * as React from "react";
 import { useAssistantState } from "@assistant-ui/react";
@@ -22,11 +23,21 @@ export class ModPlacedAnchors {
   private readonly listeners = new Set<() => void>();
   private version = 0;
 
-  /** Pins each row not yet pinned after `last`. True when any was. */
-  bind(rows: readonly ModsUiPlacedRow[], last: Anchor): boolean {
+  /** Pins each row not yet pinned after `last`, and again a row whose message
+   *  left a non-empty `messages`; forgets the rows that went, so a row placed
+   *  again goes at the end. True when any anchor changed. */
+  bind(rows: readonly ModsUiPlacedRow[], last: Anchor, messages?: ReadonlySet<string>): boolean {
     let changed = false;
+    const standing = new Set(rows.map((row) => row.requestId));
+    for (const requestId of [...this.anchors.keys()]) {
+      if (standing.has(requestId)) continue;
+      this.anchors.delete(requestId);
+      changed = true;
+    }
     for (const row of rows) {
-      if (this.anchors.has(row.requestId)) continue;
+      const anchor = this.anchors.get(row.requestId);
+      const gone = typeof anchor === "string" && messages !== undefined && messages.size > 0 && !messages.has(anchor);
+      if (anchor !== undefined && !gone) continue;
       this.anchors.set(row.requestId, last);
       changed = true;
     }
@@ -69,10 +80,11 @@ const ModPlacedContext = React.createContext<ModPlacedAnchors | null>(null);
 export function ModPlacedProvider({ sessionId, children }: { sessionId: string; children: React.ReactNode }) {
   const anchors = React.useMemo(() => placedAnchorsFor(sessionId), [sessionId]);
   const { placed } = useModUi();
-  const last = useAssistantState((s) => s.thread.messages.at(-1)?.id ?? null);
+  const messages = useAssistantState((s) => s.thread.messages);
+  const last = messages.at(-1)?.id ?? null;
   React.useLayoutEffect(() => {
-    anchors.bind(placed, last);
-  }, [anchors, placed, last]);
+    anchors.bind(placed, last, new Set(messages.map((message) => message.id)));
+  }, [anchors, placed, last, messages]);
   return <ModPlacedContext.Provider value={anchors}>{children}</ModPlacedContext.Provider>;
 }
 

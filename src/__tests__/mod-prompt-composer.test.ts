@@ -361,6 +361,24 @@ describe('the calls through the runtime', () => {
     expect(paints).toHaveLength(3)
   })
 
+  it('paint: a plugin that goes takes its runs off the box', async () => {
+    const painter = `
+      export function register(on) {
+        on('session.start', async ($, e, next) => {
+          const box = await $.prompt.read();
+          await $.ui.log(JSON.stringify(await $.prompt.paint({ text: box.text, decorations: [{ start: 0, end: 1, virtualText: ' hint' }] })));
+          return next(e);
+        });
+      }
+    `
+    const { runtime, requests, logs } = world({ caller: painter }, pageWith({ text: 'x', cursor: 1 }))
+    await runtime.ready
+    expect(logs()).toEqual([{ isPainted: true, text: 'x', cursor: 1 }])
+    await runtime.reconcile([])
+    await vi.waitFor(() => expect(requests.filter(r => r.op === 'paint')).toHaveLength(2))
+    expect(requests.filter(r => r.op === 'paint').at(-1)).toMatchObject({ op: 'paint', plugin: 'caller', decorations: [] })
+  })
+
   it('paint: refused, with the box empty, where another plugin hooks prompt.read or the caller never reads the box', async () => {
     const { runtime, logs, requests } = world(
       {

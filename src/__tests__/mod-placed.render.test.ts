@@ -30,6 +30,19 @@ describe('placed row anchors', () => {
     expect(anchors.after([row('y'), row('x')], null).map(r => r.id)).toEqual(['y', 'x'])
   })
 
+  it('a row whose message left the thread moves after the last; a row gone and placed again goes at the end', () => {
+    const anchors = new ModPlacedAnchors()
+    anchors.bind([row('a')], 'm1', new Set(['m1']))
+    anchors.bind([row('a')], 'm3', new Set(['m1', 'm2', 'm3']))
+    expect(anchors.after([row('a')], 'm1')).toEqual([row('a')])
+    expect(anchors.bind([row('a')], 'm3', new Set())).toBe(false)
+    expect(anchors.bind([row('a')], 'm3', new Set(['m2', 'm3']))).toBe(true)
+    expect(anchors.after([row('a')], 'm3')).toEqual([row('a')])
+    expect(anchors.bind([], 'm4', new Set(['m2', 'm3', 'm4']))).toBe(true)
+    anchors.bind([row('a')], 'm9', new Set(['m9']))
+    expect(anchors.after([row('a')], 'm9')).toEqual([row('a')])
+  })
+
   it("a session's anchors are the same object across the thread's remounts", () => {
     expect(placedAnchorsFor('s1')).toBe(placedAnchorsFor('s1'))
     expect(placedAnchorsFor('s1')).not.toBe(placedAnchorsFor('s2'))

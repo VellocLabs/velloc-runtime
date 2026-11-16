@@ -410,6 +410,16 @@ export class ModRuntime extends ModUiSurface implements TurnExtensions {
   /** When the person's last prompt or command began, once it has run: the
    *  selection `$.ui.selection` hands is one made since. */
   private personRanAt = 0
+  /** The plugins that painted the prompt box: their runs come off when they go. */
+  private readonly painters = new Set<string>()
+
+  protected override pluginGone(plugin: string): void {
+    super.pluginGone(plugin)
+    if (!this.painters.delete(plugin) || !this.composer) return
+    void this.composer.paint({ plugin, decorations: [] }).catch(() => {
+      // No page answered: no box holds the runs.
+    })
+  }
 
   /** `host` answering when the person's last prompt or command ran; its own
    *  members unchanged. */
@@ -582,8 +592,11 @@ export class ModRuntime extends ModUiSurface implements TurnExtensions {
             return filled
           },
           suggest: (input: { text: string }, signal?: AbortSignal) => (this.composer ?? HEADLESS_COMPOSER).suggest(input, signal),
-          paint: async (input: Parameters<ModComposerBridge['paint']>[0], signal?: AbortSignal) =>
-            this.composer ? this.composer.paint(input, signal) : { isPainted: false, box: { text: '', cursor: 0 } },
+          paint: async (input: Parameters<ModComposerBridge['paint']>[0], signal?: AbortSignal) => {
+            if (!this.composer) return { isPainted: false, box: { text: '', cursor: 0 } }
+            if (input.decorations.length > 0) this.painters.add(input.plugin)
+            return this.composer.paint(input, signal)
+          },
           readsBox,
         }),
         store:

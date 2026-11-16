@@ -676,7 +676,7 @@ const NOUNS: Record<string, Record<string, NounMethod>> = Object.assign(Object.c
       input: () => ({}),
       run: (_e: unknown, context: NounContext) => {
         const { host, signal } = pageCallOf(context, 'selection')
-        return uiSelectionCore(host, signal)
+        return uiSelectionCore(host, signal, () => mayReadBox(context))
       },
       accepts: isUiSelectionResult,
     },
@@ -1678,16 +1678,23 @@ async function promptFill(args: PromptFillArgs, context: NounContext): Promise<P
   return { ...outcome, ...(await boxAsRead(filled?.box, context)) }
 }
 
+/** Whether the caller may see the draft as it stands: its module reads the
+ *  box and no other plugin hooks `prompt.read` (a scrub the draft would skip). */
+function mayReadBox({ call, session, dispatcher }: NounContext): boolean {
+  if (dispatcher.matchersFor('prompt.read').some(hook => hook.plugin !== call.plugin)) return false
+  return session.composer?.readsBox?.(call.plugin) === true
+}
+
 /**
  * Core of `prompt.paint`: the caller's runs over the draft, nothing else in
  * the box changed. Refused where another plugin hooks `prompt.read` (its
  * scrub of the draft would not be the draft painted) and where the caller
  * may not read the box; the box handed back is then empty.
  */
-async function promptPaint(e: unknown, { call, session, dispatcher }: NounContext): Promise<PromptPainted> {
+async function promptPaint(e: unknown, context: NounContext): Promise<PromptPainted> {
+  const { call, session } = context
   const composer = session.composer
-  const others = dispatcher.matchersFor('prompt.read').some(hook => hook.plugin !== call.plugin)
-  if (!composer?.paint || others || !composer.readsBox?.(call.plugin)) return { isPainted: false, ...EMPTY_PROMPT_BOX }
+  if (!composer?.paint || !mayReadBox(context)) return { isPainted: false, ...EMPTY_PROMPT_BOX }
   const arrived = isRecord(e) ? e : {}
   const decorations = Array.isArray(arrived.decorations) && arrived.decorations.every(isDecoration) ? arrived.decorations : []
   const text = typeof arrived.text === 'string' ? arrived.text : undefined

@@ -70,8 +70,9 @@ export type ModPageAsk =
 
 /** The person's last mouse selection as a page holds it: the text a copy
  *  takes, the transcript row it lies in (absent across rows or outside the
- *  transcript), and when it was made (epoch ms). */
-export type ModPageSelection = { text: string; requestId?: string; at: number }
+ *  transcript), when it was made (epoch ms), and whether it lies in the
+ *  prompt box. */
+export type ModPageSelection = { text: string; requestId?: string; at: number; inPromptBox?: true }
 
 /** What `$.ui.selection` resolves to — `UiSelection`. */
 export type UiSelection = { text: string; requestId?: string }
@@ -528,12 +529,19 @@ export function isUiSelectionResult(value: unknown): value is UiSelection | unde
  * Core of `ui.selection`: what the person last selected with the mouse on a
  * page drawing the session, until they select again, dismiss it, or their
  * next prompt or command has run. Undefined with none, or no page.
+ * Security: a selection in the prompt box is the draft, handed only where
+ * `mayReadBox` says the caller may read the box as `prompt.read` would.
  */
-export async function uiSelectionCore(host: ModPageHost, signal?: AbortSignal): Promise<UiSelection | undefined> {
+export async function uiSelectionCore(
+  host: ModPageHost,
+  signal?: AbortSignal,
+  mayReadBox: () => boolean = () => false,
+): Promise<UiSelection | undefined> {
   if (!host.ask) return undefined
   const answer = await host.ask({ op: 'selection' }, signal)
   if (answer?.op !== 'selection' || !answer.selection) return undefined
-  const { text, requestId, at } = answer.selection
+  const { text, requestId, at, inPromptBox } = answer.selection
   if (text === '' || at < (host.ranSince?.() ?? 0)) return undefined
+  if (inPromptBox && !mayReadBox()) return undefined
   return { text, ...(requestId !== undefined && requestId !== '' ? { requestId } : {}) }
 }

@@ -64,7 +64,7 @@ const READER = `
   }
 `
 
-function pageHost(held: { text: string; requestId?: string; at: number } | undefined): ModPageHost {
+function pageHost(held: { text: string; requestId?: string; at: number; inPromptBox?: true } | undefined): ModPageHost {
   return {
     copy: async () => ({ isCopied: false, reason: 'no-surface' }),
     ask: async request => (request.op === 'selection' ? { requestId: 'p', op: 'selection', ...(held ? { selection: held } : {}) } : null),
@@ -113,6 +113,31 @@ describe('$.ui.selection', () => {
     expect(await quote(runtime, reports)).toBeNull()
     const noPage = await uiSelectionCore({ copy: async () => ({ isCopied: true }), site: () => undefined, answersPerson: () => false })
     expect(noPage).toBeUndefined()
+  })
+
+  it('drops a selection made before a later prompt ran, and keeps one made after it', async () => {
+    const held: { text: string; at: number } = { text: 'old', at: Date.now() - 10_000 }
+    const page: ModPageHost = {
+      ...pageHost(undefined),
+      ask: async request => (request.op === 'selection' ? { requestId: 'p', op: 'selection', selection: { ...held } } : null),
+    }
+    const { runtime, reports } = world({ reader: { source: READER } }, () => ({ page }))
+    await runtime.ready
+    await runtime.promptSubmit('go on')
+    expect(await quote(runtime, reports)).toBeNull()
+    held.at = Date.now() + 60_000
+    held.text = 'new'
+    expect(await quote(runtime, reports)).toEqual({ text: 'new' })
+  })
+
+  it('hands a selection in the prompt box only to a plugin that may read the box', async () => {
+    const box = { text: 'sk-secret', at: Date.now() + 60_000, inPromptBox: true as const }
+    expect(await uiSelectionCore(pageHost(box))).toBeUndefined()
+    expect(await uiSelectionCore(pageHost(box), undefined, () => false)).toBeUndefined()
+    expect(await uiSelectionCore(pageHost(box), undefined, () => true)).toEqual({ text: 'sk-secret' })
+    const { runtime, reports } = world({ reader: { source: READER } }, () => ({ page: pageHost(box) }))
+    await runtime.ready
+    expect(await quote(runtime, reports)).toBeNull()
   })
 
   it('takes only a text and a row from a hook', () => {

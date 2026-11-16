@@ -634,8 +634,9 @@ export type ModsPageRequest =
   | { requestId: string; op: 'scrollRow'; row: string; block: ModsScrollBlock }
   | { requestId: string; op: 'selection' }
 
-/** A page's held selection: the text, the row it lies in, when it was made. */
-export type ModsPageSelection = { text: string; requestId?: string; at: number }
+/** A page's held selection: the text, the row it lies in, when it was made,
+ *  and whether it lies in the prompt box. */
+export type ModsPageSelection = { text: string; requestId?: string; at: number; inPromptBox?: true }
 
 /** What the page answers, as `mods.pageAnswer`'s payload less the session. */
 export type ModsPageAnswer =
@@ -719,7 +720,8 @@ function isPageSelection(value: unknown): value is ModsPageSelection {
     typeof value.text === 'string' &&
     (value.requestId === undefined || isNonEmpty(value.requestId)) &&
     typeof value.at === 'number' &&
-    Number.isFinite(value.at)
+    Number.isFinite(value.at) &&
+    (value.inPromptBox === undefined || value.inPromptBox === true)
   )
 }
 
