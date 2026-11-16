@@ -53,7 +53,7 @@ type Internals = {
   taskDelivery: { getPendingMap(): Map<string, unknown[]> }
   fsSummaries: Map<string, unknown>
   sessions: Map<string, unknown>
-  handleSessionMessage(port: MessagePort, message: unknown): void
+  frameRouter: { handleSessionMessage(port: MessagePort, message: unknown): void }
   listMutations: { handleSessionDelete(port: MessagePort, sessionId: string): Promise<void> }
 }
 
@@ -75,7 +75,7 @@ describe('SharedWorkerSessionManager — proposals', () => {
     const waiting = board.awaitOffer('S1', mine.taskId)
     await Promise.resolve()
     const port = { postMessage() {} } as unknown as MessagePort
-    internals.handleSessionMessage(port, { type: 'worker.submitMessage', sessionId: 'S1', payload: { prompt: 'Actually, do X first.' } })
+    internals.frameRouter.handleSessionMessage(port, { type: 'worker.submitMessage', sessionId: 'S1', payload: { prompt: 'Actually, do X first.' } })
     expect(await waiting).toBe('superseded')
     expect((await board.get('S1', mine.taskId))!.state).toBe('superseded')
     expect((await board.get('S2', theirs.taskId))!.state).toBe('proposed')

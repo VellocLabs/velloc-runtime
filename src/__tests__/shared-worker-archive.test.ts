@@ -86,10 +86,10 @@ describe('the person archive in the runtime', () => {
     }
     const internalsOf = manager as unknown as {
       bridgeRouter: { getDirectTransport(): unknown }
-      stopSessionForArchive(id: string): Promise<void>
+      archiveSettler: { stopSessionForArchive(id: string): Promise<void> }
     }
     internalsOf.bridgeRouter.getDirectTransport = () => transport
-    internalsOf.stopSessionForArchive = async () => {}
+    internalsOf.archiveSettler.stopSessionForArchive = async () => {}
     const { port, send } = createPort()
     manager.handleConnect(port)
     send({ type: 'session.archive', sessionId: 's', archived: true, requestId: 'a' })
@@ -118,7 +118,7 @@ describe('the person archive in the runtime', () => {
     const commands: string[] = []
     const internalsOf = manager as unknown as {
       bridgeRouter: { getDirectTransport(): unknown }
-      settleArchivedWorktree(id: string, archived: boolean): Promise<void>
+      archiveSettler: { settleArchivedWorktree(id: string, archived: boolean): Promise<void> }
     }
     internalsOf.bridgeRouter.getDirectTransport = () => ({
       request: async (req: { payload: { command: string } }) => {
@@ -126,10 +126,10 @@ describe('the person archive in the runtime', () => {
         return { ok: true, result: '(no output)' }
       },
     })
-    await internalsOf.settleArchivedWorktree('s', true)
+    await internalsOf.archiveSettler.settleArchivedWorktree('s', true)
     expect(commands).toEqual([])
     metas.get('k')!.metadata.worktree = { dir: 'D:/repo/.velloc/worktrees/k', branch: 'session/k', repoRoot: 'D:/repo' }
-    await internalsOf.settleArchivedWorktree('s', true)
+    await internalsOf.archiveSettler.settleArchivedWorktree('s', true)
     expect(commands.some(c => c.includes('worktree remove'))).toBe(true)
   })
 
@@ -138,7 +138,7 @@ describe('the person archive in the runtime', () => {
     const { manager } = setup({ closeTerminalsForSession: id => closed.push(id) })
     const internalsOf = manager as unknown as {
       sessions: Map<string, unknown>
-      stopSessionForArchive(id: string): Promise<void>
+      archiveSettler: { stopSessionForArchive(id: string): Promise<void> }
       taskControl: { stopRunningForParent(id: string): void }
       teams: { abortTeammatesOf(id: string): Promise<void> }
     }
@@ -160,9 +160,9 @@ describe('the person archive in the runtime', () => {
     const teammatesStopped: string[] = []
     internalsOf.taskControl.stopRunningForParent = id => { tasksStopped.push(id) }
     internalsOf.teams.abortTeammatesOf = async id => { teammatesStopped.push(id) }
-    await internalsOf.stopSessionForArchive('busy')
-    await internalsOf.stopSessionForArchive('idle')
-    await internalsOf.stopSessionForArchive('never-opened')
+    await internalsOf.archiveSettler.stopSessionForArchive('busy')
+    await internalsOf.archiveSettler.stopSessionForArchive('idle')
+    await internalsOf.archiveSettler.stopSessionForArchive('never-opened')
     expect(frames.get('busy')).toEqual(['worker.interrupt'])
     expect(frames.get('idle')).toEqual([])
     expect(internalsOf.sessions.has('never-opened')).toBe(false)
@@ -175,10 +175,12 @@ describe('the person archive in the runtime', () => {
     const { manager, metas, refreshSummary } = setup()
     await refreshSummary('s')
     const order: string[] = []
-    const hooks = manager as unknown as {
-      stopSessionForArchive(id: string): Promise<void>
-      settleArchivedWorktree(id: string, archived: boolean): Promise<void>
-    }
+    const hooks = (manager as unknown as {
+      archiveSettler: {
+        stopSessionForArchive(id: string): Promise<void>
+        settleArchivedWorktree(id: string, archived: boolean): Promise<void>
+      }
+    }).archiveSettler
     hooks.stopSessionForArchive = async id => {
       order.push(`stop:${id}:${String(metas.get(id)!.metadata.archived ?? 'unset')}`)
     }

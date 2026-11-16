@@ -26,6 +26,11 @@ import { SessionSummaryRepository } from './SessionSummaryRepository'
 import { SessionBundleWriter } from './SessionBundleWriter'
 import { ToolDetailLoader } from './ToolDetailLoader'
 import { SessionListMutations } from './SessionListMutations'
+import { SessionFrameRouter } from './SessionFrameRouter'
+import { SUBMIT_PRIORITY } from './submitPriority'
+import { SessionMetaRecords } from './SessionMetaRecords'
+import { SessionArchiveSettler } from './SessionArchiveSettler'
+import { BackgroundRowRecovery } from './BackgroundRowRecovery'
 import { WorkerEventRouter } from './WorkerEventRouter'
 import { PortMessageRouter } from './PortMessageRouter'
 import { SessionWorkerFactory } from './SessionWorkerFactory'
@@ -281,10 +286,6 @@ type SessionEntry = {
   runtimeGlobals?: OwnerRuntimeGlobals
 }
 
-/** Priority of a queued `worker.submitMessage` turn — LOWER runs first:
- *  user input outranks team messages outrank
- *  sub-agent result deliveries. */
-const SUBMIT_PRIORITY = { user: 0, mailbox: 1, delivery: 2 } as const
 
 export type SharedWorkerSessionManagerOptions = {
   createWorker: (options: AgentRuntimeWorkerOptions) => AgentRuntimeWorkerHandle
@@ -358,7 +359,7 @@ export class SharedWorkerSessionManager {
     },
     runtimeVersion: `interface-${NEXUS_INTERFACE_VERSION}`,
     resolveHomeDir: () => this.storageCoordinator.resolveHomeDir(),
-    readStoredReviewSnapshot: sessionId => this.readStoredReviewSnapshot(sessionId),
+    readStoredReviewSnapshot: sessionId => this.metaRecords.readStoredReviewSnapshot(sessionId),
     // A client started viewing a session: it needs that session's full status,
     // not a delta against a state it never saw.
     onPresenceChanged: change => {
@@ -578,7 +579,7 @@ export class SharedWorkerSessionManager {
   // that need its state as the named host methods below.
   private readonly portRouter = new PortMessageRouter({
     handleSessionMessage: (port, message) =>
-      this.handleSessionMessage(port, message),
+      this.frameRouter.handleSessionMessage(port, message),
     setHostBridgePort: port => this.bridgeRouter.setHostPort(port),
     handlePortDisconnect: port => this.handlePortDisconnect(port),
     attachRuntimePort: (port, homeDir, panelId) =>
@@ -637,7 +638,7 @@ export class SharedWorkerSessionManager {
     handleSessionTranscript: (port, message) =>
       this.handleSessionTranscript(port, message),
     handleRecoverBackground: message =>
-      void this.handleRecoverBackground(message.sessionId),
+      void this.backgroundRows.handleRecoverBackground(message.sessionId),
     handleSubscribe: (port, all, sessionIds) =>
       this.handleSubscribe(port, all, sessionIds),
     handleUnsubscribe: (port, all, sessionIds) =>
@@ -774,6 +775,62 @@ export class SharedWorkerSessionManager {
   })
 
   /** Session-list mutations and the shared session disposal (`SessionListMutations`). */
+  private readonly metaRecords: SessionMetaRecords = new SessionMetaRecords({
+    sessions: this.sessions,
+    runtimeHub: this.runtimeHub,
+    storageCoordinator: this.storageCoordinator,
+    deletingSessions: this.deletingSessions,
+    startStates: this.startStates,
+    taskDelivery: this.taskDelivery,
+    tracer: this.tracer,
+    getStorage: () => this.storage,
+    getGroupedStorage: () => this.groupedStorage,
+    getFsSummaries: () => this.fsSummaries,
+    getHostEnvironment: () => this.hostEnvironment,
+    getTeams: () => this.teams,
+    awaitsStoreBind: (...args) => this.awaitsStoreBind(...args),
+    patchSessionRecord: (...args) => this.patchSessionRecord(...args),
+    readPersistedEntries: (...args) => this.readPersistedEntries(...args),
+  })
+
+  private readonly archiveSettler: SessionArchiveSettler = new SessionArchiveSettler({
+    sessions: this.sessions,
+    worktreeSettles: this.worktreeSettles,
+    bridgeRouter: this.bridgeRouter,
+    taskRegistry: this.taskRegistry,
+    getTeams: () => this.teams,
+    getCloseTerminalsForSession: () => this.closeTerminalsForSession,
+    getStorage: () => this.storage,
+    getFsSummaries: () => this.fsSummaries,
+    interruptSessionTurn: (...args) => this.interruptSessionTurn(...args),
+    stopRunningSubAgentsForParent: (...args) => this.stopRunningSubAgentsForParent(...args),
+    patchSessionRecord: (...args) => this.patchSessionRecord(...args),
+    sessionTerminalCwd: (...args) => this.sessionTerminalCwd(...args),
+    generateBridgeRequestId: (...args) => this.generateBridgeRequestId(...args),
+  })
+
+  private readonly backgroundRows: BackgroundRowRecovery = new BackgroundRowRecovery({
+    backgroundRecovered: this.backgroundRecovered,
+    backgroundRecoveries: this.backgroundRecoveries,
+    toolDetailLoader: this.toolDetailLoader,
+    readPersistedEntries: (...args) => this.readPersistedEntries(...args),
+  })
+
+  private readonly frameRouter: SessionFrameRouter = new SessionFrameRouter({
+    panelOfSession: this.panelOfSession,
+    sessions: this.sessions,
+    runtimeHub: this.runtimeHub,
+    taskDelivery: this.taskDelivery,
+    tracer: this.tracer,
+    getInitOrchestrator: () => this.initOrchestrator,
+    getProposals: () => this.proposals,
+    getChildReports: () => this.childReports,
+    getFsSummaries: () => this.fsSummaries,
+    getHostEnvironment: () => this.hostEnvironment,
+    getLastInitTemplate: () => this.lastInitTemplate,
+    interruptCascade: (...args) => this.interruptCascade(...args),
+  })
+
   private readonly listMutations = new SessionListMutations({
     sessions: this.sessions,
     deletingSessions: this.deletingSessions,
@@ -1050,7 +1107,7 @@ export class SharedWorkerSessionManager {
         this.toolDetailLoader.loadToolDetailForRuntime(sessionId, toolCallId),
       loadPersistedTranscript: sessionId =>
         this.loadPersistedTranscript(sessionId),
-      openSession: (port, open, panelId) => this.openSession(port, open, panelId),
+      openSession: (port, open, panelId) => this.frameRouter.openSession(port, open, panelId),
       knownProjectRoots: sessionScope => this.runtimeHub.knownProjectRoots(sessionScope),
       publishHostEnvironment: environment => {
         this.hostEnvironment = hostEnvironmentOf(environment)
@@ -1555,20 +1612,20 @@ export class SharedWorkerSessionManager {
     setChildSessionSpawner((params: ChildSessionSpawnParams) =>
       this.childSessions.spawn(params),
     )
-    this.childReports = new ChildReportCoordinator(this.childReportHost())
+    this.childReports = new ChildReportCoordinator(this.metaRecords.childReportHost())
     this.proposals = new ProposalBoard({
       storage: {
-        read: sessionId => this.readChildProposals(sessionId),
-        write: (sessionId, childProposals) => this.writeChildProposals(sessionId, childProposals),
+        read: sessionId => this.metaRecords.readChildProposals(sessionId),
+        write: (sessionId, childProposals) => this.metaRecords.writeChildProposals(sessionId, childProposals),
       },
       onChange: sessionId => notifyProposalsChanged(sessionId),
     })
     setProposalBoard(this.proposals)
     this.chapters = new ChapterBook({
       storage: {
-        read: sessionId => this.readChapterMarks(sessionId),
-        write: (sessionId, chapterMarks) => this.writeChapterMarks(sessionId, chapterMarks),
-        entries: sessionId => this.readChapterEntries(sessionId),
+        read: sessionId => this.metaRecords.readChapterMarks(sessionId),
+        write: (sessionId, chapterMarks) => this.metaRecords.writeChapterMarks(sessionId, chapterMarks),
+        entries: sessionId => this.metaRecords.readChapterEntries(sessionId),
       },
       onChange: sessionId => notifyChaptersChanged(sessionId),
     })
@@ -1617,7 +1674,7 @@ export class SharedWorkerSessionManager {
         return session ? snapshotNeedsAnswer(session.worker.getSnapshot()) : false
       },
       isDeliverySuppressed: sessionId => this.taskDelivery.isSuppressed(sessionId),
-      hasLiveWork: sessionId => this.hasLiveWorkFor(sessionId),
+      hasLiveWork: sessionId => this.archiveSettler.hasLiveWorkFor(sessionId),
       hasQueuedInput: sessionId =>
         this.taskDelivery.hasPending(sessionId) || this.teams.hasQueuedFrames(sessionId),
       enqueueTurn: (sessionId, prompt) => {
@@ -1634,14 +1691,14 @@ export class SharedWorkerSessionManager {
         return true
       },
       interrupt: (sessionId, by) => this.interruptSessionTurn(sessionId, by),
-      stopForArchive: sessionId => this.stopSessionForArchive(sessionId),
-      settleWorktree: (sessionId, archived) => this.settleArchivedWorktree(sessionId, archived),
+      stopForArchive: sessionId => this.archiveSettler.stopSessionForArchive(sessionId),
+      settleWorktree: (sessionId, archived) => this.archiveSettler.settleArchivedWorktree(sessionId, archived),
       // Security: the prompt is the fixed built-in command, submitted as the
       // session's own input so it runs as a command; a peer message never would.
       clearConversation: sessionId => {
         const session = this.sessions.get(sessionId)
         if (!session) return
-        this.deliverSessionFrame(session, {
+        this.frameRouter.deliverSessionFrame(session, {
           type: 'worker.submitMessage',
           sessionId,
           payload: { prompt: '/clear' },
@@ -2286,7 +2343,7 @@ export class SharedWorkerSessionManager {
    * unwritten session reads as [].
    */
   private async readPersistedEntries(sessionId: string): Promise<unknown[]> {
-    const storage = await this.routedStorageFor(sessionId)
+    const storage = await this.metaRecords.routedStorageFor(sessionId)
     const payload = await storage.load(sessionId)
     if (Array.isArray(payload)) return payload
     const wrapped = (payload as { messages?: unknown } | null)?.messages
@@ -2392,61 +2449,6 @@ export class SharedWorkerSessionManager {
     message: Extract<SharedWorkerInboundMessage, { type: 'task.transcript' }>,
   ): void {
     this.taskControl.handleDrawerTranscript(port, message)
-  }
-
-  /**
-   * `task.recoverBackground`: rebuild the session's restart-recovered shell, run_js and SuperShell
-   * drawer rows from its persisted transcript, at most once per session per lifetime. Best-effort.
-   */
-  private async handleRecoverBackground(sessionId: string): Promise<void> {
-    if (this.backgroundRecovered.has(sessionId)) return
-    // Claim eagerly so a rapid re-open can't run two concurrent recoveries…
-    this.backgroundRecovered.add(sessionId)
-    const recovery = this.recoverBackgroundRows(sessionId)
-    this.backgroundRecoveries.set(sessionId, recovery)
-    try {
-      await recovery
-    } finally {
-      if (this.backgroundRecoveries.get(sessionId) === recovery) {
-        this.backgroundRecoveries.delete(sessionId)
-      }
-    }
-  }
-
-  private async recoverBackgroundRows(sessionId: string): Promise<void> {
-    let messages: unknown[] = []
-    try {
-      // The request can precede the first `worker.init` (a pane restored open
-      // on the session the window boots into); the read brings storage up.
-      messages = await this.readPersistedEntries(sessionId)
-    } catch {
-      // No storage backend: release the claim so the next request reads again.
-      this.backgroundRecovered.delete(sessionId)
-      return
-    }
-    if (messages.length === 0) {
-      // Nothing written yet; a later request reads what the session has by then.
-      this.backgroundRecovered.delete(sessionId)
-      return
-    }
-    this.toolDetailLoader.recoverRunJsRowsFromTranscript(sessionId, messages)
-    this.toolDetailLoader.recoverTitleRowsFromTranscript(sessionId, messages)
-    // The shell rows need no sidecar: publish them now, synchronously, rather
-    // than behind the SuperShell sidecar reads below (one per run, from
-    // storage). Those reads name the `background: true` steps whose completion
-    // notifications the shell rebuild leaves out — so the rows are rebuilt a
-    // second time, minus those steps, once the reads have settled.
-    this.toolDetailLoader.recoverBashRowsFromTranscript(sessionId, messages)
-    const superShellSteps = await this.toolDetailLoader.recoverSuperShellRowsFromTranscript(
-      sessionId,
-      messages,
-    )
-    if (superShellSteps.size > 0) {
-      this.toolDetailLoader.recoverBashRowsFromTranscript(sessionId, messages, superShellSteps)
-    }
-    // The persisted transcript parts don't carry pass/fail — upgrade a
-    // recovered row to 'error' from its tool-detail sidecar's isError.
-    await this.toolDetailLoader.markRecoveredTaskErrors(sessionId)
   }
 
   /** `trace.flush`: one-shot drain of the trace ring + console capture. */
@@ -2580,143 +2582,6 @@ export class SharedWorkerSessionManager {
       snapshot = undefined
     }
     return snapshot?.cwd || snapshot?.projectRoot || entry.projectRoot || undefined
-  }
-
-  /**
-   * `session.open`: build the session's init payload here — from the published
-   * host environment, the desktop's own fields when it sent them, the
-   * session's persisted binding and, for a forced-folder type with no folder,
-   * the user's last folder of that type (the runtime's workspace index) — then
-   * run it through the same init path a `worker.init` takes.
-   */
-  private async openSession(
-    port: MessagePort,
-    open: SessionOpenPayload,
-    panelId?: string,
-  ): Promise<void> {
-    // Which window's boot overlay this session's runtime build reports to.
-    this.panelOfSession.set(open.sessionId, panelId ?? DEFAULT_PANEL_ID)
-    const summary = this.fsSummaries.peek(open.sessionId)
-    const composed = composeSessionInit({
-      open,
-      hostEnvironment: this.hostEnvironment,
-      lastInitTemplate: this.lastInitTemplate,
-      persisted: {
-        ...(summary?.projectRoot ? { projectRoot: summary.projectRoot } : {}),
-        ...(summary?.templateType ? { templateType: summary.templateType } : {}),
-      },
-      pluginTemplates: modContributionsState().templates,
-    })
-    if (!composed.payload) {
-      throw wireError('host_unavailable', composed.reason)
-    }
-    const { payload } = composed
-    if (composed.needsLastFolderFor) {
-      const workspace = await this.runtimeHub.workspace.current().catch(() => null)
-      const lastFolder = workspace?.lastFolderByType[composed.needsLastFolderFor]
-      if (lastFolder) payload.projectRoot = lastFolder
-    }
-    this.initOrchestrator.handle(port, {
-      type: 'worker.init',
-      sessionId: open.sessionId,
-      payload,
-    })
-  }
-
-  private handleSessionMessage(
-    port: MessagePort,
-    message: SessionWorkerInboundMessage,
-  ): void {
-    const { sessionId } = message
-
-    if (message.type === 'worker.init') {
-      this.initOrchestrator.handle(port, message)
-      return
-    }
-
-    const session = this.sessions.get(sessionId)
-    if (!session) {
-      port.postMessage({
-        type: 'worker.error',
-        payload: {
-          code: 'session_not_found',
-          message: `Session '${sessionId}' not found`,
-        },
-      })
-      return
-    }
-
-    this.deliverSessionFrame(session, message, port)
-
-    // User Stop on a session = "halt everything this session started", not just
-    // the parent turn. The interrupt above unblocks any TaskOutput(block) the
-    // parent was parked on (its abort path stops that ONE awaited sub-agent);
-    // this cascade additionally stops every OTHER background sub-agent the
-    // session launched but wasn't blocked on. `stopSubAgent` is idempotent, so a
-    // sub-agent the parent was already blocked on is safe to re-stop. (Sync
-    // in-context forks aren't worker sessions — they stop via the interrupt's
-    // child-abort, not here.)
-    if (message.type === 'worker.interrupt') {
-      // Suppress background-task re-activation: a task finishing moments after
-      // Stop must not inject a `<task-notification>` turn that revives the
-      // conversation the user just halted. Drop anything already queued (it
-      // would otherwise flush the instant the interrupted turn unwinds) and set
-      // the flag to suppress results that finalize during the stopping window.
-      // Both clear on the next genuine user submit.
-      // Suppression is now owned by TaskDeliveryQueue.
-      this.interruptCascade(sessionId)
-    }
-  }
-
-  /**
-   * Hand a frame to the session's worker the way the session's own client
-   * does. Every submit through here is the person's input: it runs the
-   * per-submit hooks first. A failure is traced, and reported on `port` when
-   * there is one. (F-36)
-   */
-  private deliverSessionFrame(
-    session: SessionEntry,
-    message: SessionWorkerInboundMessage,
-    port: MessagePort | null,
-  ): void {
-    const { sessionId } = message
-    // A person's submit re-arms background-task delivery held by a Stop.
-    if (message.type === 'worker.submitMessage') {
-      this.taskDelivery.resumeParent(sessionId)
-      this.childReports.personWrote(sessionId, message.payload.prompt)
-      // A person's new message closes the session's open offers (F-36).
-      this.proposals.supersedeOpenOffers(sessionId)
-      // It also answers the turn's closing; one that starts a turn drops the plan (F-41).
-      turnBoard.personWrote(sessionId, !session.worker.isBusy() && !session.worker.isHaltedOnUser())
-    }
-
-    // The worker owns the submit queue and the pending message; the manager
-    // only adds the cross-session concerns.
-    void session.worker.receiveFrame(message).catch(error => {
-      if (
-        this.sessions.get(sessionId) !== session ||
-        (error instanceof Error && error.name === 'AbortError')
-      ) {
-        return
-      }
-      const messageText =
-        error instanceof Error ? error.message : String(error)
-      try {
-        port?.postMessage({
-          type: 'worker.error',
-          sessionId,
-          payload: {
-            code: 'worker_message_failed',
-            message: messageText,
-          },
-        })
-      } catch {
-        // Port may already be gone.
-      }
-      this.tracer.event('worker.manager.message.failed', {
-        attrs: { sessionId, type: message.type, message: messageText },
-      })
-    })
   }
 
   /**
@@ -2937,90 +2802,6 @@ export class SharedWorkerSessionManager {
       .receiveFrame({ type: 'worker.interrupt', sessionId } as SessionWorkerInboundMessage)
       .catch(() => {})
     this.interruptCascade(sessionId, by)
-  }
-
-  /** Stop a session's turn (only when one runs: an interrupt builds an idle
-   *  runtime), its sub-agents, shells, teammates and terminals. (F-36) */
-  private async stopSessionForArchive(sessionId: string): Promise<void> {
-    const session = this.sessions.get(sessionId)
-    if (session?.worker.isBusy()) this.interruptSessionTurn(sessionId)
-    else this.stopRunningSubAgentsForParent(sessionId)
-    try {
-      await this.teams.abortTeammatesOf(sessionId)
-    } catch (err) {
-      console.warn(`[SharedWorkerSessionManager] teammates of ${sessionId} did not stop`, err)
-    }
-    try {
-      this.closeTerminalsForSession(sessionId)
-    } catch (err) {
-      console.warn(`[SharedWorkerSessionManager] terminals of ${sessionId} did not close`, err)
-    }
-  }
-
-  /** The archive / unarchive of a session, for its own worktree (F-36):
-   *  best-effort, logged, one at a time per session so an unarchive sent
-   *  during an archive's removal sees the removal. */
-  private settleArchivedWorktree(sessionId: string, archived: boolean): Promise<void> {
-    const previous = this.worktreeSettles.get(sessionId) ?? Promise.resolve()
-    const run = previous.then(() => this.settleArchivedWorktreeNow(sessionId, archived))
-    this.worktreeSettles.set(sessionId, run)
-    void run.then(() => {
-      if (this.worktreeSettles.get(sessionId) === run) this.worktreeSettles.delete(sessionId)
-    })
-    return run
-  }
-
-  private async settleArchivedWorktreeNow(sessionId: string, archived: boolean): Promise<void> {
-    const deps: ArchivedWorktreeDeps = {
-      readWorktree: async id => worktreeRecordOf((await this.storage?.readSessionMeta(id))?.metadata?.worktree),
-      writeWorktree: (id, record) => this.patchSessionRecord(id, { worktree: record }),
-      inUseElsewhere: async (id, dir) => {
-        for (const other of this.sessions.keys()) {
-          if (other === id || this.fsSummaries.peek(other)?.archived) continue
-          const cwd = this.sessionTerminalCwd(other)
-          if (cwd && insideFolder(cwd, dir)) return true
-        }
-        // A teammate was shut down by this archive; a child with its own
-        // worktree works there, not here.
-        for (const other of [...this.fsSummaries.keys()]) {
-          const summary = this.fsSummaries.peek(other)
-          if (other === id || summary?.parentSessionId !== id || summary.archived || isTeammateSessionId(other)) continue
-          const meta = await this.storage?.readSessionMeta(other)
-          if (!worktreeRecordOf(meta?.metadata?.worktree)) return true
-        }
-        return false
-      },
-      run: (id, cwd) =>
-        managerHostCommand(
-          {
-            getTransport: () => this.bridgeRouter.getDirectTransport(),
-            createRequestId: () => this.generateBridgeRequestId(),
-          },
-          id,
-          cwd,
-        ),
-      now: () => Date.now(),
-    }
-    try {
-      const outcome = archived
-        ? await settleWorktreeOnArchive(deps, sessionId)
-        : await settleWorktreeOnUnarchive(deps, sessionId)
-      const line = archivedWorktreeLogLine(sessionId, outcome)
-      if (line) console.info(`[SharedWorkerSessionManager] ${line}`)
-    } catch (err) {
-      console.warn(`[SharedWorkerSessionManager] worktree of ${sessionId} not settled`, err)
-    }
-  }
-
-  /** A sub-agent, shell or other task the session started is still running. */
-  private hasLiveWorkFor(sessionId: string): boolean {
-    for (const task of this.taskRegistry.allLive()) {
-      if ((task as { spawnerSessionId?: string }).spawnerSessionId === sessionId) return true
-    }
-    for (const teammate of this.teams.listTeammatesOf(sessionId)) {
-      if (teammate.status === 'active' || teammate.status === 'idle') return true
-    }
-    return false
   }
 
   /**
@@ -3273,105 +3054,6 @@ export class SharedWorkerSessionManager {
     return this.childReports.record(parentSessionId, report)
   }
 
-  /** A session's stored chapter marks: a list stashed for a bind that has not
-   *  written it yet, else its live store, else disk (F-37). */
-  private async readStoredReviewSnapshot(sessionId: string): Promise<import('../../codeReview/review-protocol').ReviewSessionSnapshot | undefined> {
-    if (!/^[A-Za-z0-9_-]{1,300}$/.test(sessionId)) throw new Error('invalid-review-session')
-    const storage = await this.routedStorageFor(sessionId)
-    const meta = await storage.readSessionMeta(sessionId)
-    if (!meta) return undefined
-    if (meta.sessionId !== sessionId) throw new Error('review-session-mismatch')
-    const base = this.groupedStorage ? this.groupedStorage.projectRouteOf(sessionId) : storage.getBasePath?.()
-    if (!base) return undefined
-    const { readStoredReviewSnapshot } = await import('../../codeReview/stored-snapshot')
-    return readStoredReviewSnapshot({ fs: this.runtimeHub.context.fs, sessionBase: base, sessionId })
-  }
-
-  private async readChapterMarks(sessionId: string): Promise<unknown> {
-    const entry = this.sessions.get(sessionId)
-    if (entry?.pendingChapterMarks !== undefined) return entry.pendingChapterMarks
-    if (entry?.conversationStore) return (await entry.conversationStore.getSessionMetadata())?.chapterMarks
-    const storage = await this.routedStorageFor(sessionId)
-    return (await storage.readSessionMeta(sessionId))?.metadata.chapterMarks
-  }
-
-  /** Writes a session's chapter marks where they will last: its bound store, the
-   *  pre-bind stash (the bind writes it, so the store's next save keeps it), or
-   *  disk. Throws when nothing was written (F-37). */
-  private async writeChapterMarks(sessionId: string, chapterMarks: ChapterMark[]): Promise<void> {
-    const entry = this.sessions.get(sessionId)
-    if (entry?.conversationStore) {
-      // A stash still present means the bind has not written it: the new list
-      // replaces it until the store holds the list, so a bind that reads the
-      // stash later writes this list, not the older one.
-      const stashed = entry.pendingChapterMarks
-      if (stashed !== undefined) entry.pendingChapterMarks = chapterMarks
-      try {
-        await entry.conversationStore.updateSessionMetadata({ chapterMarks })
-      } catch (error) {
-        if (entry.pendingChapterMarks === chapterMarks) entry.pendingChapterMarks = stashed
-        throw error
-      }
-      if (entry.pendingChapterMarks === chapterMarks) entry.pendingChapterMarks = undefined
-      return
-    }
-    if (entry && this.awaitsStoreBind(entry)) {
-      entry.pendingChapterMarks = chapterMarks
-      return
-    }
-    const storage = await this.routedStorageFor(sessionId)
-    if (!(await applyDiskOnlyMetadataPatch(storage, sessionId, { chapterMarks }))) {
-      throw new Error(`no stored session ${sessionId}`)
-    }
-    // A runtime that opened during the write loaded the sidecar without this
-    // list; hand it over so its own next save keeps it.
-    const opened = this.sessions.get(sessionId)
-    if (opened?.conversationStore) await opened.conversationStore.updateSessionMetadata({ chapterMarks })
-    else if (opened && this.awaitsStoreBind(opened)) opened.pendingChapterMarks = chapterMarks
-  }
-
-  /** Session storage brought up and routed for `sessionId`, for a disk read or
-   *  write made without a live store. */
-  private async routedStorageFor(sessionId: string) {
-    // A client that may not open sessions can be the runtime's first reader.
-    if (!this.storage && this.hostEnvironment?.sessionStoragePath) {
-      await this.storageCoordinator.ensureStorage(this.hostEnvironment.sessionStoragePath)
-    }
-    const storage = this.storage
-    if (!storage) throw new Error('session storage is not available')
-    // Grouped storage answers EMPTY from the default dir until the session is routed.
-    await this.groupedStorage?.routeSessionFromMeta(sessionId)
-    return storage
-  }
-
-  /** The transcript a mark is checked against: the live store's (the disk copy
-   *  can lag appends in flight), else the persisted one (F-37). */
-  private async readChapterEntries(sessionId: string): Promise<readonly unknown[]> {
-    const store = this.sessions.get(sessionId)?.conversationStore
-    if (store) return store.getRecordedMessages()
-    return this.readPersistedEntries(sessionId)
-  }
-
-  /** A session's stored proposals: from its live store when it has one (the
-   *  live store owns the record), else from disk (F-36). */
-  private async readChildProposals(sessionId: string): Promise<unknown> {
-    const store = this.sessions.get(sessionId)?.conversationStore
-    if (store) return (await store.getSessionMetadata())?.childProposals
-    return (await this.storage?.readSessionMeta(sessionId))?.metadata.childProposals
-  }
-
-  private async writeChildProposals(
-    sessionId: string,
-    childProposals: NonNullable<BrowserSessionMetadata['childProposals']>,
-  ): Promise<void> {
-    const store = this.sessions.get(sessionId)?.conversationStore
-    if (store) {
-      await store.updateSessionMetadata({ childProposals })
-      return
-    }
-    if (this.storage) await applyDiskOnlyMetadataPatch(this.storage, sessionId, { childProposals })
-  }
-
   /**
    * Worker host: the child-report block a session's turn starts with, taken
    * from its queue in the same write that marks it consumed; null when none.
@@ -3379,94 +3061,6 @@ export class SharedWorkerSessionManager {
    */
   takeChildReports(sessionId: string, opts: { autoContinuation: boolean }): Promise<string | null> {
     return this.childReports.takeForTurn(sessionId, opts)
-  }
-
-  /** The session state and storage the child-report queue and the wake read
-   *  (F-36). */
-  private childReportHost(): ChildReportHost {
-    const summaryRelation = (sessionId: string): SessionLineageInput | undefined => {
-      const summary = this.fsSummaries.peek(sessionId)
-      return summary ? lineageInputFromRelationFields(summary) : undefined
-    }
-    return {
-      wakeGateOpen: () => true,
-      liveStore: sessionId => this.sessions.get(sessionId)?.conversationStore ?? null,
-      readStoredMeta: async sessionId =>
-        (await this.storage?.readSessionMeta(sessionId))?.metadata ?? null,
-      patchStoredMeta: (sessionId, patch) => this.patchSessionRecord(sessionId, patch, { touch: true }),
-      relationIndex: () => {
-        const index = new Map<string, SessionLineageInput>()
-        for (const id of this.fsSummaries.keys()) {
-          const relation = summaryRelation(id)
-          if (relation) index.set(id, relation)
-        }
-        return index
-      },
-      relationOf: summaryRelation,
-      sessionExists: sessionId => {
-        const summary = this.fsSummaries.peek(sessionId)
-        return (
-          summary !== undefined &&
-          (summary as { archived?: unknown }).archived !== true &&
-          !this.deletingSessions.has(sessionId)
-        )
-      },
-      familyNameOf: sessionId => this.fsSummaries.peek(sessionId)?.familyName,
-      activity: sessionId => {
-        const entry = this.sessions.get(sessionId)
-        return {
-          busy: entry?.worker.isBusy() ?? false,
-          needsAnswer: entry?.needsAnswer ?? false,
-          starting: this.startStates.get(sessionId)?.state === 'starting',
-        }
-      },
-      parentHold: sessionId => {
-        const entry = this.sessions.get(sessionId)
-        if (!entry) return 'not_live'
-        if (entry.worker.isBusy()) return 'busy'
-        if (this.taskDelivery.isSuppressed(sessionId)) return 'stopped'
-        if (snapshotNeedsAnswer(entry.worker.getSnapshot())) return 'needs_answer'
-        if (this.deletingSessions.has(sessionId)) return 'deleting'
-        if (this.teams.hasQueuedFrames(sessionId)) return 'queued'
-        return null
-      },
-      finalAssistant: sessionId => {
-        const worker = this.sessions.get(sessionId)?.worker
-        return {
-          text: worker?.getFinalAssistantText?.() ?? '',
-          uuid: worker?.getFinalAssistantMessageUuid?.(),
-          error: worker?.finalAssistantIsError?.() ?? false,
-        }
-      },
-      enqueueWake: (sessionId, prompt) => {
-        const session = this.sessions.get(sessionId)
-        if (!session) return false
-        session.worker.enqueueSubmit(
-          {
-            type: 'worker.submitMessage',
-            sessionId,
-            payload: { prompt, isMeta: true },
-          } as SessionWorkerInboundMessage,
-          SUBMIT_PRIORITY.mailbox,
-          'auto_continuation',
-        )
-        return true
-      },
-      now: () => Date.now(),
-      setTimer: (fn, ms) => setTimeout(fn, ms),
-      clearTimer: handle => clearTimeout(handle as ReturnType<typeof setTimeout>),
-      trace: (event, attrs) => this.tracer.event(event, { attrs }),
-      raiseReport: (parentId, input) => {
-        const slot = modSlotFor(parentId)
-        return slot?.sessionReport && slot.hasSessionReportHooks?.()
-          ? slot.sessionReport(input, sanitizeChildReportText)
-          : null
-      },
-      raiseWake: (parentId, input) => {
-        const slot = modSlotFor(parentId)
-        return slot?.sessionWake && slot.hasSessionWakeHooks?.() ? slot.sessionWake(input) : null
-      },
-    }
   }
 
   /** Write a COMPLETE session and publish it; see `SessionBundleWriter.writeSessionBundle`. */

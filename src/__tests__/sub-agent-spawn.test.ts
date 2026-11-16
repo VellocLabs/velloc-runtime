@@ -3725,9 +3725,10 @@ describe('SharedWorkerSessionManager — background shells (local_bash)', () => 
           : null,
     }
     Object.defineProperty(manager, 'storage', { get: () => mockStorage, configurable: true })
-    const recover = (manager as unknown as {
-      handleRecoverBackground(sessionId: string): Promise<void>
-    }).handleRecoverBackground.bind(manager)
+    const recoveryHost = (manager as unknown as {
+      backgroundRows: { handleRecoverBackground(sessionId: string): Promise<void> }
+    }).backgroundRows
+    const recover = recoveryHost.handleRecoverBackground.bind(recoveryHost)
 
     await recover('S1')
     expect(loadCalls).toBe(1)
@@ -3767,9 +3768,10 @@ describe('SharedWorkerSessionManager — background shells (local_bash)', () => 
       loadToolCallDetail: async () => null,
     }
     Object.defineProperty(manager, 'storage', { get: () => mockStorage, configurable: true })
-    const recover = (manager as unknown as {
-      handleRecoverBackground(sessionId: string): Promise<void>
-    }).handleRecoverBackground.bind(manager)
+    const recoveryHost = (manager as unknown as {
+      backgroundRows: { handleRecoverBackground(sessionId: string): Promise<void> }
+    }).backgroundRows
+    const recover = recoveryHost.handleRecoverBackground.bind(recoveryHost)
 
     // Storage "not ready yet" → empty → nothing recovered, guard NOT committed.
     await recover('S2')
@@ -3857,9 +3859,10 @@ describe('SharedWorkerSessionManager — background shells (local_bash)', () => 
       }),
       configurable: true,
     })
-    const recover = (manager as unknown as {
-      handleRecoverBackground(sessionId: string): Promise<void>
-    }).handleRecoverBackground.bind(manager)
+    const recoveryHost = (manager as unknown as {
+      backgroundRows: { handleRecoverBackground(sessionId: string): Promise<void> }
+    }).backgroundRows
+    const recover = recoveryHost.handleRecoverBackground.bind(recoveryHost)
 
     await recover('S-ss')
     const rows = manager.feed.buildSummaryPayload().subAgents ?? []
@@ -3897,9 +3900,10 @@ describe('SharedWorkerSessionManager — background shells (local_bash)', () => 
       }),
       configurable: true,
     })
-    const recover = (manager as unknown as {
-      handleRecoverBackground(sessionId: string): Promise<void>
-    }).handleRecoverBackground.bind(manager)
+    const recoveryHost = (manager as unknown as {
+      backgroundRows: { handleRecoverBackground(sessionId: string): Promise<void> }
+    }).backgroundRows
+    const recover = recoveryHost.handleRecoverBackground.bind(recoveryHost)
 
     // The card's jump: the drawer opens (recovery starts) and asks for the detail.
     const recovery = recover('S-ss2')

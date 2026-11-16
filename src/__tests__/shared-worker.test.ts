@@ -1205,18 +1205,18 @@ describe('SharedWorkerSessionManager', () => {
     const internals = manager as unknown as {
       runtimeHub: { workspace: { current(): Promise<{ lastFolderByType: Record<string, string> }> } }
       runtimeSessionSurface: { port: MessagePort }
-      openSession(port: MessagePort, open: Record<string, unknown>): Promise<void>
+      frameRouter: { openSession(port: MessagePort, open: Record<string, unknown>): Promise<void> }
       hostEnvironment: unknown
     }
     internals.runtimeHub.workspace.current = async () => ({ lastFolderByType: { code: '/last/code', chat: '/never' } })
     const port = internals.runtimeSessionSurface.port
 
     // Before the desktop published anything, there is nothing to build from.
-    await expect(internals.openSession(port, { sessionId: 'remote-1' })).rejects.toMatchObject({ code: 'host_unavailable' })
+    await expect(internals.frameRouter.openSession(port, { sessionId: 'remote-1' })).rejects.toMatchObject({ code: 'host_unavailable' })
 
     internals.hostEnvironment = { cwd: '/workspace', locale: 'en', templateType: 'agent' }
-    await internals.openSession(port, { sessionId: 'remote-code', templateType: 'code' })
-    await internals.openSession(port, { sessionId: 'remote-chat', templateType: 'chat' })
+    await internals.frameRouter.openSession(port, { sessionId: 'remote-code', templateType: 'code' })
+    await internals.frameRouter.openSession(port, { sessionId: 'remote-chat', templateType: 'chat' })
     await new Promise(resolve => setTimeout(resolve, 20))
 
     const initOf = (sessionId: string) =>
@@ -4309,10 +4309,12 @@ describe('SharedWorkerSessionManager', () => {
 
     it('chapter marks made before the store binds are stashed and written by the bind (F-37)', async () => {
       installStorage()
-      const chapters = manager as unknown as {
-        readChapterMarks(id: string): Promise<unknown>
-        writeChapterMarks(id: string, marks: unknown[]): Promise<void>
-      }
+      const chapters = (manager as unknown as {
+        metaRecords: {
+          readChapterMarks(id: string): Promise<unknown>
+          writeChapterMarks(id: string, marks: unknown[]): Promise<void>
+        }
+      }).metaRecords
       const marks = [{ id: 'c1', entryKey: 'u1', title: 'First', createdAt: 1 }]
       const entry: Record<string, unknown> = { templateType: 'code', background: true }
       internals().sessions.set('s', entry)
@@ -4338,10 +4340,12 @@ describe('SharedWorkerSessionManager', () => {
 
     it('a chapter mark made while the store binds keeps the stashed marks (F-37)', async () => {
       installStorage()
-      const chapters = manager as unknown as {
-        readChapterMarks(id: string): Promise<unknown>
-        writeChapterMarks(id: string, marks: unknown[]): Promise<void>
-      }
+      const chapters = (manager as unknown as {
+        metaRecords: {
+          readChapterMarks(id: string): Promise<unknown>
+          writeChapterMarks(id: string, marks: unknown[]): Promise<void>
+        }
+      }).metaRecords
       const first = { id: 'c1', entryKey: 'u1', title: 'First', createdAt: 1 }
       const second = { id: 'c2', entryKey: 'u2', title: null, createdAt: 2 }
       const entry: Record<string, unknown> = { templateType: 'code', background: true }
@@ -4373,9 +4377,11 @@ describe('SharedWorkerSessionManager', () => {
 
     it('a failed store write while the store binds leaves the stash as it was (F-37)', async () => {
       installStorage()
-      const chapters = manager as unknown as {
-        writeChapterMarks(id: string, marks: unknown[]): Promise<void>
-      }
+      const chapters = (manager as unknown as {
+        metaRecords: {
+          writeChapterMarks(id: string, marks: unknown[]): Promise<void>
+        }
+      }).metaRecords
       const first = { id: 'c1', entryKey: 'u1', title: 'First', createdAt: 1 }
       const second = { id: 'c2', entryKey: 'u2', title: null, createdAt: 2 }
       const entry: Record<string, unknown> = {
@@ -4390,9 +4396,11 @@ describe('SharedWorkerSessionManager', () => {
 
     it('a chapter-mark write with nowhere to land throws instead of reporting success (F-37)', async () => {
       installStorage()
-      const chapters = manager as unknown as {
-        writeChapterMarks(id: string, marks: unknown[]): Promise<void>
-      }
+      const chapters = (manager as unknown as {
+        metaRecords: {
+          writeChapterMarks(id: string, marks: unknown[]): Promise<void>
+        }
+      }).metaRecords
       const marks = [{ id: 'c1', entryKey: 'u1', title: null, createdAt: 1 }]
       await expect(chapters.writeChapterMarks('unknown', marks)).rejects.toThrow()
       await chapters.writeChapterMarks('s', marks)
@@ -4406,7 +4414,7 @@ describe('SharedWorkerSessionManager', () => {
       const internalsOf = manager as unknown as {
         hostEnvironment: { sessionStoragePath: string } | null
         storageCoordinator: { storage: unknown; ensureStorage: (path: string) => Promise<void> }
-        readChapterMarks(id: string): Promise<unknown>
+        metaRecords: { readChapterMarks(id: string): Promise<unknown> }
       }
       const storage = internalsOf.storageCoordinator.storage
       const ensureStorage = internalsOf.storageCoordinator.ensureStorage
@@ -4417,7 +4425,7 @@ describe('SharedWorkerSessionManager', () => {
         internalsOf.storageCoordinator.storage = storage
       })
       try {
-        expect(await internalsOf.readChapterMarks('s')).toEqual(stored)
+        expect(await internalsOf.metaRecords.readChapterMarks('s')).toEqual(stored)
         expect(internalsOf.storageCoordinator.ensureStorage).toHaveBeenCalledWith('C:/sessions')
       } finally {
         internalsOf.storageCoordinator.ensureStorage = ensureStorage
@@ -6144,7 +6152,7 @@ describe('SharedWorkerSessionManager — background-row recovery (task.recoverBa
     coordinator.storage = storage
     coordinator.groupedStorage = storage
     const internals = manager as unknown as {
-      handleRecoverBackground(sessionId: string): Promise<void>
+      backgroundRows: { handleRecoverBackground(sessionId: string): Promise<void> }
       recoveredBash: Map<string, unknown[]>
     }
     return { manager, internals }
@@ -6155,7 +6163,7 @@ describe('SharedWorkerSessionManager — background-row recovery (task.recoverBa
     // wait for the recovery that is asking.
     const { internals } = makeManagerWithTranscript(async () => null)
     const outcome = await Promise.race([
-      internals.handleRecoverBackground('S-rec').then(() => 'settled'),
+      internals.backgroundRows.handleRecoverBackground('S-rec').then(() => 'settled'),
       new Promise<string>(resolve => setTimeout(() => resolve('hung'), 500)),
     ])
     expect(outcome).toBe('settled')
@@ -6167,7 +6175,7 @@ describe('SharedWorkerSessionManager — background-row recovery (task.recoverBa
       releaseSidecar = () => resolve(null)
     })
     const { internals } = makeManagerWithTranscript(() => sidecar)
-    const recovery = internals.handleRecoverBackground('S-rows')
+    const recovery = internals.backgroundRows.handleRecoverBackground('S-rows')
     // Let the transcript read land; the sidecar read is still pending.
     await new Promise(resolve => setTimeout(resolve, 10))
     expect(internals.recoveredBash.get('S-rows')?.length).toBe(1)
@@ -6200,7 +6208,7 @@ describe('SharedWorkerSessionManager — background-row recovery (task.recoverBa
     coordinator.storage = storage
     coordinator.groupedStorage = storage
     const internals = manager as unknown as {
-      handleRecoverBackground(sessionId: string): Promise<void>
+      backgroundRows: { handleRecoverBackground(sessionId: string): Promise<void> }
       feed: { buildSummaryPayload(): { subAgents?: NexusTaskSummaryRowLike[] } }
       taskControl: { loadInfo(id: string): { type: string; outputText?: string } | null }
     }
@@ -6213,7 +6221,7 @@ describe('SharedWorkerSessionManager — background-row recovery (task.recoverBa
       startedAt?: number
       finishedAt?: number
     }
-    await internals.handleRecoverBackground('S-title')
+    await internals.backgroundRows.handleRecoverBackground('S-title')
     const titleRows = (internals.feed.buildSummaryPayload().subAgents ?? []).filter(
       row => row.querySource === 'rename_generate_name',
     )
@@ -6268,11 +6276,11 @@ describe('SharedWorkerSessionManager — background-row recovery (task.recoverBa
       sessionStoragePath: '/home/.velloc',
     }
     const internals = manager as unknown as {
-      handleRecoverBackground(sessionId: string): Promise<void>
+      backgroundRows: { handleRecoverBackground(sessionId: string): Promise<void> }
       recoveredBash: Map<string, unknown[]>
     }
 
-    await internals.handleRecoverBackground('S-boot')
+    await internals.backgroundRows.handleRecoverBackground('S-boot')
 
     expect(calls).toEqual(['ensure /home/.velloc', 'route S-boot', 'load S-boot'])
     expect(internals.recoveredBash.get('S-boot')?.length).toBe(1)
@@ -6283,11 +6291,11 @@ describe('SharedWorkerSessionManager — background-row recovery (task.recoverBa
       createWorker: createMockWorkerFactory().factory,
     })
     const internals = manager as unknown as {
-      handleRecoverBackground(sessionId: string): Promise<void>
+      backgroundRows: { handleRecoverBackground(sessionId: string): Promise<void> }
       recoveredBash: Map<string, unknown[]>
       backgroundRecovered: Set<string>
     }
-    await internals.handleRecoverBackground('S-none')
+    await internals.backgroundRows.handleRecoverBackground('S-none')
     expect(internals.recoveredBash.has('S-none')).toBe(false)
     expect(internals.backgroundRecovered.has('S-none')).toBe(false)
   })
