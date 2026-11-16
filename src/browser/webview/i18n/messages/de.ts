@@ -3176,6 +3176,7 @@ export const de: Messages = {
     'Verbunden mit {host}',
   'remote.host.phoneView': 'Handy-Ansicht',
   'remote.host.phoneViewUnavailable': 'Dieser Desktop bietet die Handy-Ansicht noch nicht an. Aktualisiere die App auf dem Desktop und versuch es dann noch einmal.',
+  'remote.shell.switchBlocked': 'Ansicht konnte nicht gewechselt werden: Dieser Browser blockiert die Website-Speicherung.',
   'remote.host.logOut':
     'Von diesem Desktop abmelden',
   'remote.fullscreen.enter': 'Vollbild',

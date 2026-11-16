@@ -4,7 +4,12 @@
  */
 import { describe, expect, it } from 'vitest'
 
-import { buildMobileSessionGroups, namedTitle, type MobileListSession } from '../mobile/mobileSessionGroups'
+import {
+  buildMobileSessionGroups,
+  namedTitle,
+  nextLiveSessionId,
+  type MobileListSession,
+} from '../mobile/mobileSessionGroups'
 
 const DAY = 24 * 60 * 60 * 1000
 const NOW = new Date(2026, 10, 16, 12, 0, 0).getTime()
@@ -90,5 +95,37 @@ describe('buildMobileSessionGroups', () => {
       { sessionId: 'a', title: 'a', activityAt: NOW - 1000, running: true, needsAnswer: false },
       { sessionId: 'b', title: 'b', activityAt: NOW - 9000, running: false, needsAnswer: true },
     ])
+  })
+})
+
+describe('nextLiveSessionId', () => {
+  it('takes the first row the drawer lists that is not the archived one', () => {
+    const all = [
+      session('archived', NOW - 1000, { archived: true }),
+      session('newest', NOW - 2000),
+      session('pinned-old', NOW - 30 * DAY, { pinned: true }),
+    ]
+    // Pinned rows lead the drawer, so they lead here too.
+    expect(nextLiveSessionId(all, 'newest')).toBe('pinned-old')
+  })
+
+  it('takes the next row for the open session, which is not marked archived yet', () => {
+    const all = [session('open', NOW - 1000), session('next', NOW - 2000)]
+    expect(nextLiveSessionId(all, 'open')).toBe('next')
+  })
+
+  it('answers null when nothing live is left', () => {
+    expect(nextLiveSessionId([session('only', NOW - 1000)], 'only')).toBeNull()
+    expect(nextLiveSessionId([], 'gone')).toBeNull()
+  })
+
+  it('leaves out sub-agent, side-chat and child sessions', () => {
+    const all = [
+      session('open', NOW - 1000),
+      session('sub-agent', NOW - 2000, { spawnerSessionId: 'open' }),
+      session('side-chat', NOW - 3000, { sideChat: { parentSessionId: 'open' } }),
+      session('child', NOW - 4000, { parentSessionId: 'open' }),
+    ]
+    expect(nextLiveSessionId(all, 'open')).toBeNull()
   })
 })

@@ -81,7 +81,7 @@ describe('the stored choice', () => {
     expect(readRemoteShellChoice(storage)).toBeNull()
   })
 
-  it('treats storage that throws as no choice', () => {
+  it('treats storage that throws as no choice, and reports a refused write', () => {
     const broken = {
       getItem: () => {
         throw new Error('blocked')
@@ -91,7 +91,9 @@ describe('the stored choice', () => {
       },
     }
     expect(readRemoteShellChoice(broken)).toBeNull()
-    expect(() => writeRemoteShellChoice('mobile', broken)).not.toThrow()
+    expect(writeRemoteShellChoice('mobile', broken)).toBe(false)
+    expect(writeRemoteShellChoice('mobile', null)).toBe(false)
+    expect(writeRemoteShellChoice('mobile', memoryStorage())).toBe(true)
   })
 })
 
@@ -165,9 +167,29 @@ describe('switching shells', () => {
   it('the desktop view stores the choice and loads index.html beside the phone entry', () => {
     const storage = memoryStorage()
     const replace = vi.fn()
-    switchToDesktopShell({ win: { location: { replace } }, baseUri: `${ENTRY}mobile.html`, storage })
+    expect(
+      switchToDesktopShell({ win: { location: { replace } }, baseUri: `${ENTRY}mobile.html`, storage }),
+    ).toBe('switched')
     expect(storage.data.get(REMOTE_SHELL_CHOICE_KEY)).toBe('desktop')
     expect(replace).toHaveBeenCalledWith(`${ENTRY}index.html`)
+  })
+
+  it('the desktop view stays put when the browser refuses to store the choice', () => {
+    // Navigating anyway would reload index.html, find no choice and redirect back to the phone.
+    const replace = vi.fn()
+    expect(
+      switchToDesktopShell({
+        win: { location: { replace } },
+        baseUri: `${ENTRY}mobile.html`,
+        storage: {
+          getItem: () => null,
+          setItem: () => {
+            throw new Error('blocked')
+          },
+        },
+      }),
+    ).toBe('storage-blocked')
+    expect(replace).not.toHaveBeenCalled()
   })
 
   it('the phone view stores the choice and loads mobile.html once the listener serves it', async () => {
@@ -176,7 +198,7 @@ describe('switching shells', () => {
     const fetchImpl = vi.fn(async () => ({ ok: true, body: null }))
     await expect(
       switchToMobileShell({ win: { location: { replace } }, baseUri: ENTRY, fetch: fetchImpl, storage }),
-    ).resolves.toBe(true)
+    ).resolves.toBe('switched')
     expect(fetchImpl).toHaveBeenCalledWith(`${ENTRY}mobile.html`, { method: 'GET', credentials: 'same-origin' })
     expect(storage.data.get(REMOTE_SHELL_CHOICE_KEY)).toBe('mobile')
     expect(replace).toHaveBeenCalledWith(`${ENTRY}mobile.html`)
@@ -193,10 +215,29 @@ describe('switching shells', () => {
       const replace = vi.fn()
       await expect(
         switchToMobileShell({ win: { location: { replace } }, baseUri: ENTRY, fetch: fetchImpl, storage }),
-      ).resolves.toBe(false)
+      ).resolves.toBe('not-served')
       expect(storage.data.get(REMOTE_SHELL_CHOICE_KEY)).toBe('desktop')
       expect(replace).not.toHaveBeenCalled()
     }
+  })
+
+  it('the phone view reports a refused write apart from an unserved entry', async () => {
+    const fetchImpl = vi.fn(async () => ({ ok: true, body: null }))
+    const replace = vi.fn()
+    await expect(
+      switchToMobileShell({
+        win: { location: { replace } },
+        baseUri: ENTRY,
+        fetch: fetchImpl,
+        storage: {
+          getItem: () => null,
+          setItem: () => {
+            throw new Error('blocked')
+          },
+        },
+      }),
+    ).resolves.toBe('storage-blocked')
+    expect(replace).not.toHaveBeenCalled()
   })
 
   it('offers the phone view on any touch-first device, whatever its screen or the stored choice', () => {

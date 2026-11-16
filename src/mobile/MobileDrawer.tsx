@@ -8,6 +8,7 @@ import { useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } fro
 import { Dialog as DialogPrimitive } from 'radix-ui'
 import { MonitorIcon, PlusIcon } from 'lucide-react'
 
+import type { ShellSwitchOutcome } from '../browser/boot/mobileEntry'
 import { useT } from '../browser/webview/i18n'
 import { buildMobileSessionGroups, type MobileListSession } from './mobileSessionGroups'
 import { MobileSessionList } from './MobileSessionList'
@@ -26,15 +27,20 @@ export type MobileDrawerProps = {
   onSelectSession: (sessionId: string) => void
   onSessionMenu: (sessionId: string) => void
   onNewSession: () => void
-  onDesktopView: () => void
+  /** The switch to the desktop shell; `storage-blocked` is reported under the button. */
+  onDesktopView: () => ShellSwitchOutcome
 }
 
 export function MobileDrawer(props: MobileDrawerProps) {
   const { open, onOpenChange, sessions, running, needsAnswer } = props
   const t = useT()
   const [query, setQuery] = useState('')
-  // The filter belongs to one opening: a closed drawer starts from the whole list, however it closed.
-  if (!open && query !== '') setQuery('')
+  const [desktopViewBlocked, setDesktopViewBlocked] = useState(false)
+  // The filter and the switch's message belong to one opening: a closed drawer starts from the whole list.
+  if (!open && (query !== '' || desktopViewBlocked)) {
+    setQuery('')
+    setDesktopViewBlocked(false)
+  }
   // One clock per opening, so every row ages against the same instant.
   const now = useMemo(() => Date.now(), [open])
   const groups = useMemo(
@@ -130,12 +136,23 @@ export function MobileDrawer(props: MobileDrawerProps) {
             <button
               type="button"
               data-testid="mobile-drawer-desktop-view"
-              onClick={props.onDesktopView}
+              onClick={() => {
+                if (props.onDesktopView() === 'storage-blocked') setDesktopViewBlocked(true)
+              }}
               className="flex min-h-11 w-full items-center gap-3 rounded-lg px-3 text-muted-foreground text-sm active:bg-accent"
             >
               <MonitorIcon aria-hidden className="size-5 shrink-0" />
               {t('mobile.drawer.desktopView')}
             </button>
+            {desktopViewBlocked ? (
+              <p
+                role="alert"
+                data-testid="mobile-drawer-desktop-view-blocked"
+                className="px-3 pb-1 text-muted-foreground text-xs"
+              >
+                {t('remote.shell.switchBlocked')}
+              </p>
+            ) : null}
           </div>
         </DialogPrimitive.Content>
       </DialogPrimitive.Portal>

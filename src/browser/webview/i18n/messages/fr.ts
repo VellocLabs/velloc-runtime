@@ -3201,6 +3201,7 @@ export const fr: Messages = {
     'Connecté à {host}',
   'remote.host.phoneView': 'Vue téléphone',
   'remote.host.phoneViewUnavailable': 'Ce bureau ne propose pas encore la vue téléphone. Mettez à jour l\'application sur le bureau, puis réessayez.',
+  'remote.shell.switchBlocked': 'Impossible de changer de vue : ce navigateur bloque le stockage du site.',
   'remote.host.logOut':
     'Se déconnecter de ce poste',
   'remote.fullscreen.enter': 'Plein écran',

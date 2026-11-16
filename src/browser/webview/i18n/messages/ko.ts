@@ -3090,6 +3090,7 @@ export const ko: Messages = {
     '{host}에 연결됨',
   'remote.host.phoneView': '휴대폰 보기',
   'remote.host.phoneViewUnavailable': '이 데스크톱은 아직 휴대폰 보기를 지원하지 않습니다. 데스크톱의 앱을 업데이트한 후 다시 시도하세요.',
+  'remote.shell.switchBlocked': '보기를 전환하지 못했습니다. 이 브라우저가 사이트 저장 공간을 차단하고 있습니다.',
   'remote.host.logOut':
     '이 데스크톱에서 로그아웃',
   'remote.fullscreen.enter': '전체 화면',

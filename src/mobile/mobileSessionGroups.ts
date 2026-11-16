@@ -95,3 +95,26 @@ export function buildMobileSessionGroups(
     rows: g.sessions.map(toRow),
   }))
 }
+
+const NO_IDS: ReadonlySet<string> = new Set()
+
+/**
+ * The session the drawer lists first once `archivedId` is archived: the first row that is not it,
+ * in the drawer's own order. `null` when nothing live is left.
+ */
+export function nextLiveSessionId(
+  sessions: readonly MobileListSession[],
+  archivedId: string,
+  now: number = Date.now(),
+): string | null {
+  const groups = buildMobileSessionGroups(sessions, {
+    query: '',
+    running: NO_IDS,
+    needsAnswer: NO_IDS,
+    now,
+  })
+  for (const group of groups) {
+    for (const row of group.rows) if (row.sessionId !== archivedId) return row.sessionId
+  }
+  return null
+}

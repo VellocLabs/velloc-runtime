@@ -3102,6 +3102,7 @@ export const ja: Messages = {
     '{host} に接続中',
   'remote.host.phoneView': 'スマートフォン表示',
   'remote.host.phoneViewUnavailable': 'このデスクトップはまだスマートフォン表示に対応していません。デスクトップのアプリを更新してから、もう一度お試しください。',
+  'remote.shell.switchBlocked': '表示を切り替えられませんでした。このブラウザがサイトのストレージをブロックしています。',
   'remote.host.logOut':
     'このデスクトップからログアウト',
   'remote.fullscreen.enter': '全画面表示',

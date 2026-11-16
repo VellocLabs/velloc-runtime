@@ -166,6 +166,22 @@ describe('the host menu on a phone', () => {
       "doesn't offer the phone view yet",
     )
   })
+
+  it('names a blocked storage write rather than an unserved entry, and stays', async () => {
+    asDevice(true, 390)
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, body: null })))
+    vi.spyOn(window, 'localStorage', 'get').mockImplementation(() => {
+      throw new Error('blocked')
+    })
+    renderBar({ remoteHost: HOST, onRemoteLogOut: () => {} })
+    fireEvent.click(screen.getByTestId('topbar-remote-host'))
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('topbar-remote-phone-view'))
+    })
+    expect(screen.getByTestId('topbar-remote-phone-view-unavailable').textContent).toContain(
+      "Couldn't switch views",
+    )
+  })
 })
 
 describe('userNameFromHomeDir', () => {

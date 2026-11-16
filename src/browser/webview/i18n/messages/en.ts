@@ -3255,6 +3255,7 @@ export const en = {
     'Connected to {host}',
   'remote.host.phoneView': 'Phone view',
   'remote.host.phoneViewUnavailable': 'This desktop doesn\'t offer the phone view yet. Update the app on the desktop, then try again.',
+  'remote.shell.switchBlocked': 'Couldn\'t switch views: this browser is blocking site storage.',
   'remote.host.logOut':
     'Log out of this desktop',
   'remote.fullscreen.enter': 'Enter full screen',

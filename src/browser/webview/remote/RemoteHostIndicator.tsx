@@ -18,7 +18,11 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip'
 
-import { offersPhoneShell, switchToMobileShell } from '../../boot/mobileEntry'
+import {
+  offersPhoneShell,
+  switchToMobileShell,
+  type ShellSwitchOutcome,
+} from '../../boot/mobileEntry'
 import { useT } from '../i18n'
 import type { DrivenDesktop } from './hostIdentity'
 
@@ -54,7 +58,9 @@ export function hostDetailLines(host: DrivenDesktop): string[] {
 export function RemoteHostIndicator({ host, onLogOut }: RemoteHostIndicatorProps) {
   const t = useT()
   const [open, setOpen] = React.useState(false)
-  const [phoneViewUnavailable, setPhoneViewUnavailable] = React.useState(false)
+  const [phoneViewFailure, setPhoneViewFailure] = React.useState<
+    Exclude<ShellSwitchOutcome, 'switched'> | null
+  >(null)
   const offerPhoneView = React.useMemo(() => offersPhoneShell(window), [])
   const lines = hostDetailLines(host)
   // The tooltip's one-line summary doubles as the button's accessible name:
@@ -127,26 +133,30 @@ export function RemoteHostIndicator({ host, onLogOut }: RemoteHostIndicatorProps
                 data-testid="topbar-remote-phone-view"
                 className="hover:bg-accent hover:text-accent-foreground flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left text-sm"
                 onClick={() => {
-                  setPhoneViewUnavailable(false)
+                  setPhoneViewFailure(null)
                   void switchToMobileShell({
                     win: window,
                     baseUri: document.baseURI,
                     fetch: (url, init) => fetch(url, init),
-                  }).then((switched) => {
-                    if (!switched) setPhoneViewUnavailable(true)
+                  }).then((outcome) => {
+                    if (outcome !== 'switched') setPhoneViewFailure(outcome)
                   })
                 }}
               >
                 <SmartphoneIcon className="size-4 shrink-0" aria-hidden />
                 {t('remote.host.phoneView')}
               </button>
-              {phoneViewUnavailable ? (
+              {phoneViewFailure ? (
                 <p
                   role="alert"
                   data-testid="topbar-remote-phone-view-unavailable"
                   className="text-muted-foreground px-2 pb-1 text-xs"
                 >
-                  {t('remote.host.phoneViewUnavailable')}
+                  {t(
+                    phoneViewFailure === 'storage-blocked'
+                      ? 'remote.shell.switchBlocked'
+                      : 'remote.host.phoneViewUnavailable',
+                  )}
                 </p>
               ) : null}
             </>

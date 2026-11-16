@@ -37,15 +37,20 @@ export function readRemoteShellChoice(
   }
 }
 
-/** Store this device's choice. Best-effort: unavailable storage leaves the guess in charge. */
+/**
+ * Store this device's choice. `false` when storage is missing or refuses the write, so the caller
+ * does not navigate into a page that would decide from the device again.
+ */
 export function writeRemoteShellChoice(
   choice: RemoteShellChoice,
   storage: ChoiceStorage | null = defaultStorage(),
-): void {
+): boolean {
   try {
-    storage?.setItem(REMOTE_SHELL_CHOICE_KEY, choice)
+    if (!storage) return false
+    storage.setItem(REMOTE_SHELL_CHOICE_KEY, choice)
+    return true
   } catch {
-    // Unavailable storage: the next load decides from the device again.
+    return false
   }
 }
 
@@ -115,22 +120,38 @@ export type ShellSwitchEnv = {
   storage?: ChoiceStorage | null
 }
 
+/**
+ * What a shell switch did: it navigated; the listener does not serve the other entry (a desktop on
+ * an older build); or storage refused the choice, so nothing was navigated and the page stayed put.
+ */
+export type ShellSwitchOutcome = 'switched' | 'not-served' | 'storage-blocked'
+
 /** Remember the desktop shell for this device and load `index.html`. */
-export function switchToDesktopShell(env: Omit<ShellSwitchEnv, 'fetch'>): void {
-  writeRemoteShellChoice('desktop', env.storage === undefined ? defaultStorage() : env.storage)
+export function switchToDesktopShell(
+  env: Omit<ShellSwitchEnv, 'fetch'>,
+): Exclude<ShellSwitchOutcome, 'not-served'> {
+  const stored = writeRemoteShellChoice(
+    'desktop',
+    env.storage === undefined ? defaultStorage() : env.storage,
+  )
+  // Without the stored choice the desktop entry re-derives the phone shell and sends the page back.
+  if (!stored) return 'storage-blocked'
   env.win.location.replace(new URL(DESKTOP_ENTRY_FILE, env.baseUri).href)
+  return 'switched'
 }
 
 /**
  * Remember the phone shell for this device and load `mobile.html`, when the listener serves it.
- * Resolves `false`, with nothing stored, when it does not (a desktop on an older build).
+ * `not-served` (a desktop on an older build) and `storage-blocked` both leave the page here.
  */
-export async function switchToMobileShell(env: ShellSwitchEnv): Promise<boolean> {
+export async function switchToMobileShell(env: ShellSwitchEnv): Promise<ShellSwitchOutcome> {
   const target = await servedEntryUrl(env, MOBILE_ENTRY_FILE)
-  if (!target) return false
-  writeRemoteShellChoice('mobile', env.storage === undefined ? defaultStorage() : env.storage)
+  if (!target) return 'not-served'
+  if (!writeRemoteShellChoice('mobile', env.storage === undefined ? defaultStorage() : env.storage)) {
+    return 'storage-blocked'
+  }
   env.win.location.replace(target)
-  return true
+  return 'switched'
 }
 
 /**

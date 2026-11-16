@@ -258,5 +258,33 @@ describe('MobileShell', () => {
       }),
     )
     expect(screen.queryByTestId('mobile-session-menu')).toBeNull()
+    // The archived row leaves the drawer, so the phone moves off it.
+    await waitFor(() => expect(screen.getByTestId('mobile-topbar-title').textContent).toBe('Budget'))
+    expect(localStorage.getItem(ACTIVE_SESSION_STORAGE_KEY)).toBe('session-b')
+    expect(sessions.requests).toContainEqual({ route: 'presence.setViewing', payload: { sessionId: 'session-b' } })
+  })
+
+  it('starts a new session when archiving the open one leaves nothing live', async () => {
+    localStorage.setItem(ACTIVE_SESSION_STORAGE_KEY, 'session-only')
+    const worker = fakeWorker()
+    const sessions = fakeSessionChannel()
+    render(createElement(MobileShell, { createWorkerTransport: worker.createWorkerTransport, hostBridgeTransport, createInitPayload, sessionChannel: sessions.channel }))
+    act(() => {
+      sessions.emit({
+        type: 'session.list',
+        payload: {
+          sessions: [
+            { sessionId: 'session-only', title: 'Solo', customTitle: 'Solo', projectRoot: 'C:\\work\\solo', updatedAt: 1 },
+          ],
+        },
+      })
+    })
+    await waitFor(() => expect(screen.getByTestId('mobile-topbar-title').textContent).toBe('Solo'))
+    fireEvent.click(screen.getByTestId('mobile-topbar-menu'))
+    fireEvent.click(screen.getByTestId('mobile-menu-archive'))
+    await waitFor(() => expect(localStorage.getItem(ACTIVE_SESSION_STORAGE_KEY)).not.toBe('session-only'))
+    const started = localStorage.getItem(ACTIVE_SESSION_STORAGE_KEY)!
+    await waitFor(() => expect(worker.initialized).toContain(started))
+    expect(sessions.requests).toContainEqual({ route: 'presence.setViewing', payload: { sessionId: started } })
   })
 })

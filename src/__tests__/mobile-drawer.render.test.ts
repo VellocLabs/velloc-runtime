@@ -203,12 +203,22 @@ describe('MobileDrawer', () => {
     expect(screen.getByTestId('mobile-drawer-empty').textContent).toBe('No sessions yet')
   })
 
+  it('says the view cannot switch when the browser blocks the stored choice', () => {
+    renderDrawer({ onDesktopView: () => 'storage-blocked' })
+    fireEvent.click(screen.getByTestId('mobile-drawer-desktop-view'))
+    expect(screen.getByTestId('mobile-drawer-desktop-view-blocked').textContent).toContain(
+      'Couldn\'t switch views',
+    )
+  })
+
   it('offers New session and the desktop view', () => {
     const calls = renderDrawer()
+    expect(screen.getByTestId('mobile-drawer-new-session').textContent).toBe('New session')
     fireEvent.click(screen.getByTestId('mobile-drawer-new-session'))
     fireEvent.click(screen.getByTestId('mobile-drawer-desktop-view'))
     expect(calls.onNewSession).toHaveBeenCalledTimes(1)
     expect(calls.onDesktopView).toHaveBeenCalledTimes(1)
+    expect(screen.queryByTestId('mobile-drawer-desktop-view-blocked')).toBeNull()
   })
 })
 

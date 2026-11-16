@@ -3042,6 +3042,7 @@ export const zh: Messages = {
     '已连接到 {host}',
   'remote.host.phoneView': '手机版',
   'remote.host.phoneViewUnavailable': '这台电脑还不支持手机版。先更新电脑上的应用，再试一次。',
+  'remote.shell.switchBlocked': '无法切换视图：此浏览器阻止了网站存储。',
   'remote.host.logOut':
     '退出此桌面端',
   'remote.fullscreen.enter': '全屏',

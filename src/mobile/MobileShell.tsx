@@ -62,7 +62,7 @@ import { useSessionManager } from '../browser/webview/useSessionManager'
 import { randomUuid } from '../utils/randomUuid'
 import { snapshotNeedsAnswer } from '../utils/sessionNeedsAnswer'
 import { MobileDrawer } from './MobileDrawer'
-import { namedTitle } from './mobileSessionGroups'
+import { namedTitle, nextLiveSessionId } from './mobileSessionGroups'
 import { MobileRenameSheet, MobileSessionMenu, type MobileMenuTarget } from './MobileSessionMenu'
 import { MobileTopBar } from './MobileTopBar'
 import { useThreadBottomInset } from './threadBottomInset'
@@ -454,8 +454,15 @@ export function MobileShell(props: MobileShellProps): ReactNode {
     [sessions, activeSessionId, activeSnapshot],
   )
   const archiveSession = useCallback(
-    (sessionId: string) => handleArchiveThread(sessionId, true),
-    [handleArchiveThread],
+    (sessionId: string) => {
+      handleArchiveThread(sessionId, true)
+      // The archived session's row leaves the drawer, so the open one has to move off it.
+      if (sessionId !== activeSessionId) return
+      const next = nextLiveSessionId(sessions, sessionId)
+      if (next) focusSession(next)
+      else startNewSession()
+    },
+    [handleArchiveThread, activeSessionId, sessions, focusSession, startNewSession],
   )
 
   return (

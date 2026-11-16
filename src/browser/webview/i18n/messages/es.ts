@@ -3176,6 +3176,7 @@ export const es: Messages = {
     'Conectado a {host}',
   'remote.host.phoneView': 'Vista de teléfono',
   'remote.host.phoneViewUnavailable': 'Este escritorio aún no ofrece la vista de teléfono. Actualice la aplicación en el escritorio e inténtelo de nuevo.',
+  'remote.shell.switchBlocked': 'No se pudo cambiar de vista: este navegador está bloqueando el almacenamiento del sitio.',
   'remote.host.logOut':
     'Cerrar sesión en este escritorio',
   'remote.fullscreen.enter': 'Pantalla completa',
