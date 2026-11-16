@@ -562,9 +562,11 @@ export function BackgroundTasksDrawer({
     : info?.summary
   // Contract: the output block shows the log file's text, which carries the
   // child's own ANSI escapes; they are stripped for display only (F-21).
-  const detailOutputText = info?.outputText
-    ? stripAnsiControlSequences(info.outputText)
-    : ''
+  const detailOutputText = useMemo(
+    () =>
+      info?.outputText ? stripAnsiControlSequences(info.outputText) : '',
+    [info?.outputText],
+  )
 
   // While a RUNNING task's detail is open, reload its transcript silently on each
   // `lastActivityAt` advance, and once more when it settles (the result is readable only
