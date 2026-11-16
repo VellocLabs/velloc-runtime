@@ -1,10 +1,11 @@
 @import "tailwindcss";
 @import "tw-animate-css";
+@import "tw-shimmer";
 /* Geist is imported from TS (src/glic/main.tsx), not a css `@import` here: the
  * Tailwind pipeline would not rebase its `url(./files/…)` paths. Pinned by
  * guest-fonts-selfhosted.test.ts. */
 
-/* Both imports stay above every other statement, Tailwind at-rules included:
+/* Every import stays above every other statement, Tailwind at-rules included:
  * CSS honours `@import` only in the prologue, and `@source` ends it. See
  * src/__tests__/tailwind-source-scope.test.ts. */
 

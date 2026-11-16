@@ -226,10 +226,10 @@ const ReviewCardHeader: FC<{
   </header>
 }
 
-/** Text with a light sweeping across it while work runs. */
-const Shimmer: FC<{ text: string }> = ({ text }) => <span className="relative inline-block">{text}<span aria-hidden className="shimmer pointer-events-none absolute inset-0 motion-reduce:animate-none">{text}</span></span>
-
-/** What the review is doing now: the most recently active running task with the run's status; with worker tasks, the full tree folded away under its counts. */
+/**
+ * What the review is doing now: the most recently active running task with the run's status, a wave sweeping across the
+ * line unless reduced motion is asked for; with worker tasks, the full tree folded away under its counts.
+ */
 const ReviewActivity: FC<{ tasks: ReviewTaskView[]; status: string }> = ({ tasks, status }) => {
   const t = useT()
   const workers = tasks.some(task => task.role !== 'coordinator')
@@ -237,7 +237,7 @@ const ReviewActivity: FC<{ tasks: ReviewTaskView[]; status: string }> = ({ tasks
   const detail = current && taskDetail(t, current)
   return <div data-testid="review-activity" className="space-y-1.5 text-xs">
     <div data-testid="review-current-task" className="min-w-0">
-      <p aria-live="polite">{current && <><span className="sr-only">{t('reviewCard.currentTask')} </span><span className="font-medium">{reviewTaskRoleMessage(t, current.role)}</span> · </>}<span data-testid="review-status-line"><Shimmer text={status} /></span>{detail && <> · {detail}</>}</p>
+      <p aria-live="polite" data-testid="review-activity-line" className="motion-safe:shimmer">{current && <><span className="sr-only">{t('reviewCard.currentTask')} </span><span className="font-medium">{reviewTaskRoleMessage(t, current.role)}</span> · </>}<span data-testid="review-status-line">{status}</span>{detail && <> · {detail}</>}</p>
       {current?.lastAction && <p className="truncate text-muted-foreground" title={current.lastAction}>{t('reviewCard.task.lastAction', { action: current.lastAction })}</p>}
     </div>
     {workers && <ReviewTaskTree tasks={tasks} open={false} />}
