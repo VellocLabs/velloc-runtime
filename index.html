@@ -57,7 +57,7 @@
       // can see how much time module-import resolution took separately
       // from the post-mount React work.
       //
-      // See MultiSessionShell.tsx → boot.guestReady.signaled for the
+      // See useGuestReadySignal.ts → boot.guestReady.signaled for the
       // trace event that aggregates all boot marks.
       window.__nexusBootMarks = window.__nexusBootMarks || {};
       window.__nexusBootMarks.htmlParsedMs = Date.now();

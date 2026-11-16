@@ -79,7 +79,7 @@ export function useGuestReadySignal({
     const snapshotReady = marks.workerSnapshotReadyMs ?? null
     const firstMsgs = marks.firstWorkerMessagesReceivedMs ?? null
     const transcriptMerged = marks.transcriptMergedMs ?? null
-    // Use the "real" unmount captured by the gated listener above —
+    // Use the "real" unmount captured by the shell's gated listener —
     // threadWelcomeFirstUnmountedMs would catch the loading→ready
     // transient unmount that fires before snapshot is loaded.
     const twUnmount = marks.threadWelcomeRealUnmountedMs ?? null
