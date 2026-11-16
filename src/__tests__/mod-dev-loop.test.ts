@@ -172,3 +172,28 @@ describe('ModRuntime.afterTurn — the dev loop', () => {
     expect(await runtime.promptSubmit('hi')).toMatchObject({ entered: true, text: 'hi [one]' })
   })
 })
+
+describe('ModRuntime.reloadPluginIfChanged — before a tool the plugin registered', () => {
+  it('reloads that plugin alone when its files moved, and stats no other plugin', async () => {
+    const { runtime, touch, entry, tag, other, stats } = world({ second: true })
+    await runtime.ready
+    await sleep(20)
+    touch(entry, tag('two'))
+    stats.length = 0
+    await runtime.reloadPluginIfChanged('dev')
+    expect(stats).not.toContain(other)
+    expect(runtime.status().find(s => s.plugin === 'dev')).toMatchObject({ generation: 2 })
+    expect(runtime.status().find(s => s.plugin === 'other')).toMatchObject({ generation: 1 })
+    expect(await runtime.promptSubmit('hi')).toMatchObject({ text: 'hi [two]' })
+    // The turn end then finds nothing left to reload.
+    expect((await runtime.afterTurn()).reloaded).toEqual([])
+  })
+
+  it('does nothing when the plugin did not change', async () => {
+    const { runtime } = world()
+    await runtime.ready
+    await sleep(20)
+    await runtime.reloadPluginIfChanged('dev')
+    expect(runtime.status()[0]).toMatchObject({ generation: 1 })
+  })
+})

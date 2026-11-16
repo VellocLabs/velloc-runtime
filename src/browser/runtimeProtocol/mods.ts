@@ -58,6 +58,9 @@ export const MODS_ACTION_SCOPES = {
    *  dismissing it: what a mod goes on to do with it runs as the mod —
    *  `control`, as a press on an element it drew is. */
   askAnswer: 'control',
+  /** The person's answer to whether the session's dev mods folder loads:
+   *  turning it on runs the code in it as the session — `control`. */
+  devModsAnswer: 'control',
   /** A page's answer to a `page` request on `mods/ui/<sessionId>`: whether
    *  it copied a mod's text to its clipboard, moved the focus onto an
    *  element a mod drew, measured or moved a mod's window (`$.ui.copy` /
@@ -369,6 +372,36 @@ export type ModsUiState = {
   /** The agent view a mod last asked for (`$.ui.view`): the page acts on a
    *  `seq` it has not seen; `agentId` absent goes back. Absent before any call. */
   view?: ModsAgentView
+  /** The question whether to turn on the session's dev mods folder, with the
+   *  plugins found in it; absent when none waits. */
+  devModsAsk?: ModsDevModsAsk
+}
+
+/** The dev mods folder's question: answered by `mods.devModsAnswer`. */
+export type ModsDevModsAsk = { requestId: string; plugins: string[] }
+
+/** `mods.devModsAnswer`: turn the folder on, decline it for the session, or
+ *  dismiss the question (asked again after the next turn). */
+export type ModsDevModsAnswerPayload = { sessionId: string; requestId: string; answer: 'on' | 'declined' | 'dismissed' }
+
+export function isModsDevModsAsk(value: unknown): value is ModsDevModsAsk {
+  return (
+    isRecord(value) &&
+    typeof value.requestId === 'string' &&
+    Array.isArray(value.plugins) &&
+    value.plugins.every(plugin => typeof plugin === 'string')
+  )
+}
+
+export function isModsDevModsAnswerPayload(value: unknown): value is ModsDevModsAnswerPayload {
+  return (
+    isRecord(value) &&
+    typeof value.sessionId === 'string' &&
+    value.sessionId !== '' &&
+    typeof value.requestId === 'string' &&
+    value.requestId !== '' &&
+    (value.answer === 'on' || value.answer === 'declined' || value.answer === 'dismissed')
+  )
 }
 
 /** `$.ui.view`'s request: a subagent's transcript by its task id, a
@@ -861,7 +894,8 @@ export function isModsUiState(value: unknown): value is ModsUiState {
     (value.turnNote === undefined ||
       (isRecord(value.turnNote) && typeof value.turnNote.turnId === 'string' && typeof value.turnNote.text === 'string')) &&
     (value.asks === undefined || (Array.isArray(value.asks) && value.asks.every(isModsUiAsk))) &&
-    (value.view === undefined || isModsAgentView(value.view))
+    (value.view === undefined || isModsAgentView(value.view)) &&
+    (value.devModsAsk === undefined || isModsDevModsAsk(value.devModsAsk))
   )
 }
 

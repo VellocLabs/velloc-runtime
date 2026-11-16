@@ -799,7 +799,20 @@ export class ModRuntime extends ModUiSurface implements TurnExtensions {
    * Dev loop at turn end: stat each loaded seat's files and reload only the seats
    * whose files moved (a failed compile is retried every turn). Never rejects.
    */
-  async afterTurn(): Promise<{ polled: number; reloaded: string[] }> {
+  afterTurn(): Promise<{ polled: number; reloaded: string[] }> {
+    return this.pollAndReload(() => true)
+  }
+
+  /**
+   * The dev loop for one plugin, before a tool it registered runs: its
+   * seats' files are stat'ed and a changed one reloads now, so a turn can
+   * call what it just wrote. Never rejects.
+   */
+  async reloadPluginIfChanged(plugin: string): Promise<void> {
+    await this.pollAndReload(seat => seat.ref.plugin === plugin)
+  }
+
+  private async pollAndReload(selects: (seat: Seat) => boolean): Promise<{ polled: number; reloaded: string[] }> {
     const stat = this.options.statModule
     if (this.disposed || !stat) return { polled: 0, reloaded: [] }
     const moved = new Set<string>()
@@ -807,7 +820,7 @@ export class ModRuntime extends ModUiSurface implements TurnExtensions {
     const statOrUndefined = (file: string): Promise<number | undefined> =>
       stat(file).catch(() => undefined)
     await Promise.all(
-      [...this.seats].map(async seat => {
+      this.seats.filter(selects).map(async seat => {
         if (seat.compileFailed) moved.add(seat.ref.path)
         if (!seat.loaded && !seat.mtimes) return
         const files = seat.files ?? [seat.ref.path]

@@ -15,6 +15,7 @@ import {
   MODS_UI_TOAST_EVENT,
   MODS_UI_TOPIC_PREFIX,
   isModsAskAnswerPayload,
+  isModsDevModsAnswerPayload,
   isModsComposerAnswerPayload,
   isModsPromptEditPayload,
   isModsPromptAutocompletePayload,
@@ -31,6 +32,7 @@ import {
   wireError,
   type ModStateRow,
   type ModsAskAnswerPayload,
+  type ModsDevModsAnswerPayload,
   type ModsComposerAnswerPayload,
   type ModsPromptEditPayload,
   type ModsPromptAutocompletePayload,
@@ -51,6 +53,7 @@ import {
   type TopicId,
 } from '../runtimeProtocol'
 import {
+  answerDevModsAsk,
   modSlotDrawing,
   modSlotStates,
   modSlotUiState,
@@ -309,6 +312,11 @@ export function registerModsCapability(
       promptAutocomplete: { scope: MODS_ACTION_SCOPES.promptAutocomplete, guard: isModsPromptAutocompletePayload },
       promptChange: { scope: MODS_ACTION_SCOPES.promptChange, guard: isModsPromptChangePayload },
       askAnswer: { scope: MODS_ACTION_SCOPES.askAnswer, guard: isModsAskAnswerPayload },
+      devModsAnswer: {
+        scope: MODS_ACTION_SCOPES.devModsAnswer,
+        guard: isModsDevModsAnswerPayload,
+        sessionOf: payload => (payload as ModsDevModsAnswerPayload).sessionId,
+      },
       pageAnswer: { scope: MODS_ACTION_SCOPES.pageAnswer, guard: isModsPageAnswerPayload },
       contributions: { scope: MODS_ACTION_SCOPES.contributions, guard: isModsListPayload },
       pressTopbar: {
@@ -422,6 +430,11 @@ export function registerModsCapability(
           const { sessionId, ...answer } = request.payload as ModsAskAnswerPayload
           const slot = slotOf(request.conn, sessionId)
           return { accepted: slot?.askAnswer?.(answer) === true }
+        }
+        case 'devModsAnswer': {
+          const { sessionId, requestId, answer } = request.payload as ModsDevModsAnswerPayload
+          if (!inScope(request.conn, sessionId)) throw wireError('forbidden_scope', `session ${sessionId} is not in this connection's scope`)
+          return { accepted: answerDevModsAsk(sessionId, requestId, answer) }
         }
         case 'pageAnswer': {
           // The first page to succeed settles the request; a failure waits

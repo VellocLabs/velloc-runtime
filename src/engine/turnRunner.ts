@@ -303,9 +303,15 @@ async function* loop(turn: Turn, prompt: Prompt, promptParts: SystemPromptParts)
 async function* settle(turn: Turn, terminal: QueryTerminal): AsyncGenerator<StreamRecord, void> {
   const { ledger } = turn.parts
   const { config } = ledger
-  // A module edited during the turn reloads now; the next turn waits for it.
-  const afterTurn = config.mods?.afterTurn?.()
-  if (afterTurn) ledger.noteSettling(afterTurn)
+  // The session's upkeep (the dev mods folder), then a module edited during
+  // the turn reloads; the next turn waits for both.
+  if (config.afterTurnUpkeep) {
+    const upkeep = config.afterTurnUpkeep
+    ledger.noteSettling(upkeep().then(() => config.mods?.afterTurn?.()))
+  } else {
+    const afterTurn = config.mods?.afterTurn?.()
+    if (afterTurn) ledger.noteSettling(afterTurn)
+  }
   if (typeof terminal.reason === 'string') {
     await config.conversationStore.saveTerminalState(terminal.reason, config.runtimeConfig.now())
   }

@@ -92,7 +92,7 @@ describe('createAgentRuntime hands the predicate every fact', () => {
     expect(at).toBeGreaterThan(factsAt)
     expect(source.slice(at, source.indexOf('})', at))).toContain('modSlotFacts,')
     expect(slot).toContain('const modModules = selectModModules(modSlotFacts,')
-    expect(slot).toContain('selectModModules(modSlotFacts, plugins, await readPluginConfigs(), await readEnabledPlugins())')
+    expect(slot).toContain('selectModModules(modSlotFacts, withDevMods(plugins), await readPluginConfigs(), await readEnabledPlugins())')
   })
 
   it.each(['isSubAgent', 'isHeadless', 'headlessMods', 'isTeammate', 'teammateName'])('passes %s', fact => {

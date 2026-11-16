@@ -341,13 +341,76 @@ export function modAskAnswerOf(
  *  (`ModPluginFrame`), so it carries the asking plugin's icon like the band
  *  and a pane do. */
 export function ModAsks() {
-  const { asks, answerAsk } = useModUi();
-  if (asks.length === 0) return null;
+  const { asks, answerAsk, devModsAsk, answerDevMods } = useModUi();
+  if (asks.length === 0 && !devModsAsk) return null;
   return (
     <div data-slot="mod-asks" className="flex w-full flex-col gap-2">
+      {devModsAsk ? (
+        <DevModsAskCard key={devModsAsk.requestId} ask={devModsAsk} answer={answerDevMods} />
+      ) : null}
       {asks.map((ask) => (
         <ModAskCard key={ask.requestId} ask={ask} answerAsk={answerAsk} />
       ))}
+    </div>
+  );
+}
+
+/** Whether to load the mods the agent wrote in this session's dev folder:
+ *  asked once, the first time the folder holds a plugin (F-25). */
+function DevModsAskCard({
+  ask,
+  answer,
+}: {
+  ask: { requestId: string; plugins: readonly string[] };
+  answer: ReturnType<typeof useModUi>["answerDevMods"];
+}) {
+  const t = useT();
+  const [isSending, setIsSending] = useState(false);
+  const send = (outcome: "on" | "declined" | "dismissed") => {
+    if (!answer || isSending) return;
+    setIsSending(true);
+    void answer(ask.requestId, outcome).catch(() => setIsSending(false));
+  };
+  return (
+    <div
+      role="dialog"
+      aria-label={t("mods.devAsk.label")}
+      data-testid="mod-dev-ask"
+      className={cn(FOOTER_BAR_FRAME, "space-y-2 p-3")}
+      onKeyDown={(event) => {
+        if (event.key === "Escape") {
+          event.stopPropagation();
+          send("dismissed");
+        }
+      }}
+    >
+      <div className="flex items-center gap-2">
+        <PuzzleIcon className="size-4 shrink-0 text-muted-foreground" />
+        <span className="min-w-0 break-words text-sm font-medium">
+          {t("mods.devAsk.question", { names: ask.plugins.join(", ") })}
+        </span>
+      </div>
+      <p className="text-xs text-muted-foreground">{t("mods.devAsk.detail")}</p>
+      <div className="flex gap-2">
+        <button
+          type="button"
+          data-testid="mod-dev-ask-on"
+          disabled={!answer || isSending}
+          onClick={() => send("on")}
+          className="flex-1 rounded-md bg-primary px-4 py-1.5 text-sm font-medium text-primary-foreground disabled:opacity-50"
+        >
+          {t("mods.devAsk.turnOn")}
+        </button>
+        <button
+          type="button"
+          data-testid="mod-dev-ask-decline"
+          disabled={!answer || isSending}
+          onClick={() => send("declined")}
+          className="flex-1 rounded-md border px-4 py-1.5 text-sm disabled:opacity-50"
+        >
+          {t("mods.devAsk.notNow")}
+        </button>
+      </div>
     </div>
   );
 }

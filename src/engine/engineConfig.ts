@@ -67,6 +67,7 @@ export type EngineExtensions = Pick<TurnExtensions, 'ready' | 'promptSubmit'> &
       | 'turnComplete'
       | 'sessionMeasure'
       | 'afterTurn'
+      | 'reloadPluginIfChanged'
       | 'hasPromptHooks'
       | 'promptSections'
       | 'promptCompose'
@@ -138,6 +139,9 @@ export type ConversationEngineConfig = {
   onOpenSettings?: (section: string) => void | Promise<void>
   /** The session's extension runtime, when an enabled plugin carries one. */
   mods?: EngineExtensions
+  /** Upkeep at the end of each turn of this loop, before the extension
+   *  runtime polls its modules; the next turn waits for it. Never rejects. */
+  afterTurnUpkeep?: () => Promise<void>
   /** Told the tools the session's extensions registered (`$.tool.register`),
    *  at each change, for the loops under it to list. */
   onModToolsChanged?: (tools: readonly ModRegisteredTool[]) => void

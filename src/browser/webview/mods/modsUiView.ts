@@ -35,7 +35,7 @@ import type { RuntimeConnection } from '../../runtimeClient/RuntimeConnection'
 import type { ModUiContextValue, ModUiToastRow } from '../../../components/assistant-ui/mod-ui-context'
 import { EMPTY_MOD_UI, staleKeyOf } from '../../../components/assistant-ui/mod-ui-context'
 
-export type ModsUiView = Pick<ModUiContextValue, 'isLoaded' | 'status' | 'notices' | 'toasts' | 'panes' | 'placed' | 'theme' | 'hooked' | 'editHooked' | 'autocompleteHooked' | 'changeHooked' | 'stale' | 'turnNote' | 'asks' | 'view'>
+export type ModsUiView = Pick<ModUiContextValue, 'isLoaded' | 'status' | 'notices' | 'toasts' | 'panes' | 'placed' | 'theme' | 'hooked' | 'editHooked' | 'autocompleteHooked' | 'changeHooked' | 'stale' | 'turnNote' | 'asks' | 'view' | 'devModsAsk'>
 
 type Listener = (view: ModsUiView) => void
 
@@ -171,7 +171,7 @@ export function holdModsUiView(
         return
       }
       if (!isModsUiState(event.payload)) return
-      const { turnNote: _previousNote, theme: _previousTheme, ...kept } = store.view
+      const { turnNote: _previousNote, theme: _previousTheme, devModsAsk: _previousDevAsk, ...kept } = store.view
       store.view = {
         ...kept,
         isLoaded: true,
@@ -187,6 +187,7 @@ export function holdModsUiView(
         asks: event.payload.asks ?? [],
         ...(event.payload.turnNote ? { turnNote: event.payload.turnNote } : {}),
         ...(event.payload.view ? { view: event.payload.view } : {}),
+        ...(event.payload.devModsAsk ? { devModsAsk: event.payload.devModsAsk } : {}),
       }
       emit(store)
     })
@@ -212,7 +213,7 @@ export function holdModsUiView(
 export function modsUiActions(
   connection: Pick<RuntimeConnection, 'request' | 'can'>,
   sessionId: string,
-): Pick<ModUiContextValue, 'render' | 'uiInput' | 'closePane' | 'showPane' | 'reportSeat' | 'answerAsk'> {
+): Pick<ModUiContextValue, 'render' | 'uiInput' | 'closePane' | 'showPane' | 'reportSeat' | 'answerAsk' | 'answerDevMods'> {
   const can = (act: string): boolean => {
     try {
       return connection.can(MODS_CAPABILITY, act)
@@ -269,6 +270,13 @@ export function modsUiActions(
       ? {
           answerAsk: async (answer: ModsAskAnswer) => {
             await connection.request('mods.askAnswer', { sessionId, ...answer })
+          },
+        }
+      : {}),
+    ...(can('devModsAnswer')
+      ? {
+          answerDevMods: async (requestId: string, answer: 'on' | 'declined' | 'dismissed') => {
+            await connection.request('mods.devModsAnswer', { sessionId, requestId, answer })
           },
         }
       : {}),

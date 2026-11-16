@@ -1,0 +1,186 @@
+/**
+ * The session's dev mods folder (F-25): found at a turn end, turned on once
+ * (asked, or at once in the bypass and auto modes), never in `dontAsk` or
+ * where nobody can be asked; a later change to its plugins reconciles; and
+ * the question reaches the session's pages through the registry.
+ */
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { createDevModsFolder, type DevModsAnswer, type DevModsFolderOptions } from '../mods/devModsFolder'
+import { answerDevModsAsk, modSlotUiState, onModUiEvents, openDevModsAsk } from '../mods/modSlotRegistry'
+import type { ActivePlugin } from '../pluginHost/pluginModel'
+import type { RuntimeFsEntry } from '../utils/fs/runtimeFs'
+
+const dir = (name: string): RuntimeFsEntry => ({
+  name,
+  isFile: () => false,
+  isDirectory: () => true,
+  isSymbolicLink: () => false,
+})
+
+function folderWorld(options: { mode?: string; canAsk?: boolean; answer?: DevModsAnswer } = {}) {
+  /** folder name → manifest mtime (absent: no manifest). */
+  const manifests = new Map<string, number>()
+  const reports: string[] = []
+  const asked: string[][] = []
+  let answer: (value: DevModsAnswer) => void = () => {}
+  const changed = vi.fn(async () => {})
+  const opts: DevModsFolderOptions = {
+    folder: '/home/.velloc/dev-mods/s1',
+    readdir: async () => [...manifests.keys(), 'loose'].map(dir),
+    mtime: async path => {
+      const name = path.split('/')[5]
+      return path.endsWith('/plugin.json') ? manifests.get(name) : undefined
+    },
+    join: (base, ...segments) => [base, ...segments].join('/'),
+    assemble: async (pluginDir, folderName) =>
+      ({
+        name: `${folderName}-mod`,
+        path: pluginDir,
+        manifest: { name: `${folderName}-mod` },
+        hookModules: [`${pluginDir}/hooks/register.ts`],
+      }) as unknown as ActivePlugin,
+    permissionMode: () => options.mode ?? 'default',
+    canAsk: options.canAsk ?? true,
+    ask: plugins => {
+      asked.push([...plugins])
+      if (options.answer) return Promise.resolve(options.answer)
+      return new Promise(resolve => {
+        answer = resolve
+      })
+    },
+    onPluginsChanged: changed,
+    report: line => reports.push(line),
+  }
+  const folder = createDevModsFolder(opts)
+  return { folder, manifests, reports, asked, changed, answer: (value: DevModsAnswer) => answer(value) }
+}
+
+const settle = () => new Promise(resolve => setTimeout(resolve, 0))
+
+describe('createDevModsFolder', () => {
+  it('an empty folder asks nothing and loads nothing', async () => {
+    const w = folderWorld()
+    await w.folder.afterTurn()
+    expect(w.asked).toEqual([])
+    expect(w.folder.state()).toBe('unasked')
+    expect(w.folder.plugins()).toEqual([])
+  })
+
+  it('a manifest asks once without holding the turn; "on" loads the folder', async () => {
+    const w = folderWorld()
+    w.manifests.set('panel', 1)
+    await w.folder.afterTurn()
+    expect(w.asked).toEqual([['panel-mod']])
+    expect(w.folder.state()).toBe('asking')
+    await w.folder.afterTurn()
+    expect(w.asked).toHaveLength(1)
+    w.answer('on')
+    await settle()
+    await settle()
+    expect(w.folder.state()).toBe('on')
+    expect(w.folder.plugins().map(p => [p.name, p.installIdentifier, p.enabled])).toEqual([
+      ['panel-mod', 'panel-mod@dev', true],
+    ])
+    expect(w.changed).toHaveBeenCalledTimes(1)
+  })
+
+  it('a folder without a manifest is not a plugin', async () => {
+    const w = folderWorld({ mode: 'bypassPermissions' })
+    await w.folder.afterTurn()
+    expect(w.folder.state()).toBe('unasked')
+  })
+
+  it('declined: never asked again, nothing loads', async () => {
+    const w = folderWorld({ answer: 'declined' })
+    w.manifests.set('panel', 1)
+    await w.folder.afterTurn()
+    await settle()
+    await w.folder.afterTurn()
+    expect(w.asked).toHaveLength(1)
+    expect(w.folder.state()).toBe('declined')
+    expect(w.folder.plugins()).toEqual([])
+  })
+
+  it('dismissed: asked again at the next turn end', async () => {
+    const w = folderWorld({ answer: 'dismissed' })
+    w.manifests.set('panel', 1)
+    await w.folder.afterTurn()
+    await settle()
+    expect(w.folder.state()).toBe('unasked')
+    await w.folder.afterTurn()
+    expect(w.asked).toHaveLength(2)
+  })
+
+  it.each(['bypassPermissions', 'auto'])('%s turns it on without asking', async mode => {
+    const w = folderWorld({ mode })
+    w.manifests.set('panel', 1)
+    await w.folder.afterTurn()
+    expect(w.asked).toEqual([])
+    expect(w.folder.state()).toBe('on')
+    expect(w.folder.plugins()).toHaveLength(1)
+  })
+
+  it('dontAsk, or nobody to ask: off, said once in the report', async () => {
+    for (const w of [folderWorld({ mode: 'dontAsk' }), folderWorld({ canAsk: false })]) {
+      w.manifests.set('panel', 1)
+      await w.folder.afterTurn()
+      await w.folder.afterTurn()
+      expect(w.asked).toEqual([])
+      expect(w.folder.state()).toBe('off')
+      expect(w.reports).toHaveLength(1)
+    }
+  })
+
+  it('while on, a new plugin or a rewritten manifest reconciles; no change does not', async () => {
+    const w = folderWorld({ mode: 'bypassPermissions' })
+    w.manifests.set('panel', 1)
+    await w.folder.afterTurn()
+    expect(w.changed).toHaveBeenCalledTimes(1)
+    await w.folder.afterTurn()
+    expect(w.changed).toHaveBeenCalledTimes(1)
+    w.manifests.set('band', 1)
+    await w.folder.afterTurn()
+    expect(w.folder.plugins().map(p => p.name)).toEqual(['band-mod', 'panel-mod'])
+    w.manifests.set('panel', 2)
+    await w.folder.afterTurn()
+    expect(w.changed).toHaveBeenCalledTimes(3)
+  })
+})
+
+describe('the dev mods question on mods/ui/<sessionId>', () => {
+  const undo: Array<() => void> = []
+  afterEach(() => {
+    for (const fn of undo.splice(0)) fn()
+  })
+
+  it('is in the session state until answered, and only for that session', async () => {
+    const events: Array<{ sessionId: string; asked: boolean }> = []
+    undo.push(
+      onModUiEvents((sessionId, event) => {
+        if (event.kind === 'state') events.push({ sessionId, asked: event.state.devModsAsk !== undefined })
+      }),
+    )
+    const asking = openDevModsAsk('dev-s1', ['panel-mod'])
+    const ask = modSlotUiState('dev-s1').devModsAsk!
+    expect(ask.plugins).toEqual(['panel-mod'])
+    expect(modSlotUiState('dev-s2').devModsAsk).toBeUndefined()
+    expect(answerDevModsAsk('dev-s2', ask.requestId, 'on')).toBe(false)
+    expect(answerDevModsAsk('dev-s1', 'wrong', 'on')).toBe(false)
+    expect(answerDevModsAsk('dev-s1', ask.requestId, 'on')).toBe(true)
+    await expect(asking).resolves.toBe('on')
+    expect(modSlotUiState('dev-s1').devModsAsk).toBeUndefined()
+    expect(answerDevModsAsk('dev-s1', ask.requestId, 'on')).toBe(false)
+    expect(events).toEqual([
+      { sessionId: 'dev-s1', asked: true },
+      { sessionId: 'dev-s1', asked: false },
+    ])
+  })
+
+  it('an aborted session settles it dismissed', async () => {
+    const controller = new AbortController()
+    const asking = openDevModsAsk('dev-s3', ['x'], controller.signal)
+    controller.abort()
+    await expect(asking).resolves.toBe('dismissed')
+    expect(modSlotUiState('dev-s3').devModsAsk).toBeUndefined()
+  })
+})

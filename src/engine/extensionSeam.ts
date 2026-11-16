@@ -213,6 +213,8 @@ export interface TurnExtensions extends ToolCallExtensions {
   // -- upkeep (no event raised) -------------------------------------------
   /** @mode observe — after-turn upkeep: poll and hot-reload changed mods. */
   afterTurn(): Promise<{ polled: number; reloaded: string[] }>
+  /** @mode observe — before a tool `plugin` registered runs: reload it if its files changed. */
+  reloadPluginIfChanged(plugin: string): Promise<void>
   /** @mode observe — reload the slot's mods (`/plugins`, settings change). */
   reload(only?: ReadonlySet<string>): Promise<{ added: string[]; removed: string[]; reloaded: string[] }>
   /** @mode observe — brackets a wait on the person so mod clocks pause. */
@@ -265,6 +267,7 @@ export function noTurnExtensions(): TurnExtensions {
     idsNext: async (_e, core) => core(),
     turnComplete: async () => ({}),
     afterTurn: async () => ({ polled: 0, reloaded: [] }),
+    reloadPluginIfChanged: async () => undefined,
     reload: async () => ({ added: [], removed: [], reloaded: [] }),
     whileAskingPerson: (work) => work(),
   }

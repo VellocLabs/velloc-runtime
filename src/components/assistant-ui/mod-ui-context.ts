@@ -173,6 +173,12 @@ export type ModUiContextValue = {
   /** Answer or dismiss one. Absent where the connection may not
    *  (`mods.askAnswer` is `control`): the questions are shown, not answerable. */
   answerAsk?: (answer: ModUiAskAnswer) => Promise<void>
+  /** Whether to turn on the session's dev mods folder, with the plugins found
+   *  in it; absent when no question waits. */
+  devModsAsk?: { requestId: string; plugins: readonly string[] }
+  /** Answer it. Absent where the connection may not (`mods.devModsAnswer`
+   *  is `control`). */
+  answerDevMods?: (requestId: string, answer: 'on' | 'declined' | 'dismissed') => Promise<void>
   /** Ask the session's mods to draw a site. Absent where the connection
    *  cannot (no `mods.render`): nothing is drawn. */
   render?: (input: {

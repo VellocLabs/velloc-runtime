@@ -22,6 +22,7 @@ import type { ModAgentView } from './modAgentView'
 import type { PluginUserConfigField } from '../pluginHost/pluginModel'
 import type { RenderInput, RenderOutcome, RenderSite } from './modRender'
 import type { ModRegisteredTool } from './modRegisteredTools'
+import type { DevModsAnswer } from './devModsFolder'
 
 /** A session's slot is at most this many parents away. A chain longer than
  *  this is a cycle or a bug, and resolves to no slot. */
@@ -64,7 +65,12 @@ export type ModSlotUiState = {
   turnNote?: ModUiTurnNote
   asks?: ModUiAsk[]
   view?: ModAgentView
+  /** The question whether to turn on the session's dev mods folder. */
+  devModsAsk?: DevModsAsk
 }
+
+/** The dev mods folder's question as the page draws it: the plugins found. */
+export type DevModsAsk = { requestId: string; plugins: string[] }
 
 export type ModSlotUiEvent =
   | { kind: 'state'; state: ModSlotUiState }
@@ -295,9 +301,10 @@ export function onModSlotsChanged(listener: (sessionId: string) => void): () => 
 /** A slot's mods drew something: a status line or notice changed, or a
  *  toast was shown. Never throws for a listener that does. */
 export function noteModUiEvent(sessionId: string, event: ModSlotUiEvent): void {
+  const told = event.kind === 'state' ? { kind: 'state' as const, state: withDevModsAsk(sessionId, event.state) } : event
   for (const listener of [...uiListeners]) {
     try {
-      listener(sessionId, event)
+      listener(sessionId, told)
     } catch {
       /* a listener's failure is its own */
     }
@@ -314,7 +321,48 @@ export function onModUiEvents(listener: (sessionId: string, event: ModSlotUiEven
 
 /** The mod-authored lines of `sessionId`'s own slot — empty with no slot. */
 export function modSlotUiState(sessionId: string): ModSlotUiState {
-  return slots.get(sessionId)?.uiState?.() ?? { status: [], notices: [] }
+  return withDevModsAsk(sessionId, slots.get(sessionId)?.uiState?.() ?? { status: [], notices: [] })
+}
+
+/** The dev mods folder's open question per session. It lives here, not in a
+ *  slot: the folder is asked about before any mod runtime exists. */
+const devModsAsks = new Map<string, { ask: DevModsAsk; settle: (answer: DevModsAnswer) => void }>()
+let nextDevModsAsk = 0
+
+function withDevModsAsk(sessionId: string, state: ModSlotUiState): ModSlotUiState {
+  const pending = devModsAsks.get(sessionId)
+  const { devModsAsk: _, ...rest } = state
+  return pending ? { ...rest, devModsAsk: { ...pending.ask, plugins: [...pending.ask.plugins] } } : rest
+}
+
+/** Asks the pages of `sessionId` whether to turn on its dev mods folder.
+ *  One question per session at a time: a second replaces the first, which
+ *  settles `dismissed`. An aborted `signal` settles `dismissed` too. */
+export function openDevModsAsk(sessionId: string, plugins: readonly string[], signal?: AbortSignal): Promise<DevModsAnswer> {
+  devModsAsks.get(sessionId)?.settle('dismissed')
+  return new Promise<DevModsAnswer>(resolve => {
+    const requestId = `dev${++nextDevModsAsk}`
+    const settle = (answer: DevModsAnswer): void => {
+      if (devModsAsks.get(sessionId)?.ask.requestId !== requestId) return
+      devModsAsks.delete(sessionId)
+      signal?.removeEventListener('abort', onAbort)
+      noteModUiEvent(sessionId, { kind: 'state', state: modSlotUiState(sessionId) })
+      resolve(answer)
+    }
+    const onAbort = (): void => settle('dismissed')
+    devModsAsks.set(sessionId, { ask: { requestId, plugins: [...plugins] }, settle })
+    if (signal?.aborted) return settle('dismissed')
+    signal?.addEventListener('abort', onAbort, { once: true })
+    noteModUiEvent(sessionId, { kind: 'state', state: modSlotUiState(sessionId) })
+  })
+}
+
+/** A page's answer to the dev mods question; false when none waits. */
+export function answerDevModsAsk(sessionId: string, requestId: string, answer: DevModsAnswer): boolean {
+  const pending = devModsAsks.get(sessionId)
+  if (!pending || pending.ask.requestId !== requestId) return false
+  pending.settle(answer)
+  return true
 }
 
 /** Every slot and what became of its modules, in registration order. A slot

@@ -9,8 +9,14 @@ import type { PluginContributions } from '../../pluginHost'
 import type { PluginProviderKeysMap } from '../../pluginHost/pluginMcpUserConfig'
 import { isModSlot, selectModModules } from '../../mods/modSlot'
 import { createModIdleUnload, type ModIdleUnload } from '../../mods/modIdleUnload'
+import { createDevModsFolder, type DevModsFolder } from '../../mods/devModsFolder'
+import { assemblePluginAt } from '../../pluginHost/loadPlugins'
+import { RUNTIME_DIR_NAME } from '../../branding/runtimeDir'
+import { joinRuntimePath } from '../../utils/runtimePaths'
+import { traceLine } from '../../utils/debugLog'
 import {
   modRoster,
+  openDevModsAsk,
   type ModSlot,
   undoWhenScopeEnds,
   watchModRoster,
@@ -97,6 +103,15 @@ export async function openSessionModSlot(input: SessionModSlotInput) {
   /** The enabled plugins as the slot's mods were last selected from:
    *  `$.mcp.connect` reads the calling plugin's manifest servers off them. */
   let modPlugins = pluginContributions.plugins
+  /** The session's dev mods folder (F-25); set below for an interactive slot. */
+  let devMods: DevModsFolder | undefined
+  /** `plugins` with the dev folder's own, an installed name winning. */
+  const withDevMods = (plugins: typeof pluginContributions.plugins): typeof pluginContributions.plugins => {
+    const dev = devMods?.plugins() ?? []
+    if (dev.length === 0) return plugins
+    const taken = new Set(plugins.map(plugin => plugin.name))
+    return [...plugins, ...dev.filter(plugin => !taken.has(plugin.name))]
+  }
   let mods: import('../../mods/ModRuntime').ModRuntime | undefined
   /** Undo of the slot's registry entry; replaced when the runtime is. */
   let unregisterModSlot: (() => void) | undefined
@@ -171,7 +186,7 @@ export async function openSessionModSlot(input: SessionModSlotInput) {
     },
     modEngine,
     get modPlugins() {
-      return modPlugins
+      return withDevMods(modPlugins)
     },
     modToolHost,
     get mods() {
@@ -241,7 +256,7 @@ export async function openSessionModSlot(input: SessionModSlotInput) {
     // client comes back (or a message arrives) and loads them again.
     const next = modIdle?.isUnloaded()
       ? []
-      : selectModModules(modSlotFacts, plugins, await readPluginConfigs(), await readEnabledPlugins())
+      : selectModModules(modSlotFacts, withDevMods(plugins), await readPluginConfigs(), await readEnabledPlugins())
     if (mods) {
       if (next.length > 0) {
         await mods.reconcile(next)
@@ -278,6 +293,35 @@ export async function openSessionModSlot(input: SessionModSlotInput) {
     : undefined
   if (modIdle) undoWhenScopeEnds(() => modIdle.dispose(), options.runtimeScopeSignal)
 
+  // The session's dev mods folder: `<home>/.velloc/dev-mods/<sessionId>/`,
+  // scanned at each turn end and loaded into this session alone once the
+  // person turns it on (F-25). An interactive slot only.
+  if (isModSlot(modSlotFacts) && !isHeadlessSession) {
+    try {
+      const folder = joinRuntimePath(settingsHome(), RUNTIME_DIR_NAME, 'dev-mods', resolvedSessionId)
+      devMods = createDevModsFolder({
+        folder,
+        readdir: path => installedFs.readdir(path),
+        mtime: path => installedFs.stat(path).then(stat => stat.mtimeMs, () => undefined),
+        join: (base, ...segments) => joinRuntimePath(base, ...segments),
+        assemble: (dir, folderName) =>
+          assemblePluginAt(dir, `dev:${dir}`, true, folderName, installedFs).then(({ plugin }) =>
+            (plugin.hookModules?.length ?? 0) > 0 ? plugin : undefined,
+          ),
+        permissionMode: () => String(coreState.getAppState().permissionRules.mode),
+        canAsk: true,
+        ask: plugins => openDevModsAsk(resolvedSessionId, plugins, options.runtimeScopeSignal),
+        onPluginsChanged: () => reconcileMods(modPlugins),
+        report: line => {
+          traceLine(`[mods] ${line}`, { level: 'warn' })
+          console.warn(`[mods] ${line}`)
+        },
+      })
+    } catch (e) {
+      console.warn(`[mods] dev mods folder skipped: ${e instanceof Error ? e.message : String(e)}`)
+    }
+  }
+
   return {
     /** The slot's mod runtime now; replaced or cleared by a reload. */
     get mods() {
@@ -289,6 +333,8 @@ export async function openSessionModSlot(input: SessionModSlotInput) {
     },
     modIdle,
     reconcileMods,
+    /** The dev mods folder's turn-end scan; absent when the slot has none. */
+    afterTurnUpkeep: devMods ? (folder => () => folder.afterTurn())(devMods) : undefined,
     /** Binds the engine and applies the registrations made before it existed, in order. */
     bindEngine(engine: ConversationEngine): void {
       engineForMods = engine

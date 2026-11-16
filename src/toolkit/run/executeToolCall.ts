@@ -11,7 +11,7 @@ import type {
   QueryToolUseBlock,
 } from '../../runtime/interfaces/QueryRuntimeDeps'
 import type { ModelReplyRow, Message } from '../../runtime/RuntimeTypes'
-import type { AgentToolMeta, ToolContract, ToolOutcome } from '../toolContract'
+import { resolveToolByName, type AgentToolMeta, type ToolContract, type ToolOutcome } from '../toolContract'
 import { emptyPermissionRuleSet, type PermissionDecider, type ToolPermissionResult } from '../permissionVerdict'
 import type { ToolCallContext } from '../toolCallContext'
 import {
@@ -169,6 +169,11 @@ export async function* executeToolCall(
   // Settled long before a model calls a tool (the first prompt waited for
   // it); a session without extensions does not wait at all.
   if (mods?.ready) await mods.ready
+  // A tool a mod registered: that mod's edited files reload first (F-25).
+  if (mods?.reloadPluginIfChanged) {
+    const owner = (resolveToolByName(callContext.options.tools, block.toolName) as { modPlugin?: unknown } | undefined)?.modPlugin
+    if (typeof owner === 'string') await mods.reloadPluginIfChanged(owner)
+  }
   const runStages = (call: QueryToolUseBlock, context: ToolCallContext) =>
     executeToolCallStages(call, modelReply, decidePermission, context, deps, stages)
   if (mods?.hasToolCallHooks?.() === true && mods.toolCall) {

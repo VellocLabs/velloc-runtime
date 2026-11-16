@@ -125,6 +125,9 @@ export type ToolCallMods = Partial<ClassicMods> & {
   readonly ready: Promise<void>
   /** Whether any loaded hook selects `tool.call`. False costs nothing. */
   hasToolCallHooks(): boolean
+  /** Reloads `plugin` now when its files changed since they were read, so
+   *  a tool it registered runs as last written. Optional; never rejects. */
+  reloadPluginIfChanged?(plugin: string): Promise<void>
   /** `context`: the call is a plugin's own (`$.tool.call`) — who raised it,
    *  and the hook to skip. Absent: the model's call. */
   toolCall(

@@ -1578,6 +1578,7 @@ ${teammateAddendum}`
       description: plugin.manifest.description,
     })),
     onReloadPlugins,
+    ...(modSlot.afterTurnUpkeep ? { afterTurnUpkeep: modSlot.afterTurnUpkeep } : {}),
     ...(modSlot.mods
       ? { mods: modSlot.mods }
       : agentLoopMods
