@@ -39,7 +39,7 @@ export type AddressKind = 'loopback' | 'physical' | 'virtual'
  * 0.0.0.0 regardless): physical NIC vs virtual adapter, by address prefix and
  * interface name (`vEthernet (…)` is Hyper-V).
  */
-export function classifyAddress(a: { address: string; interfaceName: string }): AddressKind {
+function classifyAddress(a: { address: string; interfaceName: string }): AddressKind {
   if (a.address === '127.0.0.1' || a.address === '::1') return 'loopback'
   if (a.address.startsWith('172.26.')) return 'virtual' // WSL / Hyper-V
   const name = a.interfaceName.toLowerCase()
@@ -55,7 +55,7 @@ export function classifyAddress(a: { address: string; interfaceName: string }): 
 
 /** RFC 1918 — the ranges a home or office LAN hands out. A physical NIC on
  *  one of these is the likeliest address another device can reach. */
-export function isPrivateLan(address: string): boolean {
+function isPrivateLan(address: string): boolean {
   if (address.startsWith('192.168.') || address.startsWith('10.')) return true
   const m = /^172\.(\d+)\./.exec(address)
   return m !== null && Number(m[1]) >= 16 && Number(m[1]) <= 31

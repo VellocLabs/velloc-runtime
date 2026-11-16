@@ -1,3 +1,4 @@
+import * as React from 'react'
 import qrcode from 'qrcode-generator'
 
 /**
@@ -48,7 +49,7 @@ export function QrCodeSvg({
   className?: string
   testId?: string
 }) {
-  const modules = qrModules(text)
+  const modules = React.useMemo(() => qrModules(text), [text])
   const extent = modules.size + QUIET_ZONE * 2
   return (
     <svg

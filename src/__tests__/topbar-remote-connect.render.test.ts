@@ -208,4 +208,13 @@ describe('NexusTopBar remote connect control', () => {
     expect(onOpenSettings).toHaveBeenCalledWith('remoteAccess')
     await waitFor(() => expect(screen.queryByTestId('topbar-remote-connect')).toBeNull())
   })
+
+  it('closes on Escape and returns focus to the button', async () => {
+    renderBar({ remoteConnect: source() })
+    openPopover()
+    await screen.findByTestId('topbar-remote-connect-qr')
+    fireEvent.keyDown(document, { key: 'Escape' })
+    await waitFor(() => expect(screen.queryByTestId('topbar-remote-connect')).toBeNull())
+    expect(document.activeElement).toBe(screen.getByTestId('topbar-remote-devices'))
+  })
 })

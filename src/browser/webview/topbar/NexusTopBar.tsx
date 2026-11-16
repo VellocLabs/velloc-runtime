@@ -156,10 +156,9 @@ export type NexusTopBarProps = {
    */
   onOpenCustomize?: () => void;
   /**
-   * Remote devices connected to this desktop through remote access (F-24).
-   * Above 0 a link button with the count sits just before the search control
-   * and opens Settings → Remote access. The shell passes 0 when that page is
-   * not one this connection may open, so the button never leads elsewhere.
+   * Remote devices connected to this desktop through remote access (F-24),
+   * the badge on the button above. The shell passes 0 when that page is not
+   * one this connection may open, so the button never leads elsewhere.
    */
   remoteDeviceCount?: number;
   /**

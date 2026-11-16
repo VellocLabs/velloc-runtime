@@ -4,7 +4,7 @@
  * `remote/state` store, and only by a connection that may read the topic at
  * all (the desktop, a manager). Both are empty unless remote access is on and
  * the Remote access settings section is one this connection may open: the
- * button leads there, and must not land anywhere else.
+ * control's settings entry leads there, and must not land anywhere else.
  */
 import * as React from 'react'
 

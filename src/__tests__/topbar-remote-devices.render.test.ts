@@ -7,11 +7,12 @@ import { I18nProvider } from '../browser/webview/i18n'
 import { NexusTopBar } from '../browser/webview/topbar/NexusTopBar'
 
 /**
- * The topbar's connected-devices button (F-24): a link icon with
- * the number of remote devices connected to this desktop, just before the
- * search control, that opens Settings → Remote access. Absent while nobody is
- * connected. The shell decides the count (and passes 0 when the page is not
- * reachable) — pinned in remote-access-view.test.ts / settings nav tests.
+ * The topbar's remote-access button without a connect source (F-24): a QR
+ * icon with the count of remote devices, just before the search control,
+ * that opens Settings → Remote access. Absent while nobody is connected;
+ * the shell decides the count (and passes 0 when the page is not reachable).
+ * With a `remoteConnect` source the control is RemoteConnectButton instead,
+ * covered by topbar-remote-connect.render.test.ts.
  */
 
 function renderBar(props: { remoteDeviceCount?: number; searchSlot?: unknown } = {}) {
