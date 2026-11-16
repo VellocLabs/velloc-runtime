@@ -26,6 +26,7 @@ import type { TurnContinueInput, TurnContinueSettlement } from '../mods/turnCont
 import type { TurnRecoverDecision, TurnRecoverInput } from '../mods/turnRecoverEvent'
 import type { IdsNextInput } from '../mods/idsEvent'
 import { noToolExtensions, type ToolCallExtensions } from '../toolkit/toolExtensionSeam'
+import { mentionReadOf, settlementOf } from '../mods/promptMentionEvent'
 
 /** What `prompt.submit` settled on. */
 export type PromptSubmitOutcome =
@@ -238,10 +239,7 @@ export function noTurnExtensions(): TurnExtensions {
     sessionEnd: async () => {},
     promptSubmit: async (text) => ({ entered: true, text, context: [] }),
     hasPromptMentionHooks: () => false,
-    promptMention: async (input, core) => {
-      const read = await core({ path: input.path, ...(input.offset !== undefined ? { offset: input.offset } : {}), ...(input.limit !== undefined ? { limit: input.limit } : {}) })
-      return 'deny' in read ? read : { type: read.type, context: [] }
-    },
+    promptMention: async (input, core) => settlementOf(await core(mentionReadOf(input))),
     hasPromptHooks: () => false,
     promptSections: async (sections) => [...sections],
     promptCompose: async (_input, sections) => [...sections],

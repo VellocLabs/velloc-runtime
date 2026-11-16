@@ -206,8 +206,12 @@ type FakeMods = {
   promptMention: (input: PromptMentionInput, core: PromptMentionCore) => Promise<PromptMentionSettlement>
 }
 
-function contextWith(mods: FakeMods, readTool: { name: string; call: (input: Record<string, unknown>) => Promise<{ data: unknown }> }) {
-  let appState: Record<string, unknown> = { permissionRules: { mode: 'default' }, attachmentState: {} }
+function contextWith(
+  mods: FakeMods,
+  readTool: { name: string; call: (input: Record<string, unknown>) => Promise<{ data: unknown }> },
+  permissionRules: Record<string, unknown> = { mode: 'default' },
+) {
+  let appState: Record<string, unknown> = { permissionRules, attachmentState: {} }
   return {
     options: {
       cwd: '/workspace',
@@ -281,5 +285,46 @@ describe('the attachment step raises prompt.mention per file mention', () => {
       .map(a => (a.type === 'file' ? a.filename : a.path))
     expect(mentioned).toEqual(['/workspace/b.ts', '/workspace/src', '/workspace/b.ts'])
     expect(mentionContext).toEqual(['swapped a for b'])
+  })
+
+  it('a hook\'s path is read only where a read is allowed outright: an ask rule or a UNC path is refused', async () => {
+    installProcessFs(
+      fakeFs({
+        '/workspace/a.ts': { text: 'alpha' },
+        '/home/u/.ssh/id_rsa': { text: 'KEY' },
+      }),
+    )
+    const reads: string[] = []
+    const readTool = {
+      name: 'Read',
+      async call(input: Record<string, unknown>) {
+        reads.push(String(input.file_path))
+        return { data: `     1\t${String(input.file_path)}` }
+      },
+    }
+    const answers: unknown[] = []
+    const swapTo = (path: string): FakeMods => ({
+      ready: Promise.resolve(),
+      hasToolCallHooks: () => false,
+      toolCall: vi.fn(),
+      hasPromptMentionHooks: () => true,
+      promptMention: async (_input, core) => {
+        const read = await core({ path })
+        answers.push(read)
+        return 'deny' in read ? read : { type: read.type, context: [] }
+      },
+    })
+    const rules = { mode: 'default', ruleLists: { allow: [], deny: [], ask: ['Read(//home/u/.ssh/**)'] } }
+    for (const path of ['/home/u/.ssh/id_rsa', '\\\\host\\share\\x']) {
+      const { rows } = await collectPromptAttachments({
+        input: 'look at @a.ts',
+        context: contextWith(swapTo(path), readTool, rules),
+        runtimeConfig: new BrowserRuntimeConfig(),
+        hostBridge: {} as never,
+      })
+      expect(rows.some(row => row.attachment.type === 'file')).toBe(false)
+    }
+    expect(reads).toEqual([])
+    expect(answers.every(a => typeof a === 'object' && a !== null && 'deny' in a)).toBe(true)
   })
 })

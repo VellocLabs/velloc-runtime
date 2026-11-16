@@ -268,7 +268,12 @@ export abstract class ModUiSurface extends ModEngineEvents {
       const isOvertaken = overtaken()
       if (!isOvertaken) this.latestRender.delete(key)
       if (isOvertaken) {
-        this.dropRefused([{ tree: result }, ...(arranged ? [{ tree: arranged.tree }] : [])], this.drawings.get(key) ?? new Map())
+        this.dropRefused([{ tree: result }, ...(arranged && arranged !== 'aborted' ? [{ tree: arranged.tree }] : [])], this.drawings.get(key) ?? new Map())
+        return { kind: 'engine' }
+      }
+      if (arranged === 'aborted') {
+        this.replaceHandles(key, new Map())
+        this.dropRefused([{ tree: result }], new Map())
         return { kind: 'engine' }
       }
       if (arranged) {
@@ -306,20 +311,23 @@ export abstract class ModUiSurface extends ModEngineEvents {
    * `ui.render` for `AbovePromptList`: the settled band's rows, heard by the
    * hooks naming it (or `*`). Core stacks the rows it is handed; a rewrite may
    * hide or reorder them, an answer may wrap what `next` drew. Resolves to the
-   * band to draw (`tree` null: no row left), or undefined when the chain
-   * failed and the band stands as it settled. Never rejects but on abort.
+   * band to draw (`tree` null: no row left), undefined when the chain failed
+   * or changed nothing and the band stands as it settled, or `aborted`.
+   * Never rejects.
    */
   protected async arrangeBand(
     band: RenderInput,
     key: string,
     rows: RenderSection[],
     signal?: AbortSignal,
-  ): Promise<{ tree: RenderElement | null; sections?: RenderSection[]; plugins: string[] } | undefined> {
+  ): Promise<{ tree: RenderElement | null; sections?: RenderSection[]; plugins: string[] } | 'aborted' | undefined> {
     if (rows.length === 0) return undefined
     const props: AbovePromptListRenderProps = { ...(band.props as AbovePromptRenderProps), rows }
     const e = { ...band, component: BAND_LIST_COMPONENT, props }
     let kept: RenderSection[] = rows
     let trace: readonly TraceEntry[] = []
+    const refused: Array<{ tree: unknown }> = []
+    const rowHandles = handlesIn(stackRows(rows))
     try {
       const result = await this.dispatcher.dispatch(
         'ui.render',
@@ -335,7 +343,11 @@ export abstract class ModUiSurface extends ModEngineEvents {
           ...(signal ? { signal } : {}),
           scope: { render: { key } },
           admits: hearsBandList,
-          accepts: answer => isRenderAnswer(answer) && validateRenderTree(answer).ok,
+          accepts: answer => {
+            const ok = isRenderAnswer(answer) && validateRenderTree(answer).ok
+            if (!ok) refused.push({ tree: answer })
+            return ok
+          },
           trace: entries => {
             trace = entries
           },
@@ -343,14 +355,18 @@ export abstract class ModUiSurface extends ModEngineEvents {
       )
       const rowPlugins = [...new Set(kept.map(row => row.plugin))]
       if (isStackOf(result, kept)) {
+        this.dropRefused(refused, rowHandles)
+        if (JSON.stringify(kept) === JSON.stringify(rows)) return undefined
         if (kept.length === 0) return { tree: null, plugins: [] }
         return { tree: stackRows(kept), ...(kept.length > 1 ? { sections: kept } : {}), plugins: rowPlugins }
       }
       const tree = validateRenderTree(result)
       if (!tree.ok) throw new Error(tree.reason)
+      this.dropRefused(refused, handlesIn(tree.tree))
       return { tree: tree.tree, plugins: [...new Set([...drewOf(trace), ...rowPlugins])] }
     } catch (error) {
-      if (signal?.aborted) throw error
+      this.dropRefused(refused, rowHandles)
+      if (signal?.aborted) return 'aborted'
       this.options.report(`mods: ui.render (${BAND_LIST_COMPONENT}) refused: ${errorMessage(error)}; the band was drawn as it settled`)
       return undefined
     }

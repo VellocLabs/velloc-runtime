@@ -670,9 +670,23 @@ async function isMentionReadDenied(
   context: ToolCallContext,
   resolvedTarget: string,
 ): Promise<boolean> {
+  return (await mentionReadBehavior(context, resolvedTarget)) === 'deny'
+}
+
+async function isMentionReadAllowed(
+  context: ToolCallContext,
+  resolvedTarget: string,
+): Promise<boolean> {
+  return (await mentionReadBehavior(context, resolvedTarget)) === 'allow'
+}
+
+async function mentionReadBehavior(
+  context: ToolCallContext,
+  resolvedTarget: string,
+): Promise<string> {
   const permission = context.readAppState().permissionRules
   if (!permission) {
-    return false
+    return 'allow'
   }
   const decision = await vetFileRead(
     READ_TOOL_ID,
@@ -690,7 +704,7 @@ async function isMentionReadDenied(
       fs: fsForContext(context),
     },
   )
-  return decision.behavior === 'deny'
+  return decision.behavior
 }
 
 async function createDirectoryAttachment(
@@ -912,10 +926,12 @@ async function createFileAttachment(
   const settled = await mods.promptMention(
     { mention, path: absolutePath, ...range, ...(agentId !== undefined ? { agentId } : {}) },
     async e => {
-      if (e.path !== absolutePath && (await isMentionReadDenied(context, e.path).catch(() => true))) {
-        return { deny: `a deny rule covers ${e.path}` }
+      // Security: a path a hook chose is read only where a read is allowed outright.
+      const path = resolveRuntimePath(context.options.cwd, e.path)
+      if (path !== absolutePath && !(await isMentionReadAllowed(context, path).catch(() => false))) {
+        return { deny: `a permission rule covers ${e.path}` }
       }
-      const read = await readMentionedFile(context, e.path, { offset: e.offset, limit: e.limit })
+      const read = await readMentionedFile(context, path, { offset: e.offset, limit: e.limit })
       attachment = read.attachment
       return { type: read.type }
     },

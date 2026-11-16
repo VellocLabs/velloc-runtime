@@ -182,6 +182,27 @@ describe('AbovePromptList through the runtime', () => {
     expect(reports.some(line => /\$\.state\.set while drawing is denied/.test(line))).toBe(true)
   })
 
+  it('a pass-through arrangement leaves the band as it settled', async () => {
+    const { runtime: plain } = world(TWO_ROWS)
+    await plain.ready
+    const settled = await band(plain)
+    const { runtime } = world({ ...TWO_ROWS, log: `on('*', ($, e, next) => next(e))` })
+    await runtime.ready
+    expect(await band(runtime)).toEqual(settled)
+  })
+
+  it('an arrangement aborted mid-chain draws the engine\'s own and does not reject', async () => {
+    const { runtime } = world({
+      ...TWO_ROWS,
+      slow: `on('ui.render', { component: 'AbovePromptList' }, () => new Promise(() => {}))`,
+    })
+    await runtime.ready
+    const controller = new AbortController()
+    const drawn = runtime.render({ component: 'AbovePrompt', requestId: 'band', props: BAND_PROPS }, controller.signal)
+    setTimeout(() => controller.abort(), 50)
+    await expect(drawn).resolves.toEqual({ kind: 'engine' })
+  })
+
   it('a ui.render hook naming no component does not hear the arrangement', async () => {
     const { runtime } = world({
       ...TWO_ROWS,
