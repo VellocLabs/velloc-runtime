@@ -3141,6 +3141,22 @@ export const de: Messages = {
   'remote.protocolTitle': 'Zum Fortfahren neu laden',
   'remote.protocolBody':
     'Diese Seite und der Desktop sprechen unterschiedliche Protokollversionen. Ein Neuladen holt die passende Version.',
+  'mobile.topbar.openDrawer': 'Sitzungsliste öffnen',
+  'mobile.topbar.sessionMenu': 'Sitzungsmenü',
+  'mobile.drawer.title': 'Sitzungen',
+  'mobile.drawer.filterPlaceholder': 'Nach Titel filtern',
+  'mobile.drawer.empty': 'Noch keine Sitzungen',
+  'mobile.drawer.noMatches': 'Kein Sitzungstitel passt',
+  'mobile.drawer.newSession': 'Neue Sitzung',
+  'mobile.drawer.desktopView': 'Desktop-Ansicht',
+  'mobile.menu.rename': 'Umbenennen',
+  'mobile.menu.copyBranch': 'Branch-Namen kopieren',
+  'mobile.menu.copyFailed': 'Der Branch-Name konnte nicht kopiert werden.',
+  'mobile.menu.archive': 'Archivieren',
+  'mobile.rename.title': 'Sitzung umbenennen',
+  'mobile.rename.label': 'Sitzungstitel',
+  'mobile.rename.save': 'Speichern',
+  'mobile.rename.cancel': 'Abbrechen',
   'mobile.topbar.untitledSession': 'Neue Sitzung',
   'remote.buildMismatchTitle': 'Auf dem Desktop läuft ein anderer Build',
   'remote.buildMismatchBody':
@@ -3158,6 +3174,8 @@ export const de: Messages = {
     'Nicht jetzt',
   'remote.host.connectedTo':
     'Verbunden mit {host}',
+  'remote.host.phoneView': 'Handy-Ansicht',
+  'remote.host.phoneViewUnavailable': 'Dieser Desktop bietet die Handy-Ansicht noch nicht an. Aktualisiere die App auf dem Desktop und versuch es dann noch einmal.',
   'remote.host.logOut':
     'Von diesem Desktop abmelden',
   'remote.fullscreen.enter': 'Vollbild',

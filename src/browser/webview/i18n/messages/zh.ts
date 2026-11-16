@@ -3007,6 +3007,22 @@ export const zh: Messages = {
   'remote.protocolTitle': '刷新以继续',
   'remote.protocolBody':
     '此页面与桌面端使用不同版本的协议。刷新可获取匹配的版本。',
+  'mobile.topbar.openDrawer': '打开会话列表',
+  'mobile.topbar.sessionMenu': '会话菜单',
+  'mobile.drawer.title': '会话',
+  'mobile.drawer.filterPlaceholder': '按标题筛选',
+  'mobile.drawer.empty': '还没有会话',
+  'mobile.drawer.noMatches': '没有标题匹配的会话',
+  'mobile.drawer.newSession': '新建会话',
+  'mobile.drawer.desktopView': '桌面版',
+  'mobile.menu.rename': '重命名',
+  'mobile.menu.copyBranch': '复制分支名',
+  'mobile.menu.copyFailed': '无法复制分支名。',
+  'mobile.menu.archive': '归档',
+  'mobile.rename.title': '重命名会话',
+  'mobile.rename.label': '会话标题',
+  'mobile.rename.save': '保存',
+  'mobile.rename.cancel': '取消',
   'mobile.topbar.untitledSession': '新会话',
   'remote.buildMismatchTitle': '桌面端正在运行不同的构建',
   'remote.buildMismatchBody':
@@ -3024,6 +3040,8 @@ export const zh: Messages = {
     '以后再说',
   'remote.host.connectedTo':
     '已连接到 {host}',
+  'remote.host.phoneView': '手机版',
+  'remote.host.phoneViewUnavailable': '这台电脑还不支持手机版。先更新电脑上的应用，再试一次。',
   'remote.host.logOut':
     '退出此桌面端',
   'remote.fullscreen.enter': '全屏',

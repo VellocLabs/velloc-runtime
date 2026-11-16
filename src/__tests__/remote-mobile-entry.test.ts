@@ -7,9 +7,12 @@ import { describe, expect, it, vi } from 'vitest'
 import {
   MOBILE_SHELL_MAX_SCREEN_PX,
   REMOTE_SHELL_CHOICE_KEY,
+  offersPhoneShell,
   openMobileEntryIfWanted,
   readDeviceTraits,
   readRemoteShellChoice,
+  switchToDesktopShell,
+  switchToMobileShell,
   wantsMobileShell,
   writeRemoteShellChoice,
   type MobileEntryEnv,
@@ -153,5 +156,56 @@ describe('openMobileEntryIfWanted', () => {
     const { value, fetchImpl } = env({ pathname: '/v1/b/20261115T000000000Z/mobile.html' })
     await expect(openMobileEntryIfWanted(value)).resolves.toBe(false)
     expect(fetchImpl).not.toHaveBeenCalled()
+  })
+})
+
+describe('switching shells', () => {
+  const ENTRY = 'http://192.168.1.10:47615/v1/b/20261115T000000000Z/'
+
+  it('the desktop view stores the choice and loads index.html beside the phone entry', () => {
+    const storage = memoryStorage()
+    const replace = vi.fn()
+    switchToDesktopShell({ win: { location: { replace } }, baseUri: `${ENTRY}mobile.html`, storage })
+    expect(storage.data.get(REMOTE_SHELL_CHOICE_KEY)).toBe('desktop')
+    expect(replace).toHaveBeenCalledWith(`${ENTRY}index.html`)
+  })
+
+  it('the phone view stores the choice and loads mobile.html once the listener serves it', async () => {
+    const storage = memoryStorage({ [REMOTE_SHELL_CHOICE_KEY]: 'desktop' })
+    const replace = vi.fn()
+    const fetchImpl = vi.fn(async () => ({ ok: true, body: null }))
+    await expect(
+      switchToMobileShell({ win: { location: { replace } }, baseUri: ENTRY, fetch: fetchImpl, storage }),
+    ).resolves.toBe(true)
+    expect(fetchImpl).toHaveBeenCalledWith(`${ENTRY}mobile.html`, { method: 'GET', credentials: 'same-origin' })
+    expect(storage.data.get(REMOTE_SHELL_CHOICE_KEY)).toBe('mobile')
+    expect(replace).toHaveBeenCalledWith(`${ENTRY}mobile.html`)
+  })
+
+  it('the phone view stores nothing and stays when the listener does not serve it', async () => {
+    for (const fetchImpl of [
+      vi.fn(async () => ({ ok: false, body: null })),
+      vi.fn(async () => {
+        throw new TypeError('network')
+      }),
+    ]) {
+      const storage = memoryStorage({ [REMOTE_SHELL_CHOICE_KEY]: 'desktop' })
+      const replace = vi.fn()
+      await expect(
+        switchToMobileShell({ win: { location: { replace } }, baseUri: ENTRY, fetch: fetchImpl, storage }),
+      ).resolves.toBe(false)
+      expect(storage.data.get(REMOTE_SHELL_CHOICE_KEY)).toBe('desktop')
+      expect(replace).not.toHaveBeenCalled()
+    }
+  })
+
+  it('offers the phone view on any touch-first device, whatever its screen or the stored choice', () => {
+    const win = (coarse: boolean, short: number) => ({
+      matchMedia: (q: string) => ({ matches: q === '(pointer: coarse)' && coarse }) as MediaQueryList,
+      screen: { width: short, height: 900 } as Screen,
+    })
+    expect(offersPhoneShell(win(true, 390))).toBe(true)
+    expect(offersPhoneShell(win(true, 1024))).toBe(true)
+    expect(offersPhoneShell(win(false, 390))).toBe(false)
   })
 })

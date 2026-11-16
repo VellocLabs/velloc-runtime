@@ -82,6 +82,46 @@ export type MobileEntryEnv = {
   storage?: ChoiceStorage | null
 }
 
+/** The desktop entry, `index.html`, beside the phone entry. */
+export const DESKTOP_ENTRY_FILE = 'index.html'
+
+/** Who is offered the phone shell by hand: a touch-first device of any screen size. */
+export function offersPhoneShell(win: Pick<Window, 'matchMedia' | 'screen'>): boolean {
+  return readDeviceTraits(win).coarsePointer
+}
+
+export type ShellSwitchEnv = {
+  win: { location: Pick<Location, 'replace'> }
+  baseUri: string
+  fetch: MobileEntryEnv['fetch']
+  storage?: ChoiceStorage | null
+}
+
+/** Remember the desktop shell for this device and load `index.html`. */
+export function switchToDesktopShell(env: Omit<ShellSwitchEnv, 'fetch'>): void {
+  writeRemoteShellChoice('desktop', env.storage === undefined ? defaultStorage() : env.storage)
+  env.win.location.replace(new URL(DESKTOP_ENTRY_FILE, env.baseUri).href)
+}
+
+/**
+ * Remember the phone shell for this device and load `mobile.html`, when the listener serves it.
+ * Resolves `false`, with nothing stored, when it does not (a desktop on an older build).
+ */
+export async function switchToMobileShell(env: ShellSwitchEnv): Promise<boolean> {
+  let target: string
+  try {
+    target = new URL(MOBILE_ENTRY_FILE, env.baseUri).href
+    const response = await env.fetch(target, { method: 'GET', credentials: 'same-origin' })
+    void response.body?.cancel().catch(() => {})
+    if (!response.ok) return false
+  } catch {
+    return false
+  }
+  writeRemoteShellChoice('mobile', env.storage === undefined ? defaultStorage() : env.storage)
+  env.win.location.replace(target)
+  return true
+}
+
 /**
  * On the remote path, before any shell loads: navigate to the phone entry when this device wants
  * it and the listener serves it. Resolves `true` once the navigation is started (the caller stops

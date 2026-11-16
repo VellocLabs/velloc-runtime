@@ -2,11 +2,12 @@
  * The topbar control a REMOTE page has where the desktop has its OS caption buttons
  * (F-24): which machine this session runs on, and how to stop. The shell renders it
  * or the connected-devices link, never both. The predicate is page identity, not a
- * grant: no scope predicts it, so the boot path states it.
+ * grant: no scope predicts it, so the boot path states it. On a touch-first device
+ * its menu also offers the phone shell.
  */
 import * as React from 'react'
 
-import { LaptopIcon, LogOutIcon, MonitorIcon } from 'lucide-react'
+import { LaptopIcon, LogOutIcon, MonitorIcon, SmartphoneIcon } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
@@ -17,6 +18,7 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip'
 
+import { offersPhoneShell, switchToMobileShell } from '../../boot/mobileEntry'
 import { useT } from '../i18n'
 import type { DrivenDesktop } from './hostIdentity'
 
@@ -52,6 +54,8 @@ export function hostDetailLines(host: DrivenDesktop): string[] {
 export function RemoteHostIndicator({ host, onLogOut }: RemoteHostIndicatorProps) {
   const t = useT()
   const [open, setOpen] = React.useState(false)
+  const [phoneViewUnavailable, setPhoneViewUnavailable] = React.useState(false)
+  const offerPhoneView = React.useMemo(() => offersPhoneShell(window), [])
   const lines = hostDetailLines(host)
   // The tooltip's one-line summary doubles as the button's accessible name:
   // a screen reader hears the machine, not "button".
@@ -116,6 +120,37 @@ export function RemoteHostIndicator({ host, onLogOut }: RemoteHostIndicatorProps
             </div>
           </div>
           <div aria-hidden className="bg-border my-1 h-px" />
+          {offerPhoneView ? (
+            <>
+              <button
+                type="button"
+                data-testid="topbar-remote-phone-view"
+                className="hover:bg-accent hover:text-accent-foreground flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left text-sm"
+                onClick={() => {
+                  setPhoneViewUnavailable(false)
+                  void switchToMobileShell({
+                    win: window,
+                    baseUri: document.baseURI,
+                    fetch: (url, init) => fetch(url, init),
+                  }).then((switched) => {
+                    if (!switched) setPhoneViewUnavailable(true)
+                  })
+                }}
+              >
+                <SmartphoneIcon className="size-4 shrink-0" aria-hidden />
+                {t('remote.host.phoneView')}
+              </button>
+              {phoneViewUnavailable ? (
+                <p
+                  role="alert"
+                  data-testid="topbar-remote-phone-view-unavailable"
+                  className="text-muted-foreground px-2 pb-1 text-xs"
+                >
+                  {t('remote.host.phoneViewUnavailable')}
+                </p>
+              ) : null}
+            </>
+          ) : null}
           <button
             type="button"
             data-testid="topbar-remote-log-out"

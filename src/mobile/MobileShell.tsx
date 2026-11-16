@@ -1,11 +1,13 @@
 /**
  * The phone shell of the remote page (F-24). It drives the desktop runtime's sessions through the
  * same session hooks and the same conversation view as the desktop shell, and draws its own
- * chrome around them. It never imports the desktop shell's UI (pinned by mobile-shell-imports.test).
- * This phone browses on its own: its open session is not the desktop's.
+ * chrome around them: the top bar, the session drawer, the session menu. It never imports the
+ * desktop shell's UI (pinned by mobile-shell-imports.test). This phone browses on its own: its open
+ * session is not the desktop's.
  */
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 
+import { switchToDesktopShell } from '../browser/boot/mobileEntry'
 import type { AgentRuntimeWorkerInitPayload } from '../browser/worker/workerProtocol'
 import type { BrowserBridgeTransport } from '../browser/bridge/browserBridgeProtocol'
 import type { BrowserWorkerClientTransport } from '../browser/webview/BrowserRuntimeClient'
@@ -20,6 +22,7 @@ import {
   resolveBootSession,
   writeStoredActiveSessionId,
 } from '../browser/webview/bootSessionPointer'
+import { folderName } from '../browser/webview/childSessionStatus'
 import { useClientActivityReport } from '../browser/webview/clientActivityReport'
 import { useT } from '../browser/webview/i18n'
 import {
@@ -27,6 +30,7 @@ import {
   RuntimeReadyContext,
   useRuntimeConnectionState,
 } from '../browser/webview/RuntimeConnectionBanner'
+import { isSandboxProjectRoot } from '../browser/webview/projectTree'
 import { createSessionMessageCallbackFactory } from '../browser/webview/sessionMessageCallbacks'
 import {
   createShellHandleArchiveThread,
@@ -47,6 +51,7 @@ import {
 import { createShellCreateSessionInitPayload } from '../browser/webview/shellSidebarActions'
 import {
   createShellHandleComposerEdit,
+  createShellHandleLaunchInProject,
   createShellHandleSelectProjectFolder,
   createShellOnSessionStateChange,
 } from '../browser/webview/shellThreadActions'
@@ -55,6 +60,11 @@ import { RuntimeCapabilitiesContext, useCapabilityQuery } from '../browser/webvi
 import { useMultiSessionClients } from '../browser/webview/useMultiSessionClients'
 import { useSessionManager } from '../browser/webview/useSessionManager'
 import { randomUuid } from '../utils/randomUuid'
+import { snapshotNeedsAnswer } from '../utils/sessionNeedsAnswer'
+import { MobileDrawer } from './MobileDrawer'
+import { namedTitle } from './mobileSessionGroups'
+import { MobileRenameSheet, MobileSessionMenu, type MobileMenuTarget } from './MobileSessionMenu'
+import { MobileTopBar } from './MobileTopBar'
 import { useThreadBottomInset } from './threadBottomInset'
 
 /** What the phone shell reads of the props `renderShell` passes every shell. */
@@ -75,6 +85,21 @@ type SessionItem = NonNullable<ShellSessionThreadInputs['sessionItems']>[number]
 type InitPayloadArgs = Parameters<typeof createShellCreateSessionInitPayload>
 
 const noop = (): void => {}
+
+/** The ids whose `flag` is set in a `session.summary` row; `prev` when unchanged. */
+function summaryIdSet(
+  prev: ReadonlySet<string>,
+  rows: ReadonlyArray<Record<string, unknown>>,
+  flag: 'running' | 'needsAnswer',
+): ReadonlySet<string> {
+  const next = new Set<string>()
+  for (const row of rows) {
+    if (row[flag] === true && typeof row.sessionId === 'string') next.add(row.sessionId)
+  }
+  if (next.size !== prev.size) return next
+  for (const id of next) if (!prev.has(id)) return next
+  return prev
+}
 
 export function MobileShell(props: MobileShellProps): ReactNode {
   const {
@@ -196,6 +221,10 @@ export function MobileShell(props: MobileShellProps): ReactNode {
   const handleDeleteThreadRef = useRef(handleDeleteThread)
   handleDeleteThreadRef.current = handleDeleteThread
 
+  // Running and halted-on-a-question, per session, from the runtime's summary.
+  const [summaryRunning, setSummaryRunning] = useState<ReadonlySet<string>>(() => new Set())
+  const [summaryNeedsAnswer, setSummaryNeedsAnswer] = useState<ReadonlySet<string>>(() => new Set())
+
   // The session list, and the forks this page asked for: a fork or a rewind
   // switches this page to the copy; another client's fork only lists it.
   useEffect(() => {
@@ -209,6 +238,13 @@ export function MobileShell(props: MobileShellProps): ReactNode {
       if (data.type === 'session.updated') {
         const session = payload?.session as SessionUpdatePayload | undefined
         if (session?.sessionId) applyRemoteUpdate(session)
+        return
+      }
+      if (data.type === 'session.summary') {
+        const rows = payload?.sessions
+        if (!Array.isArray(rows)) return
+        setSummaryRunning(prev => summaryIdSet(prev, rows, 'running'))
+        setSummaryNeedsAnswer(prev => summaryIdSet(prev, rows, 'needsAnswer'))
         return
       }
       if (data.type === 'session.removed') {
@@ -374,22 +410,66 @@ export function MobileShell(props: MobileShellProps): ReactNode {
   }
 
   const activeItem = sessions.find(s => s.sessionId === activeSessionId)
-  const title = activeItem?.title?.trim() || t('mobile.topbar.untitledSession')
+  const title = namedTitle(activeItem?.title) || t('mobile.topbar.untitledSession')
+  const activeSnapshot = clients.activeState.snapshot
+  const activeRunning = clients.activeState.status === 'submitting' || summaryRunning.has(activeSessionId)
+  const activeNeedsAnswer = snapshotNeedsAnswer(activeSnapshot)
+  const running = useMemo(() => {
+    if (!activeRunning || summaryRunning.has(activeSessionId)) return summaryRunning
+    return new Set([...summaryRunning, activeSessionId])
+  }, [summaryRunning, activeRunning, activeSessionId])
+  const needsAnswer = useMemo(() => {
+    if (!activeNeedsAnswer || summaryNeedsAnswer.has(activeSessionId)) return summaryNeedsAnswer
+    return new Set([...summaryNeedsAnswer, activeSessionId])
+  }, [summaryNeedsAnswer, activeNeedsAnswer, activeSessionId])
+  const projectRoot = activeItem?.projectRoot
+  const projectName = projectRoot && !isSandboxProjectRoot(projectRoot) ? folderName(projectRoot) : undefined
+
+  const [drawerOpen, setDrawerOpen] = useState(false)
+  const [menuTarget, setMenuTarget] = useState<MobileMenuTarget | null>(null)
+  const [renameTarget, setRenameTarget] = useState<MobileMenuTarget | null>(null)
+  const launchInProject = useMemo(() => createShellHandleLaunchInProject(openNewSession), [openNewSession])
+
+  const selectSession = useCallback(
+    (sessionId: string) => {
+      setDrawerOpen(false)
+      focusSession(sessionId)
+    },
+    [focusSession],
+  )
+  const startNewSession = useCallback(() => {
+    setDrawerOpen(false)
+    const templateType = getSessionTemplateType(activeSessionId)
+    if (projectRoot?.trim()) launchInProject(projectRoot, templateType ?? '')
+    else openNewSession(templateType)
+  }, [activeSessionId, getSessionTemplateType, launchInProject, openNewSession, projectRoot])
+  const openRowMenu = useCallback(
+    (sessionId: string) => {
+      const item = sessions.find(s => s.sessionId === sessionId)
+      if (!item) return
+      // The branch is known for the open session only.
+      const branch = sessionId === activeSessionId ? activeSnapshot?.projectBranch : undefined
+      setMenuTarget({ sessionId, title: namedTitle(item.title), branch: branch || undefined })
+    },
+    [sessions, activeSessionId, activeSnapshot],
+  )
+  const archiveSession = useCallback(
+    (sessionId: string) => handleArchiveThread(sessionId, true),
+    [handleArchiveThread],
+  )
 
   return (
     <RuntimeCapabilitiesContext.Provider value={runtimeCapabilities}>
       <RuntimeReadyContext.Provider value={isRuntimeReady(connectionState)}>
         <SessionStatusChannelContext.Provider value={sessionStatusChannel ?? null}>
           <main data-testid="mobile-shell" className="flex h-full w-full flex-col bg-background text-foreground">
-            <header
-              data-testid="mobile-topbar"
-              className="flex min-h-12 shrink-0 items-center border-border border-b px-4"
-              style={{ paddingTop: 'env(safe-area-inset-top)' }}
-            >
-              <h1 data-testid="mobile-topbar-title" className="min-w-0 flex-1 truncate font-medium text-body">
-                {title}
-              </h1>
-            </header>
+            <MobileTopBar
+              title={title}
+              projectName={projectName}
+              running={running.has(activeSessionId)}
+              onOpenDrawer={() => setDrawerOpen(true)}
+              onOpenMenu={() => openRowMenu(activeSessionId)}
+            />
             <div
               className="relative min-h-0 flex-1"
               data-testid="mobile-thread"
@@ -401,6 +481,32 @@ export function MobileShell(props: MobileShellProps): ReactNode {
             >
               {renderShellSessionThread(threadInputs, activeSessionId, false)}
             </div>
+            <MobileDrawer
+              open={drawerOpen}
+              onOpenChange={setDrawerOpen}
+              sessions={sessions}
+              running={running}
+              needsAnswer={needsAnswer}
+              activeSessionId={activeSessionId}
+              onSelectSession={selectSession}
+              onSessionMenu={openRowMenu}
+              onNewSession={startNewSession}
+              onDesktopView={() => switchToDesktopShell({ win: window, baseUri: document.baseURI })}
+            />
+            <MobileSessionMenu
+              target={menuTarget}
+              onClose={() => setMenuTarget(null)}
+              onRename={target => {
+                setMenuTarget(null)
+                setRenameTarget(target)
+              }}
+              onArchive={archiveSession}
+            />
+            <MobileRenameSheet
+              target={renameTarget}
+              onClose={() => setRenameTarget(null)}
+              onSave={retitleSession}
+            />
           </main>
         </SessionStatusChannelContext.Provider>
       </RuntimeReadyContext.Provider>

@@ -3055,6 +3055,22 @@ export const ko: Messages = {
   'remote.protocolTitle': '계속하려면 새로고침하세요',
   'remote.protocolBody':
     '이 페이지와 데스크톱이 서로 다른 버전의 프로토콜을 사용합니다. 새로고침하면 일치하는 버전을 가져옵니다.',
+  'mobile.topbar.openDrawer': '세션 목록 열기',
+  'mobile.topbar.sessionMenu': '세션 메뉴',
+  'mobile.drawer.title': '세션',
+  'mobile.drawer.filterPlaceholder': '제목으로 필터',
+  'mobile.drawer.empty': '아직 세션이 없습니다',
+  'mobile.drawer.noMatches': '제목이 일치하는 세션이 없습니다',
+  'mobile.drawer.newSession': '새 세션',
+  'mobile.drawer.desktopView': '데스크톱 보기',
+  'mobile.menu.rename': '이름 변경',
+  'mobile.menu.copyBranch': '브랜치 이름 복사',
+  'mobile.menu.copyFailed': '브랜치 이름을 복사하지 못했습니다.',
+  'mobile.menu.archive': '보관',
+  'mobile.rename.title': '세션 이름 변경',
+  'mobile.rename.label': '세션 제목',
+  'mobile.rename.save': '저장',
+  'mobile.rename.cancel': '취소',
   'mobile.topbar.untitledSession': '새 세션',
   'remote.buildMismatchTitle': '데스크톱이 다른 빌드를 실행 중입니다',
   'remote.buildMismatchBody':
@@ -3072,6 +3088,8 @@ export const ko: Messages = {
     '나중에',
   'remote.host.connectedTo':
     '{host}에 연결됨',
+  'remote.host.phoneView': '휴대폰 보기',
+  'remote.host.phoneViewUnavailable': '이 데스크톱은 아직 휴대폰 보기를 지원하지 않습니다. 데스크톱의 앱을 업데이트한 후 다시 시도하세요.',
   'remote.host.logOut':
     '이 데스크톱에서 로그아웃',
   'remote.fullscreen.enter': '전체 화면',

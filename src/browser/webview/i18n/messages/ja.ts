@@ -3067,6 +3067,22 @@ export const ja: Messages = {
   'remote.protocolTitle': '続行するには再読み込みしてください',
   'remote.protocolBody':
     'このページとデスクトップは異なるバージョンのプロトコルを使っています。再読み込みすると一致するバージョンが読み込まれます。',
+  'mobile.topbar.openDrawer': 'セッション一覧を開く',
+  'mobile.topbar.sessionMenu': 'セッションメニュー',
+  'mobile.drawer.title': 'セッション',
+  'mobile.drawer.filterPlaceholder': 'タイトルで絞り込む',
+  'mobile.drawer.empty': 'セッションはまだありません',
+  'mobile.drawer.noMatches': 'タイトルが一致するセッションはありません',
+  'mobile.drawer.newSession': '新しいセッション',
+  'mobile.drawer.desktopView': 'デスクトップ表示',
+  'mobile.menu.rename': '名前を変更',
+  'mobile.menu.copyBranch': 'ブランチ名をコピー',
+  'mobile.menu.copyFailed': 'ブランチ名をコピーできませんでした。',
+  'mobile.menu.archive': 'アーカイブ',
+  'mobile.rename.title': 'セッション名を変更',
+  'mobile.rename.label': 'セッションのタイトル',
+  'mobile.rename.save': '保存',
+  'mobile.rename.cancel': 'キャンセル',
   'mobile.topbar.untitledSession': '新しいセッション',
   'remote.buildMismatchTitle': 'デスクトップは別のビルドを実行しています',
   'remote.buildMismatchBody':
@@ -3084,6 +3100,8 @@ export const ja: Messages = {
     '後で',
   'remote.host.connectedTo':
     '{host} に接続中',
+  'remote.host.phoneView': 'スマートフォン表示',
+  'remote.host.phoneViewUnavailable': 'このデスクトップはまだスマートフォン表示に対応していません。デスクトップのアプリを更新してから、もう一度お試しください。',
   'remote.host.logOut':
     'このデスクトップからログアウト',
   'remote.fullscreen.enter': '全画面表示',

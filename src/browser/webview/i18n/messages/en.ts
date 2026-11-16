@@ -3220,6 +3220,22 @@ export const en = {
   'remote.protocolTitle': 'Reload to continue',
   'remote.protocolBody':
     'This page and the desktop speak different versions of the protocol. Reloading picks up the matching one.',
+  'mobile.topbar.openDrawer': 'Open the session list',
+  'mobile.topbar.sessionMenu': 'Session menu',
+  'mobile.drawer.title': 'Sessions',
+  'mobile.drawer.filterPlaceholder': 'Filter by title',
+  'mobile.drawer.empty': 'No sessions yet',
+  'mobile.drawer.noMatches': 'No session titles match',
+  'mobile.drawer.newSession': 'New session',
+  'mobile.drawer.desktopView': 'Desktop view',
+  'mobile.menu.rename': 'Rename',
+  'mobile.menu.copyBranch': 'Copy branch name',
+  'mobile.menu.copyFailed': 'Couldn\'t copy the branch name.',
+  'mobile.menu.archive': 'Archive',
+  'mobile.rename.title': 'Rename session',
+  'mobile.rename.label': 'Session title',
+  'mobile.rename.save': 'Save',
+  'mobile.rename.cancel': 'Cancel',
   'mobile.topbar.untitledSession': 'New session',
   'remote.buildMismatchTitle': 'The desktop is running a different build',
   'remote.buildMismatchBody':
@@ -3237,6 +3253,8 @@ export const en = {
     'Not now',
   'remote.host.connectedTo':
     'Connected to {host}',
+  'remote.host.phoneView': 'Phone view',
+  'remote.host.phoneViewUnavailable': 'This desktop doesn\'t offer the phone view yet. Update the app on the desktop, then try again.',
   'remote.host.logOut':
     'Log out of this desktop',
   'remote.fullscreen.enter': 'Enter full screen',

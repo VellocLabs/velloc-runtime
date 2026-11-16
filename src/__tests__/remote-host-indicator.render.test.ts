@@ -119,6 +119,55 @@ describe('NexusTopBar on a remote page', () => {
   })
 })
 
+describe('the host menu on a phone', () => {
+  const realScreen = Object.getOwnPropertyDescriptor(window, 'screen')
+
+  function asDevice(coarse: boolean, shortSide: number) {
+    vi.spyOn(window, 'matchMedia').mockImplementation(
+      (query: string) => ({ matches: query === '(pointer: coarse)' && coarse }) as MediaQueryList,
+    )
+    Object.defineProperty(window, 'screen', {
+      configurable: true,
+      value: { width: shortSide, height: 844 },
+    })
+  }
+
+  afterEach(() => {
+    vi.restoreAllMocks()
+    vi.unstubAllGlobals()
+    if (realScreen) Object.defineProperty(window, 'screen', realScreen)
+  })
+
+  it('offers the phone view on a touch-first device, tablet included, and not with a mouse', () => {
+    asDevice(false, 1080)
+    renderBar({ remoteHost: HOST, onRemoteLogOut: () => {} })
+    fireEvent.click(screen.getByTestId('topbar-remote-host'))
+    expect(screen.queryByTestId('topbar-remote-phone-view')).toBeNull()
+    cleanup()
+
+    asDevice(true, 820)
+    renderBar({ remoteHost: HOST, onRemoteLogOut: () => {} })
+    fireEvent.click(screen.getByTestId('topbar-remote-host'))
+    expect(screen.getByTestId('topbar-remote-phone-view').textContent).toBe('Phone view')
+  })
+
+  it('says so when the desktop does not serve the phone view, and stays', async () => {
+    asDevice(true, 390)
+    const fetchImpl = vi.fn(async () => ({ ok: false, body: null }))
+    vi.stubGlobal('fetch', fetchImpl)
+    renderBar({ remoteHost: HOST, onRemoteLogOut: () => {} })
+    fireEvent.click(screen.getByTestId('topbar-remote-host'))
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('topbar-remote-phone-view'))
+    })
+    expect(fetchImpl).toHaveBeenCalledTimes(1)
+    expect(String((fetchImpl.mock.calls[0] as unknown[])[0])).toMatch(/\/mobile\.html$/)
+    expect(screen.getByTestId('topbar-remote-phone-view-unavailable').textContent).toContain(
+      "doesn't offer the phone view yet",
+    )
+  })
+})
+
 describe('userNameFromHomeDir', () => {
   it('reads the account off either separator', () => {
     expect(userNameFromHomeDir('C:\\Users\\alice')).toBe('alice')

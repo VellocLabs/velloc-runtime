@@ -3141,6 +3141,22 @@ export const es: Messages = {
   'remote.protocolTitle': 'Recargue para continuar',
   'remote.protocolBody':
     'Esta página y el escritorio hablan versiones distintas del protocolo. Al recargar se obtiene la correspondiente.',
+  'mobile.topbar.openDrawer': 'Abrir la lista de sesiones',
+  'mobile.topbar.sessionMenu': 'Menú de la sesión',
+  'mobile.drawer.title': 'Sesiones',
+  'mobile.drawer.filterPlaceholder': 'Filtrar por título',
+  'mobile.drawer.empty': 'Aún no hay sesiones',
+  'mobile.drawer.noMatches': 'Ningún título de sesión coincide',
+  'mobile.drawer.newSession': 'Nueva sesión',
+  'mobile.drawer.desktopView': 'Vista de escritorio',
+  'mobile.menu.rename': 'Cambiar nombre',
+  'mobile.menu.copyBranch': 'Copiar el nombre de la rama',
+  'mobile.menu.copyFailed': 'No se pudo copiar el nombre de la rama.',
+  'mobile.menu.archive': 'Archivar',
+  'mobile.rename.title': 'Cambiar el nombre de la sesión',
+  'mobile.rename.label': 'Título de la sesión',
+  'mobile.rename.save': 'Guardar',
+  'mobile.rename.cancel': 'Cancelar',
   'mobile.topbar.untitledSession': 'Nueva sesión',
   'remote.buildMismatchTitle': 'El escritorio ejecuta una compilación distinta',
   'remote.buildMismatchBody':
@@ -3158,6 +3174,8 @@ export const es: Messages = {
     'Ahora no',
   'remote.host.connectedTo':
     'Conectado a {host}',
+  'remote.host.phoneView': 'Vista de teléfono',
+  'remote.host.phoneViewUnavailable': 'Este escritorio aún no ofrece la vista de teléfono. Actualice la aplicación en el escritorio e inténtelo de nuevo.',
   'remote.host.logOut':
     'Cerrar sesión en este escritorio',
   'remote.fullscreen.enter': 'Pantalla completa',

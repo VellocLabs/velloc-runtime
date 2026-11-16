@@ -3166,6 +3166,22 @@ export const fr: Messages = {
   'remote.protocolTitle': 'Rechargez pour continuer',
   'remote.protocolBody':
     'Cette page et le bureau parlent des versions différentes du protocole. Un rechargement récupère la version correspondante.',
+  'mobile.topbar.openDrawer': 'Ouvrir la liste des sessions',
+  'mobile.topbar.sessionMenu': 'Menu de la session',
+  'mobile.drawer.title': 'Sessions',
+  'mobile.drawer.filterPlaceholder': 'Filtrer par titre',
+  'mobile.drawer.empty': 'Aucune session pour l\'instant',
+  'mobile.drawer.noMatches': 'Aucun titre de session ne correspond',
+  'mobile.drawer.newSession': 'Nouvelle session',
+  'mobile.drawer.desktopView': 'Vue bureau',
+  'mobile.menu.rename': 'Renommer',
+  'mobile.menu.copyBranch': 'Copier le nom de la branche',
+  'mobile.menu.copyFailed': 'Impossible de copier le nom de la branche.',
+  'mobile.menu.archive': 'Archiver',
+  'mobile.rename.title': 'Renommer la session',
+  'mobile.rename.label': 'Titre de la session',
+  'mobile.rename.save': 'Enregistrer',
+  'mobile.rename.cancel': 'Annuler',
   'mobile.topbar.untitledSession': 'Nouvelle session',
   'remote.buildMismatchTitle': 'Le bureau exécute un build différent',
   'remote.buildMismatchBody':
@@ -3183,6 +3199,8 @@ export const fr: Messages = {
     'Plus tard',
   'remote.host.connectedTo':
     'Connecté à {host}',
+  'remote.host.phoneView': 'Vue téléphone',
+  'remote.host.phoneViewUnavailable': 'Ce bureau ne propose pas encore la vue téléphone. Mettez à jour l\'application sur le bureau, puis réessayez.',
   'remote.host.logOut':
     'Se déconnecter de ce poste',
   'remote.fullscreen.enter': 'Plein écran',
