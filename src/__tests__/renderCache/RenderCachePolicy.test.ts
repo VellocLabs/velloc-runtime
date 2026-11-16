@@ -28,6 +28,8 @@ type HarnessOptions = {
   minIntervalMs?: number
   /** The host answers `skipped: 'app_active'` while this says so. */
   skip?: () => boolean
+  /** Held before the purge answers, to land an event while it runs. */
+  hold?: () => Promise<void>
 }
 
 type FakeTimer = { fn: () => void; ms: number; due: number; cleared: boolean }
@@ -55,6 +57,7 @@ function harness(options: HarnessOptions = {}) {
       trims.push(purgeOptions.trimWorkingSet)
       appInactive.push(purgeOptions.onlyWhenAppInactive)
       if (options.fail) throw new Error(options.fail)
+      if (options.hold) await options.hold()
       if (options.skip?.()) {
         return { purged: [], throttled: [], guestProcesses: 0, gpuProcesses: 0, agentTabProcesses: 0, skipped: 'app_active' as const }
       }
@@ -367,6 +370,32 @@ describe('RenderCachePolicy', () => {
 
     skip = false
     h.policy.noteVisibility(false)
+    await h.settle()
+    expect(h.purges).toHaveLength(2)
+    expect(h.policy.getState().last).toMatchObject({ reason: 'inactive', purged: ['guest', 'gpu'] })
+  })
+
+  it('a deactivation that arrives during the purge retries the skipped one afterwards', async () => {
+    let skips = 1
+    let release!: () => void
+    let first = true
+    const h = harness({
+      skip: () => skips-- > 0,
+      hold: () => {
+        if (!first) return Promise.resolve()
+        first = false
+        return new Promise<void>(resolve => { release = resolve })
+      },
+    })
+    h.policy.start()
+    h.policy.noteVisibility(true)
+    h.policy.noteActive(true)
+    h.policy.noteActive(false)
+    await h.fire(RENDER_CACHE_INACTIVE_SETTLE_MS)
+    expect(h.purges).toHaveLength(1)
+
+    h.policy.noteVisibility(false)
+    release()
     await h.settle()
     expect(h.purges).toHaveLength(2)
     expect(h.policy.getState().last).toMatchObject({ reason: 'inactive', purged: ['guest', 'gpu'] })

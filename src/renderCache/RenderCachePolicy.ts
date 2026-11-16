@@ -99,6 +99,8 @@ export class RenderCachePolicy {
   private inactiveRunning = false
   /** The host skipped the inactive purge with its own window in front: still owed. */
   private inactiveSkipped = false
+  /** A deactivation arrived while a purge ran; re-decide once it ends. */
+  private inactiveRetryQueued = false
   private lastPurgeAt: number | null = null
   private idlePurge = true
   private purges = 0
@@ -299,7 +301,12 @@ export class RenderCachePolicy {
    * not change `active`; no timer polls for it.
    */
   private retrySkippedInactive(): void {
-    if (this.disposed || !this.inactiveSkipped || this.active !== false || this.inactiveRunning) return
+    if (this.disposed) return
+    if (this.inactiveRunning) {
+      this.inactiveRetryQueued = true
+      return
+    }
+    if (!this.inactiveSkipped || this.active !== false) return
     this.inactiveSkipped = false
     this.inactiveWaiting = true
     void this.fireInactive()
@@ -330,6 +337,10 @@ export class RenderCachePolicy {
       this.inactiveSkipped = record?.skipped === 'app_active'
     } finally {
       this.inactiveRunning = false
+      if (this.inactiveRetryQueued) {
+        this.inactiveRetryQueued = false
+        this.retrySkippedInactive()
+      }
     }
   }
 
