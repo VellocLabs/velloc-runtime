@@ -3,8 +3,6 @@
  * session's background tasks — title, state and elapsed time — and offers Stop on the running ones.
  * It shows no task's transcript.
  */
-import { useEffect, useState } from 'react'
-
 import {
   SUB_AGENT_STATUS_LABEL_KEY,
   shellTaskTitle,
@@ -14,6 +12,7 @@ import type { NexusTaskSummaryRow } from '../browser/bridge/protocol/ui'
 import { useT } from '../browser/webview/i18n'
 import { durationLabel } from '../utils/humanize/durationLabel'
 import { MobileSheet } from './MobileSheet'
+import { useTickingNow } from './useTickingNow'
 
 export type MobileTasksSheetProps = {
   open: boolean
@@ -29,18 +28,6 @@ function elapsedMs(row: NexusTaskSummaryRow, now: number): number | undefined {
   if (row.startedAt === undefined) return undefined
   const end = row.status === 'running' ? now : row.finishedAt
   return end === undefined ? undefined : Math.max(0, end - row.startedAt)
-}
-
-/** Ticks once a second while `live`, so a running row's elapsed time moves. */
-function useTickingNow(live: boolean): number {
-  const [now, setNow] = useState(() => Date.now())
-  useEffect(() => {
-    if (!live) return undefined
-    setNow(Date.now())
-    const timer = setInterval(() => setNow(Date.now()), 1_000)
-    return () => clearInterval(timer)
-  }, [live])
-  return now
 }
 
 export function MobileTasksSheet({ open, onOpenChange, rows, onStop, now }: MobileTasksSheetProps) {

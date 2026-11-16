@@ -135,7 +135,7 @@ import {
   SessionEffortProvider,
   type SessionEffortContextValue,
 } from './ComposerEffortPicker'
-import { findActiveModel } from './ModelQuickPicker'
+import { findActiveModel } from './activeModel'
 import { isTeammateSessionId } from '../../utils/sidechainStoragePaths'
 import { getProviderUsageStore, useProviderUsage } from './providerUsageStore'
 import { ToolCallDetailProvider } from '@/components/assistant-ui/tool-call-detail-context'

@@ -63,11 +63,11 @@ const transcript = [
 
 function fakeWorker() {
   const initialized: string[] = []
+  const listeners = new Set<(message: unknown) => void>()
+  const emit = (message: unknown) => {
+    for (const listener of listeners) listener(message)
+  }
   const createWorkerTransport = (): BrowserWorkerClientTransport => {
-    const listeners = new Set<(message: unknown) => void>()
-    const emit = (message: unknown) => {
-      for (const listener of listeners) listener(message)
-    }
     return {
       async postMessage(message: AgentWorkerInboundMessage) {
         if (message.type === 'worker.init') {
@@ -86,7 +86,7 @@ function fakeWorker() {
       },
     }
   }
-  return { createWorkerTransport, initialized }
+  return { createWorkerTransport, initialized, emit }
 }
 
 function fakeSessionChannel() {
@@ -338,6 +338,47 @@ describe('MobileShell', () => {
     expect(sessions.requests).toContainEqual(
       expect.objectContaining({ route: 'task.stop', payload: expect.objectContaining({ sessionId: 'task-a' }) }),
     )
+  })
+
+  it("names the open session's model in the menu as its picker row does", async () => {
+    const { worker } = mountWithTwoSessions()
+    await waitFor(() => expect(screen.getByTestId('mobile-topbar-title').textContent).toBe('Trip'))
+    act(() => {
+      worker.emit({
+        type: 'worker.state',
+        payload: {
+          ...snapshot('session-a'),
+          currentSelection: { providerId: 'demo', modelId: 'mock' },
+          modelCatalog: {
+            providers: [
+              {
+                id: 'demo',
+                label: 'Demo',
+                iconSvg: '',
+                enabled: true,
+                models: [
+                  {
+                    id: 'mock',
+                    label: 'Mock',
+                    enabled: true,
+                    entry: {
+                      kind: 'latest',
+                      family: 'mock',
+                      familyLabel: 'Mock',
+                      version: 'latest',
+                      resolvedId: 'mock-3',
+                      resolvedLabel: 'Mock 3',
+                    },
+                  },
+                ],
+              },
+            ],
+          },
+        } as unknown as AgentRuntimeWorkerSnapshot,
+      })
+    })
+    fireEvent.click(screen.getByTestId('mobile-topbar-menu'))
+    expect(screen.getByTestId('mobile-menu-model').textContent).toContain('Mock 3')
   })
 
   it('opens the model sheet from the menu of the open session', async () => {

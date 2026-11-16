@@ -125,7 +125,7 @@ export function TokenUsageProvider({
  */
 export function useLiveTurnOutputTokens(): number {
   const ctx = useContext(TokenUsageContext)
-  // getLiveUsage is an O(liveEvents) scan; memoize on the context identity so a
+  // liveTurnUsage is an O(liveEvents) scan; memoize on the context identity so a
   // re-render that isn't driven by new events (e.g. the indicator's 1s verb
   // tick) doesn't rescan. Mirrors TokenUsageIndicator's own useMemo.
   const live = useMemo(

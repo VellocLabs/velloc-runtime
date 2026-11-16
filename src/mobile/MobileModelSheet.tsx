@@ -9,6 +9,7 @@ import type {
   BrowserLlmCatalog,
   BrowserLlmSelection,
 } from '../browser/bridge/browserBridgeProtocol'
+import { findActiveModel } from '../browser/webview/activeModel'
 import { useT } from '../browser/webview/i18n'
 import { MobileSheet } from './MobileSheet'
 
@@ -22,6 +23,9 @@ export type MobileModelSheetProps = {
 
 export function MobileModelSheet({ open, onOpenChange, catalog, selection, onSelect }: MobileModelSheetProps) {
   const t = useT()
+  // An alias-hidden selection (a persisted snapshot id) resolves to its curated twin.
+  const active = findActiveModel(catalog, selection)
+  const activeAliasId = active?.model.pickerAliasId
   const groups = (catalog?.providers ?? [])
     .filter(provider => provider.enabled)
     .map(provider => ({
@@ -38,15 +42,18 @@ export function MobileModelSheet({ open, onOpenChange, catalog, selection, onSel
         </p>
       ) : (
         groups.map(({ provider, models }) => (
-          <section key={provider.id} role="group" aria-label={provider.label} className="flex flex-col pb-2">
+          <section key={provider.id} role="radiogroup" aria-label={provider.label} className="flex flex-col pb-2">
             <h2 className="px-3 pt-1 pb-1 text-muted-foreground text-sm">{provider.label}</h2>
             {models.map(model => {
-              const current = selection?.providerId === provider.id && selection.modelId === model.id
+              const current =
+                !!active &&
+                active.provider.id === provider.id &&
+                (active.model.id === model.id || activeAliasId === model.id)
               return (
                 <button
                   key={model.id}
                   type="button"
-                  role="menuitemradio"
+                  role="radio"
                   aria-checked={current}
                   data-testid="mobile-model-option"
                   data-provider-id={provider.id}

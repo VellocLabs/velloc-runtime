@@ -13,6 +13,7 @@ import { usePlanResetText, windowLabelKey } from '../browser/webview/planUsageLa
 import { isWindowExhausted, type PlanUsageSnapshot } from '../models/usage/planUsage'
 import { compactTokenCount } from '../utils/taskRunStats'
 import { MobileSheet } from './MobileSheet'
+import { useTickingNow } from './useTickingNow'
 
 export type MobileUsageSheetProps = {
   open: boolean
@@ -57,7 +58,9 @@ export function MobileUsageSheet({ open, onOpenChange, context, planUsage, onRef
   const t = useT()
   const resetText = usePlanResetText()
   const windows = planUsage?.windows ?? []
-  const clock = now ?? Date.now()
+  // Reset labels are minute-grained; tick them while the sheet stays open.
+  const ticking = useTickingNow(open && windows.length > 0 && now === undefined, 30_000)
+  const clock = now ?? ticking
   const contextTone: BarTone =
     context?.warning === 'danger' ? 'destructive' : context?.warning === 'warning' ? 'warning' : 'primary'
   const refresh = onRefresh ? (

@@ -26,6 +26,7 @@ import {
   resolveBootSession,
   writeStoredActiveSessionId,
 } from '../browser/webview/bootSessionPointer'
+import { activeModelLabel, findActiveModel } from '../browser/webview/activeModel'
 import { folderName } from '../browser/webview/childSessionStatus'
 import { useClientActivityReport } from '../browser/webview/clientActivityReport'
 import { useT } from '../browser/webview/i18n'
@@ -34,6 +35,7 @@ import {
   RuntimeReadyContext,
   useRuntimeConnectionState,
 } from '../browser/webview/RuntimeConnectionBanner'
+import { createConfiguredModelCatalog } from '../browser/webview/modelCatalog'
 import { isSandboxProjectRoot } from '../browser/webview/projectTree'
 import { createSessionMessageCallbackFactory } from '../browser/webview/sessionMessageCallbacks'
 import {
@@ -489,11 +491,10 @@ export function MobileShell(props: MobileShellProps): ReactNode {
       const current = sessionId === activeSessionId
       const branch = current ? activeSnapshot?.projectBranch : undefined
       const selection = current ? activeSnapshot?.currentSelection : undefined
-      const modelLabel = selection
-        ? activeSnapshot?.modelCatalog?.providers
-            .find(p => p.id === selection.providerId)
-            ?.models.find(m => m.id === selection.modelId)?.label
-        : undefined
+      const activeModel = selection
+        ? findActiveModel(createConfiguredModelCatalog(activeSnapshot?.modelCatalog), selection)
+        : null
+      const modelLabel = activeModel ? activeModelLabel(activeModel) : undefined
       setMenuTarget({ sessionId, title: namedTitle(item.title), branch: branch || undefined, current, modelLabel })
     },
     [sessions, activeSessionId, activeSnapshot],

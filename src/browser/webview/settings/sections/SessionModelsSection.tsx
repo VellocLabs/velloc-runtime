@@ -37,11 +37,8 @@ import {
   SettingsSection,
   SettingsSubpageLayout,
 } from "../SettingsSubpageLayout";
-import {
-  ModelQuickPicker,
-  findActiveModel,
-  tierLabel,
-} from "../../ModelQuickPicker";
+import { ModelQuickPicker, tierLabel } from "../../ModelQuickPicker";
+import { findActiveModel } from "../../activeModel";
 import type { ModelQuickPickerLeadingOption } from "../../ModelQuickPicker";
 import type {
   BrowserLlmCatalog,

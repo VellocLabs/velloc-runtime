@@ -58,18 +58,32 @@ export function MobileShellSheets({
 
   const usageOpen = sheet === 'usage'
   const providerUsage = useProviderUsage(usageOpen ? providerId : undefined)
+  // The figures read the transcript and the auto-compact switch alone; a new snapshot object
+  // arrives on every worker push, so it must not be a dependency.
+  const hasSnapshot = snapshot !== undefined
+  const autoCompactEnabled = snapshot?.autoCompact?.enabled
+  const autoCompactWindow = snapshot?.autoCompact?.windowTokens
   const context = useMemo(
     () =>
-      usageOpen && snapshot && modelId
+      usageOpen && hasSnapshot && modelId
         ? contextUsageFigures({
             messages: state.transcriptMessages,
             liveEvents: state.liveEvents,
             modelId,
             providerId: selection?.providerId,
-            autoCompact: snapshot.autoCompact,
+            autoCompact: snapshot?.autoCompact,
           })
         : undefined,
-    [usageOpen, snapshot, modelId, selection?.providerId, state.transcriptMessages, state.liveEvents],
+    [
+      usageOpen,
+      hasSnapshot,
+      autoCompactEnabled,
+      autoCompactWindow,
+      modelId,
+      selection?.providerId,
+      state.transcriptMessages,
+      state.liveEvents,
+    ],
   )
 
   const configuredCatalog = useMemo(

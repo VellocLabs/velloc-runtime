@@ -14,7 +14,7 @@ import {
 import { cn } from "@/lib/utils";
 
 import { useT, type TranslateFn } from "./i18n";
-import { activeModelLabel, findActiveModel } from "./ModelQuickPicker";
+import { activeModelLabel, findActiveModel } from "./activeModel";
 import type {
   BrowserLlmCatalog,
   BrowserLlmModel,

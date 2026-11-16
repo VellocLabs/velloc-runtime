@@ -86,6 +86,21 @@ describe('MobileUsageSheet', () => {
     expect(screen.getByTestId('mobile-usage-empty')).toBeTruthy()
   })
 
+  it('keeps the reset countdown current while the sheet stays open', () => {
+    vi.useFakeTimers()
+    try {
+      vi.setSystemTime(NOW)
+      renderEn(createElement(MobileUsageSheet, { open: true, onOpenChange: vi.fn(), planUsage: plan }))
+      expect(screen.getByTestId('mobile-usage-window-five_hour').textContent).toContain('Resets in 1 hr 30 min')
+      act(() => {
+        vi.advanceTimersByTime(60 * 60_000)
+      })
+      expect(screen.getByTestId('mobile-usage-window-five_hour').textContent).toContain('Resets in 30 min')
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it('refreshes on tap, and has no refresh button without a provider to ask', () => {
     const onRefresh = vi.fn()
     renderEn(createElement(MobileUsageSheet, { ...base, context, onRefresh }))
@@ -234,6 +249,36 @@ describe('MobileModelSheet', () => {
     expect(options.map(o => o.getAttribute('aria-checked'))).toEqual(['true', 'false'])
     expect(screen.getByTestId('mobile-model-sheet').textContent).toContain('Alpha')
     expect(screen.getByTestId('mobile-model-sheet').textContent).not.toContain('Beta')
+  })
+
+  it('marks the curated twin of an alias-hidden selection', () => {
+    const aliasCatalog = {
+      providers: [
+        {
+          id: 'alpha',
+          label: 'Alpha',
+          iconSvg: '',
+          enabled: true,
+          models: [
+            { id: 'a-fast', label: 'Alpha Fast', enabled: true },
+            { id: 'a-snapshot', label: 'Alpha Fast 2025', enabled: true, pickerAliasId: 'a-fast' },
+          ],
+        },
+      ],
+    } as unknown as BrowserLlmCatalog
+    renderEn(
+      createElement(MobileModelSheet, {
+        open: true,
+        onOpenChange: vi.fn(),
+        catalog: aliasCatalog,
+        selection: { providerId: 'alpha', modelId: 'a-snapshot' },
+        onSelect: vi.fn(),
+      }),
+    )
+    const options = screen.getAllByTestId('mobile-model-option')
+    expect(options).toHaveLength(1)
+    expect(options[0].getAttribute('data-model-id')).toBe('a-fast')
+    expect(options[0].getAttribute('aria-checked')).toBe('true')
   })
 
   it('picks a model with its default reasoning tier', () => {
