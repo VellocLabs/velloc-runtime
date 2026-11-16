@@ -405,7 +405,7 @@ export class TerminalService {
   /** Start a shell for `sessionId` in its folder; resolves with the id once the start settled (running or failed). */
   async create(input: TerminalCreatePayload): Promise<string> {
     this.requireAvailable()
-    // Loaded before the checks, so nothing awaits between them and the record being registered.
+    // Loaded before the checks, so the load opens no gap between them and the record being registered.
     const mirror = await loadScreenMirror()
     this.requireAvailable()
     const cwd = this.deps.sessionCwd(input.sessionId)
