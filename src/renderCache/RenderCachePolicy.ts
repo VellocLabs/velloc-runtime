@@ -99,7 +99,7 @@ export class RenderCachePolicy {
   private inactiveRunning = false
   /** The host skipped the inactive purge with its own window in front: still owed. */
   private inactiveSkipped = false
-  /** A deactivation arrived while a purge ran; re-decide once it ends. */
+  /** The pages went hidden while a purge ran; re-decide once it ends. */
   private inactiveRetryQueued = false
   private lastPurgeAt: number | null = null
   private idlePurge = true
@@ -306,7 +306,7 @@ export class RenderCachePolicy {
       this.inactiveRetryQueued = true
       return
     }
-    if (!this.inactiveSkipped || this.active !== false) return
+    if (!this.inactiveSkipped || this.active !== false || this.visible !== false) return
     this.inactiveSkipped = false
     this.inactiveWaiting = true
     void this.fireInactive()
