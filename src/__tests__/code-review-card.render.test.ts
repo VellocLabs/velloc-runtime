@@ -40,20 +40,25 @@ describe('review report card', () => {
   it('states a zero-finding result as the count alone, with no empty or scope line of its own', () => {
     const value = report()
     renderReport(value)
-    expect(screen.getByTestId('review-count').textContent).toBe(t('reviewCard.findingsMany', { count: 0 }))
-    expect(screen.queryByTestId('review-empty')).toBeNull()
-    expect(screen.queryByTestId('review-scope')).toBeNull()
+    const partial = screen.getByTestId('review-count')
+    expect(partial.textContent).toBe(t('reviewCard.findingsMany', { count: 0 }))
+    expect(partial.parentElement!.textContent).toBe(t('reviewCard.findingsMany', { count: 0 }))
+    expect(partial.parentElement!.querySelector('svg')).toBeNull()
     cleanup()
     value.coverage.complete = true
     value.run.progress.status = 'finished'
     renderReport(value)
-    expect(screen.getByTestId('review-count').textContent).toBe(t('reviewCard.findingsMany', { count: 0 }))
-    expect(screen.queryByTestId('review-empty')).toBeNull()
+    const clean = screen.getByTestId('review-count')
+    expect(clean.textContent).toBe(t('reviewCard.findingsMany', { count: 0 }))
+    expect(clean.parentElement!.textContent).toBe(t('reviewCard.findingsMany', { count: 0 }))
+    expect(clean.parentElement!.querySelector('svg')!.getAttribute('class')).toContain('text-success')
     cleanup()
     value.emptyScope = true
     renderReport(value)
-    expect(screen.getByTestId('review-count').textContent).toBe(t('reviewCard.findingsMany', { count: 0 }))
-    expect(screen.queryByTestId('review-empty')).toBeNull()
+    const scoped = screen.getByTestId('review-count')
+    expect(scoped.textContent).toBe(t('reviewCard.findingsMany', { count: 0 }))
+    expect(scoped.parentElement!.textContent).toBe(t('reviewCard.findingsMany', { count: 0 }))
+    expect(scoped.parentElement!.querySelector('svg')).toBeNull()
   })
   it('shows a cancelled review as one notice, says when the user cancelled it, and offers only a rerun without findings', () => {
     const value = report()
@@ -875,15 +880,9 @@ describe('review card header and live activity', () => {
     const count = screen.getByTestId('review-count')
     expect(count.textContent).toBe(t('reviewCard.findingsMany', { count: 0 }))
     expect(count.parentElement!.querySelector('svg')!.getAttribute('class')).toContain('text-success')
-    expect(screen.queryByTestId('review-empty')).toBeNull()
     expect(screen.queryByTestId('review-repair')).toBeNull()
     expect(screen.getByTestId('review-rerun')).toBeTruthy()
     expect(screen.getByTestId('code-review-card').querySelector('footer')!.textContent).not.toContain(t('reviewCard.value.finished'))
-    cleanup()
-    value.emptyScope = true
-    renderReport(value)
-    const scoped = screen.getByTestId('review-count')
-    expect(scoped.parentElement!.querySelector('svg')).toBeNull()
   })
   it('names the repository: its remote name, else the change request project, else the directory', () => {
     const value = running()
