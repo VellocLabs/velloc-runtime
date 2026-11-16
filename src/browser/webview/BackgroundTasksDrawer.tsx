@@ -29,6 +29,7 @@ import {
 import { cn } from '@/lib/utils'
 import { InkRipple } from '@/components/assistant-ui/ink-ripple'
 import { Button } from '@/components/ui/button'
+import { stripAnsiControlSequences } from '../../utils/ansi'
 import { durationLabel } from '../../utils/humanize/durationLabel'
 import type {
   NexusRunJsInvokeParams,
@@ -559,6 +560,11 @@ export function BackgroundTasksDrawer({
   const detailSummary = info?.summary && detailRow && isReviewTaskRow(detailRow)
     ? reviewTaskSummaryMessage(t, info.summary)
     : info?.summary
+  // Contract: the output block shows the log file's text, which carries the
+  // child's own ANSI escapes; they are stripped for display only (F-21).
+  const detailOutputText = info?.outputText
+    ? stripAnsiControlSequences(info.outputText)
+    : ''
 
   // While a RUNNING task's detail is open, reload its transcript silently on each
   // `lastActivityAt` advance, and once more when it settles (the result is readable only
@@ -816,7 +822,7 @@ export function BackgroundTasksDrawer({
                   <RunJsParamsBlock params={info.jsParams} />
                 ) : null}
                 {info.type === 'local_js' &&
-                !info.outputText &&
+                !detailOutputText &&
                 detailRow?.status === 'running' ? (
                   // Part 2 (running) — no result yet. A finished run renders its
                   // result via the Result block below; the Source block trails.
@@ -828,7 +834,7 @@ export function BackgroundTasksDrawer({
                     {t('backgroundTasks.status.running')}
                   </div>
                 ) : null}
-                {info.outputText ? (
+                {detailOutputText ? (
                   // Part 2 — the result. For a `local_js` (Super Edit) run this
                   // is the script's return/console output, headed "Result"; for a
                   // `local_bash` task it is the output-file contents, headed
@@ -851,7 +857,7 @@ export function BackgroundTasksDrawer({
                       </p>
                     ) : null}
                     <pre className="whitespace-pre-wrap break-words rounded bg-background/60 p-1.5 font-mono text-[11px] leading-4 text-foreground/90">
-                      {info.outputText}
+                      {detailOutputText}
                     </pre>
                   </div>
                 ) : info.summary ? (

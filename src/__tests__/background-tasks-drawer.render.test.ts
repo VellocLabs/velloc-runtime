@@ -512,6 +512,49 @@ describe('BackgroundTasksDrawer bash detail output', () => {
     ).toBeNull()
   })
 
+  it("renders the output without the child's ANSI escape sequences", async () => {
+    const detail: NexusTaskDetail = {
+      entries: null,
+      info: {
+        type: 'local_bash',
+        task: 'npx vitest run',
+        outputFilePath: 'C:/proj/.velloc/tasks/b-run.output',
+        outputText:
+          "\u001b[90m738\u001b[39m \u001b[34mit(\u001b[39m\u001b[32m'passes'\u001b[39m)\n\u001b[31m1 failed\u001b[39m",
+      },
+    }
+    const finishedRow: NexusTaskSummaryRow = {
+      ...runningRow(),
+      status: 'error',
+      finishedAt: NOW - 1_000,
+    }
+    render(
+      createElement(
+        BackgroundTasksDrawer,
+        drawerProps({
+          rows: [finishedRow],
+          focusSessionId: 'b-run',
+          loadTranscript: vi.fn(async () => detail),
+        }),
+      ),
+    )
+    await waitFor(() =>
+      expect(
+        document.querySelector(
+          '[data-testid="background-tasks-detail-output"]',
+        ),
+      ).not.toBeNull(),
+    )
+    const pre = document.querySelector<HTMLElement>(
+      '[data-testid="background-tasks-detail-output"] pre',
+    )!
+    // The colour codes are the child's own: the block renders their text, and
+    // no escape character reaches the DOM (F-21).
+    expect(pre.textContent).not.toContain('\u001b')
+    expect(pre.textContent).toContain("738 it('passes')")
+    expect(pre.textContent).toContain('1 failed')
+  })
+
   it('shows the detail refresh button only while the task is running', async () => {
     const detail: NexusTaskDetail = {
       entries: null,
