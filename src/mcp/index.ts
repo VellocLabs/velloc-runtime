@@ -57,11 +57,6 @@ export {
   RESOURCE_INDEX_TOOL_ID,
   READ_MCP_RESOURCE_TOOL_NAME,
 } from './resourceTools'
-export {
-  connectMCPServer,
-  disconnectMCPServer,
-  invokeServerTool,
-} from './client'
 export { loadMCPConfig, saveMCPConfig, parseNativeMCPServerConfig } from './config'
 export {
   getStoredTokens,

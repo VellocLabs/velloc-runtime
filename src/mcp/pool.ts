@@ -1,10 +1,6 @@
 import type { RuntimeFs } from '../utils/fs/runtimeFs'
 import { loadMCPConfig } from './config'
-import {
-  invokeServerTool,
-  connectMCPServer,
-  disconnectMCPServer,
-} from './client'
+import type * as McpClient from './client'
 import {
   launchTransportKind,
   type McpBridgeOperations,
@@ -24,6 +20,16 @@ import type {
 
 /** JSON-RPC "Method not found" (-32601): the server doesn't implement the
  *  resources capability. The SDK surfaces it as an McpError with `.code`. */
+/** The MCP client (SDK and schema validator), loaded with the first server a pool connects rather than with the worker. */
+const loadMcpClient = (): Promise<typeof McpClient> => import('./client')
+
+const connectMCPServer: typeof McpClient.connectMCPServer = async (...args) =>
+  (await loadMcpClient()).connectMCPServer(...args)
+const disconnectMCPServer: typeof McpClient.disconnectMCPServer = async (...args) =>
+  (await loadMcpClient()).disconnectMCPServer(...args)
+const invokeServerTool: typeof McpClient.invokeServerTool = async (...args) =>
+  (await loadMcpClient()).invokeServerTool(...args)
+
 function isMethodNotFound(err: unknown): boolean {
   const code = (err as { code?: unknown } | null)?.code
   if (code === -32601) return true

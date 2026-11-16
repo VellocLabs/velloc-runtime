@@ -48,7 +48,7 @@ import {
   type TerminalState,
   type TerminalsState,
 } from './protocol'
-import { ScreenMirror } from './screenMirror'
+import type { ScreenMirror } from './screenMirror'
 import {
   defaultTerminalShell,
   isTerminalShellId,
@@ -243,6 +243,19 @@ export async function probeHostShells(
   return shellsFromHostReport(report)
 }
 
+type ScreenMirrorModule = typeof import('./screenMirror')
+
+let screenMirrorLoad: Promise<ScreenMirrorModule> | null = null
+
+/** The xterm screen model, loaded with the first terminal rather than with the worker; a failed load is tried again next time. */
+function loadScreenMirror(): Promise<ScreenMirrorModule> {
+  screenMirrorLoad ??= import('./screenMirror').catch(error => {
+    screenMirrorLoad = null
+    throw error
+  })
+  return screenMirrorLoad
+}
+
 export class TerminalService {
   private readonly records = new Map<string, TerminalRecord>()
   private readonly runs = new Map<string, RunRecord>()
@@ -414,6 +427,7 @@ export class TerminalService {
       }
       shell = picked
     }
+    const mirror = await loadScreenMirror()
     const id = `term_${(this.deps.newId ?? randomId)()}`
     const record: TerminalRecord = {
       id,
@@ -425,7 +439,7 @@ export class TerminalService {
       cols: input.cols,
       rows: input.rows,
       state: { kind: 'starting' },
-      screen: this.newScreen(input.cols, input.rows),
+      screen: this.newScreen(mirror, input.cols, input.rows),
       coalescer: new OutputCoalescer(
         data => this.deliverOutput(id, data),
         this.deps.coalesceWindowMs ?? DEFAULT_COALESCE_WINDOW_MS,
@@ -482,6 +496,7 @@ export class TerminalService {
 
   /** Start the same shell again in the same place, under the same id. Only for an exited or failed terminal. */
   async restart(id: string): Promise<void> {
+    const mirror = await loadScreenMirror()
     const record = this.require(id)
     if (record.state.kind === 'starting' || record.state.kind === 'running') {
       throw wireError('conflict', `terminal '${id}' is still running`)
@@ -491,7 +506,7 @@ export class TerminalService {
     record.titles = new TitleSequenceScanner()
     // A restarted terminal starts afresh: the old shell's output does not carry over.
     record.screen.dispose()
-    record.screen = this.newScreen(record.cols, record.rows)
+    record.screen = this.newScreen(mirror, record.cols, record.rows)
     record.outputSeen = false
     this.setTitle(record, record.shell)
     this.setState(record, { kind: 'starting' })
@@ -789,8 +804,8 @@ export class TerminalService {
     this.setState(record, { kind: 'exited', exitCode: exit.exitCode >= 0 ? exit.exitCode : null })
   }
 
-  private newScreen(cols: number, rows: number): ScreenMirror {
-    return new ScreenMirror(cols, rows, this.deps.historyLines ?? TERMINAL_HISTORY_LINES)
+  private newScreen(mirror: ScreenMirrorModule, cols: number, rows: number): ScreenMirror {
+    return new mirror.ScreenMirror(cols, rows, this.deps.historyLines ?? TERMINAL_HISTORY_LINES)
   }
 
   private deliverOutput(id: string, data: string): void {

@@ -6,12 +6,11 @@
  * connected…`, which `MCPPool.callTool` retries once.
  */
 import type { Client } from '@modelcontextprotocol/sdk/client/index.js'
-import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
+import type { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
 import type { Transport } from '@modelcontextprotocol/sdk/shared/transport.js'
 import type { BrowserBridgeTransport } from '../browser/bridge/browserBridgeProtocol'
 import { createBridgeRoute } from '../browser/bridge/browserBridgeProtocol'
 import { createNativePrimitives } from '../browser/bridge/nativePrimitives'
-import { createMcpClient } from './client'
 import { cleanMcpInstructions } from './instructions'
 import type { McpHostAccess } from './mcpHost'
 import {
@@ -78,6 +77,14 @@ const NOT_CONNECTED = 'MCP server is not connected'
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
+}
+
+/** The MCP client (with its schema validator) and HTTP transport, loaded with the first connect rather than with the worker. */
+function loadMcpClientKit() {
+  return Promise.all([
+    import('./client'),
+    import('@modelcontextprotocol/sdk/client/streamableHttp.js'),
+  ])
 }
 
 /**
@@ -168,6 +175,7 @@ export function createWorkerMcpOperations(
     host: McpHostAccess,
     config: NexusMcpServerLaunchConfig,
     allowPrivateNetwork: boolean,
+    HttpTransport: typeof StreamableHTTPClientTransport,
   ): Transport {
     const primitives = createNativePrimitives({
       transport: host.transport,
@@ -190,7 +198,7 @@ export function createWorkerMcpOperations(
     }
     if (kind === 'http') {
       if (!config.url) throw new Error('http transport requires a `url`')
-      return new StreamableHTTPClientTransport(new URL(config.url), {
+      return new HttpTransport(new URL(config.url), {
         fetch: createPrimitiveFetch(primitives.network, { allowPrivateNetwork }),
         requestInit: { headers: { ...(config.headers ?? {}) } },
       })
@@ -210,7 +218,8 @@ export function createWorkerMcpOperations(
     if (launchTransportKind(config) === 'stdio' && !config.cwd) {
       config = { ...config, cwd: await hostCwd(host.transport, options.createRequestId) }
     }
-    const transport = buildTransport(host, config, allowPrivateNetwork)
+    const [{ createMcpClient }, { StreamableHTTPClientTransport }] = await loadMcpClientKit()
+    const transport = buildTransport(host, config, allowPrivateNetwork, StreamableHTTPClientTransport)
     const client = createMcpClient(label)
     let timer: ReturnType<typeof setTimeout> | undefined
     try {

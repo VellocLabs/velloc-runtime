@@ -99,3 +99,36 @@ describe('plugin UI contributions (F-25)', () => {
     )
   })
 })
+
+describe('worker body chunk (F-31, F-10)', () => {
+  const WORKER_BODY = join(SRC, 'browser', 'worker', 'agentRuntimeBody.ts')
+  const TERMINAL_SERVICE = join(SRC, 'terminal', 'TerminalService.ts')
+  const MCP_POOL = join(SRC, 'mcp', 'pool.ts')
+  const MCP_WORKER_SERVERS = join(SRC, 'mcp', 'workerServers.ts')
+  const SCREEN_MIRROR = join(SRC, 'terminal', 'screenMirror.ts')
+  const MCP_CLIENT = join(SRC, 'mcp', 'client.ts')
+  const bodyClosure = staticClosure([WORKER_BODY])
+
+  it.each([TERMINAL_SERVICE, MCP_POOL, MCP_WORKER_SERVERS])('reaches %s statically', file => {
+    // Without these edges the assertions below test nothing.
+    expect(bodyClosure.has(file)).toBe(true)
+  })
+
+  it.each([SCREEN_MIRROR, MCP_CLIENT])('keeps %s off the static graph', file => {
+    expect(
+      bodyClosure.has(file),
+      `${rel(file)} is reachable from the worker body through STATIC imports, so the `
+      + 'xterm screen model or the MCP client (SDK and schema validator) loads with every '
+      + 'worker start. Reach it through import() at its first use. Chain: '
+      + staticImportPath(WORKER_BODY, file).join(' -> '),
+    ).toBe(false)
+  })
+
+  it.each([
+    [TERMINAL_SERVICE, "import('./screenMirror')"],
+    [MCP_POOL, "import('./client')"],
+    [MCP_WORKER_SERVERS, "import('./client')"],
+  ])('%s loads its cold module with import()', (file, call) => {
+    expect(stripComments(read(file))).toContain(call)
+  })
+})
