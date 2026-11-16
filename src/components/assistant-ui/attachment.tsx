@@ -163,7 +163,10 @@ function useBlobObjectUrl(blob: Blob): string | null {
   return url;
 }
 
-/** A pending image attachment shown as a thumbnail of the image itself. */
+/**
+ * A pending image attachment shown as a thumbnail of the image itself. The card
+ * carries the file name as its accessible name; the thumbnail is decorative.
+ */
 const ComposerImageAttachmentCard: FC<{ file: Blob; name: string }> = ({
   file,
   name,
@@ -182,7 +185,7 @@ const ComposerImageAttachmentCard: FC<{ file: Blob; name: string }> = ({
         {src && (
           <img
             src={src}
-            alt={name}
+            alt=""
             draggable={false}
             data-testid="composer-image-attachment-thumbnail"
             className="size-full object-cover"

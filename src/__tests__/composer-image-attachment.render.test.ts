@@ -83,7 +83,7 @@ describe('Composer image attachment thumbnail', () => {
     const thumb = await screen.findByTestId('composer-image-attachment-thumbnail')
     expect(create).toHaveBeenCalledWith(image)
     expect(thumb.getAttribute('src')).toBe('blob:thumb-1')
-    expect(thumb.getAttribute('alt')).toBe('shot.png')
+    expect(thumb.getAttribute('alt')).toBe('')
     expect(card.querySelector('[aria-label="Remove attachment"]')).not.toBeNull()
   })
 
@@ -101,6 +101,37 @@ describe('Composer image attachment thumbnail', () => {
       expect(screen.queryByTestId('composer-image-attachment')).toBeNull(),
     )
     expect(revoke).toHaveBeenCalledWith('blob:thumb-1')
+  })
+
+  it('recreates the thumbnail URL when the slot takes another image', async () => {
+    const { create, revoke } = stubObjectUrls()
+    render(createElement(Harness))
+    const first = new File([new Uint8Array([1])], 'a.png', { type: 'image/png' })
+    const second = new File([new Uint8Array([2])], 'b.png', { type: 'image/png' })
+    await pasteFiles(screen.getByTestId('composer-input'), [first, second])
+
+    const thumbs = await screen.findAllByTestId(
+      'composer-image-attachment-thumbnail',
+    )
+    expect(thumbs.map((el) => el.getAttribute('src'))).toEqual([
+      'blob:thumb-1',
+      'blob:thumb-2',
+    ])
+
+    await act(async () => {
+      fireEvent.click(screen.getAllByRole('button', { name: 'Remove attachment' })[0])
+    })
+    await waitFor(() =>
+      expect(screen.getAllByTestId('composer-image-attachment')).toHaveLength(1),
+    )
+
+    expect(revoke).toHaveBeenCalledWith('blob:thumb-2')
+    expect(
+      screen.getByTestId('composer-image-attachment').getAttribute('aria-label'),
+    ).toBe('b.png')
+    const remaining = screen.getByTestId('composer-image-attachment-thumbnail')
+    expect(remaining.getAttribute('src')).toBe('blob:thumb-3')
+    expect(create).toHaveBeenCalledTimes(3)
   })
 
   it('keeps the name chip for a non-image file', async () => {
