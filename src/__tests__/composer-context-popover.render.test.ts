@@ -142,19 +142,38 @@ describe('composer context popover', () => {
     expect(section.textContent).toContain('6%')
   })
 
-  it('lays the card out at 13px regular weight with a 24rem floor and blue bars', () => {
+  it('lays the card out at 13px regular weight with a 24rem floor that yields to the viewport cap', () => {
     const popover = renderRing({
       planUsage: { windows: [{ kind: 'five_hour', usedPercent: 26 }] },
     })
-    expect(popover.className).toContain('min-w-96')
+    expect(popover.className).toContain('min-w-[min(24rem,calc(100vw_-_2rem))]')
+    expect(popover.className).toContain('max-w-[calc(100vw-2rem)]')
     expect(popover.className).toContain('text-[13px]')
     expect(popover.className).toContain('font-normal')
-    for (const bar of popover.querySelectorAll('[role="progressbar"]')) {
-      const fill = bar.firstElementChild as HTMLElement
-      expect(fill.className).toContain('bg-info')
-      expect(fill.className).not.toContain('bg-primary')
+    const bars = popover.querySelectorAll('[role="progressbar"]')
+    expect(bars.length).toBe(2)
+    for (const bar of bars) {
+      expect((bar.firstElementChild as HTMLElement).className).toContain('bg-info')
     }
-    expect(popover.querySelectorAll('[role="progressbar"]').length).toBe(2)
+  })
+
+  it('keeps the warning and destructive fills distinct from the normal blue', () => {
+    const popover = renderRing({
+      planUsage: { windows: [{ kind: 'five_hour', usedPercent: 26 }] },
+      isStreaming: true,
+      liveEvents: [
+        {
+          type: 'stream_event',
+          event: { type: 'message_start', message: { usage: { input_tokens: 190_000 } } },
+        },
+      ] as unknown as StreamRecord[],
+    })
+    const bars = popover.querySelectorAll('[role="progressbar"]')
+    const contextFill = bars[0].firstElementChild as HTMLElement
+    const planFill = bars[1].firstElementChild as HTMLElement
+    expect(contextFill.className).toContain('bg-destructive')
+    expect(contextFill.className).not.toContain('bg-info')
+    expect(planFill.className).toContain('bg-info')
   })
 
   it('renders money figures — a prepaid balance has no windows, so the section reads Credits', () => {

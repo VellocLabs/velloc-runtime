@@ -625,14 +625,13 @@ export function TokenUsageIndicator({
       <PopoverContent
         side="top"
         align="end"
-        // Every row is one label and one figure: let the card grow to fit
-        // (24rem floor) instead of wrapping "886k until auto-compact" or
-        // "Weekly · all models" in two. The Radix popper wrapper is
-        // `min-width: max-content`, so w-auto already lays each row out on
-        // one line; only at the viewport cap (a narrow window, the remote
-        // client, a long translation) do rows wrap — a forced nowrap there
-        // pushed the figures out of the card.
-        className="w-auto min-w-96 max-w-[calc(100vw-2rem)] p-0 text-[13px] font-normal leading-5"
+        // Every row is one label and one figure: the card grows to fit
+        // instead of wrapping "886k until auto-compact" or "Weekly · all
+        // models" in two. The Radix popper wrapper is `min-width:
+        // max-content`, so w-auto already lays each row out on one line; at
+        // the viewport cap (a narrow window, the remote client, a long
+        // translation) rows wrap, so the 24rem floor yields to the cap.
+        className="w-auto min-w-[min(24rem,calc(100vw_-_2rem))] max-w-[calc(100vw-2rem)] p-0 text-[13px] font-normal leading-5"
         data-testid="composer-context-popover"
         // Escape mid-drag (or over unsaved keys) cancels the handle's preview,
         // not the popover. The layer hears Escape first (document, capture).
