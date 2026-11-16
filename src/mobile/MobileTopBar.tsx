@@ -1,9 +1,9 @@
 /**
  * The phone shell's top bar (F-24): the drawer button; a title pill with the open session's title
- * and, under it, its project's folder name; then the session's running indicator and the `…`
- * session menu. It pads past the notch.
+ * and, under it, its project's folder name, which opens the session's details; then the session's
+ * running indicator, the `…` session menu and `i` for usage. It pads past the notch.
  */
-import { EllipsisIcon, LoaderCircleIcon, MenuIcon } from 'lucide-react'
+import { EllipsisIcon, InfoIcon, LoaderCircleIcon, MenuIcon } from 'lucide-react'
 
 import { useT } from '../browser/webview/i18n'
 
@@ -14,9 +14,19 @@ export type MobileTopBarProps = {
   running: boolean
   onOpenDrawer: () => void
   onOpenMenu: () => void
+  onOpenDetails: () => void
+  onOpenUsage: () => void
 }
 
-export function MobileTopBar({ title, projectName, running, onOpenDrawer, onOpenMenu }: MobileTopBarProps) {
+export function MobileTopBar({
+  title,
+  projectName,
+  running,
+  onOpenDrawer,
+  onOpenMenu,
+  onOpenDetails,
+  onOpenUsage,
+}: MobileTopBarProps) {
   const t = useT()
   return (
     <header
@@ -37,16 +47,25 @@ export function MobileTopBar({ title, projectName, running, onOpenDrawer, onOpen
       >
         <MenuIcon aria-hidden className="size-5" />
       </button>
-      <div className="min-w-0 flex-1 px-1 text-center">
-        <h1 data-testid="mobile-topbar-title" className="truncate font-medium text-body">
-          {title}
-        </h1>
-        {projectName ? (
-          <p data-testid="mobile-topbar-project" className="truncate text-muted-foreground text-xs">
-            {projectName}
-          </p>
-        ) : null}
-      </div>
+      <h1 className="min-w-0 flex-1">
+        <button
+          type="button"
+          data-testid="mobile-topbar-details"
+          aria-haspopup="dialog"
+          aria-description={t('mobile.topbar.sessionDetails')}
+          onClick={onOpenDetails}
+          className="block w-full rounded-lg px-1 py-0.5 text-center active:bg-accent"
+        >
+          <span data-testid="mobile-topbar-title" className="block truncate font-medium text-body">
+            {title}
+          </span>
+          {projectName ? (
+            <span data-testid="mobile-topbar-project" className="block truncate text-muted-foreground text-xs">
+              {projectName}
+            </span>
+          ) : null}
+        </button>
+      </h1>
       <span className="flex size-6 shrink-0 items-center justify-center">
         {running ? (
           <LoaderCircleIcon
@@ -66,6 +85,16 @@ export function MobileTopBar({ title, projectName, running, onOpenDrawer, onOpen
         className="flex size-11 shrink-0 items-center justify-center rounded-lg active:bg-accent"
       >
         <EllipsisIcon aria-hidden className="size-5" />
+      </button>
+      <button
+        type="button"
+        data-testid="mobile-topbar-usage"
+        aria-label={t('mobile.topbar.usage')}
+        aria-haspopup="dialog"
+        onClick={onOpenUsage}
+        className="flex size-11 shrink-0 items-center justify-center rounded-lg active:bg-accent"
+      >
+        <InfoIcon aria-hidden className="size-5" />
       </button>
     </header>
   )

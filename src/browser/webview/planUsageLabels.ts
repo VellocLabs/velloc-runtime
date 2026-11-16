@@ -1,14 +1,15 @@
 /**
  * How a `PlanUsageSnapshot`'s figures are named and formatted — shared by the
- * composer's context popover (TokenUsageIndicator) and the provider settings
- * page, so a credit balance reads the same in both.
+ * composer's context popover (TokenUsageIndicator), the phone shell's usage
+ * sheet and the provider settings page, so a figure reads the same in each.
  */
-import type {
-  PlanUsageAmount,
-  PlanUsageBalanceNote,
-  PlanUsageWindow,
+import {
+  describePlanUsageReset,
+  type PlanUsageAmount,
+  type PlanUsageBalanceNote,
+  type PlanUsageWindow,
 } from '../../models/usage/planUsage'
-import { useLocale } from './i18n'
+import { useLocale, useT } from './i18n'
 import type { MessageKey } from './i18n/messages/en'
 
 /** A window's name: its kind, unless it counts something other than the
@@ -59,5 +60,34 @@ export function useFormatAmount(): (a: PlanUsageAmount) => string {
     } catch {
       return `${a.amount.toFixed(2)} ${a.currency}`
     }
+  }
+}
+
+/** Catalog wording for a window's next reset (see describePlanUsageReset). */
+export function usePlanResetText(): (
+  resetsAt: number | undefined,
+  now: number,
+) => string | undefined {
+  const t = useT()
+  const locale = useLocale()
+  return (resetsAt, now) => {
+    if (resetsAt === undefined) return undefined
+    const label = describePlanUsageReset(resetsAt, now)
+    if (label.kind === 'absolute') {
+      const at = new Date(label.at).toLocaleString(locale, {
+        weekday: 'short',
+        hour: 'numeric',
+        minute: '2-digit',
+      })
+      return t('tokenUsage.resetsAt', { time: at })
+    }
+    const duration =
+      label.hours > 0
+        ? t('tokenUsage.durationHrMin', {
+            hours: String(label.hours),
+            minutes: String(label.minutes),
+          })
+        : t('tokenUsage.durationMin', { minutes: String(label.minutes) })
+    return t('tokenUsage.resetsIn', { duration })
   }
 }

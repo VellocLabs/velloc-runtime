@@ -1,16 +1,13 @@
 import { createContext, useContext, useEffect, useMemo, useState } from 'react'
 import type { Message, StreamRecord } from '../../runtime/RuntimeTypes'
 import type { BrowserLlmCatalog } from '../bridge/browserBridgeProtocol'
-import {
-  estimateTranscriptTokens,
-  tokensFromUsage,
-  tokenWarningLevel,
-} from '../../engine/tokenCounts'
+import { tokenWarningLevel } from '../../engine/tokenCounts'
 import {
   contextUsageShares,
   contextWindowOf,
 } from '../../engine/contextWindow'
 import { isAssistantMessage } from '../../runtime/VercelModelConstants'
+import { contextMeasureWindow, contextTokensUsed, liveTurnUsage } from './contextUsage'
 import { getCacheRatio } from '../../utils/cacheUsage'
 import {
   Tooltip,
@@ -25,7 +22,7 @@ import {
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { HelpCircleIcon, ZapIcon } from 'lucide-react'
-import { useLocale, useT } from './i18n'
+import { useT } from './i18n'
 import {
   thresholdForChoice,
   windowSliderScale,
@@ -39,11 +36,14 @@ import {
   isUsageExhausted,
   isWindowExhausted,
 } from '../../models/usage/planUsage'
+import type { PlanUsageSnapshot } from '../../models/usage/planUsage'
 import {
-  describePlanUsageReset,
-  type PlanUsageSnapshot,
-} from '../../models/usage/planUsage'
-import { amountLabelKey, balanceNoteKey, useFormatAmount, windowLabelKey } from './planUsageLabels'
+  amountLabelKey,
+  balanceNoteKey,
+  useFormatAmount,
+  usePlanResetText,
+  windowLabelKey,
+} from './planUsageLabels'
 
 import { compactTokenCount } from '../../utils/taskRunStats'
 
@@ -64,31 +64,6 @@ function getLatestTranscriptUsage(
     }
   }
   return undefined
-}
-
-function getLiveUsage(
-  liveEvents: StreamRecord[],
-): Record<string, unknown> | undefined {
-  let merged: Record<string, unknown> | undefined
-  for (const event of liveEvents) {
-    const record = asRecord(event)
-    if (!record) continue
-    const inner =
-      record.type === 'stream_event'
-        ? asRecord(record.event)
-        : record
-    if (!inner) continue
-    const type = inner.type
-    if (type === 'message_start') {
-      const msg = asRecord(inner.message)
-      const usage = asRecord(msg?.usage)
-      if (usage) merged = { ...(merged ?? {}), ...usage }
-    } else if (type === 'message_delta') {
-      const usage = asRecord(inner.usage)
-      if (usage) merged = { ...(merged ?? {}), ...usage }
-    }
-  }
-  return merged
 }
 
 function numOrZero(value: unknown): number {
@@ -154,7 +129,7 @@ export function useLiveTurnOutputTokens(): number {
   // re-render that isn't driven by new events (e.g. the indicator's 1s verb
   // tick) doesn't rescan. Mirrors TokenUsageIndicator's own useMemo.
   const live = useMemo(
-    () => (ctx ? getLiveUsage(ctx.liveEvents) : undefined),
+    () => (ctx ? liveTurnUsage(ctx.liveEvents) : undefined),
     [ctx],
   )
   return numOrZero(live?.output_tokens)
@@ -206,7 +181,7 @@ function getLastTurnCachePct(
   liveEvents: StreamRecord[],
   isStreaming: boolean,
 ): number {
-  const live = isStreaming ? getLiveUsage(liveEvents) : undefined
+  const live = isStreaming ? liveTurnUsage(liveEvents) : undefined
   const usage = live ?? getLatestTranscriptUsage(messages)
   return Math.round(getCacheRatio(usage) * 100)
 }
@@ -243,35 +218,6 @@ function ProgressBar({
       />
     </div>
   )
-}
-
-/** Catalog wording for a window's next reset (see describePlanUsageReset). */
-function usePlanResetText(): (
-  resetsAt: number | undefined,
-  now: number,
-) => string | undefined {
-  const t = useT()
-  const locale = useLocale()
-  return (resetsAt, now) => {
-    if (resetsAt === undefined) return undefined
-    const label = describePlanUsageReset(resetsAt, now)
-    if (label.kind === 'absolute') {
-      const at = new Date(label.at).toLocaleString(locale, {
-        weekday: 'short',
-        hour: 'numeric',
-        minute: '2-digit',
-      })
-      return t('tokenUsage.resetsAt', { time: at })
-    }
-    const duration =
-      label.hours > 0
-        ? t('tokenUsage.durationHrMin', {
-            hours: String(label.hours),
-            minutes: String(label.minutes),
-          })
-        : t('tokenUsage.durationMin', { minutes: String(label.minutes) })
-    return t('tokenUsage.resetsIn', { duration })
-  }
 }
 
 /**
@@ -378,23 +324,12 @@ export function TokenUsageIndicator({
   // The O(messages) walk, keyed on what it reads alone. A catalog arriving is
   // no reason to re-run it — worker snapshots are structured-cloned, so the
   // catalog is a new object on every state push, changed or not.
-  const used = useMemo(() => {
-    const liveUsage = getLiveUsage(liveEvents)
-    if (liveUsage && typeof liveUsage.input_tokens === 'number') {
-      // Full context size; same input + cache + output sum the compact
-      // boundary uses. Relies on the bridge's exclusive-input convention
-      // (cache fields are additive, never a subset of input_tokens).
-      return tokensFromUsage(liveUsage)
-    }
-    return estimateTranscriptTokens(messages)
-  }, [messages, liveEvents])
+  const used = useMemo(() => contextTokensUsed(messages, liveEvents), [messages, liveEvents])
   // The ring, its tooltip and the popover's headline measure usage against
   // the user's auto-compact window — the point it compacts at (the model's
   // window while auto or off): 200k used reads 20% on a 1M model, 40% at a
   // 500k window. It follows the handle while dragging.
-  const effectiveWindow = autoCompactOn && shownChoice !== 'auto'
-    ? autoCompactThreshold
-    : window
+  const effectiveWindow = contextMeasureWindow(modelId, providerId, autoCompact, shownChoice)
   const { pct, barPct, warning, untilAutoCompact } = useMemo(() => {
     const { usedPercentage } = contextUsageShares(used, effectiveWindow)
     return {

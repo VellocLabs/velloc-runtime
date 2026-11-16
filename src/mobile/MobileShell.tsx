@@ -1,7 +1,8 @@
 /**
  * The phone shell of the remote page (F-24). It drives the desktop runtime's sessions through the
  * same session hooks and the same conversation view as the desktop shell, and draws its own
- * chrome around them: the top bar, the session drawer, the session menu. It never imports the
+ * chrome around them: the top bar, the session drawer, the session menu and the open session's
+ * sheets (usage, details, background tasks, model). It never imports the
  * desktop shell's UI (pinned by mobile-shell-imports.test). This phone browses on its own: its open
  * session is not the desktop's.
  */
@@ -11,6 +12,9 @@ import { switchToDesktopShell } from '../browser/boot/mobileEntry'
 import type { AgentRuntimeWorkerInitPayload } from '../browser/worker/workerProtocol'
 import type { BrowserBridgeTransport } from '../browser/bridge/browserBridgeProtocol'
 import type { BrowserWorkerClientTransport } from '../browser/webview/BrowserRuntimeClient'
+import type { NexusTaskSummaryRow } from '../browser/bridge/protocol/ui'
+import { subAgentsEqual } from '../browser/webview/backgroundSubAgents'
+import type { DrivenDesktop } from '../browser/webview/remote/hostIdentity'
 import type {
   RuntimeConnection,
   RuntimeFileAccess,
@@ -38,6 +42,7 @@ import {
   createShellHandleRequestFork,
   createShellHandleRequestRename,
   createShellHandleRewindFromMessage,
+  createShellHandleStopSubAgent,
 } from '../browser/webview/shellSessionRequests'
 import {
   renderShellSessionThread,
@@ -55,6 +60,10 @@ import {
   createShellHandleSelectProjectFolder,
   createShellOnSessionStateChange,
 } from '../browser/webview/shellThreadActions'
+import {
+  createShellHandleStopBackgroundTask,
+  createShellSubAgentRowsForSession,
+} from '../browser/webview/shellTaskActions'
 import { SessionStatusChannelContext } from '../browser/webview/topbar/useNexusSessionStatus'
 import { RuntimeCapabilitiesContext, useCapabilityQuery } from '../browser/webview/useCan'
 import { useMultiSessionClients } from '../browser/webview/useMultiSessionClients'
@@ -64,6 +73,7 @@ import { snapshotNeedsAnswer } from '../utils/sessionNeedsAnswer'
 import { MobileDrawer } from './MobileDrawer'
 import { namedTitle, nextLiveSessionId } from './mobileSessionGroups'
 import { MobileRenameSheet, MobileSessionMenu, type MobileMenuTarget } from './MobileSessionMenu'
+import { MobileShellSheets, type MobileSheetKind } from './MobileShellSheets'
 import { MobileTopBar } from './MobileTopBar'
 import { useThreadBottomInset } from './threadBottomInset'
 
@@ -77,6 +87,8 @@ export type MobileShellProps = {
   sessionChannel?: SessionListChannel
   sessionStatusChannel?: SessionStatusChannel
   runtimeConnection?: () => Promise<RuntimeConnection>
+  /** The desktop this page drives. */
+  remoteHost?: DrivenDesktop
 }
 
 type SessionListPayload = Parameters<ReturnType<typeof useSessionManager>['applyRemoteList']>[0]
@@ -85,6 +97,7 @@ type SessionItem = NonNullable<ShellSessionThreadInputs['sessionItems']>[number]
 type InitPayloadArgs = Parameters<typeof createShellCreateSessionInitPayload>
 
 const noop = (): void => {}
+const NO_TASKS: readonly NexusTaskSummaryRow[] = []
 
 /** The ids whose `flag` is set in a `session.summary` row; `prev` when unchanged. */
 function summaryIdSet(
@@ -111,6 +124,7 @@ export function MobileShell(props: MobileShellProps): ReactNode {
     sessionChannel,
     sessionStatusChannel,
     runtimeConnection,
+    remoteHost,
   } = props
   const t = useT()
   const runtimeCapabilities = useCapabilityQuery(runtimeConnection)
@@ -224,6 +238,7 @@ export function MobileShell(props: MobileShellProps): ReactNode {
   // Running and halted-on-a-question, per session, from the runtime's summary.
   const [summaryRunning, setSummaryRunning] = useState<ReadonlySet<string>>(() => new Set())
   const [summaryNeedsAnswer, setSummaryNeedsAnswer] = useState<ReadonlySet<string>>(() => new Set())
+  const [subAgentRows, setSubAgentRows] = useState<readonly NexusTaskSummaryRow[]>(() => [])
 
   // The session list, and the forks this page asked for: a fork or a rewind
   // switches this page to the copy; another client's fork only lists it.
@@ -245,6 +260,8 @@ export function MobileShell(props: MobileShellProps): ReactNode {
         if (!Array.isArray(rows)) return
         setSummaryRunning(prev => summaryIdSet(prev, rows, 'running'))
         setSummaryNeedsAnswer(prev => summaryIdSet(prev, rows, 'needsAnswer'))
+        const nextTasks = Array.isArray(payload?.subAgents) ? (payload.subAgents as NexusTaskSummaryRow[]) : []
+        setSubAgentRows(prev => (subAgentsEqual(prev, nextTasks) ? prev : nextTasks))
         return
       }
       if (data.type === 'session.removed') {
@@ -339,6 +356,22 @@ export function MobileShell(props: MobileShellProps): ReactNode {
     [updateSessionMeta, clients.updateSessionMetadata],
   )
   const [cliSessions] = useState(() => new Map<string, { cli: string; type: string }>())
+  const subAgentRowsSeenRef = useRef(new Map<string, NexusTaskSummaryRow[]>())
+  const subAgentRowsForSession = useMemo(
+    () => createShellSubAgentRowsForSession(subAgentRows, subAgentRowsSeenRef),
+    [subAgentRows],
+  )
+  const subAgentRowsRef = useRef(subAgentRows)
+  subAgentRowsRef.current = subAgentRows
+  const handleStopBackgroundTask = useMemo(
+    () =>
+      createShellHandleStopBackgroundTask(
+        subAgentRowsRef,
+        clients.submitPromptToSession,
+        createShellHandleStopSubAgent(sessionChannelRef),
+      ),
+    [clients.submitPromptToSession],
+  )
   const noSubAgentRows = useCallback(() => [], [])
 
   // Panes, settings and session cards are the desktop shell's: this shell
@@ -428,6 +461,11 @@ export function MobileShell(props: MobileShellProps): ReactNode {
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [menuTarget, setMenuTarget] = useState<MobileMenuTarget | null>(null)
   const [renameTarget, setRenameTarget] = useState<MobileMenuTarget | null>(null)
+  const [sheet, setSheet] = useState<MobileSheetKind | null>(null)
+  const openSheet = useCallback((kind: MobileSheetKind) => {
+    setMenuTarget(null)
+    setSheet(kind)
+  }, [])
   const launchInProject = useMemo(() => createShellHandleLaunchInProject(openNewSession), [openNewSession])
 
   const selectSession = useCallback(
@@ -447,9 +485,16 @@ export function MobileShell(props: MobileShellProps): ReactNode {
     (sessionId: string) => {
       const item = sessions.find(s => s.sessionId === sessionId)
       if (!item) return
-      // The branch is known for the open session only.
-      const branch = sessionId === activeSessionId ? activeSnapshot?.projectBranch : undefined
-      setMenuTarget({ sessionId, title: namedTitle(item.title), branch: branch || undefined })
+      // The branch and the model are known for the open session only.
+      const current = sessionId === activeSessionId
+      const branch = current ? activeSnapshot?.projectBranch : undefined
+      const selection = current ? activeSnapshot?.currentSelection : undefined
+      const modelLabel = selection
+        ? activeSnapshot?.modelCatalog?.providers
+            .find(p => p.id === selection.providerId)
+            ?.models.find(m => m.id === selection.modelId)?.label
+        : undefined
+      setMenuTarget({ sessionId, title: namedTitle(item.title), branch: branch || undefined, current, modelLabel })
     },
     [sessions, activeSessionId, activeSnapshot],
   )
@@ -476,6 +521,8 @@ export function MobileShell(props: MobileShellProps): ReactNode {
               running={running.has(activeSessionId)}
               onOpenDrawer={() => setDrawerOpen(true)}
               onOpenMenu={() => openRowMenu(activeSessionId)}
+              onOpenDetails={() => openSheet('details')}
+              onOpenUsage={() => openSheet('usage')}
             />
             <div
               className="relative min-h-0 flex-1"
@@ -508,11 +555,25 @@ export function MobileShell(props: MobileShellProps): ReactNode {
                 setRenameTarget(target)
               }}
               onArchive={archiveSession}
+              onBackgroundTasks={() => openSheet('tasks')}
+              onModel={() => openSheet('model')}
             />
             <MobileRenameSheet
               target={renameTarget}
               onClose={() => setRenameTarget(null)}
               onSave={retitleSession}
+            />
+            <MobileShellSheets
+              sheet={sheet}
+              onClose={() => setSheet(null)}
+              sessionId={activeSessionId}
+              state={clients.activeState}
+              taskRows={sheet === 'tasks' ? subAgentRowsForSession(activeSessionId) : NO_TASKS}
+              onStopTask={handleStopBackgroundTask}
+              onSelectModel={handleSessionSelectModel}
+              host={remoteHost}
+              projectRoot={projectName ? projectRoot : undefined}
+              sessionChannel={sessionChannel}
             />
           </main>
         </SessionStatusChannelContext.Provider>

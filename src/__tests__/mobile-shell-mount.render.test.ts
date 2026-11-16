@@ -177,7 +177,15 @@ describe('MobileShell', () => {
     localStorage.setItem(ACTIVE_SESSION_STORAGE_KEY, 'session-a')
     const worker = fakeWorker()
     const sessions = fakeSessionChannel()
-    render(createElement(MobileShell, { createWorkerTransport: worker.createWorkerTransport, hostBridgeTransport, createInitPayload, sessionChannel: sessions.channel }))
+    render(
+      createElement(MobileShell, {
+        createWorkerTransport: worker.createWorkerTransport,
+        hostBridgeTransport,
+        createInitPayload,
+        sessionChannel: sessions.channel,
+        remoteHost: { address: '192.168.1.20:7777', hostName: 'STUDIO-PC', osName: 'Windows 11' },
+      }),
+    )
     act(() => {
       sessions.emit({
         type: 'session.list',
@@ -286,5 +294,58 @@ describe('MobileShell', () => {
     const started = localStorage.getItem(ACTIVE_SESSION_STORAGE_KEY)!
     await waitFor(() => expect(worker.initialized).toContain(started))
     expect(sessions.requests).toContainEqual({ route: 'presence.setViewing', payload: { sessionId: started } })
+  })
+
+  it('opens usage from i and the details from the title pill', async () => {
+    mountWithTwoSessions()
+    await waitFor(() => expect(screen.getByTestId('mobile-topbar-title').textContent).toBe('Trip'))
+    await waitFor(() => expect(screen.getByTestId('mobile-shell').textContent).toContain('plan the trip'))
+    fireEvent.click(screen.getByTestId('mobile-topbar-usage'))
+    expect(screen.getByTestId('mobile-usage-sheet')).toBeTruthy()
+    expect(screen.getByTestId('mobile-usage-context-percent').textContent).toMatch(/^\d+%$/)
+    fireEvent.keyDown(document.activeElement ?? document.body, { key: 'Escape' })
+    await waitFor(() => expect(screen.queryByTestId('mobile-usage-sheet')).toBeNull())
+
+    fireEvent.click(screen.getByTestId('mobile-topbar-details'))
+    const details = screen.getByTestId('mobile-details-sheet')
+    expect(screen.getByTestId('mobile-details-computer').textContent).toContain('STUDIO-PC')
+    expect(screen.getByTestId('mobile-details-project').textContent).toContain('holiday')
+    expect(details.querySelector('[data-testid="mobile-details-branch"]')).toBeNull()
+  })
+
+  it("lists the open session's background tasks from the menu and stops a running one", async () => {
+    const { sessions } = mountWithTwoSessions()
+    await waitFor(() => expect(screen.getByTestId('mobile-topbar-title').textContent).toBe('Trip'))
+    act(() => {
+      sessions.emit({
+        type: 'session.summary',
+        payload: {
+          sessions: [],
+          subAgents: [
+            { sessionId: 'task-a', spawnerSessionId: 'session-a', status: 'running', description: 'Research flights' },
+            { sessionId: 'task-b', spawnerSessionId: 'session-b', status: 'running', description: 'Count coins' },
+          ],
+        },
+      })
+    })
+    fireEvent.click(screen.getByTestId('mobile-topbar-menu'))
+    fireEvent.click(screen.getByTestId('mobile-menu-background-tasks'))
+    expect(screen.queryByTestId('mobile-session-menu')).toBeNull()
+    const rows = screen.getAllByTestId('mobile-task-row')
+    expect(rows.map(r => r.getAttribute('data-task-id'))).toEqual(['task-a'])
+    expect(sessions.requests).toContainEqual({ route: 'task.recoverBackground', payload: { sessionId: 'session-a' } })
+    fireEvent.click(screen.getByTestId('mobile-task-stop'))
+    expect(sessions.requests).toContainEqual(
+      expect.objectContaining({ route: 'task.stop', payload: expect.objectContaining({ sessionId: 'task-a' }) }),
+    )
+  })
+
+  it('opens the model sheet from the menu of the open session', async () => {
+    mountWithTwoSessions()
+    await waitFor(() => expect(screen.getByTestId('mobile-topbar-title').textContent).toBe('Trip'))
+    fireEvent.click(screen.getByTestId('mobile-topbar-menu'))
+    fireEvent.click(screen.getByTestId('mobile-menu-model'))
+    expect(screen.queryByTestId('mobile-session-menu')).toBeNull()
+    expect(screen.getByTestId('mobile-model-sheet')).toBeTruthy()
   })
 })

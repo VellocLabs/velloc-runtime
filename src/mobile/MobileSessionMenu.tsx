@@ -1,10 +1,11 @@
 /**
  * The phone shell's session menu and rename sheet (F-24). The top bar's `…` opens the menu for the
  * open session; a long press on a drawer row opens it for that row. Items: Rename, Copy branch
- * name (only when the session's branch is known), Archive.
+ * name (only when the session's branch is known), Background tasks and Model (the open session
+ * only), Archive.
  */
 import { useEffect, useState, type FormEvent } from 'react'
-import { ArchiveIcon, GitBranchIcon, PencilIcon } from 'lucide-react'
+import { ArchiveIcon, BoxIcon, GitBranchIcon, ListChecksIcon, PencilIcon } from 'lucide-react'
 
 import { useUnsavedEditsGate } from '../glic/unsavedEditsGate'
 import { useT } from '../browser/webview/i18n'
@@ -16,6 +17,10 @@ export type MobileMenuTarget = {
   title: string
   /** The session's git branch, when known. */
   branch?: string
+  /** The open session: its menu also offers Background tasks and Model. */
+  current?: boolean
+  /** The open session's model, shown under the Model item. */
+  modelLabel?: string
 }
 
 export type MobileSessionMenuProps = {
@@ -23,6 +28,8 @@ export type MobileSessionMenuProps = {
   onClose: () => void
   onRename: (target: MobileMenuTarget) => void
   onArchive: (sessionId: string) => void
+  onBackgroundTasks?: () => void
+  onModel?: () => void
   /** Clipboard writer; a test passes its own. Resolves whether the copy happened. */
   writeText?: (text: string) => Promise<boolean>
 }
@@ -32,6 +39,8 @@ export function MobileSessionMenu({
   onClose,
   onRename,
   onArchive,
+  onBackgroundTasks,
+  onModel,
   writeText = writeClipboard,
 }: MobileSessionMenuProps) {
   const t = useT()
@@ -75,6 +84,23 @@ export function MobileSessionMenu({
             <p role="alert" data-testid="mobile-menu-copy-failed" className="px-3 pb-1 text-destructive text-sm">
               {t('mobile.menu.copyFailed')}
             </p>
+          ) : null}
+          {target.current && onBackgroundTasks ? (
+            <MobileSheetAction
+              testId="mobile-menu-background-tasks"
+              icon={<ListChecksIcon className="size-5" />}
+              label={t('mobile.menu.backgroundTasks')}
+              onSelect={onBackgroundTasks}
+            />
+          ) : null}
+          {target.current && onModel ? (
+            <MobileSheetAction
+              testId="mobile-menu-model"
+              icon={<BoxIcon className="size-5" />}
+              label={t('mobile.menu.model')}
+              detail={target.modelLabel}
+              onSelect={onModel}
+            />
           ) : null}
           <div aria-hidden className="mx-3 my-1 h-px bg-border" />
           <MobileSheetAction

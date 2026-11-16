@@ -11,11 +11,13 @@ export type MobileSheetProps = {
   onOpenChange: (open: boolean) => void
   /** The sheet's heading; also its accessible name. */
   title: string
+  /** A control beside the title, such as a refresh button. */
+  action?: ReactNode
   testId: string
   children: ReactNode
 }
 
-export function MobileSheet({ open, onOpenChange, title, testId, children }: MobileSheetProps) {
+export function MobileSheet({ open, onOpenChange, title, action, testId, children }: MobileSheetProps) {
   return (
     <DialogPrimitive.Root open={open} onOpenChange={onOpenChange}>
       <DialogPrimitive.Portal>
@@ -30,8 +32,9 @@ export function MobileSheet({ open, onOpenChange, title, testId, children }: Mob
           style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
         >
           <div aria-hidden className="mx-auto mt-2 h-1 w-10 shrink-0 rounded-full bg-muted-foreground/30" />
-          <div className="shrink-0 px-5 pt-3 pb-2">
-            <DialogPrimitive.Title className="truncate font-semibold text-body">{title}</DialogPrimitive.Title>
+          <div className="flex shrink-0 items-center gap-2 px-5 pt-3 pb-2">
+            <DialogPrimitive.Title className="min-w-0 flex-1 truncate font-semibold text-body">{title}</DialogPrimitive.Title>
+            {action}
           </div>
           <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-2 pb-3">{children}</div>
         </DialogPrimitive.Content>
