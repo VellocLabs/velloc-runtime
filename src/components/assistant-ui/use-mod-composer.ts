@@ -1,17 +1,25 @@
 /**
- * The prompt box's answers to `$.prompt.read`, `$.prompt.fill` and `$.prompt.suggest`
- * (F-25). `fill` is refused with `dialog` while a question holds the box; a suggestion
+ * The prompt box's answers to `$.prompt.read`, `$.prompt.fill`, `$.prompt.suggest` and
+ * `$.prompt.paint` (F-25). `fill` is refused with `dialog` while a question holds the box; a suggestion
  * shows only in an empty box with no turn running. Mod text is shown as it is. While a
  * mod hooks `prompt.edit`, typing, deleting and pasting are asked of the runtime first;
  * while one hooks `prompt.change`, a clear or an undo of the box is told. The virtual
- * text a fill or an edit's answer drew stays while the draft is the one it was drawn on.
+ * text a fill or an edit's answer drew stays while the draft is the one it was drawn on;
+ * so do each plugin's painted runs, a later paint of the same plugin replacing them.
  */
 import { useCallback, useEffect, useRef, useState, type RefObject } from 'react'
 
-import { isVirtualTextList, type ModsPromptEditKey } from '@/browser/runtimeProtocol'
+import { isVirtualTextList, type ModsPromptEditKey, type ModsPromptVirtualText } from '@/browser/runtimeProtocol'
 import { fillBox } from '@/mods/modComposer'
 
-import { landFillRuns, trailingVirtualText, untypedInputCause, type DecoratedDraft } from './mod-prompt-box'
+import {
+  landFillRuns,
+  paintedDraft,
+  trailingVirtualText,
+  untypedInputCause,
+  type DecoratedDraft,
+  type PaintedDraft,
+} from './mod-prompt-box'
 
 import { PromptEditPump, type PageEdit, type PromptEditBox } from './mod-prompt-edit'
 import { useModUi, type ModUiComposerAnswer, type ModUiComposerRequest } from './mod-ui-context'
@@ -49,7 +57,12 @@ export function answerComposerRequest(
   request: ModUiComposerRequest,
   box: { text: string; cursor: number },
   state: { isRunning: boolean; isBlocked: boolean },
-): { answer: ModUiComposerAnswer; write?: { text: string; cursor: number }; suggest?: string } {
+): {
+  answer: ModUiComposerAnswer
+  write?: { text: string; cursor: number }
+  suggest?: string
+  paint?: { plugin: string; text: string; runs: ModsPromptVirtualText[] }
+} {
   switch (request.op) {
     case 'read':
       return { answer: { requestId: request.requestId, op: 'read', box } }
@@ -59,6 +72,15 @@ export function answerComposerRequest(
       }
       const next = fillBox(box, request.text, request.mode)
       return { answer: { requestId: request.requestId, op: 'fill', isFilled: true, box: next }, write: next }
+    }
+    case 'paint': {
+      // A clear with no draft named takes the plugin's runs off whatever the box holds.
+      const draft = request.text ?? (request.decorations.length === 0 ? box.text : undefined)
+      if (draft !== box.text) return { answer: { requestId: request.requestId, op: 'paint', isPainted: false, box } }
+      return {
+        answer: { requestId: request.requestId, op: 'paint', isPainted: true, box },
+        paint: { plugin: request.plugin, text: box.text, runs: request.decorations },
+      }
     }
     case 'suggest': {
       const isShown = box.text === '' && !state.isRunning && request.text.trim() !== ''
@@ -132,6 +154,7 @@ export function useModComposer({ composer, input, isRunning, isBlocked }: ModCom
   const { onComposerRequest, answerComposer, editHooked, promptEdit, changeHooked, promptChange } = useModUi()
   const [suggestion, setSuggestion] = useState<string | null>(null)
   const [decorated, setDecorated] = useState<DecoratedDraft | null>(null)
+  const [painted, setPainted] = useState<PaintedDraft | null>(null)
   // The page's own writes of the box (a fill, an edit's answer): not a clear.
   const writingBox = useRef(false)
   const state = useRef({ isRunning, isBlocked })
@@ -151,7 +174,7 @@ export function useModComposer({ composer, input, isRunning, isBlocked }: ModCom
           : typeof caret === 'number'
             ? Math.max(0, Math.min(caret, text.length))
             : text.length
-      const { answer, write, suggest } = answerComposerRequest(request, { text, cursor }, state.current)
+      const { answer, write, suggest, paint } = answerComposerRequest(request, { text, cursor }, state.current)
       // Answer before writing: the answer is computed already, and `setText`
       // re-renders the composer synchronously — on a loaded page that render
       // outlasted the runtime's wait, and a fill that landed came back
@@ -180,6 +203,7 @@ export function useModComposer({ composer, input, isRunning, isBlocked }: ModCom
         }, 0)
       }
       if (suggest !== undefined) setSuggestion(suggest)
+      if (paint) setPainted(held => paintedDraft(held, paint))
     })
   }, [onComposerRequest, answerComposer, composer, input])
 
@@ -309,6 +333,18 @@ export function useModComposer({ composer, input, isRunning, isBlocked }: ModCom
     })
   }, [composer, decorated])
 
+  // Painted runs belong to the draft they were painted on.
+  useEffect(() => {
+    if (painted === null) return
+    if (composer.getState().text !== painted.text) {
+      setPainted(null)
+      return
+    }
+    return composer.subscribe(() => {
+      if (composer.getState().text !== painted.text) setPainted(null)
+    })
+  }, [composer, painted])
+
   // Typing, or a turn starting, takes the suggestion away.
   useEffect(() => {
     if (suggestion === null) return
@@ -327,7 +363,11 @@ export function useModComposer({ composer, input, isRunning, isBlocked }: ModCom
     return true
   }, [composer, suggestion])
 
-  const drawn = decorated ? trailingVirtualText(decorated, decorated.text) : null
-  const virtualText = decorated && drawn !== null ? { draft: decorated.text, text: drawn } : null
+  const draft = composer.getState().text
+  const parts = [
+    decorated ? trailingVirtualText(decorated, draft) : null,
+    painted ? trailingVirtualText({ text: painted.text, runs: Object.values(painted.byPlugin).flat() }, draft) : null,
+  ].filter((part): part is string => part !== null)
+  const virtualText = parts.length > 0 ? { draft, text: parts.join('') } : null
   return { suggestion, takeSuggestion, virtualText }
 }

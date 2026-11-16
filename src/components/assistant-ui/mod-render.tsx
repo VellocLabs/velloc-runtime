@@ -1130,6 +1130,32 @@ function ModAbovePromptBody() {
   );
 }
 
+/** A row a plugin placed in the transcript (`$.ui.place`): empty until a
+ *  hook draws it, then the tree in the plugin's frame. */
+export function ModPlacedSite({ plugin, id, requestId }: { plugin: string; id: string; requestId: string }) {
+  const ref = React.useRef<HTMLDivElement | null>(null);
+  const viewport = useCellViewport(ref);
+  const props = React.useMemo(() => ({ id, plugin }), [id, plugin]);
+  const drawn = useModRender("Placed", requestId, props, viewport);
+  const isDrawn = drawn?.kind === "tree";
+  return (
+    <div
+      ref={ref}
+      data-slot="mod-placed"
+      data-testid={`mod-placed-${plugin}-${id}`}
+      data-mod-request-id={requestId}
+      data-mod-drawn={drawn?.kind ?? "pending"}
+      className="mx-auto w-full max-w-(--thread-max-width)"
+    >
+      {isDrawn ? (
+        <ModPluginFrame slot="mod-placed-body" plugins={[drawn.plugin ?? plugin]}>
+          <ModRenderTree tree={drawn.tree} site={{ component: "Placed", requestId, plugin: drawn.plugin ?? plugin }} />
+        </ModPluginFrame>
+      ) : null}
+    </div>
+  );
+}
+
 /** The band above the prompt, when some loaded hook draws it. */
 export function ModAbovePrompt() {
   const { hooked } = useModUi();

@@ -147,6 +147,7 @@ describe('the calls through the runtime', () => {
   const pageWith = (box: PromptBox, refusal?: 'dialog') => (request: ModComposerRequest) => {
     if (request.op === 'read') return { op: 'read' as const, box }
     if (request.op === 'suggest') return { op: 'suggest' as const, isShown: box.text === '' }
+    if (request.op === 'paint') return { op: 'paint' as const, isPainted: request.text === undefined || request.text === box.text, box }
     if (refusal) return { op: 'fill' as const, isFilled: false, refusal, box }
     return { op: 'fill' as const, isFilled: true, box: fillBox(box, request.text, request.mode) }
   }
@@ -320,6 +321,77 @@ describe('the calls through the runtime', () => {
     await runtime.ready
     expect(requests).toEqual([{ op: 'suggest', text: 'run the tests', requestId: expect.any(String) }])
     expect(logs()).toEqual([{ shown: { isShown: true }, hidden: { isShown: false }, blank: { isShown: false } }])
+  })
+
+  it('paint: the caller\'s runs go to the page with its name; a stale draft is not painted; a hook may rewrite or deny', async () => {
+    const { runtime, logs, requests } = world(
+      {
+        caller: `
+          export function register(on) {
+            on('session.start', async ($, e, next) => {
+              const { text } = await $.prompt.read();
+              const run = { start: 0, end: text.length, bold: true, virtualText: ' ← draft' };
+              const painted = await $.prompt.paint({ text, decorations: [run] });
+              const stale = await $.prompt.paint({ text: 'other', decorations: [run] });
+              const cleared = await $.prompt.paint({ decorations: [] });
+              const denied = await $.prompt.paint({ text: 'secret', decorations: [run] }).catch(err => 'rejected: ' + err.message);
+              const bad = await $.prompt.paint({ decorations: [run] }).catch(err => err.name + ': ' + err.message);
+              await $.ui.log(JSON.stringify({ painted, stale, cleared, denied, bad }));
+              return next(e);
+            });
+          }
+        `,
+        guard: `
+          export function register(on) {
+            on('prompt.paint', ($, e, next) => (e.text === 'secret' ? { deny: 'no paint' } : next(e)));
+          }
+        `,
+      },
+      pageWith({ text: 'fix it', cursor: 6 }),
+    )
+    await runtime.ready
+    const [got] = logs()
+    expect(got.painted).toEqual({ isPainted: true, text: 'fix it', cursor: 6 })
+    expect(got.stale).toEqual({ isPainted: false, text: 'fix it', cursor: 6 })
+    expect(got.cleared).toEqual({ isPainted: true, text: 'fix it', cursor: 6 })
+    expect(got.denied).toMatch(/^rejected: .*no paint/)
+    expect(got.bad).toMatch(/^TypeError: .*may be left out only with an empty list/)
+    const paints = requests.filter(r => r.op === 'paint')
+    expect(paints[0]).toMatchObject({ op: 'paint', plugin: 'caller', text: 'fix it', decorations: [{ start: 0, end: 6, virtualText: ' ← draft' }] })
+    expect(paints).toHaveLength(3)
+  })
+
+  it('paint: refused, with the box empty, where another plugin hooks prompt.read or the caller never reads the box', async () => {
+    const { runtime, logs, requests } = world(
+      {
+        caller: `
+          export function register(on) {
+            on('session.start', async ($, e, next) => {
+              await $.ui.log(JSON.stringify(await $.prompt.paint({ text: 'x', decorations: [] })));
+              if (false) await $.prompt.read();
+              return next(e);
+            });
+          }
+        `,
+        scrub: `
+          export function register(on) {
+            on('prompt.read', async ($, e, next) => next(e));
+          }
+        `,
+        blind: `
+          export function register(on) {
+            on('session.start', async ($, e, next) => {
+              await $.ui.log('blind ' + JSON.stringify(await $.prompt.paint({ text: 'x', decorations: [] })));
+              return next(e);
+            });
+          }
+        `,
+      },
+      pageWith({ text: 'x', cursor: 1 }),
+    )
+    await runtime.ready
+    expect(logs()).toEqual([{ isPainted: false, text: '', cursor: 0 }])
+    expect(requests.filter(r => r.op === 'paint')).toEqual([])
   })
 
   it('read: an op event — a hook above scrubs the draft for another plugin', async () => {

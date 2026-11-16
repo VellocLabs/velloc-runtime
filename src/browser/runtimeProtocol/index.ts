@@ -168,6 +168,7 @@ export {
   type ModsPageComponent,
   type ModsPageRequest,
   type ModsScrollBlock,
+  type ModsPageSelection,
   type ModsScrollMeasured,
   type ModsScrollTarget,
   type ModsAskAnswer,
@@ -230,6 +231,7 @@ export {
   type ModsUiInputPayload,
   type ModsUiInputResult,
   type ModsUiPane,
+  type ModsUiPlacedRow,
   type ModsUiStalePayload,
   type ModsUiState,
 } from './mods'

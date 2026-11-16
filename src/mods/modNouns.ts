@@ -60,12 +60,14 @@ import { modCommandSpecOf, type ModCommandInfo, type ModCommandSpec } from './mo
 import { isScriptRunResult, scriptRunInputOf, scriptTokenOf, type ModScriptHost, type ModScriptRunInput } from './modScript'
 import { uiAskArgsOf, type ModUiAskArgs, type ModUiState } from './modUi'
 import {
+  isUiSelectionResult,
   uiCopy,
   uiCopyArgsOf,
   uiFocus,
   uiFocusArgsOf,
   uiScroll,
   uiScrollArgsOf,
+  uiSelectionCore,
   type ModPageCall,
   type ModPageHost,
   type UiCopyArgs,
@@ -74,6 +76,7 @@ import {
 } from './modPage'
 import { uiBlit, uiBlitArgsOf, type UiBlitArgs } from './modBlit'
 import { isPaneId } from './modRender'
+import { isUiPlaceResult, uiPlaceArgsOf, type UiPlaceArgs, type UiPlaceResult } from './modPlaces'
 import type { ModPane, ModPaneOpenArgs, ModPaneOpenResult } from './modPanes'
 import type { ModToolHost } from './toolCallEvent'
 import type { StoredRow } from './sessionAppendEvent'
@@ -105,7 +108,15 @@ import {
   type SessionSendArgs,
 } from './sessionNouns'
 import type { DispatchContext } from './modTypes'
-import { isUiNotifyResult, uiNotifyArgsOf, uiNotifyCore, type ModNotifyHost } from './modNotify'
+import {
+  isUiCancelNotifyResult,
+  isUiNotifyResult,
+  uiCancelNotifyArgsOf,
+  uiCancelNotifyCore,
+  uiNotifyArgsOf,
+  uiNotifyCore,
+  type ModNotifyHost,
+} from './modNotify'
 import { isUiViewResult, uiViewArgsOf, uiViewCore } from './modAgentView'
 import { isSessionIdentity, promptMediaArgsOf, promptMediaOf, sessionIdentityOf, type PromptMediaArgs } from './modManagedReads'
 import {
@@ -127,16 +138,21 @@ import {
   EMPTY_PROMPT_BOX,
   HEADLESS_COMPOSER,
   PROMPT_FILL_MODES,
+  isDecoration,
   isPromptBox,
+  isPromptPainted,
   promptFillArgsOf,
   promptSuggestArgsOf,
+  promptPaintArgsOf,
   withoutInvisible,
   type ModComposerHost,
   type PromptBox,
   type PromptFillArgs,
   type PromptFillMode,
   type PromptFillRefusal,
+  type PromptDecoration,
   type PromptFilled,
+  type PromptPainted,
   type PromptSuggestArgs,
 } from './modComposer'
 
@@ -234,6 +250,9 @@ export type ModNounHost = {
   /** `$.ui.open` / `.close` / `.panes` / `.invalidate` — the slot's panes
    *  and drawings, supplied by `ModRuntime`. */
   panes?: ModPaneHost
+  /** `$.ui.place` — the session's placed rows (`modPlaces.ts`), supplied by
+   *  `ModRuntime`. Absent: the noun is refused by name. */
+  places?: { place(plugin: string, id: string): UiPlaceResult }
   /** `$.ui.copy` / `.focus` / `.scroll` — the clipboards, the focus ring and
    *  the windows of the page drawing the session (`modPage.ts`), supplied by
    *  `ModRuntime`. Absent: the nouns are refused by name. */
@@ -589,6 +608,12 @@ const NOUNS: Record<string, Record<string, NounMethod>> = Object.assign(Object.c
       run: (e: unknown, { call, session }: NounContext) => uiNotifyCore(e, call, session.notifications),
       accepts: isUiNotifyResult,
     },
+    // `e` is `{ key }`; no host holds one to take back (`modNotify.ts`).
+    cancelNotify: {
+      input: (args: readonly unknown[]) => uiCancelNotifyArgsOf(args[0]),
+      run: () => uiCancelNotifyCore(),
+      accepts: isUiCancelNotifyResult,
+    },
     // `e` is `{ agentId? }`: the view published on the slot's state for the
     // page; an id that is no agent of this session is answered `{ deny }`
     // (`modAgentView.ts`).
@@ -644,6 +669,16 @@ const NOUNS: Record<string, Record<string, NounMethod>> = Object.assign(Object.c
       raisesItself: true as const,
       input: (args: readonly unknown[]) => uiCopyArgsOf(args[0]),
       run: (e: unknown, context: NounContext) => uiCopy(e as UiCopyArgs, pageCallOf(context, 'copy')),
+    },
+    // `read`-like op event: what the person last selected with the mouse and
+    // the row it lies in; a hook above may scrub it or deny it (`modPage.ts`).
+    selection: {
+      input: () => ({}),
+      run: (_e: unknown, context: NounContext) => {
+        const { host, signal } = pageCallOf(context, 'selection')
+        return uiSelectionCore(host, signal)
+      },
+      accepts: isUiSelectionResult,
     },
     // "Moves the focus ring of one of this plugin's sites onto an element it
     // drew there … Raised as `ui.focus`, origin `plugin`."
@@ -733,6 +768,15 @@ const NOUNS: Record<string, Record<string, NounMethod>> = Object.assign(Object.c
       },
       accepts: (result: unknown) => isRecord(result) && typeof result.isPlaced === 'boolean',
     },
+    // `$.ui.place({ id })`: an op event, `id` pinned; core the slot's rows.
+    place: {
+      input: (args: readonly unknown[]) => uiPlaceArgsOf(args[0]),
+      run: (_e: unknown, { call, session }: NounContext) => {
+        if (!session.places) return notSupported('$.ui.place is not available: this session draws no transcript')
+        return session.places.place(call.plugin, (call.args[0] as UiPlaceArgs).id)
+      },
+      accepts: isUiPlaceResult,
+    },
     // `$.ui.close({ id })`: `e` is `{ id, origin: { kind: 'plugin' } }`; "a hook
     // that answers without `next` keeps the pane open". Core closes it.
     close: {
@@ -806,6 +850,12 @@ const NOUNS: Record<string, Record<string, NounMethod>> = Object.assign(Object.c
       raisesItself: true as const,
       input: (args: readonly unknown[]) => promptFillArgsOf(args[0]),
       run: (e: unknown, context: NounContext) => promptFill(e as PromptFillArgs, context),
+    },
+    // An op event: a hook above may rewrite the runs or `{ deny }` them.
+    paint: {
+      input: (args: readonly unknown[]) => promptPaintArgsOf(args[0]),
+      run: (e: unknown, context: NounContext) => promptPaint(e, context),
+      accepts: isPromptPainted,
     },
     suggest: {
       raisesItself: true as const,
@@ -1626,6 +1676,26 @@ async function promptFill(args: PromptFillArgs, context: NounContext): Promise<P
   const outcome = { isFilled, ...(refusal ? { refusal } : {}) }
   if (!session.composer?.readsBox?.(call.plugin)) return { ...outcome, ...EMPTY_PROMPT_BOX }
   return { ...outcome, ...(await boxAsRead(filled?.box, context)) }
+}
+
+/**
+ * Core of `prompt.paint`: the caller's runs over the draft, nothing else in
+ * the box changed. Refused where another plugin hooks `prompt.read` (its
+ * scrub of the draft would not be the draft painted) and where the caller
+ * may not read the box; the box handed back is then empty.
+ */
+async function promptPaint(e: unknown, { call, session, dispatcher }: NounContext): Promise<PromptPainted> {
+  const composer = session.composer
+  const others = dispatcher.matchersFor('prompt.read').some(hook => hook.plugin !== call.plugin)
+  if (!composer?.paint || others || !composer.readsBox?.(call.plugin)) return { isPainted: false, ...EMPTY_PROMPT_BOX }
+  const arrived = isRecord(e) ? e : {}
+  const decorations = Array.isArray(arrived.decorations) && arrived.decorations.every(isDecoration) ? arrived.decorations : []
+  const text = typeof arrived.text === 'string' ? arrived.text : undefined
+  const painted = await composer.paint(
+    { plugin: call.plugin, ...(text !== undefined ? { text } : {}), decorations: decorations as PromptDecoration[] },
+    call.signal,
+  )
+  return { isPainted: painted.isPainted, ...painted.box }
 }
 
 /** The box as the caller's `$.prompt.read()` would read it: `prompt.read`

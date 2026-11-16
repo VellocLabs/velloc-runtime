@@ -12,6 +12,7 @@ import { ModComposerBridge, type DecoratedPromptBox, type ModComposerAnswer } fr
 import { ModEngineEvents } from './ModEngineEvents'
 import { errorMessage } from './chainRules'
 import { ModPageBridge, type ModPageAnswer } from './modPage'
+import type { ModPlaceRegistry } from './modPlaces'
 import { ModPaneRegistry, type ModPaneSeat } from './modPanes'
 import { ModUiState, type ModUiAskAnswer, type ModUiEvent, type ModUiSnapshot, type ModUiStale } from './modUi'
 import {
@@ -42,6 +43,7 @@ import {
 export abstract class ModUiSurface extends ModEngineEvents {
   abstract readonly ui: ModUiState
   abstract readonly panes: ModPaneRegistry
+  abstract readonly places: ModPlaceRegistry
   protected abstract readonly composer: ModComposerBridge | undefined
   protected abstract readonly page: ModPageBridge | undefined
   protected abstract instanceOf(plugin: string): ModInstance | undefined
@@ -81,6 +83,7 @@ export abstract class ModUiSurface extends ModEngineEvents {
         ...(pane.rows !== undefined ? { rows: pane.rows } : {}),
         ...(pane.columns !== undefined ? { columns: pane.columns } : {}),
       })),
+      placed: this.places.list(),
       hooked: this.renderSites(),
       ...(this.hasPromptEditHooks() ? { editHooked: true } : {}),
       ...(this.hasPromptAutocompleteHooks() ? { autocompleteHooked: true } : {}),
@@ -575,12 +578,18 @@ export abstract class ModUiSurface extends ModEngineEvents {
     this.readsOf.clear()
   }
 
-  /** A plugin unloaded or lost its worker: its panes go ("`unload` drops a
+  /** A plugin unloaded or lost its worker: its panes and placed rows go ("`unload` drops a
    *  pane nothing draws any more … gone before the hooks hear of it"), and
    *  its drawings are forgotten. */
   protected pluginGone(plugin: string): void {
     for (const id of this.panes.clearPlugin(plugin)) {
       for (const key of this.keysOfSite('Pane', id)) {
+        this.drawings.delete(key)
+        this.unsubscribeAll(key)
+      }
+    }
+    for (const requestId of this.places.clearPlugin(plugin)) {
+      for (const key of this.keysOfSite('Placed', requestId)) {
         this.drawings.delete(key)
         this.unsubscribeAll(key)
       }

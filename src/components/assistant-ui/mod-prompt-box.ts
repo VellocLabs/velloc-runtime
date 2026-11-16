@@ -11,6 +11,22 @@ import { autocompleteTokenAt } from '@/mods/promptBoxEvents'
  *  draft, gone at its next change. */
 export type DecoratedDraft = { text: string; runs: readonly ModsPromptVirtualText[] }
 
+/** Each plugin's painted runs over one draft, in the order the plugins
+ *  first painted it. */
+export type PaintedDraft = { text: string; byPlugin: Readonly<Record<string, readonly ModsPromptVirtualText[]>> }
+
+/** `held` after one plugin's paint of `text`: its runs replace those it
+ *  painted before; an empty list takes them off. Another draft starts over. */
+export function paintedDraft(
+  held: PaintedDraft | null,
+  paint: { plugin: string; text: string; runs: readonly ModsPromptVirtualText[] },
+): PaintedDraft | null {
+  const byPlugin: Record<string, readonly ModsPromptVirtualText[]> = held && held.text === paint.text ? { ...held.byPlugin } : {}
+  if (paint.runs.length === 0) delete byPlugin[paint.plugin]
+  else byPlugin[paint.plugin] = paint.runs
+  return Object.keys(byPlugin).length > 0 ? { text: paint.text, byPlugin } : null
+}
+
 /** A fill's runs, given as offsets into the filled text, moved to where that
  *  text lands in the draft. */
 export function landFillRuns(

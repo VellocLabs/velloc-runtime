@@ -8,8 +8,10 @@
 
 import type { TraceEntry } from './modTypes'
 import { buttonActionProblem } from './modEngineActions'
+import type { PlacedRenderProps } from './modPlaces'
 
-/** The sites Velloc draws — the two with no engine drawing ("go
+/** The sites Velloc draws — the three with no engine drawing (`Placed`, a
+ *  row a plugin placed in the transcript, is the third) ("go
  *  first; then the sites whose props are nearly text"), and `UserMessage`,
  *  `AssistantMessage`, `CommandOutput`, `ToolUse`, `ToolResult` and
  *  `ToolGroup`, the ones with one, and `PromptHint`, the composer's
@@ -27,6 +29,7 @@ export const RENDER_SITES = [
   'ToolResult',
   'ToolGroup',
   'PromptHint',
+  'Placed',
 ] as const
 
 /** `PromptHint`'s one instance: "one instance", as the band is `band`. */
@@ -179,6 +182,7 @@ export type RenderInput = {
     | ToolResultRenderProps
     | ToolGroupRenderProps
     | PromptHintRenderProps
+    | PlacedRenderProps
 }
 
 /** What an engine node draws with when a hook rewrote its props: "`next(e)`

@@ -12,6 +12,7 @@ import type {
   ModsPromptEdit,
   ModsPromptSuggestion,
   ModsPromptVirtualText,
+  ModsUiPlacedRow,
 } from '@/browser/runtimeProtocol'
 
 export type ModUiStatusLine = { plugin: string; text: string }
@@ -68,6 +69,7 @@ export type ModUiRenderSite =
   | 'ToolResult'
   | 'ToolGroup'
   | 'PromptHint'
+  | 'Placed'
 
 export type ModUiViewport = { columns: number; rows: number; isFullscreen?: boolean }
 
@@ -104,11 +106,12 @@ export type ModUiStale = { all: number; sites: Readonly<Record<string, number>> 
 
 export const staleKeyOf = (component: string, requestId: string): string => `${component}\u0000${requestId}`
 
-/** A request to the prompt box (`$.prompt.read` / `.fill` / `.suggest`). */
+/** A request to the prompt box (`$.prompt.read` / `.fill` / `.suggest` / `.paint`). */
 export type ModUiComposerRequest =
   | { requestId: string; op: 'read' }
   | { requestId: string; op: 'fill'; text: string; mode: 'replace' | 'append' | 'insert'; decorations?: ModsPromptVirtualText[] }
   | { requestId: string; op: 'suggest'; text: string }
+  | { requestId: string; op: 'paint'; plugin: string; text?: string; decorations: ModsPromptVirtualText[] }
 
 export type ModUiPromptBox = { text: string; cursor: number }
 
@@ -119,6 +122,7 @@ export type ModUiComposerAnswer =
   | { requestId: string; op: 'read'; box: ModUiPromptBox }
   | { requestId: string; op: 'fill'; isFilled: boolean; refusal?: 'no_composer' | 'dialog'; box: ModUiPromptBox }
   | { requestId: string; op: 'suggest'; isShown: boolean }
+  | { requestId: string; op: 'paint'; isPainted: boolean; box: ModUiPromptBox }
 
 /** A mod's question waiting for the person (`$.ui.ask`). The question, the
  *  chip and the labels are the mod's own text; a label the engine padded a
@@ -149,6 +153,8 @@ export type ModUiContextValue = {
   isLoaded?: boolean
   /** The open panes and the hooked sites. */
   panes: readonly ModUiPaneRow[]
+  /** The rows plugins placed in the transcript, in placing order. */
+  placed: readonly ModsUiPlacedRow[]
   /** True where the page docks the panes in its Plugins side pane
    *  (`placement: 'dock'`): the thread then draws none above the prompt. */
   panesDocked?: boolean
@@ -228,6 +234,7 @@ export const EMPTY_MOD_UI: ModUiContextValue = {
   dismissToast: () => {},
   holdToast: () => {},
   panes: [],
+  placed: [],
   hooked: [],
   stale: { all: 0, sites: {} },
   asks: [],

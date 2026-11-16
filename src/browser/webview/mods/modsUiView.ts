@@ -35,7 +35,7 @@ import type { RuntimeConnection } from '../../runtimeClient/RuntimeConnection'
 import type { ModUiContextValue, ModUiToastRow } from '../../../components/assistant-ui/mod-ui-context'
 import { EMPTY_MOD_UI, staleKeyOf } from '../../../components/assistant-ui/mod-ui-context'
 
-export type ModsUiView = Pick<ModUiContextValue, 'isLoaded' | 'status' | 'notices' | 'toasts' | 'panes' | 'hooked' | 'editHooked' | 'autocompleteHooked' | 'changeHooked' | 'stale' | 'turnNote' | 'asks' | 'view'>
+export type ModsUiView = Pick<ModUiContextValue, 'isLoaded' | 'status' | 'notices' | 'toasts' | 'panes' | 'placed' | 'hooked' | 'editHooked' | 'autocompleteHooked' | 'changeHooked' | 'stale' | 'turnNote' | 'asks' | 'view'>
 
 type Listener = (view: ModsUiView) => void
 
@@ -57,7 +57,7 @@ type Store = {
 
 const stores = new WeakMap<Pick<RuntimeConnection, 'subscribe'>, Map<string, Store>>()
 
-const emptyView = (): ModsUiView => ({ status: [], notices: [], toasts: [], panes: [], hooked: [], stale: { all: 0, sites: {} }, asks: [] })
+const emptyView = (): ModsUiView => ({ status: [], notices: [], toasts: [], panes: [], placed: [], hooked: [], stale: { all: 0, sites: {} }, asks: [] })
 
 function storeFor(connection: Pick<RuntimeConnection, 'subscribe'>, sessionId: string): Store {
   let bySession = stores.get(connection)
@@ -178,6 +178,7 @@ export function holdModsUiView(
         status: event.payload.status,
         notices: event.payload.notices,
         panes: event.payload.panes ?? [],
+        placed: event.payload.placed ?? [],
         hooked: event.payload.hooked ?? [],
         editHooked: event.payload.editHooked === true,
         autocompleteHooked: event.payload.autocompleteHooked === true,

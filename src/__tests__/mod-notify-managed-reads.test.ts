@@ -13,7 +13,7 @@ import type { ModNounHost } from '../mods/modNouns'
 import type { DispatchContext } from '../mods/modTypes'
 import { ROOT_DISPATCH_CONTEXT } from '../mods/modTypes'
 import { NOT_MANAGED_DENIAL } from '../mods/modManagedReads'
-import { isUiNotifyResult, uiNotifyArgsOf } from '../mods/modNotify'
+import { MAX_NOTIFY_DELAY_MS, isUiCancelNotifyResult, isUiNotifyResult, uiNotifyArgsOf } from '../mods/modNotify'
 
 const open: MessagePort[] = []
 const runtimes: ModRuntime[] = []
@@ -151,6 +151,65 @@ describe('$.ui.notify', () => {
     expect(answered.quiet).toEqual({ isSent: false, reason: 'refused' })
     expect(answered.secret).toMatch(/^rejected: .*not that/)
     expect(heard).toEqual(['loud!'])
+  })
+
+  it('takes a key and a booking, refusing a booking past seven days or both at once', () => {
+    const now = 1_000_000
+    expect(uiNotifyArgsOf('t', { key: 'k', delayMs: 5000, untilBack: true }, now)).toEqual({
+      text: 't',
+      key: 'k',
+      delayMs: 5000,
+      untilBack: true,
+    })
+    expect(uiNotifyArgsOf('t', { at: now + MAX_NOTIFY_DELAY_MS }, now)).toEqual({ text: 't', at: now + MAX_NOTIFY_DELAY_MS })
+    expect(() => uiNotifyArgsOf('t', { delayMs: MAX_NOTIFY_DELAY_MS + 1 }, now)).toThrow('delayMs is more than 7 days')
+    expect(() => uiNotifyArgsOf('t', { at: now + MAX_NOTIFY_DELAY_MS + 1 }, now)).toThrow('at is more than 7 days ahead')
+    expect(() => uiNotifyArgsOf('t', { delayMs: 1, at: now }, now)).toThrow('give delayMs or at, not both')
+    expect(() => uiNotifyArgsOf('t', { key: '' }, now)).toThrow('key must be a non-empty string')
+    expect(() => uiNotifyArgsOf('t', { untilBack: 'yes' }, now)).toThrow('untilBack must be a boolean')
+  })
+
+  it('cancelNotify is raised as ui.cancelNotify and, with no host holding notifications, resolves isSent false', async () => {
+    const seen: string[] = []
+    const { runtime, reports } = world({
+      watch: {
+        source: `
+          export function register(on) {
+            on('ui.cancelNotify', ($, e, next) => {
+              if (e.key === 'mine') return { value: { isSent: true } };
+              if (e.key === 'never') return { deny: 'kept' };
+              return next(e);
+            });
+          }
+        `,
+      },
+      ci: {
+        source: `
+          export function register(on) {
+            on('prompt.submit', async ($, e, next) => {
+              const booked = await $.ui.notify('later', { key: 'k1', delayMs: 60000 });
+              const plain = await $.ui.cancelNotify('k1');
+              const answered = await $.ui.cancelNotify('mine');
+              const denied = await $.ui.cancelNotify('never').catch(err => 'rejected: ' + err.message);
+              const bad = await $.ui.cancelNotify('').catch(err => err.name + ': ' + err.message);
+              await $.ui.log(JSON.stringify({ booked, plain, answered, denied, bad }));
+              return next(e);
+            });
+          }
+        `,
+      },
+    }, () => ({ notifications: { runHooks: async notice => void seen.push(notice.message) } }))
+    await runtime.ready
+    await runtime.promptSubmit('go')
+    const line = reports.find(r => r.startsWith('ci: {'))!
+    const got = JSON.parse(line.slice('ci: '.length)) as Record<string, unknown>
+    expect(got.booked).toEqual({ isSent: false, reason: 'no-surface' })
+    expect(got.plain).toEqual({ isSent: false })
+    expect(got.answered).toEqual({ isSent: true })
+    expect(got.denied).toMatch(/^rejected: .*kept/)
+    expect(got.bad).toBe('TypeError: $.ui.cancelNotify(key): key must be a non-empty string')
+    expect(seen).toEqual(['later'])
+    expect(isUiCancelNotifyResult({ isSent: 1 })).toBe(false)
   })
 
   it('runs no Notification hooks for a notice raised while the session ends', async () => {

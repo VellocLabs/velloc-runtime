@@ -5,6 +5,7 @@
  * settles it, and the slot's wall-clock bounds pause while it is open.
  */
 
+import type { ModPlacedRow } from './modPlaces'
 import type { ModComposerRequest } from './modComposer'
 import type { ModPageRequest } from './modPage'
 import type { ModAgentView } from './modAgentView'
@@ -127,6 +128,8 @@ export type ModUiSnapshot = {
   asks?: ModUiAsk[]
   /** Absent on a bare `ModUiState` snapshot; `ModRuntime` fills them. */
   panes?: ModUiPane[]
+  /** The rows placed in the transcript (`$.ui.place`). */
+  placed?: ModPlacedRow[]
   hooked?: ModUiHookedSite[]
   /** Some loaded hook selects `prompt.edit`; absent when none. */
   editHooked?: true

@@ -66,6 +66,15 @@ export type ModPageAsk =
   | { op: 'scrollMeasure'; plugin: string; to: ModScrollTarget; in?: string; block: ModScrollBlock }
   | { op: 'scrollApply'; component: ModPageComponent; site: string; offset: number; stickToEnd: boolean }
   | { op: 'scrollRow'; row: string; block: ModScrollBlock }
+  | { op: 'selection' }
+
+/** The person's last mouse selection as a page holds it: the text a copy
+ *  takes, the transcript row it lies in (absent across rows or outside the
+ *  transcript), and when it was made (epoch ms). */
+export type ModPageSelection = { text: string; requestId?: string; at: number }
+
+/** What `$.ui.selection` resolves to — `UiSelection`. */
+export type UiSelection = { text: string; requestId?: string }
 
 export type ModPageRequest = ModPageAsk & { requestId: string }
 
@@ -76,6 +85,7 @@ export type ModPageAnswer =
   | { requestId: string; op: 'scrollMeasure'; deny?: string; measured?: ModScrollMeasured; row?: string }
   | { requestId: string; op: 'scrollApply'; deny?: string }
   | { requestId: string; op: 'scrollRow'; deny?: string }
+  | { requestId: string; op: 'selection'; selection?: ModPageSelection }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -92,6 +102,7 @@ function named(name: string, message: string): Error {
  *  failed (a remote page's clipboard, the window that shows the pane). */
 function succeeded(answer: ModPageAnswer): boolean {
   if (answer.op === 'copy') return answer.isCopied
+  if (answer.op === 'selection') return answer.selection !== undefined
   return answer.deny === undefined
 }
 
@@ -203,6 +214,9 @@ export type ModPageHost = {
   site(plugin: string, requestId: string): { component: ModPageComponent; holdsKeys: boolean } | undefined
   /** A person's press, typing or pick is being answered in this session. */
   answersPerson(): boolean
+  /** When the person's last prompt or command finished running (epoch ms);
+   *  a selection made before it is no longer theirs to hand. Absent: never. */
+  ranSince?(): number
 }
 
 /**
@@ -496,4 +510,30 @@ export async function uiScroll(args: UiScrollArgs, call: ModPageCall): Promise<U
   }
   if (!call.dispatcher.hasHooksFor('ui.scroll')) return core(e)
   return raiseMove('ui.scroll', e, core, call)
+}
+
+/** Whether a hook's answer is one `ui.selection` takes: none, or the text
+ *  and the row it lies in. */
+export function isUiSelectionResult(value: unknown): value is UiSelection | undefined {
+  if (value === undefined) return true
+  return (
+    isRecord(value) &&
+    typeof value.text === 'string' &&
+    (value.requestId === undefined || (typeof value.requestId === 'string' && value.requestId !== '')) &&
+    Object.keys(value).every(key => key === 'text' || key === 'requestId')
+  )
+}
+
+/**
+ * Core of `ui.selection`: what the person last selected with the mouse on a
+ * page drawing the session, until they select again, dismiss it, or their
+ * next prompt or command has run. Undefined with none, or no page.
+ */
+export async function uiSelectionCore(host: ModPageHost, signal?: AbortSignal): Promise<UiSelection | undefined> {
+  if (!host.ask) return undefined
+  const answer = await host.ask({ op: 'selection' }, signal)
+  if (answer?.op !== 'selection' || !answer.selection) return undefined
+  const { text, requestId, at } = answer.selection
+  if (text === '' || at < (host.ranSince?.() ?? 0)) return undefined
+  return { text, ...(requestId !== undefined && requestId !== '' ? { requestId } : {}) }
 }

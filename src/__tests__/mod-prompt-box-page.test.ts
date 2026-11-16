@@ -14,11 +14,12 @@ import {
   autocompleteQueryAt,
   autocompleteQueryKey,
   landFillRuns,
+  paintedDraft,
   trailingVirtualText,
   untypedInputCause,
 } from '../components/assistant-ui/mod-prompt-box'
 import { EMPTY_MOD_UI, ModUiContext, type ModUiComposerRequest, type ModUiContextValue } from '../components/assistant-ui/mod-ui-context'
-import { useModComposer, type ModComposerRuntime } from '../components/assistant-ui/use-mod-composer'
+import { answerComposerRequest, useModComposer, type ModComposerRuntime } from '../components/assistant-ui/use-mod-composer'
 
 describe('the helpers', () => {
   it("a fill's runs land where its text does: at 0 for replace, after the draft for append, at the caret for insert", () => {
@@ -116,6 +117,37 @@ describe('useModComposer', () => {
     act(() => composer.setText('ship it!'))
     expect(hook.result.current.virtualText).toBeNull()
     expect(composer.getState().text).toBe('ship it!')
+  })
+
+  it("each plugin's painted runs are drawn over the draft they were painted on, replaced by its next paint, gone at the draft's change", async () => {
+    const composer = fakeComposer('fix it')
+    const { hook, ask } = mount(composer)
+    const run = (virtualText: string) => [{ start: 0, end: 6, virtualText }]
+    await ask({ requestId: 'p1', op: 'paint', plugin: 'a', text: 'fix it', decorations: run(' [a]') })
+    await ask({ requestId: 'p2', op: 'paint', plugin: 'b', text: 'fix it', decorations: run(' [b]') })
+    expect(hook.result.current.virtualText).toEqual({ draft: 'fix it', text: ' [a] [b]' })
+    await ask({ requestId: 'p3', op: 'paint', plugin: 'a', text: 'fix it', decorations: run(' [a2]') })
+    expect(hook.result.current.virtualText?.text).toBe(' [a2] [b]')
+    await ask({ requestId: 'p4', op: 'paint', plugin: 'b', decorations: [] })
+    expect(hook.result.current.virtualText?.text).toBe(' [a2]')
+    // A paint for another draft changes nothing; the text is the person's.
+    await ask({ requestId: 'p5', op: 'paint', plugin: 'a', text: 'other', decorations: run(' [x]') })
+    expect(hook.result.current.virtualText?.text).toBe(' [a2]')
+    expect(composer.getState().text).toBe('fix it')
+    act(() => composer.setText('fix it now'))
+    expect(hook.result.current.virtualText).toBeNull()
+  })
+
+  it('a paint is answered painted only while the box reads its text', () => {
+    const box = { text: 'go', cursor: 2 }
+    const state = { isRunning: false, isBlocked: false }
+    expect(answerComposerRequest({ requestId: 'p', op: 'paint', plugin: 'a', text: 'go', decorations: [] }, box, state)).toMatchObject({
+      answer: { op: 'paint', isPainted: true, box },
+      paint: { plugin: 'a', text: 'go', runs: [] },
+    })
+    const stale = answerComposerRequest({ requestId: 'p', op: 'paint', plugin: 'a', text: 'gone', decorations: [] }, box, state)
+    expect(stale).toEqual({ answer: { requestId: 'p', op: 'paint', isPainted: false, box } })
+    expect(paintedDraft(null, { plugin: 'a', text: 'go', runs: [] })).toBeNull()
   })
 
   it('while a mod hooks prompt.change, the box emptied by a send is a clear and an undo is told; typing is neither', async () => {

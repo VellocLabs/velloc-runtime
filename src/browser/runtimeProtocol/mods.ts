@@ -282,6 +282,7 @@ export const MODS_RENDER_SITES = [
   'ToolResult',
   'ToolGroup',
   'PromptHint',
+  'Placed',
 ] as const
 export type ModsRenderSite = (typeof MODS_RENDER_SITES)[number]
 
@@ -314,6 +315,12 @@ export type ModsUiPane = {
   columns?: number
 }
 
+/** One row a plugin placed in the transcript (`$.ui.place`), in placing
+ *  order: a page draws it after the message that was last when it first saw
+ *  it, its body the tree `mods.render` answers for `{ component: 'Placed',
+ *  requestId }`. */
+export type ModsUiPlacedRow = { plugin: string; id: string; requestId: string }
+
 /** A `ui.render` site some loaded hook may draw: a component, and for a
  *  Pane its id; neither named, every site. The client asks for hooked
  *  sites alone. */
@@ -326,6 +333,8 @@ export type ModsUiState = {
   status: ModStatusLine[]
   notices: ModNoticeLine[]
   panes?: ModsUiPane[]
+  /** The rows placed in the transcript; absent from an older runtime. */
+  placed?: ModsUiPlacedRow[]
   hooked?: ModsUiHookedSite[]
   /** Some loaded hook selects `prompt.edit`: the page asks for each edit
    *  of its box. Absent when none, and from an older runtime. */
@@ -470,6 +479,7 @@ export type ModsComposerRequest =
   | { requestId: string; op: 'read' }
   | { requestId: string; op: 'fill'; text: string; mode: ModsComposerFillMode; decorations?: ModsPromptVirtualText[] }
   | { requestId: string; op: 'suggest'; text: string }
+  | { requestId: string; op: 'paint'; plugin: string; text?: string; decorations: ModsPromptVirtualText[] }
 
 /** What the page answers, as `mods.composerAnswer`'s payload less the
  *  session. */
@@ -477,6 +487,7 @@ export type ModsComposerAnswer =
   | { requestId: string; op: 'read'; box: ModsPromptBox }
   | { requestId: string; op: 'fill'; isFilled: boolean; refusal?: 'no_composer' | 'dialog'; box: ModsPromptBox }
   | { requestId: string; op: 'suggest'; isShown: boolean }
+  | { requestId: string; op: 'paint'; isPainted: boolean; box: ModsPromptBox }
 
 export type ModsComposerAnswerPayload = ModsComposerAnswer & { sessionId: string }
 
@@ -546,6 +557,13 @@ export function isModsComposerRequest(value: unknown): value is ModsComposerRequ
       )
     case 'suggest':
       return typeof value.text === 'string'
+    case 'paint':
+      return (
+        typeof value.plugin === 'string' &&
+        value.plugin !== '' &&
+        (value.text === undefined || typeof value.text === 'string') &&
+        isVirtualTextList(value.decorations)
+      )
     default:
       return false
   }
@@ -580,6 +598,8 @@ export function isModsComposerAnswerPayload(value: unknown): value is ModsCompos
       )
     case 'suggest':
       return typeof value.isShown === 'boolean'
+    case 'paint':
+      return typeof value.isPainted === 'boolean' && isPromptBox(value.box)
     default:
       return false
   }
@@ -603,7 +623,8 @@ export type ModsScrollMeasured = {
 /**
  * A `page` delta: what the runtime asks of the page drawing the session — `copy`
  * (`hostCopied`: the host's clipboard already took it), `focus`, `scrollMeasure`,
- * `scrollApply` (to `offset` rows), `scrollRow`.
+ * `scrollApply` (to `offset` rows), `scrollRow`, `selection` (the person's last
+ * mouse selection the page holds).
  */
 export type ModsPageRequest =
   | { requestId: string; op: 'copy'; text: string; hostCopied: boolean }
@@ -611,6 +632,10 @@ export type ModsPageRequest =
   | { requestId: string; op: 'scrollMeasure'; plugin: string; to: ModsScrollTarget; in?: string; block: ModsScrollBlock }
   | { requestId: string; op: 'scrollApply'; component: ModsPageComponent; site: string; offset: number; stickToEnd: boolean }
   | { requestId: string; op: 'scrollRow'; row: string; block: ModsScrollBlock }
+  | { requestId: string; op: 'selection' }
+
+/** A page's held selection: the text, the row it lies in, when it was made. */
+export type ModsPageSelection = { text: string; requestId?: string; at: number }
 
 /** What the page answers, as `mods.pageAnswer`'s payload less the session. */
 export type ModsPageAnswer =
@@ -619,6 +644,7 @@ export type ModsPageAnswer =
   | { requestId: string; op: 'scrollMeasure'; deny?: string; measured?: ModsScrollMeasured; row?: string }
   | { requestId: string; op: 'scrollApply'; deny?: string }
   | { requestId: string; op: 'scrollRow'; deny?: string }
+  | { requestId: string; op: 'selection'; selection?: ModsPageSelection }
 
 export type ModsPageAnswerPayload = ModsPageAnswer & { sessionId: string }
 
@@ -668,6 +694,8 @@ export function isModsPageRequest(value: unknown): value is ModsPageRequest {
       )
     case 'scrollRow':
       return isNonEmpty(value.row) && SCROLL_BLOCKS.includes(value.block as string)
+    case 'selection':
+      return true
     default:
       return false
   }
@@ -682,6 +710,16 @@ function isScrollMeasured(value: unknown): value is ModsScrollMeasured {
     isRows(value.offset) &&
     isRows(value.bodyRows) &&
     isRows(value.contentRows)
+  )
+}
+
+function isPageSelection(value: unknown): value is ModsPageSelection {
+  return (
+    isRecord(value) &&
+    typeof value.text === 'string' &&
+    (value.requestId === undefined || isNonEmpty(value.requestId)) &&
+    typeof value.at === 'number' &&
+    Number.isFinite(value.at)
   )
 }
 
@@ -701,6 +739,8 @@ export function isModsPageAnswerPayload(value: unknown): value is ModsPageAnswer
         (value.measured === undefined || isScrollMeasured(value.measured)) &&
         (value.row === undefined || isNonEmpty(value.row))
       )
+    case 'selection':
+      return value.selection === undefined || isPageSelection(value.selection)
     default:
       return false
   }
@@ -771,6 +811,10 @@ export function isModsUiHookedSite(value: unknown): value is ModsUiHookedSite {
   )
 }
 
+function isModsUiPlacedRow(value: unknown): value is ModsUiPlacedRow {
+  return isRecord(value) && isNonEmpty(value.plugin) && isNonEmpty(value.id) && isNonEmpty(value.requestId)
+}
+
 export function isModsUiState(value: unknown): value is ModsUiState {
   return (
     isRecord(value) &&
@@ -779,6 +823,7 @@ export function isModsUiState(value: unknown): value is ModsUiState {
     Array.isArray(value.notices) &&
     value.notices.every(isModNoticeLine) &&
     (value.panes === undefined || (Array.isArray(value.panes) && value.panes.every(isModsUiPane))) &&
+    (value.placed === undefined || (Array.isArray(value.placed) && value.placed.every(isModsUiPlacedRow))) &&
     (value.hooked === undefined || (Array.isArray(value.hooked) && value.hooked.every(isModsUiHookedSite))) &&
     (value.editHooked === undefined || value.editHooked === true) &&
     (value.autocompleteHooked === undefined || value.autocompleteHooked === true) &&

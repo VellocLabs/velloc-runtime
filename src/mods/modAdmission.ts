@@ -110,15 +110,18 @@ export const RAISED_EVENTS: readonly string[] = Object.freeze([
   'ui.toast',
   // the `Notification` hooks, then no channel on the desktop (modNotify.ts)
   'ui.notify',
+  'ui.cancelNotify',
   'ui.view',
   'ui.notice',
   'ui.open',
   'ui.close',
   'ui.panes',
+  'ui.place',
   'ui.invalidate',
   // `$.ui.copy` an op event; `focus` / `scroll` the plugin's own moves of
   // the ring and the window (modPage.ts)
   'ui.copy',
+  'ui.selection',
   'ui.focus',
   'ui.scroll',
   // `$.ui.blit`: admitted and raised; the desktop mounts no Raster or
@@ -185,6 +188,7 @@ export const RAISED_EVENTS: readonly string[] = Object.freeze([
   'prompt.read',
   'prompt.fill',
   'prompt.suggest',
+  'prompt.paint',
   // `$.telemetry`: checked, never sent
   'telemetry.log',
   'telemetry.mark',

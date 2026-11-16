@@ -13,6 +13,8 @@ import {
   useState,
 } from "react";
 import { ThreadPrimitive, useAssistantState } from "@assistant-ui/react";
+
+import { ModPlacedRows } from "./mod-placed";
 import {
   ESTIMATED_MESSAGE_HEIGHT_PX,
   INITIAL_ACTIVE_TAIL,
@@ -93,6 +95,8 @@ const MessageSlot: FC<{
   // matching a line number to a row. Selected per-index and returned as a
   // primitive so this slot re-renders only when its own range changes;
   // the list must not re-render per streamed token.
+  // The rows plugins placed after this message (`$.ui.place`) are part of its slot.
+  const messageId = useAssistantState((s) => s.thread.messages[index]?.id ?? null);
   const lineRange = useAssistantState((s) => {
     const custom = s.thread.messages[index]?.metadata?.custom as
       | Record<string, unknown>
@@ -197,7 +201,9 @@ const MessageSlot: FC<{
       data-restored={restored ? "true" : undefined}
       style={style}
     >
+      {index === 0 ? <ModPlacedRows anchor={null} /> : null}
       <ThreadPrimitive.MessageByIndex index={index} components={components} />
+      {messageId !== null ? <ModPlacedRows anchor={messageId} /> : null}
     </div>
   );
 });
@@ -555,7 +561,7 @@ export const VirtualizedThreadMessages: FC<VirtualizedThreadMessagesProps> = ({
     ],
   );
 
-  if (count === 0) return null;
+  if (count === 0) return <ModPlacedRows anchor={null} />;
 
   return (
     <ThreadForegroundContext.Provider value={isForeground}>

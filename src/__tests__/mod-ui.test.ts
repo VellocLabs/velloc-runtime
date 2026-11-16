@@ -152,9 +152,9 @@ describe('the nouns', () => {
     // lines follow. Every state carries the panes and the hooked sites too.
     const lines = events.filter(e => e.kind !== 'state' || e.state.status.length > 0 || e.state.notices.length > 0)
     expect(lines).toEqual([
-      { kind: 'state', state: { status: [{ plugin: 'p', text: 'thinking...' }], notices: [], panes: [], hooked: [] } },
+      { kind: 'state', state: { status: [{ plugin: 'p', text: 'thinking...' }], notices: [], panes: [], placed: [], hooked: [] } },
       { kind: 'toast', toast: { plugin: 'p', text: 'turn took 3 s', timeoutMs: 1000 } },
-      { kind: 'state', state: { status: [{ plugin: 'p', text: 'thinking...' }], notices: [{ toolUseId: 'tc-9', plugin: 'p', text: 'checked by p' }], panes: [], hooked: [] } },
+      { kind: 'state', state: { status: [{ plugin: 'p', text: 'thinking...' }], notices: [{ toolUseId: 'tc-9', plugin: 'p', text: 'checked by p' }], panes: [], placed: [], hooked: [] } },
     ])
     expect(runtime.ui.snapshot().status).toEqual([{ plugin: 'p', text: 'thinking...' }])
   })

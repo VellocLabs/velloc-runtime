@@ -1,5 +1,6 @@
 /**
- * The page's half of `$.ui.copy`, `$.ui.focus` and `$.ui.scroll` (F-25): the latest
+ * The page's half of `$.ui.copy`, `$.ui.focus`, `$.ui.scroll` and `$.ui.selection`
+ * (F-25): the latest
  * responder mounted for the session answers (`mods.pageAnswer`). `focus` acts only
  * while the site holds the keys. Sites are found by the `data-mod-*` attributes
  * `mod-render.tsx` draws.
@@ -16,6 +17,7 @@ import type {
 import { writeClipboard, writeClipboardWhenFocused } from '@/utils/clipboard'
 
 import { useModUi } from './mod-ui-context'
+import { ModSelectionTracker } from './mod-selection'
 
 /** How long an element not yet drawn is waited for ("awaited, bounded"). */
 export const MOD_PAGE_ELEMENT_WAIT_MS = 1_000
@@ -147,6 +149,7 @@ export async function answerPageRequest(
   request: ModsPageRequest,
   root: ParentNode,
   deps: ModPageDeps = DEFAULT_DEPS,
+  selection?: Pick<ModSelectionTracker, 'get'>,
 ): Promise<ModsPageAnswer> {
   const { requestId } = request
   switch (request.op) {
@@ -251,6 +254,10 @@ export async function answerPageRequest(
       row.scrollIntoView({ block: request.block })
       return { requestId, op: 'scrollRow' }
     }
+    case 'selection': {
+      const held = selection?.get()
+      return { requestId, op: 'selection', ...(held ? { selection: held } : {}) }
+    }
   }
 }
 
@@ -259,11 +266,30 @@ export function useModPage(anchor: { current: HTMLElement | null }, deps?: ModPa
   const { onPageRequest, answerPage } = useModUi()
   const held = useRef(deps)
   held.current = deps
+  const tracker = useRef<ModSelectionTracker | null>(null)
+  if (tracker.current === null) {
+    tracker.current = new ModSelectionTracker(() => anchor.current?.closest('.aui-thread-root') ?? null)
+  }
+  useEffect(() => {
+    if (!onPageRequest || typeof document === 'undefined') return
+    const selection = tracker.current!
+    const onSelection = () => selection.selectionChanged(document.getSelection())
+    const onPress = (event: PointerEvent) => selection.pressed(event.target)
+    const onKey = (event: KeyboardEvent) => selection.keyed(event.key)
+    document.addEventListener('selectionchange', onSelection)
+    document.addEventListener('pointerdown', onPress, true)
+    document.addEventListener('keydown', onKey, true)
+    return () => {
+      document.removeEventListener('selectionchange', onSelection)
+      document.removeEventListener('pointerdown', onPress, true)
+      document.removeEventListener('keydown', onKey, true)
+    }
+  }, [onPageRequest])
   useEffect(() => {
     if (!onPageRequest || !answerPage) return
     return onPageRequest(request => {
       const root: ParentNode = anchor.current?.closest('.aui-thread-root') ?? document
-      void answerPageRequest(request, root, held.current)
+      void answerPageRequest(request, root, held.current, tracker.current ?? undefined)
         .then(answer => answerPage(answer))
         .catch(() => {
           // The runtime times the request out.

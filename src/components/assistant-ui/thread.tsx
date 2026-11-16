@@ -38,6 +38,7 @@ import {
   ModTurnNote,
 } from "./mod-ui";
 import { ModAbovePrompt, ModPanes } from "./mod-render";
+import { ModPlacedProvider } from "./mod-placed";
 import { EnterPlanModeFooterControl } from "./enter-plan-mode-footer-control";
 import { SessionCardStack } from "./session-card-stack";
 import { NextMessageStrip } from "./next-message-strip";
@@ -568,12 +569,14 @@ export const Thread: FC<{
             component renders a message, exactly as the former
             `ThreadPrimitive.Messages` render prop did. */}
         <div ref={messageListRef} data-slot="message-list" className="contents">
-          <VirtualizedThreadMessages
-            viewportRef={viewportRef}
-            isForeground={isForeground === true}
-            compensateScroll={compensateScroll}
-            components={TRANSCRIPT_MESSAGE_COMPONENTS}
-          />
+          <ModPlacedProvider sessionId={sessionId ?? ""}>
+            <VirtualizedThreadMessages
+              viewportRef={viewportRef}
+              isForeground={isForeground === true}
+              compensateScroll={compensateScroll}
+              components={TRANSCRIPT_MESSAGE_COMPONENTS}
+            />
+          </ModPlacedProvider>
         </div>
 
         {/* The session's step list (F-41), the row above the run status. */}

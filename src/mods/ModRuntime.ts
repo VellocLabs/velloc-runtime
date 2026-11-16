@@ -43,7 +43,8 @@ import { ModUiState, type ModUiAskArgs, type ModUiEvent } from './modUi'
 import { askArgsOfArrived, askCoreAnswered, askCoreDismissed, askOutcomeOf, askToolEventOf } from './modAsk'
 import type { WindowAudioPlayer } from '../browser/workerKernel/windowAudio'
 import type { ModAudioHost } from './modAudio'
-import { MOD_BAND_ID, ModPageBridge, copyEverywhere, type ModClipboardHost } from './modPage'
+import { ModPlaceRegistry, uiPlaceCore } from './modPlaces'
+import { MOD_BAND_ID, ModPageBridge, copyEverywhere, type ModClipboardHost, type ModPageHost } from './modPage'
 import { PausableDeadline } from '../browser/workerKernel/pausableDeadline'
 import { runProgram, type RunProgramOptions, type RunProgramResult } from '../browser/runJs/runProgram'
 import { createModScriptHost, type ModScriptCaller } from './modScript'
@@ -400,11 +401,21 @@ export class ModRuntime extends ModUiSurface implements TurnExtensions {
   readonly ui: ModUiState
   /** The panes the slot's plugins opened. */
   readonly panes: ModPaneRegistry
+  readonly places: ModPlaceRegistry
   /** The prompt box's round trip, where a page draws one. */
   protected readonly composer: ModComposerBridge | undefined
   /** The page's clipboard, focus ring and windows (`$.ui.copy` / `.focus` /
    *  `.scroll`), where a page draws the session. */
   protected readonly page: ModPageBridge | undefined
+  /** When the person's last prompt or command began, once it has run: the
+   *  selection `$.ui.selection` hands is one made since. */
+  private personRanAt = 0
+
+  /** `host` answering when the person's last prompt or command ran; its own
+   *  members unchanged. */
+  private withRunCutoff(host: ModPageHost): ModPageHost {
+    return Object.assign(Object.create(host) as ModPageHost, { ranSince: () => this.personRanAt })
+  }
   /** How many of the person's commands and prompts are being answered now:
    *  a `$.ui.open` under one is asked — "the person's command, prompt or
    *  press behind it" — and placed and shown at once. */
@@ -430,6 +441,7 @@ export class ModRuntime extends ModUiSurface implements TurnExtensions {
       options.onStateChanged?.(address)
     })
     this.panes = new ModPaneRegistry(() => this.emitUiState())
+    this.places = new ModPlaceRegistry(() => this.emitUiState())
     this.commands = new ModCommandRegistry(() => {
       try {
         options.onCommandsChanged?.()
@@ -475,6 +487,9 @@ export class ModRuntime extends ModUiSurface implements TurnExtensions {
           list: (plugin: string) => this.panes.listFor(plugin),
           invalidate: (plugin: string, event: string) => this.invalidate(plugin, event),
         },
+        places: options.session.places ?? {
+          place: (plugin: string, id: string) => uiPlaceCore(this.places, plugin, id, this.page !== undefined),
+        },
         commands: options.session.commands ?? {
           register: (spec: ModCommandSpec, plugin: string, calling?: string): string => {
             // A command belongs to the seat that registered it, so a lost
@@ -506,7 +521,7 @@ export class ModRuntime extends ModUiSurface implements TurnExtensions {
             runProgram: options.runProgram ?? runProgram,
             serve: (by, noun, method, args) => this.serveScriptNoun(by, noun, method, args),
           }),
-        page: options.session.page ?? {
+        page: this.withRunCutoff(options.session.page ?? {
           copy: (text: string, signal?: AbortSignal) =>
             copyEverywhere(
               text,
@@ -526,7 +541,7 @@ export class ModRuntime extends ModUiSurface implements TurnExtensions {
             return requestId === MOD_BAND_ID ? { component: 'AbovePrompt' as const, holdsKeys: false } : undefined
           },
           answersPerson: () => this.personInputs > 0,
-        },
+        }),
         ...(!options.session.audio && options.audio && options.session.fs
           ? {
               audio: {
@@ -567,6 +582,8 @@ export class ModRuntime extends ModUiSurface implements TurnExtensions {
             return filled
           },
           suggest: (input: { text: string }, signal?: AbortSignal) => (this.composer ?? HEADLESS_COMPOSER).suggest(input, signal),
+          paint: async (input: Parameters<ModComposerBridge['paint']>[0], signal?: AbortSignal) =>
+            this.composer ? this.composer.paint(input, signal) : { isPainted: false, box: { text: '', cursor: 0 } },
           readsBox,
         }),
         store:
@@ -1733,6 +1750,15 @@ export class ModRuntime extends ModUiSurface implements TurnExtensions {
    * reached core entered.
    */
   async promptSubmit(text: string, signal?: AbortSignal): Promise<PromptSubmitOutcome> {
+    const startedAt = Date.now()
+    try {
+      return await this.promptSubmitThroughHooks(text, signal)
+    } finally {
+      this.personRanAt = Math.max(this.personRanAt, startedAt)
+    }
+  }
+
+  private async promptSubmitThroughHooks(text: string, signal?: AbortSignal): Promise<PromptSubmitOutcome> {
     const typed: PromptSubmitOutcome = { entered: true, text, context: [] }
     if (this.disposed || !this.dispatcher.hasHooksFor('prompt.submit')) return typed
     let entered: { text: string; context: string[] } | undefined
@@ -2087,6 +2113,21 @@ export class ModRuntime extends ModUiSurface implements TurnExtensions {
     signal?: AbortSignal,
     context?: DispatchContext,
     origin: ModCommandOrigin = { kind: 'composer' },
+  ): Promise<CommandRunSettlement> {
+    const startedAt = Date.now()
+    try {
+      return await this.commandRunThroughHooks(input, core, signal, context, origin)
+    } finally {
+      if (!context && origin.kind !== 'plugin') this.personRanAt = Math.max(this.personRanAt, startedAt)
+    }
+  }
+
+  private async commandRunThroughHooks(
+    input: { command: string; args: string },
+    core: CommandRunCore | undefined,
+    signal: AbortSignal | undefined,
+    context: DispatchContext | undefined,
+    origin: ModCommandOrigin,
   ): Promise<CommandRunSettlement> {
     const registered = this.commands.has(input.command)
     if (this.disposed || (!context && !registered && !this.hasCommandRunHooks())) {

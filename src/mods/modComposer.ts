@@ -1,5 +1,5 @@
 /**
- * `$.prompt.read`, `.fill`, `.suggest` (F-25): the prompt box is the PAGE's, so each
+ * `$.prompt.read`, `.fill`, `.suggest`, `.paint` (F-25): the prompt box is the PAGE's, so each
  * core is a round trip over `mods/ui/<sessionId>` answered by `mods.composerAnswer`.
  * A session no page draws a composer for answers as headless.
  */
@@ -29,6 +29,14 @@ export type DecoratedPromptBox = PromptBox & { decorations?: PromptVirtualText[]
 /** `$.prompt.fill(args)` — `PromptFillArgs`. */
 export type PromptFillArgs = { text: string; mode?: PromptFillMode; decorations?: PromptDecoration[] }
 
+/** `$.prompt.paint(args)` — `PromptPaintArgs`: the draft the runs were
+ *  computed for (absent only beside an empty list) and the plugin's runs,
+ *  replacing those it painted before. */
+export type PromptPaintArgs = { text?: string; decorations: PromptDecoration[] }
+
+/** What `$.prompt.paint` resolves to — `PromptPainted`. */
+export type PromptPainted = { isPainted: boolean } & PromptBox
+
 /** `$.prompt.suggest(args)` — `PromptSuggestArgs`. */
 export type PromptSuggestArgs = { text: string }
 
@@ -43,6 +51,7 @@ export type ModComposerAsk =
   | { op: 'read' }
   | { op: 'fill'; text: string; mode: PromptFillMode; decorations?: PromptVirtualText[] }
   | { op: 'suggest'; text: string }
+  | { op: 'paint'; plugin: string; text?: string; decorations: PromptVirtualText[] }
 
 /** One request to the page. */
 export type ModComposerRequest = ModComposerAsk & { requestId: string }
@@ -53,6 +62,7 @@ export type ModComposerAnswer =
   | { requestId: string; op: 'read'; box: PromptBox }
   | { requestId: string; op: 'fill'; isFilled: boolean; refusal?: PromptFillRefusal; box: PromptBox }
   | { requestId: string; op: 'suggest'; isShown: boolean }
+  | { requestId: string; op: 'paint'; isPainted: boolean; box: PromptBox }
 
 /** What `$.prompt.read` / `fill` / `suggest` need of the session: the box,
  *  one round trip each. Absent (a headless build): answered as headless. */
@@ -66,6 +76,12 @@ export type ModComposerHost = {
     context?: DispatchContext,
   ): Promise<{ isFilled: boolean; refusal?: PromptFillRefusal; box: PromptBox }>
   suggest(input: { text: string }, signal?: AbortSignal): Promise<{ isShown: boolean }>
+  /** `plugin`'s runs over the draft `text`; a page draws their virtual text
+   *  while the box holds that draft. Absent: no box takes paint. */
+  paint?(
+    input: { plugin: string; text?: string; decorations: readonly PromptDecoration[] },
+    signal?: AbortSignal,
+  ): Promise<{ isPainted: boolean; box: PromptBox }>
 }
 
 export const EMPTY_PROMPT_BOX: PromptBox = Object.freeze({ text: '', cursor: 0 }) as PromptBox
@@ -131,6 +147,27 @@ export function promptFillArgsOf(value: unknown): PromptFillArgs {
     ...(mode !== undefined ? { mode: mode as PromptFillMode } : {}),
     ...(decorations !== undefined ? { decorations: (decorations as PromptDecoration[]).map(d => ({ ...d })) } : {}),
   }
+}
+
+export function promptPaintArgsOf(value: unknown): PromptPaintArgs {
+  if (!isRecord(value)) throw new TypeError('$.prompt.paint(args): args must be { text, decorations }')
+  const { text, decorations } = value
+  if (!Array.isArray(decorations) || !decorations.every(isDecoration)) {
+    throw new TypeError('$.prompt.paint: decorations must be a list of { start, end, virtualText?, … }')
+  }
+  if (text !== undefined && typeof text !== 'string') throw new TypeError('$.prompt.paint: text must be a string')
+  if (text === undefined && decorations.length > 0) {
+    throw new TypeError('$.prompt.paint: text, the draft the runs were computed for, may be left out only with an empty list')
+  }
+  return {
+    ...(text !== undefined ? { text } : {}),
+    decorations: (decorations as PromptDecoration[]).map(d => ({ ...d })),
+  }
+}
+
+/** Whether a hook's answer is one `prompt.paint` takes. */
+export function isPromptPainted(value: unknown): value is PromptPainted {
+  return isRecord(value) && typeof value.isPainted === 'boolean' && isPromptBox(value)
 }
 
 export function promptSuggestArgsOf(value: unknown): PromptSuggestArgs {
@@ -213,7 +250,7 @@ export class ModComposerBridge implements ModComposerHost {
   answer(answer: ModComposerAnswer): boolean {
     const waiting = this.pending.get(answer.requestId)
     if (!waiting || waiting.op !== answer.op) return false
-    if ((answer.op === 'read' || answer.op === 'fill') && !isPromptBox(answer.box)) return false
+    if ((answer.op === 'read' || answer.op === 'fill' || answer.op === 'paint') && !isPromptBox(answer.box)) return false
     waiting.settle(answer)
     return true
   }
@@ -245,6 +282,23 @@ export class ModComposerBridge implements ModComposerHost {
   async suggest(input: { text: string }, signal?: AbortSignal): Promise<{ isShown: boolean }> {
     const answer = await this.ask({ op: 'suggest', text: input.text }, signal)
     return { isShown: answer?.op === 'suggest' && answer.isShown === true }
+  }
+
+  async paint(
+    input: { plugin: string; text?: string; decorations: readonly PromptDecoration[] },
+    signal?: AbortSignal,
+  ): Promise<{ isPainted: boolean; box: PromptBox }> {
+    const answer = await this.ask(
+      {
+        op: 'paint',
+        plugin: input.plugin,
+        ...(input.text !== undefined ? { text: input.text } : {}),
+        decorations: virtualTextRunsOf(input.decorations),
+      },
+      signal,
+    )
+    if (answer?.op !== 'paint') return { isPainted: false, box: { ...EMPTY_PROMPT_BOX } }
+    return { isPainted: answer.isPainted === true, box: answer.box }
   }
 
   /** Every pending request answers as headless. */
