@@ -249,6 +249,7 @@ export const ja: Messages = {
   'sessionsPage.deleteTitle': '{count} 件のセッションを削除しますか？',
   'sessionsPage.deleteMore': 'ほか {count} 件',
   'sessionsPage.deleteBody': '会話履歴が削除され、元に戻せません。プロジェクトフォルダー内のファイルには影響しません。',
+  'sessionsPage.deleteBusyOne': 'うち 1 件はまだ実行中で、停止されます。',
   'sessionsPage.deleteBusy': 'うち {count} 件はまだ実行中で、停止されます。',
   'sessionsPage.deleteCancel': 'キャンセル',
   'sessionsPage.deleteConfirm': '削除',

@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button'
 import { useUnsavedEditsGate } from '@/glic/unsavedEditsGate'
 import { useT } from './i18n'
 import {
+  isBusy,
   sessionToShowBeforeDelete,
   useSessionDeletionRun,
   type ShowableSession,
@@ -108,7 +109,7 @@ export function SessionsBulkDeleteDialog({
     return () => window.removeEventListener('keydown', onKey, true)
   }, [onCancel])
   const count = sessions.length
-  const busyCount = sessions.filter(s => s.running || s.starting || s.needsAnswer).length
+  const busyCount = sessions.filter(isBusy).length
   const named = sessions.slice(0, BULK_DELETE_NAMED_TITLES)
   const more = count - named.length
   return (
@@ -143,11 +144,11 @@ export function SessionsBulkDeleteDialog({
         </p>
         {busyCount > 0 && (
           <p data-testid="sessions-bulk-delete-busy" className="mt-2 text-sm leading-relaxed text-warning">
-            {t('sessionsPage.deleteBusy', { count: busyCount })}
+            {t(busyCount === 1 ? 'sessionsPage.deleteBusyOne' : 'sessionsPage.deleteBusy', { count: busyCount })}
           </p>
         )}
         <div className="mt-6 flex justify-end gap-2">
-          <Button variant="outline" data-testid="sessions-bulk-delete-cancel" onClick={onCancel}>
+          <Button variant="outline" data-testid="sessions-bulk-delete-cancel" onClick={onCancel} autoFocus>
             {t('sessionsPage.deleteCancel')}
           </Button>
           <Button variant="destructive" data-testid="sessions-bulk-delete-confirm" onClick={onConfirm}>

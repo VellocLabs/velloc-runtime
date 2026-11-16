@@ -3195,7 +3195,7 @@ export function MultiSessionShell({
     templateType: activeSessionId ? sessions.find(entry => entry.sessionId === activeSessionId)?.templateType : undefined,
     appTypes,
     record: activePaneRecord,
-    covered: settingsSection !== null || customizeOpen,
+    covered: settingsSection !== null || customizeOpen || sessionsPageOpen,
     updatePaneRecord,
     runtimeConnection,
     linkReady: isRuntimeReady(connectionState),
@@ -3915,7 +3915,7 @@ export function MultiSessionShell({
         sessionTabs={sessionTabs}
         activeSessionId={activeSessionId}
         // Switching tab IS switching session — that is the whole feature.
-        onSelectSessionTab={focusSession}
+        onSelectSessionTab={openSessionFromList}
         catalog={orderedActiveCatalog}
         selection={topbarSelection}
         defaultSelection={globalDefaultSelection ?? browserDefaultSelection}

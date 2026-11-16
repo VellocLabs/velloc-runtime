@@ -252,6 +252,7 @@ export const en = {
   'sessionsPage.deleteTitle': 'Delete {count} sessions?',
   'sessionsPage.deleteMore': 'and {count} more',
   'sessionsPage.deleteBody': 'This removes their conversation history and can\'t be undone. Files in their project folders are not touched.',
+  'sessionsPage.deleteBusyOne': '1 of them is still working and will be stopped.',
   'sessionsPage.deleteBusy': '{count} of them are still working and will be stopped.',
   'sessionsPage.deleteCancel': 'Cancel',
   'sessionsPage.deleteConfirm': 'Delete',

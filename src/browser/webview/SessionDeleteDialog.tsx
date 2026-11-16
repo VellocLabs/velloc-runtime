@@ -33,7 +33,7 @@ export type SessionDeleteTarget = SessionDeleteOrigin & { sessionId: string }
 type DeleteTree<T> = Pick<SessionTree<T>, 'byId' | 'childrenOf'>
 
 /** A session that a delete would interrupt: starting, mid-turn, or waiting on the person. */
-function isBusy(session: { running?: boolean; starting?: boolean; needsAnswer?: boolean }): boolean {
+export function isBusy(session: { running?: boolean; starting?: boolean; needsAnswer?: boolean }): boolean {
   return !!session.running || !!session.starting || !!session.needsAnswer
 }
 

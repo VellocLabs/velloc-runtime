@@ -252,6 +252,7 @@ export const zh: Messages = {
   'sessionsPage.deleteTitle': '删除 {count} 个会话？',
   'sessionsPage.deleteMore': '以及另外 {count} 个',
   'sessionsPage.deleteBody': '这会删除它们的对话记录，且无法撤销。项目文件夹中的文件不受影响。',
+  'sessionsPage.deleteBusyOne': '其中 1 个仍在运行，将被停止。',
   'sessionsPage.deleteBusy': '其中 {count} 个仍在运行，将被停止。',
   'sessionsPage.deleteCancel': '取消',
   'sessionsPage.deleteConfirm': '删除',

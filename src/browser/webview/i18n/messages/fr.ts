@@ -248,6 +248,7 @@ export const fr: Messages = {
   'sessionsPage.deleteTitle': 'Supprimer {count} sessions ?',
   'sessionsPage.deleteMore': 'et {count} de plus',
   'sessionsPage.deleteBody': 'Leur historique de conversation est supprimé, sans retour possible. Les fichiers de leurs dossiers de projet ne sont pas touchés.',
+  'sessionsPage.deleteBusyOne': '1 d’entre elles est encore en cours et sera arrêtée.',
   'sessionsPage.deleteBusy': '{count} d’entre elles sont encore en cours et seront arrêtées.',
   'sessionsPage.deleteCancel': 'Annuler',
   'sessionsPage.deleteConfirm': 'Supprimer',

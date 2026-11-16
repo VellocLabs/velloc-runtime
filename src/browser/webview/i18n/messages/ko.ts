@@ -249,6 +249,7 @@ export const ko: Messages = {
   'sessionsPage.deleteTitle': '세션 {count}개를 삭제할까요?',
   'sessionsPage.deleteMore': '외 {count}개',
   'sessionsPage.deleteBody': '대화 기록이 삭제되며 되돌릴 수 없습니다. 프로젝트 폴더의 파일은 영향을 받지 않습니다.',
+  'sessionsPage.deleteBusyOne': '그중 1개가 아직 실행 중이며 중지됩니다.',
   'sessionsPage.deleteBusy': '그중 {count}개가 아직 실행 중이며 중지됩니다.',
   'sessionsPage.deleteCancel': '취소',
   'sessionsPage.deleteConfirm': '삭제',

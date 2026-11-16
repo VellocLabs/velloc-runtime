@@ -1,4 +1,6 @@
 // @vitest-environment happy-dom
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { createElement } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
@@ -352,6 +354,14 @@ describe('bulk delete', () => {
     )
   })
 
+  it('takes focus on Cancel and names a single busy pick in the singular', () => {
+    renderConfirm(['old', 'menu'])
+    expect(document.activeElement).toBe(screen.getByTestId('sessions-bulk-delete-cancel'))
+    expect(screen.getByTestId('sessions-bulk-delete-busy').textContent).toBe(
+      t('sessionsPage.deleteBusyOne'),
+    )
+  })
+
   it('names at most a few titles, then how many more', () => {
     const many: SessionListItem[] = Array.from({ length: BULK_DELETE_NAMED_TITLES + 2 }, (_, i) => ({
       sessionId: `s${i}`,
@@ -413,5 +423,31 @@ describe('bulk delete', () => {
     expect(setIds).not.toHaveBeenCalled()
     request(['a'])
     expect(setIds).toHaveBeenCalledWith(['a'])
+  })
+})
+
+// The shell half: the page keeps the threads mounted, holds itself open through a
+// bulk delete, and closes on a sidebar row, a session tab or a switch. (F-17)
+const shellSource = readFileSync(
+  join(__dirname, '..', 'browser', 'webview', 'MultiSessionShell.tsx'),
+  'utf8',
+)
+
+describe('shell wiring', () => {
+  it('hides the mounted threads under the page without unmounting them', () => {
+    expect(shellSource).toMatch(/className=\{sessionsPageOpen \? 'hidden' : 'contents'\}/)
+    expect(shellSource).toMatch(/if \(!bulkDeletePendingRef\.current\) setSessionsPageOpen\(false\)/)
+  })
+
+  it('opens a session from a sidebar row and from a session tab, the current one included', () => {
+    expect(shellSource).toMatch(/activeSessionId=\{sessionsPageOpen \? '' : sidebarActiveId\}/)
+    expect(shellSource).toMatch(/onSwitchThread=\{openSessionFromList\}/)
+    expect(shellSource).toMatch(/onSelectSessionTab=\{openSessionFromList\}/)
+  })
+
+  it('treats the page as covering the conversation for the app pane', () => {
+    expect(shellSource).toMatch(
+      /covered: settingsSection !== null \|\| customizeOpen \|\| sessionsPageOpen,/,
+    )
   })
 })

@@ -251,6 +251,7 @@ export const de: Messages = {
   'sessionsPage.deleteTitle': '{count} Sitzungen löschen?',
   'sessionsPage.deleteMore': 'und {count} weitere',
   'sessionsPage.deleteBody': 'Ihr Unterhaltungsverlauf wird entfernt; das lässt sich nicht rückgängig machen. Dateien in ihren Projektordnern bleiben unberührt.',
+  'sessionsPage.deleteBusyOne': '1 davon läuft noch und wird gestoppt.',
   'sessionsPage.deleteBusy': '{count} davon laufen noch und werden gestoppt.',
   'sessionsPage.deleteCancel': 'Abbrechen',
   'sessionsPage.deleteConfirm': 'Löschen',
