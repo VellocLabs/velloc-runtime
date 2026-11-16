@@ -514,6 +514,8 @@ export const ReviewReportCard: FC<{
             {run.progress.omittedByLimit > 0 && <span className="text-xs text-muted-foreground">{t('reviewCard.omitted', { omitted: run.progress.omittedByLimit })}</span>}
             {filters.some(Boolean) && <div data-testid="review-filters" className="ml-auto flex flex-wrap items-center gap-x-3 gap-y-1">{filters[0]}{filters[1]}{filters[2]}</div>}
           </div>}
+          {report.emptyScope && !hasFindings && <p data-testid="review-empty" className="text-xs text-muted-foreground">{t('reviewCard.emptyScope')}</p>}
+          {notices}
         </>}
         {endMessage && <p role="status" data-testid="review-end" className="rounded-lg bg-warning/10 px-3 py-2 text-xs text-warning-emphasis">{endMessage}</p>}
         {finished && !cancelled && !report.coverage.complete && !report.emptyScope && hasFindings && <p data-testid="review-incomplete" className="rounded-lg bg-warning/10 px-3 py-2 text-xs text-warning-emphasis">{t('reviewCard.notice.incomplete')}</p>}
@@ -582,7 +584,7 @@ export const ReviewReportCard: FC<{
               {report.coverage.limitations.length === 0 && run.progress.unavailableAngles.length === 0 ? <span>{t(report.coverage.complete ? 'reviewCard.coverageComplete' : 'reviewCard.notice.incomplete')}</span> : <ul className="list-disc pl-4">{report.coverage.limitations.map((text, index) => <li key={index}>{reviewDetailMessage(t, text)}</li>)}{run.progress.unavailableAngles.length > 0 && <li>{t('reviewCard.uncovered', { angles: run.progress.unavailableAngles.map(angle => reviewAngleMessage(t, angle)).join(', ') })}</li>}</ul>}
             </dd>
           </dl>
-          {notices && <div data-testid="review-details-notices" className="mt-1.5 pl-[1.125rem] text-muted-foreground">{notices}</div>}
+          {reviewing && notices && <div data-testid="review-details-notices" className="mt-1.5 pl-[1.125rem] text-muted-foreground">{notices}</div>}
           <p className="mt-1.5 pl-[1.125rem] text-muted-foreground">{t('reviewCard.workers', { started: run.progress.spawnedTasks, finished: report.finishedTasks ?? 0 })}</p>
           {report.exportJson !== undefined && <details className="group/fold mt-2 pl-[1.125rem]"><FoldSummary>{t('reviewCard.exportJson')}</FoldSummary><pre data-testid="review-export-json" className="mt-1 overflow-auto whitespace-pre-wrap rounded-lg bg-muted/50 p-2">{report.exportJson}</pre></details>}
         </details>

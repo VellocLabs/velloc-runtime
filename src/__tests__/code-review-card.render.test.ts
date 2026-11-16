@@ -37,28 +37,28 @@ describe('review report card', () => {
     expect(row.contains(screen.getByTestId('code-review-card'))).toBe(true)
     expect(row.className.split(' ')).toEqual(expect.arrayContaining(['mx-auto', 'w-full', 'max-w-(--thread-max-width)', 'px-2']))
   })
-  it('states a zero-finding result as the count alone, with no empty or scope line of its own', () => {
+  it('states a zero-finding result as the count, and names an empty scope under it', () => {
     const value = report()
     renderReport(value)
     const partial = screen.getByTestId('review-count')
     expect(partial.textContent).toBe(t('reviewCard.findingsMany', { count: 0 }))
-    expect(partial.parentElement!.textContent).toBe(t('reviewCard.findingsMany', { count: 0 }))
     expect(partial.parentElement!.querySelector('svg')).toBeNull()
+    expect(screen.queryByTestId('review-empty')).toBeNull()
     cleanup()
     value.coverage.complete = true
     value.run.progress.status = 'finished'
     renderReport(value)
     const clean = screen.getByTestId('review-count')
     expect(clean.textContent).toBe(t('reviewCard.findingsMany', { count: 0 }))
-    expect(clean.parentElement!.textContent).toBe(t('reviewCard.findingsMany', { count: 0 }))
     expect(clean.parentElement!.querySelector('svg')!.getAttribute('class')).toContain('text-success')
+    expect(screen.queryByTestId('review-empty')).toBeNull()
     cleanup()
     value.emptyScope = true
     renderReport(value)
     const scoped = screen.getByTestId('review-count')
     expect(scoped.textContent).toBe(t('reviewCard.findingsMany', { count: 0 }))
-    expect(scoped.parentElement!.textContent).toBe(t('reviewCard.findingsMany', { count: 0 }))
     expect(scoped.parentElement!.querySelector('svg')).toBeNull()
+    expect(screen.getByTestId('review-empty').textContent).toBe(t('reviewCard.emptyScope'))
   })
   it('shows a cancelled review as one notice, says when the user cancelled it, and offers only a rerun without findings', () => {
     const value = report()
@@ -852,13 +852,13 @@ describe('review card header and live activity', () => {
     expect(tree.open).toBe(false)
     expect(tree.querySelector('summary')!.textContent).toBe(`${t('reviewCard.tasks')} · ${t('reviewCard.tasksCompleted', { count: 2 })} · ${t('reviewCard.tasksNotCompleted', { count: 1 })}`)
   })
-  it('keeps the method and notices inside review details, running or finished', () => {
+  it('keeps the method in review details, and moves the notices under the count once finished', () => {
     const value = running()
     value.notices = [{ code: 'level-reused', level: 'high' }]
     renderReport(value)
     const details = screen.getByTestId('review-details') as HTMLDetailsElement
     expect(details.contains(screen.getByTestId('review-method'))).toBe(true)
-    // The notice is folded into the closed details, not shown as a block of its own.
+    // While the review runs the notices stay in the closed details.
     expect(details.open).toBe(false)
     expect(details.contains(screen.getByTestId('review-notices'))).toBe(true)
     cleanup()
@@ -868,7 +868,8 @@ describe('review card header and live activity', () => {
     const finished = screen.getByTestId('review-details') as HTMLDetailsElement
     expect(finished.open).toBe(false)
     expect(finished.contains(screen.getByTestId('review-method'))).toBe(true)
-    expect(finished.contains(screen.getByTestId('review-notices'))).toBe(true)
+    expect(finished.contains(screen.getByTestId('review-notices'))).toBe(false)
+    expect(screen.getByTestId('review-notices')).toBeTruthy()
     expect(screen.getByTestId('review-method').textContent).toContain(t('reviewCard.revisionOnly'))
   })
   it('shows a clean result as the count and a check icon, with no Repair and no footer status', () => {

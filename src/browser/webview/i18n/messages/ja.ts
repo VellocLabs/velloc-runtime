@@ -95,6 +95,7 @@ export const ja: Messages = {
   "reviewCard.coverage": "対象範囲と制限",
   "reviewCard.dismiss": "戻る",
   "reviewCard.emptyComplete": "このレビューの範囲内では報告すべき問題は見つかりませんでした。",
+  "reviewCard.emptyScope": "この対象にはレビュー可能な変更がありません。",
   "reviewCard.evidence": "詳細と根拠",
   "reviewCard.unverified": "未検証",
   "reviewCard.unverifiedNote": "レビュー担当が報告しましたが、その根拠が読み取ったコードと一致しませんでした。ご自身で確認してください。修正や公開の対象にはなりません。",
