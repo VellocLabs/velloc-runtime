@@ -325,7 +325,7 @@ export function SessionsPage({
                       data-running={running || undefined}
                       data-needs-answer={needsAnswer || undefined}
                       onClick={() => onOpenSession(session.sessionId)}
-                      className="flex w-full min-w-0 items-center gap-4 rounded-md py-4 text-start text-body focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      className="flex w-full min-w-0 items-center gap-4 rounded-md py-4 text-start text-body outline-none focus-visible:focus-ring"
                     >
                       <span data-slot="sessions-page-row-title" className="min-w-0 flex-1 truncate text-foreground">
                         {row.title}
