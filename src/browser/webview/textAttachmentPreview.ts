@@ -5,6 +5,21 @@ export const TEXT_PREVIEW_HEAD_BYTES = 2048
 export const TEXT_PREVIEW_MAX_LINES = 8
 
 /**
+ * Decodes a text head: UTF-16, little- or big-endian, when a byte-order mark
+ * opens it, and UTF-8 otherwise. UTF-16 decoded as UTF-8 reads as
+ * NUL-separated characters and would be taken for binary.
+ */
+export function decodeTextHead(bytes: Uint8Array): string {
+  if (bytes[0] === 0xff && bytes[1] === 0xfe) {
+    return new TextDecoder('utf-16le').decode(bytes)
+  }
+  if (bytes[0] === 0xfe && bytes[1] === 0xff) {
+    return new TextDecoder('utf-16be').decode(bytes)
+  }
+  return new TextDecoder().decode(bytes)
+}
+
+/**
  * The first `maxLines` lines of `text` for a preview: CRLF/CR normalized,
  * tabs widened to two spaces, leading blank lines dropped, each line capped
  * at 80 characters. Returns `null` when the head looks binary (a NUL byte).

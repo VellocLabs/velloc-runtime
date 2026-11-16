@@ -146,7 +146,6 @@ describe('Composer image attachment thumbnail', () => {
     expect(screen.queryByTestId('composer-text-attachment')).toBeNull()
     expect(create).not.toHaveBeenCalled()
   })
-
 })
 
 describe('Composer text file preview', () => {
@@ -201,5 +200,27 @@ describe('Composer text file preview', () => {
       expect(screen.queryByTestId('composer-text-attachment')).toBeNull(),
     )
     expect(screen.getByText('blob.txt')).toBeTruthy()
+  })
+
+  it('previews a UTF-16 file saved with a byte-order mark', async () => {
+    render(createElement(Harness))
+    const wide = new Uint8Array([0xff, 0xfe, 0x23, 0x00, 0x20, 0x00, 0x4e, 0x00, 0x6f, 0x00, 0x74, 0x00, 0x65, 0x00, 0x73, 0x00])
+    await pasteFiles(screen.getByTestId('composer-input'), [
+      new File([wide], 'wide.txt', { type: 'text/plain' }),
+    ])
+
+    const preview = await screen.findByTestId('composer-text-attachment-preview')
+    expect(preview.textContent).toContain('# Notes')
+  })
+
+  it('reads only the first 2 KB of a long file', async () => {
+    render(createElement(Harness))
+    const body = '# Title\n' + 'x'.repeat(2100)
+    await pasteFiles(screen.getByTestId('composer-input'), [
+      new File([body + '\u0000binary tail'], 'long.txt', { type: 'text/plain' }),
+    ])
+
+    const preview = await screen.findByTestId('composer-text-attachment-preview')
+    expect(preview.textContent).toContain('# Title')
   })
 })

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { isTextAttachmentFile } from '../browser/webview/BrowserComposerAttachmentAdapter'
 import {
+  decodeTextHead,
   textAttachmentBadge,
   textPreviewLines,
 } from '../browser/webview/textAttachmentPreview'
@@ -19,6 +20,7 @@ describe('isTextAttachmentFile', () => {
     expect(isTextAttachmentFile({ name: 'r.pdf', type: '' })).toBe(false)
     expect(isTextAttachmentFile({ name: 'app.exe', type: '' })).toBe(false)
     expect(isTextAttachmentFile({ name: 'archive.zip', type: 'application/zip' })).toBe(false)
+    expect(isTextAttachmentFile({ name: 'r.pdf', type: 'text/plain' })).toBe(false)
   })
 })
 
@@ -33,6 +35,33 @@ describe('textPreviewLines', () => {
 
   it('reports a binary head as null', () => {
     expect(textPreviewLines('PK\u0003\u0004\u0000')).toBeNull()
+  })
+})
+
+describe('decodeTextHead', () => {
+  const utf16le = (text: string, bom = true): Uint8Array => {
+    const body = Array.from(text).flatMap((char) => {
+      const code = char.charCodeAt(0)
+      return [code & 0xff, code >> 8]
+    })
+    return new Uint8Array(bom ? [0xff, 0xfe, ...body] : body)
+  }
+
+  it('decodes UTF-16LE marked by a byte-order mark without NUL padding', () => {
+    const head = decodeTextHead(utf16le('# Notes\n'))
+    expect(head).toBe('# Notes\n')
+    expect(textPreviewLines(head)).toEqual(['# Notes', ''])
+  })
+
+  it('decodes UTF-16BE marked by a byte-order mark', () => {
+    const bytes = new Uint8Array([0xfe, 0xff, 0x00, 0x23, 0x00, 0x20])
+    expect(decodeTextHead(bytes)).toBe('# ')
+  })
+
+  it('decodes unmarked heads as UTF-8', () => {
+    const bytes = new TextEncoder().encode('# Notes')
+    expect(decodeTextHead(bytes)).toBe('# Notes')
+    expect(textPreviewLines(decodeTextHead(utf16le('# Notes', false)))).toBeNull()
   })
 })
 

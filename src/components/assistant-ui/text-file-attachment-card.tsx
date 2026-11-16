@@ -4,6 +4,7 @@ import { useEffect, useState, type FC, type ReactNode } from "react";
 import { useT } from "@/browser/webview/i18n";
 import {
   TEXT_PREVIEW_HEAD_BYTES,
+  decodeTextHead,
   textAttachmentBadge,
   textPreviewLines,
 } from "@/browser/webview/textAttachmentPreview";
@@ -16,10 +17,10 @@ function useTextFileHead(file: Blob): string[] | null | undefined {
     setLines(undefined);
     file
       .slice(0, TEXT_PREVIEW_HEAD_BYTES)
-      .text()
+      .arrayBuffer()
       .then(
         (head) => {
-          if (live) setLines(textPreviewLines(head));
+          if (live) setLines(textPreviewLines(decodeTextHead(new Uint8Array(head))));
         },
         () => {
           if (live) setLines(null);
@@ -61,7 +62,7 @@ export const ComposerTextFileAttachmentCard: FC<{
           className="min-h-0 flex-1 overflow-hidden px-2 pt-1.5 font-mono text-[7px] leading-[1.35] text-muted-foreground [mask-image:linear-gradient(to_bottom,black_70%,transparent)]"
         >
           {(lines ?? []).map((line, index) => (
-            <span key={index} className="block truncate whitespace-pre">
+            <span key={index} className="block whitespace-pre">
               {line || " "}
             </span>
           ))}

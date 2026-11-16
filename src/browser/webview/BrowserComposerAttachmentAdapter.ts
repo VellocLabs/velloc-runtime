@@ -209,8 +209,8 @@ const TEXT_ATTACHMENT_SUFFIXES: ReadonlySet<string> = new Set(
  * name) is one of the accepted text suffixes. PDFs and images are not.
  */
 export function isTextAttachmentFile(file: Pick<File, 'name' | 'type'>): boolean {
-  if (file.type.startsWith('text/')) return true
   if (isInlineImageMime(file.type) || isPdfAttachment(file)) return false
+  if (file.type.startsWith('text/')) return true
   const name = file.name.toLowerCase()
   const dot = name.lastIndexOf('.')
   return TEXT_ATTACHMENT_SUFFIXES.has(dot < 0 ? name : name.slice(dot + 1))
