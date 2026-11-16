@@ -366,6 +366,12 @@ export class ModThemeState {
     return this.standing
   }
 
+  /** Whether the standing theme draws a scene. */
+  hasScene(): boolean {
+    const backdrop = this.standing?.backdrop
+    return backdrop !== undefined && 'scene' in backdrop
+  }
+
   /** `plugin`'s theme replaces whatever stood. */
   set(plugin: string, args: ThemeSetArgs): ModThemeSnapshot {
     this.standing = snapshotOf(plugin, args)

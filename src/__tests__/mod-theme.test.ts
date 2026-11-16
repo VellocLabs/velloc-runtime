@@ -159,6 +159,52 @@ describe('$.theme', () => {
     expect(cleared.runtime.uiSnapshot().theme).toBeUndefined()
   })
 
+  it('a scene that goes drops its drawing\'s handles: on a clear, and on a set that replaces it', async () => {
+    for (const next of ['$.theme.set({ colors: ' + JSON.stringify(PALETTE) + ' })', '$.theme.clear()']) {
+      const SCENE = `
+        export function register(on) {
+          on('session.start', async ($, e, next) => {
+            await $.theme.set({ backdrop: { scene: 'tide' } });
+            return next(e);
+          });
+          on('ui.render', { component: 'Backdrop' }, ($, e) => {
+            const { Box, Button } = $.ui.resolve(e);
+            return Box({ children: [
+              Button({ key: 'wave', label: 'Wave', onPress: async () => { await $.ui.log('waved') } }),
+              Button({ key: 'go', label: 'Go', onPress: async () => { await ${next}; await $.ui.log('went') } }),
+            ] });
+          });
+        }
+      `
+      const { runtime, reports } = world({ scene: SCENE }, true)
+      await runtime.ready
+      const drawn = await runtime.render({
+        component: 'Backdrop',
+        requestId: 'backdrop',
+        props: { scene: 'tide', plugin: 'scene', glass: { blur: 16, opacity: 0.6 } },
+      })
+      if (drawn.kind !== 'tree') throw new Error('expected a tree')
+      const handles: Record<string, number> = {}
+      const visit = (node: unknown): void => {
+        if (!node || typeof node !== 'object') return
+        const element = node as { props?: { key?: string }; press?: { handle: number }; children?: unknown[] }
+        if (element.props?.key && element.press) handles[element.props.key] = element.press.handle
+        for (const child of element.children ?? []) visit(child)
+      }
+      visit(drawn.tree)
+      const press = (element: string) =>
+        runtime.uiInput({ kind: 'press', plugin: 'scene', element, component: 'Backdrop', requestId: 'backdrop', handle: handles[element]! })
+      expect(await press('go')).toEqual({ ok: true })
+      const deadline = Date.now() + 2_000
+      while (!reports.includes('scene: "went"') && !reports.some(line => line.includes('went'))) {
+        if (Date.now() > deadline) throw new Error('timed out waiting')
+        await new Promise(resolve => setTimeout(resolve, 5))
+      }
+      expect(JSON.stringify(runtime.uiSnapshot().theme ?? {})).not.toContain('tide')
+      expect(await press('wave')).toEqual({ ok: false, reason: 'the drawing is gone' })
+    }
+  })
+
   it('a plugin that unloads takes its theme with it', async () => {
     const { runtime, refs } = world({ setter: SETTER, other: 'export function register(on) {}' }, true)
     await runtime.ready

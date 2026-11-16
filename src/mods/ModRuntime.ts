@@ -535,11 +535,15 @@ export class ModRuntime extends ModUiSurface implements TurnExtensions {
           place: (plugin: string, id: string) => uiPlaceCore(this.places, plugin, id, this.page !== undefined),
         },
         theme: options.session.theme ?? {
-          set: (plugin: string, args: ThemeSetArgs) => themeSetCore(this.theme, plugin, args, this.page !== undefined),
+          set: (plugin: string, args: ThemeSetArgs) => {
+            const result = themeSetCore(this.theme, plugin, args, this.page !== undefined)
+            if (!this.theme.hasScene()) this.forgetBackdrop()
+            return result
+          },
           clear: () => {
-            const scene = this.theme.current()?.backdrop
-            if (scene && 'scene' in scene) this.forgetBackdrop()
-            return themeClearCore(this.theme)
+            const result = themeClearCore(this.theme)
+            this.forgetBackdrop()
+            return result
           },
         },
         commands: options.session.commands ?? {

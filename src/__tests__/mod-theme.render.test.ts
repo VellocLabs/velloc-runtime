@@ -43,10 +43,16 @@ const PAPER = {
       'gray-900': '#2a241d',
       'role-accent-600': '#2b537d',
       'role-accent-fill': '#457db5',
-      'role-danger-fill': '#cc4236',
+      'role-danger-fill': '#a33a2e',
       'role-success-600': '#375c28',
+      'role-success-700': '#26421b',
+      'role-warning-600': '#7a4a10',
+      'role-warning-700': '#5a360a',
+      'role-accent-700': '#1f3f60',
+      'role-danger-600': '#8f3328',
       'role-pro-600': '#5c417f',
-      'text-git-added': '#1e9e3c',
+      'text-git-added': '#1e6e30',
+      'text-git-removed': '#8a2820',
       'not-a-color': 'red',
     },
     dark: {
@@ -58,8 +64,43 @@ const PAPER = {
       'gray-850': '#28221b',
       'gray-900': '#1f1a15',
       'role-accent-250': '#93b7d9',
+      'role-accent-100': '#cfe0f0',
+      'role-accent-fill': '#93b7d9',
+      'role-danger-fill': '#f0a49b',
+      'role-danger-250': '#f0a49b',
+      'role-success-250': '#a8d69a',
+      'role-success-100': '#dcefd4',
+      'role-warning-250': '#e8c48a',
+      'role-warning-100': '#f6e6c8',
+      'role-pro-250': '#c9b3e6',
+      'text-git-added': '#8fd49f',
+      'text-git-removed': '#f0a49b',
     },
   },
+}
+
+/** The app's own tokens a palette's untouched side is judged against. */
+const OWN_LIGHT: Record<string, string> = {
+  '--background': 'oklch(1 0 0)',
+  '--card': 'oklch(1 0 0)',
+  '--popover': 'oklch(1 0 0)',
+  '--muted': 'oklch(0.967 0.001 286.375)',
+  '--secondary': 'oklch(0.967 0.001 286.375)',
+  '--accent': 'oklch(0.967 0.001 286.375)',
+  '--foreground': 'oklch(0.141 0.005 285.823)',
+  '--primary': 'oklch(0.21 0.006 285.885)',
+  '--primary-foreground': 'oklch(0.985 0 0)',
+}
+const OWN_DARK: Record<string, string> = {
+  '--background': 'oklch(0.239 0 0)',
+  '--card': 'oklch(0.277 0 0)',
+  '--popover': 'oklch(0.277 0 0)',
+  '--muted': 'oklch(0.309 0 0)',
+  '--secondary': 'oklch(0.309 0 0)',
+  '--accent': 'oklch(0.309 0 0)',
+  '--foreground': 'oklch(0.916 0 0)',
+  '--primary': 'oklch(0.916 0 0)',
+  '--primary-foreground': 'oklch(0.239 0 0)',
 }
 
 function withUi(value: Partial<ModUiContextValue>, child: React.ReactElement) {
@@ -73,7 +114,7 @@ function ThemedRoot() {
 
 describe('the palette', () => {
   it("paints Velloc's tokens from the mode's gray and role stops; an entry that is not six-digit hex is ignored", () => {
-    const light = paletteTokensOf(PAPER, 'light')
+    const light = paletteTokensOf(PAPER, 'light', OWN_LIGHT)
     expect(light.kind).toBe('painted')
     const tokens = light.kind === 'painted' ? light.tokens : {}
     expect(tokens['--background']).toBe('#efe6d3')
@@ -86,11 +127,11 @@ describe('the palette', () => {
     expect(tokens['--syntax-keyword']).toBe('#2b537d')
     expect(tokens['--syntax-string']).toBe('#375c28')
     expect(tokens['--syntax-number']).toBe('#5c417f')
-    expect(tokens['--diff-added']).toBe('#1e9e3c')
+    expect(tokens['--diff-added']).toBe('#1e6e30')
     // Left out of the palette: the app keeps its own.
-    expect(tokens['--warning']).toBeUndefined()
+    expect(tokens['--chart-4']).toBeUndefined()
     expect(Object.values(tokens)).not.toContain('red')
-    const dark = paletteTokensOf(PAPER, 'dark')
+    const dark = paletteTokensOf(PAPER, 'dark', OWN_DARK)
     expect(dark.kind === 'painted' && dark.tokens['--background']).toBe('#1f1a15')
     expect(dark.kind === 'painted' && dark.tokens['--popover']).toBe('#3a3229')
     expect(dark.kind === 'painted' && dark.tokens['--syntax-keyword']).toBe('#93b7d9')
@@ -102,6 +143,24 @@ describe('the palette', () => {
     const murky = paletteTokensOf({ v: 1, label: 'x', inputs: { light: { 'gray-20': '#777777', 'gray-900': '#666666' } } }, 'light')
     expect(murky.kind).toBe('refused')
     expect(contrastRatio('#000000', '#ffffff')).toBeCloseTo(21)
+    expect(contrastRatio('oklch(1 0 0)', 'oklch(0 0 0)')).toBeCloseTo(21)
+    expect(contrastRatio('red', '#ffffff')).toBeUndefined()
+  })
+
+  it('every text token is judged on every surface, against the app\'s own where the palette leaves one out; what cannot be judged is refused', () => {
+    const own = { ...OWN_LIGHT, '--muted-foreground': '#666666', '--syntax-function': '#cf222e' }
+    // Surfaces alone, near black: the app's own dark text would stand on them.
+    const surfacesOnly = { v: 1, inputs: { light: { 'gray-20': '#111111', 'gray-10': '#111111' } } }
+    expect(paletteTokensOf(surfacesOnly, 'light', own)).toMatchObject({ kind: 'refused', reason: expect.stringMatching(/--foreground on --/) })
+    // Secondary text the color of its surface.
+    const faintSecondary = { v: 1, inputs: { light: { 'gray-20': '#ffffff', 'gray-900': '#000000', 'gray-600': '#fefefe' } } }
+    expect(paletteTokensOf(faintSecondary, 'light', own)).toMatchObject({ kind: 'refused', reason: expect.stringMatching(/--muted-foreground/) })
+    // A role color unreadable on the app's own surfaces.
+    const faintRole = { v: 1, inputs: { light: { 'role-danger-600': '#ffeeee' } } }
+    expect(paletteTokensOf(faintRole, 'light', own)).toMatchObject({ kind: 'refused', reason: expect.stringMatching(/--syntax-function/) })
+    // The other side unknown: fails closed.
+    expect(paletteTokensOf({ v: 1, inputs: { light: { 'gray-900': '#000000' } } }, 'light', {}).kind).toBe('refused')
+    expect(paletteTokensOf({ v: 1, inputs: { light: { 'gray-900': '#000000' } } }, 'light', own).kind).toBe('painted')
   })
 
   it('the thread root carries the tokens in the page mode, and follows the mode as it changes', async () => {
@@ -152,11 +211,20 @@ describe('the backdrop', () => {
     expect(groundVectorOf({ vector: { viewBox: 24, paths: ['<script>'], color: '#000' } })).toBeUndefined()
   })
 
+  it('a ground the runtime would refuse draws nothing on the page', () => {
+    const many = Array.from({ length: 65 }, () => 'M0 0h1')
+    expect(groundVectorOf({ vector: { viewBox: 8, paths: many, color: '#000000' } })).toBeUndefined()
+    expect(groundStyleOf({ gradient: { stops: [{ at: 0.6, color: '#000' }, { at: 0.2, color: '#fff' }] } })).toBeUndefined()
+    expect(groundStyleOf({ gradient: { stops: Array.from({ length: 17 }, () => '#000') } })).toBeUndefined()
+    expect(groundStyleOf({ color: '#000', extra: 1 })).toBeUndefined()
+  })
+
   it('draws a still ground behind the conversation with presses passing through; an image ground keeps the app\'s own', () => {
     render(withUi({ theme: { plugin: 'look', requestId: 'theme', backdrop: { color: '#102030' } } }, createElement(ModBackdrop)))
     const layer = screen.getByTestId('mod-backdrop')
     expect(layer.getAttribute('data-mod-backdrop-kind')).toBe('color')
     expect(layer.classList).toContain('pointer-events-none')
+    expect(layer.hasAttribute('inert')).toBe(true)
     expect(layer.style.backgroundColor).toBeTruthy()
     cleanup()
     render(withUi({ theme: { plugin: 'look', requestId: 'theme', backdrop: { image: { source: 'harbour.jpg' } } } }, createElement(ModBackdrop)))
@@ -188,6 +256,7 @@ describe('the backdrop', () => {
       ),
     )
     await waitFor(() => expect(screen.getByTestId('mod-backdrop').getAttribute('data-mod-drawn')).toBe('tree'))
+    expect(screen.getByTestId('mod-backdrop').hasAttribute('inert')).toBe(true)
     expect(asked[0]).toMatchObject({
       component: 'Backdrop',
       requestId: 'backdrop',
@@ -209,12 +278,16 @@ describe('the backdrop', () => {
 })
 
 describe('the app\'s own look', () => {
-  it("copies the page root's tokens around what it wraps while a theme stands", () => {
-    document.documentElement.style.setProperty('--background', 'oklch(1 0 0)')
+  it("copies the page root's tokens around what it wraps while a theme stands, on the app's own opaque ground", () => {
+    document.documentElement.style.setProperty('--background', '#ffffff')
     const child = createElement('span', { 'data-testid': 'prompt' })
     render(withUi({ theme: { plugin: 'look', requestId: 'theme', colors: PAPER } }, createElement(ModAppLook, null, child)))
     const wrap = document.querySelector('[data-slot="mod-app-look"]') as HTMLElement
-    expect(wrap.style.getPropertyValue('--background')).toBe('oklch(1 0 0)')
+    expect(wrap.style.getPropertyValue('--background')).toBe('#ffffff')
+    expect(wrap.style.backgroundColor).toBeTruthy()
+    expect(wrap.classList).not.toContain('contents')
+    // No ask showing: the wrap takes no room in the footer.
+    expect(wrap.classList).toContain('empty:hidden')
     expect(wrap.contains(screen.getByTestId('prompt'))).toBe(true)
     cleanup()
     render(withUi({}, createElement(ModAppLook, null, child)))

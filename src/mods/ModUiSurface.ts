@@ -694,10 +694,11 @@ export abstract class ModUiSurface extends ModEngineEvents {
   /** A plugin unloaded or lost its worker: its panes and placed rows go ("`unload` drops a
    *  pane nothing draws any more … gone before the hooks hear of it"), and
    *  its drawings are forgotten. */
-  /** The theme's scene went: its drawings are nobody's. */
+  /** The theme's scene went: its drawings are nobody's, and their handlers
+   *  are dropped in the workers that hold them. */
   protected forgetBackdrop(): void {
     for (const key of this.keysOfSite('Backdrop', BACKDROP_REQUEST_ID)) {
-      this.drawings.delete(key)
+      this.forgetDrawing(key)
       this.unsubscribeAll(key)
     }
   }

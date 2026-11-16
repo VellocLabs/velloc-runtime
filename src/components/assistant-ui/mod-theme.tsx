@@ -55,14 +55,18 @@ function ownTokensNow(): Record<string, string> {
   return ownTokens;
 }
 
-/** The app's own token values, as the page root holds them, live. */
-function useOwnTokens(enabled: boolean): Record<string, string> {
-  const subscribe = React.useCallback((listener: () => void) => (enabled ? subscribeRoot(listener) : () => {}), [enabled]);
-  const tokens = React.useSyncExternalStore(subscribe, ownTokensNow, () => ownTokens);
-  return enabled ? tokens : EMPTY_TOKENS;
+const EMPTY_TOKENS: Record<string, string> = {};
+
+function noTokens(): Record<string, string> {
+  return EMPTY_TOKENS;
 }
 
-const EMPTY_TOKENS: Record<string, string> = {};
+/** The app's own token values, as the page root holds them, live; read only
+ *  while `enabled`. */
+function useOwnTokens(enabled: boolean): Record<string, string> {
+  const subscribe = React.useCallback((listener: () => void) => (enabled ? subscribeRoot(listener) : () => {}), [enabled]);
+  return React.useSyncExternalStore(subscribe, enabled ? ownTokensNow : noTokens, enabled ? () => ownTokens : noTokens);
+}
 
 /** What the thread root carries for the standing theme. */
 export type ModThemeLook = {
@@ -78,10 +82,10 @@ export function useModThemeLook(): ModThemeLook {
   const { theme } = useModUi();
   const mode = usePageMode();
   const glass = theme ? sceneGlassOf(theme.backdrop) : undefined;
-  const own = useOwnTokens(glass !== undefined);
+  const own = useOwnTokens(glass !== undefined || theme?.colors !== undefined);
   return React.useMemo(() => {
     if (!theme) return { theme, style: {}, attributes: {} };
-    const palette = theme.colors ? paletteTokensOf(theme.colors, mode) : ({ kind: "none" } as const);
+    const palette = theme.colors ? paletteTokensOf(theme.colors, mode, own) : ({ kind: "none" } as const);
     const painted = palette.kind === "painted" ? palette.tokens : {};
     const style: Record<string, string> = { ...painted };
     const attributes: Record<string, string> = {
@@ -99,13 +103,18 @@ export function useModThemeLook(): ModThemeLook {
 }
 
 /** Keeps the app's own look for what it wraps (permission prompts), under
- *  any theme. */
+ *  any theme. Security: the wrap is opaque in the app's own background, so no
+ *  scene, glass or ground shows through what a person must be able to trust. */
 export function ModAppLook({ children }: { children: React.ReactNode }) {
   const { theme } = useModUi();
   const own = useOwnTokens(theme !== undefined);
   if (!theme) return <>{children}</>;
   return (
-    <div data-slot="mod-app-look" className="contents" style={own as React.CSSProperties}>
+    <div
+      data-slot="mod-app-look"
+      className="w-full rounded-lg empty:hidden"
+      style={{ ...own, backgroundColor: own["--background"] ?? "Canvas", color: own["--foreground"] ?? "CanvasText" } as React.CSSProperties}
+    >
       {children}
     </div>
   );
@@ -165,6 +174,7 @@ function SceneBackdrop({ theme }: { theme: ModsUiTheme }) {
       data-mod-drawn={drawn?.kind ?? "pending"}
       className="pointer-events-none absolute inset-0 -z-10 overflow-hidden [&_[data-mod-tree]]:h-full [&_[data-mod-tree]]:w-full [&_img]:h-full [&_img]:w-full [&_img]:object-cover"
       aria-hidden="true"
+      inert
     >
       {drawn?.kind === "tree" ? (
         <ModRenderTree tree={drawn.tree} site={{ component: "Backdrop", requestId: BACKDROP_REQUEST_ID, plugin: drawn.plugin ?? theme.plugin }} />
@@ -192,6 +202,7 @@ export function ModBackdrop() {
       className="pointer-events-none absolute inset-0 -z-10 overflow-hidden"
       style={style}
       aria-hidden="true"
+      inert
     >
       {vector ? <VectorGround vector={vector} /> : null}
     </div>

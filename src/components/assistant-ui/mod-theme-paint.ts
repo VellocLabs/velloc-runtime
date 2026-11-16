@@ -6,7 +6,7 @@
  * colors raw or a known name, path data whole.
  */
 
-import { isPathData, isRawThemeColor, isThemeColor } from '@/mods/modTheme'
+import { isPathData, isRawThemeColor, isThemeColor, themeSetArgsOf } from '@/mods/modTheme'
 
 export type ThemeMode = 'light' | 'dark'
 
@@ -107,28 +107,103 @@ export const THEME_TOKENS: readonly string[] = [...new Set(TOKEN_SOURCES.map(([t
 /** The surface tokens a scene's glass frosts. */
 export const GLASS_TOKENS: readonly string[] = ['--background', '--base', '--toolbar', '--card', '--sidebar']
 
-/** Velloc's floor for primary text on each surface; under it the whole
- *  palette is refused. */
+/** Velloc's floor for every text token on every surface token; under it, or
+ *  where a pair cannot be judged, the whole palette is refused. */
 export const MIN_TEXT_CONTRAST = 4.5
 
+/** The surfaces plain text is read on, and the ones colored text is. */
+const CONTRAST_SURFACES: readonly string[] = ['--background', '--card', '--popover', '--muted', '--secondary', '--accent']
+const READING_SURFACES: readonly string[] = ['--background', '--card', '--popover']
+
+/** The tokens plain thread text is drawn in. */
+const PLAIN_TEXTS: readonly string[] = [
+  '--foreground',
+  '--card-foreground',
+  '--popover-foreground',
+  '--secondary-foreground',
+  '--accent-foreground',
+  '--muted-foreground',
+]
+
+/** The tokens colored thread text is drawn in: roles, diff and syntax. */
+const COLORED_TEXTS: readonly string[] = [
+  '--destructive',
+  '--success',
+  '--success-emphasis',
+  '--warning',
+  '--warning-emphasis',
+  '--info',
+  '--info-emphasis',
+  '--diff-added',
+  '--diff-removed',
+  '--syntax-comment',
+  '--syntax-keyword',
+  '--syntax-link',
+  '--syntax-string',
+  '--syntax-number',
+  '--syntax-constant',
+  '--syntax-function',
+  '--syntax-tag',
+  '--syntax-property',
+  '--syntax-type',
+]
+
+/** Every text-on-surface pair a person reads in the thread. */
+const CONTRAST_PAIRS: ReadonlyArray<[string, string]> = [
+  ...PLAIN_TEXTS.flatMap(text => CONTRAST_SURFACES.map(surface => [text, surface] as [string, string])),
+  ...COLORED_TEXTS.flatMap(text => READING_SURFACES.map(surface => [text, surface] as [string, string])),
+  ['--primary-foreground', '--primary'],
+]
+
 const HEX6 = /^#[0-9a-fA-F]{6}$/
+const HEX3 = /^#[0-9a-fA-F]{3}$/
+const OKLCH = /^oklch\(\s*([\d.]+)(%?)\s+([\d.]+)\s+([\d.]+)(?:deg)?\s*\)$/i
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
-function luminance(hex: string): number {
-  const channel = (start: number): number => {
-    const c = parseInt(hex.slice(start, start + 2), 16) / 255
-    return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4
-  }
-  return 0.2126 * channel(1) + 0.7152 * channel(3) + 0.0722 * channel(5)
+function srgbToLinear(c: number): number {
+  return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4
 }
 
-/** WCAG contrast ratio of two six-digit hex colors. */
-export function contrastRatio(a: string, b: string): number {
-  const [hi, lo] = [luminance(a), luminance(b)].sort((x, y) => y - x) as [number, number]
-  return (hi + 0.05) / (lo + 0.05)
+/** Linear sRGB of a hex or `oklch()` color, clipped to the gamut; undefined
+ *  for any other form. */
+function linearRgbOf(css: string): [number, number, number] | undefined {
+  const value = css.trim()
+  if (HEX6.test(value) || HEX3.test(value)) {
+    const hex = value.length === 4 ? `#${[...value.slice(1)].map(c => c + c).join('')}` : value
+    return [1, 3, 5].map(at => srgbToLinear(parseInt(hex.slice(at, at + 2), 16) / 255)) as [number, number, number]
+  }
+  const match = OKLCH.exec(value)
+  if (!match) return undefined
+  const lightness = Number(match[1]) / (match[2] ? 100 : 1)
+  const chroma = Number(match[3])
+  const hue = (Number(match[4]) * Math.PI) / 180
+  const a = chroma * Math.cos(hue)
+  const b = chroma * Math.sin(hue)
+  const l = (lightness + 0.3963377774 * a + 0.2158037573 * b) ** 3
+  const m = (lightness - 0.1055613458 * a - 0.0638541728 * b) ** 3
+  const s = (lightness - 0.0894841775 * a - 1.291485548 * b) ** 3
+  const clip = (x: number): number => Math.min(1, Math.max(0, x))
+  return [
+    clip(4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s),
+    clip(-1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s),
+    clip(-0.0041960863 * l - 0.7034186147 * m + 1.707614701 * s),
+  ]
+}
+
+function luminanceOf(css: string): number | undefined {
+  const rgb = linearRgbOf(css)
+  return rgb ? 0.2126 * rgb[0] + 0.7152 * rgb[1] + 0.0722 * rgb[2] : undefined
+}
+
+/** WCAG contrast ratio of two hex or `oklch()` colors; undefined where
+ *  either is another form. */
+export function contrastRatio(a: string, b: string): number | undefined {
+  const [first, second] = [luminanceOf(a), luminanceOf(b)]
+  if (first === undefined || second === undefined) return undefined
+  return (Math.max(first, second) + 0.05) / (Math.min(first, second) + 0.05)
 }
 
 /** The palette's colors for `mode`: six-digit hex entries alone. Absent:
@@ -152,25 +227,24 @@ export type PaintedPalette =
   | { kind: 'refused'; reason: string }
 
 /** The tokens `colors` paints in the page's `mode`, or why none. A palette
- *  that gives only the other mode paints nothing here. */
-export function paletteTokensOf(colors: unknown, mode: ThemeMode): PaintedPalette {
+ *  that gives only the other mode paints nothing here. Each text/surface
+ *  pair the palette touches is judged against the other side as it will
+ *  stand: the palette's, else the app's own (`own`, the page root's values). */
+export function paletteTokensOf(colors: unknown, mode: ThemeMode, own: Record<string, string> = {}): PaintedPalette {
   const inputs = paletteInputsOf(colors, mode)
   if (!inputs || Object.keys(inputs).length === 0) return { kind: 'none' }
-  const text = inputs[GRAY_SLOTS[mode].textPrimary!]
-  if (text) {
-    for (const slot of ['surface0', 'surface1', 'surface2', 'surface3']) {
-      const surface = inputs[GRAY_SLOTS[mode][slot]!]
-      if (surface && contrastRatio(text, surface) < MIN_TEXT_CONTRAST) {
-        return { kind: 'refused', reason: `text on ${slot} is under ${MIN_TEXT_CONTRAST}:1` }
-      }
-    }
-  }
   const tokens: Record<string, string> = {}
   for (const [token, source] of TOKEN_SOURCES) {
     const value = inputs[source.key(mode)]
     if (!value) continue
     tokens[token] =
       source.alpha === undefined ? value : `color-mix(in srgb, ${value} ${Math.round(source.alpha * 100)}%, transparent)`
+  }
+  for (const [text, surface] of CONTRAST_PAIRS) {
+    if (tokens[text] === undefined && tokens[surface] === undefined) continue
+    const ratio = contrastRatio(tokens[text] ?? own[text] ?? '', tokens[surface] ?? own[surface] ?? '')
+    if (ratio === undefined) return { kind: 'refused', reason: `${text} on ${surface} cannot be judged` }
+    if (ratio < MIN_TEXT_CONTRAST) return { kind: 'refused', reason: `${text} on ${surface} is under ${MIN_TEXT_CONTRAST}:1` }
   }
   return { kind: 'painted', tokens }
 }
@@ -202,6 +276,16 @@ function namedColor(name: string): string {
   return `var(${hue})`
 }
 
+/** The backdrop as the runtime's own checker takes it; undefined where it
+ *  refuses it. */
+function checkedBackdrop(backdrop: unknown): unknown {
+  try {
+    return themeSetArgsOf({ backdrop }).backdrop
+  } catch {
+    return undefined
+  }
+}
+
 /** A ground's color as CSS, or undefined where it is none the page takes. */
 export function groundColorOf(value: unknown): string | undefined {
   if (!isThemeColor(value)) return undefined
@@ -219,7 +303,8 @@ function tilingStyle(value: Record<string, unknown>): { backgroundSize: string; 
 }
 
 /** A still color or gradient ground as CSS; undefined for anything else. */
-export function groundStyleOf(backdrop: unknown): Record<string, string> | undefined {
+export function groundStyleOf(value: unknown): Record<string, string> | undefined {
+  const backdrop = checkedBackdrop(value)
   if (!isRecord(backdrop)) return undefined
   if (backdrop.color !== undefined) {
     const color = groundColorOf(backdrop.color)
@@ -255,7 +340,8 @@ export type GroundVector = {
   paths: GroundPath[]
 }
 
-export function groundVectorOf(backdrop: unknown): GroundVector | undefined {
+export function groundVectorOf(value: unknown): GroundVector | undefined {
+  const backdrop = checkedBackdrop(value)
   if (!isRecord(backdrop) || !isRecord(backdrop.vector)) return undefined
   const vector = backdrop.vector
   const box = vector.viewBox
