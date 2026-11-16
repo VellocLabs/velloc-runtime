@@ -18,6 +18,7 @@ import {
 } from './threadLaunchers'
 import {
   SessionRowList,
+  SIDEBAR_ROW_HEIGHT,
   sessionDisplayTitle,
   type SessionListItem,
   type SessionNesting,
@@ -489,7 +490,10 @@ export function SessionListBody({
           <>
             <button
               type="button"
-              className="flex h-7 items-center gap-2 rounded-md bg-muted px-3 text-start text-sm transition-colors"
+              className={cn(
+                'flex items-center gap-2 rounded-md bg-muted px-3 text-start text-sm transition-colors',
+                SIDEBAR_ROW_HEIGHT,
+              )}
               data-active="true"
               aria-current="true"
             >

@@ -52,15 +52,35 @@ describe('panel and code surfaces carry the type-scale utilities', () => {
   })
 
   it('every sidebar row shares one height constant', () => {
-    // Session, project, collapsed-summary and show-more rows share one height.
-    // 32 px rows with a 2 px gap; no row hard-codes a pixel height of its own.
-    const literals = (rel: string) => read(rel).match(/\bh-\[\d+px\]/g) ?? []
+    // Session, project, collapsed-summary and show-more rows share one height;
+    // the connector elbow is half a row plus the row gap, so a density change
+    // cannot leave it behind.
+    const rows = read('browser/webview/SessionRows.tsx')
+    const projects = read('browser/webview/ProjectSection.tsx')
+    const rowSteps = Number(rows.match(/SIDEBAR_ROW_HEIGHT = 'h-(\d+)'/)?.[1])
+    const gapSteps = 0.5 // `gap-0.5`, one Tailwind step
+    const elbowRem = (rowSteps * 0.25) / 2 + gapSteps * 0.25
+    expect(rowSteps).toBe(8)
+    expect(rows).toContain(`SIDEBAR_CONNECTOR_ELBOW = 'h-[${elbowRem}rem]'`)
+
+    // No row hard-codes a pixel height of its own; a comment is not code.
+    const literals = (rel: string) =>
+      read(rel)
+        .split('\n')
+        .filter(line => !/^\s*(\/\/|\*|\/\*)/.test(line))
+        .flatMap(line => line.match(/(?<![-\w])h-\[\d+px\]/g) ?? [])
     expect(literals('browser/webview/ProjectSection.tsx')).toEqual([])
-    expect(literals('browser/webview/SessionRows.tsx')).toEqual(['h-[18px]', 'h-[18px]']) // connector elbows
-    expect(read('browser/webview/SessionRows.tsx')).toContain("export const SIDEBAR_ROW_HEIGHT = 'h-8'")
+    expect(literals('browser/webview/SessionRows.tsx')).toEqual([])
+
+    // Every list carries the same gap, so a subtree never sits tighter.
     expect(read('browser/webview/Sidebar.tsx')).toContain('flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto')
-    expect(read('browser/webview/SessionRows.tsx').match(/SIDEBAR_ROW_HEIGHT,/g)).toHaveLength(3)
-    expect(read('browser/webview/ProjectSection.tsx')).toContain('SIDEBAR_ROW_HEIGHT,')
+    expect(rows).toContain('className="flex flex-col gap-0.5"')
+    expect(projects).toContain('className="flex shrink-0 flex-col gap-0.5"')
+    expect(projects).toContain('className="flex flex-col gap-0.5"')
+
+    expect(rows.match(/SIDEBAR_ROW_HEIGHT,/g)).toHaveLength(4)
+    expect(projects).toContain('SIDEBAR_ROW_HEIGHT,')
+    expect(read('browser/webview/Sidebar.tsx')).toContain('SIDEBAR_ROW_HEIGHT,')
   })
 
   it('the topbar session tab and the composer hint are on the interface size', () => {

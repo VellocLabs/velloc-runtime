@@ -53,6 +53,9 @@ import {
  *  (`ProjectSection`) and the "show more" row — so the tree reads as one
  *  list. Fixed, like the client's: rows do not step with Text size. */
 export const SIDEBAR_ROW_HEIGHT = 'h-8'
+/** Child connector elbow: half a row plus the row gap, so the bend meets the
+ *  child row's vertical centre. In rem, like the row and the gap. */
+export const SIDEBAR_CONNECTOR_ELBOW = 'h-[1.125rem]'
 
 export type SessionListItem = {
   sessionId: string
@@ -387,7 +390,7 @@ function SessionRowSubtree(props: SessionRowProps) {
                 className={cn(
                   'pointer-events-none absolute -top-0.5 border-l border-border',
                   index === children.length - 1
-                    ? 'h-[18px] w-2 rounded-bl-lg border-b'
+                    ? cn('w-2 rounded-bl-lg border-b', SIDEBAR_CONNECTOR_ELBOW)
                     : '-bottom-0.5',
                 )}
               />
@@ -412,7 +415,10 @@ function SessionRowSubtree(props: SessionRowProps) {
               <span
                 aria-hidden
                 style={{ left: connectorLeft }}
-                className="pointer-events-none absolute -top-0.5 h-[18px] w-2 rounded-bl-lg border-b border-l border-border"
+                className={cn(
+                  'pointer-events-none absolute -top-0.5 w-2 rounded-bl-lg border-b border-l border-border',
+                  SIDEBAR_CONNECTOR_ELBOW,
+                )}
               />
               <button
                 type="button"
@@ -582,7 +588,10 @@ function SessionRow({
             }
             onEditingChange?.(null)
           }}
-          className="h-8 w-full rounded-md border border-input bg-background px-3 text-body leading-tight outline-none focus-visible:focus-ring-inset"
+          className={cn(
+            'w-full rounded-md border border-input bg-background px-3 text-body leading-tight outline-none focus-visible:focus-ring-inset',
+            SIDEBAR_ROW_HEIGHT,
+          )}
         />
       ) : (
         <>
