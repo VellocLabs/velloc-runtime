@@ -2,8 +2,9 @@ import { describe, expect, it } from 'vitest'
 import { convertBrowserRuntimeStateToThreadMessages } from '../browser/webview/assistantUiAdapter'
 import type { BrowserRuntimeClientState } from '../browser/webview/BrowserRuntimeClient'
 
-// The step-list tools (F-41) draw their state in the step list and the closing
-// box, so their calls must not also appear as transcript tool lines.
+// The step list and the closing box (F-41) draw what the two `session_turn`
+// calls carry, so neither call also appears as a transcript tool line. The drop
+// is a render concern only: the stored rows keep both calls.
 
 describe('assistantUiAdapter — turn-board calls', () => {
   const userRow = {
@@ -56,6 +57,10 @@ describe('assistantUiAdapter — turn-board calls', () => {
     // The close-only row yields no parts, so it is dropped rather than kept as
     // an empty assistant bubble.
     expect(storedMessages.filter(message => message.role === 'assistant')).toHaveLength(1)
+    // Rendering drops the parts; the persisted rows keep both calls.
+    const rawRows = JSON.stringify(stored.transcriptMessages)
+    expect(rawRows).toContain('mcp__session_turn__set_plan')
+    expect(rawRows).toContain('mcp__session_turn__close')
 
     const streaming: BrowserRuntimeClientState = {
       status: 'submitting',
@@ -67,6 +72,13 @@ describe('assistantUiAdapter — turn-board calls', () => {
           event: {
             type: 'content_block_start',
             content_block: { type: 'tool-call', toolCallId: 'plan-2', toolName: 'mcp__session_turn__set_plan', args: { next: true } },
+          },
+        },
+        {
+          type: 'stream_event',
+          event: {
+            type: 'content_block_start',
+            content_block: { type: 'tool-call', toolCallId: 'close-2', toolName: 'mcp__session_turn__close', args: { summary: 'done' } },
           },
         },
         {

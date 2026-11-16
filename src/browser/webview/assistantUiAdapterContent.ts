@@ -112,10 +112,10 @@ export function convertAssistantBlock(
       // surface rendered elsewhere — so drop the part; a delete-only turn then
       // doesn't render an empty bubble. (a2ui_update_data_model DOES render: it
       // relocates the surface to its newest position, leaving a breadcrumb
-      // behind.) The turn-board tools drop too: the step list and closing box
-      // draw them instead (F-41). Both drops are render-only — the surface
-      // store / feeder read the RAW transcript, and the board holds the step
-      // list and closing on its own.
+      // behind.) The turn-board tools drop too, since the step list and the
+      // closing box draw them (F-41). Both drops are render-only: the surface
+      // store / feeder read the RAW transcript, and the board holds the steps
+      // and the closing on its own.
       if (toolName === A2UI_DELETE_SURFACE || isTurnBoardToolName(toolName)) {
         return []
       }
