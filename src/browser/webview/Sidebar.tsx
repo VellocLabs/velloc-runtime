@@ -348,17 +348,18 @@ export function SessionListBody({
   const showProjects = !titlesOnly && hasMultiSession
 
   return (
-    // Fills the docked sidebar wrapper (a flex column) so the rows region
-    // below can scroll while the launchers stay pinned.
+    // Fills the docked sidebar wrapper (a flex column) and is its one
+    // scroll region: launchers, Workspaces and rows scroll together.
+    // The 6px gutter plus pe-0.5 keeps every row 8px off the end edge.
     // In the narrow popover (a block parent) `flex-1` is inert, so this
-    // sizes to content exactly as before.
-    <div className="flex min-h-0 flex-1 flex-col gap-0.5">
+    // sizes to content.
+    <div className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto pe-0.5 [scrollbar-gutter:stable]">
       {/* Thread launchers (docked sidebar only). Each item creates a
           session with its `templateType` (prompt + tools); the first item
           ("New Thread", type undefined) keeps the boot default + empty
           reuse. Config lives in threadLaunchers.tsx. */}
       {!titlesOnly && (
-        <div className="flex shrink-0 flex-col gap-0.5 pe-2">
+        <div className="flex shrink-0 flex-col gap-0.5">
           {filterLaunchers(getThreadLaunchers(), 'sidebar', installedClis).map((launcher, index) => {
             const Icon = launcher.Icon
             return (
@@ -384,11 +385,9 @@ export function SessionListBody({
         </div>
       )}
 
-      {/* Scroll region — the launchers above stay pinned (shrink-0); the
-          Projects node, the "Recents" header and the rows all scroll together.
-          (The header used to be pinned too, but with a Projects node above it
-          a fixed header would pin the middle of the tree.) */}
-      <div className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto pe-0.5 [scrollbar-gutter:stable]">
+      {/* The list group. The body above is the one scroll region; this
+          column only stacks the Projects node, the headers and the rows. */}
+      <div className="flex shrink-0 flex-col gap-0.5">
         {/* Projects — the project-grouped view of the same sessions Recents
             shows by time. Derived from `projectRoot` on rows the sidebar
             already holds, so it costs no extra fs reads. */}

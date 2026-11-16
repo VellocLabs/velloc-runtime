@@ -159,13 +159,15 @@ describe('docked sidebar inset', () => {
     expect(scrollClasses).toContain('[scrollbar-gutter:stable]')
   })
 
-  it('pads the launchers 8px at the end and rounds rows to 8px', () => {
+  it('scrolls the launchers and the rows in one region and rounds rows to 8px', () => {
     render(createElement(Sidebar, {
       title: 'Conversation', sessionId: 'p', activeSessionId: 'p',
       sessions: [item('p')], collapsed: false,
     }))
-    const launchers = screen.getByTestId('sidebar-new-thread').parentElement!
-    expect(launchers.className.split(/\s+/)).toContain('pe-2')
+    const rowScroller = screen.getByTestId('sidebar-row-p').closest('.overflow-y-auto')!
+    const launcherScroller = screen.getByTestId('sidebar-new-thread').closest('.overflow-y-auto')
+    expect(launcherScroller).toBe(rowScroller)
+    expect(rowScroller.parentElement).toBe(document.querySelector('[data-slot="sidebar-body"]'))
     const rowClasses = screen.getByTestId('sidebar-row-p').className.split(/\s+/)
     expect(rowClasses).toContain('rounded-md')
   })
