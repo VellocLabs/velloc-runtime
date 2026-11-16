@@ -576,6 +576,16 @@ describe('findReusableEmptySession', () => {
     ).toBeUndefined()
   })
 
+  it('matches an absent template type, never an empty string', () => {
+    const bound = localEntry({ sessionId: 'idle', projectRoot: '/repo/one' })
+    expect(
+      findReusableEmptySession([bound], undefined, '/repo/one', 'active')?.sessionId,
+    ).toBe('idle')
+    expect(
+      findReusableEmptySession([bound], '', '/repo/one', 'active'),
+    ).toBeUndefined()
+  })
+
   it('skips sessions with messages or a manual rename', () => {
     const withMessages = {
       ...localEntry({ sessionId: 'used', messageCount: 2 }),

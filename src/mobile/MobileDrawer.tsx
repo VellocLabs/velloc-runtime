@@ -4,7 +4,13 @@
  * session, or a leftward swipe on the panel; scrolling the list does not close it. Holds a title
  * filter, the session list, New session, and the switch to the desktop shell.
  */
-import { useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
+import {
+  useMemo,
+  useRef,
+  useState,
+  type MouseEvent as ReactMouseEvent,
+  type PointerEvent as ReactPointerEvent,
+} from 'react'
 import { Dialog as DialogPrimitive } from 'radix-ui'
 import { MonitorIcon, PlusIcon } from 'lucide-react'
 
@@ -39,9 +45,20 @@ export function MobileDrawer(props: MobileDrawerProps) {
     [sessions, query, running, needsAnswer, now],
   )
   const swipeStart = useRef<{ x: number; y: number } | null>(null)
+  const swiped = useRef(false)
 
+  const handleOpenChange = (next: boolean) => {
+    // The filter belongs to one opening: reopening starts from the whole list.
+    if (!next) setQuery('')
+    onOpenChange(next)
+  }
+
+  // A drag that starts in a text field moves its caret, so it is never a swipe.
   const onPointerDown = (event: ReactPointerEvent) => {
-    swipeStart.current = { x: event.clientX, y: event.clientY }
+    const target = event.target as HTMLElement | null
+    swipeStart.current = target?.closest?.('input, textarea, [contenteditable="true"]')
+      ? null
+      : { x: event.clientX, y: event.clientY }
   }
   const onPointerUp = (event: ReactPointerEvent) => {
     const from = swipeStart.current
@@ -49,14 +66,29 @@ export function MobileDrawer(props: MobileDrawerProps) {
     if (!from) return
     const dx = event.clientX - from.x
     const dy = event.clientY - from.y
-    if (dx <= -DRAWER_SWIPE_CLOSE_PX && Math.abs(dx) > Math.abs(dy) * 1.5) onOpenChange(false)
+    if (dx <= -DRAWER_SWIPE_CLOSE_PX && Math.abs(dx) > Math.abs(dy) * 1.5) {
+      swiped.current = true
+      // The release click dispatches in this same task; drop the guard after it, so a
+      // gesture the browser ends without a click cannot swallow a later one.
+      setTimeout(() => {
+        swiped.current = false
+      }, 0)
+      handleOpenChange(false)
+    }
+  }
+  // A swipe that ends on a row or a button must not also tap it.
+  const onClickCapture = (event: ReactMouseEvent) => {
+    if (!swiped.current) return
+    swiped.current = false
+    event.preventDefault()
+    event.stopPropagation()
   }
 
   const hasSessions = groups.length > 0
   const filtering = query.trim() !== ''
 
   return (
-    <DialogPrimitive.Root open={open} onOpenChange={onOpenChange}>
+    <DialogPrimitive.Root open={open} onOpenChange={handleOpenChange}>
       <DialogPrimitive.Portal>
         <DialogPrimitive.Overlay
           data-testid="mobile-drawer-backdrop"
@@ -67,6 +99,7 @@ export function MobileDrawer(props: MobileDrawerProps) {
           aria-describedby={undefined}
           onPointerDown={onPointerDown}
           onPointerUp={onPointerUp}
+          onClickCapture={onClickCapture}
           onPointerCancel={() => {
             swipeStart.current = null
           }}

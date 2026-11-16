@@ -440,7 +440,7 @@ export function MobileShell(props: MobileShellProps): ReactNode {
   const startNewSession = useCallback(() => {
     setDrawerOpen(false)
     const templateType = getSessionTemplateType(activeSessionId)
-    if (projectRoot?.trim()) launchInProject(projectRoot, templateType ?? '')
+    if (projectRoot?.trim()) launchInProject(projectRoot, templateType)
     else openNewSession(templateType)
   }, [activeSessionId, getSessionTemplateType, launchInProject, openNewSession, projectRoot])
   const openRowMenu = useCallback(

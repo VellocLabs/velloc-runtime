@@ -3,13 +3,8 @@
  * default view, built from the same pure helpers. Only top-level, unarchived sessions are listed;
  * a title filter narrows them.
  */
-import {
-  buildSessionListView,
-  DEFAULT_SESSION_LIST_VIEW,
-  orderSessions,
-  ungroupedView,
-  type SessionGroupLabel,
-} from '../browser/webview/sessionListView'
+import { DEFAULT_SESSION_LIST_VIEW, orderSessions, type SessionGroupLabel } from '../browser/webview/sessionListView'
+import { buildPinnedFirstView } from '../browser/webview/sessionPinning'
 import { sessionActivityTime } from '../browser/webview/sessionTimeBucket'
 import { nestSessions, partitionArchived } from '../browser/webview/sessionTree'
 import type { SessionLineageKind } from '../sessions/sessionLineage'
@@ -94,14 +89,10 @@ export function buildMobileSessionGroups(
   const roots = nestSessions(live, archivedIds).roots.filter(
     s => query === '' || namedTitle(s.title).toLocaleLowerCase().includes(query),
   )
-  const groups: MobileSessionGroup[] = ungroupedView(roots.filter(s => s.pinned)).map(g => ({
-    key: 'pinned',
-    label: null,
-    pinned: true,
+  return buildPinnedFirstView(roots, DEFAULT_SESSION_LIST_VIEW, options.now).map(g => ({
+    key: g.key,
+    label: g.label ?? null,
+    pinned: g.key === 'pinned',
     rows: g.sessions.map(toRow),
   }))
-  for (const g of buildSessionListView(roots.filter(s => !s.pinned), DEFAULT_SESSION_LIST_VIEW, options.now)) {
-    groups.push({ key: g.key, label: g.label ?? null, pinned: false, rows: g.sessions.map(toRow) })
-  }
-  return groups
 }

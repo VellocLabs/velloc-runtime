@@ -29,9 +29,20 @@ describe('buildMobileSessionGroups', () => {
     expect(groups[0].rows.map(r => r.sessionId)).toEqual(['pinned-old'])
     const rest = groups.slice(1).flatMap(g => g.rows.map(r => r.sessionId))
     expect(rest).toEqual(['today-late', 'today-early', 'old'])
-    // Today draws no header; an older group does.
-    expect(groups[1].label).toBeNull()
+    // Under the Pinned heading, today keeps its own header, so its rows do not read as pinned.
+    expect(groups[1].label).toEqual({ kind: 'message', key: 'sidebar.timeToday' })
     expect(groups[groups.length - 1].label).not.toBeNull()
+  })
+
+  it('draws no header on the leading Today group when nothing is pinned', () => {
+    const groups = buildMobileSessionGroups([session('today', NOW - 1000)], {
+      query: '',
+      running: none,
+      needsAnswer: none,
+      now: NOW,
+    })
+    expect(groups[0].label).toBeNull()
+    expect(groups[0].pinned).toBe(false)
   })
 
   it('leaves out archived, sub-agent, side-chat and child sessions', () => {

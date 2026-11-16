@@ -90,6 +90,24 @@ export function offersPhoneShell(win: Pick<Window, 'matchMedia' | 'screen'>): bo
   return readDeviceTraits(win).coarsePointer
 }
 
+/**
+ * The entry's absolute URL, when the listener serves it: a same-origin GET whose body is
+ * dropped. `null` when the URL cannot be built, the fetch fails, or the answer is not 2xx.
+ */
+async function servedEntryUrl(
+  env: { baseUri: string; fetch: MobileEntryEnv['fetch'] },
+  file: string,
+): Promise<string | null> {
+  try {
+    const target = new URL(file, env.baseUri).href
+    const response = await env.fetch(target, { method: 'GET', credentials: 'same-origin' })
+    void response.body?.cancel().catch(() => {})
+    return response.ok ? target : null
+  } catch {
+    return null
+  }
+}
+
 export type ShellSwitchEnv = {
   win: { location: Pick<Location, 'replace'> }
   baseUri: string
@@ -108,15 +126,8 @@ export function switchToDesktopShell(env: Omit<ShellSwitchEnv, 'fetch'>): void {
  * Resolves `false`, with nothing stored, when it does not (a desktop on an older build).
  */
 export async function switchToMobileShell(env: ShellSwitchEnv): Promise<boolean> {
-  let target: string
-  try {
-    target = new URL(MOBILE_ENTRY_FILE, env.baseUri).href
-    const response = await env.fetch(target, { method: 'GET', credentials: 'same-origin' })
-    void response.body?.cancel().catch(() => {})
-    if (!response.ok) return false
-  } catch {
-    return false
-  }
+  const target = await servedEntryUrl(env, MOBILE_ENTRY_FILE)
+  if (!target) return false
   writeRemoteShellChoice('mobile', env.storage === undefined ? defaultStorage() : env.storage)
   env.win.location.replace(target)
   return true
@@ -132,19 +143,8 @@ export async function openMobileEntryIfWanted(env: MobileEntryEnv): Promise<bool
   const choice = readRemoteShellChoice(env.storage === undefined ? defaultStorage() : env.storage)
   if (!wantsMobileShell(readDeviceTraits(env.win), choice)) return false
   if (env.win.location.pathname.endsWith(`/${MOBILE_ENTRY_FILE}`)) return false
-  let target: string
-  try {
-    target = new URL(MOBILE_ENTRY_FILE, env.baseUri).href
-  } catch {
-    return false
-  }
-  try {
-    const response = await env.fetch(target, { method: 'GET', credentials: 'same-origin' })
-    void response.body?.cancel().catch(() => {})
-    if (!response.ok) return false
-  } catch {
-    return false
-  }
+  const target = await servedEntryUrl(env, MOBILE_ENTRY_FILE)
+  if (!target) return false
   env.win.location.replace(target)
   return true
 }

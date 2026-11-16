@@ -71,14 +71,25 @@ export function useLongPress(
     event.stopPropagation()
   }, [])
 
+  const release = useCallback(() => {
+    clear()
+    if (!fired.current) return
+    // The click that ends a gesture dispatches in the same task as its pointer event.
+    // A swipe or overlay can end the gesture without one, and that unused guard would
+    // then swallow the next click-only activation of this row.
+    setTimeout(() => {
+      fired.current = false
+    }, 0)
+  }, [clear])
+
   const onContextMenu = useCallback((event: ReactMouseEvent) => event.preventDefault(), [])
 
   return {
     onPointerDown,
     onPointerMove,
-    onPointerUp: clear,
-    onPointerCancel: clear,
-    onPointerLeave: clear,
+    onPointerUp: release,
+    onPointerCancel: release,
+    onPointerLeave: release,
     onContextMenu,
     onClickCapture,
   }

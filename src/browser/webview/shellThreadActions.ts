@@ -251,14 +251,15 @@ export function createShellHandleAddProject(
 export function createShellHandleLaunchInProject(
   openNewSession: (templateType?: string, projectRoot?: string) => string,
 ) {
-  return (projectRoot: string, templateType: string) => {
+  return (projectRoot: string, templateType: string | undefined) => {
     const trimmed = projectRoot.trim()
     if (!trimmed) return
     const sessionId = openNewSession(templateType, trimmed)
     // A CLI session launched here starts its CLI on first sight (F-34).
     if (cliOfTemplateType(templateType)) markCliSessionFresh(sessionId)
     addRecentFolder(trimmed)
-    writeLastFolderForType(templateType, trimmed)
+    // The type-keyed MRU has no entry for a session launched without a type.
+    if (templateType) writeLastFolderForType(templateType, trimmed)
   }
 }
 export function createShellRequestSessionDelete(

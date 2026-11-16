@@ -110,6 +110,76 @@ describe('MobileDrawer', () => {
     expect(calls.onOpenChange).toHaveBeenLastCalledWith(false)
   })
 
+  it('does not open the row a swipe ends on', () => {
+    const onSelectSession = vi.fn()
+    render(
+      createElement(
+        I18nProvider,
+        { locale: 'en' as const },
+        createElement(MobileDrawer, {
+          open: true,
+          onOpenChange: vi.fn(),
+          sessions: SESSIONS,
+          running: new Set<string>(),
+          needsAnswer: new Set<string>(),
+          activeSessionId: 'a',
+          onSelectSession,
+          onSessionMenu: vi.fn(),
+          onNewSession: vi.fn(),
+          onDesktopView: vi.fn(),
+        }),
+      ),
+    )
+    const target = row('b')
+    fireEvent.pointerDown(target, { clientX: 200, clientY: 300, button: 0 })
+    fireEvent.pointerUp(target, { clientX: 100, clientY: 300, button: 0 })
+    fireEvent.click(target)
+    expect(onSelectSession).not.toHaveBeenCalled()
+  })
+
+  it('is not closed by a drag that starts in the title filter', () => {
+    const calls = renderDrawer()
+    const filter = screen.getByTestId('mobile-drawer-filter')
+    fireEvent.pointerDown(filter, { clientX: 220, clientY: 120, button: 0 })
+    fireEvent.pointerUp(filter, { clientX: 100, clientY: 120, button: 0 })
+    expect(calls.onOpenChange).not.toHaveBeenCalled()
+  })
+
+  it('clears the title filter when it closes, so reopening lists everything', () => {
+    const onOpenChange = vi.fn()
+    function Reopen() {
+      const [open, setOpen] = useState(true)
+      return createElement(
+        'div',
+        null,
+        createElement('button', { 'data-testid': 'reopen', onClick: () => setOpen(true) }),
+        createElement(MobileDrawer, {
+          open,
+          onOpenChange: (next: boolean) => {
+            onOpenChange(next)
+            setOpen(next)
+          },
+          sessions: SESSIONS,
+          running: new Set<string>(),
+          needsAnswer: new Set<string>(),
+          activeSessionId: 'a',
+          onSelectSession: vi.fn(),
+          onSessionMenu: vi.fn(),
+          onNewSession: vi.fn(),
+          onDesktopView: vi.fn(),
+        }),
+      )
+    }
+    render(createElement(I18nProvider, { locale: 'en' as const }, createElement(Reopen)))
+    fireEvent.change(screen.getByTestId('mobile-drawer-filter'), { target: { value: 'nothing like it' } })
+    expect(rows()).toEqual([])
+    fireEvent.keyDown(screen.getByTestId('mobile-drawer'), { key: 'Escape' })
+    expect(screen.queryByTestId('mobile-drawer')).toBeNull()
+    fireEvent.click(screen.getByTestId('reopen'))
+    expect(rows()).toEqual(['a', 'b'])
+    expect((screen.getByTestId('mobile-drawer-filter') as HTMLInputElement).value).toBe('')
+  })
+
   it('filters by title, and says when nothing matches', () => {
     renderDrawer()
     const filter = screen.getByTestId('mobile-drawer-filter')
@@ -154,6 +224,23 @@ describe('long press on a row', () => {
     fireEvent.pointerUp(target, { clientX: 50, clientY: 50, button: 0 })
     fireEvent.click(target)
     expect(calls.onSelectSession).not.toHaveBeenCalled()
+  })
+
+  it('does not spend a long press that ended without a click on a later click-only activation', () => {
+    const calls = renderDrawer()
+    const target = row('b')
+    fireEvent.pointerDown(target, { clientX: 50, clientY: 50, button: 0 })
+    act(() => {
+      vi.advanceTimersByTime(LONG_PRESS_DELAY_MS)
+    })
+    expect(calls.onSessionMenu).toHaveBeenCalledWith('b')
+    // The sheet it opened takes the lift, so no click reaches the row.
+    fireEvent.pointerUp(target, { clientX: 50, clientY: 50, button: 0 })
+    act(() => {
+      vi.advanceTimersByTime(0)
+    })
+    fireEvent.click(target)
+    expect(calls.onSelectSession).toHaveBeenCalledWith('b')
   })
 
   it('is cancelled by lifting early or by moving past the tolerance (a scroll)', () => {
