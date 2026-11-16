@@ -158,6 +158,7 @@ const CONTRAST_PAIRS: ReadonlyArray<[string, string]> = [
 const HEX6 = /^#[0-9a-fA-F]{6}$/
 const HEX3 = /^#[0-9a-fA-F]{3}$/
 const OKLCH = /^oklch\(\s*([\d.]+)(%?)\s+([\d.]+)\s+([\d.]+)(?:deg)?\s*\)$/i
+const RGB = /^rgba?\(\s*([\d.]+)\s*[,\s]\s*([\d.]+)\s*[,\s]\s*([\d.]+)\s*(?:[,/]\s*1(?:\.0+)?\s*)?\)$/i
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -167,13 +168,19 @@ function srgbToLinear(c: number): number {
   return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4
 }
 
-/** Linear sRGB of a hex or `oklch()` color, clipped to the gamut; undefined
- *  for any other form. */
+/** Linear sRGB of a hex, opaque `rgb()` or `oklch()` color, clipped to the
+ *  gamut; undefined for any other form. */
 function linearRgbOf(css: string): [number, number, number] | undefined {
   const value = css.trim()
   if (HEX6.test(value) || HEX3.test(value)) {
     const hex = value.length === 4 ? `#${[...value.slice(1)].map(c => c + c).join('')}` : value
     return [1, 3, 5].map(at => srgbToLinear(parseInt(hex.slice(at, at + 2), 16) / 255)) as [number, number, number]
+  }
+  const rgb = RGB.exec(value)
+  if (rgb) {
+    const channels = [rgb[1], rgb[2], rgb[3]].map(Number)
+    if (channels.some(c => !(c >= 0 && c <= 255))) return undefined
+    return channels.map(c => srgbToLinear(c / 255)) as [number, number, number]
   }
   const match = OKLCH.exec(value)
   if (!match) return undefined

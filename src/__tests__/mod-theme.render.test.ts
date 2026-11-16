@@ -145,6 +145,10 @@ describe('the palette', () => {
     expect(contrastRatio('#000000', '#ffffff')).toBeCloseTo(21)
     expect(contrastRatio('oklch(1 0 0)', 'oklch(0 0 0)')).toBeCloseTo(21)
     expect(contrastRatio('red', '#ffffff')).toBeUndefined()
+    // The host theme writes the root's tokens as rgb().
+    expect(contrastRatio('rgb(0, 0, 0)', 'rgb(255, 255, 255)')).toBeCloseTo(21)
+    expect(contrastRatio('rgb(0 0 0 / 1)', '#ffffff')).toBeCloseTo(21)
+    expect(contrastRatio('rgba(0, 0, 0, 0.5)', '#ffffff')).toBeUndefined()
   })
 
   it('every text token is judged on every surface, against the app\'s own where the palette leaves one out; what cannot be judged is refused', () => {
