@@ -197,6 +197,25 @@ export function pathBytesToAttachmentFile(
   return new File([buffer], base, type ? { type } : undefined)
 }
 
+const TEXT_ATTACHMENT_SUFFIXES: ReadonlySet<string> = new Set(
+  SUPPORTED_ATTACHMENT_ACCEPT_PARTS.filter(part => part.startsWith('.')).map(
+    part => part.slice(1).toLowerCase(),
+  ),
+)
+
+/**
+ * Whether a non-image attachment is a text file the composer can preview:
+ * a `text/*` MIME type, or a name whose extension (or, without a dot, whole
+ * name) is one of the accepted text suffixes. PDFs and images are not.
+ */
+export function isTextAttachmentFile(file: Pick<File, 'name' | 'type'>): boolean {
+  if (file.type.startsWith('text/')) return true
+  if (isInlineImageMime(file.type) || isPdfAttachment(file)) return false
+  const name = file.name.toLowerCase()
+  const dot = name.lastIndexOf('.')
+  return TEXT_ATTACHMENT_SUFFIXES.has(dot < 0 ? name : name.slice(dot + 1))
+}
+
 function createAttachmentId(): string {
   return randomUuid()
 }

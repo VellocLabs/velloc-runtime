@@ -1,7 +1,8 @@
 // @vitest-environment happy-dom
 /**
- * A pending image attachment in the composer renders as a thumbnail of the
- * image, with a remove button; other files keep the name chip (F-22).
+ * Pending attachments in the composer render as thumbnails: an image as the
+ * image itself, a text file as its first lines with an extension badge; each
+ * has a remove button, and other files keep the name chip (F-22).
  */
 import { createElement } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -134,14 +135,71 @@ describe('Composer image attachment thumbnail', () => {
     expect(create).toHaveBeenCalledTimes(3)
   })
 
-  it('keeps the name chip for a non-image file', async () => {
+  it('keeps the name chip for a PDF', async () => {
     const { create } = stubObjectUrls()
     render(createElement(Harness))
-    const doc = new File(['hello'], 'notes.md', { type: 'text/markdown' })
+    const pdf = new File(['%PDF-1.7'], 'report.pdf', { type: 'application/pdf' })
+    await pasteFiles(screen.getByTestId('composer-input'), [pdf])
+
+    await waitFor(() => expect(screen.getByText('report.pdf')).toBeTruthy())
+    expect(screen.queryByTestId('composer-image-attachment')).toBeNull()
+    expect(screen.queryByTestId('composer-text-attachment')).toBeNull()
+    expect(create).not.toHaveBeenCalled()
+  })
+
+})
+
+describe('Composer text file preview', () => {
+  it('shows a text file as its first lines, badge and name', async () => {
+    render(createElement(Harness))
+    const doc = new File(['\n# Notes\r\n- fix paste\n\tindented\n'], 'notes.md', {
+      type: 'text/markdown',
+    })
     await pasteFiles(screen.getByTestId('composer-input'), [doc])
 
-    await waitFor(() => expect(screen.getByText('notes.md')).toBeTruthy())
-    expect(screen.queryByTestId('composer-image-attachment')).toBeNull()
-    expect(create).not.toHaveBeenCalled()
+    const card = await screen.findByTestId('composer-text-attachment')
+    expect(card.getAttribute('aria-label')).toBe('notes.md')
+    const preview = screen.getByTestId('composer-text-attachment-preview')
+    await waitFor(() => expect(preview.textContent).toContain('# Notes'))
+    const rows = Array.from(preview.children).map((row) => row.textContent)
+    expect(rows.slice(0, 3)).toEqual(['# Notes', '- fix paste', '  indented'])
+    expect(card.textContent).toContain('MD')
+    expect(card.textContent).toContain('notes.md')
+    expect(card.querySelector('[aria-label="Remove attachment"]')).not.toBeNull()
+  })
+
+  it('previews a typeless source file matched by extension', async () => {
+    render(createElement(Harness))
+    const src = new File(['export const x = 1\n'], 'x.ts')
+    await pasteFiles(screen.getByTestId('composer-input'), [src])
+
+    const preview = await screen.findByTestId('composer-text-attachment-preview')
+    await waitFor(() => expect(preview.textContent).toContain('export const x = 1'))
+    expect(screen.getByTestId('composer-text-attachment').textContent).toContain('TS')
+  })
+
+  it('removes a text file card', async () => {
+    render(createElement(Harness))
+    await pasteFiles(screen.getByTestId('composer-input'), [
+      new File(['hello'], 'a.txt', { type: 'text/plain' }),
+    ])
+    await screen.findByTestId('composer-text-attachment')
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Remove attachment' }))
+    })
+    await waitFor(() =>
+      expect(screen.queryByTestId('composer-text-attachment')).toBeNull(),
+    )
+  })
+
+  it('falls back to the name chip when the head is binary', async () => {
+    render(createElement(Harness))
+    await pasteFiles(screen.getByTestId('composer-input'), [
+      new File(['ab\u0000cd'], 'blob.txt', { type: 'text/plain' }),
+    ])
+    await waitFor(() =>
+      expect(screen.queryByTestId('composer-text-attachment')).toBeNull(),
+    )
+    expect(screen.getByText('blob.txt')).toBeTruthy()
   })
 })

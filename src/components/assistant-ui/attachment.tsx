@@ -30,6 +30,8 @@ import {
   mergePastedTextIntoDraft,
   pastedTextPreview,
 } from "@/browser/webview/pastedTextAttachment";
+import { isTextAttachmentFile } from "@/browser/webview/BrowserComposerAttachmentAdapter";
+import { ComposerTextFileAttachmentCard } from "@/components/assistant-ui/text-file-attachment-card";
 
 /**
  * Host-routed attachment picker: the `<webview>` guest's `<input type=file>` can't raise
@@ -146,6 +148,19 @@ const ComposerAttachmentItem: FC = () => {
   if (isPastedTextAttachmentName(name)) return <PastedTextAttachmentCard />;
   if (type === "image" && file instanceof Blob) {
     return <ComposerImageAttachmentCard file={file} name={name} />;
+  }
+  if (
+    type === "file" &&
+    file instanceof File &&
+    isTextAttachmentFile(file)
+  ) {
+    return (
+      <ComposerTextFileAttachmentCard
+        file={file}
+        name={name}
+        fallback={<ComposerFileAttachmentChip />}
+      />
+    );
   }
   return <ComposerFileAttachmentChip />;
 };
