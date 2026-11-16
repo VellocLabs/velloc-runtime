@@ -7,6 +7,8 @@
 import { useCallback, useEffect, useRef } from 'react'
 import type { MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent } from 'react'
 
+import { useClickSwallow } from './useClickSwallow'
+
 export const LONG_PRESS_DELAY_MS = 500
 export const LONG_PRESS_MOVE_TOLERANCE_PX = 10
 
@@ -27,7 +29,7 @@ export function useLongPress(
 ): LongPressHandlers {
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const start = useRef<{ x: number; y: number } | null>(null)
-  const fired = useRef(false)
+  const { arm, disarm, onClickCapture } = useClickSwallow()
   const callback = useRef(onLongPress)
   callback.current = onLongPress
 
@@ -43,16 +45,16 @@ export function useLongPress(
     (event: ReactPointerEvent) => {
       if (event.button !== 0) return
       clear()
-      fired.current = false
+      disarm()
       start.current = { x: event.clientX, y: event.clientY }
       timer.current = setTimeout(() => {
         timer.current = null
         start.current = null
-        fired.current = true
+        arm()
         callback.current()
       }, delayMs)
     },
-    [clear, delayMs],
+    [clear, delayMs, disarm],
   )
 
   const onPointerMove = useCallback(
@@ -64,32 +66,14 @@ export function useLongPress(
     [clear, moveTolerancePx],
   )
 
-  const onClickCapture = useCallback((event: ReactMouseEvent) => {
-    if (!fired.current) return
-    fired.current = false
-    event.preventDefault()
-    event.stopPropagation()
-  }, [])
-
-  const release = useCallback(() => {
-    clear()
-    if (!fired.current) return
-    // The click that ends a gesture dispatches in the same task as its pointer event.
-    // A swipe or overlay can end the gesture without one, and that unused guard would
-    // then swallow the next click-only activation of this row.
-    setTimeout(() => {
-      fired.current = false
-    }, 0)
-  }, [clear])
-
   const onContextMenu = useCallback((event: ReactMouseEvent) => event.preventDefault(), [])
 
   return {
     onPointerDown,
     onPointerMove,
-    onPointerUp: release,
-    onPointerCancel: release,
-    onPointerLeave: release,
+    onPointerUp: clear,
+    onPointerCancel: clear,
+    onPointerLeave: clear,
     onContextMenu,
     onClickCapture,
   }

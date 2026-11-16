@@ -3,7 +3,7 @@
  * default view, built from the same pure helpers. Only top-level, unarchived sessions are listed;
  * a title filter narrows them.
  */
-import { DEFAULT_SESSION_LIST_VIEW, orderSessions, type SessionGroupLabel } from '../browser/webview/sessionListView'
+import { DEFAULT_SESSION_LIST_VIEW, type SessionGroupLabel } from '../browser/webview/sessionListView'
 import { buildPinnedFirstView } from '../browser/webview/sessionPinning'
 import { sessionActivityTime } from '../browser/webview/sessionTimeBucket'
 import { nestSessions, partitionArchived } from '../browser/webview/sessionTree'
@@ -83,8 +83,7 @@ export function buildMobileSessionGroups(
       running: options.running.has(s.sessionId),
       needsAnswer: options.needsAnswer.has(s.sessionId),
     }))
-  const ordered = orderSessions(listed, DEFAULT_SESSION_LIST_VIEW.field, DEFAULT_SESSION_LIST_VIEW.direction)
-  const { live, archivedIds } = partitionArchived(ordered)
+  const { live, archivedIds } = partitionArchived(listed)
   const query = options.query.trim().toLocaleLowerCase()
   const roots = nestSessions(live, archivedIds).roots.filter(
     s => query === '' || namedTitle(s.title).toLocaleLowerCase().includes(query),

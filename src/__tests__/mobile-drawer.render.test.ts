@@ -163,7 +163,7 @@ describe('MobileDrawer', () => {
           running: new Set<string>(),
           needsAnswer: new Set<string>(),
           activeSessionId: 'a',
-          onSelectSession: vi.fn(),
+          onSelectSession: () => setOpen(false),
           onSessionMenu: vi.fn(),
           onNewSession: vi.fn(),
           onDesktopView: vi.fn(),
@@ -174,6 +174,14 @@ describe('MobileDrawer', () => {
     fireEvent.change(screen.getByTestId('mobile-drawer-filter'), { target: { value: 'nothing like it' } })
     expect(rows()).toEqual([])
     fireEvent.keyDown(screen.getByTestId('mobile-drawer'), { key: 'Escape' })
+    expect(screen.queryByTestId('mobile-drawer')).toBeNull()
+    fireEvent.click(screen.getByTestId('reopen'))
+    expect(rows()).toEqual(['a', 'b'])
+    expect((screen.getByTestId('mobile-drawer-filter') as HTMLInputElement).value).toBe('')
+    // Choosing a session closes the drawer without going through the dialog's own callback.
+    fireEvent.change(screen.getByTestId('mobile-drawer-filter'), { target: { value: 'login' } })
+    expect(rows()).toEqual(['a'])
+    fireEvent.click(row('a'))
     expect(screen.queryByTestId('mobile-drawer')).toBeNull()
     fireEvent.click(screen.getByTestId('reopen'))
     expect(rows()).toEqual(['a', 'b'])
@@ -237,7 +245,7 @@ describe('long press on a row', () => {
     // The sheet it opened takes the lift, so no click reaches the row.
     fireEvent.pointerUp(target, { clientX: 50, clientY: 50, button: 0 })
     act(() => {
-      vi.advanceTimersByTime(0)
+      vi.runOnlyPendingTimers()
     })
     fireEvent.click(target)
     expect(calls.onSelectSession).toHaveBeenCalledWith('b')
