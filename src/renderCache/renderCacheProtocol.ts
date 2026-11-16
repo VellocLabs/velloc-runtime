@@ -16,8 +16,8 @@ export const RENDER_CACHE_ACTION_SCOPES = {
   purgeNow: 'manager',
 } as const satisfies Record<string, ScopeMode>
 
-/** `hidden`: the last visible client page was hidden; the GPU process only. */
-export type RenderCachePurgeReason = 'idle' | 'hidden' | 'manual'
+/** `inactive`: the last active client window lost activation; every target, with a working-set trim. */
+export type RenderCachePurgeReason = 'idle' | 'inactive' | 'manual'
 
 export type RenderCachePurgeRecord = {
   at: number
@@ -26,8 +26,12 @@ export type RenderCachePurgeRecord = {
   throttled: RenderCacheTarget[]
   guestProcesses: number
   gpuProcesses: number
+  /** Present when the purge addressed session-tagged tabs. */
+  agentTabProcesses?: number
   /** Present when this purge also asked the host to trim working sets. */
   workingSetTrim?: WorkingSetTrimOutcome
+  /** `app_active`: the host skipped it, one of its windows being in the foreground. */
+  skipped?: 'app_active'
 }
 
 /**
@@ -36,12 +40,14 @@ export type RenderCachePurgeRecord = {
  */
 export type RenderCacheState = {
   available: boolean
-  /** The idle and hidden purges are on (settings `features`); a manual purge works either way. */
+  /** The idle and inactive purges are on (settings `features`); a manual purge works either way. */
   idlePurge?: boolean
   /** Quiet time, in ms, before the idle purge. */
   idleMs?: number
   /** Some client reports its page visible. */
   visible?: boolean
+  /** Some client reports its window active. */
+  active?: boolean
   purges?: number
   last?: RenderCachePurgeRecord
   lastError?: string

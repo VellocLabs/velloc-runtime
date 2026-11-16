@@ -2,7 +2,7 @@
  * Render-cache purge on the runtime protocol: the `renderCache/status` topic and
  * `renderCache.purgeNow`; shapes and scope in `renderCache/renderCacheProtocol.ts`
  * (P-3). Client activity reported through presence re-arms the idle purge; the
- * last visible page going hidden purges the GPU process.
+ * last active window losing activation runs the inactive purge.
  */
 import { wireError, type TopicId } from '../runtimeProtocol'
 import {
@@ -13,7 +13,7 @@ import {
   RENDER_CACHE_STATUS_TOPIC,
   type RenderCacheState,
 } from '../../renderCache/renderCacheProtocol'
-import type { RenderCachePolicy } from '../../renderCache/RenderCachePolicy'
+import { RenderCachePurgeDeferredError, type RenderCachePolicy } from '../../renderCache/RenderCachePolicy'
 import {
   currentRenderCachePolicy,
   onRenderCachePolicyChanged,
@@ -40,7 +40,7 @@ export function registerRenderCacheCapability(
   const state = (): RenderCacheState => {
     const policy = getPolicy()
     if (!policy) return { available: false }
-    return { ...policy.getState(), visible: presence.anyVisible() }
+    return { ...policy.getState(), visible: presence.anyVisible(), active: presence.anyActive() }
   }
 
   const provider: TopicProvider = {
@@ -71,6 +71,12 @@ export function registerRenderCacheCapability(
       try {
         return await policy.purgeNow()
       } catch (error) {
+        if (error instanceof RenderCachePurgeDeferredError) {
+          throw wireError('host_unavailable', `renderCache: ${error.message}`, {
+            reason: error.reason,
+            retryAt: error.retryAt,
+          })
+        }
         throw wireError('host_unavailable', `renderCache: ${error instanceof Error ? error.message : String(error)}`)
       }
     },
@@ -81,6 +87,7 @@ export function registerRenderCacheCapability(
     // closed connection changes visibility but is nobody using a page.
     const policy = getPolicy()
     policy?.noteVisibility(presence.anyVisible())
+    policy?.noteActive(presence.anyActive())
     if (policy && activity === 'used') policy.noteActivity()
     else publish()
   })
@@ -90,8 +97,11 @@ export function registerRenderCacheCapability(
     unwatchPolicy?.()
     const policy = getPolicy()
     unwatchPolicy = policy ? policy.onStateChange(() => publish()) : null
-    // A page reported visible before this policy existed: its first hide counts.
-    if (policy && presence.anyVisible()) policy.noteVisibility(true)
+    // A window reported active before this policy existed: its first deactivation counts.
+    if (policy) {
+      policy.noteVisibility(presence.anyVisible())
+      if (presence.anyActive()) policy.noteActive(true)
+    }
     publish()
   }
   const unwatchHolder = (options.onPolicyChanged ?? onRenderCachePolicyChanged)(watch)

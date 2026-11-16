@@ -17,6 +17,10 @@ import { createRealmHolder } from '../utils/realmHolder'
 export const RENDER_CACHE_PRIMITIVE = 'appInfo.purgeRenderCaches'
 /** Listed by a host that honours the purge's `trimWorkingSet` input. */
 export const RENDER_CACHE_TRIM_PRIMITIVE = 'appInfo.purgeRenderCaches.trimWorkingSet'
+/** Listed by a host that honours the purge's `onlyWhenAppInactive` input. */
+export const RENDER_CACHE_APP_INACTIVE_PRIMITIVE = 'appInfo.purgeRenderCaches.onlyWhenAppInactive'
+/** Listed only by a test build started with the purge test switch: no startup grace. */
+export const RENDER_CACHE_FOR_TESTING_PRIMITIVE = 'appInfo.purgeRenderCaches.forTesting'
 
 const holder = createRealmHolder<RenderCachePolicy>('render-cache', {
   onReplace: previous => previous.dispose(),
@@ -35,7 +39,10 @@ export function onRenderCachePolicyChanged(listener: () => void): () => void {
   return holder.onChanged(listener)
 }
 
-export type RuntimeRenderCacheDeps = Pick<RenderCachePolicyDeps, 'isAnyBusy' | 'idlePurgeEnabled' | 'releaseIdleCaches'> & {
+export type RuntimeRenderCacheDeps = Pick<
+  RenderCachePolicyDeps,
+  'isAnyBusy' | 'idlePurgeEnabled' | 'releaseIdleCaches' | 'startupGraceMs' | 'minIntervalMs' | 'inactiveSettleMs'
+> & {
   /** Read per purge, so a replaced port is used. */
   transport(): BrowserBridgeTransport | null
   manifest(): Pick<BrowserHostManifest, 'capabilities' | 'primitives'> | null
@@ -55,7 +62,10 @@ export function installRuntimeRenderCache(deps: RuntimeRenderCacheDeps): string 
     isAnyBusy: deps.isAnyBusy,
     releaseIdleCaches: deps.releaseIdleCaches,
     idlePurgeEnabled: deps.idlePurgeEnabled,
-    purge: async (targets, trimWorkingSet) => {
+    startupGraceMs: manifest.primitives.includes(RENDER_CACHE_FOR_TESTING_PRIMITIVE) ? 0 : deps.startupGraceMs,
+    minIntervalMs: deps.minIntervalMs,
+    inactiveSettleMs: deps.inactiveSettleMs,
+    purge: async (targets, options) => {
       const transport = deps.transport()
       if (!transport) throw new Error('render cache purge: no host port')
       const manifest = deps.manifest()
@@ -64,11 +74,14 @@ export function installRuntimeRenderCache(deps: RuntimeRenderCacheDeps): string 
         createRequestId: deps.createRequestId,
         manifest: manifest ?? undefined,
       })
-      const trim = trimWorkingSet && manifest?.primitives?.includes(RENDER_CACHE_TRIM_PRIMITIVE) === true
+      const listed = (primitive: string) => manifest?.primitives?.includes(primitive) === true
+      const trim = options.trimWorkingSet && listed(RENDER_CACHE_TRIM_PRIMITIVE)
+      const onlyWhenAppInactive = options.onlyWhenAppInactive && listed(RENDER_CACHE_APP_INACTIVE_PRIMITIVE)
       return primitives.appInfo.purgeRenderCaches({
         targets: [...targets],
         level: RENDER_CACHE_PURGE_LEVEL,
         ...(trim ? { trimWorkingSet: true } : {}),
+        ...(onlyWhenAppInactive ? { onlyWhenAppInactive: true } : {}),
       })
     },
   })

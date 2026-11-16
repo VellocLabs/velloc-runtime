@@ -1,8 +1,9 @@
 /**
  * `renderCache` on the runtime protocol (P-3): `renderCache/status` is readable
  * at `observe`, `renderCache.purgeNow` needs `manager` (an observe connection is
- * refused), `presence.reportActivity` re-arms the idle purge at `observe`; the
- * installer starts the policy only on a host whose manifest lists the primitive.
+ * refused), `presence.reportActivity` re-arms the idle purge at `observe` and the
+ * last active window losing activation runs the inactive purge; the installer
+ * starts the policy only on a host whose manifest lists the primitive.
  */
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { RuntimeFs } from '../../utils/fs/runtimeFs'
@@ -18,7 +19,7 @@ import {
 import { registerRenderCacheCapability } from '../../browser/runtimeHub/renderCacheCapability'
 import { connectRuntime, isRuntimeRequestError } from '../../browser/runtimeClient'
 import type { TopicId } from '../../browser/runtimeProtocol'
-import { RenderCachePolicy } from '../../renderCache/RenderCachePolicy'
+import { RENDER_CACHE_IDLE_PURGE_MS, RenderCachePolicy } from '../../renderCache/RenderCachePolicy'
 import { RENDER_CACHE_STATUS_TOPIC, type RenderCacheState } from '../../renderCache/renderCacheProtocol'
 import {
   configureRenderCachePolicy,
@@ -87,8 +88,14 @@ function fakePolicy() {
       const outcome = await purge(targets)
       return { ...outcome, purged: [...outcome.purged], throttled: [...outcome.throttled] }
     },
-    setTimer: () => ({}),
-    clearTimer: () => {},
+    startupGraceMs: 0,
+    minIntervalMs: 0,
+    inactiveSettleMs: 0,
+    // The idle timer never fires here; the settle delay and the gate do.
+    setTimer: (fn, ms) => (ms >= RENDER_CACHE_IDLE_PURGE_MS ? null : setTimeout(fn, ms)),
+    clearTimer: handle => {
+      if (handle) clearTimeout(handle as ReturnType<typeof setTimeout>)
+    },
   })
   return { policy, purge }
 }
@@ -124,7 +131,7 @@ describe('renderCache capability over a connection', () => {
     expect(await codeOf(client.request('renderCache.purgeNow', {}))).toBe('host_unavailable')
   })
 
-  it('an observe client reports activity: the purge re-arms and the page counts as visible until it goes', async () => {
+  it('an observe client reports activity: the purge re-arms and the page counts as visible and active until it goes', async () => {
     const { policy } = fakePolicy()
     const noteActivity = vi.spyOn(policy, 'noteActivity')
     const { table, connect } = rig(policy)
@@ -132,39 +139,51 @@ describe('renderCache capability over a connection', () => {
     const states: RenderCacheState[] = []
     phone.subscribe<RenderCacheState>(RENDER_CACHE_STATUS_TOPIC as TopicId, event => states.push(event.payload))
     await until(() => states.length > 0, 'the status snapshot')
-    expect(states[0]).toMatchObject({ available: true, visible: false })
+    expect(states[0]).toMatchObject({ available: true, visible: false, active: false })
 
-    await phone.request('presence.reportActivity', { visible: true })
+    await phone.request('presence.reportActivity', { visible: true, active: true })
     expect(noteActivity).toHaveBeenCalledTimes(1)
     expect(table.anyVisible()).toBe(true)
-    await until(() => states.at(-1)?.visible === true, 'a visible state')
+    expect(table.anyActive()).toBe(true)
+    await until(() => states.at(-1)?.visible === true && states.at(-1)?.active === true, 'a visible, active state')
 
     expect(await codeOf(phone.request('presence.reportActivity', { visible: 'yes' }))).toBe('bad_payload')
+    expect(await codeOf(phone.request('presence.reportActivity', { visible: true, active: 1 }))).toBe('bad_payload')
+    expect(await codeOf(phone.request('presence.reportActivity', { visible: true, focus: true }))).toBe('bad_payload')
     phone.close()
-    await until(() => !table.anyVisible(), 'the closed connection to stop counting')
+    await until(() => !table.anyVisible() && !table.anyActive(), 'the closed connection to stop counting')
     // A connection going away is nobody using a page.
     expect(noteActivity).toHaveBeenCalledTimes(1)
   })
 
-  it('the only visible page reporting hidden purges the GPU process; a second visible page holds it back', async () => {
+  it('the only active window losing activation runs the inactive purge; a second active window holds it back', async () => {
     const { policy, purge } = fakePolicy()
     const { connect } = rig(policy)
     const desktop = await connect('observe')
     const phone = await connect('observe')
-    await desktop.request('presence.reportActivity', { visible: true })
-    await phone.request('presence.reportActivity', { visible: true })
+    await desktop.request('presence.reportActivity', { visible: true, active: true })
+    await phone.request('presence.reportActivity', { visible: true, active: true })
 
-    await desktop.request('presence.reportActivity', { visible: false })
+    await desktop.request('presence.reportActivity', { visible: true, active: false })
     await new Promise(resolve => setTimeout(resolve, 10))
     expect(purge).not.toHaveBeenCalled()
 
-    await phone.request('presence.reportActivity', { visible: false })
-    await until(() => purge.mock.calls.length === 1, 'the hidden purge')
-    expect(purge.mock.calls[0][0]).toEqual(['gpu'])
-    expect(policy.getState().last?.reason).toBe('hidden')
+    await phone.request('presence.reportActivity', { visible: true, active: false })
+    await until(() => purge.mock.calls.length === 1, 'the inactive purge')
+    expect(purge.mock.calls[0][0]).toEqual(['guest', 'gpu', 'agentTabs'])
+    expect(policy.getState().last?.reason).toBe('inactive')
   })
 
-  it('a page reported visible before the policy is installed purges on its first hide', async () => {
+  it('a client that does not report activation counts as active while visible', async () => {
+    const { policy, purge } = fakePolicy()
+    const { connect } = rig(policy)
+    const desktop = await connect('observe')
+    await desktop.request('presence.reportActivity', { visible: true })
+    await desktop.request('presence.reportActivity', { visible: false })
+    await until(() => purge.mock.calls.length === 1, 'the inactive purge')
+  })
+
+  it('a window reported active before the policy is installed purges on its first deactivation', async () => {
     const { policy, purge } = fakePolicy()
     let current: RenderCachePolicy | null = null
     let changed: () => void = () => {}
@@ -177,23 +196,42 @@ describe('renderCache capability over a connection', () => {
         return () => {}
       },
     })
-    table.reportActivity('desktop', true)
+    table.reportActivity('desktop', true, true)
     current = policy
     changed()
 
-    table.reportActivity('desktop', false)
-    await until(() => purge.mock.calls.length === 1, 'the hidden purge')
-    expect(purge.mock.calls[0][0]).toEqual(['gpu'])
+    table.reportActivity('desktop', true, false)
+    await until(() => purge.mock.calls.length === 1, 'the inactive purge')
+    expect(purge.mock.calls[0][0]).toEqual(['guest', 'gpu', 'agentTabs'])
   })
 
-  it('the last visible connection going away purges the GPU process', async () => {
+  it('the last active connection going away runs the inactive purge', async () => {
     const { policy, purge } = fakePolicy()
     const { connect } = rig(policy)
     const desktop = await connect('observe')
-    await desktop.request('presence.reportActivity', { visible: true })
+    await desktop.request('presence.reportActivity', { visible: true, active: true })
     desktop.close()
-    await until(() => purge.mock.calls.length === 1, 'the hidden purge')
-    expect(purge.mock.calls[0][0]).toEqual(['gpu'])
+    await until(() => purge.mock.calls.length === 1, 'the inactive purge')
+    expect(purge.mock.calls[0][0]).toEqual(['guest', 'gpu', 'agentTabs'])
+  })
+
+  it('purgeNow inside the startup grace is host_unavailable with the reason and retry time', async () => {
+    const policy = new RenderCachePolicy({
+      isAnyBusy: () => false,
+      idlePurgeEnabled: async () => true,
+      purge: async () => ({ purged: [], throttled: [], guestProcesses: 0, gpuProcesses: 0 }),
+      now: () => 5_000,
+      setTimer: () => null,
+      clearTimer: () => {},
+    })
+    const { connect } = rig(policy)
+    const manager = await connect('manager')
+    const error = await manager.request('renderCache.purgeNow', {}).then(
+      () => null,
+      (failure: unknown) => failure,
+    )
+    expect(isRuntimeRequestError(error)).toBe(true)
+    expect(error).toMatchObject({ code: 'host_unavailable', data: { reason: 'startup_grace', retryAt: 65_000 } })
   })
 })
 
@@ -230,6 +268,24 @@ describe('installRuntimeRenderCache', () => {
     expect(currentRenderCachePolicy()).toBeNull()
   })
 
+  it('keeps the startup grace, unless the host is a test build that lists the testing primitive', async () => {
+    const { bridge } = transport()
+    const install = (primitives: string[]) => {
+      configureRenderCachePolicy(null)
+      installRuntimeRenderCache({
+        transport: () => bridge,
+        manifest: () => ({ capabilities: [], primitives }),
+        createRequestId: () => 'r',
+        isAnyBusy: () => false,
+        idlePurgeEnabled: async () => true,
+      })
+      return currentRenderCachePolicy()!
+    }
+    await expect(install(['appInfo.purgeRenderCaches']).purgeNow()).rejects.toMatchObject({ reason: 'startup_grace' })
+    const record = await install(['appInfo.purgeRenderCaches', 'appInfo.purgeRenderCaches.forTesting']).purgeNow()
+    expect(record.reason).toBe('manual')
+  })
+
   it('starts once, and a purge asks the host for guest + gpu at critical', async () => {
     const { bridge, requests } = transport()
     let primitives = ['appInfo.purgeRenderCaches']
@@ -239,6 +295,9 @@ describe('installRuntimeRenderCache', () => {
       createRequestId: () => 'r',
       isAnyBusy: () => false,
       idlePurgeEnabled: async () => true,
+      startupGraceMs: 0,
+      minIntervalMs: 0,
+      inactiveSettleMs: 0,
     }
     expect(installRuntimeRenderCache(deps)).toBeNull()
     const policy = currentRenderCachePolicy()
@@ -253,16 +312,26 @@ describe('installRuntimeRenderCache', () => {
     expect(requests[0].route).toMatchObject({ capability: 'appInfo', action: 'purgeRenderCaches' })
     expect(requests[0].payload).toEqual({ targets: ['guest', 'gpu'], level: 'critical' })
 
-    policy!.noteVisibility(true)
-    policy!.noteVisibility(false)
-    for (let i = 0; i < 200 && requests.length < 2; i += 1) await new Promise(resolve => setTimeout(resolve, 2))
-    // A host that does not list the trim input is not sent it.
-    expect(requests[1].payload).toEqual({ targets: ['gpu'], level: 'critical' })
+    // A host that lists neither the trim nor the foreground input is sent neither.
+    const deactivate = async (count: number) => {
+      policy!.noteActive(true)
+      policy!.noteActive(false)
+      for (let i = 0; i < 400 && requests.length < count; i += 1) await new Promise(resolve => setTimeout(resolve, 5))
+    }
+    await deactivate(2)
+    expect(requests[1].payload).toEqual({ targets: ['guest', 'gpu', 'agentTabs'], level: 'critical' })
 
-    primitives = ['appInfo.purgeRenderCaches', 'appInfo.purgeRenderCaches.trimWorkingSet']
-    policy!.noteVisibility(true)
-    policy!.noteVisibility(false)
-    for (let i = 0; i < 200 && requests.length < 3; i += 1) await new Promise(resolve => setTimeout(resolve, 2))
-    expect(requests[2].payload).toEqual({ targets: ['gpu'], level: 'critical', trimWorkingSet: true })
+    primitives = [
+      'appInfo.purgeRenderCaches',
+      'appInfo.purgeRenderCaches.trimWorkingSet',
+      'appInfo.purgeRenderCaches.onlyWhenAppInactive',
+    ]
+    await deactivate(3)
+    expect(requests[2].payload).toEqual({
+      targets: ['guest', 'gpu', 'agentTabs'],
+      level: 'critical',
+      trimWorkingSet: true,
+      onlyWhenAppInactive: true,
+    })
   })
 })

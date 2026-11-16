@@ -52,13 +52,17 @@ export type AppInfoBridgeActionMap = {
    * Memory pressure to the renderers / GPU process so they drop caches (P-3).
    * `guest` = the Nexus page's renderers (all windows), `agentTabs` = renderers
    * of session-tagged tabs; default `['guest', 'gpu']` at `critical`. A target
-   * the host rate-limited is in `throttled`. Unknown values are `INVALID_ARGS`;
-   * an older host answers `NOT_IMPLEMENTED`. `trimWorkingSet` asks the host
-   * to empty its processes' working sets 5 s later; `workingSetTrim` is its
-   * answer, absent when not asked or on a host without it.
+   * the host rate-limited is in `throttled`. `trimWorkingSet` asks for a
+   * working-set trim (`workingSetTrim` answers); `onlyWhenAppInactive` makes
+   * a host with a window in the foreground answer `skipped: 'app_active'`.
    */
   purgeRenderCaches: {
-    payload: { targets?: RenderCacheTarget[]; level?: 'moderate' | 'critical'; trimWorkingSet?: boolean }
+    payload: {
+      targets?: RenderCacheTarget[]
+      level?: 'moderate' | 'critical'
+      trimWorkingSet?: boolean
+      onlyWhenAppInactive?: boolean
+    }
     result: {
       purged: RenderCacheTarget[]
       throttled: RenderCacheTarget[]
@@ -66,6 +70,7 @@ export type AppInfoBridgeActionMap = {
       agentTabProcesses: number
       gpuProcesses: number
       workingSetTrim?: WorkingSetTrimOutcome
+      skipped?: 'app_active'
     }
   }
 }
