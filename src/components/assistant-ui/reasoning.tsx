@@ -18,7 +18,7 @@ import { useT } from "@/browser/webview/i18n";
 
 const ANIMATION_DURATION = 200;
 
-const reasoningVariants = cva("aui-reasoning-root mb-4 w-full", {
+const reasoningVariants = cva("aui-reasoning-root w-full", {
   variants: {
     variant: {
       default: "",
@@ -138,7 +138,7 @@ function ReasoningTrigger({
       />
       <span
         data-slot="reasoning-trigger-label"
-        className="aui-reasoning-trigger-label-wrapper relative inline-block leading-none"
+        className="aui-reasoning-trigger-label-wrapper relative inline-block leading-6"
       >
         <span>{t('reasoning.label')}{durationText}</span>
         {active ? (
