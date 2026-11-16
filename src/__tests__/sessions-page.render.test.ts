@@ -7,9 +7,16 @@ import type { SessionListItem } from '../browser/webview/SessionRows'
 import { sessionsPageRows } from '../browser/webview/sessionsPageRows'
 import { createTranslate } from '../browser/webview/i18n/translate'
 import {
+  createShellHandleArchiveSessions,
   createShellHandleNewSessionFromList,
   createShellHandleOpenListedSession,
+  createShellHandleRequestBulkDelete,
 } from '../browser/webview/shellSessionsPage'
+import {
+  BULK_DELETE_NAMED_TITLES,
+  bulkDeletionOrder,
+  SessionsBulkDeleteConfirm,
+} from '../browser/webview/SessionsBulkDelete'
 
 // The Sessions page ("View all"): Active / Archived, a search over titles and
 // project names, newest activity first, a row opens its session. (F-17)
@@ -76,7 +83,13 @@ describe('sessionsPageRows', () => {
 })
 
 function renderPage() {
-  const handlers = { onOpenSession: vi.fn(), onNewSession: vi.fn(), onClose: vi.fn() }
+  const handlers = {
+    onOpenSession: vi.fn(),
+    onNewSession: vi.fn(),
+    onArchiveSessions: vi.fn(),
+    onDeleteSessions: vi.fn(),
+    onClose: vi.fn(),
+  }
   render(createElement(SessionsPage, { sessions: SESSIONS, ...handlers }))
   return handlers
 }
@@ -164,6 +177,8 @@ describe('SessionsPage', () => {
         sessions: SESSIONS.filter(s => !s.archived),
         onOpenSession: vi.fn(),
         onNewSession: vi.fn(),
+        onArchiveSessions: vi.fn(),
+        onDeleteSessions: vi.fn(),
         onClose: vi.fn(),
       }),
     )
@@ -189,5 +204,214 @@ describe('shell handlers', () => {
     createShellHandleNewSessionFromList(setOpen, openNewSession)()
     expect(setOpen).toHaveBeenCalledWith(false)
     expect(openNewSession).toHaveBeenCalledTimes(1)
+  })
+})
+
+const pickBox = (id: string) =>
+  document.querySelector(
+    `[data-testid="sessions-page-row-pick"][data-session-id="${id}"]`,
+  ) as HTMLInputElement
+
+const pick = (id: string) =>
+  act(() => {
+    fireEvent.click(pickBox(id))
+  })
+
+const pickedCount = () =>
+  Number(screen.getByTestId('sessions-page-selection-bar').getAttribute('data-picked'))
+
+describe('SessionsPage picks', () => {
+  afterEach(() => cleanup())
+
+  it('ticking a row picks it without opening it', () => {
+    const { onOpenSession } = renderPage()
+    pick('draft')
+    expect(pickBox('draft').checked).toBe(true)
+    expect(pickedCount()).toBe(1)
+    expect(onOpenSession).not.toHaveBeenCalled()
+    pick('draft')
+    expect(pickedCount()).toBe(0)
+  })
+
+  it('select all picks every shown row, is mixed when some are, and clears when all are', () => {
+    renderPage()
+    const all = () => screen.getByTestId('sessions-page-select-all') as HTMLInputElement
+    pick('menu')
+    expect(all().checked).toBe(false)
+    expect(all().indeterminate).toBe(true)
+    click('sessions-page-select-all')
+    expect(pickedCount()).toBe(4)
+    expect(all().checked).toBe(true)
+    expect(all().indeterminate).toBe(false)
+    click('sessions-page-select-all')
+    expect(pickedCount()).toBe(0)
+  })
+
+  it('select all takes only the rows the search shows, and actions skip hidden picks', () => {
+    const { onArchiveSessions } = renderPage()
+    pick('old')
+    click('sessions-page-search-toggle')
+    act(() => {
+      fireEvent.change(screen.getByTestId('sessions-page-search'), { target: { value: 'api' } })
+    })
+    // "old" stays picked but is not shown: the bar counts only shown picks.
+    expect(pickedCount()).toBe(0)
+    click('sessions-page-select-all')
+    click('sessions-page-archive-picked')
+    expect(onArchiveSessions).toHaveBeenCalledWith(['draft'], true)
+  })
+
+  it('Archive on Active archives the picks and clears them', () => {
+    const { onArchiveSessions } = renderPage()
+    pick('menu')
+    pick('old')
+    click('sessions-page-archive-picked')
+    expect(onArchiveSessions).toHaveBeenCalledWith(['menu', 'old'], true)
+    expect(pickedCount()).toBe(0)
+  })
+
+  it('on Archived the same button unarchives', () => {
+    const { onArchiveSessions } = renderPage()
+    click('sessions-page-tab-archived')
+    pick('gone')
+    expect(screen.getByTestId('sessions-page-archive-picked').textContent).toBe(t('sidebar.unarchive'))
+    click('sessions-page-archive-picked')
+    expect(onArchiveSessions).toHaveBeenCalledWith(['gone'], false)
+  })
+
+  it('Delete asks for the picks in one request and keeps them until the delete lands', () => {
+    const { onDeleteSessions } = renderPage()
+    pick('fresh')
+    pick('menu')
+    click('sessions-page-delete-picked')
+    expect(onDeleteSessions).toHaveBeenCalledTimes(1)
+    expect(onDeleteSessions).toHaveBeenCalledWith(['menu', 'fresh'])
+    expect(pickedCount()).toBe(2)
+  })
+
+  it('switching tabs drops the picks', () => {
+    renderPage()
+    pick('menu')
+    click('sessions-page-tab-archived')
+    click('sessions-page-tab-active')
+    expect(pickedCount()).toBe(0)
+    expect(pickBox('menu').checked).toBe(false)
+  })
+
+  it('Escape clears the picks before it closes the page', () => {
+    const { onClose } = renderPage()
+    pick('menu')
+    act(() => {
+      fireEvent.keyDown(screen.getByTestId('sessions-page'), { key: 'Escape' })
+    })
+    expect(pickedCount()).toBe(0)
+    expect(onClose).not.toHaveBeenCalled()
+    act(() => {
+      fireEvent.keyDown(screen.getByTestId('sessions-page'), { key: 'Escape' })
+    })
+    expect(onClose).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('bulk delete', () => {
+  afterEach(() => cleanup())
+
+  it('orders the picks still listed, the active session last, each once', () => {
+    expect(bulkDeletionOrder(SESSIONS, ['menu', 'old', 'menu', 'missing'], 'menu')).toEqual(['old', 'menu'])
+    expect(bulkDeletionOrder(SESSIONS, ['old', 'draft'], 'menu')).toEqual(['old', 'draft'])
+  })
+
+  function renderConfirm(target: string[] | null, onDelete = vi.fn(async (_sessionId: string) => true)) {
+    const onClose = vi.fn()
+    const onShow = vi.fn()
+    const view = render(
+      createElement(SessionsBulkDeleteConfirm<SessionListItem>, {
+        target,
+        sessions: SESSIONS,
+        activeSessionId: 'menu',
+        onShow,
+        onDelete,
+        onClose,
+      }),
+    )
+    return { onClose, onShow, onDelete, view }
+  }
+
+  it('is one dialog naming the count, the titles and the busy ones', () => {
+    renderConfirm(['old', 'draft', 'menu'])
+    expect(screen.getAllByTestId('sessions-bulk-delete-dialog')).toHaveLength(1)
+    expect(screen.getByRole('heading').textContent).toBe(t('sessionsPage.deleteTitle', { count: 3 }))
+    expect(screen.getAllByTestId('sessions-bulk-delete-name').map(el => el.textContent)).toEqual([
+      'Old notes',
+      'Timer stops',
+      'Compose context menu',
+    ])
+    // "menu" runs and "draft" waits on an answer.
+    expect(screen.getByTestId('sessions-bulk-delete-busy').textContent).toBe(
+      t('sessionsPage.deleteBusy', { count: 2 }),
+    )
+  })
+
+  it('names at most a few titles, then how many more', () => {
+    const many: SessionListItem[] = Array.from({ length: BULK_DELETE_NAMED_TITLES + 2 }, (_, i) => ({
+      sessionId: `s${i}`,
+      title: `Session ${i}`,
+      previewText: '',
+      updatedAt: NOW - i * MIN,
+    }))
+    render(
+      createElement(SessionsBulkDeleteConfirm<SessionListItem>, {
+        target: many.map(s => s.sessionId),
+        sessions: many,
+        activeSessionId: 'none',
+        onShow: vi.fn(),
+        onDelete: vi.fn(),
+        onClose: vi.fn(),
+      }),
+    )
+    expect(screen.getAllByTestId('sessions-bulk-delete-name')).toHaveLength(BULK_DELETE_NAMED_TITLES)
+    expect(screen.getByText(t('sessionsPage.deleteMore', { count: 2 }))).toBeTruthy()
+  })
+
+  it('Cancel and Escape delete nothing', () => {
+    const { onClose, onDelete } = renderConfirm(['old'])
+    expect(screen.getByRole('heading').textContent).toBe(t('sessionsPage.deleteTitleOne'))
+    click('sessions-bulk-delete-cancel')
+    expect(onClose).toHaveBeenCalledTimes(1)
+    act(() => {
+      fireEvent.keyDown(window, { key: 'Escape' })
+    })
+    expect(onClose).toHaveBeenCalledTimes(2)
+    expect(onDelete).not.toHaveBeenCalled()
+  })
+
+  it('Confirm moves off the session on screen, deletes every pick, then closes', async () => {
+    const { onClose, onDelete, onShow } = renderConfirm(['menu', 'old'])
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('sessions-bulk-delete-confirm'))
+    })
+    await vi.waitFor(() => expect(onClose).toHaveBeenCalledTimes(1))
+    expect(onDelete.mock.calls.map(call => call[0])).toEqual(['old', 'menu'])
+    expect(onShow).toHaveBeenCalledTimes(1)
+    expect(onShow.mock.calls[0][0]).not.toBe('menu')
+    expect(onShow.mock.calls[0][0]).not.toBe('old')
+  })
+
+  it('closes on its own when none of the picks is still listed', () => {
+    const { onClose } = renderConfirm(['missing'])
+    expect(screen.queryByTestId('sessions-bulk-delete-dialog')).toBeNull()
+    expect(onClose).toHaveBeenCalledTimes(1)
+  })
+
+  it('the shell handlers: archive each pick; a delete request copies the picks, and an empty one asks nothing', () => {
+    const archive = vi.fn()
+    createShellHandleArchiveSessions(archive)(['a', 'b'], false)
+    expect(archive.mock.calls).toEqual([['a', false], ['b', false]])
+    const setIds = vi.fn()
+    const request = createShellHandleRequestBulkDelete(setIds)
+    request([])
+    expect(setIds).not.toHaveBeenCalled()
+    request(['a'])
+    expect(setIds).toHaveBeenCalledWith(['a'])
   })
 })

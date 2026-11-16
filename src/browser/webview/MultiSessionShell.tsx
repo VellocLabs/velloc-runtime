@@ -358,11 +358,15 @@ import {
   createShellSettingsHostActions,
 } from './shellSettingsActions'
 import {
+  createShellHandleArchiveSessions,
+  createShellHandleCloseBulkDelete,
   createShellHandleCloseSessionsPage,
   createShellHandleNewSessionFromList,
   createShellHandleOpenListedSession,
   createShellHandleOpenSessionsPage,
+  createShellHandleRequestBulkDelete,
 } from './shellSessionsPage'
+import { SessionsBulkDeleteConfirm } from './SessionsBulkDelete'
 import {
   createShellHealActiveSessionSelection,
   createShellHandleAdoptDefaultSelection,
@@ -1223,9 +1227,26 @@ export function MultiSessionShell({
   // the sidebar; the mounted threads stay mounted under it. Any switch of the
   // active session closes it.
   const [sessionsPageOpen, setSessionsPageOpen] = useState(false)
+  // The picks awaiting the page's one bulk delete confirmation; held through
+  // its run, so the screen moving off a deleted session keeps the page up.
+  const [bulkDeleteIds, setBulkDeleteIds] = useState<readonly string[] | null>(null)
+  const bulkDeletePendingRef = useRef(false)
+  bulkDeletePendingRef.current = bulkDeleteIds !== null
   useEffect(() => {
-    setSessionsPageOpen(false)
+    if (!bulkDeletePendingRef.current) setSessionsPageOpen(false)
   }, [activeSessionId])
+  const requestBulkDelete = useMemo(
+    () => createShellHandleRequestBulkDelete(setBulkDeleteIds),
+    [],
+  )
+  const closeBulkDelete = useMemo(
+    () => createShellHandleCloseBulkDelete(setBulkDeleteIds),
+    [],
+  )
+  const archivePickedSessions = useMemo(
+    () => createShellHandleArchiveSessions(handleArchiveThread),
+    [handleArchiveThread],
+  )
   const openSessionsPage = useMemo(
     () => createShellHandleOpenSessionsPage(setSessionsPageOpen),
     [],
@@ -4126,6 +4147,8 @@ export function MultiSessionShell({
               sessions={sessionItems}
               onOpenSession={openSessionFromList}
               onNewSession={openNewSessionFromPage}
+              onArchiveSessions={archivePickedSessions}
+              onDeleteSessions={requestBulkDelete}
               onClose={closeSessionsPage}
             />
           </Suspense>
@@ -4161,6 +4184,15 @@ export function MultiSessionShell({
         onShow={focusSession}
         onDelete={deleteAndAwaitRemoval}
         onClose={() => setSessionDeleteTarget(null)}
+      />
+      {/* The Sessions page's one confirmation for every picked session. (F-17) */}
+      <SessionsBulkDeleteConfirm
+        target={bulkDeleteIds}
+        sessions={sessionItems}
+        activeSessionId={activeSessionId}
+        onShow={focusSession}
+        onDelete={deleteAndAwaitRemoval}
+        onClose={closeBulkDelete}
       />
       {/* Removes every session filed under the folder, never the folder on disk. (F-17) */}
       <ProjectDeleteConfirm

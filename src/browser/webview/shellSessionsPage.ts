@@ -33,6 +33,32 @@ export function createShellHandleOpenListedSession(
   }
 }
 
+/** Archives (`true`) or unarchives (`false`) each picked session. */
+export function createShellHandleArchiveSessions(
+  archiveThread: (sessionId: string, archived: boolean) => void,
+) {
+  return (sessionIds: readonly string[], archived: boolean) => {
+    for (const sessionId of sessionIds) archiveThread(sessionId, archived)
+  }
+}
+
+/** Shows the one bulk delete confirmation for the picked sessions. */
+export function createShellHandleRequestBulkDelete(
+  setBulkDeleteIds: Dispatch<SetStateAction<readonly string[] | null>>,
+) {
+  return (sessionIds: readonly string[]) => {
+    if (sessionIds.length > 0) setBulkDeleteIds([...sessionIds])
+  }
+}
+
+export function createShellHandleCloseBulkDelete(
+  setBulkDeleteIds: Dispatch<SetStateAction<readonly string[] | null>>,
+) {
+  return () => {
+    setBulkDeleteIds(null)
+  }
+}
+
 /** Starts a session and closes the page, also when the start reuses the active empty session. */
 export function createShellHandleNewSessionFromList(
   setSessionsPageOpen: Dispatch<SetStateAction<boolean>>,
