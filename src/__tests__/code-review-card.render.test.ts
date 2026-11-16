@@ -67,7 +67,7 @@ describe('review report card', () => {
     expect(notice.dataset.byUser).toBe('true')
     expect(notice.textContent).toContain(t('reviewCard.notice.cancelledByUser'))
     expect(notice.textContent).toContain(t('reviewCard.cancelledEmpty'))
-    for (const id of ['review-count', 'review-empty', 'review-end', 'review-incomplete', 'review-repair']) expect(screen.queryByTestId(id)).toBeNull()
+    for (const id of ['review-count', 'review-end', 'review-incomplete', 'review-repair']) expect(screen.queryByTestId(id)).toBeNull()
     expect(screen.getByTestId('review-rerun')).toBeTruthy()
     expect((screen.getByTestId('review-tasks') as HTMLDetailsElement).open).toBe(false)
     expect(screen.getByTestId('review-task').textContent).not.toContain(t('reviewCard.notice.cancelled'))
@@ -872,11 +872,18 @@ describe('review card header and live activity', () => {
     value.run.progress.stage = 'report'
     value.coverage.complete = true
     renderReport(value)
-    expect(screen.getByTestId('review-count').textContent).toBe(t('reviewCard.findingsMany', { count: 0 }))
+    const count = screen.getByTestId('review-count')
+    expect(count.textContent).toBe(t('reviewCard.findingsMany', { count: 0 }))
+    expect(count.parentElement!.querySelector('svg')!.getAttribute('class')).toContain('text-success')
     expect(screen.queryByTestId('review-empty')).toBeNull()
     expect(screen.queryByTestId('review-repair')).toBeNull()
     expect(screen.getByTestId('review-rerun')).toBeTruthy()
     expect(screen.getByTestId('code-review-card').querySelector('footer')!.textContent).not.toContain(t('reviewCard.value.finished'))
+    cleanup()
+    value.emptyScope = true
+    renderReport(value)
+    const scoped = screen.getByTestId('review-count')
+    expect(scoped.parentElement!.querySelector('svg')).toBeNull()
   })
   it('names the repository: its remote name, else the change request project, else the directory', () => {
     const value = running()
