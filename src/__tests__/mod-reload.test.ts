@@ -514,9 +514,12 @@ describe('mods.reload over the hub', () => {
 describe('the session follows its plugin set (source pin)', () => {
   const read = (path: string): string => readFileSync(new URL(`../${path}`, import.meta.url), 'utf8')
 
-  it('createAgentRuntime reconciles the mods inside onReloadPlugins, after the active plugin paths moved', () => {
-    const source = read('browser/runtime/createAgentRuntime.ts')
-    const reload = source.indexOf('const onReloadPlugins = async')
+  it('the session reconciles the mods inside its plugin reload, after the active plugin paths moved', () => {
+    const runtime = read('browser/runtime/createAgentRuntime.ts')
+    expect(runtime).toContain('const onReloadPlugins = createPluginReload({')
+    expect(runtime).toContain('reconcileMods: plugins => reconcileMods(plugins),')
+    const source = read('browser/runtime/sessionPluginReload.ts')
+    const reload = source.indexOf('return async (requestedEnabledPlugins?: string[]) => {')
     const moved = source.indexOf('activePluginPaths = reloadContributions.plugins.map', reload)
     const reconciled = source.indexOf('await reconcileMods(reloadContributions.plugins)', moved)
     expect(reload).toBeGreaterThan(-1)
@@ -524,14 +527,15 @@ describe('the session follows its plugin set (source pin)', () => {
     expect(reconciled).toBeGreaterThan(moved)
     // A slot that gains or loses its runtime tells the engine, through the
     // public setter, never by reaching into its config.
-    expect(source).toContain('engineForMods?.setMods(mods)')
-    expect(source).toContain('engineForMods?.setMods(undefined)')
-    expect(source).not.toMatch(/engineForMods\.config\b/)
+    const slot = read('browser/runtime/sessionModSlot.ts')
+    expect(slot).toContain('engineForMods?.setMods(mods)')
+    expect(slot).toContain('engineForMods?.setMods(undefined)')
+    expect(slot).not.toMatch(/engineForMods\.config\b/)
   })
 
   it('onReloadPlugins hands the new plugin servers to the pool only from the session that keys it, under the scope the pool was built with', () => {
-    const source = read('browser/runtime/createAgentRuntime.ts')
-    const reload = source.indexOf('const onReloadPlugins = async')
+    const source = read('browser/runtime/sessionPluginReload.ts')
+    const reload = source.indexOf('return async (requestedEnabledPlugins?: string[]) => {')
     const stored = source.indexOf('const changedMcpSecrets = await storeMcpSecrets(reloadContributions)', reload)
     const gate = source.indexOf('if (mcpLease && mcpLease.topLevelSessionId === resolvedSessionId) {', stored)
     const followed = source.indexOf('await mcpPool.followPluginReload(', gate)
@@ -541,13 +545,16 @@ describe('the session follows its plugin set (source pin)', () => {
     expect(followed).toBeGreaterThan(gate)
     expect(handed).toBeGreaterThan(followed)
     const gated = source.slice(gate, followed)
-    expect(gated).toContain('pluginNativeMcpServers = pluginNativeMcpServersInScope(')
-    expect(gated).toContain('reloadContributions.nativeMcpServers')
+    expect(gated).toContain('setPluginNativeServers(reloadContributions)')
+    const pool = read('browser/runtime/sessionMcpPool.ts')
+    const setter = pool.indexOf('setPluginNativeServers(contributions:')
+    expect(setter).toBeGreaterThan(-1)
+    expect(pool.slice(setter, setter + 300)).toMatch(/pluginNativeMcpServers = pluginNativeMcpServersInScope\(\s*mcpScope,\s*contributions\.nativeMcpServers,/)
     expect(source.slice(followed, handed)).toContain('pluginMcpServersInScope(mcpScope, reloadContributions.mcpServers')
   })
 
   it('a runtime built by a reload loads the list it was given, not the list the session booted with; reloads are serialized', () => {
-    const source = read('browser/runtime/createAgentRuntime.ts')
+    const source = read('browser/runtime/sessionModSlot.ts')
     const closure = source.indexOf('const buildModRuntime = async')
     expect(closure).toBeGreaterThan(-1)
     expect(source.slice(closure, closure + 400)).toContain('return buildSlotModRuntime(modSlotHost, modules)')

@@ -42,7 +42,6 @@ import {
   loadEffectiveSettings,
   loadPermissionSettingsBySource,
   readUserLayer,
-  wipeSettingsMemos,
   resolveSettingsHomeDir,
 } from '../../settings/settingsStore'
 import { MERGE_SOURCE_ORDER } from '../../settings/settingsStore'
@@ -87,7 +86,6 @@ import {
   getTemplate,
   resolveDeferrableSkills,
   templateListedToolNames,
-  templateAllowsMcp,
   templateWantsFileSnapshots,
   unresolvedAgentNames,
   unresolvedSkillIds,
@@ -119,8 +117,6 @@ import {
   type AutoCompactWindowSettings,
 } from '../../context/compaction/windowSettings'
 import {
-  acquireSessionMCPPool,
-  createWorkerMcpOperations,
   isMcpSessionTool,
   mcpServerInstructionsFromPool,
   mcpServerFailuresFromPool,
@@ -130,35 +126,24 @@ import {
   withBuiltinMcpOffering,
   type McpSessionOffering,
 } from '../../mcp'
-import { MCPPool } from '../../mcp/pool'
-import { settingsMcpServerIds, type McpServerOriginSources } from '../../mcp/serverOrigin'
-import {
-  modToolsInScope,
-  pluginMcpOwnersInScope,
-  pluginMcpServersInScope,
-  pluginNativeMcpServersInScope,
-  sessionMcpScopeOf,
-} from '../../mcp/sessionMcpScope'
-import { getMcpHost, hostServesWorkerMcp } from '../../mcp/mcpHost'
+import { modToolsInScope } from '../../mcp/sessionMcpScope'
+import { getMcpHost } from '../../mcp/mcpHost'
 import { createNativePrimitives } from '../bridge/nativePrimitives'
 import { loadLocalAgents } from '../../agents/agentRegistry'
 import { withBuiltInAgents } from '../../agents/builtInAgents'
 import { loadPluginContributions } from '../../pluginHost'
 import { storePluginSecrets } from '../../pluginHost/pluginMcpUserConfig'
-import { isModSlot, selectModModules } from '../../mods/modSlot'
-import type { ModSlotHost } from './modSlotBuilder'
-import { createModIdleUnload, type ModIdleUnload } from '../../mods/modIdleUnload'
+import { openSessionMcpPool } from './sessionMcpPool'
+import { openSessionModSlot } from './sessionModSlot'
+import { createPluginReload } from './sessionPluginReload'
 import { dirnameRuntimePath } from '../../utils/runtimePaths'
 import {
   linkModChild,
   modSlotToolsFor,
   onModSlotToolsChanged,
   publishModSlotTools,
-  modRoster,
   modsForAgentLoop,
-  type ModSlot,
   undoWhenScopeEnds,
-  watchModRoster,
   type AgentLoopMods,
 } from '../../mods/modSlotRegistry'
 import { registerSessionWorkingDir } from '../../models/drivers/sessionWorkingDirs'
@@ -166,7 +151,6 @@ import { createBridgeBackedFetch } from '../../pluginHost/bridgeBackedFetch'
 import { loadEffectiveEnabledPlugins } from '../../pluginHost/enabledStore'
 import { registerPluginHooks } from '../../pluginHost/registerPluginHooks'
 import { describePluginError } from '../../pluginHost/pluginModel'
-import { removeSessionHooksBySkillRoot } from '../../lifecycleHooks/sessionScopedHooks'
 import { registerSettingsHooks } from '../../lifecycleHooks/registerSettingsHooks'
 import { A2UI_HOSTED_SKILL } from '../../toolkit/builtin/a2ui/a2uiSkill'
 import {
@@ -930,155 +914,27 @@ export async function createBrowserRuntime(
   // below, because tool `isEnabled()` (e.g. ToolSearch = isAnySkillDeferred)
   // is evaluated at list-construction time and must see the registry.
 
-  // Settings-configured MCP servers run in the worker over the host's primitives when served,
-  // else the browser-transport-only pool. Security: only servers settings.json names may reach
-  // loopback / the LAN (`allowPrivateNetwork`); a plugin's server may not.
-  // MCP pool settings source — same bridge-`homeDir` fallback as the boot
-  // overlays (see `settingsHome`); `null` → only the plugin stdio servers.
-  const settingsHomeDir: string | null = (() => {
-    try {
-      return settingsHome()
-    } catch {
-      return null
-    }
-  })()
-  // Security: the MCP sources this type takes (F-25). `plugin` confines the
-  // session to the plugin that owns its type: that plugin's servers and
-  // registered tools alone, no settings.json server, no project server file,
-  // no other plugin's server. Decided here, where the root pool is built, so
-  // the loops under the session inherit the same pool.
-  const mcpScope = appAgentRun
-    ? (await import('../../mods/app/appRunTools')).appRunMcpScope(templateType)
-    : sessionMcpScopeOf(templateType, sessionTemplate?.config)
-  // Shared by every runtime reading this settings home: a pool outlives the
-  // runtime that created it, and that runtime's bridge still asks this set.
-  // A plugin-scoped session never reads settings.json, so its set stays empty
-  // and none of its servers reaches loopback or the LAN.
-  const userConfiguredMcpServerIds =
-    mcpScope.kind === 'plugin' ? new Set<string>() : settingsMcpServerIds(settingsHomeDir ?? '')
-  const sessionMcpHost = {
-    transport: resolvedOptions.bridgeTransport,
-    manifest: resolvedOptions.hostManifest,
-  }
-  const nativeMcpBridge = hostServesWorkerMcp(resolvedOptions.hostManifest)
-    ? createWorkerMcpOperations({
-        resolveHost: () => {
-          const host = getMcpHost()
-          if (!host) return sessionMcpHost
-          return { transport: host.transport, manifest: host.manifest ?? sessionMcpHost.manifest }
-        },
-        createRequestId: () => runtimeConfig.createUUID(),
-        allowPrivateNetwork: serverId => userConfiguredMcpServerIds.has(serverId),
-      })
-    : undefined
-  // The MCP pool reads its settings server list from
-  // `~/.velloc/settings.json` (mcp.servers section); each server's full
-  // config travels inline through `connect()`. The plugin list follows
-  // plugin reloads.
-  let pluginNativeMcpServers = pluginNativeMcpServersInScope(
+  const {
+    settingsHomeDir,
     mcpScope,
-    pluginContributions.nativeMcpServers,
-    pluginContributions.mcpServerPlugins,
-  )
-  const mergePluginNativeMcpServers = (
-    settingsEntries: typeof pluginContributions.nativeMcpServers,
-  ) => {
-    const taken = new Set(settingsEntries.map(entry => entry.id))
-    const pluginEntries: typeof pluginContributions.nativeMcpServers = []
-    for (const entry of pluginNativeMcpServers) {
-      if (taken.has(entry.id)) {
-        console.warn(
-          `[mcp] Plugin native server "${entry.id}" skipped — a native server with that name is already configured.`,
-        )
-        continue
-      }
-      taken.add(entry.id)
-      pluginEntries.push(entry)
-    }
-    return [...settingsEntries, ...pluginEntries]
-  }
-  const loadNativeMcpServers = async () => {
-    // Security: a plugin-scoped session lists its owner's stdio servers only;
-    // settings.json is not read.
-    if (!settingsHomeDir || mcpScope.kind === 'plugin') return mergePluginNativeMcpServers([])
-    try {
-      // This callback's contract is "re-read the LATEST disk state"
-      // (see MCPPoolOptions.loadNativeServers): the pool-refresh
-      // paths exist for servers added since the worker last read
-      // settings.json — including writes from OUTSIDE this worker
-      // (a file edit, a CLI). The settings cache only invalidates
-      // on in-process writes, so drop it first or the re-read
-      // returns the frozen first-boot list and the refresh is a
-      // silent no-op.
-      wipeSettingsMemos()
-      const { settings } = await readUserLayer(
-        settingsHomeDir,
-        installedFs,
-      )
-      const settingsServers = settings.mcp?.servers ?? {}
-      userConfiguredMcpServerIds.clear()
-      for (const id of Object.keys(settingsServers)) userConfiguredMcpServerIds.add(id)
-      const settingsEntries = Object.entries(settingsServers).map(([id, raw]) => ({
-        id,
-        config: {
-          transport: raw.transport,
-          command: raw.command,
-          args: raw.args,
-          env: raw.env,
-          url: raw.url,
-          headers: raw.headers,
-          cwd: raw.cwd,
-        },
-      }))
-      return mergePluginNativeMcpServers(settingsEntries)
-    } catch (e) {
-      console.warn(
-        `[mcp] failed to load servers from settings.json: ${
-          e instanceof Error ? e.message : String(e)
-        }`,
-      )
-      return mergePluginNativeMcpServers([])
-    }
-  }
-  // Boot-welcome milestone: entering the MCP-server connect — the longest
-  // single step of the runtime build when servers are configured (spawn +
-  // handshake per server). Fired BEFORE the await so the footer moves the
-  // moment the wait starts.
-  options.onBootStage?.('connectingTools')
-  // One pool per top-level session: a sub-agent or fork names its spawner
-  // (`modParentSessionId`), a teammate its lead (`spawnerSessionId`).
-  const mcpParentSessionId =
-    (resolvedOptions as { modParentSessionId?: string }).modParentSessionId ??
-    ((resolvedOptions as { isTeammate?: boolean }).isTeammate === true
-      ? (resolvedOptions as { spawnerSessionId?: string }).spawnerSessionId
-      : undefined)
-  // Security: a `noExecution` type takes nothing from the MCP pool, structurally, since MCP tools
-  // bypass the template allowlist and a stdio server spawns OS processes. It holds no session pool
-  // and starts no server; an empty pool that never connects stands in.
-  const allowsMcp = templateAllowsMcp(sessionTemplate?.config)
-  const mcpLease = allowsMcp
-    ? await acquireSessionMCPPool({
-        sessionId: resolvedSessionId,
-        parentSessionId: mcpParentSessionId,
-        cwd: resolvedCwd,
-        fs: installedFs,
-        extraServers: pluginMcpServersInScope(
-          mcpScope,
-          pluginContributions.mcpServers,
-          pluginContributions.mcpServerPlugins,
-        ),
-        projectServers: mcpScope.kind !== 'plugin',
-        nativeBridge: nativeMcpBridge,
-        loadNativeServers: loadNativeMcpServers,
-      })
-    : undefined
-  if (mcpLease) undoWhenScopeEnds(mcpLease.release, options.runtimeScopeSignal)
-  const mcpPool = mcpLease?.pool ?? new MCPPool({ cwd: resolvedCwd, fs: installedFs })
-  const mcpOrigins: McpServerOriginSources = {
-    settingsIds: userConfiguredMcpServerIds,
-    pluginServers: pluginMcpOwnersInScope(mcpScope, pluginContributions.mcpServerPlugins),
-    projectNames: mcpPool.projectServerNames,
-  }
+    allowsMcp,
+    mcpLease,
+    mcpPool,
+    mcpOrigins,
+    setPluginNativeServers,
+  } = await openSessionMcpPool({
+    settingsHome,
+    appAgentRun,
+    templateType,
+    sessionTemplate,
+    resolvedOptions,
+    runtimeConfig,
+    pluginContributions,
+    options,
+    resolvedSessionId,
+    resolvedCwd,
+    installedFs,
+  })
   // The session's MCP offering (F-10): the pool's connected servers as tool contracts, deferral
   // units, Skill commands and the set of servers offered. Read again after a plugin reload.
   // Built-in servers (F-10) run in this loop and start nothing, so a type that takes nothing from
@@ -1438,164 +1294,43 @@ export async function createBrowserRuntime(
     )
   }
 
-  // Track the active plugin paths so a live reload can drop their hooks
-  // before registering the new set.
-  let activePluginPaths = pluginContributions.plugins.map(plugin => plugin.path)
-
-  // Live reload for `/plugins enable|disable`: re-run discovery with the new
-  // allowlist, re-register hooks, refresh the `/plugins` snapshot, and return
-  // the new command / agent / plugin-summary sets for the engine to swap in.
-  // The top-level session's reload also brings its MCP pool in line with the
-  // new plugin set; this runtime's tool list is not rebuilt, so a server that
-  // joins serves the next build.
-  const onReloadPlugins = async (requestedEnabledPlugins?: string[]) => {
-    // No list (a Settings write, `$.config.set`): the enabled files as they
-    // are NOW, by the same rule as boot. Folder names — never the loaded
-    // plugins' manifest names, which need not match their folders.
-    const nextEnabledPlugins =
-      requestedEnabledPlugins
-      ?? (await loadEffectiveEnabledPlugins({ cwd: resolvedProjectRoot, fs: installedFs, homeDir }))
-      ?? enabledPlugins
-    // Re-resolve the marketplace registry + enabled-id map on
-    // every reload. Mirrors the boot-time path above so a user toggling
-    // a plugin via /plugin enable|disable AND /plugins enable|disable
-    // in the same reload both see fresh state. Failure is non-fatal —
-    // legacy reloads keep working.
-    let reloadInstallRegistry:
-      | import('../../pluginHost/registryFormats').InstalledPluginsFile
-      | undefined
-    let reloadEnabledIds: Record<string, boolean> | undefined
-    try {
-      const homeDir = settingsHome()
-      const fs = installedFs
-      const installState = await import('../../pluginHost/loadPlugins')
-        .then(m => m.loadMarketplaceInstallState({ homeDir }, installedFs))
-      reloadInstallRegistry = installState.installRegistry
-      const enabledPluginsModule = await import(
-        '../../pluginHost/enabledPlugins'
-      )
-      reloadEnabledIds = await enabledPluginsModule.getEnabledPluginsMap(
-        { homeDir }, fs,
-      )
-    } catch (e) {
-      console.warn(
-        `[onReloadPlugins] marketplace plugin reload skipped: ${e instanceof Error ? e.message : String(e)}`,
-      )
-    }
-    mcpPluginConfigs = await readPluginConfigs()
-    mcpProviderKeys = await readProviderKeys()
-    const reloadContributions = await loadPluginContributions({
-      cwd: resolvedProjectRoot,
-      fs: installedFs,
-      runtimeConfig,
-      homeDir,
-      enabledPlugins: nextEnabledPlugins,
-      installRegistry: reloadInstallRegistry,
-      enabledPluginIdentifiers: reloadEnabledIds,
-      pluginConfigs: mcpPluginConfigs,
-      providerKeys: mcpProviderKeys,
-      requirements: runtimeProviderGate(),
-      ...(options.locale !== undefined ? { locale: options.locale } : {}),
-    })
-    for (const pluginError of reloadContributions.errors) {
-      console.warn(`[plugins] ${describePluginError(pluginError)}`)
-    }
-    const changedMcpSecrets = await storeMcpSecrets(reloadContributions)
-    if (mcpLease && mcpLease.topLevelSessionId === resolvedSessionId) {
-      // The reloaded set, under the same scope the pool was built with.
-      pluginNativeMcpServers = pluginNativeMcpServersInScope(
-        mcpScope,
-        reloadContributions.nativeMcpServers,
-        reloadContributions.mcpServerPlugins,
-      )
-      mcpOrigins.pluginServers = pluginMcpOwnersInScope(mcpScope, reloadContributions.mcpServerPlugins)
-      try {
-        await mcpPool.followPluginReload(
-          pluginMcpServersInScope(mcpScope, reloadContributions.mcpServers, reloadContributions.mcpServerPlugins),
-          changedMcpSecrets,
-        )
-      } catch (err) {
-        console.warn('[mcp] plugin server reload failed:', err)
-      }
-      refreshMcpOffering()
-    }
-    sessionTypeDeniedNames.length = 0
-    const reloadedCommands =
-      resolvedOptions.commands
-      ?? (await loadLocalPromptCommands({
-        cwd: resolvedCwd,
-        fs: installedFs,
-        runtimeConfig,
-        homeDir,
-        pluginSkillDirs: reloadContributions.pluginSkillDirs,
-        onSessionTypeDenied: name => sessionTypeDeniedNames.push(name),
-        templateConfig: sessionTemplate?.config,
-        // Live WorkingState — bundled-skill `isEnabled` callbacks gate on
-        // the current feature toggles from the settings file.
-        appState,
-        // Session-type stays constant for the lifetime of the runtime —
-        // forward the same value the initial load used so a `/plugins`
-        // reload doesn't accidentally widen the bundled-skill set.
-        templateType,
-      })).concat(hostedSkills.map(hostedSkillToCommand), mcpOffering.commands)
-    const reloadedAgents = withBuiltInAgents(
-      resolvedOptions.agents
-      ?? (await loadLocalAgents({
-        cwd: resolvedCwd,
-        fs: installedFs,
-        runtimeConfig,
-        homeDir,
-        pluginAgentDirs: reloadContributions.pluginAgentDirs,
-      })),
-    )
-    // Swap hooks: drop the previously-active plugins' hooks, then register
-    // the new set.
-    for (const path of activePluginPaths) {
-      removeSessionHooksBySkillRoot(
-        coreState.setAppState,
-        resolvedOptions.sessionId,
-        path,
-      )
-    }
-    registerPluginHooks({
-      setAppState: coreState.setAppState,
-      sessionId: resolvedOptions.sessionId,
-      plugins: reloadContributions.plugins,
-    })
-    activePluginPaths = reloadContributions.plugins.map(plugin => plugin.path)
-    // The mods follow the plugin set (F-25). Never fatal to the reload.
-    try {
-      await reconcileMods(reloadContributions.plugins)
-    } catch (error) {
-      console.warn(`[mods] reload: ${error instanceof Error ? error.message : String(error)}`)
-    }
-    // Provider mods are global, not this session's: the realm's host scans
-    // the person's plugins again (a no-op until the manager's boot ran).
-    void import('../../mods/provider/providerModBoot').then(m => m.reloadProviderMods())
-    // Refresh the read-only `/plugins` snapshot.
-    userInputPipeline.updatePluginLoadResult({
-      enabled: reloadContributions.plugins,
-      disabled: reloadContributions.disabled,
-      errors: reloadContributions.errors,
-    })
-    // Swap the runtime options too (`getSlashCommands` reads them). The allowlist and the denied
-    // names apply to the reloaded list as well.
-    const { allowed: allowedReloaded, deniedNames: deniedReloaded } =
-      applySkillAllowlist(reloadedCommands)
-    reportUnresolvedSkills(reloadedCommands)
-    reportUnresolvedAgents(reloadedAgents)
-    coreState.options.commands = allowedReloaded
-    coreState.options.agents = reloadedAgents
-    return {
-      commands: allowedReloaded,
-      deniedSkillNames: deniedReloaded,
-      agents: reloadedAgents,
-      plugins: reloadContributions.plugins.map(plugin => ({
-        name: plugin.name,
-        description: plugin.manifest.description,
-      })),
-    }
-  }
+  const onReloadPlugins = createPluginReload({
+    options,
+    resolvedOptions,
+    resolvedProjectRoot,
+    resolvedCwd,
+    resolvedSessionId,
+    installedFs,
+    homeDir,
+    runtimeConfig,
+    settingsHome,
+    enabledPlugins,
+    templateType,
+    sessionTemplate,
+    sessionTypeDeniedNames,
+    coreState,
+    userInputPipeline,
+    mcpLease,
+    mcpScope,
+    mcpPool,
+    mcpOrigins,
+    setPluginNativeServers,
+    refreshMcpOffering,
+    storeMcpSecrets,
+    refreshPluginConfigs: async () => {
+      mcpPluginConfigs = await readPluginConfigs()
+      mcpProviderKeys = await readProviderKeys()
+      return { pluginConfigs: mcpPluginConfigs, providerKeys: mcpProviderKeys }
+    },
+    currentAppState: () => appState,
+    hostedCommands: () => hostedSkills.map(hostedSkillToCommand),
+    mcpCommands: () => mcpOffering.commands,
+    applySkillAllowlist,
+    reportUnresolvedSkills,
+    reportUnresolvedAgents,
+    reconcileMods: plugins => reconcileMods(plugins),
+    activePluginPaths: pluginContributions.plugins.map(plugin => plugin.path),
+  })
 
   // APPEND the user-context block from the settings `profile` to the system prompt (additive, unlike
   // `customSystemPrompt`). Read once before the engine is built; a read failure is non-fatal.
@@ -1770,205 +1505,35 @@ ${teammateAddendum}`
     isTeammate: isTeammateSession,
     teammateName: (resolvedOptions as { teammateName?: string }).teammateName,
   }
-  // settings.json `enabledPlugins`: a built-in's `<name>@builtin` entry
-  // switches it over its default — read on every select, so the Settings
-  // toggle's reload applies it.
-  const readEnabledPlugins = async (): Promise<Record<string, boolean>> => {
-    try {
-      const { getEnabledPluginsMap } = await import('../../pluginHost/enabledPlugins')
-      return await getEnabledPluginsMap({ homeDir: settingsHome() }, installedFs)
-    } catch (e) {
-      console.warn(`[mods] enabled plugins skipped: ${e instanceof Error ? e.message : String(e)}`)
-      return {}
-    }
-  }
-  // The product's built-ins, registered once per runtime realm before
-  // the first slot selects its modules.
-  await import('../../mods/bundledBuiltinMods').then(m => m.registerBundledBuiltinMods())
-  const modModules = selectModModules(modSlotFacts, pluginContributions.plugins, await readPluginConfigs(), await readEnabledPlugins())
-  /** The enabled plugins as the slot's mods were last selected from:
-   *  `$.mcp.connect` reads the calling plugin's manifest servers off them. */
-  let modPlugins = pluginContributions.plugins
-  let mods: import('../../mods/ModRuntime').ModRuntime | undefined
-  /** Undo of the slot's registry entry; replaced when the runtime is. */
-  let unregisterModSlot: (() => void) | undefined
-  // The slot this runtime announced: only it may publish the slot's tools.
-  let ownSlot: ModSlot | undefined
-  let engineForMods: ConversationEngine | undefined
-  const modEngine = (what: string): ConversationEngine => {
-    if (!engineForMods) {
-      const error = new Error(`${what} is not available yet: the session is still starting`)
-      error.name = 'NotSupportedError'
-      throw error
-    }
-    return engineForMods
-  }
-  const modToolHost = () => modEngine('$.tool').modTools
-  /**
-   * `$.tool.register` / `$.agent.register` made before the engine binds (e.g. at `session.start`),
-   * applied in order when it binds.
-   */
-  const earlyRegistrations: Array<{ kind: 'tool' | 'agent'; plugin: string; apply: (engine: ConversationEngine) => void }> = []
-  const registerOnEngine = (
-    kind: 'tool' | 'agent',
-    plugin: string,
-    apply: (engine: ConversationEngine) => string,
-    fullName: string,
-    report: (line: string) => void,
-  ): string => {
-    if (engineForMods) return apply(engineForMods)
-    earlyRegistrations.push({
-      kind,
-      plugin,
-      apply: engine => {
-        try {
-          apply(engine)
-        } catch (error) {
-          report(`${plugin}: $.${kind}.register(${fullName}) failed when the session bound: ${error instanceof Error ? error.message : String(error)}`)
-        }
-      },
-    })
-    return fullName
-  }
-  const forgetOnEngine = (kind: 'tool' | 'agent', plugin: string, forget: (engine: ConversationEngine) => void): void => {
-    for (let i = earlyRegistrations.length - 1; i >= 0; i -= 1) {
-      const entry = earlyRegistrations[i]!
-      if (entry.kind === kind && entry.plugin === plugin) earlyRegistrations.splice(i, 1)
-    }
-    if (engineForMods) forget(engineForMods)
-  }
-  /** The slot's `$.state`: memory alone, as long as the slot. Every runtime
-   *  the slot builds shares it, so the idle unload's reload keeps it. */
-  let slotModState: import('../../mods/modState').ModStateStore | undefined
-  const modSlotHost: ModSlotHost = {
-    allowsMcp,
-    appSurface,
-    coreState,
-    get engineForMods() {
-      return engineForMods
-    },
-    forgetOnEngine,
-    homeDir,
-    hostBridge,
-    get installedFs() {
-      return installedFs
-    },
-    mcpOrigins,
-    get mcpPluginConfigs() {
-      return mcpPluginConfigs
-    },
-    mcpPool,
-    get mcpProviderKeys() {
-      return mcpProviderKeys
-    },
-    modEngine,
-    get modPlugins() {
-      return modPlugins
-    },
-    modToolHost,
-    get mods() {
-      return mods
-    },
-    offerLaunchedMcpServer,
+  const modSlot = await openSessionModSlot({
     options,
-    get ownSlot() {
-      return ownSlot
-    },
-    set ownSlot(value) {
-      ownSlot = value
-    },
-    readPluginConfigs,
-    registerOnEngine,
-    resolvedCwd,
-    get resolvedMemory() {
-      return resolvedMemory
-    },
+    appSurface,
     resolvedOptions,
-    resolvedProjectRoot,
     resolvedSessionId,
-    runtimeConfig,
-    settingsHome,
-    settingsHomeDir,
-    get slotModState() {
-      return slotModState
-    },
-    set slotModState(value) {
-      slotModState = value
-    },
-    supportedSlashCommands,
+    resolvedCwd,
+    resolvedProjectRoot,
     templateType,
-    get unregisterModSlot() {
-      return unregisterModSlot
-    },
-    set unregisterModSlot(value) {
-      unregisterModSlot = value
-    },
-  }
-  /**
-   * Build the slot's mod runtime for `modules` — at boot when an enabled
-   * plugin carries a hooks module, or LATER, when `/plugins enable` (or the
-   * Settings toggle) gives a session that had none its first one.
-   * `selectModModules` stays the one predicate; this is its consequence.
-   */
-  const buildModRuntime = async (
-    modules: ReturnType<typeof selectModModules>,
-  ): Promise<import('../../mods/ModRuntime').ModRuntime> => {
-    const { buildSlotModRuntime } = await import('./modSlotBuilder')
-    return buildSlotModRuntime(modSlotHost, modules)
-  }
-  if (modModules.length > 0) mods = await buildModRuntime(modModules)
-  /**
-   * Reconcile the slot's mods after a plugin reload: unload removed modules, load added ones with
-   * their own `session.start`. Serialized, or concurrent reloads orphan a runtime.
-   */
-  let reconcilingMods: Promise<void> = Promise.resolve()
-  const reconcileMods = (plugins: typeof pluginContributions.plugins): Promise<void> => {
-    const run = reconcilingMods.then(() => reconcileModsNow(plugins))
-    reconcilingMods = run.catch(() => undefined)
-    return run
-  }
-  const reconcileModsNow = async (plugins: typeof pluginContributions.plugins): Promise<void> => {
-    modPlugins = plugins
-    // Unloaded while idle: a plugin reload keeps the slot empty until a
-    // client comes back (or a message arrives) and loads them again.
-    const next = modIdle?.isUnloaded()
-      ? []
-      : selectModModules(modSlotFacts, plugins, await readPluginConfigs(), await readEnabledPlugins())
-    if (mods) {
-      if (next.length > 0) {
-        await mods.reconcile(next)
-        return
-      }
-      const ending = mods
-      mods = undefined
-      unregisterModSlot?.()
-      unregisterModSlot = undefined
-      engineForMods?.setMods(undefined)
-      await ending.end('other')
-      return
-    }
-    if (next.length === 0) return
-    mods = await buildModRuntime(next)
-    engineForMods?.setMods(mods)
-  }
-  /**
-   * The idle unload (mods/modIdleUnload.ts): a session no client has attached
-   * to for a while and that never ran in this process gives its mods back;
-   * an attach or a submitted message loads them again. Every slot that may
-   * carry mods has one, whether or not it has any now — a plugin enabled
-   * later is held to the same rule. Not a headless run: no client ever
-   * attaches to one, and it runs at once.
-   */
-  const modIdle: ModIdleUnload | undefined = isModSlot(modSlotFacts) && !isHeadlessSession
-    ? createModIdleUnload({
-        rosterSize: () => modRoster(resolvedSessionId).length,
-        watchRoster: watcher => watchModRoster(resolvedSessionId, watcher),
-        isBusy: () => mods?.isBusy() ?? false,
-        unload: () => reconcileMods(modPlugins),
-        load: () => reconcileMods(modPlugins),
-      })
-    : undefined
-  if (modIdle) undoWhenScopeEnds(() => modIdle.dispose(), options.runtimeScopeSignal)
+    homeDir,
+    settingsHomeDir,
+    settingsHome,
+    runtimeConfig,
+    hostBridge,
+    coreState,
+    supportedSlashCommands,
+    allowsMcp,
+    mcpPool,
+    mcpOrigins,
+    offerLaunchedMcpServer,
+    readPluginConfigs,
+    installedFs,
+    modSlotFacts,
+    isHeadlessSession,
+    pluginContributions,
+    currentMemory: () => resolvedMemory,
+    currentMcpPluginConfigs: () => mcpPluginConfigs,
+    currentMcpProviderKeys: () => mcpProviderKeys,
+  })
+  const { modIdle, reconcileMods } = modSlot
 
   // A loop UNDER a slot — a sub-agent; a teammate only while it has no
   // runtime of its own (no module selected) — has no mod runtime, but its tool
@@ -1982,7 +1547,7 @@ ${teammateAddendum}`
       ? (resolvedOptions as { spawnerSessionId?: string }).spawnerSessionId
       : undefined)
   let agentLoopMods: AgentLoopMods | undefined
-  if (!mods && modParentSessionId && !isHeadlessSession) {
+  if (!modSlot.mods && modParentSessionId && !isHeadlessSession) {
     const unlink = linkModChild(resolvedSessionId, modParentSessionId)
     undoWhenScopeEnds(unlink, options.runtimeScopeSignal)
     agentLoopMods = modsForAgentLoop(
@@ -2013,8 +1578,8 @@ ${teammateAddendum}`
       description: plugin.manifest.description,
     })),
     onReloadPlugins,
-    ...(mods
-      ? { mods }
+    ...(modSlot.mods
+      ? { mods: modSlot.mods }
       : agentLoopMods
         ? {
             // The parent slot's tool and model-request seams, raised with
@@ -2023,7 +1588,7 @@ ${teammateAddendum}`
           }
         : {}),
     // The tools this session's mods register, for the loops under it.
-    onModToolsChanged: registered => publishModSlotTools(resolvedSessionId, registered, ownSlot),
+    onModToolsChanged: registered => publishModSlotTools(resolvedSessionId, registered, modSlot.ownSlot),
     // Security: registered tools outside the type's MCP scope are not listed (F-25).
     modToolScope: mcpScope,
     // The sub-agent types the Agent tool offers, when the type names them.
@@ -2140,8 +1705,7 @@ ${teammateAddendum}`
     runtimeScopeSignal: options.runtimeScopeSignal,
     hasPendingInjectMessages: options.hasPendingInjectMessages,
   })
-  engineForMods = engine
-  for (const entry of earlyRegistrations.splice(0)) entry.apply(engine)
+  modSlot.bindEngine(engine)
   // A loop under a slot lists the tools the slot's mods registered, scoped
   // as its own tools are (none for a type that takes no MCP tools, its
   // owner's for a plugin-scoped type); its call of one is the slot's

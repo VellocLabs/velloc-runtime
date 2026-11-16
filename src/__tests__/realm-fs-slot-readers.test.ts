@@ -497,10 +497,9 @@ describe('no realm-slot reads on session paths (source guard)', () => {
   })
 
   it('runtime boot hands installedFs to every loader it calls', () => {
-    const src = readFileSync(
-      join(__dirname, '..', 'browser/runtime/createAgentRuntime.ts'),
-      'utf8',
-    )
+    const src = ['createAgentRuntime.ts', 'sessionPluginReload.ts', 'sessionMcpPool.ts']
+      .map(file => readFileSync(join(__dirname, '..', 'browser/runtime', file), 'utf8'))
+      .join('\n')
     for (const loader of [
       'loadEffectiveEnabledPlugins',
       'loadPluginContributions',

@@ -450,7 +450,7 @@ describe('the wiring names both kinds of child', () => {
 
   it("createAgentRuntime publishes a slot's registered tools and a child lists them, scoped as its own tools", () => {
     const runtime = read_('browser/runtime/createAgentRuntime.ts')
-    expect(runtime).toContain('onModToolsChanged: registered => publishModSlotTools(resolvedSessionId, registered, ownSlot),')
+    expect(runtime).toContain('onModToolsChanged: registered => publishModSlotTools(resolvedSessionId, registered, modSlot.ownSlot),')
     const at = runtime.indexOf('if (agentLoopMods && allowsMcp) {')
     expect(at).toBeGreaterThan(0)
     const block = runtime.slice(at, runtime.indexOf('onModSlotToolsChanged(inheritSlotTools)', at))

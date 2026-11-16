@@ -76,16 +76,23 @@ describe('createAgentRuntime hands the predicate every fact', () => {
     join(__dirname, '..', 'browser', 'runtime', 'createAgentRuntime.ts'),
     'utf8',
   )
-  // The facts are built once (`modSlotFacts`) and handed to the predicate at
-  // boot and again at every plugin reload (`reconcileMods`).
+  const slot = readFileSync(
+    join(__dirname, '..', 'browser', 'runtime', 'sessionModSlot.ts'),
+    'utf8',
+  )
+  // The facts are built once (`modSlotFacts`) and handed to the slot, which
+  // gives them to the predicate at boot and again at every plugin reload
+  // (`reconcileMods`).
   const factsAt = source.indexOf('const modSlotFacts = {')
-  const at = source.indexOf('const modModules = selectModModules(modSlotFacts,', factsAt)
+  const at = source.indexOf('await openSessionModSlot({', factsAt)
   const call = source.slice(factsAt, at)
 
   it('calls selectModModules, at boot and at a plugin reload', () => {
     expect(factsAt).toBeGreaterThan(0)
     expect(at).toBeGreaterThan(factsAt)
-    expect(source).toContain('selectModModules(modSlotFacts, plugins, await readPluginConfigs(), await readEnabledPlugins())')
+    expect(source.slice(at, source.indexOf('})', at))).toContain('modSlotFacts,')
+    expect(slot).toContain('const modModules = selectModModules(modSlotFacts,')
+    expect(slot).toContain('selectModModules(modSlotFacts, plugins, await readPluginConfigs(), await readEnabledPlugins())')
   })
 
   it.each(['isSubAgent', 'isHeadless', 'headlessMods', 'isTeammate', 'teammateName'])('passes %s', fact => {
@@ -93,6 +100,8 @@ describe('createAgentRuntime hands the predicate every fact', () => {
   })
 
   it('has no second, hand-rolled condition deciding the same thing', () => {
-    expect(source).not.toMatch(/isSubAgent === true \|\| isHeadlessSession\s*\n\s*\? \[\]/)
+    for (const text of [source, slot]) {
+      expect(text).not.toMatch(/isSubAgent === true \|\| isHeadlessSession\s*\n\s*\? \[\]/)
+    }
   })
 })
