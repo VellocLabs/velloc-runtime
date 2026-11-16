@@ -20,7 +20,8 @@ function useTextFileHead(file: Blob): string[] | null | undefined {
       .arrayBuffer()
       .then(
         (head) => {
-          if (live) setLines(textPreviewLines(decodeTextHead(new Uint8Array(head))));
+          const text = decodeTextHead(new Uint8Array(head));
+          if (live) setLines(textPreviewLines(text));
         },
         () => {
           if (live) setLines(null);
