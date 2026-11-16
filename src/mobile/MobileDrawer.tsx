@@ -4,13 +4,7 @@
  * session, or a leftward swipe on the panel; scrolling the list does not close it. Holds a title
  * filter, the session list, New session, and the switch to the desktop shell.
  */
-import {
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  type PointerEvent as ReactPointerEvent,
-} from 'react'
+import { useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
 import { Dialog as DialogPrimitive } from 'radix-ui'
 import { MonitorIcon, PlusIcon } from 'lucide-react'
 
@@ -39,6 +33,8 @@ export function MobileDrawer(props: MobileDrawerProps) {
   const { open, onOpenChange, sessions, running, needsAnswer } = props
   const t = useT()
   const [query, setQuery] = useState('')
+  // The filter belongs to one opening: a closed drawer starts from the whole list, however it closed.
+  if (!open && query !== '') setQuery('')
   // One clock per opening, so every row ages against the same instant.
   const now = useMemo(() => Date.now(), [open])
   const groups = useMemo(
@@ -47,11 +43,6 @@ export function MobileDrawer(props: MobileDrawerProps) {
   )
   const swipeStart = useRef<{ x: number; y: number } | null>(null)
   const swallow = useClickSwallow()
-
-  // The filter belongs to one opening: reopening starts from the whole list, however it closed.
-  useEffect(() => {
-    if (!open) setQuery('')
-  }, [open])
 
   // A drag that starts in a text field moves its caret, so it is never a swipe.
   const onPointerDown = (event: ReactPointerEvent) => {
@@ -67,7 +58,7 @@ export function MobileDrawer(props: MobileDrawerProps) {
     const dx = event.clientX - from.x
     const dy = event.clientY - from.y
     if (dx <= -DRAWER_SWIPE_CLOSE_PX && Math.abs(dx) > Math.abs(dy) * 1.5) {
-      swallow.arm()
+      swallow.armForGesture()
       onOpenChange(false)
     }
   }

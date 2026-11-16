@@ -89,7 +89,7 @@ function MobileSessionRowButton({
         <span className="block truncate text-body">{title}</span>
         <span className="block truncate text-muted-foreground text-xs">
           {row.needsAnswer ? (
-            <span data-testid="mobile-session-row-waiting" className="text-amber-600 dark:text-amber-400">
+            <span data-testid="mobile-session-row-waiting" className="text-warning">
               {t('childSession.state.waiting')}
               {' · '}
             </span>

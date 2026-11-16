@@ -229,6 +229,10 @@ describe('long press on a row', () => {
       vi.advanceTimersByTime(1)
     })
     expect(calls.onSessionMenu).toHaveBeenCalledWith('b')
+    // A finger that stays down after the menu opened still must not tap the row on lift.
+    act(() => {
+      vi.advanceTimersByTime(LONG_PRESS_DELAY_MS * 4)
+    })
     fireEvent.pointerUp(target, { clientX: 50, clientY: 50, button: 0 })
     fireEvent.click(target)
     expect(calls.onSelectSession).not.toHaveBeenCalled()

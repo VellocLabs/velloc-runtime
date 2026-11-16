@@ -29,7 +29,7 @@ export function useLongPress(
 ): LongPressHandlers {
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const start = useRef<{ x: number; y: number } | null>(null)
-  const { arm, disarm, onClickCapture } = useClickSwallow()
+  const { arm, disarm, release, onClickCapture } = useClickSwallow()
   const callback = useRef(onLongPress)
   callback.current = onLongPress
 
@@ -40,6 +40,12 @@ export function useLongPress(
   }, [])
 
   useEffect(() => clear, [clear])
+
+  // The lift ends the gesture: the press timer goes now, the click guard one task later.
+  const endGesture = useCallback(() => {
+    clear()
+    release()
+  }, [clear, release])
 
   const onPointerDown = useCallback(
     (event: ReactPointerEvent) => {
@@ -71,9 +77,9 @@ export function useLongPress(
   return {
     onPointerDown,
     onPointerMove,
-    onPointerUp: clear,
-    onPointerCancel: clear,
-    onPointerLeave: clear,
+    onPointerUp: endGesture,
+    onPointerCancel: endGesture,
+    onPointerLeave: endGesture,
     onContextMenu,
     onClickCapture,
   }
