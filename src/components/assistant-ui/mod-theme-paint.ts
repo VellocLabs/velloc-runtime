@@ -168,8 +168,8 @@ function srgbToLinear(c: number): number {
   return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4
 }
 
-/** Linear sRGB of a hex, opaque `rgb()` or `oklch()` color, clipped to the
- *  gamut; undefined for any other form. */
+/** Linear sRGB of a hex, an opaque rgb function or an oklch function color,
+ *  clipped to the gamut; undefined for any other form. */
 function linearRgbOf(css: string): [number, number, number] | undefined {
   const value = css.trim()
   if (HEX6.test(value) || HEX3.test(value)) {
