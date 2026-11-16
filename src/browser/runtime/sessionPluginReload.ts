@@ -72,13 +72,14 @@ export type SessionPluginReloadInput = {
   activePluginPaths: string[]
 }
 
-
-  // Live reload for `/plugins enable|disable`: re-run discovery with the new
-  // allowlist, re-register hooks, refresh the `/plugins` snapshot, and return
-  // the new command / agent / plugin-summary sets for the engine to swap in.
-  // The top-level session's reload also brings its MCP pool in line with the
-  // new plugin set; this runtime's tool list is not rebuilt, so a server that
-  // joins serves the next build.
+/**
+ * Live reload for `/plugins enable|disable`: re-run discovery with the new
+ * allowlist, re-register hooks, refresh the `/plugins` snapshot, and return
+ * the new command / agent / plugin-summary sets for the engine to swap in.
+ * The top-level session's reload also brings its MCP pool in line with the
+ * new plugin set; this runtime's tool list is not rebuilt, so a server that
+ * joins serves the next build.
+ */
 export function createPluginReload(input: SessionPluginReloadInput) {
   const {
     options,
@@ -124,7 +125,7 @@ export function createPluginReload(input: SessionPluginReloadInput) {
       ?? (await loadEffectiveEnabledPlugins({ cwd: resolvedProjectRoot, fs: installedFs, homeDir }))
       ?? enabledPlugins
     // Re-resolve the marketplace registry + enabled-id map on
-    // every reload. Mirrors the boot-time path above so a user toggling
+    // every reload. Mirrors the boot-time read in `createBrowserRuntime` so a user toggling
     // a plugin via /plugin enable|disable AND /plugins enable|disable
     // in the same reload both see fresh state. Failure is non-fatal —
     // legacy reloads keep working.

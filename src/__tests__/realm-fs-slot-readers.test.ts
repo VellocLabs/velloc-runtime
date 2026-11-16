@@ -457,6 +457,9 @@ describe('no realm-slot reads on session paths (source guard)', () => {
   const FILES = [
     'browser/runtime/createAgentRuntime.ts',
     'browser/runtime/modSlotBuilder.ts',
+    'browser/runtime/sessionMcpPool.ts',
+    'browser/runtime/sessionModSlot.ts',
+    'browser/runtime/sessionPluginReload.ts',
     'browser/worker/AgentPermissionCoordinator.ts',
     'browser/worker/AgentModelController.ts',
     'browser/worker/AgentRuntimeRecovery.ts',
