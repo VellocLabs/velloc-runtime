@@ -3,8 +3,10 @@
  * Idle: no turn and no client activity for `RENDER_CACHE_IDLE_PURGE_MS` purges
  * once; activity or a turn end re-arms it. Inactive: the last active client
  * window losing activation purges every target with a trim, once per
- * transition, even during a turn. Every purge, manual included, waits out the
- * startup grace and keeps `RENDER_CACHE_MIN_INTERVAL_MS` from the previous one.
+ * transition, even during a turn; one the host skipped because a window of its
+ * own was in front is retried when the pages go hidden. Every purge, manual
+ * included, waits out the startup grace and keeps
+ * `RENDER_CACHE_MIN_INTERVAL_MS` from the previous one.
  */
 import type { RenderCacheTarget, WorkingSetTrimOutcome } from '../browser/bridge/protocol/appInfo'
 import type {
@@ -95,6 +97,8 @@ export class RenderCachePolicy {
   private idleWaiting = false
   private inactiveWaiting = false
   private inactiveRunning = false
+  /** The host skipped the inactive purge with its own window in front: still owed. */
+  private inactiveSkipped = false
   private lastPurgeAt: number | null = null
   private idlePurge = true
   private purges = 0
@@ -137,6 +141,7 @@ export class RenderCachePolicy {
   /** Whether any client page is visible now; decides the idle purge's working-set trim. */
   noteVisibility(anyVisible: boolean): void {
     this.visible = anyVisible
+    if (!anyVisible) this.retrySkippedInactive()
   }
 
   /** Whether any client window is active now; only an active-to-inactive change purges. */
@@ -146,6 +151,7 @@ export class RenderCachePolicy {
     if (anyActive) {
       this.clearSettle()
       this.inactiveWaiting = false
+      this.inactiveSkipped = false
       return
     }
     if (was !== true || this.disposed) return
@@ -286,6 +292,19 @@ export class RenderCachePolicy {
     )
   }
 
+  /**
+   * The host skipped the inactive purge because a window of its own held the
+   * foreground, so the runtime's idea of inactive was wrong for that moment.
+   * The departure that matters shows up as the pages going hidden, which does
+   * not change `active`; no timer polls for it.
+   */
+  private retrySkippedInactive(): void {
+    if (this.disposed || !this.inactiveSkipped || this.active !== false || this.inactiveRunning) return
+    this.inactiveSkipped = false
+    this.inactiveWaiting = true
+    void this.fireInactive()
+  }
+
   private async fireInactive(): Promise<void> {
     if (this.disposed || !this.inactiveWaiting || this.active !== false) return
     // The purge already under way covers a deactivation that arrives before it ends.
@@ -304,10 +323,11 @@ export class RenderCachePolicy {
         this.inactiveWaiting = true
         return
       }
-      await this.runPurge('inactive', RENDER_CACHE_INACTIVE_PURGE_TARGETS, {
+      const record = await this.runPurge('inactive', RENDER_CACHE_INACTIVE_PURGE_TARGETS, {
         trimWorkingSet: true,
         onlyWhenAppInactive: true,
-      }).catch(() => {})
+      }).catch(() => undefined)
+      this.inactiveSkipped = record?.skipped === 'app_active'
     } finally {
       this.inactiveRunning = false
     }

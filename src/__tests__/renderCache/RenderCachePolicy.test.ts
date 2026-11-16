@@ -26,6 +26,8 @@ type HarnessOptions = {
   /** Default 0: most cases are not about the gate. */
   startupGraceMs?: number
   minIntervalMs?: number
+  /** The host answers `skipped: 'app_active'` while this says so. */
+  skip?: () => boolean
 }
 
 type FakeTimer = { fn: () => void; ms: number; due: number; cleared: boolean }
@@ -53,6 +55,9 @@ function harness(options: HarnessOptions = {}) {
       trims.push(purgeOptions.trimWorkingSet)
       appInactive.push(purgeOptions.onlyWhenAppInactive)
       if (options.fail) throw new Error(options.fail)
+      if (options.skip?.()) {
+        return { purged: [], throttled: [], guestProcesses: 0, gpuProcesses: 0, agentTabProcesses: 0, skipped: 'app_active' as const }
+      }
       if (purgeOptions.trimWorkingSet) return { ...outcome, workingSetTrim: 'scheduled' as const }
       return outcome
     },
@@ -349,6 +354,36 @@ describe('RenderCachePolicy', () => {
     policy.noteActive(false)
     for (let i = 0; i < 8; i += 1) await Promise.resolve()
     expect(policy.getState().last).toMatchObject({ reason: 'inactive', skipped: 'app_active', agentTabProcesses: 0 })
+  })
+
+  it('an inactive purge the host skipped is retried when the pages go hidden', async () => {
+    let skip = true
+    const h = harness({ skip: () => skip })
+    h.policy.start()
+    h.policy.noteVisibility(true)
+    await h.deactivate()
+    expect(h.purges).toHaveLength(1)
+    expect(h.policy.getState().last).toMatchObject({ reason: 'inactive', skipped: 'app_active' })
+
+    skip = false
+    h.policy.noteVisibility(false)
+    await h.settle()
+    expect(h.purges).toHaveLength(2)
+    expect(h.policy.getState().last).toMatchObject({ reason: 'inactive', purged: ['guest', 'gpu'] })
+  })
+
+  it('a skipped inactive purge is not retried while a window is active again', async () => {
+    let skip = true
+    const h = harness({ skip: () => skip })
+    h.policy.start()
+    h.policy.noteVisibility(true)
+    await h.deactivate()
+
+    skip = false
+    h.policy.noteActive(true)
+    h.policy.noteVisibility(false)
+    await h.settle()
+    expect(h.purges).toHaveLength(1)
   })
 
   it('the inactive purge leaves the idle purge armed for guest and gpu', async () => {
