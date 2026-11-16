@@ -52,7 +52,8 @@ import { FOLDER_TREE_TIMEOUT_MS, readFolderTree } from '../utils/folderTree'
 import { GIT_STATE_TIMEOUT_MS, readGitState } from '../utils/gitState'
 import { NEXUS_WORKSPACE_DIR_NAME } from '../utils/conversationStoragePaths'
 import { makeContextRow, createGeneratedUserMessage } from './messageFactories'
-import { findMentionedPaths, toMentionTarget } from './mentionParsing'
+import { findMentionedPaths, toMentionTarget, type MentionTarget } from './mentionParsing'
+import type { PromptMentionAttached } from '../mods/promptMentionEvent'
 
 import { createPostCompactPlanReferenceMessage } from './planReminder'
 export { createPostCompactPlanReferenceMessage }
@@ -124,10 +125,18 @@ function getPostCompactRestoreTokenBudget(contextWindow: number): number {
     : POST_COMPACT_RESTORE_TOKEN_BUDGET_SMALL
 }
 
-type FileMention = {
-  filename: string
-  lineStart?: number
-  lineEnd?: number
+/** The lines a mention reads: from `offset` (1-based), `limit` of them;
+ *  both absent for a whole file. */
+type MentionRange = {
+  offset?: number
+  limit?: number
+}
+
+/** One mention's share of a prompt's attachments: the file (null when none
+ *  was attached) and model-only context its `prompt.mention` hooks added. */
+type MentionOutcome = {
+  attachment: AttachmentPayload | null
+  context: string[]
 }
 
 type QueuedAttachmentParams = {
@@ -748,12 +757,12 @@ function filePartsFromReadResult(data: unknown): FilePartsAttachment['parts'] | 
 
 async function createReadFileAttachment(
   context: ToolCallContext,
-  mention: FileMention,
+  range: MentionRange,
   resolvedTarget: string,
   displayPath: string,
   size: number,
   mtimeMs: number | undefined,
-): Promise<TextFileAttachment | FilePartsAttachment | null> {
+): Promise<TextFileAttachment | FilePartsAttachment | 'unchanged' | null> {
   const extension = extnameRuntimePath(resolvedTarget).toLowerCase()
   const oversized =
     size > AT_MENTION_MAX_SIZE_BYTES && !AT_MENTION_IMAGE_EXTENSIONS.has(extension)
@@ -761,25 +770,21 @@ async function createReadFileAttachment(
   const previousRead = context.fileReadLedger.get(resolvedTarget)
   if (
     previousRead &&
-    mention.lineStart === undefined &&
-    mention.lineEnd === undefined &&
+    range.offset === undefined &&
+    range.limit === undefined &&
     mtimeMs !== undefined &&
     previousRead.timestamp === mtimeMs
   ) {
-    return null
+    return 'unchanged'
   }
 
   const readTool = resolveToolByName(context.options.tools, READ_TOOL_ID)
   if (!readTool) {
     return null
   }
-  const rangeLimit =
-    mention.lineStart !== undefined && mention.lineEnd !== undefined
-      ? Math.max(mention.lineEnd - mention.lineStart + 1, 1)
-      : undefined
-  const headOnly = oversized && rangeLimit === undefined
-  const offset = mention.lineStart ?? (headOnly ? 1 : undefined)
-  const limit = headOnly ? AT_MENTION_TRUNCATED_LINES : rangeLimit
+  const headOnly = oversized && range.limit === undefined
+  const offset = range.offset ?? (headOnly ? 1 : undefined)
+  const limit = range.limit ?? (headOnly ? AT_MENTION_TRUNCATED_LINES : undefined)
   const read = async (input: Record<string, unknown>) =>
     (
       await readTool.call(
@@ -821,7 +826,7 @@ async function createReadFileAttachment(
     return null
   }
   if (data.startsWith(READ_UNCHANGED_STUB_PREFIX)) {
-    return null
+    return 'unchanged'
   }
   const numLines = countLines(data)
   return {
@@ -842,39 +847,82 @@ async function createReadFileAttachment(
   }
 }
 
+/** The lines a mention's `#L<start>[-<end>]` fragment names. */
+function rangeOfMention(target: MentionTarget): MentionRange {
+  if (target.lineStart === undefined || target.lineEnd === undefined) return {}
+  return { offset: target.lineStart, limit: Math.max(target.lineEnd - target.lineStart + 1, 1) }
+}
+
+/** Reads one mentioned file for the model: its attachment, and how it was
+ *  attached (null: nothing was). A directory or a path that is not there
+ *  attaches nothing. */
+async function readMentionedFile(
+  context: ToolCallContext,
+  absolutePath: string,
+  range: MentionRange,
+): Promise<{ attachment: AttachmentPayload | null; type: PromptMentionAttached | null }> {
+  const none = { attachment: null, type: null }
+  try {
+    const stat = await fsForContext(context).stat(absolutePath)
+    if (!stat.isFile()) return none
+    const displayPath = relativeRuntimePath(context.options.cwd, absolutePath)
+    if (extnameRuntimePath(absolutePath).toLowerCase() === '.pdf') {
+      const pdf = await createPdfAttachment(context, absolutePath, displayPath)
+      if (!pdf) return none
+      return { attachment: pdf, type: pdf.type === 'pdf_reference' ? 'pdf_reference' : 'file' }
+    }
+    const read = await createReadFileAttachment(context, range, absolutePath, displayPath, stat.size, stat.mtimeMs)
+    if (read === 'unchanged') return { attachment: null, type: 'already_read_file' }
+    return read ? { attachment: read, type: 'file' } : none
+  } catch {
+    return none
+  }
+}
+
+/**
+ * One `@` mention of a prompt. A path a deny rule covers attaches nothing and
+ * a directory lists its entries; a file is read through `prompt.mention`
+ * (F-25), whose hooks may add context, read another path (judged again by the
+ * deny rules) or refuse it. The read raises no `tool.call`.
+ */
 async function createFileAttachment(
   context: ToolCallContext,
-  mention: FileMention,
-): Promise<AttachmentPayload | null> {
-  const absolutePath = resolveRuntimePath(context.options.cwd, mention.filename)
-  const displayPath = relativeRuntimePath(context.options.cwd, absolutePath)
-  const extension = extnameRuntimePath(absolutePath).toLowerCase()
-
+  mention: string,
+): Promise<MentionOutcome> {
+  const none: MentionOutcome = { attachment: null, context: [] }
+  const target = toMentionTarget(mention)
+  const absolutePath = resolveRuntimePath(context.options.cwd, target.filename)
   try {
-    if (await isMentionReadDenied(context, absolutePath)) {
-      return null
+    if (await isMentionReadDenied(context, absolutePath)) return none
+    const stat = await fsForContext(context).stat(absolutePath).catch(() => null)
+    if (stat?.isDirectory()) {
+      const displayPath = relativeRuntimePath(context.options.cwd, absolutePath)
+      return { attachment: await createDirectoryAttachment(context, absolutePath, displayPath), context: [] }
     }
-    const stat = await fsForContext(context).stat(absolutePath)
-    if (stat.isDirectory()) {
-      return await createDirectoryAttachment(context, absolutePath, displayPath)
-    }
-    if (!stat.isFile()) {
-      return null
-    }
-    if (extension === '.pdf') {
-      return await createPdfAttachment(context, absolutePath, displayPath)
-    }
-    return await createReadFileAttachment(
-      context,
-      mention,
-      absolutePath,
-      displayPath,
-      stat.size,
-      stat.mtimeMs,
-    )
   } catch {
-    return null
+    return none
   }
+  const range = rangeOfMention(target)
+  const mods = context.options.mods
+  if (!mods?.promptMention || mods.hasPromptMentionHooks?.() !== true) {
+    return { attachment: (await readMentionedFile(context, absolutePath, range)).attachment, context: [] }
+  }
+  let attachment: AttachmentPayload | null = null
+  const agentId = context.agentId
+  const settled = await mods.promptMention(
+    { mention, path: absolutePath, ...range, ...(agentId !== undefined ? { agentId } : {}) },
+    async e => {
+      if (e.path !== absolutePath && (await isMentionReadDenied(context, e.path).catch(() => true))) {
+        return { deny: `a deny rule covers ${e.path}` }
+      }
+      const read = await readMentionedFile(context, e.path, { offset: e.offset, limit: e.limit })
+      attachment = read.attachment
+      return { type: read.type }
+    },
+    context.cancelSource.signal,
+  )
+  if ('deny' in settled) return none
+  return { attachment, context: settled.context }
 }
 
 function getAttachmentState(context: ToolCallContext) {
@@ -1223,24 +1271,31 @@ export async function collectPostCompactPlanRows(
   return rows
 }
 
-/** Attachments gathered for a new user prompt: mentions, plan mode, skills, reminders. */
-export async function collectInitialAttachmentMessages(params: {
+type InitialAttachmentParams = {
   input: string
   context: ToolCallContext
   runtimeConfig: RuntimeConfig
   hostBridge: BrowserHostBridge
-}): Promise<ContextRow[]> {
+}
+
+/** Attachments gathered for a new user prompt: mentions, plan mode, skills, reminders. */
+export async function collectInitialAttachmentMessages(params: InitialAttachmentParams): Promise<ContextRow[]> {
+  return (await collectPromptAttachments(params)).rows
+}
+
+/** The prompt's attachment rows, and the model-only context its mentions'
+ *  `prompt.mention` hooks added (read after the rows). */
+export async function collectPromptAttachments(
+  params: InitialAttachmentParams,
+): Promise<{ rows: ContextRow[]; mentionContext: string[] }> {
   const attachments: AttachmentPayload[] = []
 
-  const mentionedFiles = findMentionedPaths(params.input).map(
-    toMentionTarget,
+  const mentions = await Promise.all(
+    findMentionedPaths(params.input).map(mention => createFileAttachment(params.context, mention)),
   )
-  const fileAttachments = (
-    await Promise.all(
-      mentionedFiles.map(mention => createFileAttachment(params.context, mention)),
-    )
-  ).filter((attachment): attachment is AttachmentPayload => attachment !== null)
-  attachments.push(...fileAttachments)
+  for (const { attachment } of mentions) {
+    if (attachment) attachments.push(attachment)
+  }
 
   attachments.push(...collectSkillListingAttachments(params.context))
   attachments.push(...collectSkillDiscoveryAttachments(params.input, params.context))
@@ -1252,9 +1307,10 @@ export async function collectInitialAttachmentMessages(params: {
   ])
   attachments.push(...gitState, ...folderTree)
 
-  return attachments.map(attachment =>
-    makeContextRow(params.runtimeConfig, attachment),
-  )
+  return {
+    rows: attachments.map(attachment => makeContextRow(params.runtimeConfig, attachment)),
+    mentionContext: mentions.flatMap(outcome => outcome.context),
+  }
 }
 
 /**

@@ -18,6 +18,7 @@ import type {
 import type { StoredRow } from '../mods/sessionAppendEvent'
 import type { SessionCompactCore, SessionCompactSettlement, SessionCompactTrigger } from '../mods/sessionCompactEvent'
 import type { SessionReceiveInput, SessionReceiveSettlement } from '../mods/sessionMessageEvents'
+import type { PromptMentionCore, PromptMentionInput, PromptMentionSettlement } from '../mods/promptMentionEvent'
 import type { SessionUsage } from '../mods/sessionNouns'
 import type { TurnStepChunk, TurnStepInput, TurnStepResult } from '../mods/turnStepEvent'
 import type { TurnRequestInput, TurnRequestRewrite } from '../mods/turnRequestEvent'
@@ -92,6 +93,11 @@ export interface TurnExtensions extends ToolCallExtensions {
   // -- L1.6 the prompt is entered -----------------------------------------
   /** @mode around — `prompt.submit`: drop / rewrite / add context. */
   promptSubmit(text: string, signal?: AbortSignal): Promise<PromptSubmitOutcome>
+  /** @mode around — gate for `prompt.mention`. */
+  hasPromptMentionHooks(): boolean
+  /** @mode around — `prompt.mention`: one `@` file of the prompt, around its
+   *  read; may add context, read another path, or deny it. */
+  promptMention(input: PromptMentionInput, core: PromptMentionCore, signal?: AbortSignal): Promise<PromptMentionSettlement>
 
   // -- L1.7 a slash command runs ------------------------------------------
   /** @mode around — gate for `command.run`. */
@@ -231,6 +237,11 @@ export function noTurnExtensions(): TurnExtensions {
     sessionMeasure: async () => {},
     sessionEnd: async () => {},
     promptSubmit: async (text) => ({ entered: true, text, context: [] }),
+    hasPromptMentionHooks: () => false,
+    promptMention: async (input, core) => {
+      const read = await core({ path: input.path, ...(input.offset !== undefined ? { offset: input.offset } : {}), ...(input.limit !== undefined ? { limit: input.limit } : {}) })
+      return 'deny' in read ? read : { type: read.type, context: [] }
+    },
     hasPromptHooks: () => false,
     promptSections: async (sections) => [...sections],
     promptCompose: async (_input, sections) => [...sections],

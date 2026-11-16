@@ -77,6 +77,8 @@ export type EngineExtensions = Pick<TurnExtensions, 'ready' | 'promptSubmit'> &
       | 'sessionCompact'
       | 'hasSessionReceiveHooks'
       | 'sessionReceive'
+      | 'hasPromptMentionHooks'
+      | 'promptMention'
       | 'hasCommandDescribeHooks'
       | 'commandDescriptions'
       | 'sessionEnd'

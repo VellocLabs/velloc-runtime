@@ -11,6 +11,15 @@ import type { ModInstance } from './ModInstance'
 import { ModComposerBridge, type DecoratedPromptBox, type ModComposerAnswer } from './modComposer'
 import { ModEngineEvents } from './ModEngineEvents'
 import { errorMessage } from './chainRules'
+import {
+  BAND_LIST_COMPONENT,
+  bandListPropsProblem,
+  bandRowsOf,
+  hearsBandList,
+  isStackOf,
+  stackRows,
+  type AbovePromptListRenderProps,
+} from './bandArrangement'
 import { ModPageBridge, type ModPageAnswer } from './modPage'
 import type { ModPlaceRegistry } from './modPlaces'
 import { ModPaneRegistry, type ModPaneSeat } from './modPanes'
@@ -26,9 +35,12 @@ import {
   renderMatcherSite,
   engineRewriteOf,
   validateRenderTree,
+  type AbovePromptRenderProps,
   type EngineRewrite,
+  type RenderElement,
   type RenderInput,
   type RenderOutcome,
+  type RenderSection,
   type RenderSite,
 } from './modRender'
 import { applyPromptEdit, raisePromptEdit, type PromptEdit } from './modPromptEdit'
@@ -139,6 +151,8 @@ export abstract class ModUiSurface extends ModEngineEvents {
     signal?: AbortSignal,
   ): Promise<RenderOutcome> {
     if (this.disposed || !this.dispatcher.hasHooksFor('ui.render')) return { kind: 'engine' }
+    // The band's arrangement is raised inside the band's own drawing, never asked for.
+    if (input.component === BAND_LIST_COMPONENT) return { kind: 'engine' }
     const key = drawingKeyOf(input.component, input.requestId, input.client)
     // The latest ask for a drawing is the one its client shows: an earlier
     // one still in flight must not replace its handles when it settles.
@@ -243,22 +257,100 @@ export abstract class ModUiSurface extends ModEngineEvents {
       for (const [plugin, handles] of held) this.instanceOf(plugin)?.dropHandles([...handles])
       return { kind: 'engine' }
     }
-    this.replaceHandles(key, held)
-    const plugin = drawnBy(validated.tree)
-    const plugins = drewOf(trace)
-    const sections = input.component === 'AbovePrompt' ? sectionsOf(trace, validated.tree, plugins) : undefined
+    let tree = validated.tree
+    let plugin = drawnBy(tree)
+    let plugins = drewOf(trace)
+    let sections = input.component === 'AbovePrompt' ? sectionsOf(trace, tree, plugins) : undefined
+    if (input.component === 'AbovePrompt' && this.dispatcher.hasHooksFor('ui.render', hearsBandList)) {
+      // A later ask for the band, arriving while it is arranged, overtakes it.
+      this.latestRender.set(key, ask)
+      const arranged = await this.arrangeBand(e, bandRowsOf(tree, sections, plugin ?? plugins[0]), signal)
+      const isOvertaken = overtaken()
+      if (!isOvertaken) this.latestRender.delete(key)
+      if (isOvertaken) {
+        this.dropRefused([{ tree: result }, ...(arranged ? [{ tree: arranged.tree }] : [])], this.drawings.get(key) ?? new Map())
+        return { kind: 'engine' }
+      }
+      if (arranged) {
+        const kept = arranged.tree ? handlesIn(arranged.tree) : new Map<string, Set<number>>()
+        this.dropRefused([{ tree: result }], kept)
+        if (!arranged.tree) {
+          this.replaceHandles(key, new Map())
+          return { kind: 'engine' }
+        }
+        ;({ tree, sections, plugins } = arranged)
+        plugin = drawnBy(tree)
+        this.replaceHandles(key, kept)
+      } else {
+        this.replaceHandles(key, held)
+      }
+    } else {
+      this.replaceHandles(key, held)
+    }
     const drawnRewrites: Record<string, EngineRewrite> = {}
-    for (const node of engineNodesIn(validated.tree)) {
+    for (const node of engineNodesIn(tree)) {
       const rewrite = rewriteOf(node)
       if (rewrite) drawnRewrites[String(node.ref)] = rewrite
     }
     return {
       kind: 'tree',
-      tree: validated.tree,
+      tree,
       ...(plugin !== undefined ? { plugin } : {}),
       ...(plugins.length > 0 ? { plugins } : {}),
       ...(sections ? { sections } : {}),
       ...(Object.keys(drawnRewrites).length > 0 ? { rewrites: drawnRewrites } : {}),
+    }
+  }
+
+  /**
+   * `ui.render` for `AbovePromptList`: the settled band's rows, heard by the
+   * hooks naming it (or `*`). Core stacks the rows it is handed; a rewrite may
+   * hide or reorder them, an answer may wrap what `next` drew. Resolves to the
+   * band to draw (`tree` null: no row left), or undefined when the chain
+   * failed and the band stands as it settled. Never rejects but on abort.
+   */
+  protected async arrangeBand(
+    band: RenderInput,
+    rows: RenderSection[],
+    signal?: AbortSignal,
+  ): Promise<{ tree: RenderElement | null; sections?: RenderSection[]; plugins: string[] } | undefined> {
+    if (rows.length === 0) return undefined
+    const props: AbovePromptListRenderProps = { ...(band.props as AbovePromptRenderProps), rows }
+    const e = { ...band, component: BAND_LIST_COMPONENT, props }
+    let kept: RenderSection[] = rows
+    let trace: readonly TraceEntry[] = []
+    try {
+      const result = await this.dispatcher.dispatch(
+        'ui.render',
+        e,
+        (arrived: unknown) => {
+          const arrivedProps = isRecord(arrived) ? arrived.props : undefined
+          const problem = bandListPropsProblem(props, arrivedProps)
+          if (problem) throw new Error(`the rewritten event is refused: ${problem}`)
+          kept = [...(arrivedProps as AbovePromptListRenderProps).rows]
+          return stackRows(kept)
+        },
+        {
+          ...(signal ? { signal } : {}),
+          admits: hearsBandList,
+          accepts: answer => isRenderAnswer(answer) && validateRenderTree(answer).ok,
+          trace: entries => {
+            trace = entries
+          },
+        },
+      )
+      const rowPlugins = [...new Set(kept.map(row => row.plugin))]
+      if (isStackOf(result, kept)) {
+        if (kept.length === 0) return { tree: null, plugins: [] }
+        return { tree: stackRows(kept), ...(kept.length > 1 ? { sections: kept } : {}), plugins: rowPlugins }
+      }
+      const tree = validateRenderTree(result)
+      if (!tree.ok) throw new Error(tree.reason)
+      return { tree: tree.tree, plugins: [...new Set([...drewOf(trace), ...rowPlugins])] }
+    } catch (error) {
+      if (signal?.aborted) throw error
+      this.options.report(`mods: ui.render (${BAND_LIST_COMPONENT}) refused: ${errorMessage(error)}; the band was drawn as it settled`)
+      return undefined
     }
   }
 

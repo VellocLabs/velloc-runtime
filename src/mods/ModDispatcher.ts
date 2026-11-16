@@ -175,6 +175,9 @@ export type DispatchOptions = {
   /** Run only the hooks of the groups registered under these keys — "a later
    *  one runs its hooks alone" (`session.start` after a respawn). */
   onlyGroup?: string | readonly string[]
+  /** Run only the hooks this admits, by pattern and matcher: a component
+   *  heard by the hooks naming it alone (`AbovePromptList`). */
+  admits?: (link: { pattern: string; matcher?: unknown }) => boolean
   /** Handed the whole dispatch's trace once it settled, outermost first —
    *  what a caller reads to name the hook that answered (`plugin.register`'s
    *  refusal names who refused). */
@@ -293,8 +296,8 @@ export class ModDispatcher {
 
   /** Whether any hook that would run on `event` is registered (whatever its
    *  matcher says): one selecting it, of the form its dispatch kind runs. */
-  hasHooksFor(event: string): boolean {
-    return this.chain.some(link => runsOn(link, event))
+  hasHooksFor(event: string, admits?: DispatchOptions['admits']): boolean {
+    return this.chain.some(link => runsOn(link, event) && (admits === undefined || admits(link)))
   }
 
   /** The hooks registered on `event`, each with its plugin and its matcher
@@ -335,7 +338,7 @@ export class ModDispatcher {
     if (context.depth > MAX_DISPATCH_DEPTH) {
       throw new ModDispatchDepthError(event, context.origin)
     }
-    const candidates = this.candidatesFor(event, context, options.onlyGroup)
+    const candidates = this.candidatesFor(event, context, options.onlyGroup, options.admits)
     if (candidates.length === 0) return core(e, { frames: context.frames ?? [] })
     if (options.signal?.aborted) throw abortError()
 
@@ -395,7 +398,7 @@ export class ModDispatcher {
       core,
       context,
       candidates:
-        context.depth > MAX_DISPATCH_DEPTH ? [] : this.candidatesFor(event, context, options.onlyGroup),
+        context.depth > MAX_DISPATCH_DEPTH ? [] : this.candidatesFor(event, context, options.onlyGroup, options.admits),
       refusal: context.depth > MAX_DISPATCH_DEPTH ? new ModDispatchDepthError(event, context.origin) : undefined,
       accepts: options.accepts ?? (result => result !== undefined),
       budgetMs: options.budgetMs ?? this.budgetMs,
@@ -416,6 +419,7 @@ export class ModDispatcher {
     event: string,
     context: DispatchContext,
     onlyGroup?: string | readonly string[],
+    admits?: DispatchOptions['admits'],
   ): readonly ChainLink[] {
     const only =
       onlyGroup === undefined
@@ -426,6 +430,7 @@ export class ModDispatcher {
         !skippedByFrames(link, context) &&
         link.plugin !== context.skipPlugin &&
         runsOn(link, event) &&
+        (admits === undefined || admits(link)) &&
         (only === undefined || only.has(link)),
     )
   }

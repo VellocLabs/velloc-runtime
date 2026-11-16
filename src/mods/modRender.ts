@@ -22,6 +22,7 @@ import type { PlacedRenderProps } from './modPlaces'
 export const RENDER_SITES = [
   'Pane',
   'AbovePrompt',
+  'AbovePromptList',
   'UserMessage',
   'AssistantMessage',
   'CommandOutput',

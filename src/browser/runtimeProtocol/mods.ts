@@ -275,6 +275,7 @@ export const MODS_UI_PAGE_EVENT = 'page'
 export const MODS_RENDER_SITES = [
   'Pane',
   'AbovePrompt',
+  'AbovePromptList',
   'UserMessage',
   'AssistantMessage',
   'CommandOutput',

@@ -15,8 +15,8 @@ import type {
 import type { RuntimeConfig } from '../runtime/interfaces/RuntimeConfig'
 import type { ContentBlockParam, Message } from '../runtime/RuntimeTypes'
 import { BrowserHostBridge } from '../browser/bridge/BrowserHostBridge'
-import { collectInitialAttachmentMessages } from '../messages/contextAttachments'
-import { makeContextRow, makeUserRow } from '../messages/messageFactories'
+import { collectPromptAttachments } from '../messages/contextAttachments'
+import { createGeneratedUserMessage, makeContextRow, makeUserRow } from '../messages/messageFactories'
 import type { PluginScan } from '../pluginHost/pluginModel'
 import { dispatchCommandInput } from './runSlashCommand'
 
@@ -139,14 +139,18 @@ export async function processUserInput(
         ? params.input
         : extractAttachmentMentionText(params.input)
     if (typeof params.input === 'string' || attachmentInput.length > 0) {
-      messages.push(
-        ...(await collectInitialAttachmentMessages({
-          input: attachmentInput,
-          context: params.context,
-          runtimeConfig: options.runtimeConfig,
-          hostBridge: options.hostBridge,
-        })),
-      )
+      const { rows, mentionContext } = await collectPromptAttachments({
+        input: attachmentInput,
+        context: params.context,
+        runtimeConfig: options.runtimeConfig,
+        hostBridge: options.hostBridge,
+      })
+      messages.push(...rows)
+      if (mentionContext.length > 0) {
+        messages.push(
+          createGeneratedUserMessage(mentionContext.map(text => ({ type: 'text' as const, text })), { isMeta: true }),
+        )
+      }
     }
   }
 

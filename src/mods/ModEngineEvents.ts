@@ -13,6 +13,17 @@ import type { ModDispatcher } from './ModDispatcher'
 import type { ModRuntimeOptions } from './ModRuntime'
 import type { ModUiTurnNote } from './modUi'
 import { errorMessage } from './chainRules'
+import {
+  droppedContextProblem,
+  isPromptMentionResult,
+  mentionInputProblem,
+  mentionReadOf,
+  settlementOf,
+  type PromptMentionCore,
+  type PromptMentionInput,
+  type PromptMentionRead,
+  type PromptMentionSettlement,
+} from './promptMentionEvent'
 import { IDS_NEXT_BUDGET_MS, isIdsNextResult, type IdsNextInput } from './idsEvent'
 import {
   applyAppendRewrite,
@@ -920,6 +931,59 @@ export abstract class ModEngineEvents {
         `mods: session.receive (${input.origin.kind}) failed: ${errorMessage(error)}; the delivery is queued as it arrived`,
       )
       return { text: input.text }
+    }
+  }
+
+  hasPromptMentionHooks(): boolean {
+    return !this.disposed && this.dispatcher.hasHooksFor('prompt.mention')
+  }
+
+  /**
+   * `prompt.mention`: one file a prompt names after an `@`, before it is read.
+   * `core` reads it once; a second `next` settles with the first read. An
+   * answer may add `context`, reread another `path`, or `{ deny }`. A chain
+   * that fails settles on the read as if no hook were there. Never rejects
+   * but on abort.
+   */
+  async promptMention(
+    input: PromptMentionInput,
+    core: PromptMentionCore,
+    signal?: AbortSignal,
+  ): Promise<PromptMentionSettlement> {
+    let read: Promise<PromptMentionRead> | undefined
+    const readOnce = (e: PromptMentionInput) => (read ??= core(mentionReadOf(e)))
+    const settle = async () => settlementOf(await readOnce(input))
+    if (this.disposed || !this.dispatcher.hasHooksFor('prompt.mention')) return settle()
+    // What the innermost settled link answered: the `next` the next answer is
+    // checked against.
+    let beneath: unknown
+    try {
+      const result = await this.dispatcher.dispatch(
+        'prompt.mention',
+        input,
+        async (e: unknown) => {
+          const problem = mentionInputProblem(input, e)
+          if (problem) throw new Error(`the rewritten event is refused: ${problem}`)
+          const got = await readOnce({ ...input, ...(e as PromptMentionInput) })
+          beneath = 'deny' in got ? { deny: got.deny } : { type: got.type }
+          return beneath
+        },
+        {
+          ...(signal ? { signal } : {}),
+          accepts: result => {
+            if (!isPromptMentionResult(result) || droppedContextProblem(result, beneath) !== null) return false
+            beneath = result
+            return true
+          },
+        },
+      )
+      const settled = settlementOf(result)
+      if ('deny' in settled) this.options.report(`mods: prompt.mention (${input.mention}) denied: ${settled.deny}`)
+      return settled
+    } catch (error) {
+      if (signal?.aborted) throw error
+      this.options.report(`mods: prompt.mention (${input.mention}) failed: ${errorMessage(error)}; the file is read as mentioned`)
+      return settle()
     }
   }
 

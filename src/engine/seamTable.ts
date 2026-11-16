@@ -106,6 +106,16 @@ export const SEAM_EVENTS: readonly SeamEvent[] = Object.freeze([
     core: 'queue the delivery',
   },
   {
+    event: 'prompt.mention',
+    member: 'promptMention',
+    input: 'PromptMentionInput {mention, path, offset?, limit?, agentId?}',
+    output: 'PromptMentionSettlement {type, context[]} | {deny}',
+    mode: 'around',
+    kind: 'decision',
+    raisedIn: [{ file: 'messages/contextAttachments.ts', step: 'L1.6' }],
+    core: 'read the mentioned file for the model',
+  },
+  {
     event: 'prompt.submit',
     member: 'promptSubmit',
     input: 'the typed prompt text',

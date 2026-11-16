@@ -8,6 +8,7 @@ import type { TurnRequestInput, TurnRequestRewrite } from './turnRequestEvent'
 import type { TurnContinueInput, TurnContinueSettlement } from './turnContinueEvent'
 import type { TurnRecoverDecision, TurnRecoverInput } from './turnRecoverEvent'
 import type { IdsNextInput } from './idsEvent'
+import type { PromptMentionCore, PromptMentionInput, PromptMentionSettlement } from './promptMentionEvent'
 import type { DispatchContext } from './modTypes'
 import type { DispatchedStream } from './streamChain'
 import type { TurnStepChunk, TurnStepInput, TurnStepResult } from './turnStepEvent'
@@ -187,6 +188,9 @@ export type ToolCallMods = Partial<ClassicMods> & {
   ): Promise<SessionSendResult>
   hasSessionReceiveHooks?(): boolean
   sessionReceive?(input: SessionReceiveInput, signal?: AbortSignal): Promise<SessionReceiveSettlement>
+  /** `prompt.mention` around the read of one `@` file. Optional. */
+  hasPromptMentionHooks?(): boolean
+  promptMention?(input: PromptMentionInput, core: PromptMentionCore, signal?: AbortSignal): Promise<PromptMentionSettlement>
   /** `agent.offer` / `agent.spawn` around the Agent tool. Optional. */
   hasAgentOfferHooks?(): boolean
   agentOffer?(input: AgentOfferInput, signal?: AbortSignal): Promise<boolean>

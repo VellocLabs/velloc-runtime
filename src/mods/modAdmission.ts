@@ -31,6 +31,7 @@ export const RAISED_EVENTS: readonly string[] = Object.freeze([
   'session.start',
   'session.end',
   'prompt.submit',
+  'prompt.mention',
   'tool.call',
   'tool.check',
   'command.run',
