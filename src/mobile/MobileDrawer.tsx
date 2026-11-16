@@ -105,7 +105,7 @@ export function MobileDrawer(props: MobileDrawerProps) {
               onChange={e => setQuery(e.target.value)}
               placeholder={t('mobile.drawer.filterPlaceholder')}
               aria-label={t('mobile.drawer.filterPlaceholder')}
-              className="mt-2 h-10 w-full rounded-lg border border-border bg-muted/40 px-3 text-body outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+              className="mt-2 h-10 w-full rounded-lg border border-border bg-muted/40 px-3 text-body focus-visible:focus-ring"
             />
           </div>
           <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain" data-testid="mobile-drawer-scroll">

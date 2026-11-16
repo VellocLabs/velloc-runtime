@@ -142,7 +142,7 @@ function RenameForm({
         value={value}
         onChange={e => setValue(e.target.value)}
         aria-label={t('mobile.rename.label')}
-        className="h-11 w-full rounded-lg border border-border bg-muted/40 px-3 text-body outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+        className="h-11 w-full rounded-lg border border-border bg-muted/40 px-3 text-body focus-visible:focus-ring"
       />
       <div className="flex gap-2">
         <button
