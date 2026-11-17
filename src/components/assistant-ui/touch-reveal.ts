@@ -9,7 +9,8 @@ export const SHOWN_WITHOUT_HOVER =
   "[@media(hover:none)]:pointer-events-auto [@media(hover:none)]:opacity-100";
 
 /** An overlay drawn below its row on hover takes its own line instead. */
-export const IN_FLOW_WITHOUT_HOVER = "[@media(hover:none)]:relative [@media(hover:none)]:top-0";
+export const IN_FLOW_WITHOUT_HOVER =
+  "[@media(hover:none)]:relative [@media(hover:none)]:top-0 [@media(hover:none)]:z-auto";
 
 /** A hover-only helper (e.g. a hover bridge) that has no use without hover. */
 export const HIDDEN_WITHOUT_HOVER = "[@media(hover:none)]:hidden";

@@ -609,7 +609,10 @@ export const Thread: FC<{
             does not overlap the composer. Static height: the footer is sticky-in-flow. */}
         <div className="aui-scroll-anchor h-8 shrink-0" aria-hidden="true" />
 
-        <ThreadPrimitive.ViewportFooter className="aui-thread-viewport-footer sticky bottom-0 mx-auto mt-auto flex w-full max-w-(--thread-max-width) flex-col gap-1.5 overflow-visible rounded-t-(--composer-radius) bg-background pb-4 md:pb-6">
+        {/* `z-10`: rows scroll beneath the sticky footer, and a row's `z-10`
+            overlay (action bar, inject remove) must not paint over or take taps
+            from its cards and buttons; at equal z the later footer wins. */}
+        <ThreadPrimitive.ViewportFooter className="aui-thread-viewport-footer sticky bottom-0 z-10 mx-auto mt-auto flex w-full max-w-(--thread-max-width) flex-col gap-1.5 overflow-visible rounded-t-(--composer-radius) bg-background pb-4 md:pb-6">
           <ThreadLockToBottom
             sessionId={sessionId}
             lockToBottomRef={lockToBottomRef}
