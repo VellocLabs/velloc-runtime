@@ -21,6 +21,9 @@ import {
   getKnownMarketplacesFilePath,
   getMarketplaceContentDir,
   getMarketplaceManifestPath,
+  MARKETPLACE_MANIFEST_FILE_NAME,
+  PLUGIN_MANIFEST_DIR_NAME,
+  PLUGIN_MANIFEST_FILE_NAME,
   pluginsRoot,
   type PluginInstallPathContext,
 } from './pluginDirs'
@@ -453,6 +456,91 @@ export async function fetchCatalog(
   await updateMarketplaceLastUpdated(ctx, fs, catalogKey, nowIso)
 
   return { marketplace, cachePath, sha: fetched.sha }
+}
+
+/**
+ * Base URL of a GitHub-hosted marketplace's files at the ref its source
+ * names (`https://raw.githubusercontent.com/<owner>/<repo>/<ref>`), or null
+ * for a source with no per-file host (a direct tarball URL, a local folder).
+ */
+export function marketplaceRawBaseUrl(source: PluginOrigin): string | null {
+  let repo: string | undefined
+  let sha: string | undefined
+  let ref: string | undefined
+  if (source.source === 'github') {
+    repo = source.repo
+    sha = source.sha
+    ref = source.ref
+  } else if (source.source === 'url') {
+    const match = source.url.match(/^https:\/\/github\.com\/([^/]+)\/([^/]+?)(?:\.git)?\/?$/)
+    if (!match) return null
+    repo = `${match[1]}/${match[2]}`
+    sha = source.sha
+    ref = source.ref
+  } else {
+    return null
+  }
+  if (!/^[^/\s]+\/[^/\s]+$/.test(repo)) return null
+  const at = sha ?? (ref ? (ref.startsWith('refs/') ? ref : `refs/heads/${ref}`) : 'refs/heads/main')
+  return `https://raw.githubusercontent.com/${repo}/${at.split('/').map(encodeURIComponent).join('/')}`
+}
+
+/** Where a marketplace repo keeps its manifest. */
+export const MARKETPLACE_MANIFEST_REPO_PATH = `${PLUGIN_MANIFEST_DIR_NAME}/${MARKETPLACE_MANIFEST_FILE_NAME}`
+
+/** Where a plugin directory keeps its manifest, relative to that directory. */
+export const PLUGIN_MANIFEST_REPO_PATH = `${PLUGIN_MANIFEST_DIR_NAME}/${PLUGIN_MANIFEST_FILE_NAME}`
+
+/** A marketplace's listing read without downloading its repo. */
+export type RemoteCatalog = {
+  marketplace: MarketplaceCatalog
+  /** Text of `relPath` in the same repo at the same ref; null when the host
+   *  answers 404 or the path leaves the repo. Throws on a network failure. */
+  readText(relPath: string): Promise<string | null>
+}
+
+/**
+ * Downloads only the manifest (`MARKETPLACE_MANIFEST_REPO_PATH`) of a
+ * GitHub-hosted marketplace. Nothing is written: the cached content directory and
+ * `lastUpdated` stay as the last full `fetchCatalog` left them. Returns null
+ * when the source has no per-file host; the caller falls back to
+ * `fetchCatalog`.
+ */
+export async function fetchRemoteCatalog(
+  ctx: PluginInstallPathContext,
+  fs: RuntimeFs,
+  catalogKey: string,
+  nowIso: string,
+  fetchImpl: typeof fetch = globalThis.fetch.bind(globalThis),
+): Promise<RemoteCatalog | null> {
+  const { registry } = await loadKnownMarketplaces(ctx, fs, nowIso)
+  const entry = registry[catalogKey]
+  if (!entry) {
+    throw new Error(
+      `[marketplaceManager] marketplace '${catalogKey}' is not registered; add it first via addMarketplace()`,
+    )
+  }
+  const base = marketplaceRawBaseUrl(entry.source)
+  if (base === null) return null
+  const readText = async (relPath: string): Promise<string | null> => {
+    const segments = relPath.replace(/\\/g, '/').split('/').filter(segment => segment !== '' && segment !== '.')
+    if (segments.length === 0 || segments.includes('..')) return null
+    const url = `${base}/${segments.map(encodeURIComponent).join('/')}`
+    let response: Response
+    try {
+      response = await fetchImpl(url, { redirect: 'follow', credentials: 'omit' })
+    } catch (e) {
+      throw new Error(`[fetch] network error fetching ${url}: ${e instanceof Error ? e.message : String(e)}`)
+    }
+    if (response.status === 404) return null
+    if (!response.ok) throw new Error(`[fetch] HTTP ${response.status} ${response.statusText} fetching ${url}`)
+    return response.text()
+  }
+  const manifestRaw = await readText(MARKETPLACE_MANIFEST_REPO_PATH)
+  if (manifestRaw === null) {
+    throw new Error(`[marketplaceManager] '${catalogKey}' has no ${MARKETPLACE_MANIFEST_REPO_PATH} at ${base}`)
+  }
+  return { marketplace: parseMarketplaceManifest(manifestRaw, catalogKey), readText }
 }
 
 /** Lower-case hex SHA-256 of `bytes`. */

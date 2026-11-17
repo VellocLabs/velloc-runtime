@@ -72,6 +72,18 @@ describe('DirectPortBridgeTransport — model timeout override + orphan logging'
     expect(__test_only_getRouteTimeoutMs(makeRoute('network', 'streamOpen'), 30_000)).toBe(610_000)
   })
 
+  it('waits on network.httpGet for the timeout the request asks the host for, plus grace', () => {
+    // A 10-minute tarball download must not die at the 30s transport default.
+    expect(__test_only_getRouteTimeoutMs(makeRoute('network', 'httpGet'), 30_000, { url: 'u', timeoutMs: 600_000 })).toBe(610_000)
+    expect(__test_only_getRouteTimeoutMs(makeRoute('network', 'httpRequest'), 30_000, { url: 'u', timeoutMs: 45_000 })).toBe(55_000)
+  })
+
+  it('waits on network.httpGet for the host default 60s plus grace when no timeout is asked', () => {
+    expect(__test_only_getRouteTimeoutMs(makeRoute('network', 'httpGet'), 30_000, { url: 'u' })).toBe(70_000)
+    expect(__test_only_getRouteTimeoutMs(makeRoute('network', 'httpGet'), 30_000, { url: 'u', timeoutMs: 0 })).toBe(70_000)
+    expect(__test_only_getRouteTimeoutMs(makeRoute('network', 'httpGet'), 30_000)).toBe(70_000)
+  })
+
   it('leaves non-model routes on the default timeout', () => {
     expect(__test_only_getRouteTimeoutMs(makeRoute('fs', 'cwd'), 30_000)).toBe(30_000)
     // browser keeps its own 185s override.

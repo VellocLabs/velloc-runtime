@@ -208,15 +208,31 @@ const ROUTE_ACTION_TIMEOUT_OVERRIDES_MS: Record<string, number> = {
   'model.rawStreamOpen': 310_000,
 }
 
+// Routes whose native deadline is the request's own `timeoutMs` (native default
+// 60s, no ceiling): the transport waits that long + 10s grace, so the host's
+// typed `TIMEOUT` always wins over a bare `bridge_timeout`.
+const PAYLOAD_DEADLINE_ROUTES: ReadonlySet<string> = new Set(['network.httpGet', 'network.httpRequest'])
+const NATIVE_HTTP_DEFAULT_TIMEOUT_MS = 60_000
+const NATIVE_DEADLINE_GRACE_MS = 10_000
+
 function getRouteTimeoutMs<
   C extends BrowserBridgeCapability,
   A extends BrowserBridgeAction<C>,
 >(
   route: BrowserBridgeRoute<C, A>,
   defaultTimeoutMs: number,
+  payload?: unknown,
 ): number {
+  const actionKey = `${route.capability}.${String(route.action)}`
+  if (PAYLOAD_DEADLINE_ROUTES.has(actionKey)) {
+    const asked = isRecord(payload) ? payload.timeoutMs : undefined
+    const native = typeof asked === 'number' && Number.isFinite(asked) && asked > 0
+      ? asked
+      : NATIVE_HTTP_DEFAULT_TIMEOUT_MS
+    return native + NATIVE_DEADLINE_GRACE_MS
+  }
   const actionOverride =
-    ROUTE_ACTION_TIMEOUT_OVERRIDES_MS[`${route.capability}.${String(route.action)}`]
+    ROUTE_ACTION_TIMEOUT_OVERRIDES_MS[actionKey]
   if (actionOverride !== undefined) {
     return actionOverride
   }
@@ -476,6 +492,7 @@ export class DirectPortBridgeTransport implements BrowserBridgeTransport {
     const effectiveTimeoutMs = getRouteTimeoutMs(
       request.route,
       this.requestTimeoutMs,
+      request.payload,
     )
 
     return new Promise<BrowserBridgeResponse<C, A>>((resolve, reject) => {

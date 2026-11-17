@@ -5,7 +5,8 @@
  * the person consents to (providers or an app's folders: their own consent
  * flow, F-27) are left out.
  *
- * `check` refreshes each marketplace that has a covered plugin — for
+ * `check` refreshes each marketplace that has a covered plugin — a
+ * GitHub-hosted one by its manifest alone, any other by a full download; for
  * directory installs, their records' reviewed commits — and records an
  * offer where the listing is newer than the installed record. `update`
  * installs the offered version into its own version directory and switches
@@ -27,7 +28,14 @@ import { refreshDirectoryListings } from './directoryInstall'
 import { DIRECTORY_CATALOG_KEY } from './directoryListings'
 import { setupPlugin } from './installSteps'
 import { loadInstalledPlugins, recordPluginSetup } from './installedRegistry'
-import { fetchCatalog, loadKnownMarketplaces } from './marketplaces'
+import {
+  PLUGIN_MANIFEST_REPO_PATH,
+  fetchCatalog,
+  fetchRemoteCatalog,
+  loadKnownMarketplaces,
+  marketplaceRawBaseUrl,
+  type RemoteCatalog,
+} from './marketplaces'
 import {
   getMarketplaceContentDir,
   pluginUpdatesFilePath,
@@ -145,17 +153,34 @@ function parseFile(raw: unknown): PluginUpdatesFile {
   }
 }
 
+/** Reads the `plugin.json` of a plugin kept inside the marketplace repo, by
+ *  its path in that repo; null when absent or unparsable. */
+type LocalManifestReader = (pluginPath: string) => Promise<unknown>
+
+function diskManifestReader(ctx: PluginInstallPathContext, fs: RuntimeFs, marketplace: string): LocalManifestReader {
+  return pluginPath => readJson(fs, getPluginManifestPath(joinRuntimePath(getMarketplaceContentDir(ctx, marketplace), pluginPath.replace(/^\.\//, ''))))
+}
+
+function remoteManifestReader(remote: RemoteCatalog): LocalManifestReader {
+  return async pluginPath => {
+    const text = await remote.readText(`${pluginPath.replace(/^\.\//, '')}/${PLUGIN_MANIFEST_REPO_PATH}`)
+    if (text === null) return null
+    try {
+      return JSON.parse(text)
+    } catch {
+      return null
+    }
+  }
+}
+
 /** The version the listing would install, when it says. A plugin kept inside
  *  the marketplace repo answers with its own manifest's version. */
 async function offeredVersion(
-  ctx: PluginInstallPathContext,
-  fs: RuntimeFs,
-  marketplace: string,
+  readLocalManifest: LocalManifestReader,
   listing: CatalogListing,
 ): Promise<string | undefined> {
   if (listing.source.source === 'local') {
-    const dir = joinRuntimePath(getMarketplaceContentDir(ctx, marketplace), listing.source.path.replace(/^\.\//, ''))
-    const version = (await readJson(fs, getPluginManifestPath(dir)) as { version?: unknown } | null)?.version
+    const version = (await readLocalManifest(listing.source.path) as { version?: unknown } | null)?.version
     if (typeof version === 'string' && version.trim() !== '') return version
   }
   return listing.version
@@ -163,13 +188,12 @@ async function offeredVersion(
 
 /** The offer a listing makes over the installed record, if any. */
 async function offerOf(
-  ctx: PluginInstallPathContext,
-  fs: RuntimeFs,
+  readLocalManifest: LocalManifestReader,
   covered: Covered,
   listing: CatalogListing,
 ): Promise<PluginUpdateOffer | undefined> {
   const installed = covered.record.version
-  const offered = await offeredVersion(ctx, fs, covered.marketplace, listing)
+  const offered = await offeredVersion(readLocalManifest, listing)
   if (offered && installed) return isNewerPluginVersion(offered, installed) ? { version: offered } : undefined
   const source = listing.source
   if ('sha' in source && source.sha && covered.record.gitCommitSha) {
@@ -280,21 +304,34 @@ export function createPluginUpdateService(deps: PluginUpdateServiceDeps): Plugin
     const offers = new Map<string, PluginUpdateOffer | undefined>()
     const unreachable: UnreachableMarketplace[] = []
     for (const [marketplace, members] of byMarketplace) {
-      let listings: readonly CatalogListing[]
+      const found = new Map<string, PluginUpdateOffer | undefined>()
       try {
-        listings = scope.listings && marketplace === scope.marketplace
-          ? scope.listings
-          : marketplace === DIRECTORY_CATALOG_KEY
-            ? await refreshDirectoryListings(ctx, fs, members.map(member => member.name), deps.fetchImpl())
-            : (await fetchCatalog(ctx, fs, marketplace, now(), deps.fetchImpl())).marketplace.plugins
+        let listings: readonly CatalogListing[]
+        let readLocalManifest = diskManifestReader(ctx, fs, marketplace)
+        if (scope.listings && marketplace === scope.marketplace) {
+          listings = scope.listings
+        } else if (marketplace === DIRECTORY_CATALOG_KEY) {
+          listings = await refreshDirectoryListings(ctx, fs, members.map(member => member.name), deps.fetchImpl())
+        } else {
+          // A GitHub-hosted marketplace answers with its manifest alone; the
+          // repo is downloaded only when an update is installed.
+          const remote = await fetchRemoteCatalog(ctx, fs, marketplace, now(), deps.fetchImpl())
+          if (remote) {
+            listings = remote.marketplace.plugins
+            readLocalManifest = remoteManifestReader(remote)
+          } else {
+            listings = (await fetchCatalog(ctx, fs, marketplace, now(), deps.fetchImpl())).marketplace.plugins
+          }
+        }
+        for (const plugin of members) {
+          const listing = listings.find(entry => entry.name === plugin.name)
+          found.set(plugin.identifier, listing ? await offerOf(readLocalManifest, plugin, listing) : undefined)
+        }
       } catch (error) {
         unreachable.push({ marketplace, reason: errorText(error) })
         continue
       }
-      for (const plugin of members) {
-        const listing = listings.find(entry => entry.name === plugin.name)
-        offers.set(plugin.identifier, listing ? await offerOf(ctx, fs, plugin, listing) : undefined)
-      }
+      for (const [identifier, offer] of found) offers.set(identifier, offer)
     }
     await mutate(file => {
       if (scope.marketplace === undefined) {
@@ -349,14 +386,19 @@ export function createPluginUpdateService(deps: PluginUpdateServiceDeps): Plugin
     return plugin
   }
 
-  const install = async (identifier: string, auto: boolean): Promise<PluginUpdateStatus> => {
+  /** `contentFresh`: the caller just placed the marketplace's files. */
+  const install = async (identifier: string, auto: boolean, contentFresh = false): Promise<PluginUpdateStatus> => {
     const plugin = await findCovered(identifier)
     const blocked = pluginBlockReason(joinPluginRef(plugin.name, plugin.marketplace))
     if (blocked) throw new Error(blocked)
     const offer = (await readFile()).plugins[identifier]?.offer
     const before = plugin.record
     try {
-      const result = await setupPlugin(ctx, fs, plugin.marketplace, plugin.name, { nowIso: now(), fetchImpl: deps.fetchImpl() })
+      // A check that read only the manifest left the cached repo as it was, so
+      // the install downloads it first.
+      const source = (await loadKnownMarketplaces(ctx, fs, now())).registry[plugin.marketplace]?.source
+      const refreshFirst = !contentFresh && source !== undefined && marketplaceRawBaseUrl(source) !== null
+      const result = await setupPlugin(ctx, fs, plugin.marketplace, plugin.name, { nowIso: now(), fetchImpl: deps.fetchImpl(), refreshFirst })
       const at = now()
       await mutate(file => {
         const record = (file.plugins[identifier] ??= {})
@@ -414,6 +456,7 @@ export function createPluginUpdateService(deps: PluginUpdateServiceDeps): Plugin
   const installOffers = async (
     state: PluginUpdatesSnapshot,
     marketplace?: string,
+    contentFresh = false,
   ): Promise<{ updated: string[]; failed: string[] }> => {
     const enabled = await getEnabledPluginsMap({ homeDir: deps.homeDir }, fs)
     const file = await readFile()
@@ -425,7 +468,7 @@ export function createPluginUpdateService(deps: PluginUpdateServiceDeps): Plugin
       if (enabled[status.identifier] === false) continue
       if (file.plugins[status.identifier]?.skipped === status.offer.version) continue
       try {
-        await install(status.identifier, true)
+        await install(status.identifier, true, contentFresh)
         updated.push(status.identifier)
       } catch (error) {
         failed.push(status.identifier)
@@ -445,7 +488,7 @@ export function createPluginUpdateService(deps: PluginUpdateServiceDeps): Plugin
     listings?: readonly CatalogListing[],
   ): Promise<{ updated: string[]; failed: string[] }> => {
     const state = await runCheck({ marketplace, ...(listings ? { listings } : {}) })
-    return installOffers(state, marketplace)
+    return installOffers(state, marketplace, listings !== undefined)
   }
 
   return {

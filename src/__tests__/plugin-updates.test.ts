@@ -16,7 +16,15 @@ import type { BuiltinSeedOutcome } from '../pluginHost/builtinMarketplaceSeed'
 import { setPluginEnabled } from '../pluginHost/enabledPlugins'
 import { setupPlugin } from '../pluginHost/installSteps'
 import { forgetRegistryFile, loadInstalledPlugins, recordPluginSetup } from '../pluginHost/installedRegistry'
-import { addMarketplace, forgetCatalogs } from '../pluginHost/marketplaces'
+import {
+  MARKETPLACE_MANIFEST_REPO_PATH,
+  PLUGIN_MANIFEST_REPO_PATH,
+  addMarketplace,
+  fetchCatalog,
+  fetchRemoteCatalog,
+  forgetCatalogs,
+  marketplaceRawBaseUrl,
+} from '../pluginHost/marketplaces'
 import { createPluginUpdateService, startPluginUpdateSchedule } from '../pluginHost/pluginUpdates'
 import {
   PLUGIN_UPDATES_ACTION_SCOPES,
@@ -36,8 +44,8 @@ const ID = 'cool@my-mkt'
 
 type Listing = { name: string; version: string; providers?: boolean; folders?: boolean; agent?: boolean; missing?: boolean }
 
-async function marketplaceTarball(plugins: Listing[]): Promise<Uint8Array> {
-  const files = [
+function marketplaceFiles(plugins: Listing[]): Array<{ name: string; content: string }> {
+  return [
     {
       name: '.claude-plugin/marketplace.json',
       content: JSON.stringify({
@@ -65,16 +73,28 @@ async function marketplaceTarball(plugins: Listing[]): Promise<Uint8Array> {
         { name: `plugins/${p.name}/skills/hello/SKILL.md`, content: `v${p.version}\n` },
       ]),
   ]
-  return archive(files, 'me-mkt-abc')
 }
 
+const RAW_BASE = 'https://raw.githubusercontent.com/me/mkt/refs/heads/main/'
+const MANIFEST_URL = `${RAW_BASE}${MARKETPLACE_MANIFEST_REPO_PATH}`
+
+/** The `me/mkt` repo as GitHub serves it: the whole tarball from codeload,
+ *  one file at a time from the raw host. */
 async function rig(initial: Listing[] = [{ name: 'cool', version: '1.0.0' }]) {
   const fs = makeMemFs()
-  let tarball = await marketplaceTarball(initial)
+  let files = marketplaceFiles(initial)
+  let tarball = await archive(files, 'me-mkt-abc')
   let status = 200
-  const fetchImpl = vi.fn(async () =>
-    status === 200 ? new Response(new Uint8Array(tarball), { status }) : new Response('down', { status }),
-  ) as unknown as typeof fetch & { mock: { calls: unknown[] } }
+  const fetchImpl = vi.fn(async (input: RequestInfo | URL) => {
+    if (status !== 200) return new Response('down', { status })
+    const url = String(input)
+    if (url.startsWith(RAW_BASE)) {
+      const file = files.find(f => f.name === url.slice(RAW_BASE.length))
+      return file ? new Response(file.content, { status: 200 }) : new Response('404: Not Found', { status: 404 })
+    }
+    return new Response(new Uint8Array(tarball), { status })
+  }) as unknown as typeof fetch & { mock: { calls: unknown[][] } }
+  const urls = () => fetchImpl.mock.calls.map(call => String(call[0]))
   let clock = Date.parse('2026-10-12T00:00:00.000Z')
   const now = () => new Date(clock).toISOString()
   await addMarketplace(ctx, fs, 'my-mkt', { source: 'github', repo: 'me/mkt' }, now())
@@ -97,9 +117,13 @@ async function rig(initial: Listing[] = [{ name: 'cool', version: '1.0.0' }]) {
     fs,
     service,
     fetchImpl,
+    /** How many times the marketplace manifest was read: one per check. */
+    checks: () => urls().filter(url => url === MANIFEST_URL).length,
+    tarballs: () => urls().filter(url => url.startsWith('https://codeload.github.com/')).length,
     reloadPluginsOnAllSessions,
     publish: async (plugins: Listing[]) => {
-      tarball = await marketplaceTarball(plugins)
+      files = marketplaceFiles(plugins)
+      tarball = await archive(files, 'me-mkt-abc')
     },
     goDown: () => {
       status = 503
@@ -156,15 +180,25 @@ describe('plugin update service', () => {
 
   it('skips a refresh made in the last half hour unless forced', async () => {
     const r = await rig()
-    const before = r.fetchImpl.mock.calls.length
     await r.service.check()
     await r.service.check()
-    expect(r.fetchImpl.mock.calls.length).toBe(before + 1)
+    expect(r.checks()).toBe(1)
     await r.service.check({ force: true })
-    expect(r.fetchImpl.mock.calls.length).toBe(before + 2)
+    expect(r.checks()).toBe(2)
     r.advance(31 * 60 * 1000)
     await r.service.check()
-    expect(r.fetchImpl.mock.calls.length).toBe(before + 3)
+    expect(r.checks()).toBe(3)
+  })
+
+  it('checks a GitHub marketplace by its manifest alone and leaves the cached repo as it was', async () => {
+    const r = await rig()
+    const tarballsBefore = r.tarballs()
+    await r.publish([{ name: 'cool', version: '1.1.0' }])
+    const state = await r.service.check()
+    expect(state.plugins[0]).toMatchObject({ state: 'available', offer: { version: '1.1.0' } })
+    expect(r.tarballs()).toBe(tarballsBefore)
+    const cached = `${HOME}/.velloc/plugins/marketplaces/my-mkt/plugins/cool/${PLUGIN_MANIFEST_REPO_PATH}`
+    expect(JSON.parse(await r.fs.readFile(cached, { encoding: 'utf-8' })).version).toBe('1.0.0')
   })
 
   it('checks again within the half hour when a plugin was installed after the last check', async () => {
@@ -179,12 +213,12 @@ describe('plugin update service', () => {
       { name: 'cool', version: '1.0.0' },
       { name: 'late', version: '1.2.0' },
     ])
-    const before = r.fetchImpl.mock.calls.length
+    const before = r.checks()
     const state = await r.service.check()
-    expect(r.fetchImpl.mock.calls.length).toBe(before + 1)
+    expect(r.checks()).toBe(before + 1)
     expect(state.plugins.find(p => p.identifier === 'late@my-mkt')).toMatchObject({ offer: { version: '1.2.0' } })
     await r.service.check()
-    expect(r.fetchImpl.mock.calls.length).toBe(before + 1)
+    expect(r.checks()).toBe(before + 1)
   })
 
   it('records an unreachable marketplace and keeps the plugin as it was', async () => {
@@ -208,6 +242,8 @@ describe('plugin update service', () => {
     expect(record!.version).toBe('1.1.0')
     expect(record!.installPath).not.toBe(oldPath)
     expect(await r.fs.readFile(`${oldPath}/skills/hello/SKILL.md`, { encoding: 'utf-8' })).toBe('v1.0.0\n')
+    // The check read the manifest only, so the update brought the new files.
+    expect(await r.fs.readFile(`${record!.installPath}/skills/hello/SKILL.md`, { encoding: 'utf-8' })).toBe('v1.1.0\n')
     expect(r.reloadPluginsOnAllSessions).toHaveBeenCalledTimes(1)
   })
 
@@ -231,9 +267,8 @@ describe('plugin update service', () => {
     const r = await rig()
     await r.publish([{ name: 'cool', version: '1.1.0' }])
     await r.service.check()
-    // The installed copy is what the listing would be copied from: take it away.
-    const contentDir = `${HOME}/.velloc/plugins/marketplaces/my-mkt/plugins/cool`
-    await r.fs.rm(contentDir)
+    // The install downloads the repo first: the origin is gone by then.
+    r.goDown()
     await expect(r.service.update(ID)).rejects.toThrow()
     const state = await r.service.snapshot()
     expect(state.plugins[0]).toMatchObject({ state: 'failed', offer: { version: '1.1.0' } })
@@ -294,6 +329,41 @@ describe('plugin update service', () => {
   })
 })
 
+describe('marketplace manifest without the repo', () => {
+  it('reads a GitHub source from the raw host at the ref it names', () => {
+    expect(marketplaceRawBaseUrl({ source: 'github', repo: 'me/mkt' })).toBe('https://raw.githubusercontent.com/me/mkt/refs/heads/main')
+    expect(marketplaceRawBaseUrl({ source: 'github', repo: 'me/mkt', ref: 'dev' })).toBe('https://raw.githubusercontent.com/me/mkt/refs/heads/dev')
+    expect(marketplaceRawBaseUrl({ source: 'github', repo: 'me/mkt', ref: 'refs/tags/v1' })).toBe('https://raw.githubusercontent.com/me/mkt/refs/tags/v1')
+    expect(marketplaceRawBaseUrl({ source: 'github', repo: 'me/mkt', ref: 'dev', sha: 'abc123' })).toBe('https://raw.githubusercontent.com/me/mkt/abc123')
+    expect(marketplaceRawBaseUrl({ source: 'url', url: 'https://github.com/me/mkt.git' })).toBe('https://raw.githubusercontent.com/me/mkt/refs/heads/main')
+  })
+
+  it('has no raw host for a direct tarball, a local folder, or a malformed repo', () => {
+    expect(marketplaceRawBaseUrl({ source: 'url', url: 'https://plugins.example.com/marketplace.tar.gz' })).toBeNull()
+    expect(marketplaceRawBaseUrl({ source: 'local', path: './mkt' })).toBeNull()
+    expect(marketplaceRawBaseUrl({ source: 'github', repo: 'me/mkt/../x' })).toBeNull()
+  })
+
+  it('never reads a path that leaves the repo, and answers null for a missing file', async () => {
+    const r = await rig()
+    const remote = (await fetchRemoteCatalog(ctx, r.fs, 'my-mkt', new Date().toISOString(), r.fetchImpl))!
+    expect(remote.marketplace.plugins.map(p => p.name)).toEqual(['cool'])
+    const before = r.fetchImpl.mock.calls.length
+    expect(await remote.readText('../other/secret.json')).toBeNull()
+    expect(await remote.readText('plugins/../../x')).toBeNull()
+    expect(r.fetchImpl.mock.calls.length).toBe(before)
+    expect(await remote.readText(`plugins/none/${PLUGIN_MANIFEST_REPO_PATH}`)).toBeNull()
+  })
+
+  it('does not download the repo for a marketplace served as a direct tarball', async () => {
+    const fs = makeMemFs()
+    await addMarketplace(ctx, fs, 'tar-mkt', { source: 'url', url: 'https://plugins.example.com/marketplace.tar.gz' }, new Date().toISOString())
+    const fetchImpl = vi.fn() as unknown as typeof fetch
+    expect(await fetchRemoteCatalog(ctx, fs, 'tar-mkt', new Date().toISOString(), fetchImpl)).toBeNull()
+    expect(fetchImpl).not.toHaveBeenCalled()
+  })
+})
+
 describe('plugin update schedule', () => {
   it('runs the first round after the delay and then at the interval until stopped', async () => {
     const timers: Array<{ run: () => void; ms: number }> = []
@@ -342,9 +412,10 @@ describe('syncMarketplace', () => {
   it('installs the offers of one marketplace whatever the setting says, over listings handed in', async () => {
     const r = await rig()
     await r.publish([{ name: 'cool', version: '1.1.0' }])
-    // The listings come from the caller; the origin is down, so nothing is downloaded.
+    // The caller placed the marketplace's files and hands in its listings; the
+    // origin is down, so nothing more is downloaded.
     const listings = [{ name: 'cool', source: { source: 'local' as const, path: 'plugins/cool' } }]
-    await r.service.check({ force: true })
+    await fetchCatalog(ctx, r.fs, 'my-mkt', new Date().toISOString(), r.fetchImpl)
     r.goDown()
     const result = await r.service.syncMarketplace('my-mkt', listings)
     expect(result).toEqual({ updated: [ID], failed: [] })
