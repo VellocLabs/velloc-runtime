@@ -38,10 +38,7 @@ const KNOWN: ReadonlySet<string> = new Set([
   'engine/turn/stopHandling.ts -> memory/consolidate/consolidationRunner.ts',
   'engine/turn/stopHandling.ts -> memory/extract/extractionRunner.ts',
   'engine/turn/turnDependencies.ts -> context/compaction/browserObservationTrim.ts',
-  'engine/turnRunner.ts -> browser/worker/SharedWorkerSessionManager.ts',
   'toolkit/run/interactiveHalt.ts -> permissions/planApproval.ts',
-  'toolkit/run/toolCallTelemetry.ts -> browser/worker/SharedWorkerSessionManager.ts',
-  'toolkit/run/toolCallTelemetry.ts -> engine/loop/actionLoopDetector.ts',
   'toolkit/run/toolPermissionGate.ts -> memory/memoryPaths.ts',
   'toolkit/run/toolPermissionGate.ts -> permissions/planMode.ts',
 ])

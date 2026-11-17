@@ -15,20 +15,44 @@ import { resolveToolByName, type AgentToolMeta, type ToolContract } from '../too
 import { type PermissionDecider } from '../permissionVerdict'
 import { type ToolCallContext } from '../toolCallContext'
 import { executeToolCall, type DeferredMessageUpdate, type PendingToolUse } from './executeToolCall'
-import { executePostToolUseHook, executePreToolUseHook } from './toolCallTelemetry'
+import { nativeHooksOf } from '../nativeHooks'
+import { NATIVE_EVENTS, type ToolSettledEvent, type ToolStartedEvent } from '../nativeHookEvents'
+
+/** Raises `tool.started` (outer) for one call of the batch. */
+async function raiseToolStarted(callContext: ToolCallContext, toolName: string, input: unknown): Promise<void> {
+  const e: ToolStartedEvent = { toolName, input }
+  await nativeHooksOf(callContext).observe(NATIVE_EVENTS.toolStarted, e, callContext, {
+    position: 'outer',
+    agentId: callContext.agentId,
+  })
+}
+
+/** Raises `tool.settled` (outer) once the call is closed. */
+async function raiseToolSettled(
+  callContext: ToolCallContext,
+  toolName: string,
+  agentMeta: AgentToolMeta | undefined,
+  succeeded: boolean,
+): Promise<void> {
+  const e: ToolSettledEvent = { toolName, agentMeta, succeeded }
+  await nativeHooksOf(callContext).observe(NATIVE_EVENTS.toolSettled, e, callContext, {
+    position: 'outer',
+    agentId: callContext.agentId,
+  })
+}
 
 /** What the batch runner calls for each call: the call itself and the
- *  telemetry bracket. Injected by tests; production uses the defaults. */
+ *  bracket around it. Injected by tests; production uses the defaults. */
 export type ToolBatchRunner = {
   executeCall: typeof executeToolCall
-  before: typeof executePreToolUseHook
-  after: typeof executePostToolUseHook
+  before: typeof raiseToolStarted
+  after: typeof raiseToolSettled
 }
 
 export const defaultToolBatchRunner: ToolBatchRunner = {
   executeCall: executeToolCall,
-  before: executePreToolUseHook,
-  after: executePostToolUseHook,
+  before: raiseToolStarted,
+  after: raiseToolSettled,
 }
 
 export type ToolBatchUpdate = {

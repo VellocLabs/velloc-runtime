@@ -8,6 +8,19 @@ import {
 } from './agentLoopState'
 import type { NudgeContext, NudgeKind } from './nudges'
 
+/** A settled tool call's host metadata: its action hashes feed the detector,
+ *  its page fingerprint is stashed for the next step to compare. */
+export function recordSettledToolMeta(
+  state: AgentLoopState | undefined,
+  agentMeta: { actionHashes?: readonly string[]; pageFingerprint?: PageFingerprint } | undefined,
+): void {
+  if (!state || !agentMeta) return
+  if (agentMeta.actionHashes) {
+    for (const hash of agentMeta.actionHashes) recordAction(state, hash)
+  }
+  if (agentMeta.pageFingerprint) state.pendingFingerprint = agentMeta.pageFingerprint
+}
+
 export function recordAction(state: AgentLoopState, hash: string): void {
   if (!state.settings.loopDetectionEnabled) return
   if (!hash) return  // C++ returns empty for exempt tools (wait/done/go_back).

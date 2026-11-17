@@ -7,12 +7,22 @@
  */
 import type { Message } from '../runtime/RuntimeTypes'
 import { MSG_TYPE_STREAM_EVENT } from '../runtime/VercelModelConstants'
-import { runToolBatch } from '../toolkit/run/toolBatchRunner'
+import { defaultToolBatchRunner, runToolBatch, type ToolBatchRunner } from '../toolkit/run/toolBatchRunner'
+import { recordSettledToolMeta } from './loop/actionLoopDetector'
 import { captureForkPrefix, rememberForkPrefix } from '../agents/forkedRun'
 import type { FileStateEntry } from '../runtime/RuntimeTypes'
 import type { ToolBatchUpdate, ToolResultDigest, TurnEffect } from './turnEffects'
 import { mintRows, type EffectRunner } from './turnEnvironment'
 import { resultPartsOf } from './turnRows'
+
+/** The batch bracket plus the loop's own bookkeeping of each settled call. */
+const engineBatchRunner: ToolBatchRunner = {
+  ...defaultToolBatchRunner,
+  after: async (callContext, toolName, agentMeta, succeeded) => {
+    await defaultToolBatchRunner.after(callContext, toolName, agentMeta, succeeded)
+    recordSettledToolMeta(callContext.agentLoopState, agentMeta)
+  },
+}
 
 export const runToolBatchEffect: EffectRunner<Extract<TurnEffect, { kind: 'runToolBatch' }>> =
   async function* (effect, env, state) {
@@ -34,7 +44,7 @@ export const runToolBatchEffect: EffectRunner<Extract<TurnEffect, { kind: 'runTo
     )
     const updates: ToolBatchUpdate[] = []
     const results: ToolResultDigest[] = []
-    for await (const update of runToolBatch([...effect.calls], replies, input.decidePermission, env.ctx, deps)) {
+    for await (const update of runToolBatch([...effect.calls], replies, input.decidePermission, env.ctx, deps, engineBatchRunner)) {
       env.ctx = update.newContext
       const row = update.message as Message | undefined
       if (row) {

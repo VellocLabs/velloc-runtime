@@ -132,6 +132,21 @@ describe('built-in registrations', () => {
   })
 
   it('keeps the order table as reviewed', () => {
-    expect(NATIVE_HOOK_ORDER).toMatchInlineSnapshot(`{}`)
+    expect(NATIVE_HOOK_ORDER).toMatchInlineSnapshot(`
+      {
+        "tool.settled": [
+          "sessionActivity",
+        ],
+        "tool.started": [
+          "sessionActivity",
+        ],
+        "turn.streamEnd": [
+          "sessionActivity",
+        ],
+        "turn.streamStart": [
+          "sessionActivity",
+        ],
+      }
+    `)
   })
 })

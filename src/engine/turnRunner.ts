@@ -19,7 +19,8 @@ import { assembleTurnDependencies } from './turn/turnDependencies'
 import { isCallModelLogEnabled, logCallModelEvent, nextSubmitId } from './turn/callModelTrace'
 import { hydrateMessagesForModel } from '../sessions/sessionStore'
 import { runSessionStartHooks, type SessionStartSource } from '../lifecycleHooks/sessionLifecycleHooks'
-import { getActiveSessionManager } from '../browser/worker/SharedWorkerSessionManager'
+import { nativeHooksOf } from '../toolkit/nativeHooks'
+import { NATIVE_EVENTS, type TurnStreamEvent } from '../toolkit/nativeHookEvents'
 import {
   MSG_TYPE_ASSISTANT,
   MSG_TYPE_RESULT,
@@ -381,13 +382,13 @@ export async function* runTurn(
     const received = prompt
     // The topbar shows the session as thinking while no tool runs; cleared
     // however the turn ends.
-    const sessionId = parts.ledger.sessionId()
-    const manager = sessionId ? getActiveSessionManager() : null
-    manager?.markStreamStart(sessionId)
+    const stream: TurnStreamEvent = { sessionId: parts.ledger.sessionId() }
+    const hooks = nativeHooksOf(undefined)
+    hooks.observeSync(NATIVE_EVENTS.turnStreamStart, stream, undefined)
     try {
       yield* accepted(parts, received, options)
     } finally {
-      manager?.markStreamEnd(sessionId)
+      hooks.observeSync(NATIVE_EVENTS.turnStreamEnd, stream, undefined)
     }
   } finally {
     if (ledger.submitEnded === submitEnded) ledger.submitEnded = undefined
