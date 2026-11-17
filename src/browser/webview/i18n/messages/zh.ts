@@ -2295,6 +2295,8 @@ export const zh: Messages = {
   'mods.status.more': '显示另外 {count} 条插件状态',
   'mods.pane.close': '关闭面板',
   'mods.pane.tabs': '插件面板',
+  'mods.progress.percent': '{pct}%',
+  'mods.progress.running': '进行中',
   'mods.pane.closeTab': '关闭{name}',
   'mods.action.confirm': '确认',
   'mods.action.cancel': '取消',

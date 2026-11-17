@@ -54,6 +54,7 @@ export const DESKTOP_ELEMENTS = [
   'Link',
   'Code',
   'Markdown',
+  'Progress',
 ] as const
 export type DesktopElementType = (typeof DESKTOP_ELEMENTS)[number]
 
@@ -173,6 +174,10 @@ export type RenderInput = {
   surface: typeof RENDER_SURFACE
   component: RenderSite
   requestId: string
+  /** Whose drawing this is, where it is one plugin's: the plugin that opened
+   *  a `Pane`. A hook whose matcher leaves it out hears its own plugin's
+   *  drawings alone; `{ plugin: '*' }` hears every plugin's. */
+  plugin?: string
   viewport?: RenderViewport
   props:
     | PaneRenderProps
@@ -242,7 +247,12 @@ export type RenderElement =
   | { type: 'Code'; props: Record<string, unknown> & { source: string } }
   | { type: 'Markdown'; props: Record<string, unknown> & { text: string }; press?: PressRef }
   | { type: 'Svg'; props: Record<string, unknown> & { source: string; alt: string } }
+  | { type: 'Progress'; props: ProgressProps }
   | { type: 'engine'; ref: number }
+
+/** How far along a task is: `value` of `max` (absent, 1); no finite `value`
+ *  or no positive finite `max` draws it as running. */
+export type ProgressProps = { label: string; value?: number; max?: number; valueText?: string; color?: string }
 
 // ── bounds ──
 
@@ -370,6 +380,7 @@ const LINK_PROPS: ReadonlySet<string> = new Set(['href', 'label'])
 const CODE_PROPS: ReadonlySet<string> = new Set(['source', 'language', 'path', 'startLine', 'format', 'wrap'])
 const MARKDOWN_PROPS: ReadonlySet<string> = new Set(['key', 'text', 'dimColor', 'pressableLinks'])
 const SVG_PROPS: ReadonlySet<string> = new Set(['source', 'alt', 'width', 'height', 'isInteractive'])
+const PROGRESS_PROPS: ReadonlySet<string> = new Set(['label', 'value', 'max', 'valueText', 'color'])
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -644,6 +655,24 @@ function nodeProblem(node: unknown, depth: number, walk: Walk, within: Within): 
       if (props.source.length > RENDER_SVG_MAX_CHARS) return `Svg's source is longer than ${RENDER_SVG_MAX_CHARS} characters`
       if (!/^\s*<svg(\s|>|\/)/i.test(props.source)) return 'Svg\'s source is not an <svg> document'
       if (typeof props.alt !== 'string') return 'Svg has no alt'
+      break
+    }
+    case 'Progress': {
+      if (!isRecord(props)) return 'Progress has no props'
+      const problem = propsProblem(props, PROGRESS_PROPS, 'Progress')
+      if (problem) return problem
+      if (typeof props.label !== 'string' || props.label.trim() === '') return 'Progress has no label'
+      const badLabel = textProblem(props.label, 'Progress\'s label')
+      if (badLabel) return badLabel
+      for (const figure of ['value', 'max'] as const) {
+        if (props[figure] !== undefined && typeof props[figure] !== 'number') return `Progress's ${figure} is not a number`
+      }
+      if (props.valueText !== undefined) {
+        if (typeof props.valueText !== 'string') return 'Progress\'s valueText is not a string'
+        const bad = textProblem(props.valueText, 'Progress\'s valueText')
+        if (bad) return bad
+      }
+      if (props.color !== undefined && (typeof props.color !== 'string' || props.color === '')) return 'Progress\'s color is not a color'
       break
     }
   }

@@ -16,7 +16,7 @@
 
 import { PausableDeadline } from '../browser/workerKernel/pausableDeadline'
 import { abortError, errorMessage, nextToBypass, runsOn, type Bypass } from './chainRules'
-import { matches } from './eventPattern'
+import { matches, matchesOwned } from './eventPattern'
 import {
   countNextAgain,
   HOOK_BUDGET,
@@ -178,6 +178,10 @@ export type DispatchOptions = {
   /** Run only the hooks this admits, by pattern and matcher: a component
    *  heard by the hooks naming it alone (`AbovePromptList`). */
   admits?: (link: { pattern: string; matcher?: unknown }) => boolean
+  /** A default matcher key: where `e` carries a string under it, a hook whose
+   *  matcher leaves the key out hears only `e` of its own plugin, and `'*'`
+   *  under the key names every value (`ui.render`'s `plugin`). */
+  ownerKey?: string
   /** Handed the whole dispatch's trace once it settled, outermost first —
    *  what a caller reads to name the hook that answered (`plugin.register`'s
    *  refusal names who refused). */
@@ -235,6 +239,7 @@ type Run = {
   frames: readonly string[]
   refusal?: (reason: string, plugin: string) => unknown
   passStandIns?: boolean
+  ownerKey?: string
 }
 
 /** What core learns of where it runs: the hooks whose `next` led to it, with
@@ -358,6 +363,7 @@ export class ModDispatcher {
       frames: context.frames ?? [],
       ...(options.refusal ? { refusal: options.refusal } : {}),
       ...(options.passStandIns ? { passStandIns: true } : {}),
+      ...(options.ownerKey !== undefined ? { ownerKey: options.ownerKey } : {}),
     }
     let onAbort: (() => void) | undefined
     const abandoned = new Promise<never>((_, reject) => {
@@ -464,7 +470,9 @@ export class ModDispatcher {
       }
       // The matcher reads `e` as it ARRIVES here — a hook above may have
       // rewritten it — so it is tested per link, not once per dispatch.
-      if (link.matcher !== undefined && !matches(link.matcher, e)) continue
+      if (run.ownerKey !== undefined) {
+        if (!matchesOwned(link.matcher, e, run.ownerKey, link.plugin)) continue
+      } else if (link.matcher !== undefined && !matches(link.matcher, e)) continue
       if (link.unreachable !== undefined) {
         if (!run.refusal || run.passStandIns) continue
         const refused = this.refused(run, i, link, e, link.unreachable, 0, [])

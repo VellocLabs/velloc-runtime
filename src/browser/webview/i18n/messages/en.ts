@@ -2404,6 +2404,8 @@ export const en = {
   'mods.status.more': 'Show {count} more plugin status lines',
   'mods.pane.close': 'Close pane',
   'mods.pane.tabs': 'Plugin panes',
+  'mods.progress.percent': '{pct}%',
+  'mods.progress.running': 'Running',
   'mods.pane.closeTab': 'Close {name}',
   'mods.action.confirm': 'Confirm',
   'mods.action.cancel': 'Cancel',

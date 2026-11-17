@@ -2361,6 +2361,8 @@ export const es: Messages = {
   'mods.status.more': 'Mostrar {count} líneas de estado de complementos más',
   'mods.pane.close': 'Cerrar panel',
   'mods.pane.tabs': 'Paneles de complementos',
+  'mods.progress.percent': '{pct} %',
+  'mods.progress.running': 'En curso',
   'mods.pane.closeTab': 'Cerrar {name}',
   'mods.action.confirm': 'Confirmar',
   'mods.action.cancel': 'Cancelar',

@@ -89,6 +89,8 @@ export type ModSlotDrawing = {
       requestId: string
       props: RenderInput['props']
       viewport?: RenderInput['viewport']
+      /** A `Pane` only: whose pane the client draws. */
+      plugin?: string
       client?: string
     },
     signal?: AbortSignal,

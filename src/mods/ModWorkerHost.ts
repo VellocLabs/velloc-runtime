@@ -1004,6 +1004,7 @@ export function installModWorkerHost(
         children: kidsOf((props as { children?: unknown } | null | undefined)?.children),
       }),
       Code: leaf('Code'),
+      Progress: leaf('Progress'),
       Markdown: (props: unknown) => {
         const { onLinkPress, ...rest } = withoutChildren(props) as { onLinkPress?: unknown } & Record<string, unknown>
         if (onLinkPress === undefined) return { type: 'Markdown', props: rest }

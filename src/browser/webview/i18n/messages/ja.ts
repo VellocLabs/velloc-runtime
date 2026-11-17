@@ -2327,6 +2327,8 @@ export const ja: Messages = {
   'mods.status.more': 'プラグインのステータスをさらに {count} 件表示',
   'mods.pane.close': 'ペインを閉じる',
   'mods.pane.tabs': 'プラグインのペイン',
+  'mods.progress.percent': '{pct}%',
+  'mods.progress.running': '実行中',
   'mods.pane.closeTab': '{name}を閉じる',
   'mods.action.confirm': '確認',
   'mods.action.cancel': 'キャンセル',

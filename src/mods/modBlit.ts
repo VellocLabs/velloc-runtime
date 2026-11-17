@@ -14,8 +14,10 @@ export type UiBlitArgs = {
   rows?: number
 } & ({ cells: string; source?: undefined } | { source: Record<string, unknown>; cells?: undefined })
 
-/** `UiBlitResult`: `{}` once taken, else why not. */
-export type UiBlitResult = { deny?: string }
+/** `UiBlitResult`: `{}` once taken, else why not. `fix` names a cause a
+ *  caller can key on; core never sets it, as the desktop surface is no
+ *  terminal, and a hook's answer keeps it only beside a `deny`. */
+export type UiBlitResult = { deny?: string; fix?: 'tmux-passthrough' }
 
 /** What `$.ui.blit` runs with (`modNouns.ts`). */
 export type ModBlitCall = {
@@ -108,5 +110,6 @@ export async function uiBlit(args: UiBlitArgs, call: ModBlitCall): Promise<UiBli
     throw error
   }
   const value = result.value as UiBlitResult
-  return value.deny !== undefined ? { deny: value.deny } : {}
+  if (value.deny === undefined) return {}
+  return { deny: value.deny, ...(value.fix === 'tmux-passthrough' ? { fix: value.fix } : {}) }
 }

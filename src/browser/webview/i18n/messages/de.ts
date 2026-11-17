@@ -2358,6 +2358,8 @@ export const de: Messages = {
   'mods.status.more': '{count} weitere Plugin-Statuszeilen anzeigen',
   'mods.pane.close': 'Bereich schließen',
   'mods.pane.tabs': 'Plugin-Bereiche',
+  'mods.progress.percent': '{pct} %',
+  'mods.progress.running': 'Läuft',
   'mods.pane.closeTab': '{name} schließen',
   'mods.action.confirm': 'Bestätigen',
   'mods.action.cancel': 'Abbrechen',

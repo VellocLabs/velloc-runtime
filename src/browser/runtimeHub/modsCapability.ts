@@ -362,6 +362,7 @@ export function registerModsCapability(
             requestId: payload.requestId,
             props: payload.props as never,
             ...(payload.viewport ? { viewport: payload.viewport } : {}),
+            ...(payload.plugin !== undefined ? { plugin: payload.plugin } : {}),
             client: request.conn.connectionId,
           })
           return drawn satisfies ModsRenderResult

@@ -41,6 +41,9 @@ export type ModUiPane = {
   closeOnEscape: boolean
   rows?: number
   columns?: number
+  /** Painted under the body while shown: a theme key, a raw color or
+   *  `transparent`. */
+  backgroundColor?: string
 }
 
 /** A `ui.render` site some loaded hook may draw: the component it names

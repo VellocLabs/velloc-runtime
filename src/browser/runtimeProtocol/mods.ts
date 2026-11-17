@@ -318,6 +318,9 @@ export type ModsUiPane = {
   openSeq?: number
   rows?: number
   columns?: number
+  /** Painted under the body while shown: a theme key, a raw color or
+   *  `transparent`. */
+  backgroundColor?: string
 }
 
 /** One row a plugin placed in the transcript (`$.ui.place`), in placing
@@ -454,6 +457,9 @@ export type ModsRenderPayload = {
   requestId: string
   props: Record<string, unknown>
   viewport?: { columns: number; rows: number; isFullscreen?: boolean }
+  /** A `Pane` only: whose pane is drawn. Security: a hint the runtime keeps
+   *  only when that plugin has that pane open. */
+  plugin?: string
 }
 
 /** What a hook's `next` changed of an engine drawing's props: a
@@ -854,7 +860,8 @@ export function isModsUiPane(value: unknown): value is ModsUiPane {
     (value.focus === undefined || typeof value.focus === 'boolean') &&
     (value.openSeq === undefined || typeof value.openSeq === 'number') &&
     (value.rows === undefined || typeof value.rows === 'number') &&
-    (value.columns === undefined || typeof value.columns === 'number')
+    (value.columns === undefined || typeof value.columns === 'number') &&
+    (value.backgroundColor === undefined || typeof value.backgroundColor === 'string')
   )
 }
 
@@ -936,7 +943,8 @@ export function isModsRenderPayload(value: unknown): value is ModsRenderPayload 
     typeof value.requestId === 'string' &&
     value.requestId !== '' &&
     isRecord(value.props) &&
-    (value.viewport === undefined || isViewport(value.viewport))
+    (value.viewport === undefined || isViewport(value.viewport)) &&
+    (value.plugin === undefined || (typeof value.plugin === 'string' && value.plugin !== ''))
   )
 }
 

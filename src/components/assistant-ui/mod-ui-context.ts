@@ -50,6 +50,9 @@ export type ModUiPaneRow = {
   openSeq?: number
   rows?: number
   columns?: number
+  /** Painted under the body while shown: a theme key, a raw color or
+   *  `transparent`. */
+  backgroundColor?: string
 }
 
 /** Where this page draws a session's panes (`mods.seat`): inline above the
@@ -190,6 +193,8 @@ export type ModUiContextValue = {
     requestId: string
     props: Record<string, unknown>
     viewport?: ModUiViewport
+    /** A `Pane` only: whose pane it is. */
+    plugin?: string
   }) => Promise<ModUiRenderResult>
   /** A press, a typing or a pick on an element a mod drew. */
   uiInput?: (input: ModUiInputRequest) => Promise<{ ok: boolean }>

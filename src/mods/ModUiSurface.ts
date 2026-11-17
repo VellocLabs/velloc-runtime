@@ -96,6 +96,7 @@ export abstract class ModUiSurface extends ModEngineEvents {
         closeOnEscape: pane.closeOnEscape,
         ...(pane.rows !== undefined ? { rows: pane.rows } : {}),
         ...(pane.columns !== undefined ? { columns: pane.columns } : {}),
+        ...(pane.backgroundColor !== undefined ? { backgroundColor: pane.backgroundColor } : {}),
       })),
       placed: this.places.list(),
       ...(this.theme.current() ? { theme: this.theme.current() } : {}),
@@ -147,6 +148,8 @@ export abstract class ModUiSurface extends ModEngineEvents {
       requestId: string
       props: RenderInput['props']
       viewport?: RenderInput['viewport']
+      /** A `Pane` only: whose pane the client draws. */
+      plugin?: string
       /** The client drawing it: each client's drawing of a site holds its
        *  own handles, so two clients never drop each other's. */
       client?: string
@@ -163,10 +166,12 @@ export abstract class ModUiSurface extends ModEngineEvents {
     this.latestRender.set(key, ask)
     const overtaken = (): boolean => this.latestRender.get(key) !== ask
     this.unsubscribeAll(key)
+    const owner = input.component === 'Pane' ? this.paneOwnerOf(input.requestId, input.plugin) : undefined
     const e: RenderInput = {
       surface: RENDER_SURFACE,
       component: input.component,
       requestId: input.requestId,
+      ...(owner !== undefined ? { plugin: owner } : {}),
       ...(input.viewport ? { viewport: input.viewport } : {}),
       props: input.props,
     }
@@ -199,6 +204,7 @@ export abstract class ModUiSurface extends ModEngineEvents {
       result = await this.dispatcher.dispatch('ui.render', e, core, {
         ...(signal ? { signal } : {}),
         scope: { render: { key } },
+        ownerKey: 'plugin',
         accepts: (answer, plugin) => {
           if (!isRenderAnswer(answer)) return false
           const checked = validateRenderTree(answer)
@@ -555,6 +561,15 @@ export abstract class ModUiSurface extends ModEngineEvents {
   }
 
   /** The person clicked a pane's tab. */
+  /** Security: the plugin whose open pane `id` is. The client's `asked` is
+   *  kept only when that plugin has that pane open; else the one plugin with
+   *  a pane of that id, or none when several have. */
+  protected paneOwnerOf(id: string, asked?: string): string | undefined {
+    if (asked !== undefined && this.panes.get(asked, id)) return asked
+    const owners = this.panes.list().filter(pane => pane.id === id)
+    return owners.length === 1 ? owners[0].plugin : undefined
+  }
+
   showPane(plugin: string, id: string): boolean {
     return !this.disposed && this.panes.showPane(plugin, id)
   }

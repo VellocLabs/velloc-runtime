@@ -2321,6 +2321,8 @@ export const ko: Messages = {
   'mods.status.more': '플러그인 상태 {count}개 더 보기',
   'mods.pane.close': '창 닫기',
   'mods.pane.tabs': '플러그인 창',
+  'mods.progress.percent': '{pct}%',
+  'mods.progress.running': '진행 중',
   'mods.pane.closeTab': '{name} 닫기',
   'mods.action.confirm': '확인',
   'mods.action.cancel': '취소',

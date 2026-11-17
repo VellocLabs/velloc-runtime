@@ -89,3 +89,23 @@ export function matches(matcher: unknown, value: unknown): boolean {
   }
   return true
 }
+
+/**
+ * `matches` with a default key: where `value` carries a string under `key`, a
+ * matcher that does not name `key` holds only for `plugin`'s own `value`; one
+ * naming `'*'` there holds for any value under it, present or absent.
+ */
+export function matchesOwned(matcher: unknown, value: unknown, key: string, plugin: string): boolean {
+  const record = value !== null && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : undefined
+  const owner = record?.[key]
+  const isMatcherRecord = matcher !== null && typeof matcher === 'object' && !Array.isArray(matcher) && !(matcher instanceof RegExp)
+  const names = isMatcherRecord && Object.prototype.hasOwnProperty.call(matcher, key)
+  if (!names) {
+    if (typeof owner === 'string' && owner !== plugin) return false
+    return matcher === undefined || matches(matcher, value)
+  }
+  const named = (matcher as Record<string, unknown>)[key]
+  if (named !== '*') return matches(matcher, value)
+  const { [key]: _any, ...rest } = matcher as Record<string, unknown>
+  return matches(rest, value)
+}

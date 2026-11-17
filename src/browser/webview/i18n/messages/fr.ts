@@ -2367,6 +2367,8 @@ export const fr: Messages = {
   'mods.status.more': 'Afficher {count} lignes d’état d’extension de plus',
   'mods.pane.close': 'Fermer le panneau',
   'mods.pane.tabs': 'Panneaux des extensions',
+  'mods.progress.percent': '{pct} %',
+  'mods.progress.running': 'En cours',
   'mods.pane.closeTab': 'Fermer {name}',
   'mods.action.confirm': 'Confirmer',
   'mods.action.cancel': 'Annuler',

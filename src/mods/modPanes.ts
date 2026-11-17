@@ -5,14 +5,30 @@
  * the client acts on, not a call into it.
  */
 
+import { isRawThemeColor } from './modTheme'
+
 export type ModPaneOpenArgs = {
   id: string
   title?: string
   focus?: true
   closeOnEscape?: true
   holdToasts?: true
+  /** What the surface paints under the body while the pane is shown: a theme
+   *  key, a raw color or `transparent`. Each open sets it anew. */
+  backgroundColor?: string
+  /** `widget`: a request for the small form of a minimized pane. Velloc's
+   *  surface has no widgets and opens the pane as if it were absent (F-25). */
+  placement?: 'widget'
   rows?: number
   columns?: number
+}
+
+const THEME_KEY = /^[A-Za-z][A-Za-z0-9]{0,63}$/
+
+/** A pane's `backgroundColor`: a raw color, `transparent`, or a theme key
+ *  (a key the surface has no counterpart for keeps the surface's own look). */
+export function isPaneBackground(value: unknown): value is string {
+  return isRawThemeColor(value) || (typeof value === 'string' && THEME_KEY.test(value))
 }
 
 /** `$.ui.open`'s answer (the contract's `UiOpenResult`). */
@@ -43,6 +59,7 @@ export type ModPane = {
   openSeq: number
   rows?: number
   columns?: number
+  backgroundColor?: string
 }
 
 export type ModPaneCloseOrigin = 'plugin' | 'person' | 'unload'
@@ -123,6 +140,8 @@ export class ModPaneRegistry {
       held.openSeq = this.opens
       if (args.rows !== undefined) held.rows = args.rows
       if (args.columns !== undefined) held.columns = args.columns
+      if (args.backgroundColor !== undefined) held.backgroundColor = args.backgroundColor
+      else delete held.backgroundColor
       if (args.focus || asked) this.show(key)
     } else {
       this.panes.set(key, {
@@ -139,6 +158,7 @@ export class ModPaneRegistry {
         openSeq: this.opens,
         ...(args.rows !== undefined ? { rows: args.rows } : {}),
         ...(args.columns !== undefined ? { columns: args.columns } : {}),
+        ...(args.backgroundColor !== undefined ? { backgroundColor: args.backgroundColor } : {}),
       })
       // A new pane is the one in front — what the person asked for, or what
       // a plugin just put up.

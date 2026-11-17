@@ -23,7 +23,7 @@ import { uiBlit, uiBlitArgsOf, type UiBlitArgs } from './modBlit'
 import { isPaneId } from './modRender'
 import { isUiPlaceResult, uiPlaceArgsOf, type UiPlaceArgs } from './modPlaces'
 import { isThemeResult, themeSetArgsOf } from './modTheme'
-import type { ModPaneOpenArgs } from './modPanes'
+import { isPaneBackground, type ModPaneOpenArgs } from './modPanes'
 import {
   isUiCancelNotifyResult,
   isUiNotifyResult,
@@ -222,7 +222,7 @@ export const UI_NOUNS: Record<string, Record<string, NounMethod>> = {
         report(`${call.plugin}: ${text}`)
       },
     },
-    // `$.ui.open({ id, title, focus, closeOnEscape, holdToasts, rows, columns })`
+    // `$.ui.open({ id, title, focus, closeOnEscape, holdToasts, backgroundColor, rows, columns, placement })`
     // "a hook above the opener may retitle it or refuse it with
     // `{ deny }`, never rename it" — `id` is pinned. Core: the slot's roster.
     open: {
@@ -245,14 +245,20 @@ export const UI_NOUNS: Record<string, Record<string, NounMethod>> = {
             throw new TypeError(`$.ui.open: ${size} is a whole number of at least 1`)
           }
         }
+        if (pane.backgroundColor !== undefined && !isPaneBackground(pane.backgroundColor)) {
+          throw new TypeError('$.ui.open: backgroundColor is a theme key, a raw color or "transparent"')
+        }
         return {
           id: pane.id,
           ...(pane.title !== undefined ? { title: pane.title } : {}),
           ...(pane.focus === true ? { focus: true } : {}),
           ...(pane.closeOnEscape === true ? { closeOnEscape: true } : {}),
           ...(pane.holdToasts === true ? { holdToasts: true } : {}),
+          ...(pane.backgroundColor !== undefined ? { backgroundColor: pane.backgroundColor } : {}),
           ...(pane.rows !== undefined ? { rows: pane.rows } : {}),
           ...(pane.columns !== undefined ? { columns: pane.columns } : {}),
+          // Any other placement is ignored, not refused.
+          ...(pane.placement === 'widget' ? { placement: 'widget' } : {}),
         }
       },
       run: (e: unknown, { call, session }: NounContext) => {

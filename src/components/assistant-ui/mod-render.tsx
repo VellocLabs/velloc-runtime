@@ -391,11 +391,58 @@ function ModNode({ node, site }: { node: Node; site: SiteRef }): React.ReactElem
       // Drawn as an image: the markup never reaches the page, no script runs.
       return <img alt={String(props.alt ?? "")} style={style} src={`data:image/svg+xml;charset=utf-8,${encodeURIComponent(source)}`} />;
     }
+    case "Progress":
+      return <ModProgress props={props} />;
     case "engine":
       return <EngineNode nodeRef={node.ref} />;
     default:
       return null;
   }
+}
+
+/** The fraction `Progress` draws, 0 to 1; `undefined` while the task runs
+ *  with no known end (no finite `value`, or no positive finite `max`). */
+export function progressFraction(value: unknown, max: unknown): number | undefined {
+  const end = max === undefined ? 1 : max;
+  if (typeof value !== "number" || !Number.isFinite(value)) return undefined;
+  if (typeof end !== "number" || !Number.isFinite(end) || end <= 0) return undefined;
+  return Math.min(1, Math.max(0, value / end));
+}
+
+function ModProgress({ props }: { props: Record<string, unknown> }) {
+  const t = useT();
+  const label = String(props.label ?? "");
+  const fraction = progressFraction(props.value, props.max);
+  const figure =
+    typeof props.valueText === "string"
+      ? props.valueText
+      : fraction === undefined
+        ? t("mods.progress.running")
+        : t("mods.progress.percent", { pct: Math.floor(fraction * 100) });
+  const fill = colorOf(props.color) ?? "var(--primary)";
+  return (
+    <div
+      role="progressbar"
+      aria-label={label}
+      aria-valuemin={fraction === undefined ? undefined : 0}
+      aria-valuemax={fraction === undefined ? undefined : 100}
+      aria-valuenow={fraction === undefined ? undefined : Math.floor(fraction * 100)}
+      aria-valuetext={figure}
+      data-mod-progress={fraction === undefined ? "running" : String(fraction)}
+      className="flex min-w-0 flex-1 flex-col"
+    >
+      <div className="flex min-w-0 justify-between gap-2">
+        <span className="truncate">{label}</span>
+        <span className="shrink-0 tabular-nums opacity-70">{figure}</span>
+      </div>
+      <div className="h-1.5 overflow-hidden rounded-full bg-muted">
+        <div
+          className={cn("h-full rounded-full", fraction === undefined && "w-1/3 animate-pulse")}
+          style={{ backgroundColor: fill, ...(fraction === undefined ? {} : { width: `${fraction * 100}%` }) }}
+        />
+      </div>
+    </div>
+  );
 }
 
 function EngineNode({ nodeRef }: { nodeRef: number | undefined }) {
@@ -578,6 +625,7 @@ export function useModRender(
   requestId: string,
   props: Record<string, unknown>,
   viewport: ModUiViewport,
+  plugin?: string,
 ): ModUiRenderResult | undefined {
   const { hooked, stale, render } = useModUi();
   const isHooked = isSiteHooked(hooked, component, requestId);
@@ -591,7 +639,13 @@ export function useModRender(
       return;
     }
     const ask = ++askRef.current;
-    void render({ component, requestId, props: JSON.parse(propsDigest) as Record<string, unknown>, viewport: { ...viewport, rows: viewport.rows } }).then(
+    void render({
+      component,
+      requestId,
+      props: JSON.parse(propsDigest) as Record<string, unknown>,
+      viewport: { ...viewport, rows: viewport.rows },
+      ...(plugin !== undefined ? { plugin } : {}),
+    }).then(
       (drawn) => {
         if (askRef.current === ask) setResult(drawn);
       },
@@ -601,7 +655,7 @@ export function useModRender(
     );
     // `viewport.rows`: "a change of height alone re-draws nothing".
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isHooked, render, component, requestId, propsDigest, viewport.columns, staleCount, stale.all]);
+  }, [isHooked, render, component, requestId, plugin, propsDigest, viewport.columns, staleCount, stale.all]);
   return result;
 }
 
@@ -1163,6 +1217,16 @@ export function ModAbovePrompt() {
   return <ModAbovePromptBody />;
 }
 
+/** What a pane's `backgroundColor` paints under its body: `transparent`
+ *  paints nothing, so what lies behind shows through; a key this page has
+ *  no counterpart for keeps its own look. */
+export function paneBackgroundStyle(background: string | undefined): React.CSSProperties | undefined {
+  if (background === undefined) return undefined;
+  if (background === "transparent") return { backgroundColor: "transparent" };
+  const color = colorOf(background);
+  return color ? { backgroundColor: color } : undefined;
+}
+
 /** A pane's `ui.render` props: "Where the surface seated the pane: `dock`
  *  beside the transcript … or `inline` above the prompt." */
 function useModPaneProps(pane: ModUiPaneRow, placement: "dock" | "inline", bodyColumns: number, bodyRows: number) {
@@ -1202,10 +1266,11 @@ function ModDockedPaneBody({ pane }: { pane: ModUiPaneRow }) {
   const cellsRef = React.useRef<HTMLDivElement | null>(null);
   const viewport = useCellViewport(ref, "node", cellsRef);
   const props = useModPaneProps(pane, "dock", viewport.columns, viewport.rows);
-  const drawn = useModRender("Pane", pane.id, props, viewport);
+  const drawn = useModRender("Pane", pane.id, props, viewport, pane.plugin);
   return (
     <div
       ref={ref}
+      style={paneBackgroundStyle(pane.backgroundColor)}
       data-testid={`mod-pane-${pane.plugin}-${pane.id}`}
       data-mod-component="Pane"
       data-mod-site={pane.id}
@@ -1231,7 +1296,7 @@ function ModPaneBody({ pane }: { pane: ModUiPaneRow }) {
   const viewport = useCellViewport(ref);
   const bodyRows = pane.rows ?? 12;
   const props = useModPaneProps(pane, "inline", viewport.columns, bodyRows);
-  const drawn = useModRender("Pane", pane.id, props, viewport);
+  const drawn = useModRender("Pane", pane.id, props, viewport, pane.plugin);
   // The pane carries its own frame; its body takes the plugin icons the band
   // and the ask cards take, clear of the header's close mark.
   return (
@@ -1243,7 +1308,7 @@ function ModPaneBody({ pane }: { pane: ModUiPaneRow }) {
         data-mod-site={pane.id}
         data-mod-owner={pane.plugin}
         className="max-h-[40vh] overflow-auto px-2 py-1.5 [scrollbar-gutter:stable]"
-        style={{ maxHeight: `calc(${bodyRows} * ${ROW} + 0.75rem)` }}
+        style={{ maxHeight: `calc(${bodyRows} * ${ROW} + 0.75rem)`, ...paneBackgroundStyle(pane.backgroundColor) }}
       >
         {drawn?.kind === "tree" ? <ModRenderTree tree={drawn.tree} site={{ component: "Pane", requestId: pane.id, plugin: drawn.plugin ?? pane.plugin }} /> : null}
       </div>

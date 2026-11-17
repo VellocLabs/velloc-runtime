@@ -143,6 +143,28 @@ describe('$.ui.blit through the runtime', () => {
     ])
   })
 
+  it("keeps a hook's fix beside its deny alone, and only the code the contract names", async () => {
+    const { runtime, logs } = world({
+      answerer: `on('ui.blit', async ($, e) => {
+        if (e.key === 'tmux') return { value: { deny: 'held back', fix: 'tmux-passthrough' } }
+        if (e.key === 'other') return { value: { deny: 'held back', fix: 'something-else' } }
+        return { value: { fix: 'tmux-passthrough' } }
+      })`,
+      viewer: caller(
+        log(`$.ui.blit({ requestId: 'p', key: 'tmux', cells: 'A' })`) +
+          log(`$.ui.blit({ requestId: 'p', key: 'other', cells: 'A' })`) +
+          log(`$.ui.blit({ requestId: 'p', key: 'taken', cells: 'A' })`),
+      ),
+    })
+    await runtime.ready
+    await until(() => logs('viewer').length === 3)
+    expect(logs('viewer')).toEqual([
+      { got: { deny: 'held back', fix: 'tmux-passthrough' } },
+      { got: { deny: 'held back' } },
+      { got: {} },
+    ])
+  })
+
   it('a hook may rewrite the cells, never the address or the kind', async () => {
     const { runtime, logs, reports } = world({
       rewriter: `on('ui.blit', async ($, e, next) => {
