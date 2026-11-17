@@ -41,6 +41,12 @@ export const PlanOnTool: ToolContract<EnterPlanModeInput, EnterPlanModeOutput> =
     // uses). The mode flip stays inside call(), so it
     // only happens after the user approves.
     haltsForUser: () => true,
+    // Loaded on use: the halt reaches the permission pipeline, which the
+    // page's static graph must not carry.
+    haltForUser: async function* (run) {
+      const { enterPlanModeHalt } = await import('./planHalts')
+      return yield* enterPlanModeHalt(run)
+    },
     async checkInput(
       _input: EnterPlanModeInput,
       context: ToolCallContext,

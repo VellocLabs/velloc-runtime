@@ -3,6 +3,7 @@
  * and lookup by name. Imports are type-only so tools never pull a value
  * dependency back through it.
  */
+import type { AdmittedRun, DeferredMessageUpdate, StageStep } from './run/executeToolCall'
 import type { AgentProfile, Message } from '../runtime/RuntimeTypes'
 import type { PageFingerprint } from '../engine/loop/agentLoopState'
 import type { FileChangeDiff } from '../utils/fileChangeHunks'
@@ -127,6 +128,11 @@ export type ToolContract<
   readsOnly(input: Input): boolean
   /** Needs the user's answer before it can produce a result. */
   haltsForUser?(): boolean
+  /** A halting tool's own way of asking: answers `continue` (the call runs) or
+   *  `stop`. Absent: the loop suspends and the answer arrives by another path. */
+  haltForUser?(run: AdmittedRun): AsyncGenerator<DeferredMessageUpdate, StageStep>
+  /** In a loop under the session the halt is skipped and the call runs. */
+  readonly runsWithoutHaltUnderSession?: boolean
   /** Comes from an MCP server. */
   fromMcpServer?: boolean
   /** The skill group the tool belongs to; while that group is deferred and

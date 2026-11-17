@@ -76,6 +76,13 @@ export const ExitPlanModeTool: ToolContract<ExitPlanModeInput, ExitPlanModeOutpu
     // context has no interactive surface and falls through to call()). The
     // user's Approve resumes the loop via submitToolResult.
     haltsForUser: () => true,
+    // Loaded on use: the halt reaches the permission pipeline, which the
+    // page's static graph must not carry.
+    haltForUser: async function* (run) {
+      const { exitPlanModeHalt } = await import('./planHalts')
+      return yield* exitPlanModeHalt(run)
+    },
+    runsWithoutHaltUnderSession: true,
     async checkInput(
       _input: ExitPlanModeInput,
       context: ToolCallContext,

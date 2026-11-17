@@ -33,7 +33,6 @@ const KNOWN: ReadonlySet<string> = new Set([
   'engine/sessionLedger.ts -> memory/memoryPaths.ts',
   'engine/effectToolBatch.ts -> agents/forkedRun.ts',
   'engine/turn/turnDependencies.ts -> context/compaction/browserObservationTrim.ts',
-  'toolkit/run/interactiveHalt.ts -> permissions/planApproval.ts',
   'toolkit/run/toolPermissionGate.ts -> memory/memoryPaths.ts',
   'toolkit/run/toolPermissionGate.ts -> permissions/planMode.ts',
 ])
