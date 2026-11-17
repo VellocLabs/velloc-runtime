@@ -24,7 +24,6 @@ import type {
   FileStateEntry,
 } from '../runtime/RuntimeTypes'
 import { resolveToolByName } from '../toolkit/toolContract'
-import { type PermissionDecider } from '../toolkit/permissionVerdict'
 import { type ToolCallContext } from '../toolkit/toolCallContext'
 import * as sessionTranscriptModule from '../sessions/transcriptWriter'
 import { createPostCompactTurnBoardMessage } from '../sessions/turnBoardRecovery'
@@ -62,7 +61,8 @@ import { planDocPath, planFileExists } from '../utils/planFiles'
 import { vetFileRead } from '../permissions/filesystemPermission'
 import { assertUntrustedReadAllowed, untrustedReadDeniedMessage } from '../permissions/untrustedReadBoundary'
 import { extnameRuntimePath, relativeRuntimePath, resolveRuntimePath } from '../utils/runtimePaths'
-import { PART_IMAGE, PART_TEXT, PART_TOOL_CALL, isAttachmentMessage } from '../runtime/VercelModelConstants'
+import { PART_TOOL_CALL, isAttachmentMessage } from '../runtime/VercelModelConstants'
+import { AT_MENTION_CAN_USE_TOOL, filePartsFromReadResult } from './mentionReadHelpers'
 
 // Limits for files and folders pulled in by an @ mention.
 const AT_MENTION_MAX_SIZE_BYTES = 256 * 1024
@@ -395,11 +395,6 @@ export async function createPostCompactReadRestoreMessage(params: {
   )
 }
 
-export const AT_MENTION_CAN_USE_TOOL: PermissionDecider = (async () => ({
-  behavior: 'allow' as const,
-  updatedInput: {},
-})) as PermissionDecider
-
 async function isMentionReadDenied(
   context: ToolCallContext,
   resolvedTarget: string,
@@ -466,41 +461,6 @@ async function createDirectoryAttachment(
     displayPath,
     content: names.join('\n'),
   }
-}
-
-export function filePartsFromReadResult(data: unknown): FilePartsAttachment['parts'] | null {
-  const raw = (data as { content_parts?: unknown } | null)?.content_parts
-  if (!Array.isArray(raw)) {
-    return null
-  }
-  const parts: FilePartsAttachment['parts'] = []
-  for (const part of raw) {
-    const record = part as Record<string, unknown> | null
-    if (record?.type === PART_TEXT && typeof record.text === 'string') {
-      parts.push({ type: 'text', text: record.text })
-      continue
-    }
-    if (record?.type !== PART_IMAGE) {
-      continue
-    }
-    const image =
-      typeof record.image === 'string'
-        ? record.image
-        : typeof record.data === 'string'
-          ? record.data
-          : undefined
-    if (!image) {
-      continue
-    }
-    const mimeType =
-      typeof record.mimeType === 'string'
-        ? record.mimeType
-        : typeof record.mime_type === 'string'
-          ? record.mime_type
-          : 'image/png'
-    parts.push({ type: 'image', image, mimeType })
-  }
-  return parts.length > 0 ? parts : null
 }
 
 async function createReadFileAttachment(

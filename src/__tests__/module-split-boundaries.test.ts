@@ -120,6 +120,21 @@ describe('attachments/ split', () => {
     ).not.toMatch(/from '\.\/contextAttachments'/)
   })
 
+  it('keeps the PDF mention path a leaf of the collectors', () => {
+    // contextAttachments.ts loads pdfMentionAttachment.ts with import(); a
+    // static edge back is an import cycle. What both need lives in
+    // mentionReadHelpers.ts, which imports neither.
+    const collectors = read('messages', 'contextAttachments.ts')
+    const pdf = read('messages', 'pdfMentionAttachment.ts')
+    const helpers = read('messages', 'mentionReadHelpers.ts')
+
+    expect(importsFrom(pdf, './contextAttachments')).toBe(false)
+    expect(importsFrom(collectors, './pdfMentionAttachment')).toBe(false)
+    expect(collectors).toMatch(/await import\('\.\/pdfMentionAttachment'\)/)
+    expect(importsFrom(helpers, './contextAttachments')).toBe(false)
+    expect(importsFrom(helpers, './pdfMentionAttachment')).toBe(false)
+  })
+
   it('keeps history normalization out of contextAttachments.ts', () => {
     // These moved out because none of them is about attachments. Their
     // reappearance here means the file is re-accreting unrelated concerns.

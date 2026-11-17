@@ -14,7 +14,7 @@ import { resolveDocumentInputMode } from '../config/nexusModelConfig/documentInp
 import type { NexusDocumentInputMode } from '../config/nexusModelConfig/types'
 import { readUserLayer } from '../settings/settingsStore'
 import { PART_DOCUMENT, PART_TEXT } from '../runtime/VercelModelConstants'
-import { AT_MENTION_CAN_USE_TOOL, filePartsFromReadResult } from './contextAttachments'
+import { AT_MENTION_CAN_USE_TOOL, filePartsFromReadResult } from './mentionReadHelpers'
 
 const PDF_INLINE_PAGE_LIMIT = 10
 const PDF_PAGE_SIZE_ESTIMATE_BYTES = 100 * 1024
