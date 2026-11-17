@@ -427,12 +427,11 @@ export function toolCheckEventOf(
   }
 }
 
-/** Who answers asks under `rules`: nobody in `dontAsk` (an ask is refused),
- *  in `bypassPermissions` (an ask other than path safety is allowed) or when
- *  asks are suppressed (only PermissionRequest hooks decide), else the
- *  person. */
+/** Who answers asks under `rules`: nobody in `dontAsk` (an ask is refused)
+ *  or when asks are suppressed (only PermissionRequest hooks decide), else
+ *  the person. */
 export function toolCheckApproverOf(rules: { mode?: string; suppressAsks?: boolean } | undefined): ToolCheckApprover | undefined {
-  if (rules?.mode === 'dontAsk' || rules?.mode === 'bypassPermissions' || rules?.suppressAsks === true) return undefined
+  if (rules?.mode === 'dontAsk' || rules?.suppressAsks === true) return undefined
   return 'person'
 }
 
@@ -468,9 +467,6 @@ export function settledToolCheck(result: ToolCheckResult, entries: readonly Trac
   return asker !== undefined ? { ...rest, plugin: asker } : rest
 }
 
-/** Whether a hook's return answers `tool.check`: `{ decision }` one of the
- *  three, `reason`, `rule`, `hook` and `setting` strings when present. Else
- *  the hook is skipped. */
 /** `isToolCheckResult`, removing a hook-written `plugin` from an answer it
  *  takes. */
 export function takesToolCheckResult(value: unknown): value is ToolCheckResult {
@@ -479,6 +475,9 @@ export function takesToolCheckResult(value: unknown): value is ToolCheckResult {
   return true
 }
 
+/** Whether a hook's return answers `tool.check`: `{ decision }` one of the
+ *  three, `reason`, `rule`, `hook` and `setting` strings when present. Else
+ *  the hook is skipped. */
 export function isToolCheckResult(value: unknown): value is ToolCheckResult {
   if (!isRecord(value)) return false
   if (value.decision !== 'allow' && value.decision !== 'ask' && value.decision !== 'deny') return false

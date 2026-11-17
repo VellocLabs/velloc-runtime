@@ -261,7 +261,7 @@ describe('tool.check — the shapes', () => {
     expect(toolCheckApproverOf({ mode: 'default' })).toBe('person')
     expect(toolCheckApproverOf(undefined)).toBe('person')
     expect(toolCheckApproverOf({ mode: 'dontAsk' })).toBeUndefined()
-    expect(toolCheckApproverOf({ mode: 'bypassPermissions' })).toBeUndefined()
+    expect(toolCheckApproverOf({ mode: 'bypassPermissions' })).toBe('person')
     expect(toolCheckApproverOf({ mode: 'default', suppressAsks: true })).toBeUndefined()
     expect(toolCheckEventOf('Bash', {}, undefined, undefined, 'person')).toEqual({ tool: 'Bash', input: {}, approver: 'person' })
   })
@@ -549,14 +549,6 @@ describe('tool.check — who stands behind the verdict', () => {
     const [seen] = logged(reports, 'watch') as Array<{ verdict: Record<string, unknown> }>
     expect(seen!.verdict).toEqual({ decision: 'ask', reason: 'forged' })
     expect(logged(reports, 'asker')).toEqual([{ decision: 'ask', reason: 'forged', plugin: 'forger' }])
-  })
-
-  it('e carries no approver under bypassPermissions, where a hook\'s ask is allowed', async () => {
-    const { runtime, reports, run } = world({ watch: watcher() }, { asks: true, mode: 'bypassPermissions' })
-    await runtime.ready
-    await run({ command: 'ls' })
-    const [seen] = logged(reports, 'watch') as Array<{ e: Record<string, unknown> }>
-    expect(seen!.e).not.toHaveProperty('approver')
   })
 
   it('e carries no approver where nobody can be asked (dontAsk)', async () => {
