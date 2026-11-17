@@ -1,5 +1,5 @@
 /**
- * The producer side of the side-task rows: `launchFork`'s sink lifecycle against a mocked `query`, and
+ * The producer side of the side-task rows: `launchFork`'s sink lifecycle against a mocked `runTurnLoop`, and
  * `queryFastModel`'s via the remembered-callModel seam. The manager registry that consumes the sink is in
  * side-task-registry.test.ts.
  */
@@ -23,7 +23,7 @@ import {
 } from '../models/fastModelCall'
 import { ASSISTANT_MSG } from './_helpers/sideTaskMessages'
 
-// Mock ONLY `query` so launchFork's real lifecycle instrumentation runs
+// Mock ONLY `runTurnLoop` so launchFork's real lifecycle instrumentation runs
 // against a scripted generator. importActual keeps every other export real.
 vi.mock('../engine/turnInterpreter', async orig => ({
   ...(await orig<typeof import('../engine/turnInterpreter')>()),
@@ -37,7 +37,7 @@ afterEach(() => {
 })
 
 // ============================================================================
-// launchFork — sink lifecycle (mocked query)
+// launchFork — sink lifecycle (mocked runTurnLoop)
 // ============================================================================
 
 function forkToolUseContext(callModel?: ModelCallFn): ToolCallContext {
@@ -55,8 +55,7 @@ function forkToolUseContext(callModel?: ModelCallFn): ToolCallContext {
       mcpResources: {},
       isNonInteractiveSession: true,
       agentDefinitions: { enabledAgents: [], allAgents: [] },
-      // Scope-bound transport: queryFastModel reads it off the context now
-      // (the module-global slot is gone).
+      // Scope-bound transport: queryFastModel reads it off the context.
       callModel,
     },
     cancelSource: new AbortController(),
