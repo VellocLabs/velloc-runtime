@@ -134,11 +134,20 @@ describe('built-in registrations', () => {
   it('keeps the order table as reviewed', () => {
     expect(NATIVE_HOOK_ORDER).toMatchInlineSnapshot(`
       {
+        "rows.gather": [
+          "memory",
+        ],
         "tool.settled": [
           "sessionActivity",
         ],
         "tool.started": [
           "sessionActivity",
+        ],
+        "turn.background": [
+          "memory",
+        ],
+        "turn.end": [
+          "memory",
         ],
         "turn.streamEnd": [
           "sessionActivity",

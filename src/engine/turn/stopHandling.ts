@@ -1,6 +1,6 @@
 /**
- * A turn ending without tool calls: diagnostic, host told the turn completed (main agent), counters
- * reset, the turn-end check, Stop / SubagentStop hooks, then background memory work. A blocking hook
+ * A turn ending without tool calls: diagnostic, host told the turn completed (main agent), then
+ * `turn.end` around counters reset, the turn-end check and Stop / SubagentStop hooks. A blocking hook
  * failure, or a row from the turn-end check, becomes a meta user message the turn answers once more.
  */
 import type {
@@ -19,8 +19,8 @@ import { createBashHookCommandRunner } from '../../lifecycleHooks/hookCommandRun
 import { createModelHookPromptRunner } from '../../lifecycleHooks/hookPromptRunner'
 import { createForkedAgentHookRunner } from '../../lifecycleHooks/hookAgentRunner'
 import { createNetworkHookHttpRunner } from '../../lifecycleHooks/hookHttpRunner'
-import { runMemoryExtraction } from '../../memory/extract/extractionRunner'
-import { runMemoryConsolidation } from '../../memory/consolidate/consolidationRunner'
+import { nativeHooksOf } from '../../toolkit/nativeHooks'
+import { NATIVE_EVENTS, type TurnEndEvent } from '../../toolkit/nativeHookEvents'
 import { createGeneratedUserMessage } from '../../messages/messageFactories'
 import type { Message } from '../../runtime/RuntimeTypes'
 
@@ -142,33 +142,6 @@ async function runUserStopHooks(params: QueryStopHookParams, sessionId: StopSess
   )
 }
 
-/**
- * Start background memory upkeep for the main agent: extraction (capture what
- * the turn taught) and consolidation (tidy the store; usually a no-op behind
- * its own gates). Neither is awaited; failures are logged.
- */
-function startMemoryUpkeep(
-  params: QueryStopHookParams,
-  sessionId: StopSessionKey,
-  logEvent: StopEventLogger,
-): void {
-  const input = {
-    messages: params.messages,
-    systemPrompt: params.systemPrompt,
-    userContext: params.userContext,
-    systemContext: params.systemContext,
-    toolUseContext: params.toolUseContext,
-  }
-  const report = (name: string) => (error: unknown) => {
-    logEvent(name, {
-      sessionId,
-      message: error instanceof Error ? error.message : String(error),
-    })
-  }
-  void runMemoryExtraction(input).catch(report('nexus_extract_memories_unhandled'))
-  void runMemoryConsolidation(input).catch(report('nexus_periodic_tidy_unhandled'))
-}
-
 /** The turn-end check of a main-loop reply; a failing check adds no rows. */
 async function runTurnEndCheck(
   params: QueryStopHookParams,
@@ -200,22 +173,29 @@ export function createStopHandler(
     const sessionId = params.toolUseContext.options.sessionId
     warnIfToolCallsRemain(params, sessionId)
     await notifyHostTurnCompleted(params, sessionId, logEvent)
-    // A new user message starts with fresh loop counters. The forced-final
-    // flag is left to the loop, which may still be in a recovery turn.
-    if (params.toolUseContext.agentLoopState) {
-      resetAgentLoopState(params.toolUseContext.agentLoopState)
-    }
-    const checkRows = await runTurnEndCheck(params, turnEndCheck, logEvent)
-    const hookResult = await runUserStopHooks(params, sessionId)
-    if (!params.toolUseContext.agentId) startMemoryUpkeep(params, sessionId, logEvent)
-    return {
-      preventContinuation: false,
-      blockerRows: [
-        ...checkRows,
-        ...hookResult.errors.map(err =>
-          createGeneratedUserMessage(`[Stop hook]: ${err}`, { isMeta: true }),
-        ),
-      ],
-    }
+    const ctx = params.toolUseContext
+    const e: TurnEndEvent = { params, logEvent }
+    return nativeHooksOf(ctx).around(
+      NATIVE_EVENTS.turnEnd,
+      e,
+      ctx,
+      async (): Promise<TurnEndVerdict> => {
+        // A new user message starts with fresh loop counters. The forced-final
+        // flag is left to the loop, which may still be in a recovery turn.
+        if (ctx.agentLoopState) resetAgentLoopState(ctx.agentLoopState)
+        const checkRows = await runTurnEndCheck(params, turnEndCheck, logEvent)
+        const hookResult = await runUserStopHooks(params, sessionId)
+        return {
+          preventContinuation: false,
+          blockerRows: [
+            ...checkRows,
+            ...hookResult.errors.map(err =>
+              createGeneratedUserMessage(`[Stop hook]: ${err}`, { isMeta: true }),
+            ),
+          ],
+        }
+      },
+      { agentId: ctx.agentId },
+    )
   }
 }

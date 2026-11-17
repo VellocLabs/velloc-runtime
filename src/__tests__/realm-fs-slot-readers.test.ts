@@ -7,6 +7,8 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+// Memory reaches the turn through the built-in native hooks, as the runtime installs them.
+import '../nativeFeatures/install'
 import type { ToolCallContext } from '../toolkit/toolCallContext'
 import type { RuntimeConfig } from '../runtime/interfaces/RuntimeConfig'
 import {

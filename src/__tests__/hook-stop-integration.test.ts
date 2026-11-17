@@ -1,4 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+// Memory reaches the turn through the built-in native hooks, as the runtime installs them.
+import '../nativeFeatures/install'
 import { BrowserRuntimeConfig } from '../config/BrowserRuntimeConfig'
 import type { QueryStopHookParams } from '../runtime/interfaces/QueryRuntimeDeps'
 import type { PlatformCapabilities } from '../runtime/interfaces/PlatformCapabilities'

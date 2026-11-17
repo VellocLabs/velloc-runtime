@@ -1,12 +1,11 @@
 /**
- * Gathers context rows by IO at three points of a turn: turn start (saved-memory notice), after a
- * compaction (ledgers emptied, plan rows and read-file restore rebuilt, prompt re-rendered), and after
- * a tool step (instruction files and rules for files read; recalled memories only if already finished).
+ * Gathers context rows by IO at three points of a turn through `rows.gather`: turn start and after a
+ * tool step (feature modules contribute; the engine adds none), and after a compaction (ledgers
+ * emptied, plan rows and read-file restore rebuilt, then the prompt re-rendered over every row).
  */
 import type { Message } from '../runtime/RuntimeTypes'
-import { createGeneratedUserMessage, makeNoticeRow } from '../messages/messageFactories'
-import { takeSavedMemoryPaths } from '../memory/extract/extractionRunner'
-import { buildConditionalRuleInjection } from '../memory/conditionalRuleInjection'
+import { nativeHooksOf } from '../toolkit/nativeHooks'
+import { NATIVE_EVENTS, type RowsGatherEvent } from '../toolkit/nativeHookEvents'
 import {
   collectPostCompactPlanRows,
   createPostCompactReadRestoreMessage,
@@ -14,15 +13,6 @@ import {
 import { collectPostCompactSkillDiscoveryRows } from '../messages/postCompactSkillDiscovery'
 import type { RefreshedInstructions, TurnEffect } from './turnEffects'
 import { mintRows, type EffectRunner, type TurnEnvironment } from './turnEnvironment'
-
-function savedMemoryNotice(env: TurnEnvironment): Message[] {
-  const config = env.input.runtimeConfig
-  if (!config) return []
-  const paths = takeSavedMemoryPaths(config)
-  if (!paths || paths.length === 0) return []
-  const names = paths.map((p) => p.split(/[/\\]/).pop() ?? p).join(', ')
-  return [makeNoticeRow(config, `Saved memory: ${names}`, 'memory_saved')]
-}
 
 async function compactionRestores(env: TurnEnvironment): Promise<Message[]> {
   const ctx = env.ctx
@@ -37,40 +27,6 @@ async function compactionRestores(env: TurnEnvironment): Promise<Message[]> {
   const plan = await collectPostCompactPlanRows(ctx, env.input.runtimeConfig)
   const skills = collectPostCompactSkillDiscoveryRows(ctx, env.input.runtimeConfig)
   return [...plan, ...skills, ...(restore ? [restore] : [])]
-}
-
-async function nestedRules(env: TurnEnvironment): Promise<Message[]> {
-  const config = env.input.runtimeConfig
-  const ctx = env.ctx
-  const triggers = ctx.nestedMemoryCues
-  if (!config || !triggers || triggers.size === 0) return []
-  const readPaths = [...triggers]
-  triggers.clear()
-  try {
-    const text = await buildConditionalRuleInjection({
-      readPaths,
-      loadedNestedMemoryPaths: ctx.nestedMemoryPathsSeen,
-      promptInstructionPaths: ctx.promptInstructionPaths,
-      cwd: ctx.options.cwd,
-      projectRoot: ctx.options.projectRoot,
-      homeDir: ctx.options.homeDir,
-      readRoot: ctx.options.untrustedReadRoot,
-      runtimeConfig: config,
-      fs: ctx.options.fsOperations,
-    })
-    return text ? [createGeneratedUserMessage(text, { isMeta: true })] : []
-  } catch {
-    // Rules are an aid; failing to build them leaves the step as it is.
-    return []
-  }
-}
-
-async function recalledMemories(env: TurnEnvironment): Promise<Message[]> {
-  const prefetch = env.prefetch
-  if (!prefetch || prefetch.settledAt === null || prefetch.consumed) return []
-  prefetch.consumed = true
-  const text = await prefetch.promise
-  return text ? [createGeneratedUserMessage(text, { isMeta: true })] : []
 }
 
 /** The prompt rendered again after a compaction: the instruction files are
@@ -95,8 +51,10 @@ async function instructionsAfterCompaction(
 
 export const gatherRows: EffectRunner<Extract<TurnEffect, { kind: 'gatherRows' }>> =
   async function* (effect, env) {
+    const e: RowsGatherEvent = { stage: effect.stage }
+    const hooks = nativeHooksOf(env.ctx)
     if (effect.stage === 'afterCompaction') {
-      const rows = await compactionRestores(env)
+      const rows = (await hooks.around(NATIVE_EVENTS.rowsGather, e, env, () => compactionRestores(env))) as Message[]
       const instructions = await instructionsAfterCompaction(env, [...effect.messages, ...rows])
       return {
         type: 'rowsGathered',
@@ -106,8 +64,6 @@ export const gatherRows: EffectRunner<Extract<TurnEffect, { kind: 'gatherRows' }
         identity: effect.identity,
       }
     }
-    const rows = effect.stage === 'turnStart'
-      ? savedMemoryNotice(env)
-      : [...(await nestedRules(env)), ...(await recalledMemories(env))]
+    const rows = (await hooks.around(NATIVE_EVENTS.rowsGather, e, env, async () => [])) as Message[]
     return { type: 'rowsGathered', stage: effect.stage, rows, identity: effect.identity }
   }

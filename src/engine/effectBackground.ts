@@ -1,33 +1,25 @@
 /**
- * Background work. `startBackground` starts the memory prefetch (once per
- * turn, chained to the turn's cancellation) or the tool-step digest (only
+ * Background work. `startBackground` raises `turn.background` for the turn-start
+ * prefetch (the memory module starts it) or starts the tool-step digest (only
  * when the runtime gates ask for digests) and answers at once.
  * `awaitBackground` waits for the digest the machine asked for.
  */
 import type { Message } from '../runtime/RuntimeTypes'
 import type { QueryToolUseBlock } from '../runtime/interfaces/QueryRuntimeDeps'
 import type { ModelReplyRow } from '../runtime/RuntimeTypes'
-import { beginRecallLookahead } from '../memory/relevantRecall'
+import { nativeHooksOf } from '../toolkit/nativeHooks'
+import { NATIVE_EVENTS, type TurnBackgroundEvent } from '../toolkit/nativeHookEvents'
 import type { TurnEffect } from './turnEffects'
 import type { EffectRunner } from './turnEnvironment'
-import { newestPromptText } from './effectPromptHooks'
 
-type PrefetchInput = { messages: readonly Message[] }
 type DigestInput = { calls: readonly QueryToolUseBlock[]; replies: readonly ModelReplyRow[] }
 
 export const startBackground: EffectRunner<Extract<TurnEffect, { kind: 'startBackground' }>> =
   async function* (effect, env) {
-    const { input, deps } = env
-    if (effect.background === 'memoryPrefetch' && input.runtimeConfig) {
-      const { messages } = effect.input as PrefetchInput
-      env.prefetch = beginRecallLookahead({
-        query: newestPromptText(input.messages),
-        messages: [...messages],
-        toolUseContext: env.ctx,
-        providerId: input.providerId,
-        runtimeConfig: input.runtimeConfig,
-        signal: env.ctx.cancelSource.signal,
-      })
+    const { deps } = env
+    if (effect.background === 'memoryPrefetch') {
+      const e: TurnBackgroundEvent = { background: effect.background, input: effect.input }
+      await nativeHooksOf(env.ctx).observe(NATIVE_EVENTS.turnBackground, e, env)
     } else if (effect.background === 'toolDigest') {
       const { calls, replies } = effect.input as DigestInput
       if (calls.length > 0 && deps.getRuntimeGatesSnapshot(env.ctx).emitToolUseSummaries) {
