@@ -2,7 +2,6 @@ import * as React from "react";
 import { MoreHorizontalIcon } from "lucide-react";
 import { DropdownMenu as DropdownMenuPrimitive } from "radix-ui";
 
-import { InkRipple } from "@/components/assistant-ui/ink-ripple";
 import { SessionAttentionDot } from "@/components/assistant-ui/session-attention-dot";
 import { cn } from "@/lib/utils";
 import { useT, type TranslateFn } from "../i18n";
@@ -38,19 +37,16 @@ function tabLabel(session: SessionListItem, t: TranslateFn): string {
   return session.teammateName ?? sessionDisplayTitle(session, t);
 }
 
-/** The fixed-size status slot shared by a tab and an overflow-menu row: the
- *  ripple stands exactly where the icon stood, so starting or stopping a turn
- *  never changes the tab's width (and never invalidates its cached sample).
- *  The relative box anchors the attention dot. */
+/** The fixed-size icon slot shared by a tab and an overflow-menu row: the
+ *  session's type icon (or the shutdown dot), never a run animation (F-17),
+ *  so the tab's width never changes. The relative box anchors the attention dot. */
 function TabStatusSlot({
-  running,
   shutdown,
   needsAnswer,
   icon,
   dotClassName,
   needsAnswerLabel,
 }: {
-  running: boolean;
   shutdown: boolean;
   needsAnswer: boolean;
   icon: React.ReactNode;
@@ -63,12 +59,7 @@ function TabStatusSlot({
       className="relative flex size-3.5 shrink-0 items-center justify-center"
       data-needs-answer={needsAnswer || undefined}
     >
-      {running ? (
-        <InkRipple
-          data-slot="session-tab-running-icon"
-          className="text-primary"
-        />
-      ) : shutdown ? (
+      {shutdown ? (
         <span
           data-slot="session-tab-shutdown-icon"
           className="size-2 rounded-full bg-muted-foreground/60"
@@ -317,7 +308,6 @@ export function SessionTabStrip(props: {
               )}
             >
               <TabStatusSlot
-                running={isRunning}
                 shutdown={!!session.shutdown}
                 needsAnswer={needsAnswer}
                 needsAnswerLabel={t("sidebar.needsAnswer")}
@@ -367,7 +357,6 @@ export function SessionTabStrip(props: {
               className="flex h-7 shrink-0 items-center gap-1.5 rounded px-2 text-body text-muted-foreground hover:text-foreground data-[state=open]:bg-background data-[state=open]:text-foreground"
             >
               <TabStatusSlot
-                running={overflowRunning}
                 shutdown={false}
                 needsAnswer={overflowNeedsAnswer}
                 needsAnswerLabel={t("sidebar.needsAnswer")}
@@ -459,7 +448,6 @@ function OverflowMenuItem({
         className="flex w-full min-w-0 cursor-default items-center gap-2 rounded px-2 py-1.5 text-left text-body text-popover-foreground outline-none focus:bg-accent focus:text-accent-foreground data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground"
       >
         <TabStatusSlot
-          running={!!session.running}
           shutdown={!!session.shutdown}
           needsAnswer={!!session.needsAnswer}
           needsAnswerLabel={t("sidebar.needsAnswer")}

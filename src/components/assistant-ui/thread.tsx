@@ -1,4 +1,6 @@
-import { RunningBlob, RunningIndicator } from "@/components/assistant-ui/running-indicator";
+import { RunningIndicator } from "@/components/assistant-ui/running-indicator";
+import { SessionStatusIcon } from "@/components/assistant-ui/session-status-icon";
+import { useSessionRunStatus } from "@/browser/webview/sessionRunStatus";
 import { TurnClosingBox, TurnPlanCard } from "@/components/assistant-ui/turn-board";
 import { COLLAPSE_ALL_OFFER_MS, resolveFloatingScrollButton, useRunStatusRow } from "@/components/assistant-ui/run-status-row";
 import type { TurnDiffMeta } from "@/utils/turnDiffs";
@@ -698,6 +700,8 @@ const ThreadLockToBottom: FC<{
   const t = useT();
   const isAtBottom = useThreadViewport((s) => s.isAtBottom);
   const runRow = useRunStatusRow(sessionId);
+  // A published run row means the run is live: the status is never "done" here.
+  const runStatus = useSessionRunStatus(sessionId, { running: runRow !== null });
   const [collapseOffer, setCollapseOffer] = useState(0);
   useEffect(() => {
     if (collapseOffer === 0) return;
@@ -756,7 +760,7 @@ const ThreadLockToBottom: FC<{
               data-slot="thread-scroll-run-status"
               className="contents group-hover:hidden group-focus-visible:hidden"
             >
-              <RunningBlob compact />
+              <SessionStatusIcon status={runStatus ?? "thinking"} className="size-4" decorative />
             </span>
             <span
               data-slot="thread-scroll-action-icon"

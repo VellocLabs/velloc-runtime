@@ -17,7 +17,8 @@ import {
   Trash2Icon,
   XIcon,
 } from 'lucide-react'
-import { InkRipple } from '@/components/assistant-ui/ink-ripple'
+import { SessionStatusIcon } from '@/components/assistant-ui/session-status-icon'
+import { useSessionRunStatus } from './sessionRunStatus'
 import { SessionAttentionDot } from '@/components/assistant-ui/session-attention-dot'
 import { DropdownMenu as DropdownMenuPrimitive } from 'radix-ui'
 import { Fragment, useState } from 'react'
@@ -482,6 +483,10 @@ function SessionRow({
   // control is already on screen there).
   const needsAnswer =
     ((!!session.needsAnswer || below.needsAnswer) && !isActive) || !!session.sideChatNeedsAnswer
+  const runStatus = useSessionRunStatus(session.sessionId, {
+    running: isRunning,
+    needsAnswer: !!session.needsAnswer,
+  })
   // This copy owns the editor only if the rename was opened HERE; the
   // other copy of the same session stays a plain row (see
   // `SessionRowEditing`).
@@ -645,8 +650,8 @@ function SessionRow({
                 title from this `span.min-w-0.flex-1` , so keep
                 those classes on the title wrapper. */}
             <span className="flex min-w-0 flex-1 items-center gap-1.5">
-              {/* Leading slot: running spinner while busy, else
-                  the session's template-type icon. An svg, so it
+              {/* Leading slot: the session's status while it has one
+                  (F-17), else the template-type icon. An svg, so it
                   doesn't affect the title text the harness
                   reads from this span. The relative wrapper anchors
                   the "needs your response" attention dot. */}
@@ -654,11 +659,8 @@ function SessionRow({
                 className="relative flex shrink-0 items-center"
                 data-needs-answer={needsAnswer || undefined}
               >
-                {isRunning ? (
-                  <InkRipple
-                    data-slot="session-row-running-icon"
-                    className="shrink-0 text-primary"
-                  />
+                {runStatus ? (
+                  <SessionStatusIcon status={runStatus} />
                 ) : session.starting && !session.startFailed ? (
                   <Loader2Icon
                     aria-hidden

@@ -1,6 +1,5 @@
 import {
   useEffect,
-  useId,
   useRef,
   useState,
   type FC,
@@ -12,6 +11,8 @@ import { isRunStatusRowInView, publishRunStatusRow } from "./run-status-row";
 import { compactCount } from "@/utils/humanize/compactCount";
 import { rawStreamProblemOf, rawStreamProblemSummaryKey } from "@/utils/rawStreamProblem";
 import { useTurnTimer } from "@/hooks/useTurnTimer";
+import { SessionStatusIcon } from "@/components/assistant-ui/session-status-icon";
+import { useSessionRunStatus, type SessionRunStatus } from "@/browser/webview/sessionRunStatus";
 import { isMessageKey, useT, type TranslateFn } from "@/browser/webview/i18n";
 import type { MessageKey } from "@/browser/webview/i18n/messages/en";
 import {
@@ -226,55 +227,6 @@ export function resolveRunningIndicatorVisibility(params: {
   return params.isRunning || params.sessionBusy;
 }
 
-// The goo `<filter>` id MUST be unique per mounted instance (shared ids can make an SVG
-// vanish), so it derives from useId(). The `<svg>` carries `text-primary`, so only the
-// animation follows the accent. `compact` is the tab-icon size.
-export const RunningBlob: FC<{ compact?: boolean }> = ({ compact }) => {
-  const gooId = `nexus-blob-goo-${useId().replace(/:/g, "")}`;
-  return (
-    <svg
-      className="nexus-running-blob text-primary"
-      data-size={compact ? "compact" : undefined}
-      viewBox="0 0 30 30"
-      fill="none"
-      xmlns="http://www.w3.org/2000/svg"
-      aria-hidden="true"
-    >
-      <defs>
-        <filter
-          id={gooId}
-          x="-50%"
-          y="-50%"
-          width="200%"
-          height="200%"
-          colorInterpolationFilters="sRGB"
-        >
-          <feGaussianBlur in="SourceGraphic" stdDeviation="2.2" result="b" />
-          <feColorMatrix
-            in="b"
-            type="matrix"
-            values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 19 -8"
-            result="g"
-          />
-          <feComposite in="SourceGraphic" in2="g" operator="atop" />
-        </filter>
-      </defs>
-      <g filter={`url(#${gooId})`} fill="currentColor">
-        {/* Three orbiters placed evenly on a circle (radius 8 from the 15,15
-            center, at 0°/120°/240°); the group spins to orbit them together. */}
-        <g className="nexus-blob-orbit">
-          <circle cx="23" cy="15" r="4" />
-          <circle cx="11" cy="21.93" r="4" />
-          <circle cx="11" cy="8.07" r="4" />
-        </g>
-        {/* Pulsing center — swells to merge with the orbiters under the goo,
-            then shrinks to pinch apart. */}
-        <circle className="nexus-blob-core" cx="15" cy="15" r="4" />
-      </g>
-    </svg>
-  );
-};
-
 /**
  * Presentational row, free of assistant-ui / bridge hooks. `running` gates the whole
  * status cluster, which is removed rather than frozen when the turn ends; a settled
@@ -289,8 +241,10 @@ export const RunningIndicatorView: FC<{
    * shown only while `running` is false.
    */
   idleNotice?: string;
+  /** What the running session is doing (F-17); a settled row shows paused. */
+  status?: SessionRunStatus | null;
   rowRef?: RefObject<HTMLDivElement | null>;
-}> = ({ running, elapsed, statusText, idleNotice, rowRef }) => {
+}> = ({ running, elapsed, statusText, idleNotice, status, rowRef }) => {
   if (!running && !idleNotice) return null;
   return (
     <div
@@ -306,8 +260,8 @@ export const RunningIndicatorView: FC<{
     >
       {running ? (
         <>
-          <RunningBlob />
-          {/* Order: [blob] [elapsed time] [status text]. */}
+          <SessionStatusIcon status={status ?? "thinking"} className="size-5" decorative />
+          {/* Order: [status icon] [elapsed time] [status text]. */}
           <span className="flex min-w-0 items-center gap-1.5 text-[13px] leading-none text-muted-foreground">
             {/* Never shrinks or wraps: as a flex item its min-content width is
                 its longest word, so a long status text would break "16m 51s". */}
@@ -332,6 +286,8 @@ export const RunningIndicatorView: FC<{
           </span>
         </>
       ) : (
+        <>
+        <SessionStatusIcon status="paused" className="size-5" decorative />
         <span
           data-testid="status-bar-idle-notice"
           className="min-w-0 truncate text-[13px] leading-none text-muted-foreground"
@@ -339,6 +295,7 @@ export const RunningIndicatorView: FC<{
         >
           {idleNotice}
         </span>
+        </>
       )}
     </div>
   );
@@ -486,6 +443,8 @@ export const RunningIndicator: FC<{
     thinkingElapsedMs,
   });
 
+  const status = useSessionRunStatus(sessionId, { running: showIndicator });
+
   const visible = isForeground && showIndicator;
   useRunStatusRowPublisher({
     sessionId,
@@ -500,6 +459,7 @@ export const RunningIndicator: FC<{
       elapsed={elapsed}
       statusText={statusText}
       idleNotice={idleNotice}
+      status={status}
       rowRef={rowRef}
     />
   );

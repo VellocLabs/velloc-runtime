@@ -273,6 +273,10 @@ export const en = {
   'sidebar.pinnedSection': 'Pinned',
   'sidebar.renameInputAria': 'Rename input: {title}',
   'sidebar.needsAnswer': 'Needs your response',
+  'sessionStatus.thinking': 'Waiting for the model',
+  'sessionStatus.runningTools': 'Running tools',
+  'sessionStatus.awaitingReply': 'Waiting for your reply',
+  'sessionStatus.paused': 'Paused',
   // Child sessions (F-36): the row state while another session starts this one.
   'sidebar.sessionStarting': 'Starting…',
   'sidebar.sessionStartFailed': 'Did not start',

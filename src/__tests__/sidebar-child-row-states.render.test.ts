@@ -88,14 +88,14 @@ describe('a starting child row', () => {
     expect(screen.queryByTestId('sidebar-unarchive-thread')).toBeNull()
   })
 
-  it('shows its type icon again once it started, and the running mark while it runs', () => {
+  it('shows its type icon again once it started, and the run status while it runs', () => {
     const { rerender } = renderSidebar([item('p'), item('c', { ...under('p'), starting: true })])
     rerender(sidebar([item('p'), item('c', under('p'))]))
     expect(slot('c', 'session-row-starting-icon')).toBeNull()
     expect(slot('c', 'session-row-type-icon')).not.toBeNull()
     expect(slot('c', 'session-row-start-state')).toBeNull()
     rerender(sidebar([item('p'), item('c', { ...under('p'), running: true })]))
-    expect(slot('c', 'session-row-running-icon')).not.toBeNull()
+    expect(slot('c', 'session-status-icon')?.dataset.status).toBe('thinking')
   })
 })
 

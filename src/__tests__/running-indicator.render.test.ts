@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { createElement, Fragment } from 'react'
+import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 
 import {
@@ -399,26 +399,17 @@ describe('resolveRunningIndicatorVisibility', () => {
 })
 
 describe('RunningIndicatorView render', () => {
-  it('animates the blob and shows elapsed time before the status text while running', () => {
+  it('shows the run status icon and elapsed time before the status text while running', () => {
     const html = renderToStaticMarkup(
       createElement(RunningIndicatorView, {
         running: true,
         elapsed: '12s',
         statusText: 'thinking · 1.8k tokens',
+        status: 'tools',
       }),
     )
-    // Running → the animation classes the globals.css keyframes target are present.
-    expect(html).toContain('nexus-blob-orbit')
-    expect(html).toContain('nexus-blob-core')
-    // currentColor everywhere → strictly monochrome (no hardcoded hue).
-    expect(html).toContain('fill="currentColor"')
-    expect(html).not.toMatch(/#[0-9a-fA-F]{3,6}/)
-    // …and the one hue is the ACCENT: `text-primary` on the <svg> makes
-    // currentColor resolve to `--primary` — the token the composer's Send
-    // button fills itself with, which the Appearance accent swatch rewrites —
-    // instead of the row's near-black foreground.
-    expect(html).toContain('class="nexus-running-blob text-primary"')
-    // Only the blob follows the accent; the status text stays muted.
+    expect(html).toContain('data-slot="session-status-icon"')
+    expect(html).toContain('data-status="tools"')
     expect(html).toContain('text-muted-foreground')
     expect(html).toContain('12s')
     expect(html).toContain('thinking · 1.8k tokens')
@@ -427,9 +418,14 @@ describe('RunningIndicatorView render', () => {
     expect(html).toContain('data-running="true"')
   })
 
-  // The turn's status is LIVE-only. It used to freeze instead — a static blob
-  // holding the last text at 45% opacity — which read as "still thinking" over
-  // an already-idle composer. Ending a turn now removes the cluster outright.
+  it('shows the thinking icon while running before any status is known', () => {
+    const html = renderToStaticMarkup(
+      createElement(RunningIndicatorView, { running: true, elapsed: '1s', statusText: '' }),
+    )
+    expect(html).toContain('data-status="thinking"')
+  })
+
+  // The turn's status is LIVE-only: ending a turn removes the cluster outright.
   it('drops the whole status cluster when the turn ends', () => {
     const html = renderToStaticMarkup(
       createElement(RunningIndicatorView, {
@@ -438,9 +434,7 @@ describe('RunningIndicatorView render', () => {
         statusText: 'almost done thinking · 12k tokens',
       }),
     )
-    expect(html).not.toContain('nexus-running-blob')
-    expect(html).not.toContain('nexus-blob-orbit')
-    expect(html).not.toContain('nexus-blob-core')
+    expect(html).not.toContain('session-status-icon')
     expect(html).not.toContain('data-running="true"')
     // No frozen leftovers: neither the final time nor the last status survives.
     expect(html).not.toContain('1m 11s')
@@ -460,6 +454,8 @@ describe('RunningIndicatorView render', () => {
     )
     expect(html).toContain('Conversation was cancelled')
     expect(html).toContain('status-bar-idle-notice')
+    // Continue is offered, so the row reads as paused.
+    expect(html).toContain('data-status="paused"')
     // Still no frozen live status alongside it.
     expect(html).not.toContain('almost done thinking')
     expect(html).not.toContain('1m 11s')
@@ -548,23 +544,6 @@ describe('RunningIndicatorView render', () => {
       createElement(RunningIndicatorView, { running: false, elapsed: '0s', statusText: '' }),
     )
     expect(html).toBe('')
-  })
-
-  // Regression guard for the duplicate-filter-id "one SVG vanishes" bug: two
-  // mounted blobs must get distinct goo `<filter>` ids (derived from useId).
-  it('gives each mounted blob a unique goo filter id', () => {
-    const html = renderToStaticMarkup(
-      createElement(Fragment, null, [
-        createElement(RunningIndicatorView, { key: 'a', running: true, elapsed: '1s', statusText: 'thinking' }),
-        createElement(RunningIndicatorView, { key: 'b', running: true, elapsed: '1s', statusText: 'thinking' }),
-      ]),
-    )
-    const ids = [...html.matchAll(/id="(nexus-blob-goo-[^"]+)"/g)].map((m) => m[1])
-    expect(ids).toHaveLength(2)
-    expect(new Set(ids).size).toBe(2)
-    for (const id of ids) {
-      expect(html).toContain(`url(#${id})`)
-    }
   })
 })
 

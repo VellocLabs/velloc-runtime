@@ -297,13 +297,12 @@ describe('SessionTabStrip', () => {
     expect(onSelect).toHaveBeenCalledWith('teammate-1')
   })
 
-  // --- Status animators -------------------------------------------------
-  // The tab's icon slot doubles as its status light, sharing BOTH indicators
-  // with the session list: the busy ripple and the needs-answer dot. The
-  // strip is the only place a teammate is reachable, so these are the user's
-  // only view of a child session's state while they read another tab.
+  // --- Status indicators -----------------------------------------------
+  // A tab always shows its session's type icon; the run status lives in the
+  // session list and the conversation (F-17). The needs-answer dot stays: the
+  // strip is the only place a teammate is reachable.
 
-  it('replaces the icon with the busy ripple on a running tab', () => {
+  it('keeps the type icon on a running tab, with no run animation', () => {
     render(
       createElement(SessionTabStrip, {
         tabs: [LEAD, { ...CHILD, running: true }],
@@ -311,44 +310,13 @@ describe('SessionTabStrip', () => {
         onSelect: () => {},
       }),
     )
-    const [lead, child] = screen.getAllByRole('tab')
-    // The running tab shows the ripple INSTEAD of its type icon — covering
-    // it, not sitting beside it, so the tab's width does not change.
-    expect(
-      child!.querySelector('[data-slot="session-tab-running-icon"]'),
-    ).not.toBeNull()
-    expect(
-      child!.querySelector('[data-slot="session-tab-type-icon"]'),
-    ).toBeNull()
-    expect(child!.getAttribute('data-running')).toBe('true')
-    // The idle tab is untouched: icon, no ripple, no flag.
-    expect(
-      lead!.querySelector('[data-slot="session-tab-type-icon"]'),
-    ).not.toBeNull()
-    expect(
-      lead!.querySelector('[data-slot="session-tab-running-icon"]'),
-    ).toBeNull()
-    expect(lead!.getAttribute('data-running')).toBeNull()
-  })
-
-  it('restores the icon when the session stops running', () => {
-    // The ripple is a view of `running`, not a latched state: a re-render
-    // with the flag cleared must put the type icon back.
-    const props = (running: boolean) => ({
-      tabs: [LEAD, { ...CHILD, running }],
-      activeSessionId: 'lead-1',
-      onSelect: () => {},
-    })
-    const { rerender } = render(createElement(SessionTabStrip, props(true)))
-    rerender(createElement(SessionTabStrip, props(false)))
     const child = screen.getAllByRole('tab')[1]!
     expect(
       child.querySelector('[data-slot="session-tab-type-icon"]'),
     ).not.toBeNull()
-    expect(
-      child.querySelector('[data-slot="session-tab-running-icon"]'),
-    ).toBeNull()
-    expect(child.getAttribute('data-running')).toBeNull()
+    expect(child.querySelector('[data-slot="session-status-icon"]')).toBeNull()
+    expect(child.querySelector('.nexus-ripple')).toBeNull()
+    expect(child.getAttribute('data-running')).toBe('true')
   })
 
   it('keeps the active tab icon and title while its run status row is scrolled away', () => {
@@ -363,7 +331,7 @@ describe('SessionTabStrip', () => {
     const lead = screen.getAllByRole('tab')[0]!
     expect(lead.textContent).toContain('Ship the parser')
     expect(lead.getAttribute('title')).toBe('Ship the parser')
-    expect(lead.querySelector('.nexus-running-blob')).toBeNull()
+    expect(lead.querySelector('[data-slot="session-status-icon"]')).toBeNull()
     expect(lead.getAttribute('data-run-status')).toBeNull()
     act(() => publishRunStatusRow('lead-1', null))
   })
@@ -406,9 +374,7 @@ describe('SessionTabStrip', () => {
     ).toBe(0)
   })
 
-  it('shows both indicators at once on a tab that is running AND waiting', () => {
-    // A session can be busy and still be halted on an approval (the turn is
-    // in flight, blocked on the user); the dot rides on TOP of the ripple.
+  it('shows the attention dot over the type icon on a tab that is running AND waiting', () => {
     render(
       createElement(SessionTabStrip, {
         tabs: [LEAD, { ...CHILD, running: true, needsAnswer: true }],
@@ -418,7 +384,7 @@ describe('SessionTabStrip', () => {
     )
     const child = screen.getAllByRole('tab')[1]!
     expect(
-      child.querySelector('[data-slot="session-tab-running-icon"]'),
+      child.querySelector('[data-slot="session-tab-type-icon"]'),
     ).not.toBeNull()
     expect(
       child.querySelector('[data-slot="session-attention-dot"]'),
