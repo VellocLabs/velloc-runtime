@@ -10,7 +10,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { MOD_EXAMPLES, type ModExample } from '../skillLibrary/builtin/modAuthoring/modExamples'
 import { MOD_AUTHORING_SKILL_NAME, modAuthoringPrompt } from '../skillLibrary/builtin/modAuthoring/modAuthoringSkill'
 import { installStockSkills } from '../skillLibrary/builtin/catalog'
-import { getBundledSkillModelInvocation } from '../skillLibrary/builtinSkills'
+import { getBundledSkillModelInvocation, getBundledSkillRequiredTools } from '../skillLibrary/builtinSkills'
 import { buildModApiFiles } from '../mods/modApiDeclaration'
 import { modApiTables } from '../mods/devModTypes'
 import { MOD_TYPES_DIR } from '../mods/modTypesEmit'
@@ -119,6 +119,7 @@ describe('the mod-authoring skill', () => {
   it('is a bundled skill the model may use in code and agent sessions', () => {
     installStockSkills()
     expect(getBundledSkillModelInvocation(MOD_AUTHORING_SKILL_NAME)).toEqual(['code', 'agent'])
+    expect(getBundledSkillRequiredTools(MOD_AUTHORING_SKILL_NAME)).toEqual(['ModValidate', 'ModTest'])
   })
 
   it("names the session's dev mods folder and carries every example in full", () => {
@@ -129,6 +130,14 @@ describe('the mod-authoring skill', () => {
       for (const source of Object.values(example.files)) expect(text).toContain(source.trimEnd())
     }
     expect(text.endsWith('## The mod to write\n\na pane of open todos\n')).toBe(true)
+  })
+
+  it('states when running the tests asks, and leaves the permission mode to the person', () => {
+    const context = { options: { sessionId: 'abc', homeDir: 'C:\\Users\\me' } } as unknown as ToolCallContext
+    const text = modAuthoringPrompt('', context).replace(/\s+/g, ' ')
+    expect(text).toContain('the person is asked first in `default` and `auto` modes, the tests run unasked only in `bypassPermissions`, and the run is refused in `dontAsk`')
+    expect(text).toContain('leave the permission mode to the person')
+    expect(text).not.toMatch(/(switch|change|set) (to|the) (permission )?mode/i)
   })
 
   it('the type check is real: an unserved event and an unknown kit call are errors', () => {

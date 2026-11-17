@@ -4,7 +4,7 @@
  * Mirrors `kitRuntime.js`.
  */
 
-const KIT_TYPES = `export type TestBody = () => void | Promise<void>
+export const KIT_TYPES = `export type TestBody = () => void | Promise<void>
 export function test(name: string, body: TestBody): void
 export function it(name: string, body: TestBody): void
 export function describe(name: string, body: () => void): void
@@ -77,13 +77,3 @@ export interface PluginUnderTest {
 
 export function loadPlugin(register: (on: any, options: any) => unknown, setup?: PluginSetup): PluginUnderTest`
 
-const indent = (text: string): string =>
-  text
-    .split('\n')
-    .map(line => (line === '' ? line : `  ${line}`))
-    .join('\n')
-
-/** `declare module "<kit>" { … }` for the types folder. */
-export function kitModuleDeclaration(kitSpecifier: string): string {
-  return [`declare module ${JSON.stringify(kitSpecifier)} {`, indent(KIT_TYPES), '}'].join('\n')
-}

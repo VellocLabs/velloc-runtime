@@ -7,7 +7,7 @@
  */
 
 import { MOD_API_SHAPES } from './modApiShapes.generated'
-import { kitModuleDeclaration } from './testKit/kitDeclaration'
+import { KIT_TYPES } from './testKit/kitDeclaration'
 
 /** The phrase the first line of every generated file carries. A file whose
  *  first line lacks it is someone's own and is never overwritten. */
@@ -271,7 +271,9 @@ export function buildModApiFiles(tables: ModApiTables): ModApiFiles {
     indent(engineInterface(tables)),
     indent(hookVocabulary(tables)),
     '}',
-    kitModuleDeclaration(`${tables.specifier}/testing`),
+    `declare module ${lit(`${tables.specifier}/testing`)} {`,
+    indent(KIT_TYPES),
+    '}',
     '',
   ].join('\n')
   const tsconfig = `${header('//')}

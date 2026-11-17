@@ -33,8 +33,8 @@ Write each mod as its own folder under this session's dev mods folder:
     ${folder}/<mod-name>/
 
 The first time a mod appears there, the person is asked once whether to turn
-the folder on for this session (bypass-permissions mode turns it on and says
-so). Once it is on, the mods load when your turn ends, and a changed file is
+the folder on for this session (\`bypassPermissions\` mode turns it on and says
+so; \`dontAsk\` mode leaves it off). Once it is on, the mods load when your turn ends, and a changed file is
 reloaded at the end of each later turn. A tool your mod registers is reloaded
 before you call it, so you can try it in the same turn. Nothing in the folder
 reaches other sessions.
@@ -98,7 +98,10 @@ or a tool this engine does not serve is a type error. Do not edit the files in
    line. Load it with ToolSearch first if it is listed as deferred.
 2. **${MOD_TEST_TOOL_NAME}({ folder })** runs every \`*.test.ts\` in the mod,
    each file in a worker of its own, and reports each case with the failing
-   file and line.
+   file and line. Running them follows the folder's rule: the person is asked
+   first in \`default\` and \`auto\` modes, the tests run unasked only in
+   \`bypassPermissions\`, and the run is refused in \`dontAsk\`. If the run is
+   refused or declined, say so and leave the permission mode to the person.
 3. **Failures while it runs.** When a hook throws, runs out of time, or the
    mod does not load, the person sees a dim line, and your next turn starts
    with a reminder holding a \`<mod-failures>\` block: the mod, the event, the
@@ -119,9 +122,10 @@ A test file imports from \`'${MOD_TEST_KIT_SPECIFIER}'\`:
   engine), \`on(event, hook)\` (a hook beneath the mod), \`calls('noun.method')\`
   (each \`$\` call made), \`stub('noun.method', answer)\`, \`stateOf(address)\`,
   \`store\`, \`clock.advance(ms)\` (runs due timers), and
-  \`mount('desktop', component, props)\` → \`text()\`, \`find\`, \`press(key)\`,
-  \`input(key, value)\`, \`submit(key, value)\`, \`select(key, value)\`.
-  A Pane mounts under the id \`$.ui.open\` gave it; the band under \`band\`.
+  \`mount('desktop', component, props, { requestId })\` → \`text()\`, \`find\`,
+  \`press(key)\`, \`input(key, value)\`, \`submit(key, value)\`,
+  \`select(key, value)\`. A Pane mounts under the id the last \`$.ui.open\`
+  gave it, and the band under \`band\`; pass \`requestId\` to draw another pane.
 - Nothing a test does reaches the session, the disk or the network.
 
 ## Examples
@@ -153,6 +157,8 @@ export function registerModAuthoringSkill(): void {
       'Make or change a mod: a pane beside the chat, a line above the prompt, a slash command, a guard on tool calls, or another hook on the engine. Use to write, check, test or fix a mod in this session.',
     argumentHint: '[what the mod should do]',
     modelInvocation: ['code', 'agent'],
+    userInvocation: ['code', 'agent'],
+    requiredTools: [MOD_VALIDATE_TOOL_NAME, MOD_TEST_TOOL_NAME],
     dynamicContent: async (args, context) => modAuthoringPrompt(args, context),
   })
 }
