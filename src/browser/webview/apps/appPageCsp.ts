@@ -1,12 +1,9 @@
 /**
  * The Content-Security-Policy every app page is drawn under (F-42).
  *
- * Security: the frame's sandbox makes its origin opaque but leaves the network
- * open. This policy refuses request-shaped egress (fetch, XHR, WebSocket,
- * EventSource, beacons, remote images, scripts, styles, fonts and frames) and
- * form posts. It does not stop the frame navigating itself; the frame's `csp`
- * attribute makes a remote document it navigates to fail to load. A policy
- * the page adds itself can only narrow this one.
+ * Security: refuses request-shaped egress (fetch, XHR, WebSocket, EventSource,
+ * remote loads) and form posts, which the sandbox leaves open. As the frame's
+ * `csp` attribute it also makes a remote document the frame navigates to fail.
  */
 export const APP_PAGE_CSP = [
   "default-src 'none'",

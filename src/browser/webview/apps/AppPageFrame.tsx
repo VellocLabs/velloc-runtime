@@ -1,14 +1,10 @@
 /**
  * An app drawn as one plugin page (F-42), loaded only through `import()`.
  *
- * Security: the page runs in `<iframe sandbox="allow-scripts" srcdoc>`, so its
- * origin is opaque and it reaches neither this document nor storage, under a
- * policy that refuses network requests: in the page (`withAppPageCsp`) and
- * required of every document the frame loads (`csp`), so a remote document it
- * navigates to is refused. Its only line to the
- * runtime is a port capped to `observe` on the topics the host allows
- * (`openObserverPort`), handed to the first document only: when the frame
- * loads another document, or the pane closes, that connection ends.
+ * Security: `<iframe sandbox="allow-scripts" srcdoc>` under `APP_PAGE_CSP` (in
+ * the page and as the frame's `csp`): an opaque origin with no network. Its one
+ * line to the runtime is an `observe` port on the host's topics, handed to the
+ * first document only; another document loading, or the pane closing, ends it.
  */
 
 import { useEffect, useRef, useState } from 'react'
