@@ -652,6 +652,29 @@ describe('adding a GitHub marketplace', () => {
     expect(await r.fs.readFile(`${record!.installPath}/skills/hello/SKILL.md`, { encoding: 'utf-8' })).toBe('v2.0.0\n')
   })
 
+  it('a repo download that fails partway leaves the manifest alone, so the next install downloads again', async () => {
+    const r = await rig([])
+    await r.publish([{ name: 'cool', version: '1.0.0' }])
+    await registerMarketplaceSource(ctx, r.fs, source, '2026-10-12T00:00:00.000Z', r.fetchImpl)
+    const writeFile = r.fs.writeFile.bind(r.fs)
+    r.fs.writeFile = (async (path: string, data: string | Uint8Array, options?: unknown) => {
+      if (path.replace(/\\/g, '/').endsWith('plugins/cool/skills/hello/SKILL.md')) throw new Error('EBUSY')
+      return (writeFile as (p: string, d: string | Uint8Array, o?: unknown) => Promise<void>)(path, data, options)
+    }) as typeof r.fs.writeFile
+
+    await expect(setupPlugin(ctx, r.fs, 'my-mkt', 'cool', { fetchImpl: r.fetchImpl })).rejects.toThrow()
+    expect(r.tarballs()).toBe(1)
+    expect(await r.installed()).toBeUndefined()
+    expect(await contentNames(r.fs)).toEqual([PLUGIN_MANIFEST_DIR_NAME])
+    expect((await r.fs.readdir(`${getMarketplaceContentDir(ctx, 'my-mkt')}/${PLUGIN_MANIFEST_DIR_NAME}`)).map(e => e.name)).toEqual(['marketplace.json'])
+
+    r.fs.writeFile = writeFile
+    await setupPlugin(ctx, r.fs, 'my-mkt', 'cool', { fetchImpl: r.fetchImpl })
+    expect(r.tarballs()).toBe(2)
+    const record = await r.installed()
+    expect(await r.fs.readFile(`${record!.installPath}/skills/hello/SKILL.md`, { encoding: 'utf-8' })).toBe('v1.0.0\n')
+  })
+
   it('a failed manifest read registers nothing and downloads no repo', async () => {
     const r = await rig([])
     r.goDown()

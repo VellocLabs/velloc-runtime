@@ -403,7 +403,7 @@ export function createProviderModUpdateService(deps: ProviderModUpdateDeps): Pro
     if (listing.version !== undefined && (listing.version === active || listing.version === record.skippedVersion || listing.version === record.pending?.version)) {
       return null
     }
-    const { files, sha } = await fetchListingFiles(ctx, fs, marketplace, listing, installed.id, fetchImpl)
+    const { files, sha } = await fetchListingFiles(ctx, fs, marketplace, listing, installed.id, fetchImpl, iso())
     return { files, ...(sha !== undefined ? { sha256: sha } : {}) }
   }
 

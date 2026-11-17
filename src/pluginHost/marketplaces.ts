@@ -572,15 +572,20 @@ export async function fetchCatalogListing(
   if (remote === null) return fetchCatalog(ctx, fs, catalogKey, nowIso, fetchImpl)
   const cachePath = getMarketplaceContentDir(ctx, catalogKey)
   // A repo left from an earlier download would no longer match this manifest.
+  await keepManifestOnly(fs, cachePath, catalogKey, remote.manifestRaw)
+  await updateMarketplaceLastUpdated(ctx, fs, catalogKey, nowIso)
+  return { marketplace: remote.marketplace, cachePath }
+}
+
+/** Replaces a marketplace's cached content with `manifestRaw` as its only file. */
+async function keepManifestOnly(fs: RuntimeFs, cachePath: string, catalogKey: string, manifestRaw: string): Promise<void> {
   await fs.rm(cachePath, { recursive: true, force: true })
   const writeResult = await writeExtractedFiles(fs, cachePath, [
-    { path: MARKETPLACE_MANIFEST_REPO_PATH, content: new TextEncoder().encode(remote.manifestRaw) },
+    { path: MARKETPLACE_MANIFEST_REPO_PATH, content: new TextEncoder().encode(manifestRaw) },
   ])
   if (writeResult.firstFailureIndex !== null) {
     throw new Error(`[marketplaceManager] could not write ${MARKETPLACE_MANIFEST_REPO_PATH} for '${catalogKey}' under ${cachePath}`)
   }
-  await updateMarketplaceLastUpdated(ctx, fs, catalogKey, nowIso)
-  return { marketplace: remote.marketplace, cachePath }
 }
 
 /** True when a marketplace's cached content is its manifest and nothing else. */
@@ -599,7 +604,8 @@ async function holdsManifestOnly(ctx: PluginInstallPathContext, fs: RuntimeFs, c
 /**
  * Downloads the marketplace repo when its cache holds the manifest alone, so
  * a plugin kept inside the repo can be copied from it. Returns whether it
- * downloaded.
+ * downloaded. A failed download puts the manifest back as the only file, so
+ * the next install downloads again instead of copying a partial repo.
  */
 export async function ensureMarketplaceRepo(
   ctx: PluginInstallPathContext,
@@ -609,7 +615,17 @@ export async function ensureMarketplaceRepo(
   fetchImpl: typeof fetch = globalThis.fetch.bind(globalThis),
 ): Promise<boolean> {
   if (!(await holdsManifestOnly(ctx, fs, catalogKey))) return false
-  await fetchCatalog(ctx, fs, catalogKey, nowIso, fetchImpl)
+  const manifestRaw = await fs.readFile(getMarketplaceManifestPath(ctx, catalogKey), { encoding: 'utf-8' })
+  try {
+    await fetchCatalog(ctx, fs, catalogKey, nowIso, fetchImpl)
+  } catch (error) {
+    try {
+      await keepManifestOnly(fs, getMarketplaceContentDir(ctx, catalogKey), catalogKey, manifestRaw)
+    } catch {
+      /* best-effort: the download error is the one to report */
+    }
+    throw error
+  }
   return true
 }
 

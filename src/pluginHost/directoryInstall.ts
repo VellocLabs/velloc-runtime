@@ -100,6 +100,7 @@ export async function installFromDirectory(
   const provisional: CatalogListing = { name: directoryFallbackName(spec.fallbackName), source }
   const fetched = await fetchListingFiles(
     ctx, fs, DIRECTORY_CATALOG_KEY, provisional, joinPluginRef(provisional.name, DIRECTORY_CATALOG_KEY), options.fetchImpl,
+    options.nowIso,
   )
   const name = manifestNameOf(fetched.files) ?? provisional.name
   const refusal = options.refuse?.(joinPluginRef(name, DIRECTORY_CATALOG_KEY)) ?? null

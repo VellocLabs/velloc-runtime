@@ -140,7 +140,7 @@ export async function setupPlugin(
   if (catalogKey === DIRECTORY_CATALOG_KEY) {
     const listing = await readDirectoryListing(ctx, fs, pluginName)
     if (!listing) throw new Error(`[installPlugin] '${identifier}' was not installed from the plugin directory.`)
-    const fetched = await fetchListingFiles(ctx, fs, catalogKey, listing, identifier, fetchImpl)
+    const fetched = await fetchListingFiles(ctx, fs, catalogKey, listing, identifier, fetchImpl, nowIso)
     return placePlugin(ctx, fs, catalogKey, pluginName, listing, fetched, { nowIso })
   }
 
@@ -159,7 +159,7 @@ export async function setupPlugin(
     )
   }
 
-  const fetched = await fetchListingFiles(ctx, fs, catalogKey, entry, identifier, fetchImpl)
+  const fetched = await fetchListingFiles(ctx, fs, catalogKey, entry, identifier, fetchImpl, nowIso)
   const marketplaceSource = entry.source.source === 'local'
     ? (await loadKnownMarketplaces(ctx, fs, nowIso)).registry[catalogKey]?.source
     : undefined
@@ -258,12 +258,13 @@ export async function fetchListingFiles(
   entry: CatalogListing,
   identifier: string,
   fetchImpl: typeof fetch,
+  nowIso: string = isoNow(),
 ): Promise<{ files: ExtractedFile[]; sha?: string }> {
   let files: ExtractedFile[]
   let fetchedSha: string | undefined
   if (entry.source.source === 'local') {
     const localPath = entry.source.path
-    await ensureMarketplaceRepo(ctx, fs, catalogKey, isoNow(), fetchImpl)
+    await ensureMarketplaceRepo(ctx, fs, catalogKey, nowIso, fetchImpl)
     files = await readLocalPluginFiles(ctx, fs, catalogKey, localPath)
     if (files.length === 0) {
       throw new Error(
