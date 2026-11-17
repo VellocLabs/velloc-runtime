@@ -2671,7 +2671,7 @@ export const ja: Messages = {
   'slash.builtin.plan': '計画モードに入る — 読み取り/検索のみ、コーディング前に設計',
   'slash.builtin.exit-plan': '計画モードを終了（任意：/exit-plan <plan text>）',
   'slash.builtin.plugins':
-    'プラグインを管理：list、enable/disable/update/uninstall <name>、install <git-url>、validate <folder>',
+    'プラグインを管理：list、enable/disable/update/uninstall <name>、install <git-url>、validate <folder>、test <folder>',
   'slash.builtin.plugin':
     'マーケットプレイスのプラグイン管理：list、install/uninstall/enable/disable <name>@<marketplace>',
   'slash.builtin.marketplace':
@@ -2982,6 +2982,13 @@ export const ja: Messages = {
   'slash.out.modValidate.finding.tooManyModules': 'モジュールが {limit} 個を超えています：最初の {limit} 個だけを検証します',
   'slash.out.modValidate.finding.unreadable': '読み取れませんでした（{error}）',
   'slash.out.modValidate.finding.unsupportedCall': '{calls} を呼び出していますが、このエンジンは実装していません',
+  'slash.out.modTest.usage': 'プラグインのフォルダーのテストを実行：/plugins test <folder>',
+  'slash.out.modTest.title': '{folder} のテスト',
+  'slash.out.modTest.noFiles': 'このフォルダーにテストファイル（*.test.ts、*.test.js など）はありません。',
+  'slash.out.modTest.fileError': '実行されませんでした：{error}',
+  'slash.out.modTest.passed': '成功：{passed} 件のテスト。',
+  'slash.out.modTest.failed': '不合格：{failed} 件失敗、{passed} 件成功。',
+  'slash.out.modTest.couldNotRun': 'テストを実行できませんでした：{error}',
 
   // ── スラッシュコマンド — /plugin, /marketplace（マーケットプレイスパイプライン） ──
   // コマンド構文の行（`/plugin <subcommand> [args]` のような裸の構文や実行

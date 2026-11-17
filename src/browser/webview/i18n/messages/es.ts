@@ -2733,7 +2733,7 @@ export const es: Messages = {
   'slash.builtin.exit-plan':
     'Salir del modo de planificación (opcional: /exit-plan <plan text>)',
   'slash.builtin.plugins':
-    'Gestionar complementos: list, enable/disable/update/uninstall <name>, install <git-url>, validate <folder>',
+    'Gestionar complementos: list, enable/disable/update/uninstall <name>, install <git-url>, validate <folder>, test <folder>',
   'slash.builtin.plugin':
     'Gestión de complementos del mercado: list, install/uninstall/enable/disable <name>@<marketplace>',
   'slash.builtin.marketplace':
@@ -3055,6 +3055,13 @@ export const es: Messages = {
   'slash.out.modValidate.finding.tooManyModules': 'más de {limit} módulos: solo se comprueban los primeros {limit}',
   'slash.out.modValidate.finding.unreadable': 'no se pudo leer ({error})',
   'slash.out.modValidate.finding.unsupportedCall': 'invoca {calls}, que este motor no implementa',
+  'slash.out.modTest.usage': 'Ejecutar las pruebas de la carpeta de un complemento: /plugins test <folder>',
+  'slash.out.modTest.title': 'Pruebas de {folder}',
+  'slash.out.modTest.noFiles': 'No hay archivos de prueba (*.test.ts, *.test.js, …) en esta carpeta.',
+  'slash.out.modTest.fileError': 'No se ejecutó: {error}',
+  'slash.out.modTest.passed': 'Superado: {passed} pruebas.',
+  'slash.out.modTest.failed': 'No superado: {failed} fallidas, {passed} superadas.',
+  'slash.out.modTest.couldNotRun': 'No se pudieron ejecutar las pruebas: {error}',
 
   // ── Comandos de barra — /plugin, /marketplace (proceso del mercado) ────
   // Las líneas de sintaxis de comandos (un `/plugin <subcommand> [args]` a

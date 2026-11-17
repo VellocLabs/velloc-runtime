@@ -2662,7 +2662,7 @@ export const ko: Messages = {
   'slash.builtin.plan': '계획 모드 시작 — 읽기/검색만, 코딩 전에 설계',
   'slash.builtin.exit-plan': '계획 모드 종료(선택: /exit-plan <plan text>)',
   'slash.builtin.plugins':
-    '플러그인 관리: list, enable/disable/update/uninstall <name>, install <git-url>, validate <folder>',
+    '플러그인 관리: list, enable/disable/update/uninstall <name>, install <git-url>, validate <folder>, test <folder>',
   'slash.builtin.plugin':
     '마켓플레이스 플러그인 관리: list, install/uninstall/enable/disable <name>@<marketplace>',
   'slash.builtin.marketplace':
@@ -2972,6 +2972,13 @@ export const ko: Messages = {
   'slash.out.modValidate.finding.tooManyModules': '모듈이 {limit}개를 넘습니다: 처음 {limit}개만 검증합니다',
   'slash.out.modValidate.finding.unreadable': '읽을 수 없습니다 ({error})',
   'slash.out.modValidate.finding.unsupportedCall': '{calls}을(를) 호출하지만 이 엔진은 구현하지 않습니다',
+  'slash.out.modTest.usage': '플러그인 폴더의 테스트 실행: /plugins test <folder>',
+  'slash.out.modTest.title': '{folder}의 테스트',
+  'slash.out.modTest.noFiles': '이 폴더에 테스트 파일(*.test.ts, *.test.js 등)이 없습니다.',
+  'slash.out.modTest.fileError': '실행되지 않음: {error}',
+  'slash.out.modTest.passed': '통과: 테스트 {passed}개.',
+  'slash.out.modTest.failed': '통과하지 못함: {failed}개 실패, {passed}개 통과.',
+  'slash.out.modTest.couldNotRun': '테스트를 실행할 수 없습니다: {error}',
 
   // ── 슬래시 명령어 — /plugin, /marketplace(마켓플레이스 파이프라인) ─────
   // 명령 구문 줄(단독 `/plugin <subcommand> [args]` 또는 예시 호출)은

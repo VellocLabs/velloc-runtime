@@ -51,6 +51,8 @@ function isRelativeSpecifier(specifier: string): boolean {
 
 /** The bare specifier the runtime serves. */
 export const MOD_API_SPECIFIER = 'claude-code'
+/** The plugin test kit's module: linked only into a test build. */
+export const MOD_TEST_KIT_SPECIFIER = `${MOD_API_SPECIFIER}/testing`
 
 /** Identifiers the verifier refuses at module level in the output: the
  *  network, workers, code generation, compiled code. */
@@ -91,8 +93,11 @@ export type ModCompileRecord = ModCompileGraph & {
 }
 
 export type ModCompileOptions = {
-  /** The hooks module, absolute. */
+  /** The hooks module, absolute; for a test build, the test file. */
   entry: string
+  /** A test build: the kit's source, linked as `<api>/testing`. The build's
+   *  `register` is then the kit's, which runs the file's tests. */
+  testKit?: string
   /** The plugin's directory, absolute: nothing outside it is read. */
   root: string
   fs: ModCompileFs
@@ -476,7 +481,7 @@ export async function compileModModule(options: ModCompileOptions): Promise<ModC
   // it parses and its own syntax tree passes the verifier: the text check
   // never decides alone.
   const entryText = texts.get(entry)!
-  if (!needsCompiler(entry, entryText) && specifiersOf(ts, entry, entryText).length === 0) {
+  if (options.testKit === undefined && !needsCompiler(entry, entryText) && specifiersOf(ts, entry, entryText).length === 0) {
     const parsed = ts.transpileModule(entryText, {
       fileName: entry,
       reportDiagnostics: true,
@@ -497,6 +502,7 @@ export async function compileModModule(options: ModCompileOptions): Promise<ModC
   const modules = new Map<string, GraphModule>()
   const order: string[] = []
   let usesShim = false
+  let usesKit = false
   const queue = [entry]
   while (queue.length > 0) {
     const path = queue.shift()!
@@ -512,7 +518,12 @@ export async function compileModModule(options: ModCompileOptions): Promise<ModC
         module.links.set(specifier, MOD_API_SPECIFIER)
         continue
       }
-      if (specifier === `${MOD_API_SPECIFIER}/testing`) {
+      if (specifier === MOD_TEST_KIT_SPECIFIER && options.testKit !== undefined) {
+        usesKit = true
+        module.links.set(specifier, MOD_TEST_KIT_SPECIFIER)
+        continue
+      }
+      if (specifier === MOD_TEST_KIT_SPECIFIER) {
         throw new ModCompileError(
           `"${specifier}" is the plugin test kit, not a module a hooks module loads`,
           { file: path, line },
@@ -600,10 +611,20 @@ export async function compileModModule(options: ModCompileOptions): Promise<ModC
     lines.push('};')
   }
   if (usesShim) define(MOD_API_SPECIFIER, MOD_API_RUNTIME_SOURCE, new Map())
+  if (options.testKit !== undefined) {
+    if (!usesKit) {
+      throw new ModCompileError(`a test file imports "${MOD_TEST_KIT_SPECIFIER}"`, { file: entry })
+    }
+    define(MOD_TEST_KIT_SPECIFIER, options.testKit, new Map())
+  }
   for (const path of order) define(path, compiled.get(path)!, modules.get(path)!.links)
   lines.push(`const __entry = __load(${JSON.stringify(entry)});`)
-  lines.push('export const register = __entry.register;')
-  lines.push('export default __entry.default;')
+  if (options.testKit !== undefined) {
+    lines.push(`export const register = __load(${JSON.stringify(MOD_TEST_KIT_SPECIFIER)}).__register;`)
+  } else {
+    lines.push('export const register = __entry.register;')
+    lines.push('export default __entry.default;')
+  }
   const source = `${lines.join('\n')}\n`
 
   const lineMap: ModLineMap = {

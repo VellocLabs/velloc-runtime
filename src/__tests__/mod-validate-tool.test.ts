@@ -56,7 +56,7 @@ const call = async (context: ToolCallContext): Promise<ModValidateReport> => {
 describe('ModValidate tool', () => {
   it('is a bundled tool of the mods group, read-only', () => {
     expect(getToolsForPreset('nexus')).toContain(MOD_VALIDATE_TOOL_NAME)
-    expect(TOOL_GROUPS.mods).toEqual([MOD_VALIDATE_TOOL_NAME])
+    expect(TOOL_GROUPS.mods).toContain(MOD_VALIDATE_TOOL_NAME)
     expect(ModValidateTool.readsOnly({ folder: 'x' })).toBe(true)
   })
 

@@ -2726,7 +2726,7 @@ export const de: Messages = {
   'slash.builtin.exit-plan':
     'Planungsmodus verlassen (optional: /exit-plan <plan text>)',
   'slash.builtin.plugins':
-    'Plugins verwalten: list, enable/disable/update/uninstall <name>, install <git-url>, validate <folder>',
+    'Plugins verwalten: list, enable/disable/update/uninstall <name>, install <git-url>, validate <folder>, test <folder>',
   'slash.builtin.plugin':
     'Plugin-Verwaltung über den Marktplatz: list, install/uninstall/enable/disable <name>@<marketplace>',
   'slash.builtin.marketplace':
@@ -3049,6 +3049,13 @@ export const de: Messages = {
   'slash.out.modValidate.finding.tooManyModules': 'mehr als {limit} Module: Nur die ersten {limit} werden geprüft',
   'slash.out.modValidate.finding.unreadable': 'konnte nicht gelesen werden ({error})',
   'slash.out.modValidate.finding.unsupportedCall': 'es ruft {calls} auf, was diese Engine nicht implementiert',
+  'slash.out.modTest.usage': 'Die Tests eines Plugin-Ordners ausführen: /plugins test <folder>',
+  'slash.out.modTest.title': 'Tests von {folder}',
+  'slash.out.modTest.noFiles': 'Keine Testdateien (*.test.ts, *.test.js, …) in diesem Ordner.',
+  'slash.out.modTest.fileError': 'Nicht ausgeführt: {error}',
+  'slash.out.modTest.passed': 'Bestanden: {passed} Tests.',
+  'slash.out.modTest.failed': 'Nicht bestanden: {failed} fehlgeschlagen, {passed} bestanden.',
+  'slash.out.modTest.couldNotRun': 'Die Tests konnten nicht ausgeführt werden: {error}',
 
   // ── Slash-Befehle — /plugin, /marketplace (Marktplatz-Pipeline) ────────
   // Befehlssyntax-Zeilen (ein bloßes `/plugin <subcommand> [args]` oder ein

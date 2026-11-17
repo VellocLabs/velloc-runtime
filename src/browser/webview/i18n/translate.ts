@@ -62,7 +62,7 @@ export const BOOTSTRAP_MESSAGES: Partial<Record<MessageKey, string>> = {
     'Enter plan mode — read/search only, design before coding',
   'slash.builtin.exit-plan': 'Exit plan mode (optional: /exit-plan <plan text>)',
   'slash.builtin.plugins':
-    'Manage plugins: list, enable/disable/update/uninstall <name>, install <git-url>, validate <folder>',
+    'Manage plugins: list, enable/disable/update/uninstall <name>, install <git-url>, validate <folder>, test <folder>',
   'slash.builtin.plugin':
     'Marketplace plugin management: list, install/uninstall/enable/disable <name>@<marketplace>',
   'slash.builtin.marketplace':
@@ -370,6 +370,13 @@ export const BOOTSTRAP_MESSAGES: Partial<Record<MessageKey, string>> = {
   'slash.out.modValidate.finding.tooManyModules': 'more than {limit} modules: only the first {limit} are checked',
   'slash.out.modValidate.finding.unreadable': 'could not be read ({error})',
   'slash.out.modValidate.finding.unsupportedCall': 'it calls {calls}, which this engine does not implement',
+  'slash.out.modTest.usage': 'Run the tests of a plugin folder: /plugins test <folder>',
+  'slash.out.modTest.title': 'Tests of {folder}',
+  'slash.out.modTest.noFiles': 'No test files (*.test.ts, *.test.js, …) in this folder.',
+  'slash.out.modTest.fileError': 'It did not run: {error}',
+  'slash.out.modTest.passed': 'Passed: {passed} tests.',
+  'slash.out.modTest.failed': 'Not passed: {failed} failed, {passed} passed.',
+  'slash.out.modTest.couldNotRun': 'The tests could not run: {error}',
   'slash.out.plugin.usage.list':
     '  list                                show installed plugins',
   'slash.out.plugin.usage.install':

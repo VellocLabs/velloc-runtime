@@ -2618,7 +2618,7 @@ export const zh: Messages = {
   'slash.builtin.plan': '进入计划模式 —— 只读/搜索，先设计再编码',
   'slash.builtin.exit-plan': '退出计划模式（可选：/exit-plan <plan text>）',
   'slash.builtin.plugins':
-    '管理插件：list、enable/disable/update/uninstall <name>、install <git-url>、validate <folder>',
+    '管理插件：list、enable/disable/update/uninstall <name>、install <git-url>、validate <folder>、test <folder>',
   'slash.builtin.plugin':
     '市场插件管理：list、install/uninstall/enable/disable <name>@<marketplace>',
   'slash.builtin.marketplace':
@@ -2925,6 +2925,13 @@ export const zh: Messages = {
   'slash.out.modValidate.finding.tooManyModules': '模块超过 {limit} 个：只检查前 {limit} 个',
   'slash.out.modValidate.finding.unreadable': '无法读取（{error}）',
   'slash.out.modValidate.finding.unsupportedCall': '它调用了 {calls}，此引擎未实现',
+  'slash.out.modTest.usage': '运行插件文件夹里的测试：/plugins test <folder>',
+  'slash.out.modTest.title': '{folder} 的测试',
+  'slash.out.modTest.noFiles': '这个文件夹里没有测试文件（*.test.ts、*.test.js 等）。',
+  'slash.out.modTest.fileError': '没有运行：{error}',
+  'slash.out.modTest.passed': '通过：{passed} 个测试。',
+  'slash.out.modTest.failed': '未通过：{failed} 个失败，{passed} 个通过。',
+  'slash.out.modTest.couldNotRun': '无法运行测试：{error}',
 
   // ── 斜杠命令 —— /plugin、/marketplace（市场安装流程） ──────────────────
   // 命令语法行（裸露的 `/plugin <subcommand> [args]` 或示例调用）属于协议，

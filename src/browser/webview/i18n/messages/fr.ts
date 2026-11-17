@@ -2735,7 +2735,7 @@ export const fr: Messages = {
   'slash.builtin.exit-plan':
     'Quitter le mode planification (facultatif : /exit-plan <plan text>)',
   'slash.builtin.plugins':
-    'Gérer les extensions : list, enable/disable/update/uninstall <name>, install <git-url>, validate <folder>',
+    'Gérer les extensions : list, enable/disable/update/uninstall <name>, install <git-url>, validate <folder>, test <folder>',
   'slash.builtin.plugin':
     'Gestion des extensions de la place de marché : list, install/uninstall/enable/disable <name>@<marketplace>',
   'slash.builtin.marketplace':
@@ -3060,6 +3060,13 @@ export const fr: Messages = {
   'slash.out.modValidate.finding.tooManyModules': 'plus de {limit} modules : seuls les {limit} premiers sont vérifiés',
   'slash.out.modValidate.finding.unreadable': 'lecture impossible ({error})',
   'slash.out.modValidate.finding.unsupportedCall': 'il appelle {calls}, que ce moteur n’implémente pas',
+  'slash.out.modTest.usage': 'Lancer les tests du dossier d’une extension : /plugins test <folder>',
+  'slash.out.modTest.title': 'Tests de {folder}',
+  'slash.out.modTest.noFiles': 'Aucun fichier de test (*.test.ts, *.test.js, …) dans ce dossier.',
+  'slash.out.modTest.fileError': 'Non exécuté : {error}',
+  'slash.out.modTest.passed': 'Réussi : {passed} tests.',
+  'slash.out.modTest.failed': 'Échec : {failed} en échec, {passed} réussis.',
+  'slash.out.modTest.couldNotRun': 'Les tests n’ont pas pu être lancés : {error}',
 
   // ── Commandes slash — /plugin, /marketplace (pipeline de place de marché)
   // Les lignes de syntaxe de commande (un `/plugin <subcommand> [args]` brut

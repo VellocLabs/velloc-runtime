@@ -54,6 +54,8 @@ import { traceLine } from '../utils/debugLog'
 import { fsForContext } from '../utils/fs/runtimeFs'
 import { validateFolderForSession } from '../toolkit/builtin/modValidate'
 import { modValidateReportParts } from './modValidateCommand'
+import { runFolderTestsForSession } from '../toolkit/builtin/modTest'
+import { modTestReportParts } from './modTestCommand'
 import { proposeSessionTitle } from '../sessions/sessionTitles'
 import {
   getConditionalSkills,
@@ -290,6 +292,22 @@ export async function dispatchCommandInput(
           return reply(modValidateReportParts(await validateFolderForSession(name, params.context, 'any')))
         } catch (error) {
           return reply([key('slash.out.modValidate.couldNotRun', { error: error instanceof Error ? error.message : String(error) })])
+        }
+      }
+
+      // `/plugins test <folder>` — the folder's own tests, each file in a mod
+      // worker against the kit's mock `$`; reads as the session may (F-25).
+      if (action === 'test') {
+        const reply = (parts: SystemMessagePart[]): ProcessUserInputResult => ({
+          messages: [createLocalizedSystemMessage(options.runtimeConfig, parts)],
+          shouldQuery: false,
+          resultText: rawInput,
+        })
+        if (!name) return reply([key('slash.out.modTest.usage')])
+        try {
+          return reply(modTestReportParts(await runFolderTestsForSession(name, params.context, true)))
+        } catch (error) {
+          return reply([key('slash.out.modTest.couldNotRun', { error: error instanceof Error ? error.message : String(error) })])
         }
       }
 

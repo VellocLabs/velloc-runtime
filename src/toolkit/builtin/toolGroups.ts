@@ -83,8 +83,8 @@ export const TOOL_GROUPS = {
   ],
   /** Misc control. */
   misc: ['Sleep'],
-  /** Checks of a mod folder the agent writes (F-25). */
-  mods: ['ModValidate'],
+  /** Checks and tests of a mod folder the agent writes (F-25). */
+  mods: ['ModValidate', 'ModTest'],
 } as const satisfies Record<string, readonly string[]>
 
 /**
