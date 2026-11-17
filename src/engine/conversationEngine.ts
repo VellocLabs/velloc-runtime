@@ -143,6 +143,11 @@ export class ConversationEngine {
     await runNotificationHooks(notification, this.ledger.callContext())
   }
 
+  /** The tools the session offers now, built-in and MCP alike. */
+  toolContracts(): readonly ToolContract[] {
+    return this.ledger.config.tools
+  }
+
   /** Swaps the tools `drop` matches for `add`; every other tool, an
    *  extension's included, stays. Returns the list now in force. */
   replaceTools(drop: (tool: ToolContract) => boolean, add: readonly ToolContract[]): readonly ToolContract[] {

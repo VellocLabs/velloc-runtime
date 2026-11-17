@@ -8,6 +8,7 @@
     "build:versioned": "node scripts/build_versioned.mjs",
     "pack:artifact": "node scripts/pack_artifact.mjs",
     "catalog:snapshot": "tsx scripts/gen_catalog_snapshot.ts",
+    "mods:api-shapes": "tsx scripts/gen_mod_api_shapes.ts",
     "version:bump": "node scripts/bump_interface_version.mjs",
     "preview": "vite preview",
     "typecheck": "node --max-old-space-size=6144 ./node_modules/typescript/bin/tsc -p tsconfig.json",

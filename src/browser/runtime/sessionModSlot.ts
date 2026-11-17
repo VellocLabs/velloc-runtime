@@ -10,6 +10,7 @@ import type { PluginProviderKeysMap } from '../../pluginHost/pluginMcpUserConfig
 import { isModSlot, selectModModules } from '../../mods/modSlot'
 import { createModIdleUnload, type ModIdleUnload } from '../../mods/modIdleUnload'
 import { createDevModsFolder, type DevModsFolder } from '../../mods/devModsFolder'
+import { writeDevModTypes } from '../../mods/devModTypes'
 import { assemblePluginAt } from '../../pluginHost/loadPlugins'
 import { RUNTIME_DIR_NAME } from '../../branding/runtimeDir'
 import { joinRuntimePath } from '../../utils/runtimePaths'
@@ -300,6 +301,10 @@ export async function openSessionModSlot(input: SessionModSlotInput) {
   if (isModSlot(modSlotFacts) && !isHeadlessSession) {
     try {
       const folder = joinRuntimePath(settingsHome(), RUNTIME_DIR_NAME, 'dev-mods', resolvedSessionId)
+      const reportDevMods = (line: string): void => {
+        traceLine(`[mods] ${line}`, { level: 'warn' })
+        console.warn(`[mods] ${line}`)
+      }
       devMods = createDevModsFolder({
         folder,
         readdir: path => installedFs.readdir(path),
@@ -315,10 +320,16 @@ export async function openSessionModSlot(input: SessionModSlotInput) {
         ask: plugins => openDevModsAsk(resolvedSessionId, plugins, options.runtimeScopeSignal),
         notifyOn: plugins => showDevModsNotice(resolvedSessionId, plugins, options.runtimeScopeSignal),
         onPluginsChanged: () => reconcileMods(modPlugins),
-        report: line => {
-          traceLine(`[mods] ${line}`, { level: 'warn' })
-          console.warn(`[mods] ${line}`)
-        },
+        onLoaded: plugins =>
+          writeDevModTypes({
+            fs: installedFs,
+            folder,
+            plugins,
+            tools: engineForMods?.toolContracts() ?? [],
+            join: (base, ...segments) => joinRuntimePath(base, ...segments),
+            report: reportDevMods,
+          }),
+        report: reportDevMods,
       })
     } catch (e) {
       console.warn(`[mods] dev mods folder skipped: ${e instanceof Error ? e.message : String(e)}`)

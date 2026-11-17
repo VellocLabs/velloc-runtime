@@ -24,6 +24,7 @@ function folderWorld(
     answer?: DevModsAnswer
     installed?: string[]
     changed?: () => Promise<void>
+    loaded?: (plugins: readonly ActivePlugin[]) => Promise<void>
   } = {},
 ) {
   /** folder name → manifest mtime (absent: no manifest). */
@@ -63,6 +64,7 @@ function folderWorld(
     },
     notifyOn: plugins => notified.push([...plugins]),
     onPluginsChanged: changed,
+    ...(options.loaded ? { onLoaded: options.loaded } : {}),
     report: line => reports.push(line),
   }
   const folder = createDevModsFolder(opts)
@@ -304,5 +306,29 @@ describe('the dev mods question on mods/ui/<sessionId>', () => {
     controller.abort()
     await expect(asking).resolves.toBe('dismissed')
     expect(modSlotUiState('dev-s3').devModsAsk).toBeUndefined()
+  })
+})
+
+describe('the dev mods folder hands its loaded plugins on', () => {
+  it('after each load, not when nothing changed; a failure is a report line', async () => {
+    const seen: string[][] = []
+    let fail = false
+    const w = folderWorld({
+      mode: 'bypassPermissions',
+      loaded: async plugins => {
+        if (fail) throw new Error('disk full')
+        seen.push(plugins.map(p => p.path))
+      },
+    })
+    w.manifests.set('panel', 1)
+    await w.folder.afterTurn()
+    expect(seen).toEqual([['/home/.velloc/dev-mods/s1/panel']])
+    await w.folder.afterTurn()
+    expect(seen).toHaveLength(1)
+    w.manifests.set('panel', 2)
+    fail = true
+    await w.folder.afterTurn()
+    expect(w.reports).toContain('dev mods: disk full')
+    expect(w.folder.plugins().map(p => p.name)).toEqual(['panel-mod'])
   })
 })

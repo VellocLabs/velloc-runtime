@@ -6,7 +6,6 @@ import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 
-// @ts-expect-error — plain .mjs build script, no types
 import { isMainModule } from '../../scripts/lib/isMainModule.mjs'
 
 /**

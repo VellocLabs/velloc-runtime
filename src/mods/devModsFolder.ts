@@ -37,6 +37,8 @@ export type DevModsFolderOptions = {
   notifyOn?(pluginNames: readonly string[]): void
   /** The folder's plugin set changed while on: reconcile the session's mods. */
   onPluginsChanged(): Promise<void>
+  /** The folder's plugins were (re)loaded: write what sits beside them. */
+  onLoaded?(plugins: readonly ActivePlugin[]): Promise<void>
   onStateChanged?(state: DevModsState): void
   report(line: string): void
 }
@@ -118,6 +120,9 @@ export function createDevModsFolder(options: DevModsFolderOptions): DevModsFolde
     loaded = plugins
     loadedKey = key
     await options.onPluginsChanged()
+    await options.onLoaded?.(plugins).catch(error => {
+      options.report(`dev mods: ${error instanceof Error ? error.message : String(error)}`)
+    })
     if (!onUnasked) return
     const fresh = plugins.map(plugin => plugin.name).filter(name => !announced.has(name))
     if (fresh.length === 0) return
