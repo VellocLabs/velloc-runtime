@@ -16,6 +16,7 @@ import {
 import { codeSourceOf } from './codeSource'
 import { DIRECTORY_CATALOG_KEY, readDirectoryListing, updateDirectoryPlugins } from './directoryListings'
 import {
+  ensureMarketplaceRepo,
   findCatalogPlugin,
   fetchCatalog,
   loadKnownMarketplaces,
@@ -262,6 +263,7 @@ export async function fetchListingFiles(
   let fetchedSha: string | undefined
   if (entry.source.source === 'local') {
     const localPath = entry.source.path
+    await ensureMarketplaceRepo(ctx, fs, catalogKey, isoNow(), fetchImpl)
     files = await readLocalPluginFiles(ctx, fs, catalogKey, localPath)
     if (files.length === 0) {
       throw new Error(

@@ -43,6 +43,7 @@ import {
 } from '../pluginHost/marketplaces'
 import { getPluginVersionCacheDir, MARKETPLACE_MANIFEST_FILE_NAME, PLUGIN_MANIFEST_DIR_NAME } from '../pluginHost/pluginDirs'
 import { wipeSettingsMemos } from '../settings/settingsStore'
+import { rawHostFromTarballs } from './_helpers/rawHostFromTarballs'
 
 // --- shared helpers from the install-lifecycle tests ---------------------
 
@@ -73,6 +74,10 @@ function makeMemoryFs(initial: Record<string, string | Uint8Array> = {}) {
       )
     }),
     mkdir: vi.fn(async () => {}),
+    rm: vi.fn(async (path: string) => {
+      const base = norm(path)
+      for (const key of [...files.keys()]) if (key === base || key.startsWith(`${base}/`)) files.delete(key)
+    }),
     // Derive listings from the flat file map (keys normalized to `/`). Needed by
     // the local-source install path (readLocalPluginFiles).
     readdir: vi.fn(async (path: string) => {
@@ -352,7 +357,7 @@ describe('handlePluginSlashCommand', () => {
       })
 
       const text = await handlePluginSlashCommand('install cool@my-mkt', {
-        runtimeConfig: RUNTIME, fs, now: nowFn, fetchImpl: stubFetch,
+        runtimeConfig: RUNTIME, fs, now: nowFn, fetchImpl: rawHostFromTarballs(stubFetch),
         homeDir: winHome,
       })
       expect(text).toMatch(/Installed cool@my-mkt \(v7\.7\.7\)/)
@@ -377,7 +382,7 @@ describe('handlePluginSlashCommand', () => {
         new Response('', { status: 404, statusText: 'Not Found' }),
       )
       const text = await handlePluginSlashCommand('install foo@unknown-mkt', {
-        runtimeConfig: RUNTIME, fs, now: nowFn, fetchImpl: stubFetch,
+        runtimeConfig: RUNTIME, fs, now: nowFn, fetchImpl: rawHostFromTarballs(stubFetch),
       })
       expect(text).toMatch(/^Error running \/plugin install/)
     })
@@ -499,7 +504,7 @@ describe('handleMarketplaceSlashCommand', () => {
         new Response(new Uint8Array(marketplaceTar), { status: 200 }),
       )
       const text = await handleMarketplaceSlashCommand('add me/mkt', {
-        runtimeConfig: RUNTIME, fs, now: nowFn, fetchImpl: stubFetch,
+        runtimeConfig: RUNTIME, fs, now: nowFn, fetchImpl: rawHostFromTarballs(stubFetch),
       })
       // Filed under the name the manifest declares, not the repository's basename.
       expect(text).toMatch(/Added marketplace ‘pretty-name’/)
@@ -519,7 +524,7 @@ describe('handleMarketplaceSlashCommand', () => {
       }])
       const stubFetch = vi.fn(async () => new Response(new Uint8Array(marketplaceTar), { status: 200 }))
       const text = await handleMarketplaceSlashCommand('add evil/whatever', {
-        runtimeConfig: RUNTIME, fs, now: nowFn, fetchImpl: stubFetch,
+        runtimeConfig: RUNTIME, fs, now: nowFn, fetchImpl: rawHostFromTarballs(stubFetch),
       })
       expect(text).toBe(
         'Not added: its marketplace.json is named ‘tools’, which another marketplace already uses. Remove ‘tools’ first to add this one.',
@@ -537,7 +542,7 @@ describe('handleMarketplaceSlashCommand', () => {
         new Response('', { status: 404, statusText: 'Not Found' }),
       )
       const text = await handleMarketplaceSlashCommand('add me/badrepo', {
-        runtimeConfig: RUNTIME, fs, now: nowFn, fetchImpl: stubFetch,
+        runtimeConfig: RUNTIME, fs, now: nowFn, fetchImpl: rawHostFromTarballs(stubFetch),
       })
       expect(text).toMatch(/couldn’t load marketplace\.json/)
       // The rolled-back name should NOT appear in a subsequent list.
@@ -596,7 +601,7 @@ describe('handleMarketplaceSlashCommand', () => {
         new Response(new Uint8Array(marketplaceTar), { status: 200 }),
       )
       const text = await handlePluginSlashCommand('marketplace add me/mkt', {
-        runtimeConfig: RUNTIME, fs, now: nowFn, fetchImpl: stubFetch,
+        runtimeConfig: RUNTIME, fs, now: nowFn, fetchImpl: rawHostFromTarballs(stubFetch),
       })
       expect(text).toMatch(/Added marketplace ‘pretty-name’/)
       expect(stubFetch).toHaveBeenCalled()
@@ -660,7 +665,7 @@ describe('handleMarketplaceSlashCommand', () => {
       )
       // Pre-refresh to populate the on-disk manifest.
       await handleMarketplaceSlashCommand('update my-mkt', {
-        runtimeConfig: RUNTIME, fs, now: nowFn, fetchImpl: stubFetch,
+        runtimeConfig: RUNTIME, fs, now: nowFn, fetchImpl: rawHostFromTarballs(stubFetch),
       })
       const text = await handleMarketplaceSlashCommand('info my-mkt', {
         runtimeConfig: RUNTIME, fs, now: nowFn,
@@ -808,7 +813,7 @@ describe('/marketplace add + /plugin install — fork with a reserved basename',
 
     const addText = await handleMarketplaceSlashCommand(
       'add axisrow/claude-plugins-official',
-      { runtimeConfig: RUNTIME, fs, now: nowFn, fetchImpl: stubFetch },
+      { runtimeConfig: RUNTIME, fs, now: nowFn, fetchImpl: rawHostFromTarballs(stubFetch) },
     )
     // No reserved-name rejection; registered under the DECLARED name.
     expect(addText).not.toMatch(/reserved for official/)
@@ -818,7 +823,7 @@ describe('/marketplace add + /plugin install — fork with a reserved basename',
     // The local-source plugin then installs from the cached marketplace repo.
     const installText = await handlePluginSlashCommand(
       'install github@axisrow-plugins',
-      { runtimeConfig: RUNTIME, fs, now: nowFn, fetchImpl: stubFetch },
+      { runtimeConfig: RUNTIME, fs, now: nowFn, fetchImpl: rawHostFromTarballs(stubFetch) },
     )
     expect(installText).toMatch(/Installed github@axisrow-plugins/)
     expect(installText).toMatch(/v0\.1\.0/)
@@ -843,10 +848,10 @@ describe('/plugin install <name> --marketplace <value>', () => {
     ])
     const fetchImpl = vi.fn(async (input: RequestInfo | URL) => {
       const url = typeof input === 'string' ? input : input.toString()
-      if (url.includes('/acme/tools/')) return new Response(new Uint8Array(tar), { status: 200 })
+      if (url.toLowerCase().includes('/acme/tools/')) return new Response(new Uint8Array(tar), { status: 200 })
       throw new Error(`unexpected fetch URL: ${url}`)
     })
-    return fetchImpl
+    return rawHostFromTarballs(fetchImpl)
   }
 
   it('adds an unknown GitHub marketplace under its declared name, then installs', async () => {

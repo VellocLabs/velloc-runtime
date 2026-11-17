@@ -26,6 +26,8 @@ import {
   marketplaceRawBaseUrl,
 } from '../pluginHost/marketplaces'
 import { createPluginUpdateService, startPluginUpdateSchedule } from '../pluginHost/pluginUpdates'
+import { registerMarketplaceSource } from '../pluginHost/marketplaceRegister'
+import { getMarketplaceContentDir, PLUGIN_MANIFEST_DIR_NAME } from '../pluginHost/pluginDirs'
 import {
   PLUGIN_UPDATES_ACTION_SCOPES,
   isPluginUpdatesAutoPayload,
@@ -606,5 +608,57 @@ describe('plugin updates capability', () => {
     })
     await expect(c.ask('check')).rejects.toMatchObject({ code: 'host_unavailable' })
     c.dispose()
+  })
+})
+
+describe('adding a GitHub marketplace', () => {
+  const source = { source: 'github' as const, repo: 'me/mkt' }
+  const contentNames = async (fs: Awaited<ReturnType<typeof rig>>['fs']) =>
+    (await fs.readdir(getMarketplaceContentDir(ctx, 'my-mkt'))).map(entry => entry.name)
+
+  it('reads the manifest alone; the first install of a plugin kept in the repo downloads it once', async () => {
+    const r = await rig([])
+    await r.publish([{ name: 'cool', version: '1.0.0' }, { name: 'other', version: '3.0.0' }])
+
+    const outcome = await registerMarketplaceSource(ctx, r.fs, source, '2026-10-12T00:00:00.000Z', r.fetchImpl)
+
+    expect(outcome).toEqual({ ok: true, name: 'my-mkt', pluginCount: 2 })
+    expect(r.tarballs()).toBe(0)
+    expect(await contentNames(r.fs)).toEqual([PLUGIN_MANIFEST_DIR_NAME])
+
+    await setupPlugin(ctx, r.fs, 'my-mkt', 'cool', { fetchImpl: r.fetchImpl })
+    expect(r.tarballs()).toBe(1)
+    const record = await r.installed()
+    expect(record?.version).toBe('1.0.0')
+    expect(await r.fs.readFile(`${record!.installPath}/skills/hello/SKILL.md`, { encoding: 'utf-8' })).toBe('v1.0.0\n')
+
+    await setupPlugin(ctx, r.fs, 'my-mkt', 'other', { fetchImpl: r.fetchImpl })
+    expect(r.tarballs()).toBe(1)
+  })
+
+  it('re-adding drops the repo downloaded earlier, so the next install brings the files the new manifest lists', async () => {
+    const r = await rig()
+    expect(r.tarballs()).toBe(1)
+    await r.publish([{ name: 'cool', version: '2.0.0' }])
+
+    await registerMarketplaceSource(ctx, r.fs, source, '2026-10-12T00:00:00.000Z', r.fetchImpl)
+    expect(r.tarballs()).toBe(1)
+    expect(await contentNames(r.fs)).toEqual([PLUGIN_MANIFEST_DIR_NAME])
+
+    await setupPlugin(ctx, r.fs, 'my-mkt', 'cool', { fetchImpl: r.fetchImpl })
+    expect(r.tarballs()).toBe(2)
+    const record = await r.installed()
+    expect(record?.version).toBe('2.0.0')
+    expect(await r.fs.readFile(`${record!.installPath}/skills/hello/SKILL.md`, { encoding: 'utf-8' })).toBe('v2.0.0\n')
+  })
+
+  it('a failed manifest read registers nothing and downloads no repo', async () => {
+    const r = await rig([])
+    r.goDown()
+
+    const outcome = await registerMarketplaceSource(ctx, r.fs, { source: 'github', repo: 'me/other' }, '2026-10-12T00:00:00.000Z', r.fetchImpl)
+
+    expect(outcome).toMatchObject({ ok: false, stage: 'fetch' })
+    expect(r.tarballs()).toBe(0)
   })
 })

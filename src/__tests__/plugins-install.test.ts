@@ -14,6 +14,7 @@ import {
   type RuntimeFs,
 } from '../utils/fs/runtimeFs'
 import { loadEnabledPlugins, saveEnabledPlugins } from '../pluginHost/enabledStore'
+import { MARKETPLACE_MANIFEST_REPO_PATH } from '../pluginHost/marketplaces'
 import type { ActivePlugin, PluginScan } from '../pluginHost/pluginModel'
 import { processUserInput } from '../input/submitUserInput'
 
@@ -209,10 +210,10 @@ describe('/marketplace fetch threading (CSP-safe bridge fetch)', () => {
       },
     )
 
-    // The threaded fetch hit codeload; globalThis.fetch was never used.
+    // The threaded fetch read the manifest; globalThis.fetch was never used.
     expect(bridgeFetch).toHaveBeenCalledTimes(1)
     expect(String(bridgeFetch.mock.calls[0]![0])).toContain(
-      'codeload.github.com/me/repo',
+      `raw.githubusercontent.com/me/repo/refs/heads/main/${MARKETPLACE_MANIFEST_REPO_PATH}`,
     )
     expect(globalFetchSpy).not.toHaveBeenCalled()
     // The 404 makes the add itself fail gracefully — we only assert routing.

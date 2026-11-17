@@ -6,6 +6,7 @@
  */
 
 import type { RuntimeFs } from '../utils/fs/runtimeFs'
+import { joinRuntimePath } from '../utils/runtimePaths'
 import { extractGitHubTarball } from './extract'
 import { fetchSourceTarball } from './fetch'
 import { buildInitialOfficialEntries } from './defaultMarketplace'
@@ -502,6 +503,8 @@ export const PLUGIN_MANIFEST_REPO_PATH = `${PLUGIN_MANIFEST_DIR_NAME}/${PLUGIN_M
 /** A marketplace's listing read without downloading its repo. */
 export type RemoteCatalog = {
   marketplace: MarketplaceCatalog
+  /** The manifest text `marketplace` was parsed from. */
+  manifestRaw: string
   /** Text of `relPath` in the same repo at the same ref; null when the host
    *  answers 404 or the path leaves the repo. Throws on a network failure. */
   readText(relPath: string): Promise<string | null>
@@ -548,7 +551,66 @@ export async function fetchRemoteCatalog(
   if (manifestRaw === null) {
     throw new Error(`[marketplaceManager] '${catalogKey}' has no ${MARKETPLACE_MANIFEST_REPO_PATH} at ${base}`)
   }
-  return { marketplace: parseMarketplaceManifest(manifestRaw, catalogKey), readText }
+  return { marketplace: parseMarketplaceManifest(manifestRaw, catalogKey), manifestRaw, readText }
+}
+
+/**
+ * Refreshes a marketplace's listing. A GitHub-hosted marketplace keeps only
+ * its manifest: the cached content is replaced by that one file, and the repo
+ * is downloaded by the first install that copies from it
+ * (`ensureMarketplaceRepo`). Any other source is downloaded whole by
+ * `fetchCatalog`. Bumps `lastUpdated` either way.
+ */
+export async function fetchCatalogListing(
+  ctx: PluginInstallPathContext,
+  fs: RuntimeFs,
+  catalogKey: string,
+  nowIso: string,
+  fetchImpl: typeof fetch = globalThis.fetch.bind(globalThis),
+): Promise<CatalogSnapshot> {
+  const remote = await fetchRemoteCatalog(ctx, fs, catalogKey, nowIso, fetchImpl)
+  if (remote === null) return fetchCatalog(ctx, fs, catalogKey, nowIso, fetchImpl)
+  const cachePath = getMarketplaceContentDir(ctx, catalogKey)
+  // A repo left from an earlier download would no longer match this manifest.
+  await fs.rm(cachePath, { recursive: true, force: true })
+  const writeResult = await writeExtractedFiles(fs, cachePath, [
+    { path: MARKETPLACE_MANIFEST_REPO_PATH, content: new TextEncoder().encode(remote.manifestRaw) },
+  ])
+  if (writeResult.firstFailureIndex !== null) {
+    throw new Error(`[marketplaceManager] could not write ${MARKETPLACE_MANIFEST_REPO_PATH} for '${catalogKey}' under ${cachePath}`)
+  }
+  await updateMarketplaceLastUpdated(ctx, fs, catalogKey, nowIso)
+  return { marketplace: remote.marketplace, cachePath }
+}
+
+/** True when a marketplace's cached content is its manifest and nothing else. */
+async function holdsManifestOnly(ctx: PluginInstallPathContext, fs: RuntimeFs, catalogKey: string): Promise<boolean> {
+  const contentDir = getMarketplaceContentDir(ctx, catalogKey)
+  try {
+    const top = await fs.readdir(contentDir)
+    if (top.length !== 1 || top[0]!.name !== PLUGIN_MANIFEST_DIR_NAME) return false
+    const inner = await fs.readdir(joinRuntimePath(contentDir, PLUGIN_MANIFEST_DIR_NAME))
+    return inner.length === 1 && inner[0]!.name === MARKETPLACE_MANIFEST_FILE_NAME
+  } catch {
+    return false
+  }
+}
+
+/**
+ * Downloads the marketplace repo when its cache holds the manifest alone, so
+ * a plugin kept inside the repo can be copied from it. Returns whether it
+ * downloaded.
+ */
+export async function ensureMarketplaceRepo(
+  ctx: PluginInstallPathContext,
+  fs: RuntimeFs,
+  catalogKey: string,
+  nowIso: string,
+  fetchImpl: typeof fetch = globalThis.fetch.bind(globalThis),
+): Promise<boolean> {
+  if (!(await holdsManifestOnly(ctx, fs, catalogKey))) return false
+  await fetchCatalog(ctx, fs, catalogKey, nowIso, fetchImpl)
+  return true
 }
 
 /** Lower-case hex SHA-256 of `bytes`. */

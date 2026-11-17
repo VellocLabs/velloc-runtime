@@ -6,7 +6,7 @@
  */
 import type { RuntimeFs } from '../utils/fs/runtimeFs'
 import { builtinNameSourceProblem } from './builtinMarketplace'
-import { addMarketplace, fetchCatalog, loadKnownMarketplaces, removeMarketplace } from './marketplaces'
+import { addMarketplace, fetchCatalogListing, loadKnownMarketplaces, removeMarketplace } from './marketplaces'
 import { marketplaceNameProblem, reservedNameSourceProblem } from './marketplaceNaming'
 import { getMarketplaceContentDir, type PluginInstallPathContext } from './pluginDirs'
 import { githubRepoOf, type MarketplaceSourceInput } from './marketplaceSource'
@@ -97,7 +97,7 @@ export async function registerMarketplaceSource(
   }
   let manifest
   try {
-    manifest = (await fetchCatalog(pathCtx, fs, staging, nowIso, fetchImpl)).marketplace
+    manifest = (await fetchCatalogListing(pathCtx, fs, staging, nowIso, fetchImpl)).marketplace
   } catch (error) {
     await dropStaging(pathCtx, fs, staging, nowIso)
     return { ok: false, stage: 'fetch', name: placeholder, error }
@@ -130,7 +130,7 @@ export async function registerMarketplaceSource(
   }
   try {
     await addMarketplace(pathCtx, fs, name, source, nowIso)
-    await fetchCatalog(pathCtx, fs, name, nowIso, fetchImpl)
+    await fetchCatalogListing(pathCtx, fs, name, nowIso, fetchImpl)
   } catch (error) {
     if (created) {
       try {

@@ -23,6 +23,7 @@ import {
 import { __setPluginBlocklistForTests } from '../pluginHost/blocklist'
 import { registerBuiltinMod, unregisterBuiltinMod } from '../mods/builtinMods'
 import { wipeSettingsMemos } from '../settings/settingsStore'
+import { rawHostFromTarballs } from './_helpers/rawHostFromTarballs'
 import { getMarketplaceContentDir, MARKETPLACE_MANIFEST_FILE_NAME, PLUGIN_MANIFEST_DIR_NAME } from '../pluginHost/pluginDirs'
 import { loadDirectoryPlugins } from '../pluginHost/directoryListings'
 
@@ -50,6 +51,9 @@ function makeMemoryFs(initial: Record<string, string | Uint8Array> = {}) {
       )
     }),
     mkdir: vi.fn(async () => {}),
+    rm: vi.fn(async (path: string) => {
+      for (const key of [...files.keys()]) if (key === path || key.startsWith(`${path}/`)) files.delete(key)
+    }),
   }
   return { fs: fs as RuntimeFs, files }
 }
@@ -125,7 +129,7 @@ function makeCtx(opts: {
     homeDir: '/home/user',
     fs: opts.fs,
     now: () => NOW_ISO,
-    fetchImpl: opts.fetchImpl,
+    fetchImpl: opts.fetchImpl && rawHostFromTarballs(opts.fetchImpl),
   }
 }
 
@@ -1027,7 +1031,7 @@ describe('adding a marketplace whose name another source holds', () => {
 
     const outcome = await registerMarketplaceSource(
       pathCtx, fs, { source: 'github', repo: 'Acme/Tools' }, NOW_ISO,
-      vi.fn(async () => new Response(new Uint8Array(tar))),
+      rawHostFromTarballs(vi.fn(async () => new Response(new Uint8Array(tar)))),
     )
 
     expect(outcome).toEqual({ ok: true, name: 'tools', pluginCount: 1 })
