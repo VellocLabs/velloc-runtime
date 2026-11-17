@@ -15,6 +15,7 @@ import { registerModsCapability } from '../browser/runtimeHub/modsCapability'
 import { MODS_ACTION_SCOPES } from '../browser/runtimeProtocol/mods'
 import { isModsAppPagePayload } from '../browser/runtimeProtocol/modApps'
 import { relayAppPagePort, APP_PAGE_PORT_MESSAGE } from '../browser/webview/apps/appPageRelay'
+import { APP_PAGE_CSP, withAppPageCsp } from '../browser/webview/apps/appPageCsp'
 import { openObserverPort, provideObserverPorts, resetObserverPortsForTests } from '../browser/runtimeClient/observerPorts'
 import { read, SRC, staticClosure, stripComments } from './_helpers/staticImportGraph'
 
@@ -186,5 +187,26 @@ describe('the page frame stays out of the static graph', () => {
     const shell = join(SRC, 'browser', 'webview', 'MultiSessionShell.tsx')
     const opener = join(SRC, 'browser', 'runtimeClient', 'observerPorts.ts')
     expect(staticClosure([shell]).has(opener)).toBe(false)
+  })
+})
+
+describe('the page policy', () => {
+  it('refuses network requests and form posts, and allows what a page inlines', () => {
+    const rules = new Map(APP_PAGE_CSP.split('; ').map(rule => [rule.split(' ')[0], rule.split(' ').slice(1)]))
+    expect(rules.get('default-src')).toEqual(["'none'"])
+    expect(rules.has('connect-src')).toBe(false)
+    expect(rules.get('form-action')).toEqual(["'none'"])
+    for (const [directive, sources] of rules) {
+      for (const source of sources) expect(source, directive).toMatch(/^('[a-z-]+'|data:|blob:)$/)
+    }
+  })
+
+  it('goes first in the page, after a leading doctype', () => {
+    const meta = `<meta http-equiv="Content-Security-Policy" content="${APP_PAGE_CSP}">`
+    expect(withAppPageCsp('<p>x</p>')).toBe(`${meta}<p>x</p>`)
+    expect(withAppPageCsp('<!DOCTYPE html><html><head><meta http-equiv="Content-Security-Policy" content="default-src *"></head></html>')).toBe(
+      `<!DOCTYPE html>${meta}<html><head><meta http-equiv="Content-Security-Policy" content="default-src *"></head></html>`,
+    )
+    expect(withAppPageCsp('<p><!doctype html></p>')).toBe(`${meta}<p><!doctype html></p>`)
   })
 })

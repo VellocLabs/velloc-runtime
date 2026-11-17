@@ -109,7 +109,7 @@ export function useAppBoard(
   const app = templateType === undefined ? undefined : (apps ?? []).find(entry => entry.type === templateType)
   const isApp = app !== undefined
   const pageAppId = app?.page ? app.appId : undefined
-  const state = useAppSurface(runtimeConnection, sessionId, isApp)
+  const state = useAppSurface(runtimeConnection, sessionId, isApp && pageAppId === undefined)
   const reload = useCallback(async (): Promise<ModsBuildAppResult | undefined> => {
     if (!runtimeConnection || !sessionId) return undefined
     const connection = await runtimeConnection()

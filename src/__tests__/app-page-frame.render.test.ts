@@ -8,6 +8,7 @@ import { createElement } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, render, screen, waitFor } from '@testing-library/react'
 import { I18nProvider } from '../browser/webview/i18n'
+import { APP_PAGE_CSP } from '../browser/webview/apps/appPageCsp'
 
 const opened: { topics: readonly string[]; port: MessagePort; other: MessagePort }[] = []
 vi.mock('../browser/runtimeClient/observerPorts', () => ({
@@ -45,11 +46,9 @@ describe('AppPageFrame', () => {
       return found!
     })
     expect(frame.getAttribute('sandbox')).toBe('allow-scripts')
-    expect(frame.getAttribute('srcdoc')).toBe('<p>office</p>')
+    expect(frame.getAttribute('srcdoc')).toBe(`<meta http-equiv="Content-Security-Policy" content="${APP_PAGE_CSP}"><p>office</p>`)
     expect(frame.title).toBe('App page')
 
-    frame.dispatchEvent(new Event('load'))
-    frame.dispatchEvent(new Event('load'))
     await waitFor(() => expect(opened).toHaveLength(1))
     expect(opened[0]!.topics).toEqual(['sessions', 'tasks'])
     expect(post).toHaveBeenCalledTimes(1)
@@ -66,7 +65,6 @@ describe('AppPageFrame', () => {
       expect(found).not.toBeNull()
       return found!
     })
-    frame.dispatchEvent(new Event('load'))
     await waitFor(() => expect(opened).toHaveLength(1))
     const runtimeEnd = opened[0]!.other
     const bye = new Promise(resolve => {
@@ -75,6 +73,41 @@ describe('AppPageFrame', () => {
     view.unmount()
     expect(await bye).toEqual({ kind: 'bye', code: 'shutting_down' })
     expect(frame.isConnected).toBe(false)
+  })
+
+  it('ends the connection and shows the failure when the frame loads another document', async () => {
+    const view = show(async () => ({ ok: true, html: '<p/>', topics: ['sessions'] }))
+    const frame = await waitFor(() => {
+      const found = view.container.querySelector('iframe')
+      expect(found).not.toBeNull()
+      return found!
+    })
+    await waitFor(() => expect(opened).toHaveLength(1))
+    const bye = new Promise(resolve => {
+      opened[0]!.other.onmessage = event => resolve(event.data)
+    })
+    frame.dispatchEvent(new Event('load'))
+    expect(await bye).toEqual({ kind: 'bye', code: 'shutting_down' })
+    expect(opened).toHaveLength(1)
+    expect(post).toHaveBeenCalledTimes(1)
+    expect(frame.isConnected).toBe(false)
+    expect((await screen.findByRole('alert')).textContent).toBe('The app page could not be opened.')
+  })
+
+  it('keeps the page when the language changes, renaming only the frame', async () => {
+    const readPage = vi.fn(async () => ({ ok: true, html: '<p/>', topics: ['sessions'] }))
+    const view = show(readPage)
+    const frame = await waitFor(() => {
+      const found = view.container.querySelector('iframe')
+      expect(found).not.toBeNull()
+      return found!
+    })
+    await waitFor(() => expect(opened).toHaveLength(1))
+    view.rerender(createElement(I18nProvider, { locale: 'de' as const }, createElement(AppPageFrame, { readPage: readPage as never })))
+    await waitFor(() => expect(frame.title).toBe('App-Seite'))
+    expect(frame.isConnected).toBe(true)
+    expect(readPage).toHaveBeenCalledTimes(1)
+    expect(opened).toHaveLength(1)
   })
 
   it('shows why there is no page when it cannot be read', async () => {

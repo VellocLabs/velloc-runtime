@@ -5,9 +5,8 @@
  */
 
 import type { RuntimeFs } from '../../utils/fs/runtimeFs'
-import { joinRuntimePath } from '../../utils/runtimePaths'
 import type { ModsAppPageResult } from '../../browser/runtimeProtocol/modApps'
-import { getModUiContributionsHost, type ModUiContributionsHost } from '../ui/contributionsHost'
+import { getModUiContributionsHost, insideRoot, type ModUiContributionsHost } from '../ui/contributionsHost'
 
 /** Security: the only topics a plugin page may be given, whatever its manifest asks. */
 export const APP_PAGE_TOPICS: readonly string[] = ['sessions', 'tasks']
@@ -30,7 +29,7 @@ export async function readAppPage(
   const app = published ? host.appOf(published.type) : undefined
   const page = app?.decl.page
   if (!app || !page || app.root === undefined) return { ok: false, message: `no app "${appId}" is drawn as a page` }
-  const path = joinRuntimePath(app.root, ...page.file.replace(/^\.\//, '').split('/'))
+  const path = insideRoot(app.root, page.file)
   try {
     const stat = await fs.stat(path)
     if (!stat.isFile()) return { ok: false, message: `${page.file} is not a file` }

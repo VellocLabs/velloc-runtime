@@ -68,7 +68,7 @@ function client(rig: ReturnType<typeof makeRig>, options: AttachOptions) {
     send({ kind: 'req', id, route, payload })
     return next(frame => frame.kind === 'res' && frame.id === id)
   }
-  return { hello, request, next, frames }
+  return { hello, request, next, frames, send }
 }
 
 const OFFICE = { delegate: { scope: 'observe', topics: ['sessions', 'tasks'] } } as const
@@ -188,6 +188,19 @@ describe('delegated runtime ports', () => {
     expect(rig.broker.subscribersOf('tasks')).toHaveLength(1)
     const off = await office.request('b', 'topics.unsubscribe', { topics: ['tasks'] })
     expect(off.ok).toBe(true)
+    expect(rig.broker.subscribersOf('tasks')).toHaveLength(0)
+  })
+
+  it('releases the subscriptions of a delegated port that says goodbye', async () => {
+    const rig = makeRig()
+    const office = client(rig, OFFICE)
+    await office.hello()
+    await office.request('a', 'topics.subscribe', { topics: [{ topic: 'sessions' }, { topic: 'tasks' }] })
+    expect(rig.broker.subscribersOf('sessions')).toHaveLength(1)
+    expect(rig.hub.list()).toHaveLength(1)
+    office.send({ kind: 'bye', code: 'shutting_down' })
+    await vi.waitFor(() => expect(rig.hub.list()).toHaveLength(0))
+    expect(rig.broker.subscribersOf('sessions')).toHaveLength(0)
     expect(rig.broker.subscribersOf('tasks')).toHaveLength(0)
   })
 

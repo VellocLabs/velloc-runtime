@@ -83,7 +83,8 @@ const WELCOME_FILE = /^welcome(?:-([A-Za-z]{2,3}(?:[-_][A-Za-z0-9]{2,8})*))?\.md
 
 const isGlobalSource = (source: string): boolean => source.startsWith('user:') || source.startsWith('marketplace:')
 
-const insideRoot = (root: string, relative: string): string =>
+/** A `./`-relative plugin path resolved under the plugin's folder. */
+export const insideRoot = (root: string, relative: string): string =>
   joinRuntimePath(root, ...relative.replace(/^\.\//, '').split('/'))
 
 async function contentHash(text: string): Promise<string> {
