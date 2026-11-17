@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeAll, describe, expect, it } from 'vitest'
 import {
   TeammateNameInUseError,
   setTeammateSpawner,
@@ -380,6 +380,17 @@ describe('SpawnTeammate — schema and validation', () => {
 // ── The spawn itself ───────────────────────────────────────────────────────
 
 describe('SpawnTeammate — spawns a teammate through the spawner leaf', () => {
+  // `Agent`'s inline path imports the fork runner on first use; load it here so
+  // the module transform is not timed as part of a test.
+  beforeAll(async () => {
+    await Promise.all([
+      import('../agents/builtInAgents'),
+      import('../agents/forkedRun'),
+      import('../messages/messageFactories'),
+      import('../utils/extractForkText'),
+    ])
+  }, 60_000)
+
   it('forwards identity, prompt, provider, model and the parent; acks with the session id and the wait hint', async () => {
     const calls = recordSpawns('teammate-lead1-worker-a-1')
     let r: { data?: unknown } = {}
