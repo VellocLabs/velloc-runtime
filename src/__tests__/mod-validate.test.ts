@@ -5,7 +5,7 @@ import { getPluginManifestPath } from '../pluginHost/pluginPaths'
 import { PROVIDER_WIRE_FORMATS } from '../mods/provider/providerManifest'
 import { REFUSING_EVENTS, RAISED_EVENTS } from '../mods/modAdmission'
 import { implementedNouns } from '../mods/modNouns'
-import { validateModFolder, type ModValidateReport } from '../mods/modValidate'
+import { MOD_VALIDATE_LIMITS, validateModFolder, type ModValidateReport } from '../mods/modValidate'
 
 const ROOT = '/work/demo'
 
@@ -266,6 +266,85 @@ describe('validateModFolder — what loads but is reported', () => {
     expect(reads).not.toContain(secret)
     expect(report.ok).toBe(false)
     expect(report.findings.find(f => f.code === 'not-readable')).toMatchObject({ file: secret, message: 'not read: denied by a rule' })
+  })
+})
+
+describe('validateModFolder — the source as the loader reads it', () => {
+  it('a generator hook imported from another file of the module is a generator', async () => {
+    const report = await validate(
+      plugin("import { step } from './step'\nexport function register(on) { on('turn.step', step) }", {
+        [`${ROOT}/hooks/step.ts`]: 'export async function* step($, e, next) { yield* next(e) }',
+      }),
+    )
+    expect(codes(report, 'refused')).toEqual([])
+    expect(report.modules[0]!.hooks[0]!.form).toBe('generator')
+  })
+
+  it('a hook it cannot resolve is a note, never a refusal of its form', async () => {
+    const report = await validate(plugin("export function register(on) { on('turn.step', makeStep()) }\nfunction makeStep() { return null }"))
+    expect(codes(report, 'refused')).toEqual([])
+    expect(codes(report, 'note')).toContain('hook-form-unknown')
+  })
+
+  it('a matcher that is a string is refused, as the loader refuses it', async () => {
+    const report = await validate(plugin("export function register(on) { on('tool.call', 'Bash', async ($, e, next) => next(e)).catch(async () => undefined) }"))
+    expect(codes(report, 'refused')).toEqual(['matcher'])
+  })
+
+  it('an engine.create step that passes next(e) through adds nothing and passes', async () => {
+    const report = await validate(plugin("export function register(on) { on('engine.create', async ($, e, next) => next(e)) }"))
+    expect(report.ok).toBe(true)
+    expect(report.modules[0]!.engineCreate).toEqual([{ file: `${ROOT}/hooks/index.ts`, line: 1, form: 'built', adds: [] }])
+  })
+
+  it('an import the gate refuses is one finding at the import, not a missing file', async () => {
+    const report = await validateModFolder(ROOT, {
+      fs: treeFs(
+        plugin("import { x } from './lib/x'\nexport function register(on) { on('session.start', async ($, e, next) => { x(); return next(e) }) }", {
+          [`${ROOT}/hooks/lib/x.ts`]: 'export const x = () => 1',
+        }),
+      ),
+      gate: async path => {
+        if (path.startsWith(`${ROOT}/hooks/lib/`)) throw new Error('denied by a rule')
+      },
+    })
+    expect(codes(report)).toEqual(['import-not-read'])
+    expect(report.findings[0]).toMatchObject({ level: 'error', file: `${ROOT}/hooks/index.ts` })
+    expect(report.findings[0]!.message).toContain('denied by a rule')
+  })
+
+  it('a file over the size limit is not read', async () => {
+    const fs = treeFs(plugin('export function register(on) {}'))
+    const big = `${ROOT}/hooks/index.ts`
+    const contents: string[] = []
+    const sized = {
+      ...fs,
+      async stat(path: string) {
+        const stat = await fs.stat(path)
+        return path === big ? { ...stat, size: MOD_VALIDATE_LIMITS.fileBytes + 1 } : stat
+      },
+      async readFile(path: string, options?: unknown) {
+        contents.push(path)
+        return fs.readFile(path, options as never)
+      },
+    } as RuntimeFs
+    const report = await validateModFolder(ROOT, { fs: sized, gate: allow })
+    expect(codes(report)).toEqual(['too-large'])
+    expect(contents).not.toContain(big)
+  })
+
+  it('reads each file of the graph once', async () => {
+    const fs = treeFs(plugin("import { x } from './x'\nexport function register(on) { x }", { [`${ROOT}/hooks/x.ts`]: 'export const x = 1' }))
+    const contents: string[] = []
+    const counting = {
+      ...fs,
+      async readFile(path: string, options?: unknown) {
+        contents.push(path)
+        return fs.readFile(path, options as never)
+      },
+    } as RuntimeFs
+    await validateModFolder(ROOT, { fs: counting, gate: allow })
+    expect(contents.filter(path => path === `${ROOT}/hooks/x.ts`)).toHaveLength(1)
   })
 })
 

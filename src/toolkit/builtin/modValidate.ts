@@ -23,7 +23,8 @@ type GateContext = Pick<ToolCallContext, 'options' | 'readAppState'> & Partial<T
  * Security: the read gate for a validation, one path at a time: the session's
  * untrusted-read boundary, then the Read tool's file permission (a deny rule
  * refuses; an ask refuses too unless `askAllowed` — the person ran the
- * command — or the session bypasses permissions). Nothing here prompts.
+ * command, or allowed the folder when the tool asked — or the session bypasses
+ * permissions). Nothing here prompts.
  */
 export function modFolderReadGate(context: GateContext, askAllowed: boolean): (path: string) => Promise<void> {
   return async path => {
@@ -92,7 +93,11 @@ export const ModValidateTool: ToolContract<ModValidateInput, string> = declareTo
     return verdict.behavior === 'allow' ? { ...verdict, updatedInput: input } : verdict
   },
   async call(input: ModValidateInput, context: ToolCallContext) {
-    const report = await validateFolderForSession(input.folder, context, false)
-    return { data: JSON.stringify(report, null, 2) }
+    const folder = resolveRuntimePath(context.options.cwd, input.folder)
+    const rules = context.readAppState?.().permissionRules
+    // Reaching `call` after an ask on the folder means the person allowed it, reads inside included.
+    const asked = rules !== undefined && (await vetFileRead(READ_TOOL_ID, { file_path: folder }, buildFilePermissionContext(context, rules))).behavior === 'ask'
+    const report = await validateFolderForSession(input.folder, context, asked)
+    return { data: JSON.stringify(report, (name, value: unknown) => (name === 'detail' ? undefined : value), 2) }
   },
 })

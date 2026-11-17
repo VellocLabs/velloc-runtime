@@ -39,11 +39,11 @@ function treeFs(reads: string[]): RuntimeFs {
   } as RuntimeFs
 }
 
-function contextWith(deny: string[], reads: string[] = []): ToolCallContext {
+function contextWith(deny: string[], reads: string[] = [], ask: string[] = []): ToolCallContext {
   return {
     options: { cwd: CWD, projectRoot: CWD, sessionId: 'session-1', fsOperations: treeFs(reads) },
     readAppState: () => ({
-      permissionRules: { mode: 'default', ruleLists: { allow: [], deny, ask: [] }, extraWorkspaceRoots: [] },
+      permissionRules: { mode: 'default', ruleLists: { allow: [], deny, ask }, extraWorkspaceRoots: [] },
     }),
   } as unknown as ToolCallContext
 }
@@ -74,6 +74,20 @@ describe('ModValidate tool', () => {
     expect(allowed.behavior).toBe('allow')
   })
 
+  it('an ask on the folder asks, and the allowed call reads the folder', async () => {
+    const context = contextWith([], [], ['Read(demo)'])
+    expect((await ModValidateTool.selfVerdict({ folder: 'demo' }, context)).behavior).toBe('ask')
+    const report = await call(context)
+    expect(report.ok).toBe(true)
+    expect(report.modules).toHaveLength(1)
+  })
+
+  it('answers JSON without the catalog entries of its findings', async () => {
+    const outcome = await ModValidateTool.call({ folder: 'demo' }, contextWith([]), (async () => ({ behavior: 'allow' })) as never, {} as Message)
+    expect(outcome.data).toContain('guard-without-catch')
+    expect(outcome.data).not.toContain('"detail"')
+  })
+
   it('does not read a file a deny rule covers inside the folder', async () => {
     const reads: string[] = []
     const report = await call(contextWith(['Read(demo/hooks/**)'], reads))
@@ -99,7 +113,17 @@ describe('/plugins validate output', () => {
           engineCreate: [],
         },
       ],
-      findings: [{ level: 'refused', code: 'compile', message: 'syntax error', file: 'D:/work/demo/hooks/index.ts', line: 7 }],
+      findings: [
+        { level: 'refused', code: 'compile', message: 'syntax error', file: 'D:/work/demo/hooks/index.ts', line: 7 },
+        {
+          level: 'warning',
+          code: 'guard-without-catch',
+          message: 'in English',
+          detail: { key: 'slash.out.modValidate.finding.guardWithoutCatch', params: { event: 'tool.call' } },
+          file: 'D:/work/demo/hooks/index.ts',
+          line: 3,
+        },
+      ],
     }
     const text = renderPartsEnglish(modValidateReportParts(report))
     expect(text).toContain('### Validation of demo: D:/work/demo')
@@ -107,5 +131,6 @@ describe('/plugins validate output', () => {
     expect(text).toContain('- `tool.call` hooks/index.ts:3 · can refuse the action · has .catch')
     expect(text).toContain('- `$.state.get`')
     expect(text).toContain('- Refused `hooks/index.ts:7`: syntax error')
+    expect(text).toContain('- Warning `hooks/index.ts:3`: its hook on tool.call can refuse an action, and has no .catch')
   })
 })

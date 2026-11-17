@@ -4,7 +4,8 @@
  * module through the compiler and the scan, the registrations against the
  * admission table. It runs nothing of the mod and is not a security boundary.
  * Security: every path is read through `ModValidateDeps.gate` first; a path the
- * gate refuses is not read and is reported. Nothing is written.
+ * gate refuses, or one past `MOD_VALIDATE_LIMITS`, is not read and is reported.
+ * Nothing is written.
  */
 
 import type * as TS from 'typescript'
@@ -28,6 +29,8 @@ import { implementedNouns } from './modNouns'
 import { pluginNounCalls, unsupportedEngineCalls, type ModUses, type ScannedStateName } from './modScan'
 import { asHookRegistrations, readRegistrations, type StaticEngineStep } from './modValidateHooks'
 import { runsOn } from './chainRules'
+import { createTranslate } from '../browser/webview/i18n/translate'
+import type { MessageKey } from '../browser/webview/i18n/messages/en'
 
 /**
  * `refused`: the loader will not load it. `error`: it loads, but fails where
@@ -39,7 +42,11 @@ export type ModValidateLevel = 'refused' | 'error' | 'warning' | 'note'
 export type ModValidateFinding = {
   level: ModValidateLevel
   code: string
+  /** English, for the model. */
   message: string
+  /** The catalog entry `message` renders, when the validator words it; the
+   *  loader's and the compiler's reasons have none. */
+  detail?: { key: MessageKey; params?: Record<string, string | number> }
   file?: string
   line?: number
 }
@@ -82,26 +89,68 @@ export type ModValidateDeps = {
 
 class GateRefusal extends Error {}
 
-/** A read-only view of `fs` whose every read passes `gate` first. */
-function gatedFs(fs: RuntimeFs, gate: (path: string) => Promise<void>, refused: Map<string, string>): RuntimeFs {
+/** Bounds on what one validation reads: past them a path is reported, not read. */
+export const MOD_VALIDATE_LIMITS = Object.freeze({ files: 400, fileBytes: 2 * 1024 * 1024, modules: 64 })
+
+const english = createTranslate('en')
+
+type Said = Pick<ModValidateFinding, 'message' | 'detail'>
+
+/** A finding's text: the English `message` and the catalog entry it renders. */
+function said(key: MessageKey, params?: Record<string, string | number>): Said {
+  return { message: english(key, params), detail: params ? { key, params } : { key } }
+}
+
+/**
+ * A read-only view of `fs`. Security: every read passes `gate` first, and a
+ * file's content is read only within `MOD_VALIDATE_LIMITS`, once. A path not
+ * read lands in `skipped` with the finding that reports it.
+ */
+function gatedFs(fs: RuntimeFs, gate: (path: string) => Promise<void>, skipped: Map<string, ModValidateFinding>): RuntimeFs {
+  let budget = MOD_VALIDATE_LIMITS.files
+  const contents = new Map<string, Promise<unknown>>()
+  const skip = (path: string, text: Said, code: string): never => {
+    skipped.set(path, { level: 'error', code, ...text, file: path })
+    throw new GateRefusal(text.message)
+  }
   const check = async (path: string): Promise<void> => {
     try {
       await gate(path)
     } catch (error) {
-      const reason = error instanceof Error ? error.message : String(error)
-      refused.set(path, reason)
-      throw new GateRefusal(reason)
+      skip(path, said('slash.out.modValidate.finding.notReadable', { reason: errorText(error) }), 'not-readable')
     }
   }
-  const reads = new Set(['readFile', 'readFileBytes', 'readRange', 'stat', 'lstat', 'readdir', 'realpath'])
+  const checkContent = async (path: string): Promise<void> => {
+    await check(path)
+    const { size } = await fs.stat(path)
+    if (size > MOD_VALIDATE_LIMITS.fileBytes) {
+      skip(path, said('slash.out.modValidate.finding.tooLarge', { bytes: size, limit: MOD_VALIDATE_LIMITS.fileBytes }), 'too-large')
+    }
+    if (budget <= 0) skip(path, said('slash.out.modValidate.finding.tooManyFiles', { limit: MOD_VALIDATE_LIMITS.files }), 'too-many-files')
+    budget -= 1
+  }
+  const contentReads = new Set(['readFile', 'readFileBytes', 'readRange'])
+  const reads = new Set(['stat', 'lstat', 'readdir', 'realpath'])
   return new Proxy(fs, {
     get(target, name, receiver) {
       const value = Reflect.get(target, name, receiver) as unknown
       if (typeof value !== 'function' || typeof name !== 'string') return value
+      const apply = (path: string, rest: unknown[]): unknown => (value as (...args: unknown[]) => unknown).apply(target, [path, ...rest])
+      if (contentReads.has(name)) {
+        return (path: string, ...rest: unknown[]) => {
+          const id = `${name}\u0000${path}\u0000${JSON.stringify(rest)}`
+          let read = contents.get(id)
+          if (!read) {
+            read = checkContent(path).then(() => apply(path, rest))
+            contents.set(id, read)
+          }
+          return read
+        }
+      }
       if (reads.has(name)) {
         return async (path: string, ...rest: unknown[]) => {
           await check(path)
-          return (value as (...args: unknown[]) => unknown).apply(target, [path, ...rest])
+          return apply(path, rest)
         }
       }
       if (name === 'cwd') return value.bind(target)
@@ -122,12 +171,10 @@ export async function validateModFolder(folder: string, deps: ModValidateDeps): 
   const root = normalizeRuntimePath(folder)
   const findings: ModValidateFinding[] = []
   const modules: ModValidateModule[] = []
-  const refused = new Map<string, string>()
-  const fs = gatedFs(deps.fs, deps.gate, refused)
+  const skipped = new Map<string, ModValidateFinding>()
+  const fs = gatedFs(deps.fs, deps.gate, skipped)
   const report = (plugin: string | null): ModValidateReport => {
-    for (const [path, reason] of refused) {
-      findings.push({ level: 'error', code: 'not-readable', message: `not read: ${reason}`, file: path })
-    }
+    findings.push(...skipped.values())
     const ok = !findings.some(finding => finding.level === 'refused' || finding.level === 'error')
     return {
       folder: slashed(root),
@@ -147,11 +194,11 @@ export async function validateModFolder(folder: string, deps: ModValidateDeps): 
   try {
     const stat = await fs.stat(root)
     if (!stat.isDirectory()) {
-      findings.push({ level: 'refused', code: 'not-a-folder', message: 'not a folder', file: root })
+      findings.push({ level: 'refused', code: 'not-a-folder', ...said('slash.out.modValidate.finding.notAFolder'), file: root })
       return report(null)
     }
   } catch (error) {
-    if (!(error instanceof GateRefusal)) findings.push({ level: 'refused', code: 'not-a-folder', message: `no folder here (${errorText(error)})`, file: root })
+    if (!(error instanceof GateRefusal)) findings.push({ level: 'refused', code: 'not-a-folder', ...said('slash.out.modValidate.finding.noFolder', { error: errorText(error) }), file: root })
     return report(null)
   }
 
@@ -159,10 +206,10 @@ export async function validateModFolder(folder: string, deps: ModValidateDeps): 
   const { plugin, errors } = await assemblePluginAt(root, `validate:${root}`, true, folderName, fs)
   const manifestPath = getPluginManifestPath(root)
   if (!(await fs.stat(manifestPath).then(() => true, () => false))) {
-    findings.push({ level: 'warning', code: 'no-manifest', message: `no plugin manifest: the plugin is named after its folder ("${folderName}")`, file: manifestPath })
+    findings.push({ level: 'warning', code: 'no-manifest', ...said('slash.out.modValidate.finding.noManifest', { name: folderName }), file: manifestPath })
   }
   for (const issue of errors) {
-    if (refused.size > 0 && issue.type === 'path-not-found' && refused.has(issue.path)) continue
+    if (issue.type === 'path-not-found' && skipped.has(issue.path)) continue
     findings.push({ level: 'refused', code: 'manifest', message: describePluginError(issue) })
   }
   const hookModules = plugin.hookModules ?? []
@@ -171,7 +218,7 @@ export async function validateModFolder(folder: string, deps: ModValidateDeps): 
     findings.push({
       level: 'note',
       code: 'no-modules',
-      message: 'no hooks modules: list them under "modules" in hooks/hooks.json',
+      ...said('slash.out.modValidate.finding.noModules'),
       file: joinRuntimePath(root, 'hooks', 'hooks.json'),
     })
   }
@@ -180,11 +227,20 @@ export async function validateModFolder(folder: string, deps: ModValidateDeps): 
   const loadTs = async (): Promise<typeof TS> => (ts ??= await (deps.loadTypeScript ?? defaultLoadTypeScript)())
   const ownNouns = new Set<string>()
   const nounCalls: Array<{ noun: string; call: string; module: string }> = []
-  for (const [path, kind] of [
+  const listed = [
     ...hookModules.map(path => [path, 'hooks'] as const),
     ...providerModules.map(path => [path, 'provider'] as const),
-  ]) {
-    const checked = await validateModule(path, kind, root, plugin.name, fs, loadTs, findings)
+  ]
+  if (listed.length > MOD_VALIDATE_LIMITS.modules) {
+    findings.push({
+      level: 'error',
+      code: 'too-many-modules',
+      ...said('slash.out.modValidate.finding.tooManyModules', { limit: MOD_VALIDATE_LIMITS.modules }),
+      file: joinRuntimePath(root, 'hooks', 'hooks.json'),
+    })
+  }
+  for (const [path, kind] of listed.slice(0, MOD_VALIDATE_LIMITS.modules)) {
+    const checked = await validateModule(path, kind, root, plugin.name, fs, loadTs, findings, skipped)
     if (!checked) continue
     modules.push(checked.module)
     for (const step of checked.module.engineCreate) for (const noun of step.adds) ownNouns.add(noun)
@@ -195,7 +251,7 @@ export async function validateModFolder(folder: string, deps: ModValidateDeps): 
     findings.push({
       level: 'warning',
       code: 'plugin-noun',
-      message: `$.${call} is a plugin's noun: it works only while a plugin whose engine.create adds $.${noun} is loaded`,
+      ...said('slash.out.modValidate.finding.pluginNoun', { call, noun }),
       file: module,
     })
   }
@@ -210,9 +266,10 @@ async function validateModule(
   fs: RuntimeFs,
   loadTs: () => Promise<typeof TS>,
   findings: ModValidateFinding[],
+  skipped: Map<string, ModValidateFinding>,
 ): Promise<{ module: ModValidateModule; uses: ModUses } | null> {
-  const refuse = (message: string, code: string, where: { file?: string; line?: number } = { file: path }): null => {
-    findings.push({ level: 'refused', code, message, ...where })
+  const refuse = (text: Said, code: string, where: { file?: string; line?: number } = { file: path }): null => {
+    findings.push({ level: 'refused', code, ...text, ...where })
     return null
   }
   let source: string
@@ -220,29 +277,46 @@ async function validateModule(
     source = await fs.readFile(path, { encoding: 'utf-8' })
   } catch (error) {
     if (error instanceof GateRefusal) return null
-    return refuse(`could not be read (${errorText(error)})`, 'unreadable')
+    return refuse(said('slash.out.modValidate.finding.unreadable', { error: errorText(error) }), 'unreadable')
   }
   const refusedSource = refuseModuleSource(path, source, true)
-  if (refusedSource) return refuse(refusedSource, 'source')
+  if (refusedSource) return refuse({ message: refusedSource }, 'source')
   const ts = await loadTs()
+  const before = new Set(skipped.keys())
   let compiled
   try {
     compiled = await compileModModule({ entry: path, root, fs, entrySource: source, loadTypeScript: async () => ts })
   } catch (error) {
     if (error instanceof GateRefusal) return null
     if (error instanceof ModCompileError) {
-      return refuse(error.message, 'compile', {
+      const where = {
         ...(error.file !== undefined ? { file: error.file } : { file: path }),
         ...(error.line !== undefined ? { line: error.line } : {}),
-      })
+      }
+      // The compiler takes a refused candidate for a missing one: report the refusal once, at the import.
+      const unread = [...skipped.keys()].filter(candidate => !before.has(candidate))
+      if (unread.length > 0) {
+        const first = skipped.get(unread[0]!)!
+        for (const candidate of unread) skipped.delete(candidate)
+        const reason = String(first.detail?.params?.reason ?? first.message)
+        findings.push({ level: 'error', code: 'import-not-read', ...said('slash.out.modValidate.finding.importNotRead', { reason }), ...where })
+        return null
+      }
+      return refuse({ message: error.message }, 'compile', where)
     }
-    return refuse(`it did not compile — ${errorText(error)}`, 'compile')
+    return refuse(said('slash.out.modValidate.finding.didNotCompile', { error: errorText(error) }), 'compile')
   }
-  const texts = await Promise.all(compiled.files.map(async file => ({ path: file, text: file === path ? source : await fs.readFile(file, { encoding: 'utf-8' }) })))
+  let texts: Array<{ path: string; text: string }>
+  try {
+    texts = await Promise.all(compiled.files.map(async file => ({ path: file, text: file === path ? source : await fs.readFile(file, { encoding: 'utf-8' }) })))
+  } catch (error) {
+    if (error instanceof GateRefusal) return null
+    return refuse(said('slash.out.modValidate.finding.unreadable', { error: errorText(error) }), 'unreadable')
+  }
   const statics = readRegistrations(ts, texts)
   const uses = compiled.uses
   for (const unread of statics.unread) {
-    findings.push({ level: 'warning', code: 'pattern-not-literal', message: 'its pattern is not a string literal: checked only at load', ...unread })
+    findings.push({ level: 'warning', code: 'pattern-not-literal', ...said('slash.out.modValidate.finding.patternNotLiteral'), ...unread })
   }
 
   const module: ModValidateModule = {
@@ -264,40 +338,41 @@ async function validateModule(
 
   for (const hook of statics.hooks) {
     const at = { file: hook.file, line: hook.line }
-    if (hook.matcherNotObject) findings.push({ level: 'refused', code: 'matcher', message: `on("${hook.pattern}"): the matcher is not an object (a partial of the event's argument)`, ...at })
-    if (hook.hasCatch && hook.pattern === 'engine.create') findings.push({ level: 'refused', code: 'catch', message: 'on("engine.create") takes no .catch', ...at })
-    if (hook.catchFormMismatch) findings.push({ level: 'refused', code: 'catch', message: `on("${hook.pattern}").catch: the handler's form (async generator or not) differs from the hook's`, ...at })
+    if (hook.matcherNotObject) findings.push({ level: 'refused', code: 'matcher', ...said('slash.out.modValidate.finding.matcherNotObject', { event: hook.pattern }), ...at })
+    if (hook.hasCatch && hook.pattern === 'engine.create') findings.push({ level: 'refused', code: 'catch', ...said('slash.out.modValidate.finding.catchOnEngineCreate'), ...at })
+    if (hook.catchFormMismatch) findings.push({ level: 'refused', code: 'catch', ...said('slash.out.modValidate.finding.catchForm', { event: hook.pattern }), ...at })
+    if (hook.formUnknown) findings.push({ level: 'note', code: 'hook-form-unknown', ...said('slash.out.modValidate.finding.hookFormUnknown', { event: hook.pattern }), ...at })
   }
   const registrations = asHookRegistrations(statics.hooks)
   if (kind === 'provider') {
     const reason = refuseProviderRegistrations(registrations) ?? refuseProviderModuleUses(uses)
-    if (reason) refuse(reason, 'admission')
+    if (reason) refuse({ message: reason }, 'admission')
     return { module, uses }
   }
 
   const unsupported = unsupportedEngineCalls(uses, implementedNouns())
   if (unsupported.length > 0) {
-    refuse(`it calls ${unsupported.map(call => `$.${call}`).join(', ')}, which this engine does not implement`, 'unsupported-call')
+    refuse(said('slash.out.modValidate.finding.unsupportedCall', { calls: unsupported.map(call => `$.${call}`).join(', ') }), 'unsupported-call')
   }
   const tentative = registrations.map(hook => hook.pattern).filter(isPluginNounPattern)
   const refusedHooks = refuseRegistrations(registrations, tentative)
-  if (refusedHooks) refuse(refusedHooks, 'unraised-event')
+  if (refusedHooks) refuse({ message: refusedHooks }, 'unraised-event')
   for (const pattern of tentative) {
-    findings.push({ level: 'note', code: 'plugin-noun-event', message: `${pattern} is raised only while a plugin that adds $.${pattern.slice(0, pattern.indexOf('.'))} is loaded`, file: path })
+    findings.push({ level: 'note', code: 'plugin-noun-event', ...said('slash.out.modValidate.finding.pluginNounEvent', { event: pattern, noun: pattern.slice(0, pattern.indexOf('.')) }), file: path })
   }
   if (!refusedHooks) {
     for (const site of new Set(unraisedRenderSites(registrations))) {
-      findings.push({ level: 'warning', code: 'render-site', message: `its hook on ui.render for ${site} never runs: this surface does not draw ${site}`, file: path })
+      findings.push({ level: 'warning', code: 'render-site', ...said('slash.out.modValidate.finding.renderSite', { site }), file: path })
     }
   }
   const proposed = proposedEventsHooked(registrations)
-  if (proposed.length > 0) findings.push({ level: 'note', code: 'proposed-event', message: `it hooks ${proposed.join(', ')}, whose shapes may still change`, file: path })
+  if (proposed.length > 0) findings.push({ level: 'note', code: 'proposed-event', ...said('slash.out.modValidate.finding.proposedEvent', { events: proposed.join(', ') }), file: path })
   for (const hook of module.hooks) {
     if (hook.guards && !hook.hasCatch) {
       findings.push({
         level: 'warning',
         code: 'guard-without-catch',
-        message: `its hook on ${hook.event} can refuse an action, and has no .catch: if its own code fails, the action goes through`,
+        ...said('slash.out.modValidate.finding.guardWithoutCatch', { event: hook.event }),
         file: hook.file,
         line: hook.line,
       })
@@ -306,14 +381,14 @@ async function validateModule(
   for (const step of statics.engineSteps) {
     const at = { file: step.file, line: step.line }
     if (step.form === 'other') {
-      findings.push({ level: 'error', code: 'engine-create-form', message: 'engine.create is read in one form: const built = await next(e); return { ...built, noun: { … } } — this step cannot be checked', ...at })
+      findings.push({ level: 'error', code: 'engine-create-form', ...said('slash.out.modValidate.finding.engineCreateForm'), ...at })
     } else if (step.form === 'none') {
-      findings.push({ level: 'warning', code: 'engine-create-withholds', message: "engine.create returns without next(e)'s result: it withholds every noun beneath", ...at })
+      findings.push({ level: 'warning', code: 'engine-create-withholds', ...said('slash.out.modValidate.finding.engineCreateWithholds'), ...at })
     }
   }
   for (const write of uses.state?.writes ?? []) {
     if (write.plugin === pluginName) continue
-    findings.push({ level: 'error', code: 'state-owner', message: `$.state key "${write.key}" belongs to plugin "${write.plugin}": a write from "${pluginName}" is refused`, file: path })
+    findings.push({ level: 'error', code: 'state-owner', ...said('slash.out.modValidate.finding.stateOwner', { key: write.key, owner: write.plugin, plugin: pluginName }), file: path })
   }
   return { module, uses }
 }

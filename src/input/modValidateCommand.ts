@@ -1,8 +1,8 @@
 /**
  * `/plugins validate <folder>`: the static check of a mod folder, for the person
  * (F-25). The same validator as the `ModValidate` tool; this renders its report as
- * slash-command parts. Event names, calls, paths and the validator's own reasons
- * stay literal.
+ * slash-command parts. Event names, calls and paths stay literal, and so do the
+ * loader's and the compiler's reasons, which carry no catalog entry.
  */
 
 import type { SystemMessagePart } from '../runtime/RuntimeTypes'
@@ -73,7 +73,12 @@ export function modValidateReportParts(report: ModValidateReport): SystemMessage
   parts.push(key('slash.out.modValidate.findings'))
   for (const finding of report.findings) {
     const at = where(finding.file, finding.line)
-    parts.push(text('\n- '), key(LEVEL_KEYS[finding.level]), text(`${at ? ` ${code(at)}` : ''}: ${finding.message}`))
+    parts.push(
+      text('\n- '),
+      key(LEVEL_KEYS[finding.level]),
+      text(`${at ? ` ${code(at)}` : ''}: `),
+      finding.detail ? key(finding.detail.key, finding.detail.params) : text(finding.message),
+    )
   }
   return parts
 }

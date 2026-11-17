@@ -26,7 +26,7 @@ const STATE_HELPERS: Readonly<Record<string, readonly string[]>> = Object.freeze
   update: ['state.get', 'state.set'],
 })
 
-function scriptKindOf(ts: typeof TS, path: string): TS.ScriptKind {
+export function scriptKindOf(ts: typeof TS, path: string): TS.ScriptKind {
   switch (extensionOf(path)) {
     case '.tsx':
       return ts.ScriptKind.TSX

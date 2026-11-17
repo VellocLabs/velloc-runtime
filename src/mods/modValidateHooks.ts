@@ -7,8 +7,8 @@
  */
 
 import type * as TS from 'typescript'
-import type { HookRegistration } from './modTypes'
-import { extensionOf } from './modCompilerSurface'
+import { isStreamingEvent, type HookRegistration } from './modTypes'
+import { scriptKindOf } from './modScan'
 
 /** A matcher the source spells as plain data, or the marker for one it does not. */
 export const MATCHER_NOT_LITERAL: unique symbol = Symbol('matcher-not-literal')
@@ -19,8 +19,10 @@ export type StaticHook = {
   line: number
   /** Absent: no matcher. `MATCHER_NOT_LITERAL`: one the source computes. */
   matcher?: unknown
-  /** The matcher argument is not an object (null, an array, a RegExp). */
+  /** The matcher argument is not an object (null, a primitive, an array, a RegExp). */
   matcherNotObject?: boolean
+  /** The hook is no function of the module's own files: its form is left to the load. */
+  formUnknown?: boolean
   streams: boolean
   hasCatch: boolean
   /** The `.catch` handler's form differs from the hook's. */
@@ -32,7 +34,8 @@ export type StaticEngineStep = {
   file: string
   line: number
   /** `built`: `return { ...built, noun }` over `const built = await next(e)`
-   *  (or `{ ...(await next(e)), noun }`); `none`: returns without `next`'s
+   *  (or `{ ...(await next(e)), noun }`, or `next`'s result as it is, adding
+   *  nothing); `none`: returns without `next`'s
    *  result, withholding everything beneath; `other`: any other shape. */
   form: 'built' | 'none' | 'other'
   adds: string[]
@@ -43,21 +46,6 @@ export type StaticRegistrations = {
   /** `on(...)` calls whose pattern is not a string literal, by place. */
   unread: Array<{ file: string; line: number }>
   engineSteps: StaticEngineStep[]
-}
-
-function scriptKindOf(ts: typeof TS, path: string): TS.ScriptKind {
-  switch (extensionOf(path)) {
-    case '.tsx':
-      return ts.ScriptKind.TSX
-    case '.jsx':
-      return ts.ScriptKind.JSX
-    case '.js':
-    case '.mjs':
-    case '.cjs':
-      return ts.ScriptKind.JS
-    default:
-      return ts.ScriptKind.TS
-  }
 }
 
 const isAsyncGenerator = (ts: typeof TS, fn: TS.Node): boolean =>
@@ -96,12 +84,27 @@ function literalValue(ts: typeof TS, node: TS.Expression): unknown {
  *  does not parse contributes nothing: the compiler reports it. */
 export function readRegistrations(ts: typeof TS, files: ReadonlyArray<{ path: string; text: string }>): StaticRegistrations {
   const out: StaticRegistrations = { hooks: [], unread: [], engineSteps: [] }
+  const parsed: Array<{ path: string; file: TS.SourceFile }> = []
   for (const { path, text } of files) {
-    let file: TS.SourceFile
     try {
-      file = ts.createSourceFile(path, text, ts.ScriptTarget.ES2022, true, scriptKindOf(ts, path))
+      parsed.push({ path, file: ts.createSourceFile(path, text, ts.ScriptTarget.ES2022, true, scriptKindOf(ts, path)) })
     } catch {
       continue
+    }
+  }
+  // An exported name two files share resolves to neither.
+  const exported = new Map<string, TS.Node | null>()
+  for (const { file } of parsed) {
+    for (const [name, fn] of exportedFunctions(ts, file)) exported.set(name, exported.has(name) ? null : fn)
+  }
+  for (const { path, file } of parsed) {
+    const imported = new Map<string, string>()
+    for (const statement of file.statements) {
+      if (!ts.isImportDeclaration(statement) || !ts.isStringLiteral(statement.moduleSpecifier)) continue
+      if (!statement.moduleSpecifier.text.startsWith('.')) continue
+      const named = statement.importClause?.namedBindings
+      if (!named || !ts.isNamedImports(named)) continue
+      for (const element of named.elements) imported.set(element.name.text, (element.propertyName ?? element.name).text)
     }
     const lineOf = (node: TS.Node): number => file.getLineAndCharacterOfPosition(node.getStart(file)).line + 1
     const functions = new Map<string, TS.Node>()
@@ -121,8 +124,13 @@ export function readRegistrations(ts: typeof TS, files: ReadonlyArray<{ path: st
       ts.forEachChild(node, declare)
     }
     declare(file)
-    const resolveFunction = (node: TS.Node | undefined): TS.Node | undefined =>
-      node && ts.isIdentifier(node) ? functions.get(node.text) : node
+    const resolveFunction = (node: TS.Node | undefined): TS.Node | undefined => {
+      if (!node || !ts.isIdentifier(node)) return node
+      const local = functions.get(node.text)
+      if (local) return local
+      const name = imported.get(node.text)
+      return name === undefined ? undefined : (exported.get(name) ?? undefined)
+    }
 
     const visit = (node: TS.Node): void => {
       if (ts.isCallExpression(node) && ts.isIdentifier(node.expression) && node.expression.text === onName) {
@@ -132,11 +140,14 @@ export function readRegistrations(ts: typeof TS, files: ReadonlyArray<{ path: st
         } else {
           const hasMatcher = node.arguments.length >= 3
           const hook = resolveFunction(hasMatcher ? third : second)
-          const streams = hook !== undefined && isAsyncGenerator(ts, hook)
+          const known = hook !== undefined && ts.isFunctionLike(hook)
+          const streams = known ? isAsyncGenerator(ts, hook) : isStreamingEvent(first.text)
           const entry: StaticHook = { pattern: first.text, file: path, line: lineOf(node), streams, hasCatch: false }
+          if (!known) entry.formUnknown = true
           if (hasMatcher && second) {
             const value = literalValue(ts, second)
-            if (value === null || Array.isArray(value) || ts.isRegularExpressionLiteral(second)) entry.matcherNotObject = true
+            const notObject = value !== MATCHER_NOT_LITERAL && (value === null || typeof value !== 'object' || Array.isArray(value))
+            if (notObject || ts.isRegularExpressionLiteral(second)) entry.matcherNotObject = true
             else entry.matcher = value
           }
           const parent = node.parent
@@ -149,7 +160,7 @@ export function readRegistrations(ts: typeof TS, files: ReadonlyArray<{ path: st
           ) {
             entry.hasCatch = true
             const handler = resolveFunction(parent.parent.arguments[0])
-            if (handler && isAsyncGenerator(ts, handler) !== streams) entry.catchFormMismatch = true
+            if (known && handler && ts.isFunctionLike(handler) && isAsyncGenerator(ts, handler) !== streams) entry.catchFormMismatch = true
           }
           out.hooks.push(entry)
           if (first.text === 'engine.create' && hook && ts.isFunctionLike(hook)) {
@@ -198,6 +209,9 @@ function engineStepShape(ts: typeof TS, hook: TS.SignatureDeclaration): { form: 
   if (returned.length !== 1) return { form: 'other', adds: [] }
   let value = returned[0]!
   while (ts.isParenthesizedExpression(value)) value = value.expression
+  const passed = ts.isAwaitExpression(value) ? value.expression : value
+  const callsNext = ts.isCallExpression(passed) && ts.isIdentifier(passed.expression) && passed.expression.text === nextName
+  if (callsNext || (ts.isIdentifier(value) && builtNames.has(value.text))) return { form: 'built', adds: [] }
   if (!ts.isObjectLiteralExpression(value)) return { form: 'other', adds: [] }
   let spreadsBuilt = false
   const adds: string[] = []
@@ -223,6 +237,25 @@ function engineStepShape(ts: typeof TS, hook: TS.SignatureDeclaration): { form: 
     return { form: 'other', adds: [] }
   }
   return { form: spreadsBuilt ? 'built' : 'none', adds }
+}
+
+/** The functions `file` exports by name: declarations and `const` functions. */
+function exportedFunctions(ts: typeof TS, file: TS.SourceFile): Array<[string, TS.Node]> {
+  const out: Array<[string, TS.Node]> = []
+  const exports = (node: TS.Node): boolean =>
+    (ts.canHaveModifiers(node) ? ts.getModifiers(node) : undefined)?.some(modifier => modifier.kind === ts.SyntaxKind.ExportKeyword) ?? false
+  for (const statement of file.statements) {
+    if (!exports(statement)) continue
+    if (ts.isFunctionDeclaration(statement) && statement.name) out.push([statement.name.text, statement])
+    if (ts.isVariableStatement(statement)) {
+      for (const declaration of statement.declarationList.declarations) {
+        if (ts.isIdentifier(declaration.name) && declaration.initializer && ts.isFunctionLike(declaration.initializer)) {
+          out.push([declaration.name.text, declaration.initializer])
+        }
+      }
+    }
+  }
+  return out
 }
 
 /** The registrations as the admission table reads them; patterns only. */
