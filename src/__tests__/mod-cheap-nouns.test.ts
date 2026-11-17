@@ -449,8 +449,8 @@ describe('$.settings.read', () => {
     expect(reports).toEqual([
       'p: {"merged":{"permissions":{"defaultMode":"ask"}},"user":{"permissions":{"defaultMode":"ask"}},"policy":{}}',
     ])
-    // Each read of the user's file also fills the event's layers first.
-    expect(asked).toEqual([{ source: 'user' }, {}, { source: 'user' }, { source: 'user' }, { source: 'policy' }])
+    // No hook selects settings.read: the layers are not filled, one host read per call.
+    expect(asked).toEqual([{}, { source: 'user' }, { source: 'policy' }])
   })
 
   it('a hook reads the layers the answer is made of: the user layer for a merged or user read, none for another source; a call cannot set them, a moved source refuses the read', async () => {

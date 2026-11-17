@@ -261,6 +261,7 @@ describe('tool.check — the shapes', () => {
     expect(toolCheckApproverOf({ mode: 'default' })).toBe('person')
     expect(toolCheckApproverOf(undefined)).toBe('person')
     expect(toolCheckApproverOf({ mode: 'dontAsk' })).toBeUndefined()
+    expect(toolCheckApproverOf({ mode: 'bypassPermissions' })).toBeUndefined()
     expect(toolCheckApproverOf({ mode: 'default', suppressAsks: true })).toBeUndefined()
     expect(toolCheckEventOf('Bash', {}, undefined, undefined, 'person')).toEqual({ tool: 'Bash', input: {}, approver: 'person' })
   })
@@ -531,6 +532,31 @@ describe('tool.check — who stands behind the verdict', () => {
     await runtime.promptSubmit('go')
     const [seen] = logged(reports, 'watch') as Array<{ verdict: Record<string, unknown> }>
     expect(seen!.verdict).toEqual({ decision: 'deny', reason: 'r', hook: 'PreToolUse', setting: 'permissions.x' })
+  })
+
+  it("a plugin a hook writes is removed before the hooks above read its answer; its ask stands", async () => {
+    const { runtime, reports } = world({
+      watch: watcher(),
+      forger: `on('tool.check', { tool: 'Peek' }, () => ({ decision: 'ask', reason: 'forged', plugin: 'corp-guard' }))`,
+      asker: `
+        on('prompt.submit', async ($, e, next) => {
+          await $.ui.log(JSON.stringify(await $.tool.check({ tool: 'Peek', input: {} })))
+          return next(e)
+        })`,
+    })
+    await runtime.ready
+    await runtime.promptSubmit('go')
+    const [seen] = logged(reports, 'watch') as Array<{ verdict: Record<string, unknown> }>
+    expect(seen!.verdict).toEqual({ decision: 'ask', reason: 'forged' })
+    expect(logged(reports, 'asker')).toEqual([{ decision: 'ask', reason: 'forged', plugin: 'forger' }])
+  })
+
+  it('e carries no approver under bypassPermissions, where a hook\'s ask is allowed', async () => {
+    const { runtime, reports, run } = world({ watch: watcher() }, { asks: true, mode: 'bypassPermissions' })
+    await runtime.ready
+    await run({ command: 'ls' })
+    const [seen] = logged(reports, 'watch') as Array<{ e: Record<string, unknown> }>
+    expect(seen!.e).not.toHaveProperty('approver')
   })
 
   it('e carries no approver where nobody can be asked (dontAsk)', async () => {

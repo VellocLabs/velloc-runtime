@@ -651,6 +651,22 @@ describe('a mod’s tool.check decides each path as a Read / Write of it', () =>
     expect(seen[0]).toMatchObject({ tool: 'Read', input: { file_path: '/proj/a.txt' }, core: { decision: 'allow' } })
   })
 
+  it('names who answers the step\'s asks: the person, nobody under dontAsk, bypassPermissions or suppressed asks', async () => {
+    const approverIn = async (mode: string, extra: Record<string, unknown> = {}) => {
+      const ctx = overlayCtx(mode, extra)
+      const { mods, seen } = checkingMods({ decision: 'allow' })
+      ;(ctx.options as unknown as { mods: unknown }).mods = mods
+      statMock.mockResolvedValue(FILE_STAT)
+      readFileBytesMock.mockResolvedValue(new Uint8Array([1]))
+      await handleScriptFsOp(newOverlay(), 'readFile', { path: 'a.txt' }, ctx, invokingRow)
+      return seen[0]
+    }
+    expect(await approverIn('default')).toMatchObject({ approver: 'person' })
+    expect(await approverIn('dontAsk')).not.toHaveProperty('approver')
+    expect(await approverIn('bypassPermissions')).not.toHaveProperty('approver')
+    expect(await approverIn('default', { suppressAsks: true })).not.toHaveProperty('approver')
+  })
+
   it('stat, the internal existence probe, raises nothing', async () => {
     const ctx = overlayCtx()
     const { mods, seen } = checkingMods({ decision: 'deny', reason: 'NO' })

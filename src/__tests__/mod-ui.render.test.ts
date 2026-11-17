@@ -14,6 +14,7 @@ import { FOOTER_BAR_FRAME } from '../components/assistant-ui/footer-bar-frame'
 import { EMPTY_MOD_UI, ModUiContext, type ModUiContextValue } from '../components/assistant-ui/mod-ui-context'
 import { PermissionAskFooterControl } from '../components/assistant-ui/permission-ask-footer-control'
 import { PermissionAskContext } from '../components/assistant-ui/permission-ask-context'
+import { I18nProvider } from '../browser/webview/i18n'
 
 afterEach(() => cleanup())
 
@@ -78,6 +79,9 @@ describe('ModTurnNote', () => {
   it('heads the note with the plugins that wrote it; no heading without them', () => {
     render(withUi({ turnNote: { turnId: 't1', text: 'TL;DR', by: ['tldr', 'suffix'] } }, createElement(ModTurnNote)))
     expect(screen.getByTestId('mod-turn-note-by').textContent).toBe('tldr, suffix')
+    cleanup()
+    render(withUi({ turnNote: { turnId: 't1', text: 'TL;DR', by: ['tldr', 'suffix'] } }, createElement(I18nProvider, { locale: 'fr' }, createElement(ModTurnNote))))
+    expect(screen.getByTestId('mod-turn-note-by').textContent).toBe('tldr et suffix')
     cleanup()
     render(withUi({ turnNote: { turnId: 't1', text: 'TL;DR' } }, createElement(ModTurnNote)))
     expect(screen.queryByTestId('mod-turn-note-by')).toBeNull()

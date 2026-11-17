@@ -8,7 +8,7 @@ import * as React from "react";
 import { useState } from "react";
 import { HelpCircleIcon, PuzzleIcon, XIcon } from "lucide-react";
 import type { ModsDevModsAnswer, ModsDevModsAsk } from "@/browser/runtimeProtocol";
-import { useT } from "@/browser/webview/i18n";
+import { useLocale, useT } from "@/browser/webview/i18n";
 import { cn } from "@/lib/utils";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -237,6 +237,7 @@ export function ModComposerStatus() {
  *  in the transcript, right under the last answer. */
 export function ModTurnNote() {
   const { turnNote } = useModUi();
+  const locale = useLocale();
   if (!turnNote) return null;
   return (
     <div
@@ -245,7 +246,7 @@ export function ModTurnNote() {
     >
       {turnNote.by && turnNote.by.length > 0 ? (
         <div data-testid="mod-turn-note-by" className="min-w-0 truncate text-[11px] font-medium text-muted-foreground">
-          {turnNote.by.join(", ")}
+          {new Intl.ListFormat(locale, { type: "unit", style: "short" }).format(turnNote.by)}
         </div>
       ) : null}
       <div data-testid="mod-turn-note" className="min-w-0 break-words text-xs italic text-muted-foreground">

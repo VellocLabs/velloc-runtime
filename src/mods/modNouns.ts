@@ -341,7 +341,7 @@ export type NounMethod = {
   /** Whether a hook's answer is one the event takes. Default: not undefined. */
   accepts?: (result: unknown) => boolean
   /** Fills the engine's own fields on `e` before any hook sees it
-   *  (`settings.read`'s `layers`). */
+   *  (`settings.read`'s `layers`). Skipped when no hook selects the event. */
   prepare?: (e: unknown, context: NounContext) => Promise<unknown>
   /**
    * The noun's event STREAMS (`process.spawn`): the call is a stream the
@@ -1477,7 +1477,7 @@ export function serveNoun(
       return Promise.reject(error)
     }
   }
-  const prepared = method.prepare
+  const prepared = method.prepare && dispatcher.hasHooksFor(`${call.noun}.${call.method}`)
     ? method.prepare(e, { call, session, report, dispatcher })
     : Promise.resolve(e)
   return prepared.then(prepared => dispatcher

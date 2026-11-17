@@ -397,8 +397,9 @@ export type ToolCheckResult = {
   hook?: string
   /** The option key whose own check asked. Core names none. */
   setting?: string
-  /** The plugin whose hook made this ask; set by the engine, a hook's own
-   *  value is dropped (`toolCheckAskerOf`). */
+  /** The plugin whose hook made this ask; set by the engine on the chain's
+   *  answer (`toolCheckAskerOf`). Security: a hook's own value is removed as
+   *  its answer is taken, before any hook above reads it. */
   plugin?: string
 }
 
@@ -426,11 +427,12 @@ export function toolCheckEventOf(
   }
 }
 
-/** Who answers asks under `rules`: nobody in `dontAsk` (an ask is refused)
- *  or when asks are suppressed (only PermissionRequest hooks decide), else
- *  the person. */
+/** Who answers asks under `rules`: nobody in `dontAsk` (an ask is refused),
+ *  in `bypassPermissions` (an ask other than path safety is allowed) or when
+ *  asks are suppressed (only PermissionRequest hooks decide), else the
+ *  person. */
 export function toolCheckApproverOf(rules: { mode?: string; suppressAsks?: boolean } | undefined): ToolCheckApprover | undefined {
-  if (rules?.mode === 'dontAsk' || rules?.suppressAsks === true) return undefined
+  if (rules?.mode === 'dontAsk' || rules?.mode === 'bypassPermissions' || rules?.suppressAsks === true) return undefined
   return 'person'
 }
 
@@ -467,7 +469,16 @@ export function settledToolCheck(result: ToolCheckResult, entries: readonly Trac
 }
 
 /** Whether a hook's return answers `tool.check`: `{ decision }` one of the
- *  three, `reason` and `rule` strings when present. Else the hook is skipped. */
+ *  three, `reason`, `rule`, `hook` and `setting` strings when present. Else
+ *  the hook is skipped. */
+/** `isToolCheckResult`, removing a hook-written `plugin` from an answer it
+ *  takes. */
+export function takesToolCheckResult(value: unknown): value is ToolCheckResult {
+  if (!isToolCheckResult(value)) return false
+  delete (value as { plugin?: unknown }).plugin
+  return true
+}
+
 export function isToolCheckResult(value: unknown): value is ToolCheckResult {
   if (!isRecord(value)) return false
   if (value.decision !== 'allow' && value.decision !== 'ask' && value.decision !== 'deny') return false

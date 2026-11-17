@@ -83,8 +83,8 @@ import {
   type ToolCallCore,
   type ToolCallEvent,
   type ToolCallSettlement,
-  isToolCheckResult,
   settledToolCheck,
+  takesToolCheckResult,
   type ToolCheckCore,
   type ToolCheckEvent,
   type ToolCheckResult,
@@ -2023,7 +2023,7 @@ export class ModRuntime extends ModUiSurface implements TurnExtensions {
         {
           ...(signal ? { signal } : {}),
           ...(context ? { context } : {}),
-          accepts: isToolCheckResult,
+          accepts: takesToolCheckResult,
           refusal: reason => ({ decision: 'deny', reason }),
           trace: settled => {
             entries = settled

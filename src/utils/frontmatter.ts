@@ -23,7 +23,8 @@ export type HeaderFields = {
 export type SplitMarkdownDoc = {
   frontmatter: HeaderFields
   content: string
-  /** Why the header was left out (`frontmatter` then `{}`): its parse error. */
+  /** Why the header was left out (`frontmatter` then `{}`): its parse error,
+   *  or that it is not a mapping. */
   problem?: string
 }
 
@@ -87,19 +88,16 @@ export function readMarkdownHeader(
 
   let frontmatter: HeaderFields = {}
   let problem: string | undefined
+  const take = (parsed: HeaderFields | null) => {
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) frontmatter = parsed
+    else if (parsed !== null && parsed !== undefined) problem = 'the frontmatter is not a mapping of keys to values'
+  }
   try {
-    const parsed = parseYaml(frontmatterText) as HeaderFields | null
-    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
-      frontmatter = parsed
-    }
+    take(parseYaml(frontmatterText) as HeaderFields | null)
   } catch {
     // Retry after quoting problematic values (e.g. unquoted glob patterns).
     try {
-      const quotedText = quoteRiskyScalars(frontmatterText)
-      const parsed = parseYaml(quotedText) as HeaderFields | null
-      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
-        frontmatter = parsed
-      }
+      take(parseYaml(quoteRiskyScalars(frontmatterText)) as HeaderFields | null)
     } catch (retryError) {
       problem = `the frontmatter is not valid YAML: ${retryError instanceof Error ? retryError.message : String(retryError)}`
       const location = sourcePath ? ` in ${sourcePath}` : ''

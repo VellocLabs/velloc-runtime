@@ -10,7 +10,13 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { declareTool, type ToolContract } from '../toolkit/toolContract'
-import { agentResumeSpawnInput } from '../toolkit/builtin/subAgentControlTools'
+import { AgentResumeTool, agentResumeSpawnInput } from '../toolkit/builtin/subAgentControlTools'
+import { setSubAgentController } from '../team/subAgentController'
+import {
+  NoopPlatformCapabilities,
+  createEmptyAppState,
+  createNoopToolUseContext,
+} from '../runtime/testing/noopAdapters'
 import { engineWorld } from './engine-replay/harness/world'
 import { ModRuntime, type ModModuleRef, type ModWorkerHandle } from '../mods/ModRuntime'
 import { installModWorkerHost } from '../mods/ModWorkerHost'
@@ -182,6 +188,49 @@ describe('agent.spawn — a resume', () => {
       background: true,
     })
     expect(reports.some(line => /rewrote the resume of a-42; a resume runs as recorded/.test(line))).toBe(true)
+  })
+
+  it('AgentResume raises it for a finished sub-agent alone, never for a background shell', async () => {
+    const raised: unknown[] = []
+    const mods = {
+      hasAgentSpawnHooks: () => true,
+      agentSpawn: async (e: unknown) => {
+        raised.push(e)
+        return { deny: 'no more' }
+      },
+    }
+    const snapshots: Record<string, Record<string, unknown>> = {
+      'a-1': { sessionId: 'a-1', status: 'success', description: 'survey', taskType: 'local_agent', output: '', startedAt: 0 },
+      'sh-1': { sessionId: 'sh-1', status: 'success', description: 'npm test', taskType: 'local_bash', output: '', startedAt: 0 },
+    }
+    const ALLOW = async () => ({ behavior: 'allow' as const })
+    const ROW = { type: 'assistant', uuid: 'r-1', message: { role: 'assistant', content: [] } } as never
+    setSubAgentController({
+      getSnapshot: (id: string) => (snapshots[id] ?? null) as never,
+      waitForCompletion: async () => null,
+      stop: () => ({ status: 'not_found' }),
+      resume: () => ({ ok: false, reason: 'not_found' }),
+      list: () => [],
+      acknowledgeResult: () => {},
+    } as never)
+    try {
+      const context = createNoopToolUseContext({
+        tools: [],
+        platformCapabilities: new NoopPlatformCapabilities(),
+        appState: createEmptyAppState(),
+        setAppState: () => {},
+        sessionId: 'parent-1',
+      })
+      ;(context.options as unknown as { mods: unknown }).mods = mods
+      const agent = await AgentResumeTool.call({ task_id: 'a-1', prompt: 'go on' }, context, ALLOW, ROW)
+      expect(agent.data).toBe('Agent could not resume: no more')
+      const shell = await AgentResumeTool.call({ task_id: 'sh-1', prompt: 'go on' }, context, ALLOW, ROW)
+      expect(shell.data).not.toMatch(/could not resume/)
+      expect(raised).toHaveLength(1)
+      expect(raised[0]).toMatchObject({ description: 'survey', resume: { agentId: 'a-1' } })
+    } finally {
+      setSubAgentController(null)
+    }
   })
 
   it('AgentResume raises it before the controller resumes', () => {

@@ -345,7 +345,7 @@ export const AgentResumeTool: ToolContract<AgentResumeInput, string> = declareTo
     const id = (input.task_id ?? '').trim()
     const prompt = (input.prompt ?? '').trim()
     const finished = controller.getSnapshot(id)
-    if (finished && finished.status !== 'running') {
+    if (finished && finished.status !== 'running' && (finished.taskType ?? 'local_agent') === 'local_agent') {
       const settled = await agentSpawnThroughMods(
         context.options.mods,
         agentResumeSpawnInput(finished, prompt, {
