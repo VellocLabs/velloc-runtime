@@ -155,7 +155,7 @@ describe('the sessions summary carries activity and ending', () => {
         ],
       },
     }
-    const seen = sessionsEventFor(narrow, 'session.summary', payload) as { payload: { sessions: unknown[] } }
+    const seen = sessionsEventFor(narrow, 'session.summary', payload, () => new Set()) as { payload: { sessions: unknown[] } }
     expect(seen.payload.sessions).toEqual([payload.payload.sessions[0]])
   })
 })

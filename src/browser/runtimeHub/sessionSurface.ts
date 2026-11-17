@@ -369,7 +369,7 @@ export function sessionsEventFor(
   conn: ConnectionInfo,
   type: string | undefined,
   payload: unknown,
-  cliSessionIds: () => ReadonlySet<string> = () => new Set(),
+  cliSessionIds: () => ReadonlySet<string>,
 ): unknown {
   const visible = sessionsEventInScope(conn, type, payload)
   return visible === undefined || seesCliSessions(conn) ? visible : withoutCliSessions(type, visible, cliSessionIds)
@@ -544,8 +544,20 @@ export function installSessionSurface(
     },
   }
 
-  const cliSessionIds = (): ReadonlySet<string> =>
+  const buildCliSessionIds = (): ReadonlySet<string> =>
     new Set(host.buildSessionInfoList().filter(isCliSessionRow).map(row => row.sessionId))
+  const cliSessionIds = buildCliSessionIds
+  // One published event is projected once per subscriber: build its CLI id set once.
+  const cliIdsByEvent = new WeakMap<object, ReadonlySet<string>>()
+  const cliSessionIdsFor = (payload: unknown) => (): ReadonlySet<string> => {
+    if (!payload || typeof payload !== 'object') return buildCliSessionIds()
+    let ids = cliIdsByEvent.get(payload)
+    if (!ids) {
+      ids = buildCliSessionIds()
+      cliIdsByEvent.set(payload, ids)
+    }
+    return ids
+  }
 
   // Anyone may subscribe to the list and the task events; what each connection
   // SEES of them is cut to its sessions (`sessionsEventFor` / `tasksEventFor`).
@@ -562,7 +574,7 @@ export function installSessionSurface(
       const seen = summary && sessionsEventFor(conn, 'session.summary', { payload: summary }, cliSessionIds)
       if (seen) yield { type: 'session.summary', payload: seen }
     },
-    project: (_id, conn, evt) => sessionsEventFor(conn, evt.type, evt.payload, cliSessionIds),
+    project: (_id, conn, evt) => sessionsEventFor(conn, evt.type, evt.payload, cliSessionIdsFor(evt.payload)),
     onSubscribe: (_id, _conn, first) => {
       if (first) host.subscribeSessionList(port)
     },

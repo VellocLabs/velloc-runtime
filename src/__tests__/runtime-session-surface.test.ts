@@ -532,9 +532,9 @@ describe('session surface over the hub', () => {
       [7, 'worker.error', { payload: { code: 'x', message: 'm' } }],
     ])
     // An event shape the table does not know is withheld, never passed through.
-    expect(sessionsEventFor(narrow, 'session.somethingNew', { payload: { sessionId: 's2' } })).toBeUndefined()
+    expect(sessionsEventFor(narrow, 'session.somethingNew', { payload: { sessionId: 's2' } }, () => new Set())).toBeUndefined()
     const everything = { ...narrow, scope: { mode: 'control' as const, sessions: 'all' as const } }
-    expect(sessionsEventFor(everything, 'session.somethingNew', { payload: { sessionId: 's2' } })).toEqual({ payload: { sessionId: 's2' } })
+    expect(sessionsEventFor(everything, 'session.somethingNew', { payload: { sessionId: 's2' } }, () => new Set())).toEqual({ payload: { sessionId: 's2' } })
 
     // The request form of the list is cut the same way.
     const list = rig.registry.resolve('session', 'list')!
@@ -573,7 +573,7 @@ describe('session surface over the hub', () => {
       ['session.summary', { payload: { sessions: [{ sessionId: 's1' }] } }],
     ])
     // The desktop's own connection sees it as published.
-    expect(sessionsEventFor(full, 'session.updated', { payload: { session: { sessionId: 'c1', templateType: 'cli-codex' } } })).toEqual({
+    expect(sessionsEventFor(full, 'session.updated', { payload: { session: { sessionId: 'c1', templateType: 'cli-codex' } } }, () => new Set())).toEqual({
       payload: { session: { sessionId: 'c1', templateType: 'cli-codex' } },
     })
 
