@@ -14,6 +14,7 @@ import { scanModuleUses, type ModUses } from './modScan'
 
 export { MOD_MODULE_EXTENSIONS, extensionOf, needsCompiler } from './modCompilerSurface'
 import { MOD_MODULE_EXTENSIONS, extensionOf, needsCompiler } from './modCompilerSurface'
+import { sourceLinesOfMappings, sourceLocationOf, type ModLineMap } from './modLineMap'
 
 /** What a resolution tries, in order, for a specifier with no suffix. */
 const RESOLUTION_SUFFIXES: readonly string[] = Object.freeze([
@@ -77,6 +78,9 @@ export type ModCompileGraph = {
   missing: readonly string[]
   /** SHA-256 over the ABI, `compiler`, each file's path and text, and `missing`. */
   digest: string
+  /** The output's lines back to source lines; absent when the output is the
+   *  entry's own text (its lines are the source's). */
+  lines?: ModLineMap
 }
 
 /** An earlier compile of the same entry, as the build store kept it. */
@@ -118,12 +122,23 @@ export type ModCompileResult = ModCompileGraph & {
 }
 
 /** A compile as a loader answers it: the graph nested for the build store. */
-export const builtModuleOf = ({ source, files, uses, compiler, missing, digest }: ModCompileResult) => ({
+export const builtModuleOf = ({ source, files, uses, compiler, missing, digest, lines }: ModCompileResult) => ({
   source,
   files,
   uses,
-  graph: { compiler, missing, digest },
+  graph: { compiler, missing, digest, ...(lines ? { lines } : {}) },
 })
+
+/** The source line of each line of one file's transpiled text. */
+function sourceLinesOfMap(mapText: string | undefined): number[] {
+  if (!mapText) return []
+  try {
+    const mappings = (JSON.parse(mapText) as { mappings?: unknown }).mappings
+    return typeof mappings === 'string' ? sourceLinesOfMappings(mappings) : []
+  } catch {
+    return []
+  }
+}
 
 /** A refusal: `file` and `line` (1-based) where it is known. */
 export class ModCompileError extends Error {
@@ -409,6 +424,7 @@ async function reuseEarlierCompile(
     compiler,
     missing: [...missing],
     digest,
+    ...(previous.lines ? { lines: previous.lines } : {}),
     fromCache: true,
   }
 }
@@ -524,6 +540,7 @@ export async function compileModModule(options: ModCompileOptions): Promise<ModC
 
   // ── compile ──
   const compiled = new Map<string, string>()
+  const sourceLines = new Map<string, number[]>()
   for (const path of order) {
     const result = ts.transpileModule(texts.get(path)!, {
       fileName: path,
@@ -536,13 +553,14 @@ export async function compileModModule(options: ModCompileOptions): Promise<ModC
         jsxFragmentFactory: 'Fragment',
         isolatedModules: true,
         esModuleInterop: false,
-        sourceMap: false,
+        sourceMap: true,
         inlineSourceMap: false,
         removeComments: false,
       },
     })
     refuseSyntaxError(ts, path, result.diagnostics)
-    compiled.set(path, result.outputText)
+    compiled.set(path, result.outputText.replace(/\n\/\/# sourceMappingURL=[^\n]*\n?$/, '\n'))
+    sourceLines.set(path, sourceLinesOfMap(result.sourceMapText))
   }
 
   // ── link ──
@@ -568,7 +586,8 @@ export async function compileModModule(options: ModCompileOptions): Promise<ModC
   const define = (id: string, text: string, links: Map<string, string>): void => {
     lines.push(`__links[${JSON.stringify(id)}] = ${JSON.stringify(Object.fromEntries(links))};`)
     lines.push(`__modules[${JSON.stringify(id)}] = function (exports, require, module) {`)
-    moduleStarts.set(id, lines.length + 1)
+    // An entry may hold many lines (a file's text): count lines, not entries.
+    moduleStarts.set(id, lines.reduce((count, entry) => count + entry.split('\n').length, 0) + 1)
     lines.push(text.replace(/\n$/, ''))
     lines.push('};')
   }
@@ -579,10 +598,21 @@ export async function compileModModule(options: ModCompileOptions): Promise<ModC
   lines.push('export default __entry.default;')
   const source = `${lines.join('\n')}\n`
 
+  const lineMap: ModLineMap = {
+    files: order.map(path => {
+      const count = compiled.get(path)!.replace(/\n$/, '').split('\n').length
+      const lines = (sourceLines.get(path) ?? []).slice(0, count)
+      while (lines.length < count) lines.push(0)
+      return { path, start: moduleStarts.get(path)!, lines }
+    }),
+  }
+
   // ── verify ──
   verifyCompiledModule(ts, source, line => {
-    // The source file a line of the output belongs to. The line within it is
-    // the COMPILED module's: a transpiled file's lines do not match its own.
+    const at = sourceLocationOf(lineMap, line)
+    if (at) return at
+    // A line the map does not know: the file it belongs to, and the line
+    // within the COMPILED file.
     let owner: string | undefined
     let ownerStart = 0
     for (const [id, start] of moduleStarts) {
@@ -598,7 +628,7 @@ export async function compileModModule(options: ModCompileOptions): Promise<ModC
 
   const misses = [...missing]
   const digest = await graphDigest(compiler, order.map(path => [path, texts.get(path)!] as const), misses)
-  return { source, files: order, uses, compiler, missing: misses, digest, fromCache: false }
+  return { source, files: order, uses, compiler, missing: misses, digest, lines: lineMap, fromCache: false }
 }
 
 /**

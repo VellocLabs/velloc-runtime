@@ -386,6 +386,34 @@ export type ModsUiState = {
   /** The notice that the folder turned on without asking, naming each plugin
    *  it loaded; dismissed with `mods.devModsAnswer` `dismissed`. */
   devModsOn?: ModsDevModsAsk
+  /** The session's dev-folder mods' failures not yet handed to the model,
+   *  oldest first; absent when none. */
+  devModFaults?: ModsUiFault[]
+}
+
+/** A dev-folder mod's failure. `reason` is the mod's own text (bounded, one
+ *  line); plugin, kind, event and file:line are the runtime's. */
+export type ModsUiFault = {
+  plugin: string
+  kind: 'hook' | 'load' | 'runtime'
+  event?: string
+  timeout?: true
+  reason: string
+  file?: string
+  line?: number
+}
+
+export function isModsUiFault(value: unknown): value is ModsUiFault {
+  return (
+    isRecord(value) &&
+    typeof value.plugin === 'string' &&
+    (value.kind === 'hook' || value.kind === 'load' || value.kind === 'runtime') &&
+    (value.event === undefined || typeof value.event === 'string') &&
+    (value.timeout === undefined || value.timeout === true) &&
+    typeof value.reason === 'string' &&
+    (value.file === undefined || typeof value.file === 'string') &&
+    (value.line === undefined || typeof value.line === 'number')
+  )
 }
 
 /** The dev mods folder's question: answered by `mods.devModsAnswer`. */
@@ -917,7 +945,8 @@ export function isModsUiState(value: unknown): value is ModsUiState {
     (value.asks === undefined || (Array.isArray(value.asks) && value.asks.every(isModsUiAsk))) &&
     (value.view === undefined || isModsAgentView(value.view)) &&
     (value.devModsAsk === undefined || isModsDevModsAsk(value.devModsAsk)) &&
-    (value.devModsOn === undefined || isModsDevModsAsk(value.devModsOn))
+    (value.devModsOn === undefined || isModsDevModsAsk(value.devModsOn)) &&
+    (value.devModFaults === undefined || (Array.isArray(value.devModFaults) && value.devModFaults.every(isModsUiFault)))
   )
 }
 

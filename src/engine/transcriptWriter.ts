@@ -11,6 +11,7 @@ import {
   saveTranscriptRows,
 } from '../sessions/sessionStore'
 import type { SessionLedger } from './sessionLedger'
+import { isModFaultsRow } from '../mods/modFault'
 
 /** When set, every store is followed by a flush to disk (crash safety at
  *  the cost of a write per row). */
@@ -28,6 +29,12 @@ export class TranscriptWriter {
     if (rows.length === 0 || !mods?.hasSessionAppendHooks?.() || !mods.sessionAppend) return [...rows]
     const out: Message[] = []
     for (const row of rows) {
+      // Security: a dev mod's failure report is the runtime's row; no mod
+      // may rewrite it on its way to the model.
+      if (isModFaultsRow(row)) {
+        out.push(row)
+        continue
+      }
       const kept = (await mods.sessionAppend(row)) as Message
       if (kept !== row) this.keptRows.set(row, kept)
       out.push(kept)

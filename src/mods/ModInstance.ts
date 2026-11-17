@@ -26,6 +26,7 @@ import {
 import type { ModPeer, ModToRuntime, WireError } from './modWire'
 import { partStampsIn, stampRenderRoot } from './modRender'
 import { PausableDeadline } from '../browser/workerKernel/pausableDeadline'
+import { withModFrames } from './modLineMap'
 
 /** One `$.<noun>.<method>(...args)` as the runtime serves it. */
 export type ModCall = {
@@ -668,7 +669,7 @@ export class ModInstance {
       case 'mod.loadError': {
         const pending = this.loading
         this.loading = null
-        pending?.reject(new Error(`${this.options.plugin}: ${msg.message}`))
+        pending?.reject(withModFrames(new Error(`${this.options.plugin}: ${msg.message}`), msg.frames))
         return
       }
       case 'mod.next': {
@@ -926,7 +927,7 @@ export class ModInstance {
         invocation.reject(
           msg.passedNextRejection
             ? (invocation.lastNextError ?? new NextRejectionPassed())
-            : fromWire(msg.name, msg.message),
+            : withModFrames(fromWire(msg.name, msg.message), msg.frames),
         )
         return
       }

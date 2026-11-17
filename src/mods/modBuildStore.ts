@@ -12,10 +12,11 @@ import { MODS_ABI } from './modAdmission'
 import type { ModCompileGraph, ModCompileRecord } from './modCompiler'
 import type { ModModuleRef } from './ModRuntime'
 import type { ModUses } from './modScan'
+import { isModLineMap } from './modLineMap'
 
 /** Raise when the compiler, the linker or the scan changes what it produces:
  *  every record made before is then ignored. */
-export const MOD_BUILD_REVISION = 2
+export const MOD_BUILD_REVISION = 3
 
 export const MOD_BUILD_STAMP = `${MODS_ABI}; build ${MOD_BUILD_REVISION}`
 
@@ -174,7 +175,8 @@ function isGraph(value: unknown): value is ModCompileGraph {
     typeof g.compiler === 'string' &&
     typeof g.digest === 'string' &&
     Array.isArray(g.missing) &&
-    g.missing.every(path => typeof path === 'string')
+    g.missing.every(path => typeof path === 'string') &&
+    (g.lines === undefined || isModLineMap(g.lines))
   )
 }
 
@@ -258,14 +260,15 @@ export function fileModBuildStore(
         compiled: record.compiled,
         files: record.files.map(file => file.path),
         ...(record.uses ? { uses: record.uses } : {}),
+        ...(isGraph(record.graph) && record.graph.lines ? { graph: record.graph } : {}),
       }
     },
 
     async previous(ref) {
       const record = await recordOf(ref)
       if (!record?.uses || !isGraph(record.graph)) return null
-      const { compiler, missing, digest } = record.graph
-      return { compiler, missing, digest, files: record.files.map(file => file.path), source: record.source, uses: record.uses }
+      const { compiler, missing, digest, lines } = record.graph
+      return { compiler, missing, digest, ...(lines ? { lines } : {}), files: record.files.map(file => file.path), source: record.source, uses: record.uses }
     },
 
     async remember(ref, build) {

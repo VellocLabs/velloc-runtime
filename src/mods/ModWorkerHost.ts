@@ -29,6 +29,7 @@ import { MOD_DEFAULT_LOCALE, normalizeModLocale } from './modLocale'
 import { DESKTOP_ELEMENTS, RENDER_SURFACE } from './modRender'
 import { makeInteractHandle, makeProviderNoun } from './provider/nouns/workerProviderNoun'
 import { makeWorkerAppNoun } from './app/workerAppNoun'
+import { moduleFramesOf, type ModFrame } from './modLineMap'
 
 /** What a hooks module exports — `register`, and nothing the loader reads
  *  besides. Its return is dropped, a promise awaited. */
@@ -98,6 +99,12 @@ function moduleDataUrl(source: string): string {
     binary += String.fromCharCode(...bytes.subarray(i, i + CHUNK))
   }
   return `data:text/javascript;base64,${btoa(binary)}`
+}
+
+/** The error's positions in the module, for the wire; nothing when none. */
+function framesField(error: unknown): { frames?: ModFrame[] } {
+  const frames = moduleFramesOf(error instanceof Error ? error.stack : undefined)
+  return frames.length > 0 ? { frames } : {}
 }
 
 const importDataModule = (source: string): Promise<HooksModule> =>
@@ -1350,7 +1357,7 @@ export function installModWorkerHost(
     } catch (error) {
       registering = false
       hooks.clear()
-      post({ type: 'mod.loadError', message: errorMessage(error) })
+      post({ type: 'mod.loadError', message: errorMessage(error), ...framesField(error) })
     }
   }
 
@@ -1408,6 +1415,7 @@ export function installModWorkerHost(
         invocationId: invocation.id,
         name: error instanceof Error && error.name ? error.name : 'Error',
         message: errorMessage(error),
+        ...framesField(error),
         ...(error !== undefined && error === invocation.lastRejection
           ? { passedNextRejection: true }
           : {}),
@@ -1425,6 +1433,7 @@ export function installModWorkerHost(
       invocationId: invocation.id,
       name: error instanceof Error && error.name ? error.name : 'Error',
       message: errorMessage(error),
+      ...framesField(error),
       ...(error !== undefined && error === invocation.lastRejection ? { passedNextRejection: true } : {}),
     })
   }

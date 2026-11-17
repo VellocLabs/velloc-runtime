@@ -9,6 +9,8 @@ import { useT } from "@/browser/webview/i18n";
 import { compactCount } from "@/utils/humanize/compactCount";
 import { ProviderApiErrorCard } from './provider-api-error-card';
 import { useMessageCustomString } from './message-row-shared';
+import { ModFaultLines } from './mod-fault-lines';
+import type { ModsUiFault } from "@/browser/runtimeProtocol";
 import { ReplyRow } from './reply-row';
 import { UserMessage } from './user-message';
 
@@ -135,6 +137,19 @@ const MemorySavedDivider: FC = () => {
   );
 };
 
+// Dev-folder mod failures handed to the model (the `mod_faults` reminder).
+const ModFaultsRow: FC = () => {
+  const custom = useAssistantState((s) => s.message.metadata.custom ?? {}) as {
+    modFaults?: ModsUiFault[];
+    modFaultsOmitted?: number;
+  };
+  return (
+    <div className="py-1">
+      <ModFaultLines faults={custom.modFaults ?? []} omitted={custom.modFaultsOmitted ?? 0} testId="mod-faults-row" />
+    </div>
+  );
+};
+
 // Boot marks for the first and last message routing render; frozen once
 // `firstMessageMountedMs` is set.
 function recordMessageRoutingMark(): void {
@@ -185,6 +200,7 @@ const HistoryRow: FC = () => {
   if (sourceType === "compact_boundary") return <CompactBoundaryDivider />;
   if (sourceType === "provider_api_error") return <ProviderApiErrorCard />;
   if (sourceType === "memory_saved") return <MemorySavedDivider />;
+  if (sourceType === "mod_faults") return <ModFaultsRow />;
   if (role === "user") return <UserMessage />;
   return <ReplyRow />;
 };

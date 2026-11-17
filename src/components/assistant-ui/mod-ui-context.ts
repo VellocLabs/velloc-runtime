@@ -6,6 +6,7 @@ import { createContext, useContext } from 'react'
 import type {
   ModStateName,
   ModsDevModsAnswer,
+  ModsUiFault,
   ModsPageAnswer,
   ModsPageRequest,
   ModsPromptAutocompleteQuery,
@@ -183,6 +184,8 @@ export type ModUiContextValue = {
   /** The folder turned on without asking, with every plugin it loaded;
    *  dismissed through `answerDevMods` with `dismissed`. */
   devModsOn?: { requestId: string; plugins: readonly string[] }
+  /** The session's dev-folder mods' failures not yet handed to the model. */
+  devModFaults?: readonly ModsUiFault[]
   /** Answer it. Absent where the connection may not (`mods.devModsAnswer`
    *  is `control`). */
   answerDevMods?: (requestId: string, answer: ModsDevModsAnswer) => Promise<void>

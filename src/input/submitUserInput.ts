@@ -13,7 +13,7 @@ import type {
   UserInputPipeline,
 } from '../runtime/interfaces/UserInputPipeline'
 import type { RuntimeConfig } from '../runtime/interfaces/RuntimeConfig'
-import type { ContentBlockParam, Message } from '../runtime/RuntimeTypes'
+import type { ContentBlockParam, Message, ModFaultsAttachment } from '../runtime/RuntimeTypes'
 import { BrowserHostBridge } from '../browser/bridge/BrowserHostBridge'
 import { collectPromptAttachments } from '../messages/contextAttachments'
 import { createGeneratedUserMessage, makeContextRow, makeUserRow } from '../messages/messageFactories'
@@ -44,7 +44,11 @@ export type BrowserUserInputPipelineOptions = {
   /** This session's queued child reports as one block, taken once; null
    *  when none (F-36). */
   takeChildReports?: TakeChildReports
+  /** This session's dev-folder mod failures not yet handed on, taken once. */
+  takeModFaults?: TakeModFaults
 }
+
+export type TakeModFaults = () => ModFaultsAttachment | undefined
 
 export type TakeChildReports = (opts: { autoContinuation: boolean }) => Promise<string | null>
 
@@ -84,6 +88,7 @@ export async function processUserInput(
     settingsHomeDir?: string
     marketplaceFetch?: typeof fetch
     takeChildReports?: TakeChildReports
+    takeModFaults?: TakeModFaults
   } = {},
 ): Promise<ProcessUserInputResult> {
   if (options.userInputPipeline) {
@@ -172,6 +177,8 @@ export async function processUserInput(
   if (reports !== null) {
     messages.push(makeContextRow(options.runtimeConfig, { type: 'child_reports', text: reports }))
   }
+  const modFaults = options.takeModFaults?.()
+  if (modFaults) messages.push(makeContextRow(options.runtimeConfig, modFaults))
 
   messages.push(
     makeUserRow(
@@ -202,6 +209,7 @@ export class BrowserUserInputPipeline implements UserInputPipeline {
   private readonly settingsHomeDir?: string
   private readonly marketplaceFetch?: typeof fetch
   private readonly takeChildReports?: TakeChildReports
+  private readonly takeModFaults?: TakeModFaults
 
   constructor(options: BrowserUserInputPipelineOptions) {
     this.hostBridge = options.hostBridge
@@ -212,6 +220,7 @@ export class BrowserUserInputPipeline implements UserInputPipeline {
     this.settingsHomeDir = options.settingsHomeDir
     this.marketplaceFetch = options.marketplaceFetch
     this.takeChildReports = options.takeChildReports
+    this.takeModFaults = options.takeModFaults
   }
 
   /** Refresh the plugin snapshot shown by `/plugins` after a live reload. */
@@ -231,6 +240,7 @@ export class BrowserUserInputPipeline implements UserInputPipeline {
       settingsHomeDir: this.settingsHomeDir,
       marketplaceFetch: this.marketplaceFetch,
       takeChildReports: this.takeChildReports,
+      takeModFaults: this.takeModFaults,
     })
   }
 }

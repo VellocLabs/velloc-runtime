@@ -36,7 +36,7 @@ import type { RuntimeConnection } from '../../runtimeClient/RuntimeConnection'
 import type { ModUiContextValue, ModUiToastRow } from '../../../components/assistant-ui/mod-ui-context'
 import { EMPTY_MOD_UI, staleKeyOf } from '../../../components/assistant-ui/mod-ui-context'
 
-export type ModsUiView = Pick<ModUiContextValue, 'isLoaded' | 'status' | 'notices' | 'toasts' | 'panes' | 'placed' | 'theme' | 'hooked' | 'editHooked' | 'autocompleteHooked' | 'changeHooked' | 'stale' | 'turnNote' | 'asks' | 'view' | 'devModsAsk' | 'devModsOn'>
+export type ModsUiView = Pick<ModUiContextValue, 'isLoaded' | 'status' | 'notices' | 'toasts' | 'panes' | 'placed' | 'theme' | 'hooked' | 'editHooked' | 'autocompleteHooked' | 'changeHooked' | 'stale' | 'turnNote' | 'asks' | 'view' | 'devModsAsk' | 'devModsOn' | 'devModFaults'>
 
 type Listener = (view: ModsUiView) => void
 
@@ -172,7 +172,7 @@ export function holdModsUiView(
         return
       }
       if (!isModsUiState(event.payload)) return
-      const { turnNote: _previousNote, theme: _previousTheme, devModsAsk: _previousDevAsk, devModsOn: _previousDevOn, ...kept } = store.view
+      const { turnNote: _previousNote, theme: _previousTheme, devModsAsk: _previousDevAsk, devModsOn: _previousDevOn, devModFaults: _previousFaults, ...kept } = store.view
       store.view = {
         ...kept,
         isLoaded: true,
@@ -190,6 +190,7 @@ export function holdModsUiView(
         ...(event.payload.view ? { view: event.payload.view } : {}),
         ...(event.payload.devModsAsk ? { devModsAsk: event.payload.devModsAsk } : {}),
         ...(event.payload.devModsOn ? { devModsOn: event.payload.devModsOn } : {}),
+        ...(event.payload.devModFaults ? { devModFaults: event.payload.devModFaults } : {}),
       }
       emit(store)
     })

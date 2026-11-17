@@ -16,6 +16,7 @@ import type {
   TargetTier,
   TraceEntry,
 } from './modTypes'
+import type { ModFrame } from './modLineMap'
 
 /** An error as it crosses the port: enough to rethrow one of the same name. */
 export type WireError = { name: string; message: string }
@@ -188,6 +189,8 @@ export type ModLoadErrorMessage = {
   type: 'mod.loadError'
   generation: number
   message: string
+  /** As on `mod.error`. */
+  frames?: ModFrame[]
 }
 
 /** The hook called `next(e)` — or `next.to(e, tier)` when `tier` is set. On a
@@ -294,6 +297,9 @@ export type ModErrorMessage = {
   invocationId: string
   name: string
   message: string
+  /** Where the error was thrown in the module, innermost first (lines of
+   *  the module the worker ran). */
+  frames?: ModFrame[]
   /** The hook threw exactly what its last `next()` rejected with: it let the
    *  rejection pass, which is not a failure of the hook. The error object
    *  itself does not survive the port, so the worker says so. */

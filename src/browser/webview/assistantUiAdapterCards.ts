@@ -3,6 +3,7 @@ import type { Message } from '../../runtime/RuntimeTypes'
 import { compactCount } from '../../utils/humanize/compactCount'
 import { asDate, backgroundResultKind } from './assistantUiAdapterParts'
 import type { ParsedTeamMessage } from '../../team/parseTeamFrame'
+import { isModsUiFault } from '../runtimeProtocol/mods'
 
 /**
  * Synthetic thread messages with no runtime `Message` behind them, each builder kept beside the
@@ -38,6 +39,26 @@ export function compactBoundaryThreadMessage(message: Message): ThreadMessageLik
     },
   }
 }
+
+/** A `mod_faults` reminder as the transcript shows it: the dev-folder mod
+ *  failures handed to the model, one dim line each (F-25). Null when the row
+ *  is not one. */
+export function modFaultsThreadMessage(message: Message): ThreadMessageLike | null {
+  const attachment = (message as { attachment?: unknown }).attachment
+  if (!isRecord(attachment) || attachment.type !== 'mod_faults') return null
+  const faults = Array.isArray(attachment.faults) ? attachment.faults.filter(isModsUiFault) : []
+  const omitted = typeof attachment.omitted === 'number' ? attachment.omitted : 0
+  return {
+    id: message.uuid ?? 'mod-faults',
+    createdAt: asDate(message.timestamp),
+    role: 'assistant',
+    content: [{ type: 'text', text: faults.map(fault => `${fault.plugin}: ${fault.reason}`).join('\n') }],
+    status: { type: 'complete', reason: 'stop' },
+    metadata: { custom: { sourceType: 'mod_faults', modFaults: faults, modFaultsOmitted: omitted } },
+  }
+}
+
+const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null
 
 export function memorySavedThreadMessage(message: Message): ThreadMessageLike {
   // The system message body is the pre-formatted label ("Saved memory:

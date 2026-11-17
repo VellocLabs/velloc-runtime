@@ -259,8 +259,27 @@ export type ChildReportsAttachment = {
   text: string
 }
 
+/** Failures of the session's dev-folder mods, handed to the model once
+ *  before its next request (F-25). `reason` is the mod's own text: untrusted,
+ *  bounded; every other field is the runtime's. */
+export type ModFaultsAttachment = {
+  type: 'mod_faults'
+  faults: Array<{
+    plugin: string
+    kind: 'hook' | 'load' | 'runtime'
+    event?: string
+    timeout?: true
+    reason: string
+    file?: string
+    line?: number
+  }>
+  /** How many more failures the batch left out. */
+  omitted: number
+}
+
 export type AttachmentPayload =
   | QueuedCommandAttachment
+  | ModFaultsAttachment
   | ChildReportsAttachment
   | BrowserContextAttachment
   | TextFileAttachment

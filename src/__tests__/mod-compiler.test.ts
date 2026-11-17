@@ -303,11 +303,11 @@ describe('compileModModule', () => {
         .rejects.toThrow(/register\.ts:\d+: /)
     })
 
-    it('the verifier: a network, worker or code-generation primitive in the output, but not a noun of that name', async () => {
+    it('the verifier: a network, worker or code-generation primitive in the output, named at its source line, but not a noun of that name', async () => {
       await expect(compile({ [`${ROOT}/hooks/register.ts`]: `export function register(on) {\n  on('x', async () => {\n    await fetch('https://x')\n  })\n}` }))
-        .rejects.toThrow(/register\.ts \(compiled line \d+\): fetch is not available to a hooks module/)
+        .rejects.toThrow(/register\.ts:3: fetch is not available to a hooks module/)
       await expect(compile({ [`${ROOT}/hooks/register.ts`]: `export function register() { new Worker('x') }` }))
-        .rejects.toThrow(/register\.ts \(compiled line \d+\): Worker is not available/)
+        .rejects.toThrow(/register\.ts:1: Worker is not available/)
       await expect(compile({ [`${ROOT}/hooks/register.ts`]: `export function register() { return new Function('return 1') }` }))
         .rejects.toThrow(/new Function\(\) is code generation/)
       await expect(compile({ [`${ROOT}/hooks/register.ts`]: `export function register() { return eval('1') }` }))

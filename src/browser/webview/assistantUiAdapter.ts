@@ -951,6 +951,7 @@ const NON_HYDRATING_SOURCE_TYPES: ReadonlySet<string> = new Set([
   'compact_boundary',
   'provider_api_error',
   'memory_saved',
+  'mod_faults',
 ])
 
 /**

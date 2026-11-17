@@ -26,6 +26,8 @@ import { EMPTY_USES, ENGINE_NOUNS, pluginNounCalls, unsupportedEngineCalls, type
 import { isBuiltinModPath } from './builtinMods'
 import type { ModBuildStore, ModCompileFn } from './modBuildStore'
 import type { ModCompileGraph } from './modCompiler'
+import type { ModFault } from './modFault'
+import { modFramesOfError, sourceLocationOf, type ModFrame, type ModLineMap, type ModSourceLocation } from './modLineMap'
 import { isEngineTable, type EngineTable } from './modEngineTable'
 import { ModStateStore, type ModStateAddress } from './modState'
 import { MemoryModStore, type ModStoreHost } from './modStore'
@@ -161,6 +163,9 @@ export type ModRuntimeOptions = {
   /** One line per thing worth saying: a module that did not load, a hook that
    *  failed, a worker that died. */
   report: (line: string) => void
+  /** The same failures as data: plugin, what failed, why, and the source
+   *  line where the runtime can tell. */
+  onFault?: (fault: ModFault) => void
   /** The window's language tag (the page's locale as the runtime was given
    *  it): `$.plugin.locale` and `session.start`'s `locale`. Fixed for the
    *  runtime's life — the language changes on the next launch. Absent or
@@ -300,6 +305,8 @@ type Seat = {
   /** What the compiler made of it, when it needed compiling — the whole
    *  graph's, so an edit to an imported file shows. */
   compiled?: string
+  /** `compiled`'s lines back to source lines. */
+  lines?: ModLineMap
   /** When each restart happened, for the limit. */
   restarts: number[]
   /** Hooks out of time in a row, this generation. */
@@ -323,6 +330,13 @@ type Seat = {
    *  admitted at the whole-set load on the chance a plugin's `engine.create`
    *  step adds the noun — held to the fold's table once it ran. */
   tentative?: string[]
+}
+
+/** A compile refusal's source line (`ModCompileError`), read off the error
+ *  without loading the compiler. */
+function compileErrorWhere(error: unknown): Partial<ModSourceLocation> | undefined {
+  const { file, line } = (error ?? {}) as { file?: unknown; line?: unknown }
+  return typeof file === 'string' && typeof line === 'number' ? { file, line } : undefined
 }
 
 function errorMessage(error: unknown): string {
@@ -653,6 +667,16 @@ export class ModRuntime extends ModUiSurface implements TurnExtensions {
       onHookFailure: report => {
         if (this.ofLostWorker(report.linkId)) return
         options.report(describeFailure(report))
+        const seat = this.seatOfLink(report.linkId)
+        if (seat) {
+          this.fault(seat, {
+            kind: 'hook',
+            event: report.event,
+            ...(report.failure.kind === 'timeout' ? { timeout: true as const } : {}),
+            reason: report.failure.message ?? '',
+            ...this.locate(seat, report.frames),
+          })
+        }
         if (report.failure.kind === 'timeout') this.hookTimedOut(report.linkId)
         // "A step that fails unloads its plugin" (engine.create).
         if (report.event === 'engine.create') this.createFailures.add(report.linkId)
@@ -1013,8 +1037,9 @@ export class ModRuntime extends ModUiSurface implements TurnExtensions {
     // restart moved the generation on) leaves the seat to whatever overtook it.
     const generation = seat.generation
     const stale = (): boolean => this.disposed || !this.seats.includes(seat) || seat.generation !== generation
-    const absent = (state: 'refused' | 'failed', reason: string): false => {
+    const absent = (state: 'refused' | 'failed', reason: string, where?: Partial<ModSourceLocation>): false => {
       if (stale()) return false
+      this.fault(seat, { kind: 'load', reason, ...where })
       this.dropNouns(seat)
       // The dev loop keeps watching a module that did not load, so a fix
       // reloads it: a fresh baseline over the files it was last built from.
@@ -1032,6 +1057,7 @@ export class ModRuntime extends ModUiSurface implements TurnExtensions {
     if (ref.optionsError) return absent('failed', ref.optionsError)
     seat.compileFailed = false
     seat.uses = undefined
+    seat.lines = undefined
     // The seat's nouns stay on the table until this load settles: a call
     // meanwhile says the provider is not loaded (`lost`), and the fold
     // below replaces them — or `absent` / `unload` drops them.
@@ -1045,6 +1071,7 @@ export class ModRuntime extends ModUiSurface implements TurnExtensions {
       uses = kept.uses
       seat.source = kept.entrySource
       seat.compiled = kept.compiled ? kept.source : undefined
+      seat.lines = kept.graph?.lines
       seat.files = [...kept.files]
     } else {
       try {
@@ -1067,9 +1094,14 @@ export class ModRuntime extends ModUiSurface implements TurnExtensions {
           if (source !== seat.source) seat.compiled = source
           seat.files = typeof built === 'string' ? [ref.path] : [...built.files]
           if (typeof built !== 'string') ({ uses, graph } = built)
+          seat.lines = graph?.lines
         } catch (error) {
           seat.compileFailed = true
-          return absent('refused', `it did not compile — ${errorMessage(error)}`)
+          return absent(
+            'refused',
+            `it did not compile — ${errorMessage(error)}`,
+            compileErrorWhere(error),
+          )
         }
       }
       // The scan: what the module calls, read off its text before it
@@ -1136,7 +1168,10 @@ export class ModRuntime extends ModUiSurface implements TurnExtensions {
         void this.inFlight(stream.result).catch(() => undefined)
         return stream
       },
-      report: line => this.options.report(`${ref.plugin}: ${line}`),
+      report: line => {
+        this.options.report(`${ref.plugin}: ${line}`)
+        this.fault(seat, { kind: 'runtime', reason: line })
+      },
       // Its hooks join once admitted (`plugin.register`, below).
       deferJoin: true,
       ...(this.options.serveTimeoutMs !== undefined ? { serveTimeoutMs: this.options.serveTimeoutMs } : {}),
@@ -1227,8 +1262,36 @@ export class ModRuntime extends ModUiSurface implements TurnExtensions {
         if (!stale()) this.restartLater(seat, error.message)
         return false
       }
-      return absent('failed', errorMessage(error))
+      return absent('failed', errorMessage(error), this.locate(seat, modFramesOfError(error)))
     }
+  }
+
+  /** Hands a failure of `seat`'s module on as data. */
+  private fault(seat: Seat, fault: Omit<ModFault, 'plugin' | 'provenance' | 'generation'>): void {
+    try {
+      this.options.onFault?.({
+        plugin: seat.ref.plugin,
+        ...(seat.ref.provenance !== undefined ? { provenance: seat.ref.provenance } : {}),
+        generation: seat.generation,
+        ...fault,
+      })
+    } catch {
+      // A sink's own failure is not the module's.
+    }
+  }
+
+  /** The source line of the innermost frame the seat's module can name. */
+  private locate(seat: Seat, frames: readonly ModFrame[] | undefined): Partial<ModSourceLocation> {
+    for (const frame of frames ?? []) {
+      if (seat.lines) {
+        const at = sourceLocationOf(seat.lines, frame.line)
+        if (at) return at
+      } else if (seat.compiled === undefined) {
+        // The module ran as written: its lines are the entry's.
+        return { file: seat.ref.path, line: frame.line }
+      }
+    }
+    return {}
   }
 
   // ── `plugin.register`, `engine.create`, and the nouns plugins add ──

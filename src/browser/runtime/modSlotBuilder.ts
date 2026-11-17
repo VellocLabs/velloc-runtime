@@ -17,7 +17,7 @@ import { RUNTIME_DIR_NAME } from '../../branding/runtimeDir'
 import { joinRuntimePath } from '../../utils/runtimePaths'
 import { NEXUS_INTERFACE_VERSION } from '../bridge/protocol/interfaceVersion.gen'
 import { getBuildTime } from '../../branding/buildInfo'
-import { noteModSlotChanged, noteModUiEvent, registerModSlot, undoWhenScopeEnds } from '../../mods/modSlotRegistry'
+import { noteDevModFault, noteModSlotChanged, noteModUiEvent, registerModSlot, undoWhenScopeEnds } from '../../mods/modSlotRegistry'
 import type { BrowserRuntimeConfig } from '../../config/BrowserRuntimeConfig'
 import type { BrowserHostBridge } from '../bridge/BrowserHostBridge'
 import type { ConversationEngine } from '../../engine/conversationEngine'
@@ -465,6 +465,9 @@ export async function buildSlotModRuntime(
       },
     },
     report: reportMods,
+    // A dev-folder mod's failure: a line on the session's pages, and a
+    // reminder before its next model request.
+    onFault: fault => noteDevModFault(slot.resolvedSessionId, fault, slot.options.runtimeScopeSignal),
     // What became of each module is runtime STATE the UI reads
     // (`mods/state`): the slot registry fans the change out to the hub.
     onStatusChanged: () => noteModSlotChanged(slot.resolvedSessionId),

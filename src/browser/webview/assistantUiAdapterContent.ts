@@ -475,6 +475,9 @@ export function attachmentToText(message: ContextRow): string {
     case 'child_reports':
       return attachment.text
 
+    case 'mod_faults':
+      return `Dev mod failures (${attachment.faults.length + attachment.omitted}).`
+
     case 'queued_command':
       return typeof attachment.prompt === 'string'
         ? attachment.prompt

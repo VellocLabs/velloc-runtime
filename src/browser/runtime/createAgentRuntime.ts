@@ -143,9 +143,11 @@ import {
   onModSlotToolsChanged,
   publishModSlotTools,
   modsForAgentLoop,
+  takeDevModFaults,
   undoWhenScopeEnds,
   type AgentLoopMods,
 } from '../../mods/modSlotRegistry'
+import { modFaultsAttachmentOf } from '../../mods/modFault'
 import { registerSessionWorkingDir } from '../../models/drivers/sessionWorkingDirs'
 import { createBridgeBackedFetch } from '../../pluginHost/bridgeBackedFetch'
 import { loadEffectiveEnabledPlugins } from '../../pluginHost/enabledStore'
@@ -389,6 +391,8 @@ export async function createBrowserRuntime(
   // the per-session project root and the conversation store key off it,
   // so they need to agree on the same value.
   const resolvedSessionId = options.sessionId ?? runtimeConfig.createUUID()
+  // This session's dev-folder mod failures, handed to the model once (F-25).
+  const takeModFaults = () => modFaultsAttachmentOf(takeDevModFaults(resolvedSessionId))
 
   // Filesystem installed early (anchored at the host cwd) so the projectRoot resolver can mkdir.
   // What THIS runtime installs is recorded and reported via `getRuntimeGlobals`, not re-read from the shared slot.
@@ -792,6 +796,7 @@ export async function createBrowserRuntime(
   const userInputPipeline = new BrowserUserInputPipeline({
     hostBridge,
     runtimeConfig,
+    takeModFaults,
     ...(takeChildReports
       ? { takeChildReports: (opts: { autoContinuation: boolean }) => takeChildReports(resolvedSessionId, opts) }
       : {}),
@@ -1253,6 +1258,7 @@ export async function createBrowserRuntime(
             drainTaskNotifications: options.drainTaskNotifications,
             drainTeamMessages: options.drainTeamMessages,
             drainInjectMessages: options.drainInjectMessages,
+            takeModFaults,
           }),
       },
     ),

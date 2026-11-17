@@ -28,6 +28,7 @@ import {
   backgroundResultsThreadMessage,
   compactBoundaryThreadMessage,
   memorySavedThreadMessage,
+  modFaultsThreadMessage,
   teamMessageThreadMessage,
 } from './assistantUiAdapterCards'
 import { parseTeamMessageEnvelope } from '../../team/parseTeamFrame'
@@ -363,6 +364,11 @@ export function convertTranscriptMessage(
       const userInput = queuedUserInputThreadMessage(message)
       if (userInput) {
         return userInput
+      }
+      // Dev-folder mod failures handed to the model: dim lines for the person.
+      const modFaults = modFaultsThreadMessage(message)
+      if (modFaults) {
+        return modFaults
       }
       // A team frame the running turn took between two tool rounds
       // (`commandMode:'team-message'`): the same card a frame delivered as a

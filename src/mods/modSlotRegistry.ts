@@ -23,6 +23,7 @@ import type { PluginUserConfigField } from '../pluginHost/pluginModel'
 import type { RenderInput, RenderOutcome, RenderSite } from './modRender'
 import type { ModRegisteredTool } from './modRegisteredTools'
 import type { DevModsAnswer } from './devModsFolder'
+import { createModFaultLedger, isDevModFault, type ModFault, type ModFaultBatch, type ModFaultLedger } from './modFault'
 
 /** A session's slot is at most this many parents away. A chain longer than
  *  this is a cycle or a bug, and resolves to no slot. */
@@ -69,7 +70,13 @@ export type ModSlotUiState = {
   devModsAsk?: DevModsAsk
   /** The notice that the folder turned on without asking, naming its plugins. */
   devModsOn?: DevModsAsk
+  /** Dev-folder mods' failures not yet handed to the model, oldest first. */
+  devModFaults?: ModUiFault[]
 }
+
+/** A dev-folder mod's failure as the page draws it. `reason` is the mod's
+ *  own text, bounded; the rest is the runtime's. */
+export type ModUiFault = Pick<ModFault, 'plugin' | 'kind' | 'event' | 'timeout' | 'reason' | 'file' | 'line'>
 
 /** The dev mods folder's question as the page draws it: the plugins found. */
 export type DevModsAsk = { requestId: string; plugins: string[] }
@@ -338,12 +345,51 @@ let nextDevModsAsk = 0
 function withDevModsAsk(sessionId: string, state: ModSlotUiState): ModSlotUiState {
   const pending = devModsAsks.get(sessionId)
   const notice = devModsNotices.get(sessionId)?.notice
-  const { devModsAsk: _, devModsOn: __, ...rest } = state
+  const faults = devModFaults.get(sessionId)?.pending() ?? []
+  const { devModsAsk: _, devModsOn: __, devModFaults: ___, ...rest } = state
   return {
     ...rest,
     ...(pending ? { devModsAsk: { ...pending.ask, plugins: [...pending.ask.plugins] } } : {}),
     ...(notice ? { devModsOn: { ...notice, plugins: [...notice.plugins] } } : {}),
+    ...(faults.length > 0 ? { devModFaults: faults.map(uiFaultOf) } : {}),
   }
+}
+
+const uiFaultOf = ({ plugin, kind, event, timeout, reason, file, line }: ModFault): ModUiFault => ({
+  plugin,
+  kind,
+  ...(event !== undefined ? { event } : {}),
+  ...(timeout ? { timeout } : {}),
+  reason,
+  ...(file !== undefined ? { file } : {}),
+  ...(line !== undefined ? { line } : {}),
+})
+
+/** Per session: its dev-folder mods' failures (F-25). */
+const devModFaults = new Map<string, ModFaultLedger>()
+
+/** Notes a failure of one of `sessionId`'s dev-folder mods: shown on its
+ *  pages, and handed to the model before its next request. A failure of
+ *  any other mod is ignored. The ledger goes when `signal` aborts. */
+export function noteDevModFault(sessionId: string, fault: ModFault, signal?: AbortSignal): void {
+  if (!isDevModFault(fault) || signal?.aborted) return
+  let ledger = devModFaults.get(sessionId)
+  if (!ledger) {
+    const made = createModFaultLedger()
+    ledger = made
+    devModFaults.set(sessionId, made)
+    signal?.addEventListener('abort', () => {
+      if (devModFaults.get(sessionId) === made) devModFaults.delete(sessionId)
+    }, { once: true })
+  }
+  if (ledger.note(fault)) noteModUiEvent(sessionId, { kind: 'state', state: modSlotUiState(sessionId) })
+}
+
+/** Hands `sessionId`'s pending dev-folder mod failures on, once. */
+export function takeDevModFaults(sessionId: string): ModFaultBatch | undefined {
+  const batch = devModFaults.get(sessionId)?.take()
+  if (batch) noteModUiEvent(sessionId, { kind: 'state', state: modSlotUiState(sessionId) })
+  return batch
 }
 
 /** Tells the pages of `sessionId` that its dev mods folder turned on without

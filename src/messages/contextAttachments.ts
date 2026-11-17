@@ -158,6 +158,8 @@ type QueuedAttachmentParams = {
     prompt: string | Array<ContentBlockParam>
     enqueuedAt: number
   }>
+  /** The session's dev-folder mod failures not yet handed on (main loop only). */
+  takeModFaults?: () => AttachmentPayload | undefined
 }
 
 const MAIN_LOOP_QUERY_SOURCE = 'sdk'
@@ -1452,6 +1454,8 @@ export async function* collectQueuedAttachmentMessages(
   reminders.push(...collectSkillListingAttachments(params.toolUseContext))
   reminders.push(...(await collectPlanModeAttachments(params.toolUseContext)))
   reminders.push(...collectDateChangeAttachments(params.toolUseContext, params.runtimeConfig))
+  const modFaults = params.querySource === MAIN_LOOP_QUERY_SOURCE ? params.takeModFaults?.() : undefined
+  if (modFaults) reminders.push(modFaults)
   const attachments = [...(await collectQueuedThroughMods(params)), ...reminders]
 
   for (const attachment of attachments) {

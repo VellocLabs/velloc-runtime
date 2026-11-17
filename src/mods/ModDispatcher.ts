@@ -41,6 +41,7 @@ import {
   type StreamCatchCall,
   type StreamHookCall,
 } from './streamChain'
+import { modFramesOfError, type ModFrame } from './modLineMap'
 
 /** The rest of the chain, as one hook receives it. `toTier` is `next.to`. */
 export type ChainNext = (e: unknown, toTier?: TargetTier) => Promise<unknown>
@@ -158,6 +159,8 @@ export type HookFailureReport = {
   readonly failure: HookFailure
   /** What the chain did about it. */
   readonly outcome: TraceOutcome
+  /** Where in the module the hook threw, innermost first, when known. */
+  readonly frames?: readonly ModFrame[]
 }
 
 export type DispatchOptions = {
@@ -681,6 +684,7 @@ export class ModDispatcher {
             }
       // Out of budget: whatever the hook started for this dispatch should stop.
       if (ran.kind === 'expired') controller.abort()
+      const frames = ran.kind === 'throw' ? modFramesOfError(ran.error) : undefined
       const report = (outcome: TraceOutcome): void => {
         this.options.onHookFailure?.({
           plugin: link.plugin,
@@ -689,6 +693,7 @@ export class ModDispatcher {
           linkId: link.id,
           failure,
           outcome,
+          ...(frames ? { frames } : {}),
         })
       }
 

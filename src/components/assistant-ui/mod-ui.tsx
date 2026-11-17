@@ -15,6 +15,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { FOOTER_BAR_FRAME } from "./footer-bar-frame";
 import { useModUi, type ModUiAskRow, type ModUiStatusLine } from "./mod-ui-context";
 import { useModPage } from "./use-mod-page";
+import { ModFaultLines } from "./mod-fault-lines";
 
 /** The state words the Plugins page shows on a plugin's row. */
 const STATE_KEYS = {
@@ -348,10 +349,11 @@ export function modAskAnswerOf(
  *  (`ModPluginFrame`), so it carries the asking plugin's icon like the band
  *  and a pane do. */
 export function ModAsks() {
-  const { asks, answerAsk, devModsAsk, devModsOn, answerDevMods } = useModUi();
-  if (asks.length === 0 && !devModsAsk && !devModsOn) return null;
+  const { asks, answerAsk, devModsAsk, devModsOn, answerDevMods, devModFaults } = useModUi();
+  if (asks.length === 0 && !devModsAsk && !devModsOn && !devModFaults?.length) return null;
   return (
     <div data-slot="mod-asks" className="flex w-full flex-col gap-2">
+      {devModFaults?.length ? <ModFaultLines faults={devModFaults} testId="mod-faults-pending" /> : null}
       {devModsOn ? (
         <DevModsOnNotice key={devModsOn.requestId} notice={devModsOn} answer={answerDevMods} />
       ) : null}
