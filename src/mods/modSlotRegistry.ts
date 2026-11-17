@@ -86,8 +86,9 @@ export type ModSlotUiState = {
  *  own text, bounded; the rest is the runtime's. */
 export type ModUiFault = PublicModFault
 
-/** The dev mods folder's question as the page draws it: the plugins found. */
-export type DevModsAsk = { requestId: string; plugins: string[] }
+/** The dev mods folder's question as the page draws it: the plugins found,
+ *  or with `purpose` `test`, the folder whose tests would run. */
+export type DevModsAsk = { requestId: string; plugins: string[]; purpose?: 'test' }
 
 export type ModSlotUiEvent =
   | { kind: 'state'; state: ModSlotUiState }
@@ -411,10 +412,16 @@ export function showDevModsNotice(sessionId: string, plugins: readonly string[],
   noteModUiEvent(sessionId, { kind: 'state', state: modSlotUiState(sessionId) })
 }
 
-/** Asks the pages of `sessionId` whether to turn on its dev mods folder.
+/** Asks the pages of `sessionId` whether to turn on its dev mods folder, or
+ *  with `purpose` `test`, whether to run the tests of the folder in `plugins`.
  *  One question per session at a time: a second replaces the first, which
  *  settles `dismissed`. An aborted `signal` settles `dismissed` too. */
-export function openDevModsAsk(sessionId: string, plugins: readonly string[], signal?: AbortSignal): Promise<DevModsAnswer> {
+export function openDevModsAsk(
+  sessionId: string,
+  plugins: readonly string[],
+  signal?: AbortSignal,
+  purpose?: 'test',
+): Promise<DevModsAnswer> {
   devModsAsks.get(sessionId)?.settle('dismissed')
   return new Promise<DevModsAnswer>(resolve => {
     const requestId = `dev${++nextDevModsAsk}`
@@ -426,7 +433,7 @@ export function openDevModsAsk(sessionId: string, plugins: readonly string[], si
       resolve(answer)
     }
     const onAbort = (): void => settle('dismissed')
-    devModsAsks.set(sessionId, { ask: { requestId, plugins: [...plugins] }, settle })
+    devModsAsks.set(sessionId, { ask: { requestId, plugins: [...plugins], ...(purpose ? { purpose } : {}) }, settle })
     if (signal?.aborted) return settle('dismissed')
     signal?.addEventListener('abort', onAbort, { once: true })
     noteModUiEvent(sessionId, { kind: 'state', state: modSlotUiState(sessionId) })

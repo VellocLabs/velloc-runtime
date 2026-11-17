@@ -6,6 +6,7 @@
 
 import type { SystemMessagePart } from '../runtime/RuntimeTypes'
 import type { ModTestFile, ModTestReport } from '../mods/testKit/modTestRunner'
+import type { ModTestRefusal } from '../toolkit/builtin/modTest'
 import { relativeRuntimePath } from '../utils/runtimePaths'
 import { code } from './modValidateCommand'
 import { BLOCK, key, text, title } from './systemMessageParts'
@@ -56,4 +57,13 @@ export function modTestReportParts(report: ModTestReport): SystemMessagePart[] {
       : key('slash.out.modTest.failed', { passed: report.passed, failed: report.failed }),
   )
   return parts
+}
+
+/** Why the tests did not run, as the person reads it. */
+export function modTestRefusalParts(refusal: ModTestRefusal): SystemMessagePart[] {
+  return [
+    ...title(key('slash.out.modTest.title', { folder: refusal.folder })),
+    text(BLOCK),
+    key(refusal.refused === 'declined' ? 'slash.out.modTest.declined' : 'slash.out.modTest.cannotAsk'),
+  ]
 }

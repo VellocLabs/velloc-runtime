@@ -2401,6 +2401,10 @@ export const de: Messages = {
   'mods.devAsk.turnOn': 'Einschalten',
   'mods.devAsk.notNow': 'Nicht jetzt',
   'mods.devAsk.never': 'Nicht in dieser Sitzung',
+  'mods.devAsk.testLabel': 'Tests eines Ordners ausführen',
+  'mods.devAsk.testQuestion': 'Die Tests in {folder} ausführen?',
+  'mods.devAsk.testDetail': 'Das führt den Code des Ordners aus, in einem abgeschotteten Mod-Worker ohne Zugriff auf Dateien, Befehle oder das Netzwerk.',
+  'mods.devAsk.testRun': 'Tests ausführen',
   'mods.fault.label': 'Fehler der Entwicklungs-Mods',
   'mods.fault.hook': '{name}: Hook auf {event} fehlgeschlagen: {reason}',
   'mods.fault.hookTimeout': '{name}: Hook auf {event} hat das Zeitlimit überschritten',
@@ -3061,6 +3065,8 @@ export const de: Messages = {
   'slash.out.modTest.passed': 'Bestanden: {passed} Tests.',
   'slash.out.modTest.failed': 'Nicht bestanden: {failed} fehlgeschlagen, {passed} bestanden.',
   'slash.out.modTest.couldNotRun': 'Die Tests konnten nicht ausgeführt werden: {error}',
+  'slash.out.modTest.declined': 'Die Tests wurden nicht ausgeführt: Das Ausführen des Codes dieses Ordners wurde nicht erlaubt.',
+  'slash.out.modTest.cannotAsk': 'Die Tests wurden nicht ausgeführt: Das Ausführen des Codes eines Ordners braucht eine Berechtigung, und hier kann niemand gefragt werden.',
 
   // ── Slash-Befehle — /plugin, /marketplace (Marktplatz-Pipeline) ────────
   // Befehlssyntax-Zeilen (ein bloßes `/plugin <subcommand> [args]` oder ein

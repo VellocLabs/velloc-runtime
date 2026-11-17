@@ -2447,6 +2447,10 @@ export const en = {
   'mods.devAsk.turnOn': 'Turn them on',
   'mods.devAsk.notNow': 'Not now',
   'mods.devAsk.never': 'Not in this session',
+  'mods.devAsk.testLabel': 'Run a folder\'s tests',
+  'mods.devAsk.testQuestion': 'Run the tests in {folder}?',
+  'mods.devAsk.testDetail': 'This runs the folder\'s code, in a sandboxed mod worker with no access to files, commands or the network.',
+  'mods.devAsk.testRun': 'Run the tests',
   'mods.fault.label': 'Dev mod failures',
   'mods.fault.hook': '{name}: hook on {event} failed: {reason}',
   'mods.fault.hookTimeout': '{name}: hook on {event} ran out of time',
@@ -3115,6 +3119,8 @@ export const en = {
   'slash.out.modTest.passed': 'Passed: {passed} tests.',
   'slash.out.modTest.failed': 'Not passed: {failed} failed, {passed} passed.',
   'slash.out.modTest.couldNotRun': 'The tests could not run: {error}',
+  'slash.out.modTest.declined': 'The tests did not run: running this folder\'s code was not allowed.',
+  'slash.out.modTest.cannotAsk': 'The tests did not run: running a folder\'s code needs permission, and nobody can be asked here.',
 
   // ── Slash commands — /plugin, /marketplace (marketplace pipeline) ──────
   // Command syntax lines (a bare `/plugin <subcommand> [args]` or an example

@@ -2364,6 +2364,10 @@ export const ko: Messages = {
   'mods.devAsk.turnOn': '켜기',
   'mods.devAsk.notNow': '나중에',
   'mods.devAsk.never': '이 세션에서는 사용 안 함',
+  'mods.devAsk.testLabel': '폴더의 테스트 실행',
+  'mods.devAsk.testQuestion': '{folder}의 테스트를 실행할까요?',
+  'mods.devAsk.testDetail': '폴더의 코드를 파일, 명령, 네트워크에 접근할 수 없는 격리된 mod 워커에서 실행합니다.',
+  'mods.devAsk.testRun': '테스트 실행',
   'mods.fault.label': '개발 mod 실패',
   'mods.fault.hook': '{name}: {event} 훅 실패: {reason}',
   'mods.fault.hookTimeout': '{name}: {event} 훅 시간 초과',
@@ -2984,6 +2988,8 @@ export const ko: Messages = {
   'slash.out.modTest.passed': '통과: 테스트 {passed}개.',
   'slash.out.modTest.failed': '통과하지 못함: {failed}개 실패, {passed}개 통과.',
   'slash.out.modTest.couldNotRun': '테스트를 실행할 수 없습니다: {error}',
+  'slash.out.modTest.declined': '테스트가 실행되지 않았습니다: 이 폴더의 코드 실행이 허용되지 않았습니다.',
+  'slash.out.modTest.cannotAsk': '테스트가 실행되지 않았습니다: 폴더의 코드를 실행하려면 권한이 필요한데, 여기서는 아무에게도 물을 수 없습니다.',
 
   // ── 슬래시 명령어 — /plugin, /marketplace(마켓플레이스 파이프라인) ─────
   // 명령 구문 줄(단독 `/plugin <subcommand> [args]` 또는 예시 호출)은

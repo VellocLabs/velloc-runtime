@@ -200,3 +200,35 @@ describe('the dev mods turned-on notice', () => {
     expect(screen.queryByTestId('mod-dev-on-dismiss')).toBeNull()
   })
 })
+
+describe('the dev mods question, for a test run', () => {
+  it('asks whether to run the folder\'s tests, and offers run and not now, not the session-long decline', () => {
+    const answerDevMods = vi.fn(async () => {})
+    render(withUi({ devModsAsk: { requestId: 'dev9', plugins: ['D:/work/demo'], purpose: 'test' }, answerDevMods }))
+    const card = screen.getByTestId('mod-dev-ask')
+    expect(card.getAttribute('aria-label')).toBe("Run a folder's tests")
+    expect(card.getAttribute('data-purpose')).toBe('test')
+    expect(card.textContent).toContain('Run the tests in D:/work/demo?')
+    expect(screen.queryByTestId('mod-dev-ask-decline')).toBeNull()
+    fireEvent.click(screen.getByTestId('mod-dev-ask-on'))
+    expect(answerDevMods).toHaveBeenCalledWith('dev9', 'on')
+  })
+
+  it('a protocol state with an unknown purpose is not accepted', () => {
+    const { connection, emit } = fakeConnection()
+    const views: ModsUiView[] = []
+    const release = holdModsUiView(connection, 's1', view => views.push(view))
+    emit('mods/ui/s1', 'state', { status: [], notices: [], devModsAsk: { requestId: 'dev9', plugins: ['x'], purpose: 'test' } })
+    expect(views.at(-1)!.devModsAsk).toMatchObject({ purpose: 'test' })
+    const seen = views.length
+    emit('mods/ui/s1', 'state', { status: [], notices: [], devModsAsk: { requestId: 'dev9', plugins: ['x'], purpose: 'other' } })
+    expect(views.length).toBe(seen)
+    release()
+  })
+
+  it('the load question keeps its own wording and its decline', () => {
+    render(withUi({ devModsAsk: { requestId: 'dev8', plugins: ['panel-mod'] }, answerDevMods: vi.fn(async () => {}) }))
+    expect(screen.getByTestId('mod-dev-ask').textContent).toContain('Load the mods the agent wrote for this session: panel-mod?')
+    expect(screen.getByTestId('mod-dev-ask-decline')).toBeTruthy()
+  })
+})

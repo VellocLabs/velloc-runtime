@@ -56,6 +56,15 @@ export function validateFolderForSession(folder: string, context: GateContext, a
   })
 }
 
+/** The asks a tool's reads of `folder` (absolute) may pass, called from the
+ *  tool's `call`: reaching it after an ask on the folder means the person
+ *  allowed that ask, and only that one. */
+export async function allowedFolderAsks(folder: string, context: ToolCallContext): Promise<ModValidateAsks> {
+  const rules = context.readAppState?.().permissionRules
+  const verdict = rules ? await vetFileRead(READ_TOOL_ID, { file_path: folder }, buildFilePermissionContext(context, rules)) : undefined
+  return verdict?.behavior === 'ask' ? { allowed: askReason(verdict) } : 'none'
+}
+
 const DESCRIPTION = [
   'Statically check a mod (a plugin folder with hooks modules) the way the loader reads it, without loading or running it.',
   '',
@@ -100,11 +109,7 @@ export const ModValidateTool: ToolContract<ModValidateInput, string> = declareTo
     return verdict.behavior === 'allow' ? { ...verdict, updatedInput: input } : verdict
   },
   async call(input: ModValidateInput, context: ToolCallContext) {
-    const folder = resolveRuntimePath(context.options.cwd, input.folder)
-    const rules = context.readAppState?.().permissionRules
-    const verdict = rules ? await vetFileRead(READ_TOOL_ID, { file_path: folder }, buildFilePermissionContext(context, rules)) : undefined
-    // Reaching `call` after an ask on the folder means the person allowed that ask.
-    const asks: ModValidateAsks = verdict?.behavior === 'ask' ? { allowed: askReason(verdict) } : 'none'
+    const asks = await allowedFolderAsks(resolveRuntimePath(context.options.cwd, input.folder), context)
     const report = await validateFolderForSession(input.folder, context, asks)
     return { data: JSON.stringify(report, (name, value: unknown) => (name === 'detail' ? undefined : value), 2) }
   },

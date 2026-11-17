@@ -382,6 +382,8 @@ export const BOOTSTRAP_MESSAGES: Partial<Record<MessageKey, string>> = {
   'slash.out.modTest.passed': 'Passed: {passed} tests.',
   'slash.out.modTest.failed': 'Not passed: {failed} failed, {passed} passed.',
   'slash.out.modTest.couldNotRun': 'The tests could not run: {error}',
+  'slash.out.modTest.declined': 'The tests did not run: running this folder\'s code was not allowed.',
+  'slash.out.modTest.cannotAsk': 'The tests did not run: running a folder\'s code needs permission, and nobody can be asked here.',
   'slash.out.plugin.usage.list':
     '  list                                show installed plugins',
   'slash.out.plugin.usage.install':

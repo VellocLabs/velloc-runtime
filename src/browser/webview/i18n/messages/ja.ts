@@ -2370,6 +2370,10 @@ export const ja: Messages = {
   'mods.devAsk.turnOn': '有効にする',
   'mods.devAsk.notNow': '今はしない',
   'mods.devAsk.never': 'このセッションでは使わない',
+  'mods.devAsk.testLabel': 'フォルダーのテストを実行',
+  'mods.devAsk.testQuestion': '{folder} のテストを実行しますか？',
+  'mods.devAsk.testDetail': 'フォルダーのコードを、ファイル・コマンド・ネットワークにアクセスできない隔離された mod ワーカーで実行します。',
+  'mods.devAsk.testRun': 'テストを実行',
   'mods.fault.label': '開発 mod の失敗',
   'mods.fault.hook': '{name}：{event} のフックが失敗しました：{reason}',
   'mods.fault.hookTimeout': '{name}：{event} のフックが時間切れになりました',
@@ -2994,6 +2998,8 @@ export const ja: Messages = {
   'slash.out.modTest.passed': '成功：{passed} 件のテスト。',
   'slash.out.modTest.failed': '不合格：{failed} 件失敗、{passed} 件成功。',
   'slash.out.modTest.couldNotRun': 'テストを実行できませんでした：{error}',
+  'slash.out.modTest.declined': 'テストは実行されませんでした：このフォルダーのコードの実行は許可されませんでした。',
+  'slash.out.modTest.cannotAsk': 'テストは実行されませんでした：フォルダーのコードを実行するには権限が必要ですが、ここでは誰にも確認できません。',
 
   // ── スラッシュコマンド — /plugin, /marketplace（マーケットプレイスパイプライン） ──
   // コマンド構文の行（`/plugin <subcommand> [args]` のような裸の構文や実行

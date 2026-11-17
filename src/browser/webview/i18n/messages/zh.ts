@@ -2338,6 +2338,10 @@ export const zh: Messages = {
   'mods.devAsk.turnOn': '开启',
   'mods.devAsk.notNow': '暂不',
   'mods.devAsk.never': '本会话不再询问',
+  'mods.devAsk.testLabel': '运行文件夹的测试',
+  'mods.devAsk.testQuestion': '运行 {folder} 中的测试？',
+  'mods.devAsk.testDetail': '这会在隔离的 mod worker 中运行该文件夹的代码，无法访问文件、命令或网络。',
+  'mods.devAsk.testRun': '运行测试',
   'mods.fault.label': '开发 mod 失败',
   'mods.fault.hook': '{name}：{event} 上的钩子失败：{reason}',
   'mods.fault.hookTimeout': '{name}：{event} 上的钩子超时',
@@ -2937,6 +2941,8 @@ export const zh: Messages = {
   'slash.out.modTest.passed': '通过：{passed} 个测试。',
   'slash.out.modTest.failed': '未通过：{failed} 个失败，{passed} 个通过。',
   'slash.out.modTest.couldNotRun': '无法运行测试：{error}',
+  'slash.out.modTest.declined': '测试未运行：未允许运行此文件夹的代码。',
+  'slash.out.modTest.cannotAsk': '测试未运行：运行文件夹的代码需要权限，而这里无法询问任何人。',
 
   // ── 斜杠命令 —— /plugin、/marketplace（市场安装流程） ──────────────────
   // 命令语法行（裸露的 `/plugin <subcommand> [args]` 或示例调用）属于协议，

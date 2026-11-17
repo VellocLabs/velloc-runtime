@@ -2410,6 +2410,10 @@ export const fr: Messages = {
   'mods.devAsk.turnOn': 'Les activer',
   'mods.devAsk.notNow': 'Pas maintenant',
   'mods.devAsk.never': 'Pas dans cette session',
+  'mods.devAsk.testLabel': 'Lancer les tests d’un dossier',
+  'mods.devAsk.testQuestion': 'Lancer les tests de {folder} ?',
+  'mods.devAsk.testDetail': 'Cela exécute le code du dossier, dans un worker de mod isolé, sans accès aux fichiers, aux commandes ni au réseau.',
+  'mods.devAsk.testRun': 'Lancer les tests',
   'mods.fault.label': 'Échecs des mods de développement',
   'mods.fault.hook': '{name} : le hook sur {event} a échoué : {reason}',
   'mods.fault.hookTimeout': '{name} : le hook sur {event} a dépassé son délai',
@@ -3072,6 +3076,8 @@ export const fr: Messages = {
   'slash.out.modTest.passed': 'Réussi : {passed} tests.',
   'slash.out.modTest.failed': 'Échec : {failed} en échec, {passed} réussis.',
   'slash.out.modTest.couldNotRun': 'Les tests n’ont pas pu être lancés : {error}',
+  'slash.out.modTest.declined': 'Les tests n’ont pas été lancés : l’exécution du code de ce dossier n’a pas été autorisée.',
+  'slash.out.modTest.cannotAsk': 'Les tests n’ont pas été lancés : exécuter le code d’un dossier demande une autorisation, et personne ne peut être sollicité ici.',
 
   // ── Commandes slash — /plugin, /marketplace (pipeline de place de marché)
   // Les lignes de syntaxe de commande (un `/plugin <subcommand> [args]` brut

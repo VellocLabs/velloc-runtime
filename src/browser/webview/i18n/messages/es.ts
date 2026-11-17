@@ -2404,6 +2404,10 @@ export const es: Messages = {
   'mods.devAsk.turnOn': 'Activarlos',
   'mods.devAsk.notNow': 'Ahora no',
   'mods.devAsk.never': 'No en esta sesión',
+  'mods.devAsk.testLabel': 'Ejecutar las pruebas de una carpeta',
+  'mods.devAsk.testQuestion': '¿Ejecutar las pruebas de {folder}?',
+  'mods.devAsk.testDetail': 'Esto ejecuta el código de la carpeta, en un worker de mod aislado sin acceso a archivos, comandos ni a la red.',
+  'mods.devAsk.testRun': 'Ejecutar las pruebas',
   'mods.fault.label': 'Fallos de los mods de desarrollo',
   'mods.fault.hook': '{name}: el hook de {event} falló: {reason}',
   'mods.fault.hookTimeout': '{name}: el hook de {event} se quedó sin tiempo',
@@ -3067,6 +3071,8 @@ export const es: Messages = {
   'slash.out.modTest.passed': 'Superado: {passed} pruebas.',
   'slash.out.modTest.failed': 'No superado: {failed} fallidas, {passed} superadas.',
   'slash.out.modTest.couldNotRun': 'No se pudieron ejecutar las pruebas: {error}',
+  'slash.out.modTest.declined': 'Las pruebas no se ejecutaron: no se permitió ejecutar el código de esta carpeta.',
+  'slash.out.modTest.cannotAsk': 'Las pruebas no se ejecutaron: ejecutar el código de una carpeta necesita permiso, y aquí no se puede preguntar a nadie.',
 
   // ── Comandos de barra — /plugin, /marketplace (proceso del mercado) ────
   // Las líneas de sintaxis de comandos (un `/plugin <subcommand> [args]` a

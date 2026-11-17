@@ -383,11 +383,13 @@ function DevModsAskCard({
     setIsSending(true);
     void answer(ask.requestId, outcome).catch(() => setIsSending(false));
   };
+  const isTest = ask.purpose === "test";
   return (
     <div
       role="dialog"
-      aria-label={t("mods.devAsk.label")}
+      aria-label={t(isTest ? "mods.devAsk.testLabel" : "mods.devAsk.label")}
       data-testid="mod-dev-ask"
+      data-purpose={isTest ? "test" : undefined}
       className={cn(FOOTER_BAR_FRAME, "space-y-2 p-3")}
       onKeyDown={(event) => {
         if (event.key === "Escape") {
@@ -399,10 +401,12 @@ function DevModsAskCard({
       <div className="flex items-center gap-2">
         <PuzzleIcon className="size-4 shrink-0 text-muted-foreground" />
         <span className="min-w-0 break-words text-sm font-medium">
-          {t("mods.devAsk.question", { names: ask.plugins.join(", ") })}
+          {isTest
+            ? t("mods.devAsk.testQuestion", { folder: ask.plugins.join(", ") })
+            : t("mods.devAsk.question", { names: ask.plugins.join(", ") })}
         </span>
       </div>
-      <p className="text-xs text-muted-foreground">{t("mods.devAsk.detail")}</p>
+      <p className="text-xs text-muted-foreground">{t(isTest ? "mods.devAsk.testDetail" : "mods.devAsk.detail")}</p>
       <div className="flex gap-2">
         <button
           type="button"
@@ -411,7 +415,7 @@ function DevModsAskCard({
           onClick={() => send("on")}
           className="flex-1 rounded-md bg-primary px-4 py-1.5 text-sm font-medium text-primary-foreground disabled:opacity-50"
         >
-          {t("mods.devAsk.turnOn")}
+          {t(isTest ? "mods.devAsk.testRun" : "mods.devAsk.turnOn")}
         </button>
         <button
           type="button"
@@ -422,15 +426,17 @@ function DevModsAskCard({
         >
           {t("mods.devAsk.notNow")}
         </button>
-        <button
-          type="button"
-          data-testid="mod-dev-ask-decline"
-          disabled={!answer || isSending}
-          onClick={() => send("declined")}
-          className="flex-1 rounded-md border px-4 py-1.5 text-sm disabled:opacity-50"
-        >
-          {t("mods.devAsk.never")}
-        </button>
+        {isTest ? null : (
+          <button
+            type="button"
+            data-testid="mod-dev-ask-decline"
+            disabled={!answer || isSending}
+            onClick={() => send("declined")}
+            className="flex-1 rounded-md border px-4 py-1.5 text-sm disabled:opacity-50"
+          >
+            {t("mods.devAsk.never")}
+          </button>
+        )}
       </div>
     </div>
   );

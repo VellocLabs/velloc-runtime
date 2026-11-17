@@ -55,7 +55,7 @@ import { fsForContext } from '../utils/fs/runtimeFs'
 import { validateFolderForSession } from '../toolkit/builtin/modValidate'
 import { modValidateReportParts } from './modValidateCommand'
 import { runFolderTestsForSession } from '../toolkit/builtin/modTest'
-import { modTestReportParts } from './modTestCommand'
+import { modTestRefusalParts, modTestReportParts } from './modTestCommand'
 import { proposeSessionTitle } from '../sessions/sessionTitles'
 import {
   getConditionalSkills,
@@ -305,7 +305,8 @@ export async function dispatchCommandInput(
         })
         if (!name) return reply([key('slash.out.modTest.usage')])
         try {
-          return reply(modTestReportParts(await runFolderTestsForSession(name, params.context, true)))
+          const result = await runFolderTestsForSession(name, params.context, { asks: 'any' })
+          return reply('refused' in result ? modTestRefusalParts(result) : modTestReportParts(result))
         } catch (error) {
           return reply([key('slash.out.modTest.couldNotRun', { error: error instanceof Error ? error.message : String(error) })])
         }

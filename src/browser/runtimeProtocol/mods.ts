@@ -416,8 +416,10 @@ export function isModsUiFault(value: unknown): value is ModsUiFault {
   )
 }
 
-/** The dev mods folder's question: answered by `mods.devModsAnswer`. */
-export type ModsDevModsAsk = { requestId: string; plugins: readonly string[] }
+/** The dev mods folder's question: answered by `mods.devModsAnswer`.
+ *  `purpose` `test`: whether to run one folder's tests (`plugins` holds the
+ *  folder); absent: whether to load the dev folder's plugins. */
+export type ModsDevModsAsk = { requestId: string; plugins: readonly string[]; purpose?: 'test' }
 
 /** `mods.devModsAnswer`: turn the folder on, decline it for the session, or
  *  dismiss the question (asked again after the next turn). */
@@ -430,7 +432,8 @@ export function isModsDevModsAsk(value: unknown): value is ModsDevModsAsk {
     isRecord(value) &&
     typeof value.requestId === 'string' &&
     Array.isArray(value.plugins) &&
-    value.plugins.every(plugin => typeof plugin === 'string')
+    value.plugins.every(plugin => typeof plugin === 'string') &&
+    (value.purpose === undefined || value.purpose === 'test')
   )
 }
 
