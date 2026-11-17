@@ -52,6 +52,9 @@ declare module "<api>" {
       name?: string;
       cwd?: string;
       isolation?: 'worktree';
+      resume?: {
+          agentId: string;
+      };
   };
   export type ApiContentBlock = {
       type: string;
@@ -230,6 +233,13 @@ declare module "<api>" {
       plugin: string;
       handle: number;
   };
+  export type ProgressProps = {
+      label: string;
+      value?: number;
+      max?: number;
+      valueText?: string;
+      color?: string;
+  };
   export type PromptComposeInput = {
       model: string;
       promptModel: string;
@@ -318,6 +328,9 @@ declare module "<api>" {
           source: string;
           alt: string;
       };
+  } | {
+      type: 'Progress';
+      props: ProgressProps;
   } | {
       type: 'engine';
       ref: number;
@@ -446,17 +459,22 @@ declare module "<api>" {
       tool_use_id: string;
       agentId?: string;
   };
+  export type ToolCheckApprover = 'host' | 'person';
   export type ToolCheckDecision = 'allow' | 'ask' | 'deny';
   export type ToolCheckEvent = {
       tool: string;
       input: unknown;
       tool_use_id?: string;
       agentId?: string;
+      approver?: ToolCheckApprover;
   };
   export type ToolCheckResult = {
       decision: ToolCheckDecision;
       reason?: string;
       rule?: string;
+      hook?: string;
+      setting?: string;
+      plugin?: string;
   };
   export type ToolDescribeInput = {
       tool: string;
@@ -817,7 +835,7 @@ declare module "<api>" {
   /** What a hooks module exports. */
   export type Register = (on: On, options: Readonly<Record<string, unknown>>) => void | Promise<void>
 
-  export type ElementName = "Box" | "Button" | "Code" | "Input" | "Link" | "Markdown" | "Select" | "Svg" | "Text"
+  export type ElementName = "Box" | "Button" | "Code" | "Input" | "Link" | "Markdown" | "Progress" | "Select" | "Svg" | "Text"
   export type UiElement = { readonly type: string; readonly props?: unknown; readonly children?: readonly unknown[] }
   export type UiElements = {
     readonly [N in ElementName]: (props: Record<string, unknown> & { children?: unknown }) => UiElement
