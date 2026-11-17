@@ -1,9 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest'
 
-import {
-  collectInitialAttachmentMessages,
-  estimatePdfPageCount,
-} from '../messages/contextAttachments'
+import { collectInitialAttachmentMessages } from '../messages/contextAttachments'
+import { estimatePdfPageCount } from '../messages/pdfMentionAttachment'
 import { renderAttachmentMessage } from '../messages/renderAttachments'
 import {
   unconfiguredFs,
@@ -19,7 +17,7 @@ import type { ContextRow } from '../runtime/RuntimeTypes'
 import type { ToolCallContext } from '../toolkit/toolCallContext'
 
 // An @-mentioned PDF: more than 10 pages → a `pdf_reference` note; 10 or fewer → the PDF inlined as a document in
-// the same turn, never the UTF-8 text path. Source of truth: src/messages/contextAttachments.ts
+// the same turn, never the UTF-8 text path. Source of truth: src/messages/pdfMentionAttachment.ts
 // (createPdfAttachment) and src/messages/renderAttachments.ts (pdf_reference / pdf_document).
 
 const PDF_PATH = '/workspace/.velloc/uploads/s1/claim.pdf'
