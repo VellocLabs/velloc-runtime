@@ -1,9 +1,5 @@
 import * as React from "react";
-import { ArrowLeftIcon } from "lucide-react";
 
-import { cn } from "@/lib/utils";
-import { Button } from "@/components/ui/button";
-import { ProviderIcon } from "../../ProviderIcon";
 import { useUnsavedEditsGate } from "@/glic/unsavedEditsGate";
 
 import type { BrowserBridgeTransport } from "../../../bridge/browserBridgeProtocol";
@@ -32,7 +28,6 @@ import {
   providersRemove,
   providersSetActive,
   providersFreshModelIds,
-  providersSetOrder,
   providersUpsert,
   providersVerify,
 } from "../clients";
@@ -84,13 +79,12 @@ import {
 } from "../opencodeZenPreset";
 import { customProviderUserAgent } from "../../../../config/providerUserAgent";
 import { AddModelDialog } from "./AddModelDialog";
-import { SettingsSubpageLayout, settingsText } from "../SettingsSubpageLayout";
+import { SettingsSubpageLayout } from "../SettingsSubpageLayout";
+import { settleEchoedOrder } from "./models/providerOrder";
 import {
-  sameOrder,
-  MAX_UNECHOED_ORDERS,
-  settleEchoedOrder,
-  KEYBOARD_REORDER_COMMIT_MS,
-} from "./models/providerOrder";
+  useProviderOrderState,
+  useProviderReorder,
+} from "./models/useProviderReorder";
 import {
   ADD_CUSTOM_PROVIDER_VALUE,
   ADD_OPENCODE_ZEN_VALUE,
@@ -102,7 +96,6 @@ import type {
   DeleteTarget,
   ProviderStatus,
   TestState,
-  ProviderDragState,
   OAuthState,
 } from "./models/modelsPageTypes";
 import {
@@ -114,6 +107,9 @@ import type { ApiKeyRowState } from "./models/ApiKeyLabel";
 import { renderCustomProviderEditor } from "./models/CustomProviderEditor";
 import { renderBuiltInProviderEditor } from "./models/BuiltInProviderEditor";
 import { providerStatusPresentation } from "./models/providerStatusPresentation";
+import { customProbeKey } from "./models/customProbeKey";
+import { renderProvidersHome } from "./models/ProviderHome";
+import { renderProviderEditorHeader } from "./models/ProviderEditorHeader";
 import {
   renderDeleteProviderDialog,
   renderDiscardChangesDialog,
@@ -133,31 +129,6 @@ function createPresetDraft(preset: CreatePreset): CustomProviderDraft {
   return preset === "opencode-zen"
     ? opencodeZenDraft()
     : emptyCustomProviderDraft();
-}
-
-/**
- * The key half of a custom-provider verify probe. The probe is addressed to
- * the dialect's shared backend slot, whose stored key is not this provider's,
- * and the WebUI never holds a saved record's key (only `hasApiKey`). So a
- * SAVED record names itself as `keyProviderId` and the host probes with that
- * record's stored key whenever the draft key is empty. A saved key also wins
- * over the keyless Zen `public` fallback — the same rule the save path uses.
- */
-function customProbeKey(
-  draft: Pick<CustomProviderDraft, "apiKey" | "baseUrl">,
-  record: Pick<CustomProviderRecord, "id" | "hasApiKey"> | undefined,
-): { apiKey: string; keyProviderId?: string } {
-  const typed = draft.apiKey ?? "";
-  if (!record) {
-    return { apiKey: resolveOpencodeZenApiKey(draft.baseUrl, typed) };
-  }
-  return {
-    apiKey:
-      record.hasApiKey && !typed
-        ? ""
-        : resolveOpencodeZenApiKey(draft.baseUrl, typed),
-    keyProviderId: record.id,
-  };
 }
 
 /**
@@ -206,40 +177,11 @@ export function ModelsSection({
     string | undefined
   >(undefined);
   const [view, setView] = React.useState<PageView>("home");
-  /** The user's provider order (settings.json `providers.order`). */
-  const [order, setOrder] = React.useState<string[]>([]);
-  /**
-   * The home list's order WHILE a row is dragged — rows move live under the
-   * pointer, and nothing is written until the drop. `null` when idle.
-   */
-  const [dragPreview, setDragPreview] = React.useState<string[] | null>(null);
-  const [draggingId, setDraggingId] = React.useState<string | null>(null);
-  /**
-   * The drag in flight, for the HANDLERS. State drives the rendering, but a
-   * pointermove can arrive before React has re-rendered from the pointerdown
-   * (events dispatched back to back — the e2e does exactly that), and a
-   * handler reading state would still see "not dragging" and drop the move.
-   */
-  const dragRef = React.useRef<ProviderDragState | null>(null);
-  React.useEffect(() => () => dragRef.current?.detach(), []);
-  /**
-   * An arrow-key reorder not yet written (see `KEYBOARD_REORDER_COMMIT_MS`):
-   * the order at the gesture's first key, the order to write, and the timer
-   * that writes it.
-   */
-  const keyboardOrderRef = React.useRef<{
-    start: string[];
-    order: string[];
-    timer: ReturnType<typeof setTimeout>;
-  } | null>(null);
-  /** Orders written here whose echo has not arrived (`settleEchoedOrder`). */
-  const unechoedOrdersRef = React.useRef<string[][]>([]);
-  /** The latest `writeOrder` / `flushKeyboardOrder`, for the reorder timer
-   *  and the unmount flush, which outlive the render that armed them. */
-  const writeOrderRef = React.useRef<(order: string[]) => void>(() => {});
-  const flushKeyboardOrderRef = React.useRef<() => void>(() => {});
-  // Leaving the page mid-gesture still writes the order the list shows.
-  React.useEffect(() => () => flushKeyboardOrderRef.current(), []);
+  const providerOrderState = useProviderOrderState();
+  const {
+    order, setOrder, dragPreview, setDragPreview, draggingId, setDraggingId,
+    dragRef, keyboardOrderRef, unechoedOrdersRef,
+  } = providerOrderState;
   /**
    * Orders `providers.list` reads against `providers.changed` — a read that
    * saw an event land while it was in flight is dropped
@@ -1371,64 +1313,10 @@ export function ModelsSection({
 
   // ── Render ────────────────────────────────────────────────────────────────
 
-  /**
-   * Persist a new home-list order. `ids` is what the list shows; ids the
-   * stored order names but the list does not (a provider removed for now, a
-   * broker entry not loaded yet) are kept after them, so re-adding one puts
-   * it back where the user had it. Optimistic: the list moves at once, and a
-   * failed write re-reads the stored order rather than leaving a lie up.
-   */
-  /** `ids` (what the list shows) followed by the stored ids it does not show. */
-  const fullOrderFor = (ids: string[]): string[] => [
-    ...ids,
-    ...order.filter((id) => !ids.includes(id)),
-  ];
-  const nextOrderFor = (ids: string[]): string[] | null => {
-    const next = fullOrderFor(ids);
-    return sameOrder(next, order) ? null : next;
-  };
-  const writeOrder = (next: string[]) => {
-    const written = unechoedOrdersRef.current;
-    written.push(next);
-    if (written.length > MAX_UNECHOED_ORDERS) written.shift();
-    void providersSetOrder(bridge, next).catch(() => {
-      // Nothing will echo a failed write; the re-read shows the stored order.
-      unechoedOrdersRef.current = [];
-      void reload();
-    });
-  };
-  const commitOrder = (ids: string[]) => {
-    const next = nextOrderFor(ids);
-    if (!next) return;
-    setOrder(next);
-    writeOrder(next);
-  };
-  /**
-   * An arrow-key move: shown at once like `commitOrder`, written once per
-   * gesture — when the keys have been still for `KEYBOARD_REORDER_COMMIT_MS`,
-   * or the grip loses focus. A gesture that ends where it began writes
-   * nothing — with no stored order yet, writing would freeze today's order.
-   * `shown` is the list before this key's move.
-   */
-  const flushKeyboardOrder = () => {
-    const pending = keyboardOrderRef.current;
-    if (!pending) return;
-    clearTimeout(pending.timer);
-    keyboardOrderRef.current = null;
-    if (!sameOrder(pending.order, pending.start)) writeOrderRef.current(pending.order);
-  };
-  const stageKeyboardOrder = (shown: string[], ids: string[]) => {
-    const next = nextOrderFor(ids);
-    if (!next) return;
-    setOrder(next);
-    const pending = keyboardOrderRef.current;
-    if (pending) clearTimeout(pending.timer);
-    keyboardOrderRef.current = {
-      start: pending?.start ?? fullOrderFor(shown),
-      order: next,
-      timer: setTimeout(() => flushKeyboardOrderRef.current(), KEYBOARD_REORDER_COMMIT_MS),
-    };
-  };
+  const {
+    commitOrderRef, flushKeyboardOrder, stageKeyboardOrder, moveId, endDrag,
+    providerRowAt,
+  } = useProviderReorder(providerOrderState, { bridge, reload });
   /**
    * "Set as default" from a row's menu — the same `setActive` a save in the
    * editor performs, without making the user open the editor to reach it.
@@ -1441,43 +1329,6 @@ export function ModelsSection({
         /* the re-read below puts the stored default back */
       })
       .then(() => reload());
-  };
-
-  /** For the drag's window listeners, which outlive the render that added them. */
-  const commitOrderRef = React.useRef(commitOrder);
-  commitOrderRef.current = commitOrder;
-  writeOrderRef.current = writeOrder;
-  flushKeyboardOrderRef.current = flushKeyboardOrder;
-
-  /** `ids` with `moving` placed where `target` is. */
-  const moveId = (ids: string[], moving: string, target: string): string[] => {
-    const from = ids.indexOf(moving);
-    const to = ids.indexOf(target);
-    if (from < 0 || to < 0 || from === to) return ids;
-    const next = [...ids];
-    next.splice(from, 1);
-    next.splice(to, 0, moving);
-    return next;
-  };
-
-  const endDrag = () => {
-    dragRef.current?.detach();
-    dragRef.current = null;
-    setDraggingId(null);
-    setDragPreview(null);
-  };
-
-  /**
-   * The home-list row under a viewport point, by its `data-provider-row` id —
-   * how a pointer drag finds its target (the events themselves land on the
-   * grip while it holds capture, and anywhere once it has lost it).
-   */
-  const providerRowAt = (x: number, y: number): string | null => {
-    const el = document.elementFromPoint(x, y);
-    return (
-      el?.closest<HTMLElement>("[data-provider-row]")?.dataset.providerRow ??
-      null
-    );
   };
 
   const renderAddMenu = () =>
@@ -1513,75 +1364,17 @@ export function ModelsSection({
       }, row,
     );
 
-  const renderHome = () => (
-    <div className="flex flex-col gap-3" data-testid="models-provider-home">
-      <div className="flex items-center justify-between gap-4">
-        <span className="min-w-0 text-muted-foreground text-xs">
-          {t("settings.models.aiProviderHint")}
-        </span>
-        {renderAddMenu()}
-      </div>
-      <div className="rounded-md border" data-testid="models-provider-list">
-        {!configsLoaded || catalog === undefined ? (
-          <p className="p-3 text-center text-muted-foreground text-sm">
-            {t("settings.models.loadingCatalog")}
-          </p>
-        ) : addedRows.length === 0 ? (
-          <p
-            className="p-3 text-center text-muted-foreground text-sm"
-            data-testid="models-provider-list-empty"
-          >
-            {t("settings.models.noProvidersAdded")}
-          </p>
-        ) : (
-          orderedRows.map(renderProviderRow)
-        )}
-      </div>
-    </div>
-  );
+  const renderHome = () =>
+    renderProvidersHome({
+      t, renderAddMenu, configsLoaded, catalog, addedRows, orderedRows,
+      renderProviderRow,
+    });
 
-  /**
-   * The editor's header: the way back to home, and WHICH provider this is.
-   * Deliberately static — switching providers happens on the home page, so
-   * an editor can never be silently repointed at another provider mid-edit.
-   * The provider name IS the page heading: the editor drops the section
-   * title ("Provider connection") and the custom editor's own "Edit custom
-   * provider" line, which only restated where the user already is.
-   */
-  const editingName = creating
-    ? t("settings.models.addCustomProviderTitle")
-    : selectedRecord
-      ? selectedRecord.displayName
-      : selectedProvider?.mod
-        ? modProviderName(selectedProvider, locale)
-        : (selectedProvider?.label ?? selectedId);
-  const editingIconSvg = creating
-    ? resolveCustomProviderIconSvg(draft.providerIcon, catalog)
-    : selectedRecord
-      ? resolveCustomProviderIconSvg(selectedRecord.providerIcon, catalog)
-      : selectedProvider?.iconSvg;
-
-  const renderEditorHeader = () => (
-    <header className="mb-4 flex flex-col gap-1 border-border/60 border-b pb-5">
-      <Button
-        variant="ghost"
-        size="sm"
-        className="-ml-2 self-start text-muted-foreground"
-        data-testid="models-back-to-providers"
-        onClick={requestBack}
-      >
-        <ArrowLeftIcon className="size-4" />
-        {t("settings.models.backToProviders")}
-      </Button>
-      <h1
-        className={cn("flex items-center gap-2.5", settingsText.pageTitle)}
-        data-testid="models-editing-provider"
-      >
-        <ProviderIcon svg={editingIconSvg} />
-        <span className="truncate">{editingName}</span>
-      </h1>
-    </header>
-  );
+  const renderEditorHeader = () =>
+    renderProviderEditorHeader({
+      t, locale, creating, selectedRecord, selectedProvider, selectedId,
+      draft, catalog, requestBack,
+    });
 
   const renderCustomEditor = () =>
     renderCustomProviderEditor(
