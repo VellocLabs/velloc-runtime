@@ -307,3 +307,50 @@ describe('bridge.attachRuntimePort with a cap', () => {
     expect(rest).toEqual(['/h', undefined])
   })
 })
+
+describe('session detail on a delegated port', () => {
+  // The session-state rule of the real provider: a CLI session needs `full`. The turn
+  // provider here, like the real one, knows nothing of CLI sessions.
+  function detailRig() {
+    const rig = makeRig()
+    rig.broker.registerProvider({
+      matches: topic => /^session\/[^/]+\/state$/.test(topic),
+      authorize: (topic, conn) => conn.scope.mode === 'full' || !topic.startsWith('session/cli-1/'),
+      async *snapshot() {},
+    })
+    rig.broker.registerProvider({ matches: topic => /^turn\/[^/]+$/.test(topic), authorize: () => true, async *snapshot() {} })
+    return rig
+  }
+  const DETAIL = { delegate: { scope: 'observe', topics: ['sessions', 'session/*/state', 'turn/*'] } } as const
+
+  it("accepts a concrete session's state and turn board when the pattern was delegated", async () => {
+    const rig = detailRig()
+    const office = client(rig, DETAIL)
+    await office.hello()
+    const ok = await office.request('a', 'topics.subscribe', { topics: [{ topic: 'session/s1/state' }, { topic: 'turn/s1' }] })
+    expect(ok.ok).toBe(true)
+    await vi.waitFor(() => expect(rig.broker.subscribersOf('session/s1/state')).toHaveLength(1))
+    expect(rig.broker.subscribersOf('turn/s1')).toHaveLength(1)
+  })
+
+  it('refuses a CLI session, on either topic, a pattern used as a topic, and other kinds of the session', async () => {
+    const rig = detailRig()
+    const office = client(rig, DETAIL)
+    await office.hello()
+    const topics = ['session/cli-1/state', 'turn/cli-1', 'session/*/state', 'turn/*', 'session/s1/transcript', 'session/s1/state/x']
+    for (const [index, topic] of topics.entries()) {
+      const refused = await office.request(`r${index}`, 'topics.subscribe', { topics: [{ topic }] })
+      expect(refused.ok, topic).toBe(false)
+      expect((refused.error as { code: string }).code, topic).toBe('forbidden_scope')
+    }
+    expect(rig.broker.subscribersOf('turn/cli-1')).toHaveLength(0)
+  })
+
+  it('refuses a concrete topic whose pattern was not delegated', async () => {
+    const rig = detailRig()
+    const office = client(rig, { delegate: { scope: 'observe', topics: ['sessions', 'turn/*'] } })
+    await office.hello()
+    expect((await office.request('a', 'topics.subscribe', { topics: [{ topic: 'session/s1/state' }] })).ok).toBe(false)
+    expect((await office.request('b', 'topics.subscribe', { topics: [{ topic: 'turn/s1' }] })).ok).toBe(true)
+  })
+})

@@ -15,6 +15,7 @@ import {
   ProviderConsentDialog,
   ProviderUpdatePanel,
   grantDeltaLines,
+  hasProviderGrant,
 } from '../browser/webview/settings/sections/ProviderModUpdates'
 import { RuntimeCapabilitiesContext } from '../browser/webview/useCan'
 import { queryFor } from './_helpers/capabilityQuery'
@@ -181,6 +182,19 @@ describe('ProviderConsentDialog', () => {
     expect(screen.getByTestId('consent-standing')).toBeTruthy()
   })
 
+  it("an app page's session detail has its own block and, alone, its own intro (F-42)", () => {
+    open({}, status({ grant: { providers: {}, sessionDetail: true } }))
+    expect(screen.getByText(/has a page that asks to read your sessions' details/)).toBeTruthy()
+    expect(screen.getByTestId('consent-session-detail').textContent).toMatch(/^Session details.*pending permissions and the questions it asks you\. The page has no network access/)
+    cleanup()
+    open({}, status({ grant: { ...GRANT, sessionDetail: true } }))
+    expect(screen.getByText(/adds model providers\. Check/)).toBeTruthy()
+    expect(screen.getByTestId('consent-session-detail')).toBeTruthy()
+    // A page-only grant is still something to consent to: the switch asks first.
+    expect(hasProviderGrant(status({ grant: { providers: {}, sessionDetail: true } }))).toBe(true)
+    expect(hasProviderGrant(status({ grant: { providers: {} } }))).toBe(false)
+  })
+
   it('Turn on and Cancel are the two ways out; a failure is shown inside the dialog', () => {
     const calls = open({ error: 'no connection' })
     expect(screen.getByTestId('consent-error').textContent).toBe("Couldn't turn it on: no connection")
@@ -259,6 +273,13 @@ describe('ProviderUpdatePanel', () => {
     fireEvent.click(screen.getByTestId('provider-updates-rollback-zen-plugin'))
     expect(calls).toEqual(['approve 2.0.0', 'decline 2.0.0', 'rollback'])
     expect(screen.getByTestId('provider-updates-rollback-zen-plugin').textContent).toBe('Roll back to version 0.9.0')
+  })
+
+  it('needs-consent: a version that newly asks for session detail says so', () => {
+    const pending = { ...NEEDS_CONSENT.pending!, delta: { widened: true, added: { providers: [], perProvider: {}, sessionDetail: true as const }, removed: [] } }
+    panel({ ...NEEDS_CONSENT, pending })
+    const lines = [...screen.getByTestId('provider-updates-delta-zen-plugin').querySelectorAll('li')].map(li => li.textContent)
+    expect(lines).toEqual(["Asks for its page to read each session's details"])
   })
 
   it('without the full grant it shows the status and no button', () => {

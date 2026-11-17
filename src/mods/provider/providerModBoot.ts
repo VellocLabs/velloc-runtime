@@ -31,8 +31,7 @@ import {
 } from '../../pluginHost/providerModUpdateHolder'
 import { consentCovers } from '../../pluginHost/providerPluginConsent'
 import { setProviderJobScheduler } from './providerJobScheduler'
-import { manifestAsksAgent } from '../app/appAgentRun'
-import { folderScopesOf } from '../app/appFolderScopes'
+import { manifestAsksAppGrant } from '../../pluginHost/providerGrant'
 import {
   getProviderModHost,
   isGlobalPluginSource,
@@ -97,12 +96,12 @@ export async function scanProviderPlugins(deps: ProviderModBootDeps): Promise<Pr
 
 const MARKETPLACE_SOURCE = 'marketplace:'
 
-/** A marketplace plugin whose apps declare folders or agent runs and that carries no provider. */
+/** A marketplace plugin whose apps ask for a grant and that carries no provider. */
 function isAppGrantOnly(plugin: ProviderPluginScan['enabled'][number]): boolean {
   return (
     !(plugin.providers?.length ?? 0) &&
     plugin.source.startsWith(MARKETPLACE_SOURCE) &&
-    (folderScopesOf(plugin.manifest) !== undefined || manifestAsksAgent(plugin.manifest))
+    manifestAsksAppGrant(plugin.manifest)
   )
 }
 

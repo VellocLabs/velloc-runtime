@@ -35,11 +35,15 @@ function signText(t: TranslateFn, provider: string, sign: "digest" | "body"): st
   });
 }
 
-/** Whether a status has anything to consent to: a provider, an app's folders, or its agent runs. */
+/** Whether a status has anything to consent to: a provider, an app's folders, its agent runs, or its page's session detail. */
 export function hasProviderGrant(status: ProviderModUpdateStatus | undefined): status is ProviderModUpdateStatus {
+  if (!status) return false;
+  const grant = status.grant;
   return (
-    !!status &&
-    (Object.keys(status.grant?.providers ?? {}).length > 0 || hasFolders(status.grant?.folders) || status.grant?.agent === true)
+    Object.keys(grant?.providers ?? {}).length > 0 ||
+    hasFolders(grant?.folders) ||
+    grant?.agent === true ||
+    grant?.sessionDetail === true
   );
 }
 
@@ -74,6 +78,15 @@ function AgentGrantBlock({ t }: { t: TranslateFn }) {
     <div className="rounded-lg border border-border/70 bg-muted/30 p-3" data-testid="consent-agent">
       <div className="font-medium text-sm">{t("settings.plugins.providers.consent.agent")}</div>
       <p className="mt-1.5 text-sm">{t("settings.plugins.providers.consent.agentBody", { limit: APP_AGENT_DAILY_LIMIT })}</p>
+    </div>
+  );
+}
+
+function SessionDetailGrantBlock({ t }: { t: TranslateFn }) {
+  return (
+    <div className="rounded-lg border border-border/70 bg-muted/30 p-3" data-testid="consent-session-detail">
+      <div className="font-medium text-sm">{t("settings.plugins.providers.consent.sessionDetail")}</div>
+      <p className="mt-1.5 text-sm">{t("settings.plugins.providers.consent.sessionDetailBody")}</p>
     </div>
   );
 }
@@ -143,6 +156,7 @@ export function ProviderConsentDialog({
   const providers = Object.entries(status?.grant.providers ?? {});
   const folders = hasFolders(status?.grant.folders) ? status!.grant.folders! : undefined;
   const agent = status?.grant.agent === true;
+  const sessionDetail = status?.grant.sessionDetail === true;
   const introKey = agent
     ? providers.length > 0
       ? "settings.plugins.providers.consent.introProvidersApp"
@@ -151,7 +165,9 @@ export function ProviderConsentDialog({
       ? "settings.plugins.providers.consent.introBoth"
       : folders
         ? "settings.plugins.providers.consent.introFolders"
-        : "settings.plugins.providers.consent.intro";
+        : providers.length === 0 && sessionDetail
+          ? "settings.plugins.providers.consent.introPage"
+          : "settings.plugins.providers.consent.intro";
   return (
     <Dialog
       open={target !== null}
@@ -175,6 +191,7 @@ export function ProviderConsentDialog({
           ))}
           {folders ? <FolderGrantBlock folders={folders} t={t} /> : null}
           {agent ? <AgentGrantBlock t={t} /> : null}
+          {sessionDetail ? <SessionDetailGrantBlock t={t} /> : null}
           {providers.length > 0 ? (
             <p className="text-sm" data-testid="consent-standing">
               {t("settings.plugins.providers.consent.standing")}
@@ -253,6 +270,7 @@ export function grantDeltaLines(status: ProviderModUpdateStatus, t: TranslateFn)
     lines.push(t("settings.plugins.providers.updates.addedFoldersWrite", { folders: delta.added.folders.write.join(", ") }));
   }
   if (delta.added.agent) lines.push(t("settings.plugins.providers.updates.addedAgent"));
+  if (delta.added.sessionDetail) lines.push(t("settings.plugins.providers.updates.addedSessionDetail"));
   return lines;
 }
 

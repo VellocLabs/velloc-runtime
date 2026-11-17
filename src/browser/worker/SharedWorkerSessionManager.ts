@@ -1090,6 +1090,7 @@ export class SharedWorkerSessionManager {
         this.sessions.get(sessionId)?.worker.getSnapshot() ?? null,
       getAgentChanges: sessionId => this.subAgents.changeSections(sessionId),
       buildSessionInfoList: () => this.buildSessionInfoList(),
+      buildSessionSummary: () => this.feed.buildSummaryPayload(),
       loadToolDetail: (sessionId, toolCallId) =>
         this.toolDetailLoader.loadToolDetailForRuntime(sessionId, toolCallId),
       loadPersistedTranscript: sessionId =>

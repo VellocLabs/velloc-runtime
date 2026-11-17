@@ -104,6 +104,11 @@ class FakeManager implements SessionSurfaceHost {
   buildSessionInfoList() {
     return [{ sessionId: 's1', initialized: true }]
   }
+  /** What `buildSessionSummary` answers; undefined: no summary yet. */
+  summary: unknown = undefined
+  buildSessionSummary() {
+    return this.summary as never
+  }
   toolDetailRequests: Array<[string, string]> = []
   /** `late*` ids read as not-persisted-yet until added here. */
   persistedLate = new Set<string>()
@@ -588,6 +593,55 @@ describe('session surface over the hub', () => {
     await expect(open.handle(request('open', { sessionId: 'n1', templateType: 'cli-codex' }, control), {} as RuntimeContext)).rejects.toMatchObject({ code: 'forbidden_scope' })
     await rename.handle(request('rename', { sessionId: 'c1', title: 'x' }, full), {} as RuntimeContext)
     expect(rig.manager.dispatched.some(m => m.type === 'session.rename')).toBe(true)
+  })
+
+  it('a new sessions subscriber gets the current summary in its snapshot, cut to what it may see', async () => {
+    const rig = makeRig()
+    rig.manager.buildSessionInfoList = () =>
+      [
+        { sessionId: 's1', initialized: true },
+        { sessionId: 's2', initialized: true },
+        { sessionId: 'c1', initialized: true, templateType: 'cli-codex' },
+      ] as never
+    const control: ConnectionInfo = { connectionId: 'a', clientId: 'a', kind: 'mobile', scope: { mode: 'control', sessions: 'all' }, transport: 'websocket', connectedAt: 0 }
+    const narrow: ConnectionInfo = { ...control, connectionId: 'n', clientId: 'n', scope: { mode: 'observe', sessions: ['s1'] } }
+    const first: EvtFrame[] = []
+    await rig.broker.subscribe({ conn: control, send: e => first.push(e), bufferedBytes: () => 0 }, topic.sessions())
+    expect(first.map(e => e.type)).toEqual(['session.list'])
+
+    rig.manager.summary = { sessions: [{ sessionId: 's1', running: true }, { sessionId: 's2' }, { sessionId: 'c1', running: true }], subAgents: [], skills: [] }
+    const later: EvtFrame[] = []
+    await rig.broker.subscribe({ conn: { ...control, connectionId: 'b', clientId: 'b' }, send: e => later.push(e), bufferedBytes: () => 0 }, topic.sessions())
+    expect(later.map(e => [e.form, e.type])).toEqual([['snapshot', 'session.list'], ['snapshot', 'session.summary']])
+    expect(later[1]!.payload).toEqual({ payload: { sessions: [{ sessionId: 's1', running: true }, { sessionId: 's2' }], subAgents: [], skills: [] } })
+
+    const cut: EvtFrame[] = []
+    await rig.broker.subscribe({ conn: narrow, send: e => cut.push(e), bufferedBytes: () => 0 }, topic.sessions())
+    expect((cut[1]!.payload as { payload: { sessions: unknown[] } }).payload.sessions).toEqual([{ sessionId: 's1', running: true }])
+  })
+
+  it('a summary row names no type, so its CLI session is found by id: rows, sub-agents and skills (F-34)', async () => {
+    const rig = makeRig()
+    rig.manager.buildSessionInfoList = () =>
+      [{ sessionId: 's1', initialized: true }, { sessionId: 'c1', initialized: true, templateType: 'cli-codex' }] as never
+    const control: ConnectionInfo = { connectionId: 'r', clientId: 'r', kind: 'mobile', scope: { mode: 'control', sessions: 'all' }, transport: 'websocket', connectedAt: 0 }
+    const full: ConnectionInfo = { ...control, connectionId: 'd', clientId: 'd', scope: { mode: 'full', sessions: 'all' } }
+    const summary = {
+      sessions: [{ sessionId: 's1', running: true }, { sessionId: 'c1', running: true }],
+      subAgents: [{ sessionId: 'sub-1', spawnerSessionId: 'c1' }, { sessionId: 'sub-2', spawnerSessionId: 's1' }],
+      skills: [{ spawnerSessionId: 'c1', name: 'x' }],
+    }
+    const seen: EvtFrame[] = []
+    const desk: EvtFrame[] = []
+    await rig.broker.subscribe({ conn: control, send: e => seen.push(e), bufferedBytes: () => 0 }, topic.sessions())
+    await rig.broker.subscribe({ conn: full, send: e => desk.push(e), bufferedBytes: () => 0 }, topic.sessions())
+    rig.surface.port.postMessage({ type: 'session.summary', payload: summary })
+    await vi.waitFor(() => expect(seen).toHaveLength(2))
+    expect(seen[1]!.payload).toEqual({
+      payload: { sessions: [{ sessionId: 's1', running: true }], subAgents: [{ sessionId: 'sub-2', spawnerSessionId: 's1' }], skills: [] },
+    })
+    await vi.waitFor(() => expect(desk).toHaveLength(2))
+    expect(desk[1]!.payload).toEqual({ payload: summary })
   })
 
   it('getToolDetail and diag.traceFlush are answered from host methods, not by waiting on port replies', async () => {

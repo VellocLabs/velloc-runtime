@@ -10,7 +10,7 @@ import type {
   AgentWorkerInboundMessage,
 } from '../worker/workerProtocol'
 import type { SessionCard } from '../worker/sharedWorkerProtocol'
-import type { NexusAgentChangeSection } from '../bridge/protocol/ui'
+import type { NexusAgentChangeSection, NexusSessionsSummaryPayload } from '../bridge/protocol/ui'
 import {
   parseTopic,
   topic,
@@ -103,6 +103,8 @@ export type SessionSurfaceHost = {
   /** The session's sub-agent file-change sections: the diff topic's snapshot. */
   getAgentChanges?(sessionId: string): NexusAgentChangeSection[]
   buildSessionInfoList(): SessionCard[]
+  /** The current `session.summary` payload, built now. */
+  buildSessionSummary?(): NexusSessionsSummaryPayload
   /** The tool-detail sidecar (cache, then disk across candidate sessions), or null. */
   loadToolDetail(sessionId: string, toolCallId: string): Promise<unknown>
   /**
@@ -320,15 +322,29 @@ const isCliSessionRow = (row: unknown): boolean =>
   cliOfTypeInAnyChannel((row as { templateType?: unknown } | null)?.templateType as string | undefined) !== undefined
 const withoutCliRows = <T>(rows: readonly T[]): T[] => rows.filter(row => !isCliSessionRow(row))
 
-/** A `sessions` event with its CLI session rows removed; an update about one is withheld. */
-function withoutCliSessions(type: string | undefined, payload: unknown): unknown {
+/**
+ * A `sessions` event with its CLI sessions removed: list rows by their type,
+ * summary rows (which carry no type) and their sub-agent and skill rows by the
+ * session they belong to. An update about one is withheld.
+ */
+function withoutCliSessions(type: string | undefined, payload: unknown, cliSessionIds: () => ReadonlySet<string>): unknown {
   const inner = innerOf(payload)
   switch (type) {
     case 'session.list':
-    case 'session.summary':
       return Array.isArray(inner?.sessions)
         ? { ...(payload as object), payload: { ...inner, sessions: withoutCliRows(inner.sessions as unknown[]) } }
         : payload
+    case 'session.summary': {
+      const cli = cliSessionIds()
+      const rows = (key: string, by: string) =>
+        Array.isArray(inner?.[key])
+          ? { [key]: (inner[key] as Record<string, unknown>[]).filter(row => !cli.has(row[by] as string)) }
+          : {}
+      return {
+        ...(payload as object),
+        payload: { ...inner, ...rows('sessions', 'sessionId'), ...rows('subAgents', 'spawnerSessionId'), ...rows('skills', 'spawnerSessionId') },
+      }
+    }
     case 'session.updated':
       return isCliSessionRow(inner?.session) ? undefined : payload
     default:
@@ -349,9 +365,14 @@ const innerOf = (payload: unknown): Record<string, unknown> | null => {
  * `worker.error` (no session) as is — and nothing else: an event shape this
  * table does not know is withheld (`undefined`), never passed through.
  */
-export function sessionsEventFor(conn: ConnectionInfo, type: string | undefined, payload: unknown): unknown {
+export function sessionsEventFor(
+  conn: ConnectionInfo,
+  type: string | undefined,
+  payload: unknown,
+  cliSessionIds: () => ReadonlySet<string> = () => new Set(),
+): unknown {
   const visible = sessionsEventInScope(conn, type, payload)
-  return visible === undefined || seesCliSessions(conn) ? visible : withoutCliSessions(type, visible)
+  return visible === undefined || seesCliSessions(conn) ? visible : withoutCliSessions(type, visible, cliSessionIds)
 }
 
 function sessionsEventInScope(conn: ConnectionInfo, type: string | undefined, payload: unknown): unknown {
@@ -523,6 +544,9 @@ export function installSessionSurface(
     },
   }
 
+  const cliSessionIds = (): ReadonlySet<string> =>
+    new Set(host.buildSessionInfoList().filter(isCliSessionRow).map(row => row.sessionId))
+
   // Anyone may subscribe to the list and the task events; what each connection
   // SEES of them is cut to its sessions (`sessionsEventFor` / `tasksEventFor`).
   const sessionsProvider: TopicProvider = {
@@ -532,8 +556,13 @@ export function installSessionSurface(
       const visible = rowsVisibleTo(conn, host.buildSessionInfoList(), 'sessionId')
       const sessions = seesCliSessions(conn) ? visible : withoutCliRows(visible)
       yield { type: 'session.list', payload: { payload: { sessions } } }
+      // The live state rides `session.summary`, which is published only when
+      // it changes: a later subscriber gets the current one here.
+      const summary = host.buildSessionSummary?.()
+      const seen = summary && sessionsEventFor(conn, 'session.summary', { payload: summary }, cliSessionIds)
+      if (seen) yield { type: 'session.summary', payload: seen }
     },
-    project: (_id, conn, evt) => sessionsEventFor(conn, evt.type, evt.payload),
+    project: (_id, conn, evt) => sessionsEventFor(conn, evt.type, evt.payload, cliSessionIds),
     onSubscribe: (_id, _conn, first) => {
       if (first) host.subscribeSessionList(port)
     },

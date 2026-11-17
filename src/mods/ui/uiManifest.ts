@@ -6,6 +6,7 @@
  * the other entries stay. Pure.
  */
 
+import { SESSION_DETAIL_TOPICS, isSessionDetailTopic } from '../app/appPageTopics'
 import type { UpdateChannel } from '../../branding/updateChannels'
 import { isLocalizedText, whyNotLocalizedText, type LocalizedText } from '../../config/localizedText'
 import { readFolderScopes, type FolderScopes } from '../app/appFolderScopes'
@@ -243,9 +244,9 @@ function readApp(value: unknown, label: string, appId: string, bad: Bad): Plugin
     const topics = isRecord(declared) ? declared.topics : undefined
     const fileOk = typeof file === 'string' && insidePlugin(file) && /\.html$/i.test(file)
     const topicsOk =
-      Array.isArray(topics) && topics.length <= PAGE_TOPICS_MAX && topics.every(topic => typeof topic === 'string' && PAGE_TOPIC.test(topic))
+      Array.isArray(topics) && topics.length <= PAGE_TOPICS_MAX && topics.every(topic => typeof topic === 'string' && (PAGE_TOPIC.test(topic) || isSessionDetailTopic(topic)))
     if (fileOk && topicsOk) page = { file: file as string, topics: [...new Set(topics as string[])] }
-    else bad(`${label}.page: expected { file: "./<path>.html", topics: [at most ${PAGE_TOPICS_MAX} topic names] }`)
+    else bad(`${label}.page: expected { file: "./<path>.html", topics: [at most ${PAGE_TOPICS_MAX} topic names or ${SESSION_DETAIL_TOPICS.map(t => `"${t}"`).join(', ')}] }`)
   }
   if (!seed || !entry || data === null) return null
   return {

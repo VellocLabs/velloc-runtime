@@ -1,12 +1,14 @@
 /**
  * Plugins: the GRANT a person consents to — each provider's `domains`,
  * `secrets`, `readsSecrets`, `requestNeeds`, `signNeeds`, the reach of its proxy pools, the folders an
- * app's background module may reach, and whether it may run the agent (F-40). Consent binds to the grant, not
+ * app's background module may reach, whether it may run the agent (F-40), and
+ * whether its app pages may read each session's detail (F-42). Consent binds to the grant, not
  * the bytes: an update no wider than the consented grant needs no new consent.
  * Pure.
  */
 
 import { manifestAsksAgent } from '../mods/app/appAgentRun'
+import { manifestAsksSessionDetail } from '../mods/app/appPageTopics'
 import { addedFolderScopes, folderScopesOf, type FolderScopes } from '../mods/app/appFolderScopes'
 import type {
   ProviderManifest,
@@ -36,6 +38,8 @@ export type Grant = {
   folders?: FolderScopes
   /** An app's background module may start headless agent runs. Absent: none may. */
   agent?: true
+  /** Its app pages may read `session/<id>/state` and `turn/<id>`. Absent: they may not. */
+  sessionDetail?: true
 }
 
 /** What a provider asks for beyond what was consented to. Only the added parts. */
@@ -62,6 +66,8 @@ export type GrantDelta = {
     folders?: FolderScopes
     /** Agent runs, not consented to. */
     agent?: true
+    /** Session detail for its pages, not consented to. */
+    sessionDetail?: true
   }
   /** Provider keys the new version no longer has (never widening). */
   removed: string[]
@@ -86,21 +92,32 @@ export function providerGrantOf(manifest: ProviderManifest): ProviderGrant {
   }
 }
 
-/** The grant of a plugin's `providers` map, of its declared folders, and of its agent runs. */
-export function grantOf(providers: Readonly<Record<string, ProviderManifest>>, folders?: FolderScopes, agent?: boolean): Grant {
+/** The grant of a plugin's `providers` map, of its declared folders, of its agent runs, and of its pages' session detail. */
+export function grantOf(
+  providers: Readonly<Record<string, ProviderManifest>>,
+  folders?: FolderScopes,
+  agent?: boolean,
+  sessionDetail?: boolean,
+): Grant {
   const out: Record<string, ProviderGrant> = {}
   for (const key of Object.keys(providers).sort()) out[key] = providerGrantOf(providers[key]!)
   return {
     providers: out,
     ...(folders && (folders.read.length > 0 || folders.write.length > 0) ? { folders } : {}),
     ...(agent ? { agent: true as const } : {}),
+    ...(sessionDetail ? { sessionDetail: true as const } : {}),
   }
 }
 
-/** The grant of a whole plugin manifest: its providers and its apps' folders. */
+/** The grant of a whole plugin manifest: its providers and what its apps ask for. */
 export function pluginGrantOf(manifest: unknown): Grant {
   const providers = (manifest as { providers?: Record<string, ProviderManifest> } | null)?.providers ?? {}
-  return grantOf(providers, folderScopesOf(manifest), manifestAsksAgent(manifest))
+  return grantOf(providers, folderScopesOf(manifest), manifestAsksAgent(manifest), manifestAsksSessionDetail(manifest))
+}
+
+/** Whether a manifest's apps ask for anything the person consents to: folders, agent runs or session detail. */
+export function manifestAsksAppGrant(manifest: unknown): boolean {
+  return folderScopesOf(manifest) !== undefined || manifestAsksAgent(manifest) || manifestAsksSessionDetail(manifest)
 }
 
 function additionOf(consented: ProviderGrant | undefined, next: ProviderGrant): ProviderGrantAddition | undefined {
@@ -131,12 +148,13 @@ function additionOf(consented: ProviderGrant | undefined, next: ProviderGrant): 
  * value, a first proxy pool, or a larger `signNeeds`
  * (none < digest < body) is wider, as is a
  * folder not consented to, a read-only one asked for writing, or agent runs
- * not consented to. Dropping or
+ * or session detail not consented to. Dropping or
  * reducing any of them, or dropping a provider, is not.
  */
 export function widened(consented: Grant, next: Grant): GrantDelta {
   const folders = addedFolderScopes(consented.folders, next.folders)
   const agent = next.agent === true && consented.agent !== true
+  const sessionDetail = next.sessionDetail === true && consented.sessionDetail !== true
   const perProvider: Record<string, ProviderGrantAddition> = {}
   const addedProviders: string[] = []
   for (const key of Object.keys(next.providers).sort()) {
@@ -153,8 +171,14 @@ export function widened(consented: Grant, next: Grant): GrantDelta {
     .filter(key => next.providers[key] === undefined)
     .sort()
   return {
-    widened: Object.keys(perProvider).length > 0 || folders !== undefined || agent,
-    added: { providers: addedProviders, perProvider, ...(folders ? { folders } : {}), ...(agent ? { agent: true as const } : {}) },
+    widened: Object.keys(perProvider).length > 0 || folders !== undefined || agent || sessionDetail,
+    added: {
+      providers: addedProviders,
+      perProvider,
+      ...(folders ? { folders } : {}),
+      ...(agent ? { agent: true as const } : {}),
+      ...(sessionDetail ? { sessionDetail: true as const } : {}),
+    },
     removed,
   }
 }

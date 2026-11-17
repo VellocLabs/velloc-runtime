@@ -100,6 +100,8 @@ import {
   type ModsAppPageResult,
 } from '../runtimeProtocol/modApps'
 import { readAppPage } from '../../mods/app/appPage'
+import { readConsentedGrants } from '../../pluginHost/providerPluginConsent'
+import { resolveHostHome } from './hostFs'
 import type { TopicBroker } from './TopicBroker'
 import type { ConnectionInfo, SnapshotPage, TopicProvider } from './types'
 
@@ -507,7 +509,11 @@ export function registerModsCapability(
         }
         case 'appPage': {
           const { appId } = request.payload as ModsAppPagePayload
-          return options.appPage ? options.appPage(appId) : readAppPage(appId, context.fs)
+          if (options.appPage) return options.appPage(appId)
+          return readAppPage(appId, context.fs, undefined, async consentId => {
+            const homeDir = await resolveHostHome(context).catch(() => '')
+            return homeDir ? (await readConsentedGrants({ homeDir }, context.fs)).get(consentId) : undefined
+          })
         }
         case 'setOptions': {
           const payload = request.payload as ModsSetOptionsPayload

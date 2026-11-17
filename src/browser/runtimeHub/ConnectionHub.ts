@@ -44,7 +44,7 @@ import type { Pairing, PairingTable } from './pairingTable'
 import { BlobInbox, type BlobInboxLimits } from './BlobInbox'
 import { CapabilityRegistry, scopeAllows } from './CapabilityRegistry'
 import { toWireError } from './errors'
-import type { PortDelegation } from './portDelegation'
+import { delegatedTopicVerdict, type PortDelegation } from './portDelegation'
 import type { TopicBroker, TopicSubscriber } from './TopicBroker'
 import type { BlobOffers, ConnectionInfo, HandlerRequest, RuntimeContext } from './types'
 
@@ -842,10 +842,16 @@ class ClientConnection implements TopicSubscriber {
       throw wireError('bad_payload', 'topics.subscribe wants { topics: [{ topic, since? }] }')
     }
     const broker = this.hub.options.broker
-    const allowed = this.attachOptions.delegate?.topics
+    const delegate = this.attachOptions.delegate
     for (const { topic } of payload.topics) {
-      if (allowed && !allowed.includes(topic)) {
-        throw wireError('forbidden_scope', `topic '${topic}' is outside this connection's scope`, { topic })
+      if (delegate) {
+        const verdict = delegatedTopicVerdict(delegate, topic)
+        // A session's detail is open only where its state topic is: the
+        // session is in scope, and a CLI session needs `full`.
+        const sessionSeen = verdict?.sessionId === undefined || broker.authorize(`session/${verdict.sessionId}/state`, this.conn) === 'ok'
+        if (!verdict || !sessionSeen) {
+          throw wireError('forbidden_scope', `topic '${topic}' is outside this connection's scope`, { topic })
+        }
       }
       const verdict = broker.authorize(topic, this.conn)
       if (verdict === 'not_found') throw wireError('not_found', `no provider serves topic '${topic}'`, { topic })

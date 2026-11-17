@@ -5,6 +5,9 @@
  */
 
 import { SCOPE_MODES, type ScopeMode, type TopicId } from '../runtimeProtocol/frames'
+import { parseTopic } from '../runtimeProtocol/topics'
+import { sessionOfTurnTopic } from '../../sessions/turnProtocol'
+import { SESSION_STATE_PATTERN, TURN_PATTERN } from '../../mods/app/appPageTopics'
 
 export type PortDelegation = {
   readonly scope: ScopeMode
@@ -34,4 +37,26 @@ export function parsePortDelegation(value: unknown): PortDelegation | null {
     if (!ids.includes(topic)) ids.push(topic)
   }
   return { scope: scope as ScopeMode, topics: ids }
+}
+
+/** The session a concrete session-detail topic is about, with the pattern it matches; null for any other id. */
+function sessionDetailOf(topic: string): { pattern: string; sessionId: string } | null {
+  const parsed = parseTopic(topic)
+  if (parsed?.family === 'session' && parsed.kind === 'state') return { pattern: SESSION_STATE_PATTERN, sessionId: parsed.sessionId }
+  const turn = sessionOfTurnTopic(topic)
+  return turn !== null ? { pattern: TURN_PATTERN, sessionId: turn } : null
+}
+
+/**
+ * Security: what a delegation lets `topic` through on. A topic it names
+ * exactly: `{}`. A concrete `session/<id>/state` or `turn/<id>` whose pattern
+ * it names: `{ sessionId }`, and the caller still checks the connection may
+ * see that session. Anything else, a pattern itself included: null.
+ */
+export function delegatedTopicVerdict(delegation: PortDelegation, topic: string): { sessionId?: string } | null {
+  if (topic.includes('*')) return null
+  if (delegation.topics.includes(topic)) return {}
+  const detail = sessionDetailOf(topic)
+  if (!detail || detail.sessionId.includes('*') || !delegation.topics.includes(detail.pattern)) return null
+  return { sessionId: detail.sessionId }
 }

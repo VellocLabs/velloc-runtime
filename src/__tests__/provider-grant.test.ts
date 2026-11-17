@@ -4,7 +4,7 @@
  */
 import { describe, expect, it } from 'vitest'
 import { checkProviderManifests, type ProviderManifest } from '../mods/provider/providerManifest'
-import { grantOf, pluginGrantOf, providerGrantOf, widened, type Grant } from '../pluginHost/providerGrant'
+import { grantOf, manifestAsksAppGrant, pluginGrantOf, providerGrantOf, widened, type Grant } from '../pluginHost/providerGrant'
 import { checkPluginDescriptor } from '../pluginHost/manifestValidator'
 import { providerJson } from './_helpers/pluginArchive'
 
@@ -220,5 +220,25 @@ describe('the agent runs of an app background module', () => {
     expect(delta).toEqual({ widened: true, added: { providers: [], perProvider: {}, agent: true }, removed: [] })
     expect(widened(grantOf({}, undefined, true), grantOf({}, undefined, true)).widened).toBe(false)
     expect(widened(grantOf({}, undefined, true), grantOf({})).widened).toBe(false)
+  })
+})
+
+describe('the session detail an app page asks for (F-42)', () => {
+  const asking = (topics: string[]) => ({ providers: {}, templates: { board: { app: { page: { file: './app/p.html', topics } } } } })
+
+  it('pluginGrantOf reads a session-detail pattern in page.topics; plain topics are no grant', () => {
+    expect(pluginGrantOf(asking(['sessions', 'session/*/state']))).toEqual({ providers: {}, sessionDetail: true })
+    expect(pluginGrantOf(asking(['turn/*']))).toEqual({ providers: {}, sessionDetail: true })
+    expect(pluginGrantOf(asking(['sessions', 'tasks']))).toEqual({ providers: {} })
+    expect(manifestAsksAppGrant(asking(['session/*/state']))).toBe(true)
+    expect(manifestAsksAppGrant(asking(['sessions']))).toBe(false)
+  })
+
+  it('session detail not consented to widens; consented, or dropped, does not', () => {
+    const delta = widened(grantOf({}), grantOf({}, undefined, false, true))
+    expect(delta).toEqual({ widened: true, added: { providers: [], perProvider: {}, sessionDetail: true }, removed: [] })
+    expect(widened(pluginGrantOf(asking(['sessions'])), pluginGrantOf(asking(['sessions', 'turn/*']))).widened).toBe(true)
+    expect(widened(grantOf({}, undefined, false, true), grantOf({}, undefined, false, true)).widened).toBe(false)
+    expect(widened(grantOf({}, undefined, false, true), grantOf({})).widened).toBe(false)
   })
 })

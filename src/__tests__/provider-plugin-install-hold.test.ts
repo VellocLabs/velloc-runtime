@@ -187,3 +187,35 @@ describe('no baseline is invented', () => {
     expect(fetchImpl.calls).toEqual([URL_A])
   })
 })
+
+describe('an app page asking for session detail (F-42)', () => {
+  const withPage = (topics: string[]) => ({
+    name: 'acme',
+    templates: { board: { title: 'B', app: { seed: './app', entry: 'board.a2ui', page: { file: './app/p.html', topics } } } },
+  })
+
+  it('needs consent when the page names a session-detail pattern, on a channel that runs apps', () => {
+    expect(manifestNeedsConsent(withPage(['sessions', 'session/*/state']), 'beta')).toBe(true)
+    expect(manifestNeedsConsent(withPage(['turn/*']), 'beta')).toBe(true)
+    expect(manifestNeedsConsent(withPage(['sessions', 'tasks']), 'beta')).toBe(false)
+    expect(manifestNeedsConsent(withPage(['session/*/state']), 'stable')).toBe(false)
+  })
+
+  it('a consent without session detail does not cover a version that newly asks for it; one with it does', async () => {
+    const fs = makeMemFs() as unknown as RuntimeFs
+    const { providerModUpdatesFilePath } = await import('../pluginHost/pluginDirs')
+    const file = providerModUpdatesFilePath(ctx)
+    const dir = file.replace(/\/[^/]*$/, '')
+    await fs.mkdir(dir.replace(/\/[^/]*$/, '')).catch(() => undefined)
+    await fs.mkdir(dir).catch(() => undefined)
+    const approve = (grant: object) =>
+      fs.writeFile(file, JSON.stringify({ version: 1, plugins: { 'acme@mkt': { consent: { version: '1.0.0', at: 'x', grant } } } }), {
+        encoding: 'utf-8',
+      })
+    await approve({ providers: {} })
+    expect(await consentCovers(ctx, fs, 'acme@mkt', withPage(['sessions']))).toBe(true)
+    expect(await consentCovers(ctx, fs, 'acme@mkt', withPage(['sessions', 'session/*/state']))).toBe(false)
+    await approve({ providers: {}, sessionDetail: true })
+    expect(await consentCovers(ctx, fs, 'acme@mkt', withPage(['sessions', 'session/*/state', 'turn/*']))).toBe(true)
+  })
+})

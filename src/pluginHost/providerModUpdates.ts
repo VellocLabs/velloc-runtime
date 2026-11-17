@@ -14,8 +14,6 @@
 import type { RuntimeFs } from '../utils/fs/runtimeFs'
 import type { ActivePlugin, PluginLoadIssue } from './pluginModel'
 import { getProviderModHost } from '../mods/provider/providerModHost'
-import { manifestAsksAgent } from '../mods/app/appAgentRun'
-import { folderScopesOf } from '../mods/app/appFolderScopes'
 import { refreshDirectoryListings } from './directoryInstall'
 import { DIRECTORY_CATALOG_KEY } from './directoryListings'
 import { DIRECT_CATALOG_KEY } from './httpsSource'
@@ -38,7 +36,7 @@ import type { PluginInstallPathContext } from './pluginDirs'
 import { readStrictPluginRef } from './pluginRef'
 import type { PluginSetupRecord } from './registryFormats'
 import type { ExtractedFile } from './extract'
-import { pluginGrantOf, widened, type Grant, type GrantDelta } from './providerGrant'
+import { manifestAsksAppGrant, pluginGrantOf, widened, type Grant, type GrantDelta } from './providerGrant'
 import { addPersonHost, type PersonAdded } from './personWidening'
 import { readUpdateStateFile, writeUpdateStateFile, type UpdateStateFileOf } from './providerModUpdateState'
 
@@ -300,7 +298,7 @@ export function createProviderModUpdateService(deps: ProviderModUpdateDeps): Pro
         plugin.installIdentifier = id
         const providers = Object.values(plugin.manifest.providers ?? {})
         const hasProviders = providers.length > 0
-        if (!hasProviders && folderScopesOf(plugin.manifest) === undefined && !manifestAsksAgent(plugin.manifest)) continue
+        if (!hasProviders && !manifestAsksAppGrant(plugin.manifest)) continue
         const declared = providers.find(provider => provider.updates !== undefined)?.updates
         const updates = declared ? { ...declared } : hasProviders ? undefined : catalogSourceOf(ref.value.marketplace, entry)
         out.push({

@@ -54,7 +54,16 @@ export type PluginTemplateStatus =
   | { state: 'absent'; plugin: string }
 
 /** An app a session of its type opens in (F-40). */
-export type AppTemplate = { appId: string; plugin: string; decl: PluginAppDecl; seedDir: string; /** The plugin's directory, absolute. */ root?: string }
+export type AppTemplate = {
+  appId: string
+  plugin: string
+  decl: PluginAppDecl
+  seedDir: string
+  /** The plugin's directory, absolute. */
+  root?: string
+  /** The plugin's id in the consent file (`<name>@<catalog>`); absent for a hand-placed plugin. */
+  consentId?: string
+}
 
 /** A published app with a background module (F-40): the module and the plugin it belongs to. */
 export type AppBackgroundTemplate = {
@@ -284,7 +293,14 @@ export class ModUiContributionsHost {
     const owner = app && this.plugins.find(entry => entry.name === app.plugin)
     const decl = owner?.templates?.find(entry => entry.type === type)?.decl.app
     if (!app || !owner || !decl) return undefined
-    return { appId: app.appId, plugin: owner.name, decl, seedDir: insideRoot(owner.path, decl.seed), root: owner.path }
+    return {
+      appId: app.appId,
+      plugin: owner.name,
+      decl,
+      seedDir: insideRoot(owner.path, decl.seed),
+      root: owner.path,
+      ...(owner.source.startsWith(MARKETPLACE_SOURCE) ? { consentId: owner.source.slice(MARKETPLACE_SOURCE.length) } : {}),
+    }
   }
 
   /** The published apps that declare a background module, in publish order. */

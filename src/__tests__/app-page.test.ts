@@ -211,3 +211,43 @@ describe('the page policy', () => {
     expect(withAppPageCsp('<!-- licence --><!doctype html><p>x</p>')).toBe(`<!-- licence --><!doctype html>${meta}<p>x</p>`)
   })
 })
+
+describe('session detail on an app page (F-42)', () => {
+  const ASKED = ['sessions', 'session/*/state', 'turn/*', 'session/s1/state']
+
+  it('the manifest takes the session-detail patterns as topics', () => {
+    const errors: string[] = []
+    const decls = checkTemplateDecls(
+      'office',
+      { floor: { title: 'Office', app: { ...APP, page: { file: './app/office.html', topics: ['sessions', 'session/*/state', 'turn/*'] } } } },
+      errors,
+      'beta',
+    )
+    expect(errors).toEqual([])
+    expect(decls?.floor?.app?.page?.topics).toEqual(['sessions', 'session/*/state', 'turn/*'])
+    checkTemplateDecls('office', { floor: { title: 'Office', app: { ...APP, page: { file: './app/office.html', topics: ['session/s1/state'] } } } }, errors, 'beta')
+    expect(errors).toHaveLength(1)
+  })
+
+  it('allows the patterns only with a grant that has sessionDetail, never a concrete id', () => {
+    expect(allowedPageTopics(ASKED)).toEqual(['sessions'])
+    expect(allowedPageTopics(ASKED, {})).toEqual(['sessions'])
+    expect(allowedPageTopics(ASKED, { sessionDetail: true })).toEqual(['sessions', 'session/*/state', 'turn/*'])
+  })
+
+  it('reads the grant on file for a catalog plugin; a hand-placed one is exempt', async () => {
+    const fs = fakeFs({ '/plugins/office/app/office.html': '<p>office</p>' })
+    const page = { file: './app/office.html', topics: ['sessions', 'session/*/state'] }
+    const catalog = () => {
+      const host = fakeHost(page)
+      return { ...host, appOf: (type: string) => ({ ...(host.appOf(type) as unknown as object), consentId: 'office@mkt' }) as never }
+    }
+    const grantOf = vi.fn(async (id: string) => (id === 'office@mkt' ? { providers: {} } : undefined))
+    expect(await readAppPage('office-floor', fs, catalog(), grantOf)).toMatchObject({ topics: ['sessions'] })
+    expect(grantOf).toHaveBeenCalledWith('office@mkt')
+    const approved = async () => ({ providers: {}, sessionDetail: true as const })
+    expect(await readAppPage('office-floor', fs, catalog(), approved)).toMatchObject({ topics: ['sessions', 'session/*/state'] })
+    expect(await readAppPage('office-floor', fs, catalog())).toMatchObject({ topics: ['sessions'] })
+    expect(await readAppPage('office-floor', fs, fakeHost(page))).toMatchObject({ topics: ['sessions', 'session/*/state'] })
+  })
+})
