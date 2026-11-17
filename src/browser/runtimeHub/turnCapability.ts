@@ -14,6 +14,7 @@ import {
 import { turnBoard, type TurnBoard } from '../../sessions/turnBoard'
 import { scopeAllows } from './CapabilityRegistry'
 import type { TopicBroker } from './TopicBroker'
+import { turnQuestionOf } from './sessionDetailProjection'
 import type { ConnectionInfo, SnapshotPage, TopicProvider } from './types'
 
 /** Whether `conn` may see `sessionId`: the session-topic rule. */
@@ -30,10 +31,13 @@ export function registerTurnTopic(
       const sessionId = sessionOfTurnTopic(id)
       return sessionId !== null && scopeAllows(conn.scope.mode, TURN_TOPIC_SCOPE) && seesSession(conn, sessionId)
     },
-    async *snapshot(id: TopicId): AsyncIterable<SnapshotPage> {
+    async *snapshot(id: TopicId, conn: ConnectionInfo): AsyncIterable<SnapshotPage> {
       const sessionId = sessionOfTurnTopic(id)
-      if (sessionId) yield { type: TURN_EVENT, payload: turnTopicState(sessionId, board.read(sessionId)) }
+      if (!sessionId) return
+      const state = turnTopicState(sessionId, board.read(sessionId))
+      yield { type: TURN_EVENT, payload: conn.delegated ? turnQuestionOf(id, state) : state }
     },
+    project: (id, conn, evt) => (conn.delegated ? turnQuestionOf(id, evt.payload) : evt.payload),
   }
   broker.registerProvider(provider)
 

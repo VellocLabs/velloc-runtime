@@ -716,6 +716,7 @@ class ClientConnection implements TopicSubscriber {
       clientId: hello.client.clientId,
       kind: hello.client.kind,
       scope: clampScope(delegate ? clampScope(LOCAL_SCOPE, delegate.scope) : LOCAL_SCOPE, hello.scopeCeiling),
+      ...(delegate ? { delegated: true as const } : {}),
       transport: this.transport.kind,
       ...(panelId !== undefined ? { panelId } : {}),
       // A remote page states its browser; this machine's own shell sends

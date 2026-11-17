@@ -33,6 +33,8 @@ export type ConnectionInfo = {
   /** When the handshake completed (`hub.now()`), so the device list can say
    *  how long a device has been connected. */
   readonly connectedAt: number
+  /** Set on a port its creator capped (F-42): providers narrow what it sees to the consented subset. */
+  readonly delegated?: true
 }
 
 /**

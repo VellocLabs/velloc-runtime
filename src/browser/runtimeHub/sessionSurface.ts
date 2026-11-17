@@ -34,6 +34,7 @@ import type { TopicBroker } from './TopicBroker'
 import { modRosterAttach, modRosterDetach } from '../../mods/modSlotRegistry'
 import { turnBoard } from '../../sessions/turnBoard'
 import { turnTopic } from '../../sessions/turnProtocol'
+import { sessionDetailEvent, sessionDetailSnapshot } from './sessionDetailProjection'
 import type { ActionSpec, ConnectionInfo, HandlerRequest, TopicProvider } from './types'
 
 // ---- opening a session -------------------------------------------------------------
@@ -504,9 +505,10 @@ export function installSessionSurface(
       if (!(conn.scope.sessions === 'all' || conn.scope.sessions.includes(parsed.sessionId))) return false
       return seesCliSessions(conn) || !host.buildSessionInfoList().some(row => row.sessionId === parsed.sessionId && isCliSessionRow(row))
     },
-    async *snapshot(id) {
+    async *snapshot(id, conn) {
       const parsed = parseTopic(id)
       if (parsed?.family !== 'session') return
+      if (conn.delegated && parsed.kind !== 'state') return
       if (parsed.kind === 'diff') {
         const agents = host.getAgentChanges?.(parsed.sessionId) ?? []
         if (agents.length > 0) yield { type: 'worker.agentChanges', payload: { payload: { agents } } }
@@ -514,8 +516,9 @@ export function installSessionSurface(
       }
       if (parsed.kind !== 'state') return
       const snapshot = host.getSessionSnapshot(parsed.sessionId)
-      if (snapshot) yield { type: 'worker.state', payload: { payload: snapshot } }
+      if (snapshot) yield { type: 'worker.state', payload: { payload: conn.delegated ? sessionDetailSnapshot(snapshot) : snapshot } }
     },
+    project: (id, conn, evt) => (conn.delegated ? sessionDetailEvent(id, evt) : evt.payload),
     onSubscribe: (id, conn, first) => {
       const parsed = parseTopic(id)
       if (parsed?.family !== 'session') return
