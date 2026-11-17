@@ -526,6 +526,7 @@ this repo; a change to what the model sees regenerates them (F-19).
   namespace, so a bare per-type name would collide with a shared one.
 - Keep each type's goldens current (see Golden files).
 - Tests: `__tests__/templateRegistry.test.ts` (parsing, holder resolution,
-  title/icon, the prefix guard) and `__tests__/threadLaunchers.test.ts` (icon +
+  title/icon, the prefix guard), `__tests__/templatePromptProse.test.ts` (what
+  the bundled holders say) and `__tests__/threadLaunchers.test.ts` (icon +
   title sourced from the template). Run `npm run typecheck && npm test`.
 ```
