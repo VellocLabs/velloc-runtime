@@ -52,7 +52,7 @@ function fullSnapshot(): Record<string, unknown> {
     pendingPermissions: {
       call1: {
         toolName: 'Bash',
-        summary: 'npm test',
+        summary: `${LEAK}-summary`,
         suggestedRule: `${LEAK}-rule`,
         reason: 'outside-workspace',
         directory: 'C:/other',
@@ -67,7 +67,7 @@ function fullSnapshot(): Record<string, unknown> {
       {
         assistantMessage: { text: `${LEAK}-reply` },
         toolName: 'Write',
-        description: 'Write notes.md',
+        description: `${LEAK}-label`,
         input: { content: `${LEAK}-input` },
         approvalCallId: `${LEAK}-call-id`,
         permissionResult: { behavior: 'ask', message: `${LEAK}-message` },
@@ -99,11 +99,11 @@ const CONSENTED = {
   currentProviderId: 'provider-a',
   activeModelId: 'model-a',
   currentThinkingTier: 'high',
-  pendingPermissions: { call1: { toolName: 'Bash', summary: 'npm test', reason: 'outside-workspace', directory: 'C:/other' } },
+  pendingPermissions: { call1: { toolName: 'Bash', reason: 'outside-workspace', directory: 'C:/other' } },
   pendingPlanApproval: { call2: { toolName: 'ExitPlanMode' } },
   pendingUserInteraction: { call3: { toolName: 'AskUserQuestion' } },
   approvalQueue: [
-    { toolName: 'Write', description: 'Write notes.md', askedAtMs: 5 },
+    { toolName: 'Write', askedAtMs: 5 },
     { toolName: 'ExitPlanMode', askedAtMs: 6 },
   ],
 }

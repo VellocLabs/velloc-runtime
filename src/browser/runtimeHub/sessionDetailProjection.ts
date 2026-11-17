@@ -18,16 +18,14 @@ export const SESSION_DETAIL_EVENT_TYPES: ReadonlySet<string> = new Set([
   'worker.completed',
 ])
 
-const PLAN_TOOLS = new Set(['ExitPlanMode', 'EnterPlanMode'])
-
 export type SessionDetailSnapshot = Pick<
   AgentRuntimeWorkerSnapshot,
   'sessionId' | 'cwd' | 'projectRoot' | 'currentProviderId' | 'activeModelId' | 'currentThinkingTier'
 > & {
-  pendingPermissions?: Record<string, Pick<PendingPermissionRequest, 'toolName' | 'summary' | 'reason' | 'directory'>>
+  pendingPermissions?: Record<string, Pick<PendingPermissionRequest, 'toolName' | 'reason' | 'directory'>>
   pendingPlanApproval?: Record<string, { toolName: string }>
   pendingUserInteraction?: Record<string, { toolName: string }>
-  approvalQueue?: Array<{ toolName: string; description?: string; askedAtMs: number }>
+  approvalQueue?: Array<{ toolName: string; askedAtMs: number }>
 }
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -61,7 +59,8 @@ const PERMISSION_REASONS: ReadonlySet<unknown> = new Set(['sensitive-path', 'out
 
 /**
  * Security: the consented subset of a session snapshot. Queued and injected text, plan text, the
- * approval's model reply and tool input, skills, MCP servers and every field not named here stay out.
+ * approval's model reply and tool input, any summary or label a tool derives from that input, skills,
+ * MCP servers and every field not named here stay out.
  */
 export function sessionDetailSnapshot(snapshot: unknown): SessionDetailSnapshot {
   if (!isRecord(snapshot)) return {}
@@ -70,7 +69,7 @@ export function sessionDetailSnapshot(snapshot: unknown): SessionDetailSnapshot 
     typeof entry.toolName === 'string'
       ? {
           toolName: entry.toolName,
-          ...pickStrings(entry, ['summary', 'directory'] as const),
+          ...pickStrings(entry, ['directory'] as const),
           ...(PERMISSION_REASONS.has(entry.reason) ? { reason: entry.reason as PendingPermissionRequest['reason'] } : {}),
         }
       : null,
@@ -83,9 +82,7 @@ export function sessionDetailSnapshot(snapshot: unknown): SessionDetailSnapshot 
   if (Array.isArray(snapshot.approvalQueue)) {
     out.approvalQueue = snapshot.approvalQueue.flatMap(entry => {
       if (!isRecord(entry) || typeof entry.toolName !== 'string' || typeof entry.askedAtMs !== 'number') return []
-      // A plan tool's dialog label may hold the plan.
-      const description = !PLAN_TOOLS.has(entry.toolName) && typeof entry.description === 'string' ? entry.description : undefined
-      return [{ toolName: entry.toolName, ...(description !== undefined ? { description } : {}), askedAtMs: entry.askedAtMs }]
+      return [{ toolName: entry.toolName, askedAtMs: entry.askedAtMs }]
     })
   }
   return out
