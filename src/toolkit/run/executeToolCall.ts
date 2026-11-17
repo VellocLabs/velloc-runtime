@@ -16,6 +16,7 @@ import { emptyPermissionRuleSet, type PermissionDecider, type ToolPermissionResu
 import type { ToolCallContext } from '../toolCallContext'
 import {
   toolCallArgsOf,
+  toolCheckApproverOf,
   type ModToolInfo,
   type ToolCallMods,
   type ToolCheckResult,
@@ -347,6 +348,7 @@ export async function checkToolForMod(params: {
     signal: callContext.cancelSource.signal,
     context: params.context,
     always: true,
+    approver: toolCheckApproverOf(callContext.readAppState().permissionRules),
     safetyAsk: () =>
       filePathSafetyAsk(tool, args, callContext, callContext.readAppState().permissionRules, false),
   })

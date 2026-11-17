@@ -74,6 +74,14 @@ describe('ModTurnNote', () => {
     cleanup()
     expect(render(withUi({}, createElement(ModTurnNote))).container.innerHTML).toBe('')
   })
+
+  it('heads the note with the plugins that wrote it; no heading without them', () => {
+    render(withUi({ turnNote: { turnId: 't1', text: 'TL;DR', by: ['tldr', 'suffix'] } }, createElement(ModTurnNote)))
+    expect(screen.getByTestId('mod-turn-note-by').textContent).toBe('tldr, suffix')
+    cleanup()
+    render(withUi({ turnNote: { turnId: 't1', text: 'TL;DR' } }, createElement(ModTurnNote)))
+    expect(screen.queryByTestId('mod-turn-note-by')).toBeNull()
+  })
 })
 
 describe('ModToasts', () => {

@@ -84,6 +84,7 @@ import {
   type ToolCallEvent,
   type ToolCallSettlement,
   isToolCheckResult,
+  settledToolCheck,
   type ToolCheckCore,
   type ToolCheckEvent,
   type ToolCheckResult,
@@ -2005,6 +2006,7 @@ export class ModRuntime extends ModUiSurface implements TurnExtensions {
   ): Promise<ToolCheckSettlement> {
     if (this.disposed || (!context && !this.hasToolCheckHooks())) return { settled: false }
     const running = new Set<AbortController>()
+    let entries: readonly TraceEntry[] = []
     try {
       const result = await this.dispatcher.dispatch(
         'tool.check',
@@ -2023,9 +2025,12 @@ export class ModRuntime extends ModUiSurface implements TurnExtensions {
           ...(context ? { context } : {}),
           accepts: isToolCheckResult,
           refusal: reason => ({ decision: 'deny', reason }),
+          trace: settled => {
+            entries = settled
+          },
         },
       )
-      return { settled: true, result: result as ToolCheckResult }
+      return { settled: true, result: settledToolCheck(result as ToolCheckResult, entries) }
     } catch (error) {
       if (!signal?.aborted) {
         this.options.report(

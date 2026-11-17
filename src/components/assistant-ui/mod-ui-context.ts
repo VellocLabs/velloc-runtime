@@ -169,7 +169,7 @@ export type ModUiContextValue = {
   hooked: readonly ModUiHookedSite[]
   stale: ModUiStale
   /** What a `turn.complete` hook answered beneath the last answer. */
-  turnNote?: { turnId: string; text: string }
+  turnNote?: { turnId: string; text: string; by?: string[] }
   /** The agent view a mod last asked for (`$.ui.view`); absent before any. */
   view?: { seq: number; agentId?: string; kind?: 'subagent' | 'teammate'; sessionId?: string }
   /** The questions the session's mods asked that wait for the person. */

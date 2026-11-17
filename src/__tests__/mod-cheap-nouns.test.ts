@@ -449,7 +449,37 @@ describe('$.settings.read', () => {
     expect(reports).toEqual([
       'p: {"merged":{"permissions":{"defaultMode":"ask"}},"user":{"permissions":{"defaultMode":"ask"}},"policy":{}}',
     ])
-    expect(asked).toEqual([{}, { source: 'user' }, { source: 'policy' }])
+    // Each read of the user's file also fills the event's layers first.
+    expect(asked).toEqual([{ source: 'user' }, {}, { source: 'user' }, { source: 'user' }, { source: 'policy' }])
+  })
+
+  it('a hook reads the layers the answer is made of: the user layer for a merged or user read, none for another source; a call cannot set them, a moved source refuses the read', async () => {
+    const { runtime, reports } = world(
+      {
+        watch: `on('settings.read', async ($, e, next) => {
+          const got = await next(e)
+          await $.ui.log('watch ' + JSON.stringify(e))
+          return got
+        })`,
+        mover: `on('settings.read', ($, e, next) => e.source === 'local' ? next({ ...e, source: 'user' }) : next(e))`,
+        p: logging(`(async () => [
+          await $.settings.read({ layers: [{ source: 'policy', settings: { forged: true } }] }),
+          await $.settings.read({ source: 'project' }),
+          await $.settings.read({ source: 'local' }).catch(error => error.message),
+        ])()`),
+      },
+      { settings: async args => (args.source === undefined || args.source === 'user' ? { model: 'fast' } : {}) },
+    )
+    await runtime.ready
+    await runtime.promptSubmit('hi')
+    const watched = reports.filter(line => line.startsWith('watch: watch ')).map(line => JSON.parse(line.slice('watch: watch '.length)))
+    expect(watched).toEqual([
+      { layers: [{ source: 'user', settings: { model: 'fast' } }] },
+      { source: 'project', layers: [] },
+    ])
+    expect(reports.find(line => line.startsWith('p: '))).toBe(
+      'p: [{"model":"fast"},{},"the rewritten event is refused: source is pinned"]',
+    )
   })
 
   it('refuses a source that is not one', async () => {

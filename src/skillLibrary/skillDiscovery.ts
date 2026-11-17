@@ -157,7 +157,8 @@ function toCommand(
   rawContent: string,
   pluginName?: string,
 ): ChromiumCommandMetadata {
-  const { frontmatter, content: body } = readMarkdownHeader(rawContent, filePath)
+  const { frontmatter, content: body, problem } = readMarkdownHeader(rawContent, filePath)
+  const authored = authoredFrontmatterOf(frontmatter, problem)
 
   const userSpecifiedDescription = descriptionAsText(
     frontmatter.description,
@@ -239,7 +240,47 @@ function toCommand(
     agent,
     effort,
     pluginName,
+    frontmatter: authored.frontmatter,
+    ...(authored.problem !== undefined ? { frontmatterProblem: authored.problem } : {}),
   }
+}
+
+/** Keys an object must not take from a file. */
+const UNSAFE_HEADER_KEYS = ['__proto__', 'constructor', 'prototype']
+
+/**
+ * The header as a hook reads it: plain JSON values (a value JSON cannot
+ * hold is left out), with no key `__proto__`, `constructor` or `prototype`;
+ * the last two, when a file has them, are named in `problem`.
+ */
+export function authoredFrontmatterOf(
+  header: Record<string, unknown>,
+  parseProblem?: string,
+): { frontmatter: Record<string, unknown>; problem?: string } {
+  if (parseProblem !== undefined) return { frontmatter: {}, problem: parseProblem }
+  const frontmatter: Record<string, unknown> = {}
+  const dropped: string[] = []
+  for (const key of Object.keys(header)) {
+    if (UNSAFE_HEADER_KEYS.includes(key)) {
+      if (key !== '__proto__') dropped.push(key)
+      continue
+    }
+    let value: unknown
+    try {
+      const json = JSON.stringify(header[key])
+      value = json === undefined ? undefined : JSON.parse(json)
+    } catch {
+      value = undefined
+    }
+    if (value === undefined) {
+      dropped.push(key)
+      continue
+    }
+    frontmatter[key] = value
+  }
+  return dropped.length > 0
+    ? { frontmatter, problem: `left out of the frontmatter: ${dropped.join(', ')}` }
+    : { frontmatter }
 }
 
 async function loadSkillFile(params: {

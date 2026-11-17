@@ -9,7 +9,7 @@ import { buildSkillBody } from '../../skillLibrary/buildSkillBody'
 import { createSkillInvocationMessage } from '../../skillLibrary/skillInvocationMessage'
 import { getBundledSkillDynamicContent } from '../../skillLibrary/builtinSkills'
 import { expandSkillBodyShell } from '../../skillLibrary/inlineShellExpansion'
-import { skillPromptThroughMods } from '../../skillLibrary/skillPromptThroughMods'
+import { skillPromptInputOf, skillPromptThroughMods } from '../../skillLibrary/skillPromptThroughMods'
 import { noteSkillUse } from '../../skillLibrary/invokedSkillsStore'
 import { recordSkillInvocationEvent } from '../../skillLibrary/skillInvocationLog'
 import { skillBodyDetailId } from '../../skillLibrary/skillInvocationTags'
@@ -208,7 +208,7 @@ export const SkillRunTool: ToolContract<SkillToolInput, SkillToolOutput> = decla
     // model reads for this skill.
     body = await skillPromptThroughMods(
       context.options.mods,
-      { skill: command.name, text: body },
+      skillPromptInputOf(command, body),
       context.cancelSource.signal,
     )
 

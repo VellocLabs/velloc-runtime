@@ -12,6 +12,7 @@ import type { ToolContract, InputCheck } from '../toolContract'
 import type { ToolCallContext } from '../toolCallContext'
 import { declareTool, resolveToolByName } from '../toolContract'
 import { checkToolThroughMods } from '../run/toolCheckThroughMods'
+import { toolCheckApproverOf } from '../../mods/toolCallEvent'
 import {
   buildFilePermissionContext,
 } from '../run/toolPermissionGate'
@@ -364,6 +365,7 @@ async function gatePermission(
             : { decision: 'allow', updatedInput: input, permissionResult: undefined },
       callRef: `runjs-workspace-${op}-check-${++nestedConfirmSeq}`,
       agentId: context.agentId ?? mods.agentId,
+      approver: toolCheckApproverOf(context.readAppState?.().permissionRules),
       signal: context.cancelSource.signal,
       context: context.modCallContext,
     })

@@ -34,6 +34,10 @@ export type AgentSpawnInput = {
   /** `'worktree'` when the call asked for its own checkout. Seen, not
    *  rewritten: the tool does not read it back. */
   isolation?: 'worktree'
+  /** Present when the run resumes a finished subagent (AgentResume): the id
+   *  it continues under, as `$.agent.list()` lists it. A hook can only
+   *  refuse a resume; its content rewrites are ignored. Pinned. */
+  resume?: { agentId: string }
 }
 
 /** What the tool reads back after the chain: the content a hook may have
@@ -78,8 +82,8 @@ export function spawnInputProblem(original: AgentSpawnInput, e: unknown): string
     if (!(key in original)) return `${key} is not a field of agent.spawn`
     const own = original[key as keyof AgentSpawnInput]
     const given = e[key]
-    if (key === 'provider') {
-      if (JSON.stringify(given) !== JSON.stringify(own)) return 'provider is pinned'
+    if (key === 'provider' || key === 'resume') {
+      if (given !== undefined && JSON.stringify(given) !== JSON.stringify(own)) return `${key} is pinned`
       continue
     }
     if (given !== undefined && given !== own) return `${key} is pinned`

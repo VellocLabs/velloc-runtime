@@ -50,6 +50,7 @@ import { dirnameRuntimePath, resolveRuntimePath } from '../../utils/runtimePaths
 import { getMemoryDir } from '../../memory/memoryPaths'
 import { fsForContext } from '../../utils/fs/runtimeFs'
 import { checkToolThroughMods } from './toolCheckThroughMods'
+import { toolCheckApproverOf } from '../../mods/toolCallEvent'
 import { raisesToolCall } from './toolCallThroughMods'
 import { runInputOf, toolOutcomeMessage } from './toolResultShaping'
 import type { AdmittedRun, DeferredMessageUpdate, StageStep } from './executeToolCall'
@@ -119,6 +120,8 @@ export type ToolPermissionVerdict =
       resume: Omit<PermissionAskResume, 'askedInput'>
       reason?: string
       rule?: string
+      /** The plugin whose `tool.check` hook made this ask. */
+      plugin?: string
     }
 
 /** The session scratchpad at the address the system prompt advertises. */
@@ -728,6 +731,7 @@ export async function* extensionCheckStage(run: AdmittedRun): AsyncGenerator<Def
     verdict: before,
     callRef: run.block.toolCallId,
     agentId: callContext.agentId ?? mods.agentId,
+    approver: toolCheckApproverOf(callContext.readAppState().permissionRules),
     signal: callContext.cancelSource.signal,
     context: callContext.modCallContext,
     safetyAsk: () =>

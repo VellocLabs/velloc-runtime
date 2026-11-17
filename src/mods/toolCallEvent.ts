@@ -9,7 +9,7 @@ import type { TurnContinueInput, TurnContinueSettlement } from './turnContinueEv
 import type { TurnRecoverDecision, TurnRecoverInput } from './turnRecoverEvent'
 import type { IdsNextInput } from './idsEvent'
 import type { PromptMentionCore, PromptMentionInput, PromptMentionSettlement } from './promptMentionEvent'
-import type { DispatchContext } from './modTypes'
+import type { DispatchContext, TraceEntry } from './modTypes'
 import type { DispatchedStream } from './streamChain'
 import type { TurnStepChunk, TurnStepInput, TurnStepResult } from './turnStepEvent'
 import type { StoredRow } from './sessionAppendEvent'
@@ -229,7 +229,7 @@ export type ToolCallMods = Partial<ClassicMods> & {
   /** `skill.prompt` over a skill's expanded body. Optional: a holder
    *  without it sends the text as computed. */
   hasSkillPromptHooks?(): boolean
-  skillPrompt?(input: { skill: string; text: string }, signal?: AbortSignal): Promise<string>
+  skillPrompt?(input: SkillPromptInput, signal?: AbortSignal): Promise<string>
   /** `session.compact` around the engine's compaction. Optional: a
    *  holder without it compacts as it would. */
   sessionCompact?(
@@ -242,7 +242,23 @@ export type ToolCallMods = Partial<ClassicMods> & {
 }
 
 /** What `$.tool.list()` answers per tool. */
-export type ModToolInfo = { name: string; description: string; mcp: boolean }
+export type ModToolInfo = {
+  name: string
+  description: string
+  mcp: boolean
+  /** On an entry a `tool.list` hook adds: its input's JSON schema object.
+   *  Never on a tool the session lists. */
+  inputSchema?: Record<string, unknown>
+}
+
+/** A `tool.list` answer: an array whose entries carrying `inputSchema`
+ *  carry an object there. */
+export function isToolInfoList(value: unknown): boolean {
+  return (
+    Array.isArray(value) &&
+    value.every(entry => !isRecord(entry) || entry.inputSchema === undefined || isRecord(entry.inputSchema))
+  )
+}
 
 /** The session's tools, as a mod's `$.tool` needs them. */
 export type ModToolHost = {
@@ -343,6 +359,11 @@ export function toolCallContextOf(result: unknown): string[] {
  *  dialog, the auto-mode classifier, a headless host), or refuse it." */
 export type ToolCheckDecision = 'allow' | 'ask' | 'deny'
 
+/** Who answers an evaluation's asks: `person` where a dialog or the pending
+ *  banner can put it to someone; `host` is a host's permission callback,
+ *  which Velloc has none of. */
+export type ToolCheckApprover = 'host' | 'person'
+
 /**
  * `tool.check`'s `e`: "the tool, its arguments, and the call's id when the
  * engine is deciding a real call. All three are the question's identity and
@@ -355,6 +376,9 @@ export type ToolCheckEvent = {
   /** The loop a real call is decided in, as its `tool.call` carries it;
    *  absent on the main loop and on a query. */
   agentId?: string
+  /** Who answers this evaluation's asks, known before any hook runs;
+   *  absent where nobody can be asked. Pinned. */
+  approver?: ToolCheckApprover
 }
 
 /**
@@ -368,6 +392,14 @@ export type ToolCheckResult = {
   reason?: string
   /** "The settings rule that decided, as written (`Bash(git push:*)`)." */
   rule?: string
+  /** The classic hook event that decided. Core names none: `tool.check` is
+   *  raised before the classic hooks run. */
+  hook?: string
+  /** The option key whose own check asked. Core names none. */
+  setting?: string
+  /** The plugin whose hook made this ask; set by the engine, a hook's own
+   *  value is dropped (`toolCheckAskerOf`). */
+  plugin?: string
 }
 
 /** Core of `tool.check`: the engine's own verdict. `e` is pinned, so core
@@ -378,13 +410,60 @@ export type ToolCheckSettlement =
   | { settled: true; result: ToolCheckResult }
   | { settled: false }
 
-export function toolCheckEventOf(tool: string, input: unknown, toolUseId?: string, agentId?: string): ToolCheckEvent {
+export function toolCheckEventOf(
+  tool: string,
+  input: unknown,
+  toolUseId?: string,
+  agentId?: string,
+  approver?: ToolCheckApprover,
+): ToolCheckEvent {
   return {
     tool,
     input,
     ...(toolUseId !== undefined ? { tool_use_id: toolUseId } : {}),
     ...(agentId !== undefined && agentId !== '' ? { agentId } : {}),
+    ...(approver !== undefined ? { approver } : {}),
   }
+}
+
+/** Who answers asks under `rules`: nobody in `dontAsk` (an ask is refused)
+ *  or when asks are suppressed (only PermissionRequest hooks decide), else
+ *  the person. */
+export function toolCheckApproverOf(rules: { mode?: string; suppressAsks?: boolean } | undefined): ToolCheckApprover | undefined {
+  if (rules?.mode === 'dontAsk' || rules?.suppressAsks === true) return undefined
+  return 'person'
+}
+
+/**
+ * The plugin whose hook made the chain's ask, read off the dispatch's trace
+ * (outermost first, core last): walking up from core, a hook that answers
+ * an ask other than the one it heard (another verdict, or the ask reworded)
+ * is its maker; one that hands up the ask it heard keeps the maker beneath;
+ * any other verdict clears it. Undefined when core's own ask stands.
+ */
+export function toolCheckAskerOf(entries: readonly TraceEntry[]): string | undefined {
+  let heard: ToolCheckResult | undefined
+  let asker: string | undefined
+  for (let i = entries.length - 1; i >= 0; i--) {
+    const entry = entries[i]!
+    if (entry.outcome !== 'returned' && entry.outcome !== 'passed' && entry.outcome !== 'caught') continue
+    if (!isToolCheckResult(entry.returned)) continue
+    const answer = entry.returned
+    if (entry.plugin !== 'engine' && entry.outcome !== 'passed') {
+      if (answer.decision !== 'ask') asker = undefined
+      else if (heard === undefined || heard.decision !== 'ask' || heard.reason !== answer.reason) asker = entry.plugin
+    }
+    heard = answer
+  }
+  return asker
+}
+
+/** The chain's answer as the flow reads it: `plugin` the engine's word
+ *  alone, on an ask a hook made. */
+export function settledToolCheck(result: ToolCheckResult, entries: readonly TraceEntry[]): ToolCheckResult {
+  const { plugin: _hookWritten, ...rest } = result
+  const asker = result.decision === 'ask' ? toolCheckAskerOf(entries) : undefined
+  return asker !== undefined ? { ...rest, plugin: asker } : rest
 }
 
 /** Whether a hook's return answers `tool.check`: `{ decision }` one of the
@@ -394,7 +473,55 @@ export function isToolCheckResult(value: unknown): value is ToolCheckResult {
   if (value.decision !== 'allow' && value.decision !== 'ask' && value.decision !== 'deny') return false
   if (value.reason !== undefined && typeof value.reason !== 'string') return false
   if (value.rule !== undefined && typeof value.rule !== 'string') return false
+  if (value.hook !== undefined && typeof value.hook !== 'string') return false
+  if (value.setting !== undefined && typeof value.setting !== 'string') return false
   return true
+}
+
+/** Whose words a skill is: the settings tier whose skills folder holds it,
+ *  or what else provides it (`built-in` ships in the build). */
+export type SkillPromptSource = 'userSettings' | 'projectSettings' | 'plugin' | 'built-in'
+
+/** `skill.prompt`'s `e`: `text` and `frontmatter` are a hook's to rewrite
+ *  for the hooks beneath it; the rest is pinned. */
+export type SkillPromptInput = {
+  skill: string
+  text: string
+  frontmatter: Record<string, unknown>
+  frontmatterProblem?: string
+  source: SkillPromptSource
+  pluginName?: string
+  /** The skill's file, absolute; absent for a built-in. */
+  path?: string
+}
+
+/** The skill-library source as the event names it. */
+export function skillPromptSourceOf(source: 'project' | 'user' | 'bundled' | 'plugin'): SkillPromptSource {
+  switch (source) {
+    case 'project':
+      return 'projectSettings'
+    case 'user':
+      return 'userSettings'
+    case 'plugin':
+      return 'plugin'
+    case 'bundled':
+      return 'built-in'
+  }
+}
+
+/** The fields of `skill.prompt`'s `e` a hook may not change. */
+const SKILL_PROMPT_PINNED = ['skill', 'frontmatterProblem', 'source', 'pluginName', 'path'] as const
+
+/** Why a rewritten `skill.prompt` `e` is refused, or null: a pinned field
+ *  changed (left out it is kept), or `text` / `frontmatter` of the wrong kind. */
+export function skillPromptInputProblem(original: SkillPromptInput, arrived: unknown): string | null {
+  if (!isRecord(arrived)) return 'the event argument is not an object'
+  for (const key of SKILL_PROMPT_PINNED) {
+    if (key in arrived && arrived[key] !== original[key]) return `${key} is pinned`
+  }
+  if (typeof arrived.text !== 'string') return 'text is not a string'
+  if (arrived.frontmatter !== undefined && !isRecord(arrived.frontmatter)) return 'frontmatter is not an object'
+  return null
 }
 
 /** What a skill-expansion site holds of the mods (`skillPromptThroughMods`). */

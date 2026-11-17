@@ -53,7 +53,13 @@ export type ModUiHookedSite = { plugin: string; component?: string; requestId?: 
 /** What a `turn.complete` hook answered beneath the answer: "a text
  *  other than a main-loop answer's is shown beneath it". Cleared when the
  *  next turn starts. */
-export type ModUiTurnNote = { turnId: string; text: string }
+export type ModUiTurnNote = {
+  turnId: string
+  text: string
+  /** The plugins that wrote the note or rewrote the answer beneath it,
+   *  outermost first; it heads the note. */
+  by?: string[]
+}
 
 /** One option of a `$.ui.ask`. `engine` marks a label the engine padded a
  *  short list with ("fewer than two are padded with Yes/No"): the answer is

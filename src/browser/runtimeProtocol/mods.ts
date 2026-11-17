@@ -367,8 +367,9 @@ export type ModsUiState = {
   /** Some loaded hook selects `prompt.change`: the page tells its box's
    *  untyped changes. Absent when none, and from an older runtime. */
   changeHooked?: true
-  /** What a `turn.complete` hook answered beneath the last answer. */
-  turnNote?: { turnId: string; text: string }
+  /** What a `turn.complete` hook answered beneath the last answer, and the
+   *  plugins that wrote it (absent from an older runtime). */
+  turnNote?: { turnId: string; text: string; by?: string[] }
   /** The questions mods asked that wait for the person (`$.ui.ask`); absent
    *  when none, and from an older runtime. */
   asks?: ModsUiAsk[]
@@ -904,7 +905,11 @@ export function isModsUiState(value: unknown): value is ModsUiState {
     (value.autocompleteHooked === undefined || value.autocompleteHooked === true) &&
     (value.changeHooked === undefined || value.changeHooked === true) &&
     (value.turnNote === undefined ||
-      (isRecord(value.turnNote) && typeof value.turnNote.turnId === 'string' && typeof value.turnNote.text === 'string')) &&
+      (isRecord(value.turnNote) &&
+        typeof value.turnNote.turnId === 'string' &&
+        typeof value.turnNote.text === 'string' &&
+        (value.turnNote.by === undefined ||
+          (Array.isArray(value.turnNote.by) && value.turnNote.by.every((b: unknown) => typeof b === 'string'))))) &&
     (value.asks === undefined || (Array.isArray(value.asks) && value.asks.every(isModsUiAsk))) &&
     (value.view === undefined || isModsAgentView(value.view)) &&
     (value.devModsAsk === undefined || isModsDevModsAsk(value.devModsAsk)) &&

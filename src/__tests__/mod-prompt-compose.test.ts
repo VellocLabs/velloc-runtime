@@ -155,6 +155,24 @@ describe('prompt.section', () => {
     await runtime.ready
     expect(await runtime.promptSections(SECTIONS)).toEqual(SECTIONS)
   })
+  it('a changed answer is sent at the next render, breakPromptCache or not; a non-boolean one skips the hook', async () => {
+    const { runtime, reports } = world({
+      'flip/hooks/register.js': `
+        let n = 0
+        export function register(on) {
+          on('prompt.section', { name: 'intro' }, () => ({ text: 'render ' + (++n), breakPromptCache: n === 2 }))
+          on('prompt.section', { name: 'tools' }, () => ({ text: 'bad', breakPromptCache: 'yes' }))
+        }
+      `,
+    })
+    await runtime.ready
+    const intro = async () => (await runtime.promptSections(SECTIONS)).find(section => section.id === 'intro')!.text
+    expect(await intro()).toBe('render 1')
+    expect(await intro()).toBe('render 2')
+    expect(await intro()).toBe('render 3')
+    expect((await runtime.promptSections(SECTIONS)).find(section => section.id === 'tools')!.text).toBe(SECTIONS[1]!.text)
+    expect(reports.some(line => /prompt\.section hook failed|does not take/.test(line))).toBe(true)
+  })
 })
 
 describe('prompt.compose', () => {

@@ -206,7 +206,8 @@
             "file_path": "/workspace/.git/config",
             "content": "x"
           },
-          "tool_use_id": "write-1"
+          "tool_use_id": "write-1",
+          "approver": "person"
         },
         "engine": {
           "decision": "ask",

@@ -33,6 +33,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 export function isToolDescribeResult(value: unknown): boolean {
   if (!isRecord(value)) return false
   if (typeof value.description !== 'string') return false
+  if (value.breakPromptCache !== undefined && typeof value.breakPromptCache !== 'boolean') return false
   return value.isDeferred === undefined || typeof value.isDeferred === 'boolean'
 }
 

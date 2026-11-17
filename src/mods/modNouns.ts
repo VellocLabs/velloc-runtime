@@ -77,7 +77,8 @@ import { type ModPageHost } from './modPage'
 import { type UiPlaceResult } from './modPlaces'
 import { type ThemeResult, type ThemeSetArgs } from './modTheme'
 import type { ModPane, ModPaneOpenArgs, ModPaneOpenResult } from './modPanes'
-import type { ModToolHost } from './toolCallEvent'
+import { isToolInfoList, type ModToolHost } from './toolCallEvent'
+import { settingsLayersOf, settingsReadArgsOf } from './modSettingsRead'
 import type { StoredRow } from './sessionAppendEvent'
 import {
   audioPlayInput,
@@ -339,6 +340,9 @@ export type NounMethod = {
   raisesItself?: true
   /** Whether a hook's answer is one the event takes. Default: not undefined. */
   accepts?: (result: unknown) => boolean
+  /** Fills the engine's own fields on `e` before any hook sees it
+   *  (`settings.read`'s `layers`). */
+  prepare?: (e: unknown, context: NounContext) => Promise<unknown>
   /**
    * The noun's event STREAMS (`process.spawn`): the call is a stream the
    * caller reads (`serveNounStream`), not a promise. `run` is then core's
@@ -394,8 +398,6 @@ function audioHost(session: ModNounHost): ModAudioHost {
   if (!session.audio) notSupported('$.audio is not available: no Velloc window can play sound for this session')
   return session.audio!
 }
-
-const SETTINGS_SOURCES: readonly string[] = ['user', 'project', 'local', 'flag', 'policy']
 
 /** `noun` → `method` → implementation. Null-prototype: both names arrive from
  *  a worker. */
@@ -546,7 +548,7 @@ const NOUNS: Record<string, Record<string, NounMethod>> = Object.assign(Object.c
   tool: Object.assign(Object.create(null), {
     list: {
       run: (_e: unknown, { session }: NounContext) => toolHost(session, 'list').list(),
-      accepts: (result: unknown) => Array.isArray(result),
+      accepts: isToolInfoList,
     },
     call: {
       raisesItself: true as const,
@@ -1046,18 +1048,19 @@ const NOUNS: Record<string, Record<string, NounMethod>> = Object.assign(Object.c
   }),
   settings: Object.assign(Object.create(null), {
     // `e` is `{ source? }`: "absent, the settings merged over every source".
+    // `layers` is the engine's: what a call passes there is replaced, and
+    // core reads its own whatever reaches it.
     read: {
-      input: (args: readonly unknown[]) => (isRecord(args[0]) ? { ...args[0] } : {}),
-      run: (e: unknown, { session }: NounContext) => {
+      input: (args: readonly unknown[]) => settingsReadArgsOf(args[0]),
+      prepare: async (e: unknown, { session }: NounContext) => {
+        const { source } = e as { source?: ModSettingsSource }
+        return { ...(source !== undefined ? { source } : {}), layers: await settingsLayersOf(session, source) }
+      },
+      run: (e: unknown, { call, session }: NounContext) => {
+        const asked = settingsReadArgsOf(call.args[0]).source
         const source = isRecord(e) ? e.source : undefined
-        if (source !== undefined && !SETTINGS_SOURCES.includes(source as string)) {
-          throw new TypeError(
-            `$.settings.read: source must be one of ${SETTINGS_SOURCES.join(', ')}`,
-          )
-        }
-        return hostMethod(session, 'settings', 'settings.read')(
-          source !== undefined ? { source: source as ModSettingsSource } : {},
-        )
+        if (source !== asked) throw new Error('the rewritten event is refused: source is pinned')
+        return hostMethod(session, 'settings', 'settings.read')(asked !== undefined ? { source: asked } : {})
       },
       accepts: isRecord,
     },
@@ -1474,10 +1477,13 @@ export function serveNoun(
       return Promise.reject(error)
     }
   }
-  return dispatcher
+  const prepared = method.prepare
+    ? method.prepare(e, { call, session, report, dispatcher })
+    : Promise.resolve(e)
+  return prepared.then(prepared => dispatcher
     .dispatch(
       `${call.noun}.${call.method}`,
-      e,
+      prepared,
       async (arrived, beneath) =>
         ({
           value: await method.run(arrived, {
@@ -1502,5 +1508,5 @@ export function serveNoun(
         throw error
       }
       return settled.value
-    })
+    }))
 }

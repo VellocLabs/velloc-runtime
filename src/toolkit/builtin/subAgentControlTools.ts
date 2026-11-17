@@ -12,6 +12,9 @@ import {
   type SubAgentSnapshot,
   type SubAgentListEntry,
 } from '../../team/subAgentController'
+import { agentSpawnThroughMods } from '../../agents/agentEventsThroughMods'
+import { ENGINE_PROVIDER, type AgentSpawnInput } from '../../mods/agentEvents'
+import { invokingToolCallId } from '../invokingToolCallId'
 import {
   getTeamMessenger,
   type TeammateRosterEntry,
@@ -278,6 +281,28 @@ export const JobReadTool: ToolContract<TaskOutputInput, string> = declareTool({
   },
 })
 
+/** `agent.spawn`'s `e` for resuming the finished run `finished` with
+ *  `prompt`: its recorded task, in the background, under its own id. */
+export function agentResumeSpawnInput(
+  finished: Pick<SubAgentSnapshot, 'sessionId' | 'description' | 'agentType'>,
+  prompt: string,
+  call: { toolUseId: string; parentModel: string; parentAgentId?: string; permissionMode?: string },
+): AgentSpawnInput {
+  return {
+    tool_use_id: call.toolUseId,
+    prompt,
+    description: finished.description,
+    subagentType: finished.agentType ?? 'general-purpose',
+    provider: ENGINE_PROVIDER,
+    parentModel: call.parentModel,
+    ...(call.parentAgentId !== undefined ? { parentAgentId: call.parentAgentId } : {}),
+    ...(call.permissionMode !== undefined ? { permissionMode: call.permissionMode } : {}),
+    background: true,
+    fork: false,
+    resume: { agentId: finished.sessionId },
+  }
+}
+
 // ---------------------------------------------------------------------------
 // AgentResume (G4) — continue a finished background sub-agent with a follow-up
 // ---------------------------------------------------------------------------
@@ -314,11 +339,31 @@ export const AgentResumeTool: ToolContract<AgentResumeInput, string> = declareTo
     }
     return { result: true }
   },
-  async call(input: AgentResumeInput, _context: ToolCallContext) {
+  async call(input: AgentResumeInput, context: ToolCallContext, _canUseTool?: unknown, invokingRow?: unknown) {
     const controller = getSubAgentController()
     if (!controller) return { data: CONTROLLER_NOT_READY }
     const id = (input.task_id ?? '').trim()
-    const result = controller.resume(id, (input.prompt ?? '').trim())
+    const prompt = (input.prompt ?? '').trim()
+    const finished = controller.getSnapshot(id)
+    if (finished && finished.status !== 'running') {
+      const settled = await agentSpawnThroughMods(
+        context.options.mods,
+        agentResumeSpawnInput(finished, prompt, {
+          toolUseId: invokingToolCallId(invokingRow, AGENT_RESUME_TOOL_NAME, input),
+          parentModel: context.options.mainLoopModel,
+          ...(context.agentId !== undefined ? { parentAgentId: context.agentId } : {}),
+          ...(context.readAppState().permissionRules?.mode !== undefined
+            ? { permissionMode: context.readAppState().permissionRules.mode }
+            : {}),
+        }),
+        // The run keeps the model it was recorded with, which this tool does
+        // not read: core names none.
+        () => ({ model: '' }),
+        context.cancelSource.signal,
+      )
+      if ('deny' in settled) return { data: `Agent could not resume: ${settled.deny}` }
+    }
+    const result = controller.resume(id, prompt)
     if (result.ok) {
       return {
         data:

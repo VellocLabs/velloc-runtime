@@ -80,6 +80,8 @@ describe('the shapes', () => {
     expect(isToolDescribeResult({ description: 'x' })).toBe(true)
     expect(isToolDescribeResult({ description: 'x', isDeferred: true })).toBe(true)
     expect(isToolDescribeResult({ description: 1 })).toBe(false)
+    expect(isToolDescribeResult({ description: 'x', breakPromptCache: true })).toBe(true)
+    expect(isToolDescribeResult({ description: 'x', breakPromptCache: 'yes' })).toBe(false)
     expect(isCommandDescribeResult({ description: 'x', isHidden: false })).toBe(true)
     expect(isCommandDescribeResult({ description: 'x', isHidden: 'no' })).toBe(false)
     expect(toolDescribeProblem(READ, { ...READ, description: 'y' })).toBeNull()

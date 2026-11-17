@@ -10,6 +10,7 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { declareTool, type ToolContract } from '../toolkit/toolContract'
+import { agentResumeSpawnInput } from '../toolkit/builtin/subAgentControlTools'
 import { engineWorld } from './engine-replay/harness/world'
 import { ModRuntime, type ModModuleRef, type ModWorkerHandle } from '../mods/ModRuntime'
 import { installModWorkerHost } from '../mods/ModWorkerHost'
@@ -137,6 +138,58 @@ describe('agent.offer through the runtime', () => {
     expect(reports).toHaveLength(2)
     expect(await offeredAgentsThroughMods(undefined, [{ name: 'A' }])).toEqual([{ name: 'A' }])
     expect(await offeredAgentsThroughMods({ hasAgentOfferHooks: () => false }, [{ name: 'A' }])).toEqual([{ name: 'A' }])
+  })
+})
+
+describe('agent.spawn — a resume', () => {
+  const finished = { sessionId: 'a-42', description: 'survey', agentType: 'Explore' }
+
+  it('the AgentResume input: the recorded task, in the background, under its own id; the id is pinned', () => {
+    const e = agentResumeSpawnInput(finished, 'go on', { toolUseId: 'tu-9', parentModel: 'big' })
+    expect(e).toEqual({
+      tool_use_id: 'tu-9',
+      prompt: 'go on',
+      description: 'survey',
+      subagentType: 'Explore',
+      provider: ENGINE_PROVIDER,
+      parentModel: 'big',
+      background: true,
+      fork: false,
+      resume: { agentId: 'a-42' },
+    })
+    expect(spawnInputProblem(e, { ...e, resume: { agentId: 'other' } })).toBe('resume is pinned')
+    expect(spawnInputProblem(e, { ...e, resume: undefined })).toBeNull()
+  })
+
+  it('a hook reads resume and can refuse it; a content rewrite is ignored and said', async () => {
+    const { runtime, reports } = world({
+      'gate/hooks/register.js': `
+        export function register(on) {
+          on('agent.spawn', async ($, e, next) => {
+            if (e.resume && e.prompt === 'stop') return { deny: 'no more' }
+            return next({ ...e, prompt: 'rewritten' })
+          });
+        }
+      `,
+    })
+    await runtime.ready
+    const e = agentResumeSpawnInput(finished, 'go on', { toolUseId: 'tu-9', parentModel: 'big' })
+    expect(await runtime.agentSpawn({ ...e, prompt: 'stop' }, () => ({ model: '' }))).toEqual({ deny: 'no more' })
+    expect(await runtime.agentSpawn(e, () => ({ model: '' }))).toEqual({
+      prompt: 'go on',
+      description: 'survey',
+      subagentType: 'Explore',
+      background: true,
+    })
+    expect(reports.some(line => /rewrote the resume of a-42; a resume runs as recorded/.test(line))).toBe(true)
+  })
+
+  it('AgentResume raises it before the controller resumes', () => {
+    const source = readFileSync(join(__dirname, '..', 'toolkit/builtin/subAgentControlTools.ts'), 'utf8')
+    const raised = source.indexOf('agentSpawnThroughMods(', source.indexOf('AgentResumeTool'))
+    const resumed = source.indexOf('controller.resume(', source.indexOf('AgentResumeTool'))
+    expect(raised).toBeGreaterThan(0)
+    expect(resumed).toBeGreaterThan(raised)
   })
 })
 

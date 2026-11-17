@@ -7,7 +7,7 @@ import type { UserRow } from '../runtime/RuntimeTypes'
 import { buildSkillBody } from '../skillLibrary/buildSkillBody'
 import { createSkillInvocationMessage } from '../skillLibrary/skillInvocationMessage'
 import { expandSkillBodyShell } from '../skillLibrary/inlineShellExpansion'
-import { skillPromptThroughMods } from '../skillLibrary/skillPromptThroughMods'
+import { skillPromptInputOf, skillPromptThroughMods } from '../skillLibrary/skillPromptThroughMods'
 import { noteSkillUse } from '../skillLibrary/invokedSkillsStore'
 import { recordSkillInvocationEvent } from '../skillLibrary/skillInvocationLog'
 import { skillBodyDetailId } from '../skillLibrary/skillInvocationTags'
@@ -163,7 +163,7 @@ export async function dispatchSkillSlashCommand(params: {
   // `skill.prompt` (F-25): the same event the Skill tool raises.
   body = await skillPromptThroughMods(
     params.context.options.mods,
-    { skill: skill.name, text: body },
+    skillPromptInputOf(skill, body),
     params.context.cancelSource.signal,
   )
 

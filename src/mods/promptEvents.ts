@@ -79,9 +79,15 @@ export function composeSectionsOf(parts: ReadonlyArray<SystemPromptNamedPart>): 
   })
 }
 
-/** `{ text }` with a string or null. */
+/** `{ text }` with a string or null; `breakPromptCache` a boolean when set.
+ *  Velloc renders the sections at every turn, so a changed answer is sent at
+ *  the next turn whether or not it is set. */
 export function isPromptSectionResult(value: unknown): boolean {
-  return isRecord(value) && (typeof value.text === 'string' || value.text === null)
+  return (
+    isRecord(value) &&
+    (typeof value.text === 'string' || value.text === null) &&
+    (value.breakPromptCache === undefined || typeof value.breakPromptCache === 'boolean')
+  )
 }
 
 /**

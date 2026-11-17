@@ -39,6 +39,11 @@ export type ChromiumPromptCommand = {
   hiddenFromPicker?: boolean
   loadedFrom: ChromiumCommandLoadedFrom
   source: ChromiumSkillSource
+  /** The file's header as its author wrote it, as JSON holds it; absent for
+   *  a skill with no file. */
+  frontmatter?: Record<string, unknown>
+  /** Why the header, or a key of it, was left out of `frontmatter`. */
+  frontmatterProblem?: string
   /** Directory the skill's body should resolve relative paths against.
    *  For directory-format skills (skill-name/SKILL.md) this is the skill
    *  directory; for flat .md skills it is the parent directory. Surfaced

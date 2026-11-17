@@ -9,6 +9,7 @@ import type { ToolContract } from '../toolContract'
 import type { DispatchContext } from '../../mods/modTypes'
 import {
   toolCheckEventOf,
+  type ToolCheckApprover,
   type ToolCheckResult,
 } from '../../mods/toolCallEvent'
 import { suggestAllowRule } from '../../permissions/ruleEngine'
@@ -25,6 +26,7 @@ export function toolCheckResultOf(verdict: ToolPermissionVerdict): ToolCheckResu
     decision: verdict.decision,
     ...(verdict.reason !== undefined ? { reason: verdict.reason } : {}),
     ...(verdict.rule !== undefined ? { rule: verdict.rule } : {}),
+    ...(verdict.decision === 'ask' && verdict.plugin !== undefined ? { plugin: verdict.plugin } : {}),
   }
 }
 
@@ -47,6 +49,7 @@ export function verdictOfToolCheck(
     if (verdict.decision === 'deny' && answer.reason !== undefined && answer.reason !== verdict.reason) {
       return { ...verdict, message: answer.reason, reason: answer.reason }
     }
+    if (verdict.decision === 'ask' && answer.plugin !== undefined) return { ...verdict, plugin: answer.plugin }
     return verdict
   }
   switch (answer.decision) {
@@ -87,6 +90,7 @@ export function verdictOfToolCheck(
         safety: false,
         resume: { stage: 'hook', ruleSet: undefined as never },
         ...(answer.reason !== undefined ? { reason: answer.reason } : {}),
+        ...(answer.plugin !== undefined ? { plugin: answer.plugin } : {}),
       }
     }
   }
@@ -103,6 +107,9 @@ export type CheckToolThroughModsParams = {
   /** The loop a real call is decided in (a sub-agent's, a teammate's);
    *  absent on the main loop and on a query. */
   agentId?: string
+  /** Who answers this evaluation's asks (`toolCheckApproverOf`); absent
+   *  where nobody can be asked. */
+  approver?: ToolCheckApprover
   signal?: AbortSignal
   /** Who raised it, when a plugin did (`$.tool.check`, or `tool.check`
    *  inside its `$.tool.call`): its `next.origin`, and the hook to skip. */
@@ -130,7 +137,7 @@ export async function checkToolThroughMods(
   if (!mods.toolCheck) return verdict
   if (!params.always && mods.hasToolCheckHooks?.() !== true) return verdict
   const settlement = await mods.toolCheck(
-    toolCheckEventOf(tool.name, input, params.callRef, params.agentId),
+    toolCheckEventOf(tool.name, input, params.callRef, params.agentId, params.approver),
     async () => toolCheckResultOf(verdict),
     params.signal,
     context,

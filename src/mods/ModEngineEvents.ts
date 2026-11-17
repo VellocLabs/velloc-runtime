@@ -7,7 +7,9 @@
  * ModRuntime extends this with the slot's lifecycle, UI and commands.
  */
 
-import type { DispatchContext } from './modTypes'
+import type { DispatchContext, TraceEntry } from './modTypes'
+import { skillPromptInputProblem, type SkillPromptInput } from './toolCallEvent'
+import { answerAuthorsOf } from './chainAuthors'
 import type { DispatchedStream } from './streamChain'
 import type { ModDispatcher } from './ModDispatcher'
 import type { ModRuntimeOptions } from './ModRuntime'
@@ -243,7 +245,7 @@ export abstract class ModEngineEvents {
       refusal?: { category: string | null; explanation: string | null }
     },
     signal?: AbortSignal,
-  ): Promise<{ note?: string }> {
+  ): Promise<{ note?: string; by?: string[] }> {
     if (this.disposed || !this.dispatcher.hasHooksFor('turn.complete')) return {}
     const e = {
       turnId: input.turnId,
@@ -254,16 +256,22 @@ export abstract class ModEngineEvents {
       ...(input.agentId !== undefined ? { agentId: input.agentId } : {}),
       ...(input.reason === 'refusal' ? { refusal: input.refusal ?? { category: null, explanation: null } } : {}),
     }
+    let entries: readonly TraceEntry[] = []
     try {
       const result = await this.dispatcher.dispatch('turn.complete', e, () => ({ text: input.answer }), {
         ...(signal ? { signal } : {}),
         accepts: value => isRecord(value) && typeof value.text === 'string',
+        trace: settled => {
+          entries = settled
+        },
       })
       const text = (result as { text: string }).text
       if (text === input.answer || input.agentId !== undefined) return {}
-      this.turnNote = { turnId: input.turnId, text }
+      // `by` is the engine's: what a hook wrote there is replaced.
+      const by = answerAuthorsOf(entries, (answer, heard) => isRecord(answer) && isRecord(heard) && answer.text === heard.text)
+      this.turnNote = { turnId: input.turnId, text, ...(by.length > 0 ? { by } : {}) }
       this.emitUiState()
-      return { note: text }
+      return { note: text, ...(by.length > 0 ? { by } : {}) }
     } catch (error) {
       if (!signal?.aborted) this.options.report(`mods: turn.complete failed: ${errorMessage(error)}; the answer stands as it was`)
       return {}
@@ -1049,6 +1057,13 @@ export abstract class ModEngineEvents {
         { ...(signal ? { signal } : {}), accepts: isAgentSpawnResult, refusal: reason => ({ deny: reason }) },
       )) as { deny?: string; model?: string }
       if (typeof result.deny === 'string') return { deny: result.deny }
+      if (input.resume) {
+        // A resume continues a recorded run: a hook can only refuse it.
+        if (handed && JSON.stringify(spawnDecisionOf(handed)) !== JSON.stringify(spawnDecisionOf(input))) {
+          this.options.report(`mods: agent.spawn rewrote the resume of ${input.resume.agentId}; a resume runs as recorded, the rewrite is ignored`)
+        }
+        return spawnDecisionOf(input)
+      }
       const decision = spawnDecisionOf(handed ?? input)
       // The model the chain answered is the one the subagent runs on: a
       // hook's own alias resolves like the tool's parameter.
@@ -1294,13 +1309,17 @@ export abstract class ModEngineEvents {
    * with the text the model reads instead. A hook that fails passes it
    * through." Resolves to the text to send. Never rejects.
    */
-  async skillPrompt(input: { skill: string; text: string }, signal?: AbortSignal): Promise<string> {
+  async skillPrompt(input: SkillPromptInput, signal?: AbortSignal): Promise<string> {
     if (this.disposed || !this.dispatcher.hasHooksFor('skill.prompt')) return input.text
     try {
       const result = (await this.dispatcher.dispatch(
         'skill.prompt',
-        { skill: input.skill, text: input.text },
-        () => ({ text: input.text }),
+        input,
+        (arrived: unknown) => {
+          const problem = skillPromptInputProblem(input, arrived)
+          if (problem) throw new Error(`the rewritten event is refused: ${problem}`)
+          return { text: input.text }
+        },
         {
           ...(signal ? { signal } : {}),
           accepts: value => isRecord(value) && typeof value.text === 'string',

@@ -23,6 +23,8 @@ export type HeaderFields = {
 export type SplitMarkdownDoc = {
   frontmatter: HeaderFields
   content: string
+  /** Why the header was left out (`frontmatter` then `{}`): its parse error. */
+  problem?: string
 }
 
 // Characters that require quoting in YAML values when unquoted. The `: `
@@ -84,6 +86,7 @@ export function readMarkdownHeader(
   const content = markdown.slice(match[0].length)
 
   let frontmatter: HeaderFields = {}
+  let problem: string | undefined
   try {
     const parsed = parseYaml(frontmatterText) as HeaderFields | null
     if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
@@ -98,6 +101,7 @@ export function readMarkdownHeader(
         frontmatter = parsed
       }
     } catch (retryError) {
+      problem = `the frontmatter is not valid YAML: ${retryError instanceof Error ? retryError.message : String(retryError)}`
       const location = sourcePath ? ` in ${sourcePath}` : ''
       console.warn(
         `[skills] Failed to parse YAML frontmatter${location}: ${
@@ -107,7 +111,7 @@ export function readMarkdownHeader(
     }
   }
 
-  return { frontmatter, content }
+  return { frontmatter, content, ...(problem !== undefined ? { problem } : {}) }
 }
 
 /**

@@ -113,7 +113,7 @@ describe('turn.start', () => {
     await runtime.ready
     await runtime.turnComplete(COMPLETE)
     await runtime.turnStart({ text: 'child', turnId: 'turn-c', agentId: 'a1' })
-    expect(runtime.uiSnapshot().turnNote).toEqual({ turnId: 'turn-1', text: 'note' })
+    expect(runtime.uiSnapshot().turnNote).toEqual({ turnId: 'turn-1', text: 'note', by: ['tldr'] })
     await runtime.turnStart({ text: 'next', turnId: 'turn-2' })
     expect(runtime.uiSnapshot().turnNote).toBeUndefined()
   })
@@ -152,9 +152,9 @@ describe('turn.complete', () => {
       tldr: `on('turn.complete', ($, e, next) => ({ text: 'TL;DR: ' + e.answer.length + ' chars in ' + e.durationMs + ' ms' }))`,
     })
     await runtime.ready
-    expect(await runtime.turnComplete(COMPLETE)).toEqual({ note: 'TL;DR: 11 chars in 1234 ms' })
-    expect(runtime.uiSnapshot().turnNote).toEqual({ turnId: 'turn-1', text: 'TL;DR: 11 chars in 1234 ms' })
-    expect(notes().at(-1)).toEqual({ turnId: 'turn-1', text: 'TL;DR: 11 chars in 1234 ms' })
+    expect(await runtime.turnComplete(COMPLETE)).toEqual({ note: 'TL;DR: 11 chars in 1234 ms', by: ['tldr'] })
+    expect(runtime.uiSnapshot().turnNote).toEqual({ turnId: 'turn-1', text: 'TL;DR: 11 chars in 1234 ms', by: ['tldr'] })
+    expect(notes().at(-1)).toEqual({ turnId: 'turn-1', text: 'TL;DR: 11 chars in 1234 ms', by: ['tldr'] })
     await runtime.turnStart({ text: 'next', turnId: 'turn-2' })
     expect(runtime.uiSnapshot().turnNote).toBeUndefined()
     expect(notes().at(-1)).toBeUndefined()
@@ -189,6 +189,20 @@ describe('turn.complete', () => {
     await runtime.ready
     expect(await runtime.turnComplete({ ...COMPLETE, agentId: 'agent-7' })).toEqual({})
     expect(logged('tldr')).toEqual([{ agent: 'agent-7' }])
+  })
+})
+
+describe('turn.complete — by', () => {
+  it("names the plugins that wrote the note or rewrote the answer beneath it, outermost first; a relay and a hook's own by are not", async () => {
+    const { runtime, notes } = world({
+      relay: `on('turn.complete', async ($, e, next) => ({ ...(await next(e)), by: ['forged'] }))`,
+      suffix: `on('turn.complete', async ($, e, next) => { const got = await next(e); return { text: got.text + ' (checked)' } })`,
+      tldr: `on('turn.complete', () => ({ text: 'TL;DR' }))`,
+    })
+    await runtime.ready
+    expect(await runtime.turnComplete(COMPLETE)).toEqual({ note: 'TL;DR (checked)', by: ['suffix', 'tldr'] })
+    expect(runtime.uiSnapshot().turnNote).toEqual({ turnId: 'turn-1', text: 'TL;DR (checked)', by: ['suffix', 'tldr'] })
+    expect(notes().at(-1)).toEqual({ turnId: 'turn-1', text: 'TL;DR (checked)', by: ['suffix', 'tldr'] })
   })
 })
 

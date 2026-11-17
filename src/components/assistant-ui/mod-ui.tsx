@@ -243,6 +243,11 @@ export function ModTurnNote() {
       data-slot="mod-turn-note"
       className="mx-auto w-full max-w-(--thread-max-width) px-2 pb-2"
     >
+      {turnNote.by && turnNote.by.length > 0 ? (
+        <div data-testid="mod-turn-note-by" className="min-w-0 truncate text-[11px] font-medium text-muted-foreground">
+          {turnNote.by.join(", ")}
+        </div>
+      ) : null}
       <div data-testid="mod-turn-note" className="min-w-0 break-words text-xs italic text-muted-foreground">
         {turnNote.text}
       </div>

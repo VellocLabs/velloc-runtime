@@ -200,6 +200,23 @@ describe('$.tool.list', () => {
     await runtime.promptSubmit('go')
     expect(logged(reports, 'lister')).toEqual([['Shell', 'Peek', 'Asks']])
   })
+
+  it("an entry a hook adds may carry its inputSchema, an object; the session's own carry none", async () => {
+    const { runtime, reports } = world({
+      adder: `on('tool.list', async ($, e, next) => ({ value: [...(await next(e)).value, { name: 'Lint', description: 'lints', mcp: false, inputSchema: { type: 'object' } }] }))`,
+      bad: `on('tool.list', async ($, e, next) => ({ value: [{ name: 'X', description: '', mcp: false, inputSchema: 'object' }] }))`,
+      lister: `on('prompt.submit', async ($, e, next) => {
+        await $.ui.log(JSON.stringify((await $.tool.list()).map(t => [t.name, t.inputSchema ?? null])))
+        return next(e)
+      })`,
+    })
+    await runtime.ready
+    await runtime.promptSubmit('go')
+    expect(logged(reports, 'lister')).toEqual([
+      [['Shell', null], ['Peek', null], ['Asks', null], ['mcp__lab__run', null], ['Lint', { type: 'object' }]],
+    ])
+    expect(reports.some(line => line.startsWith('bad: '))).toBe(true)
+  })
 })
 
 describe('$.tool.call', () => {

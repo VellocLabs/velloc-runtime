@@ -23,7 +23,8 @@ import {
 } from '../runtime/testing/noopAdapters'
 import { implementedNouns } from '../mods/modNouns'
 import { RAISED_EVENTS } from '../mods/modAdmission'
-import { isToolCheckResult, toolCheckEventOf } from '../mods/toolCallEvent'
+import { isToolCheckResult, toolCheckApproverOf, toolCheckAskerOf, toolCheckEventOf } from '../mods/toolCallEvent'
+import type { TraceEntry } from '../mods/modTypes'
 import { ModRuntime, type ModModuleRef, type ModWorkerHandle } from '../mods/ModRuntime'
 import { installModWorkerHost } from '../mods/ModWorkerHost'
 import type { ToolCallMods } from '../mods/toolCallEvent'
@@ -47,6 +48,8 @@ type WorldOptions = {
   asks?: boolean
   /** settings.json `permissions` rule lists. */
   ruleLists?: { allow: string[]; deny: string[]; ask: string[] }
+  /** The permission mode. */
+  mode?: string
   /** The interactive decider. Absent: an ask stages a pending entry and halts. */
   confirm?: (params: { permissionResult?: { message?: string } }) => Promise<unknown>
 }
@@ -92,6 +95,9 @@ function world(modules: Record<string, string>, options: WorldOptions = {}) {
       ...appState,
       permissionRules: { ...appState.permissionRules, ruleLists: options.ruleLists },
     }
+  }
+  if (options.mode) {
+    appState = { ...appState, permissionRules: { ...appState.permissionRules, mode: options.mode as never } }
   }
   const setAppState = (updater: (prev: WorkingState) => WorkingState) => {
     appState = updater(appState)
@@ -246,6 +252,38 @@ describe('tool.check — the shapes', () => {
     expect(isToolCheckResult({ decision: 'deny', reason: 3 })).toBe(false)
     expect(isToolCheckResult({ allow: true })).toBe(false)
     expect(isToolCheckResult(undefined)).toBe(false)
+    expect(isToolCheckResult({ decision: 'ask', hook: 'PreToolUse', setting: 'permissions.x' })).toBe(true)
+    expect(isToolCheckResult({ decision: 'ask', hook: 1 })).toBe(false)
+    expect(isToolCheckResult({ decision: 'ask', setting: false })).toBe(false)
+  })
+
+  it('names who answers the asks: the person, nobody under dontAsk or with asks suppressed', () => {
+    expect(toolCheckApproverOf({ mode: 'default' })).toBe('person')
+    expect(toolCheckApproverOf(undefined)).toBe('person')
+    expect(toolCheckApproverOf({ mode: 'dontAsk' })).toBeUndefined()
+    expect(toolCheckApproverOf({ mode: 'default', suppressAsks: true })).toBeUndefined()
+    expect(toolCheckEventOf('Bash', {}, undefined, undefined, 'person')).toEqual({ tool: 'Bash', input: {}, approver: 'person' })
+  })
+
+  it('names the plugin whose hook made the ask, walking up from core', () => {
+    const at = (index: number, plugin: string, outcome: TraceEntry['outcome'], returned: unknown): TraceEntry => ({
+      index, plugin, tier: 'user', event: 'tool.check', outcome, ms: 0, received: {}, returned,
+    })
+    const core = (decision: string, reason?: string) => at(9, 'engine', 'returned', { decision, ...(reason ? { reason } : {}) })
+    // Core's own ask relayed: nobody's.
+    expect(toolCheckAskerOf([at(0, 'a', 'passed', { decision: 'ask' }), core('ask')])).toBeUndefined()
+    // An ask over core's allow, then relayed by another hook: the maker's.
+    expect(
+      toolCheckAskerOf([at(0, 'outer', 'passed', { decision: 'ask' }), at(1, 'guard', 'returned', { decision: 'ask' }), core('allow')]),
+    ).toBe('guard')
+    // Core's ask reworded: the rewording hook's.
+    expect(toolCheckAskerOf([at(0, 'words', 'returned', { decision: 'ask', reason: 'Sure?' }), core('ask', 'Run it?')])).toBe('words')
+    // An ask a hook above settles into an allow: nobody's.
+    expect(
+      toolCheckAskerOf([at(0, 'lift', 'returned', { decision: 'allow' }), at(1, 'guard', 'returned', { decision: 'ask' }), core('allow')]),
+    ).toBeUndefined()
+    // An ask answered without next: the hook's.
+    expect(toolCheckAskerOf([at(0, 'own', 'returned', { decision: 'ask' })])).toBe('own')
   })
 })
 
@@ -258,7 +296,7 @@ describe("tool.check — the model's call", () => {
     await runtime.ready
     await run({ command: 'ls' })
     const [seen] = logged(reports, 'watch') as Array<Record<string, unknown>>
-    expect(seen!.e).toEqual({ tool: 'Shell', input: { command: 'ls' }, tool_use_id: 'tc-1' })
+    expect(seen!.e).toEqual({ tool: 'Shell', input: { command: 'ls' }, tool_use_id: 'tc-1', approver: 'person' })
     expect(seen!.verdict).toEqual({ decision: 'ask', reason: 'Run it?' })
     // The model's own call: the engine raised it.
     expect(seen!.origin).toMatchObject({ plugin: 'engine' })
@@ -460,6 +498,50 @@ describe("tool.check — the model's call", () => {
   })
 })
 
+describe('tool.check — who stands behind the verdict', () => {
+  it("a hook's ask carries its plugin, set by the engine; a plugin a hook writes is dropped; core's ask names none", async () => {
+    const { runtime, reports } = world({
+      asker: `
+        on('prompt.submit', async ($, e, next) => {
+          await $.ui.log(JSON.stringify(await $.tool.check({ tool: 'Peek', input: {} })))
+          await $.ui.log(JSON.stringify(await $.tool.check({ tool: 'Write', input: { file_path: '${PROJ}/a.txt' } })))
+          return next(e)
+        })`,
+      guard: `on('tool.check', { tool: 'Peek' }, () => ({ decision: 'ask', reason: 'Look first?', plugin: 'someone-else' }))`,
+      liar: `on('tool.check', { tool: 'Write' }, async ($, e, next) => ({ ...(await next(e)), plugin: 'liar-says' }))`,
+    })
+    await runtime.ready
+    await runtime.promptSubmit('go')
+    const [peek, write] = logged(reports, 'asker') as Array<Record<string, unknown>>
+    expect(peek).toEqual({ decision: 'ask', reason: 'Look first?', plugin: 'guard' })
+    expect(write).not.toHaveProperty('plugin')
+  })
+
+  it("a hook's hook and setting reach the hooks above it", async () => {
+    const { runtime, reports } = world({
+      watch: watcher(),
+      source: `on('tool.check', { tool: 'Peek' }, () => ({ decision: 'deny', reason: 'r', hook: 'PreToolUse', setting: 'permissions.x' }))`,
+      asker: `
+        on('prompt.submit', async ($, e, next) => {
+          await $.tool.check({ tool: 'Peek', input: {} })
+          return next(e)
+        })`,
+    })
+    await runtime.ready
+    await runtime.promptSubmit('go')
+    const [seen] = logged(reports, 'watch') as Array<{ verdict: Record<string, unknown> }>
+    expect(seen!.verdict).toEqual({ decision: 'deny', reason: 'r', hook: 'PreToolUse', setting: 'permissions.x' })
+  })
+
+  it('e carries no approver where nobody can be asked (dontAsk)', async () => {
+    const { runtime, reports, run } = world({ watch: watcher() }, { asks: true, mode: 'dontAsk' })
+    await runtime.ready
+    await run({ command: 'ls' })
+    const [seen] = logged(reports, 'watch') as Array<{ e: Record<string, unknown> }>
+    expect(seen!.e).toEqual({ tool: 'Shell', input: { command: 'ls' }, tool_use_id: 'tc-1' })
+  })
+})
+
 describe('$.tool.check', () => {
   const checks = (input: string) => `
     on('prompt.submit', async ($, e, next) => {
@@ -512,7 +594,7 @@ describe('$.tool.check', () => {
     await runtime.ready
     await runtime.promptSubmit('go')
     const [seen] = logged(reports, 'watch') as Array<{ e: Record<string, unknown>; origin: { plugin?: string } }>
-    expect(seen!.e).toEqual({ tool: 'Peek', input: { path: 'x' } })
+    expect(seen!.e).toEqual({ tool: 'Peek', input: { path: 'x' }, approver: 'person' })
     expect(seen!.origin).toMatchObject({ plugin: 'asker' })
     // A deny with no reason of its own carries the engine's line for the model.
     expect(logged(reports, 'asker')).toEqual([{ decision: 'deny', reason: TOOL_CHECK_DENIED_TEXT }])
