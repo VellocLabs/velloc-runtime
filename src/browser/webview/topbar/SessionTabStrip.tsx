@@ -230,9 +230,9 @@ export function SessionTabStrip(props: {
   const onStripEntries = entries.filter(
     (e) => !overflowIds.has(e.session.sessionId),
   );
-  // A collapsed teammate's attention has nowhere else to go: the strip is the
+  // A collapsed teammate's state has nowhere else to go: the strip is the
   // only place it is reachable, so the overflow tab carries the union of its
-  // rows' attention dots.
+  // rows' attention dots, and of their running state as `data-running`.
   const overflowRunning = overflowed.some((s) => !!s.running);
   const overflowNeedsAnswer = overflowed.some((s) => !!s.needsAnswer);
   const overflowLabel =

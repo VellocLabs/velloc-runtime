@@ -201,4 +201,19 @@ describe('session list row', () => {
     const icon = screen.getByTestId('sidebar-row-c').querySelector('[data-slot="session-status-icon"]')!
     expect(icon.getAttribute('aria-hidden')).toBe('true')
   })
+
+  it('keeps the waiting icon named on the active row, where no dot is drawn', () => {
+    publishSessionStatuses([{ sessionId: 'c', title: 'c', needsAnswer: true }])
+    render(
+      createElement(Sidebar, {
+        title: 'Conversation',
+        sessionId: 'c',
+        activeSessionId: 'c',
+        sessions: [item('c', { needsAnswer: true })],
+      }),
+    )
+    const icon = screen.getByTestId('sidebar-row-c').querySelector('[data-slot="session-status-icon"]')!
+    expect(icon.getAttribute('aria-hidden')).toBeNull()
+    expect(icon.getAttribute('aria-label')).toBe('Waiting for your reply')
+  })
 })
