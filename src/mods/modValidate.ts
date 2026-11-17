@@ -3,9 +3,8 @@
  * reads it — the manifest and `hooks/hooks.json` through `assemblePluginAt`, each
  * module through the compiler and the scan, the registrations against the
  * admission table. It runs nothing of the mod and is not a security boundary.
- * Security: every path is read through `ModValidateDeps.gate` first; a path the
- * gate refuses, or one past `MOD_VALIDATE_LIMITS`, is not read and is reported.
- * Nothing is written.
+ * Security: every path passes `ModValidateDeps.gate` first; a path it refuses, or
+ * one past `MOD_VALIDATE_LIMITS`, is not read and is reported. Nothing is written.
  */
 
 import type * as TS from 'typescript'
