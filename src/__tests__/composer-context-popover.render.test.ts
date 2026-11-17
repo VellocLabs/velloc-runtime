@@ -68,6 +68,13 @@ function hoverSummary(trigger: HTMLElement): HTMLElement {
 }
 
 describe('composer context popover', () => {
+  it('draws the ring at a 14.4px diameter with a 2px stroke', () => {
+    const svg = mountRing({}).querySelector('svg')!
+    expect(svg.getAttribute('width')).toBe('14.4')
+    expect(svg.getAttribute('height')).toBe('14.4')
+    expect(svg.querySelector('circle')!.getAttribute('stroke-width')).toBe('2')
+  })
+
   // A mounted-but-hidden thread (another session in front): the popover and
   // the tooltip are portaled to <body>, and left open behind a display:none
   // anchor they jump to the window's top-left corner. They close instead,

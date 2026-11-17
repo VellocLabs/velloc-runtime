@@ -380,8 +380,8 @@ export function TokenUsageIndicator({
   // (the surface re-renders on open and on every transcript/live update).
   const now = Date.now()
 
-  const size = 18
-  const stroke = 2.5
+  const size = 14.4
+  const stroke = 2
   const radius = (size - stroke) / 2
   const circumference = 2 * Math.PI * radius
   const dashOffset = circumference * (1 - Math.min(1, pct / 100))
