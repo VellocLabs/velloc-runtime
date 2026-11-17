@@ -27,7 +27,7 @@ import {
 } from '../pluginHost/marketplaces'
 import { createPluginUpdateService, startPluginUpdateSchedule } from '../pluginHost/pluginUpdates'
 import { registerMarketplaceSource } from '../pluginHost/marketplaceRegister'
-import { getMarketplaceContentDir, PLUGIN_MANIFEST_DIR_NAME } from '../pluginHost/pluginDirs'
+import { getMarketplaceContentDir, getPluginVersionCacheDir, PLUGIN_MANIFEST_DIR_NAME } from '../pluginHost/pluginDirs'
 import {
   PLUGIN_UPDATES_ACTION_SCOPES,
   isPluginUpdatesAutoPayload,
@@ -44,7 +44,7 @@ const HOME = '/home/u'
 const ctx = { homeDir: HOME }
 const ID = 'cool@my-mkt'
 
-type Listing = { name: string; version: string; providers?: boolean; folders?: boolean; agent?: boolean; missing?: boolean }
+type Listing = { name: string; version: string; providers?: boolean; folders?: boolean; agent?: boolean; missing?: boolean; dir?: string }
 
 function marketplaceFiles(plugins: Listing[]): Array<{ name: string; content: string }> {
   return [
@@ -52,14 +52,14 @@ function marketplaceFiles(plugins: Listing[]): Array<{ name: string; content: st
       name: '.claude-plugin/marketplace.json',
       content: JSON.stringify({
         name: 'my-mkt',
-        plugins: plugins.map(p => ({ name: p.name, source: `./plugins/${p.name}` })),
+        plugins: plugins.map(p => ({ name: p.name, source: `./plugins/${p.dir ?? p.name}` })),
       }),
     },
     ...plugins
       .filter(p => !p.missing)
       .flatMap(p => [
         {
-          name: `plugins/${p.name}/.claude-plugin/plugin.json`,
+          name: `plugins/${p.dir ?? p.name}/${PLUGIN_MANIFEST_REPO_PATH}`,
           content: JSON.stringify({
             name: p.name,
             version: p.version,
@@ -72,7 +72,7 @@ function marketplaceFiles(plugins: Listing[]): Array<{ name: string; content: st
               : {}),
           }),
         },
-        { name: `plugins/${p.name}/skills/hello/SKILL.md`, content: `v${p.version}\n` },
+        { name: `plugins/${p.dir ?? p.name}/skills/hello/SKILL.md`, content: `v${p.version}\n` },
       ]),
   ]
 }
@@ -673,6 +673,25 @@ describe('adding a GitHub marketplace', () => {
     expect(r.tarballs()).toBe(2)
     const record = await r.installed()
     expect(await r.fs.readFile(`${record!.installPath}/skills/hello/SKILL.md`, { encoding: 'utf-8' })).toBe('v1.0.0\n')
+  })
+
+  it('an install reads the listing from the downloaded repo, not the manifest cached at add time', async () => {
+    const r = await rig([])
+    await r.publish([{ name: 'cool', version: '1.0.0' }, { name: 'gone', version: '1.0.0' }])
+    await registerMarketplaceSource(ctx, r.fs, source, '2026-10-12T00:00:00.000Z', r.fetchImpl)
+    await r.publish([{ name: 'cool', version: '2.0.0', dir: 'cool-next' }])
+
+    await expect(setupPlugin(ctx, r.fs, 'my-mkt', 'gone', { fetchImpl: r.fetchImpl }))
+      .rejects.toThrow("'gone' is not listed in marketplace 'my-mkt'")
+    expect(r.tarballs()).toBe(1)
+    expect(await r.installed('gone@my-mkt')).toBeUndefined()
+    await expect(r.fs.readdir(getPluginVersionCacheDir(ctx, 'my-mkt', 'gone', '1.0.0'))).rejects.toThrow()
+
+    await setupPlugin(ctx, r.fs, 'my-mkt', 'cool', { fetchImpl: r.fetchImpl })
+    expect(r.tarballs()).toBe(1)
+    const record = await r.installed()
+    expect(record?.version).toBe('2.0.0')
+    expect(await r.fs.readFile(`${record!.installPath}/skills/hello/SKILL.md`, { encoding: 'utf-8' })).toBe('v2.0.0\n')
   })
 
   it('a failed manifest read registers nothing and downloads no repo', async () => {

@@ -144,10 +144,13 @@ export async function setupPlugin(
     return placePlugin(ctx, fs, catalogKey, pluginName, listing, fetched, { nowIso })
   }
 
+  // The listing is read after the repo download, so it and the files come from one commit.
+  const downloaded = !options.refreshFirst
+    && await ensureMarketplaceRepo(ctx, fs, catalogKey, nowIso, fetchImpl)
   let entry: CatalogListing | null = options.refreshFirst
     ? await refreshAndLookup(ctx, fs, catalogKey, pluginName, nowIso, fetchImpl)
     : await findCatalogPlugin(ctx, fs, catalogKey, pluginName)
-  if (!entry) {
+  if (!entry && !downloaded) {
     entry = await refreshAndLookup(
       ctx, fs, catalogKey, pluginName, nowIso, fetchImpl,
     )
