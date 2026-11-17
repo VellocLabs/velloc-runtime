@@ -5,7 +5,7 @@
  * has none.
  */
 import { describe, expect, it } from 'vitest'
-import { manifestDirName, writeDevModTypes } from '../mods/devModTypes'
+import { createDevModTypesWriter, manifestDirName, writeDevModTypes } from '../mods/devModTypes'
 import { GENERATED_MARKER } from '../mods/modApiDeclaration'
 import { emitModTypes, modTypesConfigPath, type ModTypesFs } from '../mods/modTypesEmit'
 
@@ -168,5 +168,45 @@ describe('writeDevModTypes', () => {
     expect(w.files.get(`${TYPES}/builtin-tools.d.ts`)).toContain('"Bash"')
     expect(w.files.has(`${TYPES}/api.d.ts`)).toBe(true)
     expect(reports).toEqual([`dev mods: other: types not written: ${FOLDER}/other is a link`])
+  })
+})
+
+describe('createDevModTypesWriter', () => {
+  const bash = { name: 'Bash', argsSchema: { type: 'object', properties: { command: { type: 'string' } } } }
+  const notes = { name: 'mcp__notes__search', argsSchema: { type: 'object', properties: { q: { type: 'string' } } }, fromMcpServer: true }
+
+  it('writes beside the caller, again only when the session tools change', async () => {
+    const w = world()
+    w.dirs.add(PLUGIN)
+    let tools: Array<typeof bash | typeof notes> = [bash]
+    const writes: string[] = []
+    const fs: ModTypesFs = { ...w.fs, writeFile: async (path, data, opts) => { writes.push(path); await w.fs.writeFile(path, data, opts) } }
+    const writer = createDevModTypesWriter({ fs, folder: FOLDER, tools: () => tools, join, report: () => {} })
+    writer.refresh()
+    await writer.idle()
+    expect(writes).toEqual([])
+    writer.loaded([{ name: 'panel', path: PLUGIN }])
+    expect(writes).toEqual([])
+    await writer.idle()
+    expect(w.files.get(`${TYPES}/mcp-tools.d.ts`)).not.toContain('mcp__notes__search')
+    writes.length = 0
+    writer.refresh()
+    await writer.idle()
+    expect(writes).toEqual([])
+    tools = [bash, notes]
+    writer.refresh()
+    await writer.idle()
+    expect(w.files.get(`${TYPES}/mcp-tools.d.ts`)).toContain('mcp__notes__search')
+  })
+
+  it('starts nothing once its scope has ended', async () => {
+    const w = world()
+    w.dirs.add(PLUGIN)
+    const scope = new AbortController()
+    const writer = createDevModTypesWriter({ fs: w.fs, folder: FOLDER, tools: () => [bash], join, report: () => {}, signal: scope.signal })
+    scope.abort()
+    writer.loaded([{ name: 'panel', path: PLUGIN }])
+    await writer.idle()
+    expect([...w.files.keys()]).toEqual([])
   })
 })

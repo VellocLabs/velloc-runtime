@@ -163,6 +163,15 @@ describe('schemaType', () => {
     expect(schemaType({ type: 'object', properties: { 'a-b': { type: 'boolean' } }, additionalProperties: false })).toBe(
       '{ "a-b"?: boolean }',
     )
+    expect(
+      schemaType({
+        allOf: [
+          { anyOf: [{ type: 'object', properties: { a: { type: 'string' } }, additionalProperties: false }, { type: 'object', properties: { b: { type: 'number' } }, additionalProperties: false }] },
+          { type: 'object', properties: { c: { type: 'boolean' } }, required: ['c'], additionalProperties: false },
+        ],
+      }),
+    ).toBe('({ a?: string } | { b?: number }) & { c: boolean }')
+    expect(schemaType({ allOf: [{ enum: ['x|y'] }, { type: 'object', additionalProperties: false }] })).toBe('"x|y" & {}')
     expect(schemaType(undefined)).toBe('unknown')
     expect(schemaType({ format: 'uri' })).toBe('unknown')
   })

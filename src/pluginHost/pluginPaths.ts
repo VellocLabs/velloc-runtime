@@ -40,6 +40,11 @@ export function getProjectPluginsRoot(cwd: string): string {
   return joinRuntimePath(cwd, NEXUS_DIR, PLUGINS_DIR)
 }
 
+/** The name of the directory under a plugin that holds its manifest. */
+export function getPluginManifestDirName(): string {
+  return PLUGIN_MANIFEST_DIR
+}
+
 /** `<pluginDir>/.claude-plugin/plugin.json`. */
 export function getPluginManifestPath(pluginDir: string): string {
   return joinRuntimePath(pluginDir, PLUGIN_MANIFEST_DIR, PLUGIN_MANIFEST_FILE)

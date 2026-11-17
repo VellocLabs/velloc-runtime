@@ -208,8 +208,22 @@ export function schemaType(schema: unknown, depth = 0): string {
   }
 }
 
+/** `text` in parentheses when a `|` or `&` stands outside every bracket and
+ *  string literal, so it can be one operand of `|` or `&`. */
 function paren(text: string): string {
-  return /[|&]/.test(text) && !text.startsWith('{') ? `(${text})` : text
+  let depth = 0
+  let quoted = false
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i]!
+    if (quoted) {
+      if (ch === '\\') i++
+      else if (ch === '"') quoted = false
+    } else if (ch === '"') quoted = true
+    else if ('{(<['.includes(ch)) depth++
+    else if ('})>]'.includes(ch)) depth--
+    else if (depth === 0 && (ch === '|' || ch === '&')) return `(${text})`
+  }
+  return text
 }
 
 const IDENTIFIER = /^[A-Za-z_$][A-Za-z0-9_$]*$/

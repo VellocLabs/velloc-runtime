@@ -59,12 +59,13 @@ export async function emitModTypes(fs: ModTypesFs, target: ModTypesTarget, files
   }
 
   // Each step down resolves to its parent's real path plus its own name.
-  let parentReal: string
+  let folderReal: string
   try {
-    parentReal = await real(target.folder)
+    folderReal = await real(target.folder)
   } catch {
     return refuse(`${target.folder} cannot be resolved`)
   }
+  let parentReal = folderReal
   const steps: Array<[string, string]> = [
     [target.pluginDir, name],
     [target.join(target.pluginDir, target.manifestDir), target.manifestDir],
@@ -89,7 +90,7 @@ export async function emitModTypes(fs: ModTypesFs, target: ModTypesTarget, files
   }
   const typesDir = steps[2]![0]
   const typesReal = parentReal
-  const pluginReal = `${await real(target.folder)}/${name}`
+  const pluginReal = `${folderReal}/${name}`
   /** Whether `path` (present or not) resolves to `dirReal/file`: no link,
    *  dangling or not, stands in its place. */
   const resolvesInPlace = (path: string, dirReal: string, file: string): Promise<boolean> =>

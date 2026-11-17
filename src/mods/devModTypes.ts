@@ -1,11 +1,11 @@
 /**
  * The mod API declaration for the session's dev mods (F-25): built from the
  * tables this engine serves and the session's tools, and written into each
- * dev-folder plugin when the folder loads it.
+ * dev-folder plugin when the folder loads it or the session's tools change.
  * Contract: never rejects; each refusal or conflict is one `report` line.
  */
 
-import { getPluginManifestPath } from '../pluginHost/pluginPaths'
+import { getPluginManifestDirName } from '../pluginHost/pluginPaths'
 import type { ActivePlugin } from '../pluginHost/pluginModel'
 import { RAISED_EVENTS } from './modAdmission'
 import { buildModApiFiles, type DeclaredTool, type ModApiTables } from './modApiDeclaration'
@@ -46,8 +46,55 @@ export function modApiTables(tools: readonly DevModTool[]): ModApiTables {
 
 /** The name of a plugin's manifest directory, as the loader reads it. */
 export function manifestDirName(): string {
-  const parts = getPluginManifestPath('plugin').split(/[\\/]/)
-  return parts[parts.length - 2]!
+  return getPluginManifestDirName()
+}
+
+export type DevModTypesWriter = {
+  /** The folder loaded `plugins`: write their declarations beside the turns. */
+  loaded(plugins: readonly Pick<ActivePlugin, 'name' | 'path'>[]): void
+  /** Write again when the session's tools differ from the last write's. */
+  refresh(): void
+  /** Settles once every write started so far has. */
+  idle(): Promise<void>
+}
+
+/** Contract: writes run one at a time, never hold the caller, and none
+ *  starts once `signal` has aborted. */
+export function createDevModTypesWriter(options: {
+  fs: ModTypesFs
+  folder: string
+  tools(): readonly DevModTool[]
+  join(base: string, ...segments: string[]): string
+  report(line: string): void
+  signal?: AbortSignal
+}): DevModTypesWriter {
+  let plugins: readonly Pick<ActivePlugin, 'name' | 'path'>[] = []
+  let toolsKey: string | undefined
+  let queue: Promise<void> = Promise.resolve()
+  const keyOf = (tools: readonly DevModTool[]): string =>
+    JSON.stringify(tools.map(tool => [tool.name, tool.mcpInfo !== undefined || tool.fromMcpServer === true, tool.argsSchema ?? null]))
+  const write = (): void => {
+    const target = plugins
+    queue = queue.then(async () => {
+      if (options.signal?.aborted) return
+      const tools = options.tools()
+      toolsKey = keyOf(tools)
+      await writeDevModTypes({ fs: options.fs, folder: options.folder, plugins: target, tools, join: options.join, report: options.report })
+    }).catch(error => {
+      options.report(`dev mods: types not written: ${error instanceof Error ? error.message : String(error)}`)
+    })
+  }
+  return {
+    loaded(next) {
+      plugins = next
+      write()
+    },
+    refresh() {
+      if (plugins.length === 0 || options.signal?.aborted) return
+      if (keyOf(options.tools()) !== toolsKey) write()
+    },
+    idle: () => queue,
+  }
 }
 
 export async function writeDevModTypes(options: {

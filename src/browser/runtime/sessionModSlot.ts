@@ -10,7 +10,7 @@ import type { PluginProviderKeysMap } from '../../pluginHost/pluginMcpUserConfig
 import { isModSlot, selectModModules } from '../../mods/modSlot'
 import { createModIdleUnload, type ModIdleUnload } from '../../mods/modIdleUnload'
 import { createDevModsFolder, type DevModsFolder } from '../../mods/devModsFolder'
-import { writeDevModTypes } from '../../mods/devModTypes'
+import { createDevModTypesWriter, type DevModTypesWriter } from '../../mods/devModTypes'
 import { assemblePluginAt } from '../../pluginHost/loadPlugins'
 import { RUNTIME_DIR_NAME } from '../../branding/runtimeDir'
 import { joinRuntimePath } from '../../utils/runtimePaths'
@@ -107,6 +107,8 @@ export async function openSessionModSlot(input: SessionModSlotInput) {
   let modPlugins = pluginContributions.plugins
   /** The session's dev mods folder (F-25); set below for an interactive slot. */
   let devMods: DevModsFolder | undefined
+  /** The API declaration written beside the dev folder's plugins. */
+  let devModTypes: DevModTypesWriter | undefined
   /** `plugins` with the dev folder's own, an installed name winning. */
   const withDevMods = (plugins: typeof pluginContributions.plugins): typeof pluginContributions.plugins => {
     const dev = devMods?.plugins() ?? []
@@ -305,6 +307,15 @@ export async function openSessionModSlot(input: SessionModSlotInput) {
         traceLine(`[mods] ${line}`, { level: 'warn' })
         console.warn(`[mods] ${line}`)
       }
+      const typesWriter = createDevModTypesWriter({
+        fs: installedFs,
+        folder,
+        tools: () => engineForMods?.toolContracts() ?? [],
+        join: (base, ...segments) => joinRuntimePath(base, ...segments),
+        report: reportDevMods,
+        ...(options.runtimeScopeSignal ? { signal: options.runtimeScopeSignal } : {}),
+      })
+      devModTypes = typesWriter
       devMods = createDevModsFolder({
         folder,
         readdir: path => installedFs.readdir(path),
@@ -320,15 +331,7 @@ export async function openSessionModSlot(input: SessionModSlotInput) {
         ask: plugins => openDevModsAsk(resolvedSessionId, plugins, options.runtimeScopeSignal),
         notifyOn: plugins => showDevModsNotice(resolvedSessionId, plugins, options.runtimeScopeSignal),
         onPluginsChanged: () => reconcileMods(modPlugins),
-        onLoaded: plugins =>
-          writeDevModTypes({
-            fs: installedFs,
-            folder,
-            plugins,
-            tools: engineForMods?.toolContracts() ?? [],
-            join: (base, ...segments) => joinRuntimePath(base, ...segments),
-            report: reportDevMods,
-          }),
+        onLoaded: async plugins => typesWriter.loaded(plugins),
         report: reportDevMods,
       })
     } catch (e) {
@@ -348,7 +351,12 @@ export async function openSessionModSlot(input: SessionModSlotInput) {
     modIdle,
     reconcileMods,
     /** The dev mods folder's turn-end scan; absent when the slot has none. */
-    afterTurnUpkeep: devMods ? (folder => () => folder.afterTurn())(devMods) : undefined,
+    afterTurnUpkeep: devMods
+      ? ((folder, types) => async () => {
+          await folder.afterTurn()
+          types?.refresh()
+        })(devMods, devModTypes)
+      : undefined,
     /** Binds the engine and applies the registrations made before it existed, in order. */
     bindEngine(engine: ConversationEngine): void {
       engineForMods = engine
