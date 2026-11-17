@@ -161,7 +161,11 @@ export function useCustomizeTab(
       const result = (await conn.request(`${CUSTOMIZE_PAGE_CAPABILITY}.describeMarketplace` as RouteKey, {
         marketplace,
       })) as Partial<CustomizeMarketplaceDescription> | undefined
-      return { plugins: result?.plugins && typeof result.plugins === 'object' ? result.plugins : {} }
+      const about = typeof result?.about === 'string' && result.about.trim() ? result.about : undefined
+      return {
+        plugins: result?.plugins && typeof result.plugins === 'object' ? result.plugins : {},
+        ...(about ? { about } : {}),
+      }
     },
     [runtimeConnection],
   )

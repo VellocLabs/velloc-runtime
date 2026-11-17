@@ -885,7 +885,7 @@ export const zh: Messages = {
   'customize.browse.backHome': '全部市场',
   'customize.browse.downloading': '正在下载插件列表…',
   'customize.browse.updating': '正在检查更新…',
-  'customize.browse.showAll': '查看全部 {count} 个',
+  'customize.browse.showAll': '查看全部',
   'customize.addMarket.open': '添加市场',
   'customize.addMarket.title': '添加市场',
   'customize.addMarket.description': '市场是一个发布插件列表的 GitHub 仓库。添加后，它的插件会显示在这里，可以直接安装。',

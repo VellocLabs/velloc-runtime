@@ -897,7 +897,7 @@ export const es: Messages = {
   'customize.browse.backHome': 'Todos los mercados',
   'customize.browse.downloading': 'Descargando la lista de complementos…',
   'customize.browse.updating': 'Buscando actualizaciones…',
-  'customize.browse.showAll': 'Ver los {count}',
+  'customize.browse.showAll': 'Ver todo',
   'customize.addMarket.open': 'Añadir mercado',
   'customize.addMarket.title': 'Añadir un mercado',
   'customize.addMarket.description': 'Un mercado es un repositorio de GitHub que publica una lista de complementos. Una vez añadido, sus complementos aparecen aquí, listos para instalar.',

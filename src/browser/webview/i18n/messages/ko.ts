@@ -887,7 +887,7 @@ export const ko: Messages = {
   'customize.browse.backHome': '모든 마켓플레이스',
   'customize.browse.downloading': '플러그인 목록을 다운로드하는 중…',
   'customize.browse.updating': '업데이트 확인 중…',
-  'customize.browse.showAll': '모두 보기({count})',
+  'customize.browse.showAll': '모두 보기',
   'customize.addMarket.open': '마켓플레이스 추가',
   'customize.addMarket.title': '마켓플레이스 추가',
   'customize.addMarket.description': '마켓플레이스는 플러그인 목록을 게시하는 GitHub 저장소입니다. 추가하면 해당 플러그인이 여기에 표시되고 설치할 수 있습니다.',

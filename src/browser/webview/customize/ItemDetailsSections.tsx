@@ -40,10 +40,23 @@ export function PartCounts({ parts }: { parts: DirectoryComponent[] | undefined 
   )
 }
 
-/** "Verified" beside a name, for an item the directory reviewed. */
-export function VerifiedMark({ details }: { details: DirectoryItemDetails | undefined }) {
+/** "Verified" beside a name, for an item the directory reviewed; `compact` shows the badge alone. */
+export function VerifiedMark({ details, compact }: { details: DirectoryItemDetails | undefined; compact?: boolean }) {
   const t = useT()
   if (!details?.verified) return null
+  if (compact) {
+    return (
+      <span
+        role="img"
+        data-testid="customize-verified"
+        aria-label={t('customize.detail.verified')}
+        title={t('customize.detail.verifiedHint')}
+        className="inline-flex shrink-0 text-muted-foreground"
+      >
+        <BadgeCheckIcon className="size-4" />
+      </span>
+    )
+  }
   return (
     <span
       data-testid="customize-verified"

@@ -26,7 +26,11 @@ type Handler = (event: { type?: string; payload: unknown }) => void
  * A connection whose `show` answers come from `answers`, in order; the last
  * one repeats. `described` is what `describeMarketplace` answers.
  */
-function fakeConnection(answers: Array<'ok' | 'fail'>, described: Record<string, unknown> = {}) {
+function fakeConnection(
+  answers: Array<'ok' | 'fail'>,
+  described: Record<string, unknown> = {},
+  about: Record<string, string> = {},
+) {
   const handlers = new Map<string, Handler>()
   const shows: unknown[] = []
   const answered: string[] = []
@@ -39,7 +43,10 @@ function fakeConnection(answers: Array<'ok' | 'fail'>, described: Record<string,
     request: async (route: string, payload: unknown) => {
       if (route !== 'customizePage.show') {
         answered.push(`${route} ${JSON.stringify(payload)}`)
-        if (route === 'customizePage.describeMarketplace') return { plugins: described }
+        if (route === 'customizePage.describeMarketplace') {
+          const text = about[(payload as { marketplace: string }).marketplace]
+          return { plugins: described, ...(text ? { about: text } : {}) }
+        }
         return { ok: true }
       }
       shows.push(payload)
@@ -168,7 +175,7 @@ describe('useCustomizeTab — the page turning visible again', () => {
 
 type Route = { capability: string; action: string }
 
-type FakeMarket = { name: string; isOfficial?: boolean; isBuiltin?: boolean }
+type FakeMarket = { name: string; isOfficial?: boolean; isBuiltin?: boolean; source?: Record<string, unknown> }
 type AddAnswer = Record<string, unknown> | Error
 
 /**
@@ -181,7 +188,7 @@ type AddAnswer = Record<string, unknown> | Error
 function fakeBridge(
   options: {
     marketplaces?: FakeMarket[]
-    manifests?: Record<string, { plugins: Array<Record<string, unknown>> } | null>
+    manifests?: Record<string, { plugins: Array<Record<string, unknown>>; description?: string } | null>
     installFails?: boolean
     refreshFails?: boolean
     holdRefresh?: boolean
@@ -597,16 +604,19 @@ describe('CustomizeScreen — the marketplaces\' start page', () => {
     expect(view.getAllByTestId('customize-market-installed')).toHaveLength(2)
   })
 
-  it('a section shows nine cards in at most three columns, and Show all lists every plugin and returns to the start page', async () => {
+  it('a section shows eight cards in at most two columns under a count badge, and Show all lists every plugin and returns to the start page', async () => {
     const plugins = Array.from({ length: 12 }, (_, i) => ({ name: `p${String(i).padStart(2, '0')}`, installed: false }))
     const { view } = await opened({ manifests: { 'team-tools': { plugins } } })
-    await waitFor(() => expect(view.getAllByTestId('customize-market-plugin')).toHaveLength(9))
+    await waitFor(() => expect(view.getAllByTestId('customize-market-plugin')).toHaveLength(8))
     const grid = view.getByTestId('customize-market-plugins').className
-    expect(grid).toContain('grid-cols-3')
-    expect(grid).not.toMatch(/grid-cols-([4-9]|\[)/)
+    expect(grid).toContain('grid-cols-2')
+    expect(grid).not.toMatch(/grid-cols-([3-9]|\[)/)
     expect(view.getByTestId('customize-browse').firstElementChild!.className).toContain('max-w-[64rem]')
+    const count = view.getByTestId('customize-market-count')
+    expect(count.getAttribute('title')).toBe(EN_MESSAGES['customize.market.count'].replace('{count}', '12'))
+    expect(count.querySelector('[aria-hidden]')?.textContent).toBe('12')
     const showAll = view.getByTestId('customize-market-show-all')
-    expect(showAll.textContent).toContain(EN_MESSAGES['customize.browse.showAll'].replace('{count}', '12'))
+    expect(showAll.textContent).toBe(EN_MESSAGES['customize.browse.showAll'])
 
     fireEvent.click(showAll)
     expect(view.getByTestId('customize-market-all')).not.toBeNull()
@@ -615,13 +625,68 @@ describe('CustomizeScreen — the marketplaces\' start page', () => {
 
     fireEvent.click(view.getByTestId('customize-market-all-back'))
     expect(view.getByTestId('customize-browse')).not.toBeNull()
-    expect(view.getAllByTestId('customize-market-plugin')).toHaveLength(9)
+    expect(view.getAllByTestId('customize-market-plugin')).toHaveLength(8)
   })
 
-  it('nine or fewer plugins offer no Show all', async () => {
-    const plugins = Array.from({ length: 9 }, (_, i) => ({ name: `p${i}`, installed: false }))
+  it('a GitHub marketplace shows its owner\'s avatar; any other, or a broken image, the store icon', async () => {
+    const fake = fakeConnection(['ok'])
+    const b = fakeBridge({
+      marketplaces: [
+        { name: 'from-github', source: { source: 'github', repo: 'acme-labs/plugins' } },
+        { name: 'from-git-url', source: { source: 'url', url: 'https://github.com/other-org/market.git' } },
+        { name: 'from-disk', source: { source: 'directory', path: 'C:/markets/local' } },
+      ],
+    })
+    const view = screen(fake.getConnection, { bridge: b.bridge })
+    await waitFor(() => expect(view.getAllByTestId('customize-market')).toHaveLength(3))
+    const row = (name: string) => view.getAllByTestId('customize-market').find(r => r.getAttribute('data-name') === name)!
+    expect(row('from-github').querySelector('[data-testid="customize-market-avatar"]')?.getAttribute('src')).toBe(
+      'https://github.com/acme-labs.png?size=64',
+    )
+    expect(row('from-git-url').querySelector('[data-testid="customize-market-avatar"]')?.getAttribute('src')).toBe(
+      'https://github.com/other-org.png?size=64',
+    )
+    expect(row('from-disk').querySelector('[data-testid="customize-market-avatar"]')).toBeNull()
+    expect(row('from-disk').querySelector('[data-testid="customize-market-icon-default"]')).not.toBeNull()
+
+    fireEvent.error(row('from-github').querySelector('[data-testid="customize-market-avatar"]')!)
+    expect(row('from-github').querySelector('[data-testid="customize-market-avatar"]')).toBeNull()
+    expect(row('from-github').querySelector('[data-testid="customize-market-icon-default"]')).not.toBeNull()
+  })
+
+  it('a section shows its repository About under the title in at most three lines, else marketplace.json\'s description', async () => {
+    const fake = fakeConnection(['ok'], {}, { 'from-github': 'Curated plugins for the Acme team.' })
+    const b = fakeBridge({
+      marketplaces: [{ name: 'from-github' }, { name: 'manifest-only' }, { name: 'bare' }],
+      manifests: {
+        'from-github': { plugins: [], description: 'Manifest text the About replaces' },
+        'manifest-only': { plugins: [], description: '  Plugins from the manifest.  ' },
+        bare: { plugins: [] },
+      },
+    })
+    const view = screen(fake.getConnection, { bridge: b.bridge })
+    fireEvent.click((await view.findAllByTestId('customize-market'))[0]!)
+    const section = (name: string) =>
+      view.getAllByTestId('customize-market-section').find(s => s.getAttribute('data-marketplace') === name)!
+    await waitFor(() =>
+      expect(section('from-github').querySelector('[data-testid="customize-market-about"]')?.textContent).toBe(
+        'Curated plugins for the Acme team.',
+      ),
+    )
+    const about = section('from-github').querySelector('[data-testid="customize-market-about"]')!
+    expect(about.className).toContain('line-clamp-3')
+    expect(about.getAttribute('title')).toBe('Curated plugins for the Acme team.')
+    expect(section('from-github').querySelector('h3')!.parentElement!.nextElementSibling).toBe(about)
+    expect(section('manifest-only').querySelector('[data-testid="customize-market-about"]')?.textContent).toBe(
+      'Plugins from the manifest.',
+    )
+    expect(section('bare').querySelector('[data-testid="customize-market-about"]')).toBeNull()
+  })
+
+  it('eight or fewer plugins offer no Show all', async () => {
+    const plugins = Array.from({ length: 8 }, (_, i) => ({ name: `p${i}`, installed: false }))
     const { view } = await opened({ manifests: { 'team-tools': { plugins } } })
-    await waitFor(() => expect(view.getAllByTestId('customize-market-plugin')).toHaveLength(9))
+    await waitFor(() => expect(view.getAllByTestId('customize-market-plugin')).toHaveLength(8))
     expect(view.queryByTestId('customize-market-show-all')).toBeNull()
   })
 
@@ -1064,13 +1129,14 @@ describe('CustomizeScreen — a marketplace plugin\'s detail page', () => {
     return { fake, view, requests: b.requests }
   }
 
-  it('cards show the directory\'s icon, publisher, summary and parts, and the listing for the rest', async () => {
+  it('cards show the directory\'s icon, publisher, summary and a verified badge, and the listing for the rest', async () => {
     const { fake, view } = await opened()
     expect(fake.answered).toContain('customizePage.describeMarketplace {"marketplace":"team-tools"}')
     const [lint, docs] = view.getAllByTestId('customize-market-plugin')
     expect(lint!.textContent).toContain('By Acme Inc')
-    expect(lint!.textContent).toContain(EN_MESSAGES['customize.detail.verified'])
-    expect(lint!.textContent).toContain(`${EN_MESSAGES['customize.detail.parts.skills']} · 1`)
+    const verified = lint!.querySelector('[data-testid="customize-verified"]')
+    expect(verified?.getAttribute('aria-label')).toBe(EN_MESSAGES['customize.detail.verified'])
+    expect(verified?.textContent).toBe('')
     expect(lint!.querySelector('img')?.getAttribute('src')).toBe('https://cdn.example/lint.png')
     expect(docs!.textContent).toContain('Writes docs')
   })

@@ -896,7 +896,7 @@ export const de: Messages = {
   'customize.browse.backHome': 'Alle Marktplätze',
   'customize.browse.downloading': 'Plugin-Liste wird heruntergeladen …',
   'customize.browse.updating': 'Suche nach Aktualisierungen …',
-  'customize.browse.showAll': 'Alle {count} anzeigen',
+  'customize.browse.showAll': 'Alle anzeigen',
   'customize.addMarket.open': 'Marktplatz hinzufügen',
   'customize.addMarket.title': 'Marktplatz hinzufügen',
   'customize.addMarket.description': 'Ein Marktplatz ist ein GitHub-Repository, das eine Liste von Plugins veröffentlicht. Sobald er hinzugefügt ist, erscheinen seine Plugins hier und können installiert werden.',

@@ -927,7 +927,7 @@ export const en = {
   'customize.browse.backHome': 'All marketplaces',
   'customize.browse.downloading': 'Downloading the plugin list…',
   'customize.browse.updating': 'Checking for updates…',
-  'customize.browse.showAll': 'Show all {count}',
+  'customize.browse.showAll': 'Show all',
   'customize.addMarket.open': 'Add marketplace',
   'customize.addMarket.title': 'Add a marketplace',
   'customize.addMarket.description': 'A marketplace is a GitHub repository that publishes a list of plugins. Once it is added, its plugins appear here, ready to install.',

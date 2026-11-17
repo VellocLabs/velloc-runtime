@@ -8,6 +8,7 @@ import type { WindowDragRect } from '../../bridge/protocol/ui'
 import type { RuntimeConnection } from '../../runtimeClient/RuntimeConnection'
 import type { ShellChannel } from '../../runtimeClient/shellChannel'
 import type { DirectoryPageItem } from '../../../customize/directoryOffer'
+import { marketplaceIconUrl } from '../../../customize/listingIcon'
 import { useT } from '../i18n'
 import { useSettingsBridge } from '../nexusSettingsBridge'
 import type { SettingsSectionId } from '../settings/settingsNav'
@@ -253,7 +254,7 @@ export function CustomizeScreen({
                 testId="customize-market"
                 name={m.name}
                 selected={selection.kind === 'browse' && selection.focus?.name === m.name}
-                icon={<StoreIcon className="size-4" />}
+                icon={<MarketplaceIcon iconUrl={marketplaceIconUrl(m.source)} />}
                 onSelect={() => browse(m.name)}
                 onRemove={() => setRemoving(m.name)}
                 removeLabel={t('customize.removeMarket.open', { name: m.name })}
@@ -309,6 +310,24 @@ export function CustomizeScreen({
 }
 
 /** A row of the left list; with `onRemove`, a remove button shows on hover, focus, or selection. */
+/** The GitHub avatar of the account a marketplace comes from, or the store icon when it has none or the image fails. */
+function MarketplaceIcon({ iconUrl }: { iconUrl: string | undefined }) {
+  const [broken, setBroken] = React.useState(false)
+  React.useEffect(() => setBroken(false), [iconUrl])
+  if (!iconUrl || broken) return <StoreIcon data-testid="customize-market-icon-default" className="size-4" />
+  return (
+    <img
+      data-testid="customize-market-avatar"
+      src={iconUrl}
+      alt=""
+      loading="lazy"
+      referrerPolicy="no-referrer"
+      className="size-4 rounded-sm object-cover"
+      onError={() => setBroken(true)}
+    />
+  )
+}
+
 function MarketRow({
   testId,
   name,

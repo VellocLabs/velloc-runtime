@@ -460,6 +460,8 @@ describe('customizePage service', () => {
 function fakeOffers(options: {
   records?: Record<string, unknown[]>
   fail?: boolean
+  about?: unknown
+  aboutFails?: boolean
   servers?: Record<string, NexusMcpServerConfig>
   installFails?: boolean
   removeFails?: boolean
@@ -472,6 +474,10 @@ function fakeOffers(options: {
   const deps: DirectoryOfferDeps = {
     fetchJson: async url => {
       calls.push(`fetch ${url}`)
+      if (url.startsWith('https://api.github.com/')) {
+        if (options.aboutFails) throw new Error('HTTP 403')
+        return options.about ?? {}
+      }
       if (options.fail) throw new Error('offline')
       const filter = new URL(url).searchParams.get('filter') ?? ''
       return { data: options.records?.[filter] ?? [] }
@@ -842,7 +848,40 @@ describe('customizePage service — the page item', () => {
     const answer = await r.call('describeMarketplace', { marketplace: 'official-market' })
     expect(answer).toMatchObject({ plugins: { notion: { name: 'notion', summary: 'Notes' } } })
     await r.call('describeMarketplace', { marketplace: 'official-market' })
-    expect(o.calls.filter(c => c.startsWith('fetch'))).toHaveLength(1)
+    expect(o.calls.filter(c => c.startsWith('fetch') && !c.includes('api.github.com'))).toHaveLength(1)
+  })
+
+  it('describeMarketplace answers the GitHub repository About, before a show too, and asks GitHub once an hour', async () => {
+    const o = fakeOffers({ about: { description: '  Plugins for the Acme team.  ' } })
+    const r = rig(() => fakeHost().host, o.deps)
+    await expect(r.call('describeMarketplace', { marketplace: 'official-market' })).resolves.toEqual({
+      plugins: {},
+      about: 'Plugins for the Acme team.',
+    })
+    await r.call('describeMarketplace', { marketplace: 'official-market' })
+    expect(o.calls.filter(c => c.startsWith('fetch'))).toEqual(['fetch https://api.github.com/repos/acme/market'])
+    await expect(r.call('describeMarketplace', { marketplace: 'not-added' })).resolves.toEqual({ plugins: {} })
+  })
+
+  it('a failed or empty About lookup leaves the answer without one, and a failed details read still throws', async () => {
+    for (const options of [{ aboutFails: true }, { about: { description: null } }, { about: { description: '   ' } }]) {
+      const o = fakeOffers(options)
+      const r = rig(() => fakeHost().host, o.deps)
+      await expect(r.call('describeMarketplace', { marketplace: 'official-market' })).resolves.toEqual({ plugins: {} })
+    }
+    const o = fakeOffers({ fail: true, aboutFails: true })
+    const fake = fakeHost()
+    const r = rig(() => fake.host, o.deps)
+    await r.call('show', { url: PAGE })
+    await expect(r.call('describeMarketplace', { marketplace: 'official-market' })).rejects.toThrow()
+    const withAbout = fakeOffers({ fail: true, about: { description: 'Still here' } })
+    const fake2 = fakeHost()
+    const r2 = rig(() => fake2.host, withAbout.deps)
+    await r2.call('show', { url: PAGE })
+    await expect(r2.call('describeMarketplace', { marketplace: 'official-market' })).resolves.toEqual({
+      plugins: {},
+      about: 'Still here',
+    })
   })
 
   it('without lookup calls a page never has an item', async () => {

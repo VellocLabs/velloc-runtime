@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { githubOwnerOf, listingIconUrl } from '../customize/listingIcon'
+import { githubOwnerOf, githubRepoOf, listingIconUrl, marketplaceIconUrl } from '../customize/listingIcon'
 import { avatarHue } from '../browser/webview/customize/ItemAvatar'
 import type { CatalogListing } from '../pluginHost/registryFormats'
 
@@ -60,5 +60,37 @@ describe('avatarHue', () => {
       expect(hue).toBeGreaterThanOrEqual(0)
       expect(hue).toBeLessThan(360)
     }
+  })
+})
+
+describe('marketplaceIconUrl', () => {
+  it('is the avatar of the account a GitHub marketplace comes from', () => {
+    expect(marketplaceIconUrl({ source: 'github', repo: 'acme/market' })).toBe('https://github.com/acme.png?size=64')
+    expect(marketplaceIconUrl({ source: 'url', url: 'git@github.com:acme-labs/market.git' })).toBe(
+      'https://github.com/acme-labs.png?size=64',
+    )
+  })
+
+  it('is undefined for a marketplace off GitHub, on disk, or with no source', () => {
+    expect(marketplaceIconUrl({ source: 'url', url: 'https://gitlab.com/acme/market.git' })).toBeUndefined()
+    expect(marketplaceIconUrl({ source: 'directory', path: 'C:/markets/m' })).toBeUndefined()
+    expect(marketplaceIconUrl(undefined)).toBeUndefined()
+  })
+})
+
+describe('githubRepoOf', () => {
+  it('reads owner/repo from a github source or a github.com URL, without .git', () => {
+    expect(githubRepoOf({ source: 'github', repo: 'acme/market' })).toBe('acme/market')
+    expect(githubRepoOf({ source: 'url', url: 'https://github.com/acme/market.git' })).toBe('acme/market')
+    expect(githubRepoOf({ source: 'url', url: 'git@github.com:acme/my.market.git' })).toBe('acme/my.market')
+    expect(githubRepoOf({ source: 'git-subdir', url: 'https://github.com/acme/mono', path: 'p' })).toBe('acme/mono')
+  })
+
+  it('refuses names that could reach another API path', () => {
+    expect(githubRepoOf({ source: 'github', repo: 'acme/..' })).toBeUndefined()
+    expect(githubRepoOf({ source: 'github', repo: 'acme' })).toBeUndefined()
+    expect(githubRepoOf({ source: 'url', url: 'https://github.com/acme/re%2Fpo' })).toBeUndefined()
+    expect(githubRepoOf({ source: 'url', url: 'https://gitlab.com/acme/market' })).toBeUndefined()
+    expect(githubRepoOf({ source: 'local', path: './m' })).toBeUndefined()
   })
 })

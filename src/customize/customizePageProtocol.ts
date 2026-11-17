@@ -95,8 +95,12 @@ export function isCustomizeMarketplacePayload(value: unknown): value is { market
   )
 }
 
-/** What `describeMarketplace` answers: the directory's details per plugin name, for the plugins it carries. */
-export type CustomizeMarketplaceDescription = { plugins: Record<string, DirectoryItemDetails> }
+/**
+ * What `describeMarketplace` answers: the directory's details per plugin name,
+ * for the plugins it carries, and the marketplace's GitHub repository
+ * description when it has one.
+ */
+export type CustomizeMarketplaceDescription = { plugins: Record<string, DirectoryItemDetails>; about?: string }
 
 const ITEM_KINDS = new Set(['plugin', 'connector'])
 const ITEM_PHASES = new Set(['resolving', 'ready', 'installing', 'installed', 'removing', 'failed'])

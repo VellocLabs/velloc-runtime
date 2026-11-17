@@ -897,7 +897,7 @@ export const fr: Messages = {
   'customize.browse.backHome': 'Toutes les places de marché',
   'customize.browse.downloading': 'Téléchargement de la liste d\'extensions…',
   'customize.browse.updating': 'Recherche de mises à jour…',
-  'customize.browse.showAll': 'Tout afficher ({count})',
+  'customize.browse.showAll': 'Tout afficher',
   'customize.addMarket.open': 'Ajouter une place de marché',
   'customize.addMarket.title': 'Ajouter une place de marché',
   'customize.addMarket.description': 'Une place de marché est un dépôt GitHub qui publie une liste d\'extensions. Une fois ajoutée, ses extensions apparaissent ici, prêtes à être installées.',

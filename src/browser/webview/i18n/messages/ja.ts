@@ -890,7 +890,7 @@ export const ja: Messages = {
   'customize.browse.backHome': 'すべてのマーケットプレイス',
   'customize.browse.downloading': 'プラグイン一覧をダウンロードしています…',
   'customize.browse.updating': '更新を確認しています…',
-  'customize.browse.showAll': 'すべて表示（{count}）',
+  'customize.browse.showAll': 'すべて表示',
   'customize.addMarket.open': 'マーケットプレイスを追加',
   'customize.addMarket.title': 'マーケットプレイスを追加',
   'customize.addMarket.description': 'マーケットプレイスは、プラグインの一覧を公開している GitHub リポジトリです。追加すると、そのプラグインがここに表示され、インストールできるようになります。',

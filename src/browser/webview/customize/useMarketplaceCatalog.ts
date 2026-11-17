@@ -64,6 +64,10 @@ export type MarketplaceShelf = {
   refreshing: boolean
   /** The directory's details per plugin name, for the plugins it carries. */
   details: Record<string, DirectoryItemDetails>
+  /** The marketplace's GitHub repository description, when it has one. */
+  about?: string
+  /** marketplace.json's own description, shown until (or without) the repository's. */
+  manifestDescription?: string
 }
 
 export type MarketplaceShelvesView = {
@@ -117,6 +121,7 @@ export function useMarketplaceShelves(
           patch(name, {
             plugins: result.manifest?.plugins ?? [],
             status: result.manifest ? 'ready' : 'notFetched',
+            manifestDescription: result.manifest?.description?.trim() || undefined,
           }),
         () => patch(name, { status: 'failed' }),
       )
@@ -167,7 +172,7 @@ export function useMarketplaceShelves(
         .then(() => fetchLatest(name))
         .then(() => describe(name))
         .then(
-          result => patch(name, { details: result.plugins }),
+          result => patch(name, { details: result.plugins, ...(result.about ? { about: result.about } : {}) }),
           () => undefined,
         )
     }

@@ -29,6 +29,7 @@ import {
   type DirectoryPageItem,
 } from './directoryOffer'
 import { DIRECTORY_API_ORIGIN, DIRECTORY_SITE_HOST } from './directorySite'
+import { describeMarketplaceAbout } from './marketplaceAbout'
 
 /** The page-script calls the service makes (the native `pageScript` primitive). */
 export type CustomizePageScript = {
@@ -58,6 +59,8 @@ export type CustomizePageHost = {
 export type CustomizePageErrorCode = 'host_unavailable' | 'not_shown' | 'no_item'
 
 const MARKETPLACE_DESCRIPTION_TTL_MS = 10 * 60_000
+/** A marketplace's About is kept an hour, a failed lookup included: GitHub limits anonymous reads. */
+const MARKETPLACE_ABOUT_TTL_MS = 60 * 60_000
 /** The same address opens in a window at most once in this long. */
 const OPEN_ELSEWHERE_REPEAT_MS = 5_000
 /** At most this many pages open elsewhere within `OPEN_ELSEWHERE_LIMIT_MS`, whatever their addresses. */
@@ -127,7 +130,8 @@ export class CustomizePageService {
   private addSeq = 0
   /** An add asked for an item the page is being taken to; asked again once it shows. */
   private pendingAddKey: string | null = null
-  private readonly descriptions = new Map<string, { at: number; value: Promise<CustomizeMarketplaceDescription> }>()
+  private readonly descriptions = new Map<string, { at: number; value: Promise<CustomizeMarketplaceDescription['plugins']> }>()
+  private readonly abouts = new Map<string, { at: number; value: Promise<string | undefined> }>()
   /** When each address last opened in a window. */
   private readonly openedAt = new Map<string, number>()
   private openedTimes: number[] = []
@@ -206,23 +210,40 @@ export class CustomizePageService {
 
   /**
    * The directory's details for each plugin `marketplace` lists (kept ten
-   * minutes per marketplace). Empty without lookup calls or before a show
-   * names the listing's origin; a failed read is not kept. A show already
-   * under way is waited for.
+   * minutes per marketplace), and its About when it is on GitHub. Details are
+   * empty without lookup calls or before a show names the listing's origin;
+   * a failed details read is not kept, and throws unless an About was found.
+   * A show already under way is waited for.
    */
   async describeMarketplace(marketplace: string): Promise<CustomizeMarketplaceDescription> {
     await this.queue
     const offers = this.offers
+    if (!offers) return { plugins: {} }
+    const [plugins, about] = await Promise.allSettled([this.pluginDetails(marketplace, offers), this.about(marketplace, offers)])
+    const aboutText = about.status === 'fulfilled' ? about.value : undefined
+    if (plugins.status === 'rejected' && !aboutText) throw plugins.reason
+    return { plugins: plugins.status === 'fulfilled' ? plugins.value : {}, ...(aboutText ? { about: aboutText } : {}) }
+  }
+
+  private pluginDetails(marketplace: string, offers: DirectoryOfferDeps): Promise<CustomizeMarketplaceDescription['plugins']> {
     const origin = this.apiOrigin
-    if (!offers || !origin) return Promise.resolve({ plugins: {} })
+    if (!origin) return Promise.resolve({})
     const key = `${origin} ${marketplace}`
     const kept = this.descriptions.get(key)
     if (kept && Date.now() - kept.at < MARKETPLACE_DESCRIPTION_TTL_MS) return kept.value
-    const value = describeMarketplacePlugins(marketplace, offers, origin).then(plugins => ({ plugins }))
+    const value = describeMarketplacePlugins(marketplace, offers, origin)
     this.descriptions.set(key, { at: Date.now(), value })
     value.catch(() => {
       if (this.descriptions.get(key)?.value === value) this.descriptions.delete(key)
     })
+    return value
+  }
+
+  private about(marketplace: string, offers: DirectoryOfferDeps): Promise<string | undefined> {
+    const kept = this.abouts.get(marketplace)
+    if (kept && Date.now() - kept.at < MARKETPLACE_ABOUT_TTL_MS) return kept.value
+    const value = describeMarketplaceAbout(marketplace, offers).catch(() => undefined)
+    this.abouts.set(marketplace, { at: Date.now(), value })
     return value
   }
 

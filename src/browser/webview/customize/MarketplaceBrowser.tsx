@@ -1,5 +1,5 @@
 import * as React from 'react'
-import { ArrowLeftIcon, CheckIcon, ChevronRightIcon, GlobeIcon, Loader2Icon, PlusIcon } from 'lucide-react'
+import { ArrowLeftIcon, CheckIcon, ArrowRightIcon, GlobeIcon, Loader2Icon, PlusIcon } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 
@@ -12,7 +12,6 @@ import { ItemAvatar } from './ItemAvatar'
 import {
   FactsAndLinks,
   IncludedParts,
-  PartCounts,
   Screenshots,
   VerifiedMark,
   httpsLink,
@@ -21,7 +20,7 @@ import {
 import { installKey, type MarketplaceShelf, type MarketplaceShelvesView } from './useMarketplaceCatalog'
 
 /** Cards a marketplace's section shows before "Show all": three rows of three. */
-export const SECTION_LIMIT = 9
+export const SECTION_LIMIT = 8
 
 /** The page column: as wide as the directory's, centred, with the same side margins. */
 const PAGE_COLUMN = 'mx-auto w-full max-w-[64rem] px-8'
@@ -185,6 +184,7 @@ function Section({
   const t = useT()
   const shown = limit === undefined ? shelf.plugins : shelf.plugins.slice(0, limit)
   const more = shelf.plugins.length > shown.length
+  const about = shelf.about ?? shelf.manifestDescription
 
   let body: React.ReactNode
   if (shelf.status === 'loading') {
@@ -225,7 +225,7 @@ function Section({
       <ul
         data-testid="customize-market-plugins"
         data-marketplace={marketplace}
-        className="grid grid-cols-1 gap-3 @[38rem]:grid-cols-2 @[54rem]:grid-cols-3"
+        className="grid grid-cols-1 gap-3 @[44rem]:grid-cols-2"
       >
         {shown.map(plugin => (
           <PluginCard
@@ -249,11 +249,16 @@ function Section({
       aria-label={marketplace}
       className="@container flex scroll-mt-2 flex-col gap-3 py-4"
     >
-      <div className="flex items-baseline gap-2">
-        <h3 className="truncate text-base font-semibold text-foreground">{marketplace}</h3>
+      <div className="flex min-h-7 items-center gap-2">
+        <h3 className="truncate text-[15px] leading-5 font-semibold text-foreground">{marketplace}</h3>
         {shelf.status === 'ready' ? (
-          <span className="shrink-0 text-sm text-muted-foreground">
-            {t('customize.market.count', { count: String(shelf.plugins.length) })}
+          <span
+            data-testid="customize-market-count"
+            title={t('customize.market.count', { count: String(shelf.plugins.length) })}
+            className="inline-flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full bg-muted px-1.5 text-xs font-medium tabular-nums text-muted-foreground"
+          >
+            <span aria-hidden>{shelf.plugins.length}</span>
+            <span className="sr-only">{t('customize.market.count', { count: String(shelf.plugins.length) })}</span>
           </span>
         ) : null}
         {shelf.refreshing && shelf.status !== 'notFetched' ? (
@@ -271,11 +276,16 @@ function Section({
             data-testid="customize-market-show-all"
             onClick={onShowAll}
           >
-            {t('customize.browse.showAll', { count: String(shelf.plugins.length) })}
-            <ChevronRightIcon className="size-4" />
+            {t('customize.browse.showAll')}
+            <ArrowRightIcon className="size-4" />
           </Button>
         ) : null}
       </div>
+      {about ? (
+        <p data-testid="customize-market-about" title={about} className="-mt-2 line-clamp-3 text-sm text-muted-foreground">
+          {about}
+        </p>
+      ) : null}
       {body}
     </section>
   )
@@ -297,54 +307,52 @@ function PluginCard({
   const t = useT()
   const publisher = details?.publisher ?? plugin.author?.name
   const summary = details?.summary ?? plugin.description
+  const failed = view.installFailed.has(installKey(marketplace, plugin.name))
   return (
     <li
       data-testid="customize-market-plugin"
       data-name={plugin.name}
-      className="relative flex min-h-44 min-w-0 flex-col gap-3 rounded-xl border bg-card p-4 transition-[background-color,border-color,box-shadow] hover:border-foreground/15 hover:bg-accent/30 hover:shadow-sm"
+      className="relative flex min-w-0 items-start gap-4 rounded-xl bg-muted/60 p-4 transition-colors hover:bg-muted"
     >
-      <div className="flex min-w-0 items-center gap-3">
-        <ItemAvatar
-          name={details?.name ?? plugin.name}
-          iconUrl={details?.iconUrl ?? listingIconUrl(plugin)}
-          className="size-11 rounded-lg text-base"
-        />
-        <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+      <ItemAvatar
+        name={details?.name ?? plugin.name}
+        iconUrl={details?.iconUrl ?? listingIconUrl(plugin)}
+        className="size-14 rounded-lg border-border/60 bg-background p-2 text-lg"
+      />
+      <div className="flex min-w-0 flex-1 flex-col gap-1">
+        <span className="flex min-w-0 items-center gap-2 text-sm font-medium text-foreground">
           {/* The whole card opens the detail page; the stretched button keeps it one control. */}
           <button
             type="button"
             data-testid="customize-market-open"
             onClick={onOpen}
-            className="truncate text-left text-sm font-semibold text-foreground after:absolute after:inset-0 after:rounded-lg focus-visible:outline-none focus-visible:after:focus-ring"
+            className="truncate text-left after:absolute after:inset-0 after:rounded-xl focus-visible:outline-none focus-visible:after:focus-ring"
           >
             {plugin.name}
           </button>
-          <span className="flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
+          <VerifiedMark details={details} compact />
+        </span>
+        {summary ? <p className="-mt-px line-clamp-2 text-[13px] leading-[17px] text-muted-foreground">{summary}</p> : null}
+        {plugin.category || publisher ? (
+          <span className="flex min-w-0 items-center gap-2 text-[13px] leading-4 text-muted-foreground/80">
+            {plugin.category ? (
+              <span data-testid="customize-market-category" className="shrink-0 whitespace-nowrap">
+                {plugin.category}
+              </span>
+            ) : null}
+            {plugin.category && publisher ? <span aria-hidden>·</span> : null}
             {publisher ? <span className="truncate">{t('customize.item.byPublisher', { publisher })}</span> : null}
-            <VerifiedMark details={details} />
-          </span>
-        </div>
-      </div>
-      {summary ? <p className="line-clamp-3 text-xs leading-relaxed text-muted-foreground">{summary}</p> : null}
-      {view.installFailed.has(installKey(marketplace, plugin.name)) ? (
-        <p role="status" className="text-xs text-destructive">
-          {t('customize.item.failed.install')}
-        </p>
-      ) : null}
-      <div className="mt-auto flex items-center justify-between gap-2">
-        {plugin.category ? (
-          <span
-            data-testid="customize-market-category"
-            className="truncate rounded-full bg-muted px-2 py-0.5 text-[11px] text-muted-foreground"
-          >
-            {plugin.category}
           </span>
         ) : null}
-        <PartCounts parts={details?.components} />
-        <span className="relative ms-auto shrink-0">
-          <AddButton marketplace={marketplace} plugin={plugin} view={view} size="xs" />
-        </span>
+        {failed ? (
+          <p role="status" className="text-xs text-destructive">
+            {t('customize.item.failed.install')}
+          </p>
+        ) : null}
       </div>
+      <span className="relative shrink-0 self-center">
+        <AddButton marketplace={marketplace} plugin={plugin} view={view} size="xs" />
+      </span>
     </li>
   )
 }
