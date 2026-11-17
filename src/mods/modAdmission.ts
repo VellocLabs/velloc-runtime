@@ -9,7 +9,7 @@ import { renderMatcherSite } from './modRender'
 import { isValidPattern } from './eventPattern'
 import { MOD_MODULE_EXTENSIONS, extensionOf, needsCompiler } from './modCompilerSurface'
 import { isStreamingEvent, type HookRegistration } from './modTypes'
-import type { ModUses } from './modScan'
+import { ENGINE_NOUNS, type ModUses } from './modScan'
 import {
   PROVIDER_ABI,
   PROVIDER_EVENT_NAMES,
@@ -203,6 +203,36 @@ export const RAISED_EVENTS: readonly string[] = Object.freeze([
  * them, and is told at load that they may still change.
  */
 export const PROPOSED_EVENTS: readonly string[] = PROPOSED_SESSION_FAMILY_EVENTS
+
+/**
+ * The events whose answer can refuse the action they stand for (a `{ deny }`,
+ * `{ drop }`, `{ refuse }`, `{ isOffered: false }`): a hook on one is a
+ * guard. A guard whose own code fails lets the action through unless its
+ * `.catch` answers the refusal.
+ */
+export const REFUSING_EVENTS: readonly string[] = Object.freeze([
+  'tool.call',
+  'tool.check',
+  'classic.PreToolUse',
+  'prompt.submit',
+  'agent.spawn',
+  'agent.offer',
+  'session.spawn',
+  'session.propose',
+  'lineage.detach',
+  'plugin.register',
+])
+
+/** The namespaces the engine's own events and nouns are under. */
+const ENGINE_NAMESPACES = new Set([...ENGINE_NOUNS, ...RAISED_EVENTS.map(event => event.slice(0, event.indexOf('.')))])
+
+/** A hook by name (`voice.say`) on a namespace no engine event is under —
+ *  one a plugin's `engine.create` step may add. */
+export function isPluginNounPattern(pattern: string): boolean {
+  if (pattern.startsWith('!') || pattern === '*' || pattern.endsWith('.*')) return false
+  const dot = pattern.indexOf('.')
+  return dot > 0 && !ENGINE_NAMESPACES.has(pattern.slice(0, dot))
+}
 
 /** The proposed events `hooks` names by name, each once. */
 export function proposedEventsHooked(hooks: readonly HookRegistration[]): string[] {

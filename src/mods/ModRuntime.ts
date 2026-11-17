@@ -13,7 +13,7 @@ import { type ConfigRowSpec, type ConfigValue } from './modConfig'
 import { ModInstance, type ModCall } from './ModInstance'
 import {
   MODS_ABI,
-  RAISED_EVENTS,
+  isPluginNounPattern,
   proposedEventsHooked,
   refuseModuleSource,
   refuseRegistrations,
@@ -22,7 +22,7 @@ import {
 import { implementedNouns, serveNoun, serveNounStream, type ModEnvHost, type ModNounHost } from './modNouns'
 import { isOpResult } from './modNounKit'
 import { HEADLESS_COMPOSER, ModComposerBridge } from './modComposer'
-import { EMPTY_USES, ENGINE_NOUNS, pluginNounCalls, unsupportedEngineCalls, type ModUses } from './modScan'
+import { EMPTY_USES, pluginNounCalls, unsupportedEngineCalls, type ModUses } from './modScan'
 import { isBuiltinModPath } from './builtinMods'
 import type { ModBuildStore, ModCompileFn } from './modBuildStore'
 import type { ModCompileGraph } from './modCompiler'
@@ -2580,17 +2580,6 @@ export class ModRuntime extends ModUiSurface implements TurnExtensions {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
-}
-
-/** The namespaces the engine's own events and nouns are under. */
-const ENGINE_NAMESPACES = new Set([...ENGINE_NOUNS, ...RAISED_EVENTS.map(event => event.slice(0, event.indexOf('.')))])
-
-/** A hook by name (`voice.say`) on a namespace no engine event is under —
- *  one a plugin's `engine.create` step may add. */
-function isPluginNounPattern(pattern: string): boolean {
-  if (pattern.startsWith('!') || pattern === '*' || pattern.endsWith('.*')) return false
-  const dot = pattern.indexOf('.')
-  return dot > 0 && !ENGINE_NAMESPACES.has(pattern.slice(0, dot))
 }
 
 function isPluginRegisterResult(value: unknown): boolean {

@@ -129,7 +129,7 @@ describe('templateRegistry — manifest parse', () => {
     for (const t of ['Write', 'Bash', 'EnterPlanMode', 'Agent', 'CronCreate']) {
       expect(agent, `agent should keep ${t}`).toContain(t)
     }
-    expect(deferredOf('agent')).toEqual(['a2ui', 'agent-teams'])
+    expect(deferredOf('agent')).toEqual(['a2ui', 'agent-teams', 'mods'])
     // chat = read + edit (confined to memory / skills / uploads) + webfetch;
     // browser/a2ui DEFER; no shell, not even deferred.
     const chat = eagerOf('chat')
@@ -152,7 +152,7 @@ describe('templateRegistry — manifest parse', () => {
       expect(code, `code dropped the edit group, so ${t} must be absent`).not.toContain(t)
     }
     expect(code, 'code keeps schedule out of the eager set').not.toContain('CronCreate')
-    expect(deferredOf('code')).toEqual(['browser', 'schedule', 'a2ui', 'agent-teams'])
+    expect(deferredOf('code')).toEqual(['browser', 'schedule', 'a2ui', 'agent-teams', 'mods'])
   })
 
   it('code defers the schedule group, so `/loop` can load CronCreate on demand', () => {
@@ -1774,8 +1774,8 @@ describe('templateRegistry — tool resolution helpers', () => {
 
   it('every default-preset tool is covered by the `agent` template — in `tools:` OR a deferred skill (drift guard)', () => {
     // `agent` is the FULL set (the default), so every default-preset tool must
-    // either be named in its `tools:` (eager-visible) OR belong to a skill in
-    // `deferredTools` (loads implicitly, hidden until activated) — else the
+    // either be named in its `tools:` (eager-visible) OR belong to a skill or
+    // tool group in `deferredTools` (loads implicitly, hidden until activated) — else the
     // allowlist would silently drop it. `tools:` entries are GROUP names, so
     // expand them. (Browser is a deferred skill → covered by the deferredTools
     // branch.) The narrower types (chat/code) INTENTIONALLY exclude
@@ -1792,7 +1792,8 @@ describe('templateRegistry — tool resolution helpers', () => {
     for (const tool of allBundledTools('default')) {
       if (agentExempt.has(tool.name)) continue
       const isDeferredSkillTool =
-        typeof tool.skill === 'string' && deferred.has(tool.skill)
+        (typeof tool.skill === 'string' && deferred.has(tool.skill)) ||
+        [...deferred].some(unit => (TOOL_GROUPS as Record<string, readonly string[]>)[unit]?.includes(tool.name) === true)
       expect(
         eagerTools.has(tool.name) || isDeferredSkillTool,
         `default-preset tool "${tool.name}" is neither in agent tools: nor a deferred skill`,

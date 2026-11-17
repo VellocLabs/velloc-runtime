@@ -23,6 +23,7 @@ import { SleepTool } from './builtin/sleepWait'
 import { ContinueInCodeTool } from './builtin/continueInCode'
 import { deferredLoaderTool } from './builtin/toolSearch'
 import { PageReadTool } from './builtin/webFetch/webFetch'
+import { ModValidateTool } from './builtin/modValidate'
 import { PlanOnTool } from './builtin/planEnter'
 import { ExitPlanModeTool } from './builtin/planExit'
 import { AskPersonTool } from './builtin/askUser'
@@ -107,6 +108,8 @@ const WORKSPACE_TOOLS: ToolContractList = [
   // Fetches a page through the host's network stack and extracts the answer
   // with a fast side call.
   PageReadTool,
+  // The static check of a mod folder (F-25).
+  ModValidateTool,
 ]
 
 // Tools that work on the session itself: plan mode, questions to the

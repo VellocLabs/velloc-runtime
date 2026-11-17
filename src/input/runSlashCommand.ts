@@ -52,6 +52,8 @@ import { SHELL_TOOL_ID } from '../prompting/processToolNames'
 import { dirnameRuntimePath, joinRuntimePath } from '../utils/runtimePaths'
 import { traceLine } from '../utils/debugLog'
 import { fsForContext } from '../utils/fs/runtimeFs'
+import { validateFolderForSession } from '../toolkit/builtin/modValidate'
+import { modValidateReportParts } from './modValidateCommand'
 import { proposeSessionTitle } from '../sessions/sessionTitles'
 import {
   getConditionalSkills,
@@ -274,6 +276,22 @@ export async function dispatchCommandInput(
         spaceIndex === -1 ? trimmed : trimmed.slice(0, spaceIndex)
       ).toLowerCase()
       const name = spaceIndex === -1 ? '' : trimmed.slice(spaceIndex + 1).trim()
+
+      // `/plugins validate <folder>` — the static check of a mod folder, read
+      // as the session may read it (F-25).
+      if (action === 'validate') {
+        const reply = (parts: SystemMessagePart[]): ProcessUserInputResult => ({
+          messages: [createLocalizedSystemMessage(options.runtimeConfig, parts)],
+          shouldQuery: false,
+          resultText: rawInput,
+        })
+        if (!name) return reply([key('slash.out.modValidate.usage')])
+        try {
+          return reply(modValidateReportParts(await validateFolderForSession(name, params.context, true)))
+        } catch (error) {
+          return reply([key('slash.out.modValidate.couldNotRun', { error: error instanceof Error ? error.message : String(error) })])
+        }
+      }
 
       // `/plugins install <git-url|owner/repo>` — git clone into the project
       // plugins root via the host Bash tool, then enable + live-reload.

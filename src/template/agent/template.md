@@ -5,7 +5,7 @@ description: Full-autonomy agent — file + shell + browser + planning + sub-age
 # EAGER-visible by GROUP or SKILL (tools:); DEFERRED by group/skill
 # (deferredTools:). Unified: a name in `tools:` loads, in `deferredTools:`
 # defers (hidden until Skill()/ToolSearch). Here `browser` is LOADED (listed in
-# tools:); a2ui / agent-teams defer.
+# tools:); a2ui / agent-teams and `mods` (the mod checks) defer.
 tools:
   - read
   - edit
@@ -19,7 +19,7 @@ tools:
   - skills
   - misc
   - sessions
-deferredTools: [a2ui, agent-teams]
+deferredTools: [a2ui, agent-teams, mods]
 ---
 
 ## prompt

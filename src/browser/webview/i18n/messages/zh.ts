@@ -2618,7 +2618,7 @@ export const zh: Messages = {
   'slash.builtin.plan': '进入计划模式 —— 只读/搜索，先设计再编码',
   'slash.builtin.exit-plan': '退出计划模式（可选：/exit-plan <plan text>）',
   'slash.builtin.plugins':
-    '管理插件：list、enable/disable/update/uninstall <name>、install <git-url>',
+    '管理插件：list、enable/disable/update/uninstall <name>、install <git-url>、validate <folder>',
   'slash.builtin.plugin':
     '市场插件管理：list、install/uninstall/enable/disable <name>@<marketplace>',
   'slash.builtin.marketplace':
@@ -2878,6 +2878,29 @@ export const zh: Messages = {
   'slash.out.plugins.disabledHeading':
     '已禁用（存在于磁盘，但不在已启用白名单中）：',
   'slash.out.plugins.errorsHeading': '加载错误：',
+  'slash.out.modValidate.usage': '检查插件文件夹：/plugins validate <folder>',
+  'slash.out.modValidate.title': '{name} 的校验：{folder}',
+  'slash.out.modValidate.titleFolder': '{folder} 的校验',
+  'slash.out.modValidate.passed': '通过：没有发现会阻止它加载或工作的问题。',
+  'slash.out.modValidate.failed': '未通过：{refused} 项拒绝加载，{errors} 项错误。',
+  'slash.out.modValidate.hooksModule': '钩子模块',
+  'slash.out.modValidate.providerModule': '服务商模块',
+  'slash.out.modValidate.hooks': '钩子：',
+  'slash.out.modValidate.noHooks': '没有注册钩子。',
+  'slash.out.modValidate.calls': '$ 调用：',
+  'slash.out.modValidate.engineAdds': 'engine.create 新增：',
+  'slash.out.modValidate.stateReads': '$.state 读取：',
+  'slash.out.modValidate.stateWrites': '$.state 写入：',
+  'slash.out.modValidate.markGenerator': '异步生成器',
+  'slash.out.modValidate.markCatch': '带 .catch',
+  'slash.out.modValidate.markGuard': '可拒绝该操作',
+  'slash.out.modValidate.findings': '发现：',
+  'slash.out.modValidate.noFindings': '没有发现。',
+  'slash.out.modValidate.level.refused': '拒绝加载',
+  'slash.out.modValidate.level.error': '错误',
+  'slash.out.modValidate.level.warning': '警告',
+  'slash.out.modValidate.level.note': '提示',
+  'slash.out.modValidate.couldNotRun': '无法运行校验：{error}',
 
   // ── 斜杠命令 —— /plugin、/marketplace（市场安装流程） ──────────────────
   // 命令语法行（裸露的 `/plugin <subcommand> [args]` 或示例调用）属于协议，

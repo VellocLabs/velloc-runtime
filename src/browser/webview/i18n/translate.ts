@@ -62,7 +62,7 @@ export const BOOTSTRAP_MESSAGES: Partial<Record<MessageKey, string>> = {
     'Enter plan mode — read/search only, design before coding',
   'slash.builtin.exit-plan': 'Exit plan mode (optional: /exit-plan <plan text>)',
   'slash.builtin.plugins':
-    'Manage plugins: list, enable/disable/update/uninstall <name>, install <git-url>',
+    'Manage plugins: list, enable/disable/update/uninstall <name>, install <git-url>, validate <folder>',
   'slash.builtin.plugin':
     'Marketplace plugin management: list, install/uninstall/enable/disable <name>@<marketplace>',
   'slash.builtin.marketplace':
@@ -323,6 +323,29 @@ export const BOOTSTRAP_MESSAGES: Partial<Record<MessageKey, string>> = {
   'slash.out.plugins.disabledHeading':
     'Disabled (present on disk but not in the enabled allowlist):',
   'slash.out.plugins.errorsHeading': 'Load errors:',
+  'slash.out.modValidate.usage': 'Check a plugin folder: /plugins validate <folder>',
+  'slash.out.modValidate.title': 'Validation of {name}: {folder}',
+  'slash.out.modValidate.titleFolder': 'Validation of {folder}',
+  'slash.out.modValidate.passed': 'Passed: nothing here stops it from loading or working.',
+  'slash.out.modValidate.failed': 'Not passed: {refused} refused, {errors} errors.',
+  'slash.out.modValidate.hooksModule': 'Hooks module',
+  'slash.out.modValidate.providerModule': 'Provider module',
+  'slash.out.modValidate.hooks': 'Hooks:',
+  'slash.out.modValidate.noHooks': 'No hooks registered.',
+  'slash.out.modValidate.calls': '$ calls:',
+  'slash.out.modValidate.engineAdds': 'engine.create adds:',
+  'slash.out.modValidate.stateReads': '$.state reads:',
+  'slash.out.modValidate.stateWrites': '$.state writes:',
+  'slash.out.modValidate.markGenerator': 'async generator',
+  'slash.out.modValidate.markCatch': 'has .catch',
+  'slash.out.modValidate.markGuard': 'can refuse the action',
+  'slash.out.modValidate.findings': 'Findings:',
+  'slash.out.modValidate.noFindings': 'No findings.',
+  'slash.out.modValidate.level.refused': 'Refused',
+  'slash.out.modValidate.level.error': 'Error',
+  'slash.out.modValidate.level.warning': 'Warning',
+  'slash.out.modValidate.level.note': 'Note',
+  'slash.out.modValidate.couldNotRun': 'The validation could not run: {error}',
   'slash.out.plugin.usage.list':
     '  list                                show installed plugins',
   'slash.out.plugin.usage.install':

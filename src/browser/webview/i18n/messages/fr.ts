@@ -2735,7 +2735,7 @@ export const fr: Messages = {
   'slash.builtin.exit-plan':
     'Quitter le mode planification (facultatif : /exit-plan <plan text>)',
   'slash.builtin.plugins':
-    'Gérer les extensions : list, enable/disable/update/uninstall <name>, install <git-url>',
+    'Gérer les extensions : list, enable/disable/update/uninstall <name>, install <git-url>, validate <folder>',
   'slash.builtin.plugin':
     'Gestion des extensions de la place de marché : list, install/uninstall/enable/disable <name>@<marketplace>',
   'slash.builtin.marketplace':
@@ -3013,6 +3013,29 @@ export const fr: Messages = {
   'slash.out.plugins.disabledHeading':
     'Désactivées (présentes sur le disque mais absentes de la liste blanche d’activation) :',
   'slash.out.plugins.errorsHeading': 'Erreurs de chargement :',
+  'slash.out.modValidate.usage': 'Vérifier le dossier d’une extension : /plugins validate <folder>',
+  'slash.out.modValidate.title': 'Validation de {name} : {folder}',
+  'slash.out.modValidate.titleFolder': 'Validation de {folder}',
+  'slash.out.modValidate.passed': 'Réussi : rien ne l’empêche de se charger ni de fonctionner.',
+  'slash.out.modValidate.failed': 'Échec : {refused} refus, {errors} erreurs.',
+  'slash.out.modValidate.hooksModule': 'Module de hooks',
+  'slash.out.modValidate.providerModule': 'Module de fournisseur',
+  'slash.out.modValidate.hooks': 'Hooks :',
+  'slash.out.modValidate.noHooks': 'Aucun hook enregistré.',
+  'slash.out.modValidate.calls': 'Appels $ :',
+  'slash.out.modValidate.engineAdds': 'engine.create ajoute :',
+  'slash.out.modValidate.stateReads': 'Lectures $.state :',
+  'slash.out.modValidate.stateWrites': 'Écritures $.state :',
+  'slash.out.modValidate.markGenerator': 'générateur asynchrone',
+  'slash.out.modValidate.markCatch': 'avec .catch',
+  'slash.out.modValidate.markGuard': 'peut refuser l’action',
+  'slash.out.modValidate.findings': 'Constats :',
+  'slash.out.modValidate.noFindings': 'Aucun constat.',
+  'slash.out.modValidate.level.refused': 'Refusé',
+  'slash.out.modValidate.level.error': 'Erreur',
+  'slash.out.modValidate.level.warning': 'Avertissement',
+  'slash.out.modValidate.level.note': 'Remarque',
+  'slash.out.modValidate.couldNotRun': 'La validation n’a pas pu s’exécuter : {error}',
 
   // ── Commandes slash — /plugin, /marketplace (pipeline de place de marché)
   // Les lignes de syntaxe de commande (un `/plugin <subcommand> [args]` brut

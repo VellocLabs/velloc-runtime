@@ -2671,7 +2671,7 @@ export const ja: Messages = {
   'slash.builtin.plan': '計画モードに入る — 読み取り/検索のみ、コーディング前に設計',
   'slash.builtin.exit-plan': '計画モードを終了（任意：/exit-plan <plan text>）',
   'slash.builtin.plugins':
-    'プラグインを管理：list、enable/disable/update/uninstall <name>、install <git-url>',
+    'プラグインを管理：list、enable/disable/update/uninstall <name>、install <git-url>、validate <folder>',
   'slash.builtin.plugin':
     'マーケットプレイスのプラグイン管理：list、install/uninstall/enable/disable <name>@<marketplace>',
   'slash.builtin.marketplace':
@@ -2935,6 +2935,29 @@ export const ja: Messages = {
   'slash.out.plugins.disabledHeading':
     '無効（ディスク上には存在するが、有効許可リストには含まれない）：',
   'slash.out.plugins.errorsHeading': '読み込みエラー：',
+  'slash.out.modValidate.usage': 'プラグインのフォルダーを検証：/plugins validate <folder>',
+  'slash.out.modValidate.title': '{name} の検証：{folder}',
+  'slash.out.modValidate.titleFolder': '{folder} の検証',
+  'slash.out.modValidate.passed': '合格：読み込みや動作を妨げる問題はありません。',
+  'slash.out.modValidate.failed': '不合格：読み込み拒否 {refused} 件、エラー {errors} 件。',
+  'slash.out.modValidate.hooksModule': 'フックモジュール',
+  'slash.out.modValidate.providerModule': 'プロバイダーモジュール',
+  'slash.out.modValidate.hooks': 'フック：',
+  'slash.out.modValidate.noHooks': '登録されたフックはありません。',
+  'slash.out.modValidate.calls': '$ 呼び出し：',
+  'slash.out.modValidate.engineAdds': 'engine.create が追加：',
+  'slash.out.modValidate.stateReads': '$.state の読み取り：',
+  'slash.out.modValidate.stateWrites': '$.state の書き込み：',
+  'slash.out.modValidate.markGenerator': '非同期ジェネレーター',
+  'slash.out.modValidate.markCatch': '.catch あり',
+  'slash.out.modValidate.markGuard': '操作を拒否できる',
+  'slash.out.modValidate.findings': '指摘：',
+  'slash.out.modValidate.noFindings': '指摘はありません。',
+  'slash.out.modValidate.level.refused': '読み込み拒否',
+  'slash.out.modValidate.level.error': 'エラー',
+  'slash.out.modValidate.level.warning': '警告',
+  'slash.out.modValidate.level.note': '情報',
+  'slash.out.modValidate.couldNotRun': '検証を実行できませんでした：{error}',
 
   // ── スラッシュコマンド — /plugin, /marketplace（マーケットプレイスパイプライン） ──
   // コマンド構文の行（`/plugin <subcommand> [args]` のような裸の構文や実行

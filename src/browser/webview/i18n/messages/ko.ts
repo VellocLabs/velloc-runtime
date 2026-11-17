@@ -2662,7 +2662,7 @@ export const ko: Messages = {
   'slash.builtin.plan': '계획 모드 시작 — 읽기/검색만, 코딩 전에 설계',
   'slash.builtin.exit-plan': '계획 모드 종료(선택: /exit-plan <plan text>)',
   'slash.builtin.plugins':
-    '플러그인 관리: list, enable/disable/update/uninstall <name>, install <git-url>',
+    '플러그인 관리: list, enable/disable/update/uninstall <name>, install <git-url>, validate <folder>',
   'slash.builtin.plugin':
     '마켓플레이스 플러그인 관리: list, install/uninstall/enable/disable <name>@<marketplace>',
   'slash.builtin.marketplace':
@@ -2925,6 +2925,29 @@ export const ko: Messages = {
   'slash.out.plugins.disabledHeading':
     '사용 안 함(디스크에는 있지만 허용 목록에 없음):',
   'slash.out.plugins.errorsHeading': '로드 오류:',
+  'slash.out.modValidate.usage': '플러그인 폴더 검증: /plugins validate <folder>',
+  'slash.out.modValidate.title': '{name} 검증: {folder}',
+  'slash.out.modValidate.titleFolder': '{folder} 검증',
+  'slash.out.modValidate.passed': '통과: 로드나 동작을 막는 문제가 없습니다.',
+  'slash.out.modValidate.failed': '통과하지 못함: 로드 거부 {refused}건, 오류 {errors}건.',
+  'slash.out.modValidate.hooksModule': '훅 모듈',
+  'slash.out.modValidate.providerModule': '제공업체 모듈',
+  'slash.out.modValidate.hooks': '훅:',
+  'slash.out.modValidate.noHooks': '등록된 훅이 없습니다.',
+  'slash.out.modValidate.calls': '$ 호출:',
+  'slash.out.modValidate.engineAdds': 'engine.create 추가:',
+  'slash.out.modValidate.stateReads': '$.state 읽기:',
+  'slash.out.modValidate.stateWrites': '$.state 쓰기:',
+  'slash.out.modValidate.markGenerator': '비동기 제너레이터',
+  'slash.out.modValidate.markCatch': '.catch 있음',
+  'slash.out.modValidate.markGuard': '작업을 거부할 수 있음',
+  'slash.out.modValidate.findings': '발견 사항:',
+  'slash.out.modValidate.noFindings': '발견 사항이 없습니다.',
+  'slash.out.modValidate.level.refused': '로드 거부',
+  'slash.out.modValidate.level.error': '오류',
+  'slash.out.modValidate.level.warning': '경고',
+  'slash.out.modValidate.level.note': '참고',
+  'slash.out.modValidate.couldNotRun': '검증을 실행할 수 없습니다: {error}',
 
   // ── 슬래시 명령어 — /plugin, /marketplace(마켓플레이스 파이프라인) ─────
   // 명령 구문 줄(단독 `/plugin <subcommand> [args]` 또는 예시 호출)은
