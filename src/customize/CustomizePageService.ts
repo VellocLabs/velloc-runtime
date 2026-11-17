@@ -242,7 +242,7 @@ export class CustomizePageService {
   }
 
   private async about(marketplace: string, offers: DirectoryOfferDeps): Promise<string | undefined> {
-    const repo = await marketplaceRepo(marketplace, offers)
+    const repo = await marketplaceRepo(marketplace, offers).catch(() => undefined)
     if (!repo) return undefined
     const kept = this.abouts.get(repo)
     if (kept && Date.now() - kept.at < MARKETPLACE_ABOUT_TTL_MS) return kept.value
