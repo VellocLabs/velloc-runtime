@@ -265,9 +265,12 @@ export const UI_NOUNS: Record<string, Record<string, NounMethod>> = {
         const asked = call.args[0] as { id: string }
         const arrived = isRecord(e) ? e : {}
         const title = typeof arrived.title === 'string' ? arrived.title : undefined
+        const { backgroundColor, ...rest } = arrived as ModPaneOpenArgs
         return paneHost(session).open(call.plugin, {
-          ...(arrived as ModPaneOpenArgs),
+          ...rest,
           ...(title !== undefined ? { title } : {}),
+          // A hook's rewrite is checked again: the page drops a state holding a non-string.
+          ...(isPaneBackground(backgroundColor) ? { backgroundColor } : {}),
           // Pinned: "`next(e)` passes it on" — a rename is ignored by core.
           id: asked.id,
         })

@@ -560,7 +560,6 @@ export abstract class ModUiSurface extends ModEngineEvents {
     return !this.disposed && this.ui.answerAsk(answer)
   }
 
-  /** The person clicked a pane's tab. */
   /** Security: the plugin whose open pane `id` is. The client's `asked` is
    *  kept only when that plugin has that pane open; else the one plugin with
    *  a pane of that id, or none when several have. */
@@ -570,6 +569,7 @@ export abstract class ModUiSurface extends ModEngineEvents {
     return owners.length === 1 ? owners[0].plugin : undefined
   }
 
+  /** The person clicked a pane's tab. */
   showPane(plugin: string, id: string): boolean {
     return !this.disposed && this.panes.showPane(plugin, id)
   }

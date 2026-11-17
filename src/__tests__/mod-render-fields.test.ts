@@ -10,6 +10,7 @@ import { installModWorkerHost } from '../mods/ModWorkerHost'
 import type { ModUiEvent } from '../mods/modUi'
 import { DESKTOP_ELEMENTS, validateRenderTree } from '../mods/modRender'
 import { ModPaneRegistry, isPaneBackground } from '../mods/modPanes'
+import { isModsRenderPayload } from '../browser/runtimeProtocol/mods'
 
 let uniqueLoad = 0
 const ports: MessagePort[] = []
@@ -109,6 +110,22 @@ describe('$.ui.open backgroundColor and placement', () => {
     ])
   })
 
+  it("checks a ui.open hook's rewritten backgroundColor again and drops one that is not a color", async () => {
+    const { runtime, lastState } = world({
+      rewriter: `
+        on('ui.open', ($, e, next) => next({ ...e, backgroundColor: e.id === 'num' ? 1 : e.id === 'bad' ? 'url(x)' : 'warning' }))
+      `,
+      opener: `
+        on('session.start', async ($, e, next) => {
+          for (const id of ['num', 'bad', 'ok']) await $.ui.open({ id, backgroundColor: 'success' })
+          return next(e)
+        })`,
+    })
+    await runtime.ready
+    const backgrounds = Object.fromEntries((lastState()?.state.panes ?? []).map(pane => [pane.id, pane.backgroundColor]))
+    expect(backgrounds).toEqual({ num: undefined, bad: undefined, ok: 'warning' })
+  })
+
   it('isPaneBackground takes raw colors, transparent and theme keys', () => {
     for (const ok of ['transparent', '#fff', '#11223344', 'rgb(1, 2, 3)', 'diffAdded']) expect(isPaneBackground(ok)).toBe(true)
     for (const bad of ['', ' red', 'url(x)', 'var(--x)', 3, null]) expect(isPaneBackground(bad)).toBe(false)
@@ -172,6 +189,15 @@ describe("ui.render's plugin", () => {
     await runtime.render({ component: 'Pane', requestId: 'shared', props: PANE_PROPS })
     await runtime.render({ component: 'Pane', requestId: 'nobody', props: PANE_PROPS })
     expect(logged(reports, 'spy')).toEqual([{ plugin: 'alpha' }, { plugin: 'alpha' }, { plugin: null }])
+  })
+})
+
+describe('the mods.render payload guard', () => {
+  it('takes plugin absent or a non-empty string, and nothing else', () => {
+    const base = { sessionId: 's1', component: 'Pane', requestId: 'shared', props: {} }
+    expect(isModsRenderPayload(base)).toBe(true)
+    expect(isModsRenderPayload({ ...base, plugin: 'alpha' })).toBe(true)
+    for (const plugin of ['', 7, null]) expect(isModsRenderPayload({ ...base, plugin })).toBe(false)
   })
 })
 
