@@ -18,7 +18,6 @@ import { traceLine } from '../../utils/debugLog'
 import { shrinkToolResultImage } from '../../utils/images/inlineImage'
 import { toolResultIndicatesSoftFailure } from '../../utils/toolResultStatus'
 import {
-  screenshotOf,
   toolResultParts,
   toolResultText,
   type ToolResultContentPart,
@@ -162,11 +161,6 @@ export function readToolResultMessage(
   return { data: candidate.toolCallDetail?.result, text, isError: block.isError === true }
 }
 
-/** Settle-and-retry delays for a screenshot that came back without an
- *  image (the capture can fail transiently while the observation succeeds).
- *  A third blank result is returned as it is. */
-const SCREENSHOT_RETRY_DELAYS_MS = [400, 1200]
-
 /** Stage 9: run the tool, streaming progress as it arrives. */
 export async function* invokeStage(run: AdmittedRun): AsyncGenerator<DeferredMessageUpdate, StageStep> {
   const { tool, block, callContext, deps } = run
@@ -189,17 +183,7 @@ export async function* invokeStage(run: AdmittedRun): AsyncGenerator<DeferredMes
       },
     } as Message)
   }, { toolCallId: block.toolCallId })
-  let result = yield* drainWithProgress(pending, progress)
-  const screenshotMissing = () =>
-    tool.name === 'BrowserScreenshot' &&
-    (result.data as { ok?: unknown } | null | undefined)?.ok === true &&
-    !screenshotOf(result.data)
-  for (const settleMs of SCREENSHOT_RETRY_DELAYS_MS) {
-    if (!screenshotMissing()) break
-    await new Promise(resolve => setTimeout(resolve, settleMs))
-    result = await tool.call(runInput, callContext, run.decidePermission, run.modelReply, undefined, { toolCallId: block.toolCallId })
-  }
-  run.outcome = result
+  run.outcome = yield* drainWithProgress(pending, progress)
   return 'continue'
 }
 

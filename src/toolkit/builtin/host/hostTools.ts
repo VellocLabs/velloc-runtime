@@ -10,7 +10,9 @@ import {
   type ToolContract,
   type ToolCallStepUpdate,
   type ToolArgsJsonShape,
+  type ToolOutcome,
 } from '../../toolContract'
+import { screenshotOf } from '../../../utils/toolResultParts'
 import { type ToolCallContext } from '../../toolCallContext'
 import type {
   BrowserHostedToolExecutionContext,
@@ -675,5 +677,37 @@ export function buildHostTools(
   // via that tool's `aliases`.
   return definitions
     .filter(definition => definition.name !== BASH_OUTPUT_TOOL_NAME)
-    .map(definition => buildHostTool(definition, options))
+    .map(definition => {
+      const tool = buildHostTool(definition, options)
+      return definition.name === SCREENSHOT_TOOL_NAME ? withBlankScreenshotRetry(tool) : tool
+    })
+}
+
+const SCREENSHOT_TOOL_NAME = 'BrowserScreenshot'
+
+/** Settle-and-retry delays for a screenshot that came back without an
+ *  image (the capture can fail transiently while the observation succeeds).
+ *  A third blank result is returned as it is. */
+const SCREENSHOT_RETRY_DELAYS_MS = [400, 1200]
+
+function isBlankScreenshot(result: ToolOutcome<unknown>): boolean {
+  return (result.data as { ok?: unknown } | null | undefined)?.ok === true && !screenshotOf(result.data)
+}
+
+/** The screenshot tool, retried while a successful capture carries no image.
+ *  Retries stream no progress. */
+export function withBlankScreenshotRetry(tool: ToolContract): ToolContract {
+  const call = tool.call.bind(tool)
+  return {
+    ...tool,
+    call: async (input, context, canUseTool, parentMessage, onProgress, callOptions) => {
+      let result = await call(input, context, canUseTool, parentMessage, onProgress, callOptions)
+      for (const settleMs of SCREENSHOT_RETRY_DELAYS_MS) {
+        if (!isBlankScreenshot(result)) break
+        await new Promise(resolve => setTimeout(resolve, settleMs))
+        result = await call(input, context, canUseTool, parentMessage, undefined, callOptions)
+      }
+      return result
+    },
+  }
 }

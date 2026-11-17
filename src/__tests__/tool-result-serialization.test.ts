@@ -1,7 +1,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { ModelReplyRow } from '../runtime/RuntimeTypes'
 import type { QueryRuntimeDeps } from '../runtime/interfaces/QueryRuntimeDeps'
-import { declareTool } from '../toolkit/toolContract'
+import { declareTool, type ToolContract } from '../toolkit/toolContract'
+import { withBlankScreenshotRetry } from '../toolkit/builtin/host/hostTools'
 import { executeToolCall } from '../toolkit/run/executeToolCall'
 import { shrinkToolResultImage } from '../utils/images/inlineImage'
 import {
@@ -384,13 +385,15 @@ describe('BrowserScreenshot capture retry', () => {
     }
   }
 
-  async function run(tool: ReturnType<typeof declareTool>, toolName: string) {
+  // The host screenshot tool carries the retry; other tools are run as they are.
+  async function run(declared: ReturnType<typeof declareTool>, toolName: string) {
+    const tool = toolName === 'BrowserScreenshot' ? withBlankScreenshotRetry(declared as ToolContract) : declared
     const updates = []
     for await (const update of executeToolCall(
       { type: 'tool-call', toolCallId: 'shot-1', toolName, args: {} },
       makeAssistant(toolName),
       async () => ({ behavior: 'allow' }),
-      makeContext(tool),
+      makeContext(tool as ReturnType<typeof declareTool>),
       { uuid: () => 'shot-result-uuid' } as QueryRuntimeDeps,
     )) {
       updates.push(update)

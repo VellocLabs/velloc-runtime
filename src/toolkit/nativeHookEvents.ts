@@ -22,6 +22,9 @@ export const NATIVE_EVENTS = Object.freeze({
   /** Around, answers a TurnEndVerdict. A turn ends without tool calls; core runs the
    *  loop-counter reset, the turn-end check and the Stop hooks. live: the call context. */
   turnEnd: 'turn.end',
+  /** Around, answers a boolean. Whether the prompt is rendered again after a tool
+   *  step; core answers false. live: the loop's AgentLoopState. */
+  promptRerender: 'prompt.rerender',
 } as const)
 
 export type ToolStartedEvent = { toolName: string; input: unknown }
@@ -35,3 +38,4 @@ export type TurnBackgroundEvent = { background: string; input: unknown }
 export type RowsGatherStage = 'turnStart' | 'afterTools' | 'afterCompaction'
 export type RowsGatherEvent = { stage: RowsGatherStage }
 export type TurnEndEvent = { params: QueryStopHookParams; logEvent: QueryRuntimeDeps['logEvent'] }
+export type PromptRerenderEvent = { calls: ReadonlyArray<{ toolName: string }> }

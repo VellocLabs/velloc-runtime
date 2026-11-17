@@ -134,6 +134,9 @@ describe('built-in registrations', () => {
   it('keeps the order table as reviewed', () => {
     expect(NATIVE_HOOK_ORDER).toMatchInlineSnapshot(`
       {
+        "prompt.rerender": [
+          "browser",
+        ],
         "rows.gather": [
           "memory",
         ],

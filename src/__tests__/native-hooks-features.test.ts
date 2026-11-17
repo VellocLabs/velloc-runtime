@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import * as extractionModule from '../memory/extract/extractionRunner'
 import * as consolidationModule from '../memory/consolidate/consolidationRunner'
 import { memoryHooks } from '../memory/memoryHooks'
+import { browserHooks } from '../toolkit/builtin/host/browserHooks'
 import { PlanOnTool } from '../toolkit/builtin/planEnter'
 import { ExitPlanModeTool } from '../toolkit/builtin/planExit'
 import { createNativeHooks } from '../toolkit/nativeHooks'
@@ -87,6 +88,16 @@ describe('memory', () => {
     order.length = 0
     await hooks.around(NATIVE_EVENTS.turnEnd, turnEnd('sub-1'), undefined, core, { agentId: 'sub-1' })
     expect(order).toEqual(['core'])
+  })
+})
+
+describe('browser', () => {
+  const hooks = createNativeHooks({ [NATIVE_EVENTS.promptRerender]: ['browser'] }, browserHooks())
+
+  it('asks for a render after a step with a Browser tool, and leaves other steps to core', async () => {
+    const core = async () => false
+    expect(await hooks.around(NATIVE_EVENTS.promptRerender, { calls: [{ toolName: 'BrowserClick' }] }, {}, core)).toBe(true)
+    expect(await hooks.around(NATIVE_EVENTS.promptRerender, { calls: [{ toolName: 'Read' }] }, {}, core)).toBe(false)
   })
 })
 

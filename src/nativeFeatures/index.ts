@@ -12,6 +12,7 @@ import {
 import { NATIVE_EVENTS } from '../toolkit/nativeHookEvents'
 import { SESSION_ACTIVITY_MODULE, sessionActivityHooks } from '../browser/worker/sessionActivityHooks'
 import { MEMORY_MODULE, memoryHooks } from '../memory/memoryHooks'
+import { BROWSER_MODULE, browserHooks } from '../toolkit/builtin/host/browserHooks'
 
 /** Per event, the modules whose links run, outermost first. */
 export const NATIVE_HOOK_ORDER: NativeHookOrder = Object.freeze({
@@ -22,11 +23,12 @@ export const NATIVE_HOOK_ORDER: NativeHookOrder = Object.freeze({
   [NATIVE_EVENTS.turnBackground]: [MEMORY_MODULE],
   [NATIVE_EVENTS.rowsGather]: [MEMORY_MODULE],
   [NATIVE_EVENTS.turnEnd]: [MEMORY_MODULE],
+  [NATIVE_EVENTS.promptRerender]: [BROWSER_MODULE],
 })
 
 /** Every built-in registration, in no particular order. */
 export function nativeHookRegistrations(): NativeHookRegistration[] {
-  return [...sessionActivityHooks(), ...memoryHooks()]
+  return [...sessionActivityHooks(), ...memoryHooks(), ...browserHooks()]
 }
 
 export function buildNativeHooks(): NativeHooks {

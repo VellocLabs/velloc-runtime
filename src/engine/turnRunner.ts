@@ -20,7 +20,7 @@ import { isCallModelLogEnabled, logCallModelEvent, nextSubmitId } from './turn/c
 import { hydrateMessagesForModel } from '../sessions/sessionStore'
 import { runSessionStartHooks, type SessionStartSource } from '../lifecycleHooks/sessionLifecycleHooks'
 import { nativeHooksOf } from '../toolkit/nativeHooks'
-import { NATIVE_EVENTS, type TurnStreamEvent } from '../toolkit/nativeHookEvents'
+import { NATIVE_EVENTS, type PromptRerenderEvent, type TurnStreamEvent } from '../toolkit/nativeHookEvents'
 import {
   MSG_TYPE_ASSISTANT,
   MSG_TYPE_RESULT,
@@ -179,8 +179,8 @@ async function* prepare(turn: Turn, result: ProcessUserInputResult): AsyncGenera
 }
 
 /** The page-refresh half of the step refresh: records the page fingerprint
- *  the last tool stashed, and renders the prompt again after a browser
- *  step. The nudge is the machine's (`chooseLoopNudge`). */
+ *  the last tool stashed, and renders the prompt again when `prompt.rerender`
+ *  asks for it. The nudge is the machine's (`chooseLoopNudge`). */
 function stepRefresher(turn: Turn) {
   const { ledger } = turn.parts
   return async (messages: readonly Message[], calls: readonly { toolName: string }[]) => {
@@ -189,7 +189,9 @@ function stepRefresher(turn: Turn) {
       recordPageFingerprint(state, state.pendingFingerprint)
       state.pendingFingerprint = null
     }
-    if (!calls.some(call => call.toolName.startsWith('Browser'))) return undefined
+    const e: PromptRerenderEvent = { calls }
+    const rerender = await nativeHooksOf(turn.callContext).around(NATIVE_EVENTS.promptRerender, e, state, async () => false)
+    if (!rerender) return undefined
     return { promptParts: await assemblePrompt(ledger, ledger.config.pickedModel ?? turn.callContext.options.mainLoopModel, messages) }
   }
 }
