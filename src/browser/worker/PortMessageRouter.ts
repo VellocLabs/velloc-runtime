@@ -5,7 +5,11 @@ import type {
   ForkRetarget,
 } from './sharedWorkerProtocol'
 import { isForkRetarget, isSafeSessionId, isSessionMessage } from './sharedWorkerProtocol'
-import { parsePortDelegation, type PortDelegation } from '../runtimeHub/portDelegation'
+import {
+  parsePortDelegation,
+  PORT_DELEGATION_MAX_TOPICS,
+  type PortDelegation,
+} from '../runtimeHub/portDelegation'
 import { traceLine } from '../../utils/debugLog'
 import { setKernelControlPort } from '../workerKernel/IsolatedWorkerKernel'
 
@@ -169,6 +173,7 @@ export class PortMessageRouter {
         // Security: an unreadable cap never falls back to an uncapped attach.
         if (!delegate) {
           runtimePort.close()
+          this.reject(port, message, badField('delegate', `{ scope, topics } with a known scope and at most ${PORT_DELEGATION_MAX_TOPICS} topic ids`))
           return
         }
         this.host.attachRuntimePort(runtimePort, message.homeDir, message.panelId, delegate)

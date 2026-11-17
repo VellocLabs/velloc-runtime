@@ -144,6 +144,78 @@ describe('delegated runtime ports', () => {
     })
     expect(second.resumed).toBe(false)
     expect(second.connectionId).not.toBe(welcome.connectionId)
+    expect(rig.broker.subscribersOf('secret')).toHaveLength(1)
+  })
+
+  it('refuses every route outside the subscription pair and the ping', async () => {
+    const rig = makeRig()
+    const office = client(rig, { delegate: { scope: 'full', topics: ['sessions'] } })
+    await office.hello()
+    const routes = ['sys.putBlob', 'probe.read', 'probe.missing', 'hub.connections', 'sessions.list']
+    for (const [index, route] of routes.entries()) {
+      const refused = await office.request(`r${index}`, route, {})
+      expect(refused.ok, route).toBe(false)
+      expect((refused.error as { code: string }).code, route).toBe('forbidden_scope')
+    }
+    expect(rig.handled).not.toHaveBeenCalled()
+  })
+
+  it('matches topic ids exactly, with no prefix or wildcard widening', async () => {
+    const rig = makeRig()
+    const office = client(rig, { delegate: { scope: 'observe', topics: ['sessions'] } })
+    await office.hello()
+    for (const [index, topic] of ['session', 'sessions*', '*', 'sessions.secret', 'secret', '__proto__', 'constructor'].entries()) {
+      const refused = await office.request(`t${index}`, 'topics.subscribe', { topics: [{ topic }] })
+      expect(refused.ok, topic).toBe(false)
+    }
+    expect(rig.broker.subscribersOf('secret')).toHaveLength(0)
+  })
+
+  it('refuses every topic when the cap lists none', async () => {
+    const rig = makeRig()
+    const office = client(rig, { delegate: { scope: 'observe', topics: [] } })
+    await office.hello()
+    const refused = await office.request('a', 'topics.subscribe', { topics: [{ topic: 'sessions' }] })
+    expect(refused.ok).toBe(false)
+    expect(rig.broker.subscribersOf('sessions')).toHaveLength(0)
+  })
+
+  it('unsubscribes from an allowed topic', async () => {
+    const rig = makeRig()
+    const office = client(rig, OFFICE)
+    await office.hello()
+    await office.request('a', 'topics.subscribe', { topics: [{ topic: 'tasks' }] })
+    expect(rig.broker.subscribersOf('tasks')).toHaveLength(1)
+    const off = await office.request('b', 'topics.unsubscribe', { topics: ['tasks'] })
+    expect(off.ok).toBe(true)
+    expect(rig.broker.subscribersOf('tasks')).toHaveLength(0)
+  })
+
+  it('sends a delegated holder no bootstrap and no capabilities, and keeps the attach panel', async () => {
+    const registry = new CapabilityRegistry()
+    registry.registerCapability({ cap: 'probe', actions: { read: { scope: 'observe' } }, handle: async () => 'done' })
+    const onHelloBuild = vi.fn()
+    const context = { homeDir: '/h' } as RuntimeContext
+    const hub = new ConnectionHub({
+      registry,
+      broker: new TopicBroker(),
+      context,
+      runtimeVersion: 'pd',
+      bootstrap: () => ({ homeDir: 'C:\\Users\\someone', platform: 'win32', pathSep: '\\' }),
+      onHelloBuild,
+    })
+    const office = client({ hub } as ReturnType<typeof makeRig>, { panelId: 'pane-1', ...OFFICE })
+    const welcome = await office.hello({
+      client: { clientId: 'office', kind: 'desktop-shell', panelId: 'pane-other', build: '2026-11-16T00:00:00Z' },
+    })
+    expect(welcome.bootstrap).toBeUndefined()
+    expect((welcome.server as { capabilities: unknown[] }).capabilities).toEqual([])
+    expect(onHelloBuild).not.toHaveBeenCalled()
+    expect(hub.list()[0]?.panelId).toBe('pane-1')
+
+    const plain = await client({ hub } as ReturnType<typeof makeRig>, {}).hello()
+    expect(plain.bootstrap).toBeDefined()
+    expect(onHelloBuild).toHaveBeenCalledTimes(1)
   })
 })
 
@@ -167,6 +239,17 @@ describe('parsePortDelegation', () => {
       { scope: 'observe', topics: [''] },
       { scope: 'observe', topics: [7] },
       { scope: 'observe', topics: tooMany },
+      { scope: 'observe', topics: ['x'.repeat(257)] },
+      { scope: 7, topics: [] },
+      { scope: 'observe', topics: [null] },
+      { scope: 'observe', topics: [['sessions']] },
+      { scope: 'observe', topics: ['sessions'], sessions: 'all' },
+      JSON.parse('{"scope":"observe","topics":["sessions"],"__proto__":{"scope":"full"}}'),
+      Object.assign(Object.create({ scope: 'observe', topics: ['sessions'] })),
+      ['observe', ['sessions']],
+      42,
+      true,
+      undefined,
     ]) {
       expect(parsePortDelegation(value)).toBeNull()
     }
@@ -180,7 +263,7 @@ describe('bridge.attachRuntimePort with a cap', () => {
     const channel = new MessageChannel()
     opened.push(channel.port1, channel.port2)
     const close = vi.spyOn(channel.port1, 'close')
-    router.handle({} as MessagePort, {
+    router.handle({ postMessage: vi.fn() } as unknown as MessagePort, {
       data: { type: 'bridge.attachRuntimePort', homeDir: '/h', ...(delegate === undefined ? {} : { delegate }) },
       ports: [channel.port1],
     } as unknown as MessageEvent)
@@ -196,9 +279,11 @@ describe('bridge.attachRuntimePort with a cap', () => {
   })
 
   it('closes the port instead of attaching it uncapped when the cap is malformed', () => {
-    const { attach, close } = route({ scope: 'full-ish', topics: ['sessions'] })
-    expect(attach).not.toHaveBeenCalled()
-    expect(close).toHaveBeenCalled()
+    for (const bad of [{ scope: 'full-ish', topics: ['sessions'] }, null, 'observe', {}]) {
+      const { attach, close } = route(bad)
+      expect(attach).not.toHaveBeenCalled()
+      expect(close).toHaveBeenCalled()
+    }
   })
 
   it('attaches a port with no cap as before', () => {

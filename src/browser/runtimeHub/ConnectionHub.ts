@@ -99,7 +99,8 @@ export type AttachOptions = {
   /**
    * Security: set by whoever created the port, before any client code holds it (F-42). The
    * connection is clamped to `scope` whatever `hello` asks, may subscribe only to `topics`,
-   * may send no action, and never resumes another connection's identity.
+   * may send no action, and never resumes another connection's identity. Its welcome carries
+   * no bootstrap and no capabilities, and its `hello` sets neither the boot build nor the panel.
    */
   delegate?: PortDelegation
 }
@@ -701,15 +702,15 @@ class ClientConnection implements TopicSubscriber {
     // no document to read its own nexus-build-time meta, so the booting page
     // reports it via hello.client.build. The hub records it first-writer-wins
     // (a later window may run a newer page against an older worker).
-    this.hub.options.onHelloBuild?.(hello)
-
     const delegate = this.attachOptions.delegate
+    if (!delegate) this.hub.options.onHelloBuild?.(hello)
+
     const resume = delegate ? undefined : hello.resume
     const resumed =
       resume !== undefined &&
       this.hub.claimResume(resume, hello.client.clientId, null, this.transport.kind)
     const connectionId = resumed ? resume.connectionId : this.hub.createId()
-    const panelId = hello.client.panelId ?? this.attachOptions.panelId
+    const panelId = delegate ? this.attachOptions.panelId : hello.client.panelId ?? this.attachOptions.panelId
     this.conn = {
       connectionId,
       clientId: hello.client.clientId,
@@ -736,9 +737,10 @@ class ClientConnection implements TopicSubscriber {
       scope: this.conn.scope,
       server: {
         runtimeVersion: this.hub.options.runtimeVersion,
-        capabilities: this.hub.options.registry.advertise(this.conn.scope),
+        capabilities: delegate ? [] : this.hub.options.registry.advertise(this.conn.scope),
       },
-      ...(resumed ? {} : { bootstrap: this.hub.options.bootstrap() }),
+      // Security: the bootstrap names the home directory and the host; a delegated holder gets neither.
+      ...(resumed || delegate ? {} : { bootstrap: this.hub.options.bootstrap() }),
     }
     this.transport.send(welcome)
 

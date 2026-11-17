@@ -21,7 +21,10 @@ const TOPIC_ID_MAX_LENGTH = 256
  * attach rather than falling back to an uncapped port.
  */
 export function parsePortDelegation(value: unknown): PortDelegation | null {
-  if (typeof value !== 'object' || value === null) return null
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return null
+  // An unknown field may be a narrowing this build cannot enforce, so it refuses the cap.
+  const keys = Object.keys(value)
+  if (keys.length !== 2 || !keys.includes('scope') || !keys.includes('topics')) return null
   const { scope, topics } = value as { scope?: unknown; topics?: unknown }
   if (typeof scope !== 'string' || !(SCOPE_MODES as readonly string[]).includes(scope)) return null
   if (!Array.isArray(topics) || topics.length > PORT_DELEGATION_MAX_TOPICS) return null
