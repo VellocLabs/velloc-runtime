@@ -14,6 +14,13 @@ import { useT } from '../i18n'
 import { APP_PAGE_CSP, withAppPageCsp } from './appPageCsp'
 import { APP_PAGE_PORT_MESSAGE, relayAppPagePort, type AppPageRelay } from './appPageRelay'
 
+/**
+ * Security: the host keys its block on this name, read when the frame is added
+ * (so it is set before): no navigation away from about:srcdoc, no WebRTC
+ * socket, no network hint. It must match the host's name (F-42).
+ */
+export const APP_PAGE_FRAME_NAME = 'velloc-app-page'
+
 export type AppPageFrameProps = {
   /** `mods.appPage` for this app; undefined when there is no connection. */
   readPage(): Promise<ModsAppPageResult | undefined>
@@ -58,6 +65,7 @@ export function AppPageFrame({ readPage }: AppPageFrameProps) {
         created.setAttribute('sandbox', 'allow-scripts')
         created.setAttribute('csp', APP_PAGE_CSP)
         created.setAttribute('data-slot', 'app-page-frame')
+        created.name = APP_PAGE_FRAME_NAME
         created.title = titleRef.current
         created.className = 'h-full w-full border-0'
         created.srcdoc = withAppPageCsp(result.html)

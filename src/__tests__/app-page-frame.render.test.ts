@@ -19,7 +19,7 @@ vi.mock('../browser/runtimeClient/observerPorts', () => ({
   },
 }))
 
-const { AppPageFrame } = await import('../browser/webview/apps/AppPageFrame')
+const { AppPageFrame, APP_PAGE_FRAME_NAME } = await import('../browser/webview/apps/AppPageFrame')
 
 const post = vi.fn()
 vi.spyOn(HTMLIFrameElement.prototype, 'contentWindow', 'get').mockImplementation(() => ({ postMessage: post }) as never)
@@ -46,6 +46,7 @@ describe('AppPageFrame', () => {
       return found!
     })
     expect(frame.getAttribute('sandbox')).toBe('allow-scripts')
+    expect(frame.getAttribute('name')).toBe(APP_PAGE_FRAME_NAME)
     expect(frame.getAttribute('csp')).toBe(APP_PAGE_CSP)
     expect(frame.getAttribute('srcdoc')).toBe(`<meta http-equiv="Content-Security-Policy" content="${APP_PAGE_CSP}"><p>office</p>`)
     expect(frame.title).toBe('App page')
@@ -57,6 +58,18 @@ describe('AppPageFrame', () => {
     expect(message).toEqual({ kind: 'velloc.runtimePort' })
     expect(target).toBe('*')
     expect(transfer).toHaveLength(1)
+  })
+
+  it('names the frame before adding it, the name the host keys its block on', async () => {
+    const append = vi.spyOn(HTMLElement.prototype, 'appendChild')
+    try {
+      show(async () => ({ ok: true, html: '<p/>', topics: ['sessions'] }))
+      await waitFor(() => expect(append.mock.calls.some(([node]) => node instanceof HTMLIFrameElement)).toBe(true))
+      const [added] = append.mock.calls.find(([node]) => node instanceof HTMLIFrameElement)!
+      expect((added as HTMLIFrameElement).name).toBe('velloc-app-page')
+    } finally {
+      append.mockRestore()
+    }
   })
 
   it('ends the connection and removes the frame when the pane goes', async () => {
