@@ -104,7 +104,7 @@ describe('buildModApiFiles', () => {
   })
 
   it('the declaration, as emitted', () => {
-    const api = files()['api.d.ts']!.split(JSON.stringify(MOD_API_SPECIFIER)).join('"<api>"')
+    const api = files()['api.d.ts']!.split(`"${MOD_API_SPECIFIER}`).join('"<api>')
     expect(api).toMatchSnapshot()
   })
 })

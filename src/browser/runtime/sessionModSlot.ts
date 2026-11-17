@@ -9,10 +9,9 @@ import type { PluginContributions } from '../../pluginHost'
 import type { PluginProviderKeysMap } from '../../pluginHost/pluginMcpUserConfig'
 import { isModSlot, selectModModules } from '../../mods/modSlot'
 import { createModIdleUnload, type ModIdleUnload } from '../../mods/modIdleUnload'
-import { createDevModsFolder, type DevModsFolder } from '../../mods/devModsFolder'
+import { createDevModsFolder, devModsFolderPath, type DevModsFolder } from '../../mods/devModsFolder'
 import { createDevModTypesWriter, type DevModTypesWriter } from '../../mods/devModTypes'
 import { assemblePluginAt } from '../../pluginHost/loadPlugins'
-import { RUNTIME_DIR_NAME } from '../../branding/runtimeDir'
 import { joinRuntimePath } from '../../utils/runtimePaths'
 import { traceLine } from '../../utils/debugLog'
 import {
@@ -302,7 +301,7 @@ export async function openSessionModSlot(input: SessionModSlotInput) {
   // person turns it on (F-25). An interactive slot only.
   if (isModSlot(modSlotFacts) && !isHeadlessSession) {
     try {
-      const folder = joinRuntimePath(settingsHome(), RUNTIME_DIR_NAME, 'dev-mods', resolvedSessionId)
+      const folder = devModsFolderPath(settingsHome(), resolvedSessionId)
       const reportDevMods = (line: string): void => {
         traceLine(`[mods] ${line}`, { level: 'warn' })
         console.warn(`[mods] ${line}`)

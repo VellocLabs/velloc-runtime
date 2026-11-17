@@ -10,6 +10,13 @@
 import type { ActivePlugin } from '../pluginHost/pluginModel'
 import type { RuntimeFsEntry } from '../utils/fs/runtimeFs'
 import { getPluginManifestPath } from '../pluginHost/pluginPaths'
+import { RUNTIME_DIR_NAME } from '../branding/runtimeDir'
+import { joinRuntimePath } from '../utils/runtimePaths'
+
+/** The session's dev mods folder under `home`. */
+export function devModsFolderPath(home: string, sessionId: string): string {
+  return joinRuntimePath(home, RUNTIME_DIR_NAME, 'dev-mods', sessionId)
+}
 
 /** Where the folder stands for this session. */
 export type DevModsState = 'unasked' | 'asking' | 'on' | 'declined' | 'off'

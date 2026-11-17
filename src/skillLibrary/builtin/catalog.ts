@@ -16,6 +16,7 @@ import { registerSafeTeamSkill } from './safeTeam'
 import { registerSecurityReviewSkill } from './securityReview'
 import { addCleanupSkill } from './simplifySkill'
 import { addConfigEditSkill } from './updateConfigSkill'
+import { registerModAuthoringSkill } from './modAuthoring/modAuthoringSkill'
 
 let initialized = false
 
@@ -32,6 +33,8 @@ export function installStockSkills(): void {
   addDiagnoseSkill()
   registerTidyMemorySkill()
   addConfigEditSkill()
+  // Writing, checking and testing a mod in the session's dev mods folder.
+  registerModAuthoringSkill()
   // Always-on (no `default`, so no Features-page toggle): `/loop` is a thin
   // front-end for the routine tools, which are themselves unconditional.
   addRepeatSkill()

@@ -152,6 +152,8 @@ function loadPlugin(register, setup) {
   let handleCount = 0;
   // The handles of the view drawing now, so a redraw drops only its own.
   let drawing;
+  // The id of the pane '$.ui.open' opened last: a Pane draws under it.
+  let lastPane;
 
   const later = (ms, fire) => {
     const timer = { at: now + Math.max(0, Number(ms) || 0), fire, live: true };
@@ -261,6 +263,7 @@ function loadPlugin(register, setup) {
 
   const call = (noun, method, args) => {
     recorded.push({ noun, method, args });
+    if (noun === "ui" && method === "open" && args[0] && typeof args[0].id === "string") lastPane = args[0].id;
     const stub = stubs.get(noun + "." + method);
     if (stub) return Promise.resolve().then(() => stub.apply(undefined, args));
     const table = served[noun];
@@ -382,12 +385,20 @@ function loadPlugin(register, setup) {
     now = until;
   };
 
-  const mount = async (surface, component, props) => {
+  // As the engine names a drawing: a pane by its id, the band 'band'.
+  const requestIdOf = (component, options) => {
+    if (options && typeof options.requestId === "string") return options.requestId;
+    if (component === "Pane" && lastPane !== undefined) return lastPane;
+    if (component === "AbovePrompt") return "band";
+    return "r1";
+  };
+
+  const mount = async (surface, component, props, options) => {
     if (surface !== "desktop") {
       throw new Error("mount(\"" + surface + "\"): not supported: Velloc draws the desktop surface only");
     }
     const view = { tree: undefined };
-    let requestCount = 0;
+    const requestId = requestIdOf(component, options);
     const own = new Set();
     const draw = async () => {
       for (const handle of own) handlers.delete(handle);
@@ -395,7 +406,7 @@ function loadPlugin(register, setup) {
       const outer = drawing;
       drawing = own;
       try {
-        const out = await fire("ui.render", { surface: "desktop", component, requestId: "r" + ++requestCount, props: props || {} }, () => ({ type: "engine", ref: component }));
+        const out = await fire("ui.render", { surface: "desktop", component, requestId, props: props || {} }, () => ({ type: "engine", ref: component }));
         view.tree = out;
         return out;
       } finally {
