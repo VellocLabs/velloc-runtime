@@ -214,6 +214,8 @@ export function createPluginUpdateService(deps: PluginUpdateServiceDeps): Plugin
   const report = deps.report ?? (line => console.warn(`[plugin-updates] ${line}`))
   const listeners = new Set<() => void>()
   let checking: Promise<PluginUpdatesSnapshot> | null = null
+  /** Marketplaces whose repo an install downloaded after the check last read their manifest alone. */
+  const repoFetchedSinceCheck = new Set<string>()
   let writes: Promise<unknown> = Promise.resolve()
 
   const notify = () => {
@@ -319,14 +321,16 @@ export function createPluginUpdateService(deps: PluginUpdateServiceDeps): Plugin
           if (remote) {
             listings = remote.marketplace.plugins
             readLocalManifest = remoteManifestReader(remote)
+            repoFetchedSinceCheck.delete(marketplace)
           } else {
             listings = (await fetchCatalog(ctx, fs, marketplace, now(), deps.fetchImpl())).marketplace.plugins
           }
         }
-        for (const plugin of members) {
+        const memberOffers = await Promise.all(members.map(async plugin => {
           const listing = listings.find(entry => entry.name === plugin.name)
-          found.set(plugin.identifier, listing ? await offerOf(readLocalManifest, plugin, listing) : undefined)
-        }
+          return listing ? offerOf(readLocalManifest, plugin, listing) : undefined
+        }))
+        members.forEach((plugin, i) => found.set(plugin.identifier, memberOffers[i]))
       } catch (error) {
         unreachable.push({ marketplace, reason: errorText(error) })
         continue
@@ -395,10 +399,14 @@ export function createPluginUpdateService(deps: PluginUpdateServiceDeps): Plugin
     const before = plugin.record
     try {
       // A check that read only the manifest left the cached repo as it was, so
-      // the install downloads it first.
+      // the first install after it downloads the repo.
       const source = (await loadKnownMarketplaces(ctx, fs, now())).registry[plugin.marketplace]?.source
-      const refreshFirst = !contentFresh && source !== undefined && marketplaceRawBaseUrl(source) !== null
+      const refreshFirst = !contentFresh
+        && !repoFetchedSinceCheck.has(plugin.marketplace)
+        && source !== undefined
+        && marketplaceRawBaseUrl(source) !== null
       const result = await setupPlugin(ctx, fs, plugin.marketplace, plugin.name, { nowIso: now(), fetchImpl: deps.fetchImpl(), refreshFirst })
+      if (refreshFirst) repoFetchedSinceCheck.add(plugin.marketplace)
       const at = now()
       await mutate(file => {
         const record = (file.plugins[identifier] ??= {})

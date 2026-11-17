@@ -480,9 +480,17 @@ export function marketplaceRawBaseUrl(source: PluginOrigin): string | null {
   } else {
     return null
   }
-  if (!/^[^/\s]+\/[^/\s]+$/.test(repo)) return null
+  const parts = repo.split('/')
+  if (parts.length !== 2 || !parts.every(isGitHubName)) return null
   const at = sha ?? (ref ? (ref.startsWith('refs/') ? ref : `refs/heads/${ref}`) : 'refs/heads/main')
-  return `https://raw.githubusercontent.com/${repo}/${at.split('/').map(encodeURIComponent).join('/')}`
+  const atSegments = at.split('/')
+  if (atSegments.some(segment => segment === '' || segment === '.' || segment === '..')) return null
+  return `https://raw.githubusercontent.com/${parts.join('/')}/${atSegments.map(encodeURIComponent).join('/')}`
+}
+
+/** Security: an owner or repo name that cannot leave its URL path segment. */
+function isGitHubName(part: string): boolean {
+  return /^[A-Za-z0-9_.-]+$/.test(part) && part !== '.' && part !== '..'
 }
 
 /** Where a marketplace repo keeps its manifest. */

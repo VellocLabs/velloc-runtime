@@ -306,6 +306,32 @@ describe('plugin update service', () => {
     expect(state.plugins.find(p => p.identifier === 'quiet@my-mkt')!.state).toBe('available')
   })
 
+  it('downloads a marketplace repo once for all the updates after a check, and again after the next check', async () => {
+    const r = await rig([
+      { name: 'cool', version: '1.0.0' },
+      { name: 'warm', version: '1.0.0' },
+    ])
+    await r.publish([
+      { name: 'cool', version: '1.1.0' },
+      { name: 'warm', version: '1.1.0' },
+    ])
+    await r.service.setAutoUpdate(true)
+    const before = r.tarballs()
+    await r.service.autoUpdate()
+    expect((await r.installed())!.version).toBe('1.1.0')
+    expect((await r.installed('warm@my-mkt'))!.version).toBe('1.1.0')
+    expect(r.tarballs()).toBe(before + 1)
+
+    await r.publish([
+      { name: 'cool', version: '1.2.0' },
+      { name: 'warm', version: '1.1.0' },
+    ])
+    await r.service.check({ force: true })
+    await r.service.update(ID)
+    expect((await r.installed())!.version).toBe('1.2.0')
+    expect(r.tarballs()).toBe(before + 2)
+  })
+
   it('leaves out provider plugins, plugins whose apps ask for folders, and plugins recorded for a project', async () => {
     adoptRuntimeChannel('beta')
     const r = await rig([
@@ -342,6 +368,20 @@ describe('marketplace manifest without the repo', () => {
     expect(marketplaceRawBaseUrl({ source: 'url', url: 'https://plugins.example.com/marketplace.tar.gz' })).toBeNull()
     expect(marketplaceRawBaseUrl({ source: 'local', path: './mkt' })).toBeNull()
     expect(marketplaceRawBaseUrl({ source: 'github', repo: 'me/mkt/../x' })).toBeNull()
+  })
+
+  it('refuses an owner, repo or ref that would leave its place in the raw URL', () => {
+    for (const repo of ['../mkt', 'me/..', '../..', 'me/mkt?x=1', 'me/mkt#x', 'me/%2e%2e', 'me@evil.com/mkt', 'me/mkt\\x']) {
+      expect(marketplaceRawBaseUrl({ source: 'github', repo })).toBeNull()
+    }
+    expect(marketplaceRawBaseUrl({ source: 'url', url: 'https://github.com/../mkt' })).toBeNull()
+    expect(marketplaceRawBaseUrl({ source: 'url', url: 'https://github.com/me/mkt%2F..' })).toBeNull()
+    expect(marketplaceRawBaseUrl({ source: 'github', repo: 'me/mkt', ref: 'a/../../x' })).toBeNull()
+    expect(marketplaceRawBaseUrl({ source: 'github', repo: 'me/mkt', ref: 'refs//x' })).toBeNull()
+    expect(marketplaceRawBaseUrl({ source: 'github', repo: 'me/mkt', sha: '..' })).toBeNull()
+    expect(marketplaceRawBaseUrl({ source: 'github', repo: 'me/mkt', ref: 'feat/x?y' })).toBe(
+      'https://raw.githubusercontent.com/me/mkt/refs/heads/feat/x%3Fy',
+    )
   })
 
   it('never reads a path that leaves the repo, and answers null for a missing file', async () => {
