@@ -40,8 +40,6 @@ describe('createNativeHooks', () => {
     expect(seen).toEqual(['out'])
     await hooks.observe('e.x', {}, {})
     expect(seen).toEqual(['out', 'in'])
-    expect(hooks.has('e.x', { position: 'outer' })).toBe(true)
-    expect(hooks.has('e.y')).toBe(false)
   })
 
   it('runs observers in place when raised synchronously, and refuses an async one', () => {

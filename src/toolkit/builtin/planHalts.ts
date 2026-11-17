@@ -10,6 +10,7 @@ import {
   refusalUpdate,
   requestQueuedToolUseConfirm,
 } from '../run/toolPermissionGate'
+import { haltUpdate } from '../run/interactiveHalt'
 import type { AdmittedRun, DeferredMessageUpdate, StageStep } from '../run/executeToolCall'
 
 export async function* exitPlanModeHalt(run: AdmittedRun): AsyncGenerator<DeferredMessageUpdate, StageStep> {
@@ -43,7 +44,7 @@ export async function* exitPlanModeHalt(run: AdmittedRun): AsyncGenerator<Deferr
         [block.toolCallId]: { toolName: tool.name, planText, planFilePath, restoreMode },
       },
     }))
-    yield { pendingToolUse: { toolUseId: block.toolCallId, toolName: tool.name } }
+    yield haltUpdate(run)
     return 'stop'
   }
   if (resolution.behavior !== 'allow') {

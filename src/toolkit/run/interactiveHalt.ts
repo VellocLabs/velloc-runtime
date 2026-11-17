@@ -7,7 +7,8 @@
 import { refusalUpdate, resolveHeadlessPermissionDecision } from './toolPermissionGate'
 import type { AdmittedRun, DeferredMessageUpdate, StageStep } from './executeToolCall'
 
-function haltUpdate(run: AdmittedRun): DeferredMessageUpdate {
+/** The update that suspends the loop on `run` until the user answers. */
+export function haltUpdate(run: AdmittedRun): DeferredMessageUpdate {
   return { pendingToolUse: { toolUseId: run.block.toolCallId, toolName: run.tool.name } }
 }
 

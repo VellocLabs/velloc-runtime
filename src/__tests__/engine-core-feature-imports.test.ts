@@ -8,7 +8,7 @@ import { rel, resolveSpecifier, SRC, staticImports } from './_helpers/staticImpo
 /**
  * The core (the engine and the tool-call pipeline) reaches built-in features
  * through the native hook tier, never by import (F-26). `KNOWN` lists the edges
- * still to move; it may only shrink.
+ * allowed today; it may only shrink.
  */
 
 const CORE_DIRS = [join(SRC, 'engine'), join(SRC, 'toolkit', 'run')]

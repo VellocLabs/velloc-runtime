@@ -1,7 +1,7 @@
 /**
  * Contract: the composition root of the native hook tier (F-26). The order table
  * is the only place link order is decided; each feature module contributes its
- * registrations through its own `nativeHookRegistrations()`.
+ * registrations through its own `<feature>Hooks()` function.
  */
 import {
   createNativeHooks,

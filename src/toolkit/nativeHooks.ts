@@ -9,7 +9,7 @@
  * never the order of `register` calls. Scope `main` links run only for the main
  * agent loop (no `agentId`).
  *
- * Failure: `throw` (default) rejects the raise as the inlined code did; `skip`
+ * Failure: `throw` (default) rejects the raise with the link's error; `skip`
  * traces the error and treats the link as absent.
  */
 import { traceLine } from '../utils/debugLog'
@@ -42,8 +42,6 @@ export type NativeRaise = {
 }
 
 export interface NativeHooks {
-  /** Whether any link would run for this raise. */
-  has(event: string, raise?: NativeRaise): boolean
   /** Runs each observer of `event`, in order, serially. */
   observe(event: string, e: unknown, live: unknown, raise?: NativeRaise): Promise<void>
   /** Runs each observer of `event` synchronously, for a raise site that may not
@@ -109,9 +107,6 @@ export function createNativeHooks(
   const frozen: ReadonlyMap<string, readonly NativeHookRegistration[]> = byEvent
 
   return {
-    has(event, raise) {
-      return linksFor(frozen, event, raise).length > 0
-    },
     async observe(event, e, live, raise) {
       for (const link of linksFor(frozen, event, raise)) {
         if (!link.observe) continue

@@ -1754,7 +1754,7 @@ export class SharedWorkerSessionManager {
   }
 
   // ---------- Public registry-style API ----------
-  // Called by `BrowserRuntimeWorker` and `toolkit/run/toolCallTelemetry.ts`
+  // Called by `BrowserRuntimeWorker` and `browser/worker/sessionActivityHooks.ts`
   // through `getActiveSessionManager()`. All cross-session bookkeeping
   // and emission lives here; workers no longer subscribe themselves.
 
@@ -3169,7 +3169,7 @@ export class SharedWorkerSessionManager {
 
 // ---------- Module-level accessor ----------
 //
-// `toolkit/run/toolCallTelemetry.ts` and the QueryEngine stream lifecycle hit
+// `browser/worker/sessionActivityHooks.ts` (tool and stream edges) hits
 // the manager's tool/stream/model marks via this accessor. We avoid
 // threading a controller through `ToolUseContext` / `BrowserRuntimeWorker`
 // because the manager is a SharedWorker singleton — there's exactly one

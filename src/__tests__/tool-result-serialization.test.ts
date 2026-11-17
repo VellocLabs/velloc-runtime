@@ -2,7 +2,9 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { ModelReplyRow } from '../runtime/RuntimeTypes'
 import type { QueryRuntimeDeps } from '../runtime/interfaces/QueryRuntimeDeps'
 import { declareTool, type ToolContract } from '../toolkit/toolContract'
-import { withBlankScreenshotRetry } from '../toolkit/builtin/host/hostTools'
+import { buildHostTools, withBlankScreenshotRetry } from '../toolkit/builtin/host/hostTools'
+import type { HostedToolDefinition } from '../browser/bridge/browserBridgeProtocol'
+import type { ToolCallContext } from '../toolkit/toolCallContext'
 import { executeToolCall } from '../toolkit/run/executeToolCall'
 import { shrinkToolResultImage } from '../utils/images/inlineImage'
 import {
@@ -430,6 +432,28 @@ describe('BrowserScreenshot capture retry', () => {
     expect(Array.isArray(block.result)).toBe(true)
     const parts = block.result as Array<{ type: string }>
     expect(parts.some(part => part.type === 'image')).toBe(true)
+  })
+
+  it('the host tool list carries the retry on BrowserScreenshot', async () => {
+    let calls = 0
+    const callTool = async () => {
+      calls++
+      return screenshotResult(calls >= 2)
+    }
+    const [tool] = buildHostTools([
+      {
+        name: 'BrowserScreenshot',
+        description: 'd',
+        parameters: { type: 'object', properties: {} },
+      } as unknown as HostedToolDefinition,
+    ])
+    const context = {
+      options: { cwd: '/workspace', projectRoot: '/workspace', sessionId: 's', mainLoopModel: 'm', mainLoopProviderId: 'p' },
+      readFileState: new Map(),
+      platformCapabilities: { browser: { callTool } },
+    } as unknown as ToolCallContext
+    await tool!.call({}, context, async () => ({ behavior: 'allow' }), undefined as never)
+    expect(calls).toBe(2)
   })
 
   it('does NOT retry when the first capture already carries the image', async () => {
