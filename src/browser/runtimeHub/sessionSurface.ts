@@ -546,7 +546,6 @@ export function installSessionSurface(
 
   const buildCliSessionIds = (): ReadonlySet<string> =>
     new Set(host.buildSessionInfoList().filter(isCliSessionRow).map(row => row.sessionId))
-  const cliSessionIds = buildCliSessionIds
   // One published event is projected once per subscriber: build its CLI id set once.
   const cliIdsByEvent = new WeakMap<object, ReadonlySet<string>>()
   const cliSessionIdsFor = (payload: unknown) => (): ReadonlySet<string> => {
@@ -571,7 +570,7 @@ export function installSessionSurface(
       // The live state rides `session.summary`, which is published only when
       // it changes: a later subscriber gets the current one here.
       const summary = host.buildSessionSummary?.()
-      const seen = summary && sessionsEventFor(conn, 'session.summary', { payload: summary }, cliSessionIds)
+      const seen = summary && sessionsEventFor(conn, 'session.summary', { payload: summary }, buildCliSessionIds)
       if (seen) yield { type: 'session.summary', payload: seen }
     },
     project: (_id, conn, evt) => sessionsEventFor(conn, evt.type, evt.payload, cliSessionIdsFor(evt.payload)),
