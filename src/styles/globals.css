@@ -131,8 +131,8 @@
  * ------------------------------------------------------------------------- */
 :root,
 :root[data-text-size="2"] {
-  --nx-prose-size: 14px;
-  --nx-prose-leading: 20px;
+  --nx-prose-size: 15px;
+  --nx-prose-leading: 21px;
   --nx-body-size: 13px;
   --nx-body-leading: 19px;
   --nx-caption-size: 11px;

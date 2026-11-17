@@ -178,10 +178,10 @@ describe('globals.css type scale', () => {
 
   it('is the compact scale at the default step, and grows monotonically', () => {
     const at = (step: number) => block(`:root[data-text-size="${step}"]`)
-    // The default step's sizes/leadings: prose 14/20, body 13/19,
+    // The default step's sizes/leadings: prose 15/21, body 13/19,
     // caption 11/17, code 12/17.
     expect(at(2)).toMatchObject({
-      'prose-size': '14px', 'prose-leading': '20px',
+      'prose-size': '15px', 'prose-leading': '21px',
       'body-size': '13px', 'body-leading': '19px',
       'caption-size': '11px', 'caption-leading': '17px',
       'code-size': '12px', 'code-leading': '17px',
