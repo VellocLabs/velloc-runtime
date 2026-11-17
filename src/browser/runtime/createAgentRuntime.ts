@@ -1,3 +1,4 @@
+import '../../nativeFeatures/install'
 import { ConversationEngine } from '../../engine/conversationEngine'
 import { getToolsForHostManifestOrPreset } from '../../toolkit/toolRegistry'
 import { BrowserHostBridge } from '../bridge/BrowserHostBridge'

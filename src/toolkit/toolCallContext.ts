@@ -33,6 +33,7 @@ import type { RuntimeFs } from '../utils/fs/runtimeFs'
 import type { SidechainTranscriptStore } from '../utils/sidechainTranscripts'
 import type { ResolvedMemorySettings } from '../memory/memoryPaths'
 import type { ToolRunSeams } from './run/toolLifecycleHooks'
+import type { NativeHooks } from './nativeHooks'
 import type { RuntimeConfig } from '../runtime/interfaces/RuntimeConfig'
 import type { ToolContractList } from './toolContract'
 
@@ -194,6 +195,8 @@ export type ToolCallContext = {
   /** Overrides for the tool-run path: the settings-hook executors the call
    *  stages use and the gates nested steps pass. Absent: production ones. */
   toolRunSeams?: ToolRunSeams
+  /** The native hook registry this call raises on; absent: the realm's installed one (F-26). */
+  nativeHooks?: NativeHooks
   skillsFound?: Set<string>
   /** Paths read during this step. The read tool adds to this shared set; the
    *  turn loop drains it after the tools ran and adds any path-scoped rule
