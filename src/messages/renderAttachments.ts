@@ -103,6 +103,10 @@ function renderBrowserContextAttachment(attachment: BrowserContextAttachment): U
  *  no `<` that could close the block. */
 const quoteModText = (text: string): string => JSON.stringify(text).replace(/</g, '\\u003c')
 
+/** A runtime-named field (event, path), kept on one line with no `<`. */
+// eslint-disable-next-line no-control-regex
+const inlineText = (text: string): string => text.replace(/[\u0000-\u001f\u007f]+/g, ' ').replace(/</g, '\\u003c')
+
 /**
  * Security: the reasons are a mod's own error text (it may hold anything the
  * mod read). They travel quoted inside a delimited block the model is told is
@@ -112,11 +116,11 @@ function renderModFaults(attachment: ModFaultsAttachment): string {
   const lines = attachment.faults.map(fault => {
     const what =
       fault.kind === 'hook'
-        ? `hook on ${fault.event ?? 'an event'} ${fault.timeout ? 'ran out of time' : 'threw'}`
+        ? `hook on ${fault.event !== undefined ? inlineText(fault.event) : 'an event'} ${fault.timeout ? 'ran out of time' : 'threw'}`
         : fault.kind === 'load'
           ? 'module did not load'
           : 'module reported an error'
-    const where = fault.file ? ` at ${fault.file}${fault.line ? `:${fault.line}` : ''}` : ''
+    const where = fault.file ? ` at ${inlineText(fault.file)}${fault.line ? `:${fault.line}` : ''}` : ''
     return `- plugin ${quoteModText(fault.plugin)}: ${what}${where}. Reported error: ${quoteModText(fault.reason)}`
   })
   if (attachment.omitted > 0) lines.push(`- ${attachment.omitted} more failure(s) not shown.`)

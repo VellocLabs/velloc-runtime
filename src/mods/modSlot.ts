@@ -58,6 +58,8 @@ export function selectModModules(
     /** `<name>@<marketplace>` for an installed plugin — `plugin.register`'s
      *  `provenance`; a directory-walk plugin reads `<name>@inline`. */
     installIdentifier?: string
+    /** Where the plugin was found; `dev:<dir>` for the session dev mods folder. */
+    source?: string
   }>,
   /** Each plugin's stored `userConfig` values (settings.json
    *  `pluginConfigs`), by plugin id — `pluginConfigId`. */
@@ -80,6 +82,7 @@ export function selectModModules(
       ...(plugin.manifest?.version !== undefined ? { version: plugin.manifest.version } : {}),
       ...(plugin.manifest?.description !== undefined ? { description: plugin.manifest.description } : {}),
       provenance: pluginId,
+      ...(plugin.source?.startsWith('dev:') ? { devFolder: true as const } : {}),
       // "The values of the manifest's `userConfig` fields, defaults filled
       // in"; values that do not fit the fields (a required one with no
       // value among them) fail the load, naming each.

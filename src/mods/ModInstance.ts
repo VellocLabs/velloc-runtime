@@ -73,9 +73,12 @@ export type ModInstanceOptions = {
   serveCall: ModCallServer
   /** `$` calls that stream. Absent: such a call's first read is refused. */
   serveStream?: ModStreamCallServer
-  /** A line the worker wants said outside any hook (a timer callback that
-   *  threw), already prefixed with the plugin's name. */
+  /** A line to log about the module: what its worker reports outside any
+   *  hook, and a hook dropped for lingering. */
   report?: (line: string) => void
+  /** What the worker itself reports outside any hook (a timer callback that
+   *  threw): the module's own failure, untrusted text. */
+  reportFault?: (line: string) => void
   /** How long `register` may take. */
   loadTimeoutMs?: number
   /** How long a `serve` or `runHandle` run may take, wall clock. */
@@ -902,6 +905,7 @@ export class ModInstance {
       }
       case 'mod.report':
         this.options.report?.(msg.message)
+        this.options.reportFault?.(msg.message)
         return
       case 'mod.handleResult': {
         const run = this.handleRuns.get(msg.runId)

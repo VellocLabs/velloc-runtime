@@ -35,6 +35,8 @@ function decodeSegment(segment: string): number[] | null {
     value += (digit & 31) << shift
     if (digit & 32) {
       shift += 5
+      // A value past 32 bits is not a line: the map is malformed.
+      if (shift > 30) return null
       continue
     }
     values.push(value & 1 ? -(value >>> 1) : value >>> 1)
@@ -96,7 +98,11 @@ export function isModLineMap(value: unknown): value is ModLineMap {
   )
 }
 
-const DATA_MODULE_FRAME = /data:text\/javascript;base64,[A-Za-z0-9+/=]*:(\d+):(\d+)/g
+/** The name the worker gives its module (`//# sourceURL`), so a stack frame
+ *  does not spell out the whole `data:` URL. */
+export const MOD_MODULE_SOURCE_URL = 'velloc-mod-module.js'
+
+const DATA_MODULE_FRAME = /(?:data:text\/javascript;base64,[A-Za-z0-9+/=]*|velloc-mod-module\.js):(\d+):(\d+)/g
 const MAX_FRAMES = 8
 
 /**

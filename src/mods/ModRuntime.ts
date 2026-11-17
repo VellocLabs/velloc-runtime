@@ -117,6 +117,9 @@ export type ModModuleRef = {
   /** "Where the plugin came from, as the loader keys it": `<name>@<marketplace>`
    *  installed, `<name>@inline` otherwise. Absent: `<name>@inline`. */
   readonly provenance?: string
+  /** The module is one of the session dev mods folder's (`dev:` plugin
+   *  source): its failures go to the model and the person. */
+  readonly devFolder?: true
   /** The tier the module loads in: `builtin` for a bundled mod
    *  (`builtinMods.ts`); absent, `user` — everything a person installs. */
   readonly tier?: PluginTier
@@ -332,11 +335,12 @@ type Seat = {
   tentative?: string[]
 }
 
-/** A compile refusal's source line (`ModCompileError`), read off the error
- *  without loading the compiler. */
+/** A compile refusal's file and source line (`ModCompileError`), read off
+ *  the error without loading the compiler; the file alone when no line. */
 function compileErrorWhere(error: unknown): Partial<ModSourceLocation> | undefined {
   const { file, line } = (error ?? {}) as { file?: unknown; line?: unknown }
-  return typeof file === 'string' && typeof line === 'number' ? { file, line } : undefined
+  if (typeof file !== 'string') return undefined
+  return typeof line === 'number' ? { file, line } : { file }
 }
 
 function errorMessage(error: unknown): string {
@@ -1168,10 +1172,8 @@ export class ModRuntime extends ModUiSurface implements TurnExtensions {
         void this.inFlight(stream.result).catch(() => undefined)
         return stream
       },
-      report: line => {
-        this.options.report(`${ref.plugin}: ${line}`)
-        this.fault(seat, { kind: 'runtime', reason: line })
-      },
+      report: line => this.options.report(`${ref.plugin}: ${line}`),
+      reportFault: line => this.fault(seat, { kind: 'runtime', reason: line }),
       // Its hooks join once admitted (`plugin.register`, below).
       deferJoin: true,
       ...(this.options.serveTimeoutMs !== undefined ? { serveTimeoutMs: this.options.serveTimeoutMs } : {}),
@@ -1272,6 +1274,7 @@ export class ModRuntime extends ModUiSurface implements TurnExtensions {
       this.options.onFault?.({
         plugin: seat.ref.plugin,
         ...(seat.ref.provenance !== undefined ? { provenance: seat.ref.provenance } : {}),
+        ...(seat.ref.devFolder ? { devFolder: true as const } : {}),
         generation: seat.generation,
         ...fault,
       })

@@ -29,7 +29,7 @@ import { MOD_DEFAULT_LOCALE, normalizeModLocale } from './modLocale'
 import { DESKTOP_ELEMENTS, RENDER_SURFACE } from './modRender'
 import { makeInteractHandle, makeProviderNoun } from './provider/nouns/workerProviderNoun'
 import { makeWorkerAppNoun } from './app/workerAppNoun'
-import { moduleFramesOf, type ModFrame } from './modLineMap'
+import { MOD_MODULE_SOURCE_URL, moduleFramesOf, type ModFrame } from './modLineMap'
 
 /** What a hooks module exports — `register`, and nothing the loader reads
  *  besides. Its return is dropped, a promise awaited. */
@@ -92,7 +92,7 @@ type Invocation = {
 }
 
 function moduleDataUrl(source: string): string {
-  const bytes = new TextEncoder().encode(source)
+  const bytes = new TextEncoder().encode(`${source}\n//# sourceURL=${MOD_MODULE_SOURCE_URL}`)
   let binary = ''
   const CHUNK = 0x8000
   for (let i = 0; i < bytes.length; i += CHUNK) {

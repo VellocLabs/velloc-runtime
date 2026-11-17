@@ -62,6 +62,14 @@ describe('selectModModules', () => {
     expect(selectModModules({ isTeammate: true, teammateName: 'researcher' }, PLUGINS)).toHaveLength(3)
   })
 
+  it('a dev-folder plugin is marked by where it was found, not by its name', () => {
+    const [dev] = selectModModules({}, [{ name: 'd', source: 'dev:/h/d', installIdentifier: 'd@dev', hookModules: ['/h/d/hooks/r.js'] }])
+    const [market] = selectModModules({}, [{ name: 'm', source: 'marketplace:dev', installIdentifier: 'm@dev', hookModules: ['/m/hooks/r.js'] }])
+    expect(dev).toMatchObject({ provenance: 'd@dev', devFolder: true })
+    expect(market).toMatchObject({ provenance: 'm@dev' })
+    expect(market).not.toHaveProperty('devFolder')
+  })
+
   it('no plugin with a module is no module', () => {
     expect(selectModModules({}, [{ name: 'skills-only' }, { name: 'empty', hookModules: [] }])).toEqual([])
     expect(selectModModules({}, [])).toEqual([])

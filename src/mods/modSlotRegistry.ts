@@ -23,7 +23,15 @@ import type { PluginUserConfigField } from '../pluginHost/pluginModel'
 import type { RenderInput, RenderOutcome, RenderSite } from './modRender'
 import type { ModRegisteredTool } from './modRegisteredTools'
 import type { DevModsAnswer } from './devModsFolder'
-import { createModFaultLedger, isDevModFault, type ModFault, type ModFaultBatch, type ModFaultLedger } from './modFault'
+import {
+  createModFaultLedger,
+  isDevModFault,
+  publicFaultOf,
+  type ModFault,
+  type ModFaultBatch,
+  type ModFaultLedger,
+  type PublicModFault,
+} from './modFault'
 
 /** A session's slot is at most this many parents away. A chain longer than
  *  this is a cycle or a bug, and resolves to no slot. */
@@ -76,7 +84,7 @@ export type ModSlotUiState = {
 
 /** A dev-folder mod's failure as the page draws it. `reason` is the mod's
  *  own text, bounded; the rest is the runtime's. */
-export type ModUiFault = Pick<ModFault, 'plugin' | 'kind' | 'event' | 'timeout' | 'reason' | 'file' | 'line'>
+export type ModUiFault = PublicModFault
 
 /** The dev mods folder's question as the page draws it: the plugins found. */
 export type DevModsAsk = { requestId: string; plugins: string[] }
@@ -270,6 +278,7 @@ const uiListeners = new Set<(sessionId: string, event: ModSlotUiEvent) => void>(
  */
 export function registerModSlot(sessionId: string, mods: ModSlot): () => void {
   slots.set(sessionId, mods)
+  devModFaults.get(sessionId)?.renew()
   noteModSlotChanged(sessionId)
   noteSlotToolsChanged()
   // The clients already attached join this runtime's roster.
@@ -351,19 +360,9 @@ function withDevModsAsk(sessionId: string, state: ModSlotUiState): ModSlotUiStat
     ...rest,
     ...(pending ? { devModsAsk: { ...pending.ask, plugins: [...pending.ask.plugins] } } : {}),
     ...(notice ? { devModsOn: { ...notice, plugins: [...notice.plugins] } } : {}),
-    ...(faults.length > 0 ? { devModFaults: faults.map(uiFaultOf) } : {}),
+    ...(faults.length > 0 ? { devModFaults: faults.map(publicFaultOf) } : {}),
   }
 }
-
-const uiFaultOf = ({ plugin, kind, event, timeout, reason, file, line }: ModFault): ModUiFault => ({
-  plugin,
-  kind,
-  ...(event !== undefined ? { event } : {}),
-  ...(timeout ? { timeout } : {}),
-  reason,
-  ...(file !== undefined ? { file } : {}),
-  ...(line !== undefined ? { line } : {}),
-})
 
 /** Per session: its dev-folder mods' failures (F-25). */
 const devModFaults = new Map<string, ModFaultLedger>()

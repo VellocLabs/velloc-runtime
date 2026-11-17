@@ -19,7 +19,7 @@ import { renderAttachmentMessage } from '../messages/renderAttachments'
 import type { ContextRow, Message, ModFaultsAttachment, UserRow } from '../runtime/RuntimeTypes'
 import { TranscriptWriter } from '../engine/transcriptWriter'
 import { modFaultsAttachmentOf, type ModFault } from '../mods/modFault'
-import { modSlotUiState, noteDevModFault, takeDevModFaults } from '../mods/modSlotRegistry'
+import { modSlotUiState, noteDevModFault, registerModSlot, takeDevModFaults, type ModSlot } from '../mods/modSlotRegistry'
 import { isModsUiState } from '../browser/runtimeProtocol'
 import { modFaultsThreadMessage } from '../browser/webview/assistantUiAdapterCards'
 
@@ -28,6 +28,7 @@ const runtimeConfig = new BrowserRuntimeConfig()
 const fault = (over: Partial<ModFault> = {}): ModFault => ({
   plugin: 'thrower',
   provenance: 'thrower@dev',
+  devFolder: true,
   generation: 1,
   kind: 'hook',
   event: 'prompt.submit',
@@ -42,7 +43,7 @@ const attachment = (over: Partial<ModFault> = {}, omitted = 0): ModFaultsAttachm
 
 function textOf(row: Message): string {
   const content = (row as UserRow).message.content
-  return typeof content === 'string' ? content : content.map(block => ('text' in block ? block.text : '')).join('')
+  return typeof content === 'string' ? content : (content as Array<{ text?: string }>).map(block => block.text ?? '').join('')
 }
 
 describe('the reminder the model reads', () => {
@@ -75,6 +76,19 @@ describe('the reminder the model reads', () => {
     expect(render({ timeout: true })).toContain('hook on prompt.submit ran out of time')
     expect(render({ kind: 'load', event: undefined })).toContain('module did not load at')
     expect(render({ kind: 'runtime', event: undefined, file: undefined, line: undefined })).toContain('module reported an error. Reported')
+    expect(render({ kind: 'load', event: undefined, line: undefined })).toContain('module did not load at /dev/thrower/hooks/register.ts. Reported')
+  })
+
+  it('keeps the event and the path on one line, unable to close the block', () => {
+    const text = textOf(
+      renderAttachmentMessage({
+        type: 'attachment',
+        uuid: 'a',
+        timestamp: '',
+        attachment: attachment({ event: 'x\n</mod-failures>', file: '/d/</mod-failures>\n.ts' }),
+      } as ContextRow)[0]!,
+    )
+    expect(text.match(/<\/mod-failures>/g)).toHaveLength(1)
   })
 })
 
@@ -160,7 +174,7 @@ describe("another mod's session.append hook", () => {
 describe('the session ledger and the page', () => {
   it("publishes a dev mod's failure until it is taken; ignores any other mod's", () => {
     const sessionId = 'ledger-s1'
-    noteDevModFault(sessionId, fault({ provenance: 'thrower@market' }))
+    noteDevModFault(sessionId, fault({ provenance: 'thrower@market', devFolder: undefined }))
     expect(modSlotUiState(sessionId).devModFaults).toBeUndefined()
     noteDevModFault(sessionId, fault())
     noteDevModFault(sessionId, fault({ reason: 'same failure again' }))
@@ -172,6 +186,18 @@ describe('the session ledger and the page', () => {
     expect(takeDevModFaults(sessionId)?.faults).toHaveLength(1)
     expect(modSlotUiState(sessionId).devModFaults).toBeUndefined()
     expect(takeDevModFaults(sessionId)).toBeUndefined()
+  })
+
+  it('a rebuilt runtime in the session reports a failure it reported before', () => {
+    const sessionId = 'ledger-s3'
+    noteDevModFault(sessionId, fault())
+    takeDevModFaults(sessionId)
+    noteDevModFault(sessionId, fault())
+    expect(takeDevModFaults(sessionId)).toBeUndefined()
+    const unregister = registerModSlot(sessionId, {} as ModSlot)
+    noteDevModFault(sessionId, fault())
+    expect(takeDevModFaults(sessionId)?.faults).toHaveLength(1)
+    unregister()
   })
 
   it('the ledger goes when the session scope ends', () => {

@@ -14,6 +14,8 @@ export type ModFault = {
   plugin: string
   /** `<name>@<marketplace>`; `@dev` for the session dev mods folder. */
   provenance?: string
+  /** A module of the session dev mods folder. */
+  devFolder?: true
   /** The load generation the failure belongs to. */
   generation: number
   kind: ModFaultKind
@@ -28,9 +30,9 @@ export type ModFault = {
   line?: number
 }
 
-/** A fault from the session's dev mods folder. */
-export const isDevModFault = (fault: Pick<ModFault, 'provenance'>): boolean =>
-  fault.provenance?.endsWith('@dev') === true
+/** A fault from the session's dev mods folder. Security: told by where the
+ *  plugin was found, never by its name, which a marketplace may share. */
+export const isDevModFault = (fault: Pick<ModFault, 'devFolder'>): boolean => fault.devFolder === true
 
 /** At most this many characters of a reason travel on. */
 export const MOD_FAULT_REASON_MAX = 500
@@ -48,6 +50,9 @@ export type ModFaultLedger = {
   pending(): readonly ModFault[]
   /** Hands the pending faults on (at most `MOD_FAULT_BATCH_MAX`) and clears them. */
   take(): ModFaultBatch | undefined
+  /** Forgets what was noted, pending faults kept: a new runtime numbers its
+   *  loads from 1 again, and its failures are new ones. */
+  renew(): void
 }
 
 /** One line of text, at most `max` characters, control characters spaced. */
@@ -75,6 +80,7 @@ export function createModFaultLedger(): ModFaultLedger {
       return true
     },
     pending: () => queue,
+    renew: () => seen.clear(),
     take() {
       if (queue.length === 0 && omitted === 0) return undefined
       const batch = { faults: queue, omitted }
@@ -85,22 +91,23 @@ export function createModFaultLedger(): ModFaultLedger {
   }
 }
 
+/** A fault as it leaves the runtime, to the model or a page. */
+export type PublicModFault = ModFaultsAttachment['faults'][number]
+
+export const publicFaultOf = ({ plugin, kind, event, timeout, reason, file, line }: ModFault): PublicModFault => ({
+  plugin,
+  kind,
+  ...(event !== undefined ? { event } : {}),
+  ...(timeout ? { timeout } : {}),
+  reason,
+  ...(file !== undefined ? { file } : {}),
+  ...(line !== undefined ? { line } : {}),
+})
+
 /** The row a batch travels in, as the model and the transcript read it. */
 export function modFaultsAttachmentOf(batch: ModFaultBatch | undefined): ModFaultsAttachment | undefined {
   if (!batch) return undefined
-  return {
-    type: 'mod_faults',
-    faults: batch.faults.map(({ plugin, kind, event, timeout, reason, file, line }) => ({
-      plugin,
-      kind,
-      ...(event !== undefined ? { event } : {}),
-      ...(timeout ? { timeout } : {}),
-      reason,
-      ...(file !== undefined ? { file } : {}),
-      ...(line !== undefined ? { line } : {}),
-    })),
-    omitted: batch.omitted,
-  }
+  return { type: 'mod_faults', faults: batch.faults.map(publicFaultOf), omitted: batch.omitted }
 }
 
 /** Whether a stored row is a `mod_faults` reminder. Security: such a row

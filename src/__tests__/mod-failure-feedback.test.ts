@@ -30,10 +30,14 @@ const sleep = (ms: number): Promise<void> => new Promise(resolve => setTimeout(r
 const ROOT = '/dev-mods/s1/thrower'
 
 /** A runtime over `files`, compiled for real; faults and lines collected. */
-function world(files: Record<string, string>, entry = `${ROOT}/hooks/register.ts`) {
+function world(
+  files: Record<string, string>,
+  entry = `${ROOT}/hooks/register.ts`,
+  budget: { budgetMs?: number; lingerMs?: number } = {},
+) {
   const faults: ModFault[] = []
   const reports: string[] = []
-  const ref: ModModuleRef = { plugin: 'thrower', path: entry, root: ROOT, provenance: 'thrower@dev' }
+  const ref: ModModuleRef = { plugin: 'thrower', path: entry, root: ROOT, provenance: 'thrower@dev', devFolder: true }
   const runtime = new ModRuntime({
     modules: [ref],
     readModule: async path => {
@@ -67,6 +71,7 @@ function world(files: Record<string, string>, entry = `${ROOT}/hooks/register.ts
     session: { id: () => 's1', cwd: () => '/work' },
     report: line => reports.push(line),
     onFault: fault => faults.push(fault),
+    ...budget,
   })
   runtimes.push(runtime)
   return { runtime, faults, reports }
@@ -77,6 +82,8 @@ describe('the line map', () => {
     // AAAA: line 0 → src 0; AACA: +1 → src 1; (empty); AAEA: +2 → src 3.
     expect(sourceLinesOfMappings('AAAA;AACA;;AAEA')).toEqual([1, 2, 0, 4])
     expect(sourceLinesOfMappings('AAAA;!!')).toEqual([1])
+    // A continuation past 32 bits is malformed, not a huge line.
+    expect(sourceLinesOfMappings(`AAAA;${'g'.repeat(40)}A`)).toEqual([1])
   })
 
   it('maps an output line through the file it belongs to; a linker line is unknown', () => {
@@ -99,6 +106,11 @@ describe('the line map', () => {
       { line: 7, column: 2 },
     ])
     expect(moduleFramesOf(undefined)).toEqual([])
+  })
+
+  it('takes the frames of the module by its short name', () => {
+    const stack = ['Error: boom', '    at hook (velloc-mod-module.js:12:3)', '    at x (other.js:1:1)'].join('\n')
+    expect(moduleFramesOf(stack)).toEqual([{ line: 12, column: 3 }])
   })
 })
 
@@ -134,6 +146,7 @@ describe('a failing mod, as data', () => {
       expect.objectContaining({
         plugin: 'thrower',
         provenance: 'thrower@dev',
+        devFolder: true,
         generation: 1,
         kind: 'hook',
         event: 'prompt.submit',
@@ -195,6 +208,34 @@ describe('a failing mod, as data', () => {
     await runtime.ready
     expect(faults).toEqual([expect.objectContaining({ kind: 'load', file: `${ROOT}/hooks/register.ts`, line: 4 })])
   })
+
+  it('a refusal that names a file but no line keeps the file', async () => {
+    const entry = '/elsewhere/hooks/register.ts'
+    const { runtime, faults } = world({ [entry]: 'export function register() {}' }, entry)
+    await runtime.ready
+    expect(faults).toEqual([expect.objectContaining({ kind: 'load', file: entry })])
+    expect(faults[0]).not.toHaveProperty('line')
+  })
+
+  it("a hook dropped for lingering is the runtime's log line, not the mod's failure", async () => {
+    const { runtime, faults, reports } = world(
+      {
+        [`${ROOT}/hooks/register.ts`]: [
+          'export function register(on: any) {',
+          "  on('prompt.submit', () => new Promise(() => {}))",
+          '}',
+        ].join('\n'),
+      },
+      undefined,
+      { budgetMs: 30, lingerMs: 30 },
+    )
+    await runtime.ready
+    await sleep(20)
+    await runtime.promptSubmit('hi')
+    await sleep(120)
+    expect(reports.some(line => line.includes('still running'))).toBe(true)
+    expect(faults.map(fault => fault.kind)).toEqual(['hook'])
+  })
 })
 
 describe('the compiler names source lines', () => {
@@ -209,12 +250,27 @@ describe('the compiler names source lines', () => {
       compileModModule({ entry, root: ROOT, fs: { readFile: async path => graph[path] ?? Promise.reject(new Error('ENOENT')) } }),
     ).rejects.toThrow(`${helper}:5: eval is not available`)
   })
+
+  it('a file after a multi-line file starts where that file ends', async () => {
+    const entry = `${ROOT}/hooks/register.ts`
+    const first = `${ROOT}/hooks/first.ts`
+    const second = `${ROOT}/hooks/second.ts`
+    const graph: Record<string, string> = {
+      [entry]: ["import { a } from './first'", "import { b } from './second'", 'export function register(on: any) { a(); b() }'].join('\n'),
+      [first]: ['export function a() {', '  const x = 1', '  const y = 2', '  const z = 3', '  return x + y + z', '}'].join('\n'),
+      [second]: ['type Unused = 1', '', 'export function b() {', '  return eval("1")', '}'].join('\n'),
+    }
+    await expect(
+      compileModModule({ entry, root: ROOT, fs: { readFile: async path => graph[path] ?? Promise.reject(new Error('ENOENT')) } }),
+    ).rejects.toThrow(`${second}:4: eval is not available`)
+  })
 })
 
 describe('the fault ledger', () => {
   const fault = (over: Partial<ModFault> = {}): ModFault => ({
     plugin: 'p',
     provenance: 'p@dev',
+    devFolder: true,
     generation: 1,
     kind: 'hook',
     event: 'prompt.submit',
@@ -247,9 +303,18 @@ describe('the fault ledger', () => {
     expect(long.endsWith('…')).toBe(true)
   })
 
-  it('tells a dev-folder fault by its provenance', () => {
-    expect(isDevModFault({ provenance: 'p@dev' })).toBe(true)
-    expect(isDevModFault({ provenance: 'p@market' })).toBe(false)
+  it('tells a dev-folder fault by where it was found, not by its name', () => {
+    expect(isDevModFault({ devFolder: true })).toBe(true)
     expect(isDevModFault({})).toBe(false)
+    // A marketplace named `dev` gives `<name>@dev` too.
+    expect(isDevModFault({ provenance: 'p@dev' } as never)).toBe(false)
+  })
+
+  it('a renewed ledger takes the same failure again, pending ones kept', () => {
+    const ledger = createModFaultLedger()
+    ledger.note(fault())
+    ledger.renew()
+    expect(ledger.pending()).toHaveLength(1)
+    expect(ledger.note(fault({ reason: 'after a rebuild' }))).toBe(true)
   })
 })

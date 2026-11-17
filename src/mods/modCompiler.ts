@@ -583,11 +583,14 @@ export async function compileModModule(options: ModCompileOptions): Promise<ModC
   lines.push('  return module.exports;')
   lines.push('}')
   const moduleStarts = new Map<string, number>()
+  // An entry may hold many lines (a file's text): count lines, not entries.
+  let counted = 0
+  let outputLines = 0
   const define = (id: string, text: string, links: Map<string, string>): void => {
     lines.push(`__links[${JSON.stringify(id)}] = ${JSON.stringify(Object.fromEntries(links))};`)
     lines.push(`__modules[${JSON.stringify(id)}] = function (exports, require, module) {`)
-    // An entry may hold many lines (a file's text): count lines, not entries.
-    moduleStarts.set(id, lines.reduce((count, entry) => count + entry.split('\n').length, 0) + 1)
+    for (; counted < lines.length; counted += 1) outputLines += lines[counted]!.split('\n').length
+    moduleStarts.set(id, outputLines + 1)
     lines.push(text.replace(/\n$/, ''))
     lines.push('};')
   }
