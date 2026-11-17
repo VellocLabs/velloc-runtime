@@ -49,6 +49,7 @@ export const zh: Messages = {
   "reviewCard.notice.invalidLimit": "发现数量上限必须是安全正整数、all 或 default。",
   "reviewCard.notice.invalidReport": "审查数据未能通过校验，不能视为已完成审查。",
   "reviewCard.notice.invalidTarget": "无法安全解析审查目标。请检查路径和版本。",
+  "reviewCard.notice.lineEndings": "某个文件整体更改了换行符，已忽略换行符差异进行审查。",
   "reviewCard.notice.large": "未检查超出大小限制的内容。",
   "reviewCard.notice.levelReused": "本次沿用 {level}；可在命令开头指定其他等级。",
   "reviewCard.notice.maxNotAuthorized": "最高等级审查未获授权，改用 {level}。",

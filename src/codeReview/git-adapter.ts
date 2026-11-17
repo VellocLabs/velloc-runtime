@@ -28,7 +28,8 @@ export type GitQuery =
   | { kind: 'index-entries' }
   | { kind: 'file-mode' }
   | { kind: 'blob'; oid: string }
-  | { kind: 'diff'; base: string; head: string; paths?: string[] }
+  /** `ignoreCrAtEol`: lines that differ only by a carriage return at their end count as unchanged. */
+  | { kind: 'diff'; base: string; head: string; paths?: string[]; ignoreCrAtEol?: boolean }
   | { kind: 'remotes' }
   /** Fixed-string search of tracked text files: the working tree, or the tree of `oid`. The pattern goes to stdin, never argv. */
   | { kind: 'grep'; pattern: string; oid?: string; paths?: string[]; perFile?: number }
@@ -89,7 +90,7 @@ function argv(q: GitQuery): string[] {
     case 'index-entries': return ['ls-files', '--stage', '-z', '--']
     case 'file-mode': return ['config', '--bool', '--get', 'core.filemode']
     case 'blob': return ['cat-file', 'blob', validateGitOid(q.oid)]
-    case 'diff': return ['diff', '--no-ext-diff', '--no-textconv', '--no-renames', '--ignore-submodules=all', '--no-color', '--src-prefix=a/', '--dst-prefix=b/', '--unified=3', validateGitOid(q.base), validateGitOid(q.head), '--', ...(q.paths ?? []).map(validateReviewPath)]
+    case 'diff': return ['diff', '--no-ext-diff', '--no-textconv', '--no-renames', '--ignore-submodules=all', '--no-color', '--src-prefix=a/', '--dst-prefix=b/', '--unified=3', ...(q.ignoreCrAtEol ? ['--ignore-cr-at-eol'] : []), validateGitOid(q.base), validateGitOid(q.head), '--', ...(q.paths ?? []).map(validateReviewPath)]
     case 'remotes': return ['config', '--local', '-z', '--get-regexp', 'remote\\..*\\.url$']
     case 'grep': {
       if (q.perFile !== undefined && (!Number.isSafeInteger(q.perFile) || q.perFile < 1 || q.perFile > 1000)) throw new GitAdapterError('query-failed')

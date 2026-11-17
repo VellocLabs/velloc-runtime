@@ -45,6 +45,7 @@ export const fr: Messages = {
   "reviewCard.notice.invalidLimit": "La limite doit être un entier positif sûr, all ou default.",
   "reviewCard.notice.invalidReport": "Les données n’ont pas pu être validées. Ne les considérez pas comme une revue terminée.",
   "reviewCard.notice.invalidTarget": "La cible n’a pas pu être résolue en toute sécurité. Vérifiez le chemin et les révisions.",
+  "reviewCard.notice.lineEndings": "Les fins de ligne d’un fichier ont changé partout ; il a été examiné sans tenir compte de ces différences.",
   "reviewCard.notice.large": "Le contenu dépassant la limite de taille n’a pas été examiné.",
   "reviewCard.notice.levelReused": "Le niveau {level} est réutilisé. Pour le changer, indiquez un autre niveau au début de la commande.",
   "reviewCard.notice.maxNotAuthorized": "La revue maximale n’est pas autorisée ; le niveau {level} sera utilisé.",

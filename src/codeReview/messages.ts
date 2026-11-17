@@ -18,6 +18,7 @@ const groups = {
   gitTimeout: ['timeout'],
   stepLimit: ['review-step-limit'],
   readBudget: ['worker-read-budget-exhausted'],
+  lineEndings: ['line-endings-ignored'],
   verifiedAfterSummary: ['verified-after-summary'],
   outputCap: ['review-output-cap'],
   contextOverflow: ['review-context-overflow'],

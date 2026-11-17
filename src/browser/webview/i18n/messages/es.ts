@@ -49,6 +49,7 @@ export const es: Messages = {
   "reviewCard.notice.invalidLimit": "El límite debe ser un entero positivo seguro, all o default.",
   "reviewCard.notice.invalidReport": "No se pudieron validar los datos. No los considere una revisión completa.",
   "reviewCard.notice.invalidTarget": "No se pudo resolver el destino de forma segura. Compruebe la ruta y las revisiones.",
+  "reviewCard.notice.lineEndings": "Los finales de línea de un archivo cambiaron en todo el archivo; se revisó sin tener en cuenta esas diferencias.",
   "reviewCard.notice.large": "No se examinó el contenido que supera el límite.",
   "reviewCard.notice.levelReused": "Se reutiliza {level}. Para cambiarlo, indique otro nivel al inicio del comando.",
   "reviewCard.notice.maxNotAuthorized": "La revisión máxima no está autorizada; se usará {level}.",

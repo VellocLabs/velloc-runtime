@@ -191,6 +191,23 @@ function utf8(bytes: Uint8Array): string | undefined {
   if (bytes.includes(0)) return undefined
   try { return new TextDecoder('utf-8', { fatal: true }).decode(bytes) } catch { return undefined }
 }
+const byteLength = (text: string) => new TextEncoder().encode(text).length
+/** Notice and file reason for a file reviewed from its diff with line-ending differences ignored (F-38). */
+export const LINE_ENDINGS_IGNORED = 'line-endings-ignored'
+/** A changed file in which no line differs but by its ending: covered, with nothing to read. */
+const lineEndingsOnly = (path: string, beforePath?: string): DiffFile => ({ path, ...(beforePath ? { beforePath } : {}), status: 'included', patch: '', anchors: [], reason: LINE_ENDINGS_IGNORED })
+/** A file whose diff is over the per-file limit, diffed again with a carriage return at a line end ignored; undefined when that does not fit either. */
+async function rangeIgnoringLineEndings(git: ReviewGitRunner, file: DiffFile, revisions: { base: string; head: string }, maxFileBytes: number, signal?: AbortSignal): Promise<DiffFile | undefined> {
+  const paths = [...new Set([file.beforePath, file.path].filter((p): p is string => !!p))]
+  let text: string
+  try { text = await gitText(git, { kind: 'diff', ...revisions, paths, ignoreCrAtEol: true }, signal) } catch (error) {
+    if (error instanceof GitAdapterError && error.code === 'output-limit') return undefined
+    throw error
+  }
+  const parsed = await parseUnifiedDiff(text, revisions, { maxFileBytes })
+  if (!parsed.length) return lineEndingsOnly(file.path, file.beforePath)
+  return parsed.length === 1 && parsed[0].status === 'included' ? { ...parsed[0], reason: LINE_ENDINGS_IGNORED } : undefined
+}
 export async function resolveLocalReviewScope(options: ScopeResolverOptions, target: LocalReviewTarget = { kind: 'workspace' }, signal?: AbortSignal): Promise<ScopeManifest> {
   const { git } = options
   const paths = target.kind === 'paths' ? target.paths.map(p => validateReviewPath(p.replace(/^\.\//, ''))) : []
@@ -225,7 +242,9 @@ export async function resolveLocalReviewScope(options: ScopeResolverOptions, tar
     try {
       const patch = await gitText(git, { kind: 'diff', base, head, paths }, signal)
       if (new TextEncoder().encode(patch).length > maxDiffBytes) notices.push('diff-output-limit')
-      else files.push(...await parseUnifiedDiff(patch, { base, head }, { maxFileBytes, skipPath: options.skipPath }))
+      else for (const file of await parseUnifiedDiff(patch, { base, head }, { maxFileBytes, skipPath: options.skipPath })) {
+        files.push(file.status === 'large' ? await rangeIgnoringLineEndings(git, file, { base, head }, maxFileBytes, signal) ?? file : file)
+      }
     } catch (error) {
       if (!(error instanceof GitAdapterError) || error.code !== 'output-limit') throw error
       notices.push('diff-output-limit')
@@ -304,18 +323,26 @@ export async function resolveLocalReviewScope(options: ScopeResolverOptions, tar
       if (options.skipPath?.(path)) { files.push({ path, status: 'skipped', patch: '', anchors: [] }); continue }
       const beforeText = utf8(beforeBytes), afterText = utf8(afterBytes)
       if (beforeText === undefined || afterText === undefined) { files.push({ path, status: 'binary', patch: '', anchors: [] }); continue }
-      const result = structuredPatch(path, path, beforeText, afterText, '', '', { context: 3 })
       const quote = (p: string) => JSON.stringify(p)
       const modeHeader = modeChanged ? `old mode ${before!.mode}\nnew mode ${afterMode}\n` : !before && afterMode ? `new file mode ${afterMode}\n` : current.kind === 'missing' && before ? `deleted file mode ${before.mode}\n` : ''
-      const patch = `diff --git ${quote('a/' + path)} ${quote('b/' + path)}\n${modeHeader}--- ${before ? quote('a/' + path) : '/dev/null'}\n+++ ${current.kind === 'file' ? quote('b/' + path) : '/dev/null'}\n` + result.hunks.map(h => `@@ -${h.oldStart},${h.oldLines} +${h.newStart},${h.newLines} @@\n${h.lines.join('\n')}\n`).join('')
-      totalBytes += new TextEncoder().encode(patch).length
+      const header = `diff --git ${quote('a/' + path)} ${quote('b/' + path)}\n${modeHeader}--- ${before ? quote('a/' + path) : '/dev/null'}\n+++ ${current.kind === 'file' ? quote('b/' + path) : '/dev/null'}\n`
+      const hunksOf = (stripTrailingCr: boolean) => structuredPatch(path, path, beforeText, afterText, '', '', { context: 3, stripTrailingCr }).hunks.map(h => `@@ -${h.oldStart},${h.oldLines} +${h.newStart},${h.newLines} @@\n${h.lines.join('\n')}\n`).join('')
+      let patch = header + hunksOf(false), endingsIgnored = false
+      if (byteLength(patch) > maxFileBytes && (beforeText.includes('\r') || afterText.includes('\r'))) {
+        const hunks = hunksOf(true)
+        if (!hunks && !modeHeader) { files.push(lineEndingsOnly(path)); continue }
+        if (byteLength(header + hunks) <= maxFileBytes) { patch = header + hunks; endingsIgnored = true }
+      }
+      totalBytes += byteLength(patch)
       if (totalBytes > maxDiffBytes) { files.push({ path, status: 'large', patch: '', anchors: [], reason: 'diff-output-limit' }); continue }
-      files.push(...await parseUnifiedDiff(patch, { base, head: `working-copy:${afterHash}`, workingCopy: true }, { maxFileBytes }))
+      const parsed = await parseUnifiedDiff(patch, { base, head: `working-copy:${afterHash}`, workingCopy: true }, { maxFileBytes })
+      files.push(...endingsIgnored ? parsed.map(file => ({ ...file, reason: LINE_ENDINGS_IGNORED })) : parsed)
     }
     scope.revision.workingCopyDigest = await reviewDigest(snapshotParts.join('\n'))
     const endHead = await optional(git, { kind: 'resolve', ref: 'HEAD' }, signal)
     if (source === 'unborn' ? !!endHead : endHead !== head) throw new ScopeError('snapshot-changed')
   }
+  if (files.some(file => file.reason === LINE_ENDINGS_IGNORED)) notices.push(LINE_ENDINGS_IGNORED)
   const complete = scopeComplete(files, notices)
   return { scope, files, anchors: files.flatMap(f => f.anchors), status: !complete ? 'partial' : files.length ? 'reviewable' : 'empty', complete, notices, baseSource: source, semantics }
 }

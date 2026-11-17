@@ -190,6 +190,58 @@ describe('local scope', () => {
     const result = await resolveLocalReviewScope(f.options)
     expect(result.status).toBe('partial'); expect(result.complete).toBe(false); expect(result.files).toHaveLength(1)
   })
+  describe('a file whose line endings changed throughout', () => {
+    const crlfLines = Array.from({ length: 40 }, (_, i) => `line ${i}`)
+    const flipped = 'diff --git a/doc.md b/doc.md\n--- a/doc.md\n+++ b/doc.md\n@@ -1,40 +1,40 @@\n' + crlfLines.map(l => `-${l}\r`).join('\n') + '\n' + crlfLines.map(l => `+${l === 'line 5' ? 'line five' : l}`).join('\n') + '\n'
+    const narrowed = 'diff --git a/doc.md b/doc.md\n--- a/doc.md\n+++ b/doc.md\n@@ -3,7 +3,7 @@\n line 2\r\n line 3\r\n line 4\r\n-line 5\r\n+line five\n line 6\r\n line 7\r\n line 8\r\n'
+    function rangeFixture(ignoring: string) {
+      const f = fixture({ refs: { main: base, feature: head }, patch: flipped })
+      const original = f.options.git.query
+      f.options.git.query = async (q, signal) => q.kind === 'diff' && q.ignoreCrAtEol ? (f.queries.push(q), { exitCode: 0, stdout: encode(ignoring) }) : original(q, signal)
+      f.options.maxFileBytes = 400
+      return f
+    }
+    it('reviews the range diff with line endings ignored and says so', async () => {
+      const f = rangeFixture(narrowed)
+      const result = await resolveLocalReviewScope(f.options, { kind: 'range', expression: 'main..feature' })
+      expect(result).toMatchObject({ status: 'reviewable', complete: true })
+      expect(result.notices).toContain('line-endings-ignored')
+      expect(result.files).toHaveLength(1)
+      expect(result.files[0]).toMatchObject({ path: 'doc.md', status: 'included', patch: narrowed, reason: 'line-endings-ignored' })
+      expect(result.anchors.map(a => a.span)).toEqual([{ start: 3, end: 9 }, { start: 3, end: 9 }])
+      expect(f.queries).toContainEqual({ kind: 'diff', base, head, paths: ['doc.md'], ignoreCrAtEol: true })
+    })
+    it('covers a file in which nothing but line endings changed, with nothing to read', async () => {
+      const result = await resolveLocalReviewScope(rangeFixture('').options, { kind: 'range', expression: 'main..feature' })
+      expect(result.complete).toBe(true); expect(result.notices).toContain('line-endings-ignored')
+      expect(result.files).toEqual([{ path: 'doc.md', beforePath: 'doc.md', status: 'included', patch: '', anchors: [], reason: 'line-endings-ignored' }])
+    })
+    it('keeps the file large when ignoring line endings does not bring it under the limit', async () => {
+      const result = await resolveLocalReviewScope(rangeFixture(flipped).options, { kind: 'range', expression: 'main..feature' })
+      expect(result).toMatchObject({ status: 'partial', complete: false })
+      expect(result.files[0]).toMatchObject({ path: 'doc.md', status: 'large', patch: '' })
+      expect(result.notices).not.toContain('line-endings-ignored')
+    })
+    it('leaves a file under the limit to the plain diff', async () => {
+      const f = fixture({ refs: { main: base, feature: head } })
+      const result = await resolveLocalReviewScope(f.options, { kind: 'range', expression: 'main..feature' })
+      expect(result.notices).not.toContain('line-endings-ignored')
+      expect(f.queries.filter(q => q.kind === 'diff')).toEqual([{ kind: 'diff', base, head, paths: [] }])
+    })
+    it('reviews the working copy with line endings ignored and says so', async () => {
+      const after = crlfLines.map(l => l === 'line 5' ? 'line five' : l).join('\n') + '\n'
+      const f = fixture({ before: crlfLines.join('\r\n') + '\r\n', files: { 'a.ts': { kind: 'file', bytes: encode(after), gitMode: '100644' } } })
+      f.options.maxFileBytes = 500
+      const result = await resolveLocalReviewScope(f.options)
+      expect(result).toMatchObject({ status: 'reviewable', complete: true })
+      expect(result.notices).toContain('line-endings-ignored')
+      expect(result.files[0]).toMatchObject({ path: 'a.ts', status: 'included', reason: 'line-endings-ignored' })
+      expect(result.files[0].patch).toContain('-line 5\n+line five\n')
+      const unchanged = fixture({ before: crlfLines.join('\r\n') + '\r\n', files: { 'a.ts': { kind: 'file', bytes: encode(crlfLines.join('\n') + '\n'), gitMode: '100644' } } })
+      unchanged.options.maxFileBytes = 500
+      expect((await resolveLocalReviewScope(unchanged.options)).files).toEqual([{ path: 'a.ts', status: 'included', patch: '', anchors: [], reason: 'line-endings-ignored' }])
+    })
+  })
   it('preserves a coverage failure on truncated native diff output', async () => {
     const f = fixture({ refs: { feature: other } })
     const original = f.options.git.query
@@ -285,6 +337,31 @@ describe.skipIf(!process.env.VELLOC_REVIEW_TEST_SCRATCH)('isolated real Git scop
       expect(modes.files).toHaveLength(1)
       expect(modes.files[0].patch).toContain('old mode 100644\nnew mode 100755')
       await expect(stat(join(root, 'sentinel'))).rejects.toMatchObject({ code: 'ENOENT' })
+    } finally { await rm(root, { recursive: true, force: true }) }
+  })
+  it('reviews a range that turned a file from CRLF to LF from the lines that really changed', async () => {
+    const root = await mkdtemp(join(process.env.VELLOC_REVIEW_TEST_SCRATCH!, 'review-git-'))
+    const run = (args: string[], input?: string) => execFileSync('git', args, { cwd: root, encoding: 'utf8', input, env: { ...process.env, GIT_AUTHOR_NAME: 'Test', GIT_AUTHOR_EMAIL: 'test@example.invalid', GIT_COMMITTER_NAME: 'Test', GIT_COMMITTER_EMAIL: 'test@example.invalid', GIT_CONFIG_NOSYSTEM: '1' } }).trim()
+    try {
+      run(['init', '-b', 'main']); run(['config', 'core.autocrlf', 'false'])
+      const lines = Array.from({ length: 40 }, (_, i) => `line ${i}`)
+      await writeFile(join(root, 'doc.md'), lines.join('\r\n') + '\r\n')
+      run(['add', 'doc.md']); run(['commit', '-q', '-m', 'crlf'])
+      await writeFile(join(root, 'doc.md'), lines.map(l => l === 'line 5' ? 'line five' : l).join('\n') + '\n')
+      run(['checkout', '-q', '-b', 'feature']); run(['commit', '-q', '-am', 'lf'])
+      const spawner: GitStreamSpawner = async (spec, events) => {
+        const child = spawn(spec.file, spec.args, { cwd: spec.cwd, env: { ...process.env, ...spec.env }, shell: false, stdio: 'pipe' })
+        child.stdout.on('data', data => events.onOutput?.('stdout', new Uint8Array(data)))
+        child.on('close', code => events.onExit?.({ exitCode: code ?? -1, killed: false, timedOut: false, durationMs: 1 }))
+        return { streamId: 'fixture', async write(data) { child.stdin.write(data); return true }, async closeStdin() { child.stdin.end(); return true }, async kill() { return child.kill() }, detach() { child.stdout.removeAllListeners() } }
+      }
+      const git = await createGitArgvRunner(spawner, { authorizeRoot: async () => ({ root, gitDir: join(root, '.git'), commonDir: join(root, '.git') }) })
+      const options: ScopeResolverOptions = { git, workspaceKey: root, projectKey: 'fixture', maxFileBytes: 500, async readWorkspaceFile() { return { kind: 'missing' } } }
+      const result = await resolveLocalReviewScope(options, { kind: 'range', expression: 'main..feature' })
+      expect(result).toMatchObject({ status: 'reviewable', complete: true })
+      expect(result.notices).toContain('line-endings-ignored')
+      expect(result.files[0].patch).toContain('-line 5\r\n+line five\n')
+      expect(result.files[0].patch).not.toContain('-line 0')
     } finally { await rm(root, { recursive: true, force: true }) }
   })
 })

@@ -46,6 +46,7 @@ export const ko: Messages = {
   "reviewCard.notice.invalidLimit": "발견 수 한도는 안전한 양의 정수, all 또는 default여야 합니다.",
   "reviewCard.notice.invalidReport": "검토 데이터를 검증하지 못했습니다. 완료된 검토로 간주하지 마세요.",
   "reviewCard.notice.invalidTarget": "검토 대상을 안전하게 확인하지 못했습니다. 경로와 리비전을 확인하세요.",
+  "reviewCard.notice.lineEndings": "파일 전체의 줄 끝 문자가 바뀌어, 줄 끝 차이를 무시하고 검토했습니다.",
   "reviewCard.notice.large": "크기 제한을 초과한 내용을 검사하지 않았습니다.",
   "reviewCard.notice.levelReused": "이번 검토에는 {level}을(를) 재사용합니다. 변경하려면 명령 시작 부분에 다른 수준을 지정하세요.",
   "reviewCard.notice.maxNotAuthorized": "최대 수준 검토가 승인되지 않아 {level}을(를) 사용합니다.",

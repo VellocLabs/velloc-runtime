@@ -49,6 +49,7 @@ export const en = {
   "reviewCard.notice.invalidLimit": "The finding limit must be a safe positive integer, all, or default.",
   "reviewCard.notice.invalidReport": "Review data could not be validated. Do not treat it as a completed review.",
   "reviewCard.notice.invalidTarget": "The review target could not be resolved safely. Check its path and revisions.",
+  "reviewCard.notice.lineEndings": "A file's line endings changed throughout; it was reviewed with line-ending differences ignored.",
   "reviewCard.notice.large": "Content exceeding the size limit was not inspected.",
   "reviewCard.notice.levelReused": "Reusing {level} for this review. Specify another level at the start of the command to change it.",
   "reviewCard.notice.maxNotAuthorized": "Maximum review was not authorized; using {level} instead.",

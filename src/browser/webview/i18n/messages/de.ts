@@ -48,6 +48,7 @@ export const de: Messages = {
   "reviewCard.notice.invalidLimit": "Das Limit muss eine sichere positive Ganzzahl, all oder default sein.",
   "reviewCard.notice.invalidReport": "Review-Daten konnten nicht validiert werden. Betrachte die Prüfung nicht als abgeschlossen.",
   "reviewCard.notice.invalidTarget": "Das Review-Ziel konnte nicht sicher aufgelöst werden. Prüfe Pfad und Revisionen.",
+  "reviewCard.notice.lineEndings": "Die Zeilenenden einer Datei wurden durchgehend geändert; sie wurde ohne Berücksichtigung der Zeilenenden geprüft.",
   "reviewCard.notice.large": "Inhalte oberhalb des Größenlimits wurden nicht untersucht.",
   "reviewCard.notice.levelReused": "Für dieses Review wird {level} wiederverwendet. Gib zum Ändern eine andere Stufe am Befehlsanfang an.",
   "reviewCard.notice.maxNotAuthorized": "Die maximale Prüfung wurde nicht autorisiert; stattdessen wird {level} verwendet.",

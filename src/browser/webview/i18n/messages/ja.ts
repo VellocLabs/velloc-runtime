@@ -46,6 +46,7 @@ export const ja: Messages = {
   "reviewCard.notice.invalidLimit": "指摘数の上限には安全な正の整数、all、default を指定してください。",
   "reviewCard.notice.invalidReport": "レビューデータを検証できませんでした。完了したレビューとして扱わないでください。",
   "reviewCard.notice.invalidTarget": "レビュー対象を安全に解決できませんでした。パスとリビジョンを確認してください。",
+  "reviewCard.notice.lineEndings": "ファイル全体で改行コードが変わっていたため、改行コードの違いを無視してレビューしました。",
   "reviewCard.notice.large": "サイズ上限を超える内容は確認していません。",
   "reviewCard.notice.levelReused": "今回のレビューでは {level} を再使用します。変更するにはコマンドの先頭で別のレベルを指定してください。",
   "reviewCard.notice.maxNotAuthorized": "最大レベルのレビューは許可されていないため、{level} を使用します。",
