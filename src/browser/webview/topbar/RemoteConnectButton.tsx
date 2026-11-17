@@ -208,7 +208,7 @@ export function RemoteConnectButton({
       </Tooltip>
       <PopoverContent
         side="bottom"
-        align="end"
+        align="start"
         className="w-64 p-1"
         data-testid="topbar-remote-connect"
       >

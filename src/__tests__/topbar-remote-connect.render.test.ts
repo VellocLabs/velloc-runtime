@@ -126,6 +126,8 @@ describe('NexusTopBar remote connect control', () => {
     expect(drawnPath()).not.toBe(qrPath(qrModules(`http://172.26.0.5:8765/#${FRAGMENT}`)))
     expect(document.body.textContent).not.toContain(FRAGMENT)
     expect(document.body.innerHTML).not.toContain(FRAGMENT)
+    // The popover's left edge lines up with the icon's left edge.
+    expect(screen.getByTestId('topbar-remote-connect').getAttribute('data-align')).toBe('start')
   })
 
   it('falls back to the first address when none is recommended', async () => {
