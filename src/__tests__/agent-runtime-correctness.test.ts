@@ -885,6 +885,10 @@ describe('Process globals: concurrent sub-agent hazard', () => {
       '../browser/runtime/sessionMcpPool.ts',
       '../browser/runtime/sessionModSlot.ts',
       '../browser/runtime/sessionPluginReload.ts',
+      '../browser/runtime/sessionMemoryJobs.ts',
+      '../browser/runtime/sessionPluginDiscovery.ts',
+      '../browser/runtime/sessionSettingsOverlays.ts',
+      '../browser/runtime/sessionTurnDependencies.ts',
     ]) {
       const source = readSource(rel)
       expect(source.length, rel).toBeGreaterThan(0)

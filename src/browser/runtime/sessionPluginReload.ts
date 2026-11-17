@@ -25,7 +25,7 @@ import { loadLocalPromptCommands } from '../../skillLibrary/skillDiscovery'
 import { loadLocalAgents } from '../../agents/agentRegistry'
 import { withBuiltInAgents } from '../../agents/builtInAgents'
 import { pluginMcpOwnersInScope, pluginMcpServersInScope } from '../../mcp/sessionMcpScope'
-import type { CreateBrowserRuntimeOptions } from './createAgentRuntime'
+import type { CreateBrowserRuntimeOptions } from './createAgentRuntimeOptions'
 
 export type SessionPluginReloadInput = {
   options: { locale?: string }

@@ -32,7 +32,7 @@ import type { PluginContributions } from '../../pluginHost'
 import type { PluginProviderKeysMap } from '../../pluginHost/pluginMcpUserConfig'
 import type { WorkingState } from '../../runtime/RuntimeTypes'
 import type { RuntimeFs } from '../../utils/fs/runtimeFs'
-import type { CreateBrowserRuntimeOptions } from './createAgentRuntime'
+import type { CreateBrowserRuntimeOptions } from './createAgentRuntimeOptions'
 
 /**
  * Contract: what one session's runtime lends the slot's mod runtime (F-25).

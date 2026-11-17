@@ -1,24 +1,15 @@
 import { ConversationEngine } from '../../engine/conversationEngine'
-import { assembleTurnDependencies } from '../../engine/turn/turnDependencies'
-import { type TraceLoggerEntry } from '../../engine/turn/modelTrace'
 import { getToolsForHostManifestOrPreset } from '../../toolkit/toolRegistry'
 import { BrowserHostBridge } from '../bridge/BrowserHostBridge'
-import type { BrowserBridgeTransport } from '../bridge/browserBridgeProtocol'
 import { BrowserRuntimeConfig } from '../../config/BrowserRuntimeConfig'
 import {
   loadLocalPromptCommands,
   partitionSkillsForSession,
 } from '../../skillLibrary/skillDiscovery'
 import { BrowserPromptContextProvider } from '../../engine/systemPromptSources'
-import { buildProfilePromptBlock } from '../context/buildProfilePromptBlock'
 import { buildTeammatePromptAddendum } from '../../team/teammateBrief'
 import { subAgentLoopId } from '../../team/subAgentController'
-import { resolveOutputStyleSection } from '../../prompting/responseStyles'
-import {
-  applyPermissionRulesBySource,
-  type PermissionSettingsBySource,
-} from '../../permissions/seedPermissionContext'
-import { findShadowedRules } from '../../permissions/ruleEngine'
+import type { PermissionSettingsBySource } from '../../permissions/seedPermissionContext'
 import { BrowserUserInputPipeline } from '../../input/submitUserInput'
 import {
   NEXUS_SLASH_COMMANDS,
@@ -35,13 +26,9 @@ import {
   type RuntimeFs,
 } from '../../utils/fs/runtimeFs'
 import { seedAppStateFromSettings } from '../bridge/adapter/featuresBridgeAdapter'
-import { setProductNameOverride } from '../../branding/productName'
-import { applyPersistedInternalUser } from '../../utils/internalUser'
 import {
   readLayer,
-  loadEffectiveSettings,
   loadPermissionSettingsBySource,
-  readUserLayer,
   resolveSettingsHomeDir,
 } from '../../settings/settingsStore'
 import { MERGE_SOURCE_ORDER } from '../../settings/settingsStore'
@@ -49,21 +36,16 @@ import {
   UNTRUSTED_CHILD_MEMORY_SETTINGS,
   resolveMemorySettings,
 } from '../../memory/resolveMemorySettings'
-import { setSessionModelSettingsSnapshot } from '../../models/tierSettingsSnapshot'
 import type { ResolvedMemorySettings } from '../../memory/memoryPaths'
 import { checkNotesDir } from '../../memory/memoryPaths'
 import { createBrowserFsOperations } from '../../utils/BrowserFsOperations'
 import { openNexusSettings } from '../webview/nexusBridgeActions'
 import type { NexusSettingsSection } from '../bridge/browserBridgeProtocol'
-import type {
-  BrowserRuntimeOptions,
-  BrowserRuntimeState,
-} from './AgentRuntimeState'
+import type { BrowserRuntimeState } from './AgentRuntimeState'
 import {
   createBrowserReadFileCache,
   createInitialBrowserAppState,
 } from './AgentRuntimeState'
-import { collectQueuedAttachmentMessages } from '../../messages/contextAttachments'
 import { resolveRuntimeCwd } from '../../utils/resolveRuntimeCwd'
 import {
   projectRootIsSandbox,
@@ -80,7 +62,6 @@ import {
   setActiveSidechainStore,
   type SidechainTranscriptStore,
 } from '../../utils/sidechainTranscripts'
-import { createBrowserToolMicrocompact } from '../../context/compaction/browserObservationTrim'
 import {
   applyTemplateToolAllowlist,
   getTemplate,
@@ -97,24 +78,15 @@ import { WorkspaceDiffTool } from '../../toolkit/builtin/workspaceDiff'
 import { isPluginTemplateId } from '../../mods/ui/uiManifest'
 import type { AppTemplate } from '../../mods/ui/contributionsHost'
 import { runtimeProviderGate } from '../../pluginHost/providerGate'
-import { registerMemoryExtractor } from '../../memory/extract/extractionRunner'
-import { registerMemoryConsolidator } from '../../memory/consolidate/consolidationRunner'
 import { registerDeferrableSkills } from '../../toolkit/run/deferredTools'
 import { isToolGroup } from '../../toolkit/builtin/toolGroups'
 import { filterSubAgentTools } from '../../agents/subAgentToolScope'
-import { createA2uiTurnEndCheck } from '../../toolkit/builtin/a2ui/express/a2uiReplyCheck'
-import { createGeneratedUserMessage } from '../../messages/messageFactories'
 import { registerSkillCatalog } from '../../toolkit/run/skillCatalogs'
 import type { HostedSkillDefinition } from '../bridge/protocol/manifest'
 import type { ChromiumPromptCommand } from '../../runtime/CommandTypes'
-import type { ContentBlockParam, Message } from '../../runtime/RuntimeTypes'
-import {
-  createBrowserAutoCompact,
-  performCompaction,
-} from '../../context/compaction/autoTrigger'
+import type { Message } from '../../runtime/RuntimeTypes'
 import {
   createAutoCompactWindowSettings,
-  type AutoCompactWindowSettings,
 } from '../../context/compaction/windowSettings'
 import {
   isMcpSessionTool,
@@ -136,6 +108,15 @@ import { storePluginSecrets } from '../../pluginHost/pluginMcpUserConfig'
 import { openSessionMcpPool } from './sessionMcpPool'
 import { openSessionModSlot } from './sessionModSlot'
 import { createPluginReload } from './sessionPluginReload'
+import { registerSessionMemoryJobs } from './sessionMemoryJobs'
+import { loadMarketplaceDiscovery, rescanSessionPlugins } from './sessionPluginDiscovery'
+import {
+  applyAgentSettingsOverlay,
+  buildSettingsPromptSuffix,
+  seedSessionModelSettings,
+} from './sessionSettingsOverlays'
+import { assembleSessionTurnDependencies } from './sessionTurnDependencies'
+import type { CreateBrowserRuntimeOptions } from './createAgentRuntimeOptions'
 import { dirnameRuntimePath } from '../../utils/runtimePaths'
 import {
   linkModChild,
@@ -181,112 +162,6 @@ function parseEnabledPluginsEnv(value: string | undefined): string[] | undefined
   return names.length > 0 ? names : undefined
 }
 
-export type CreateBrowserRuntimeOptions = BrowserRuntimeOptions & {
-  bridgeTransport: BrowserBridgeTransport
-  traceLogger?: (entry: TraceLoggerEntry) => void
-  /**
-   * Boot-welcome milestones from inside the runtime build, fired as each step starts: `connectingTools`
-   * before the MCP pool connect, `restoring` before the transcript read. Primary boot session only; best-effort.
-   */
-  onBootStage?: (stage: 'connectingTools' | 'restoring') => void
-  /**
-   * Fired ONCE after the persisted transcript is read, before MCP connect and engine construction, so
-   * the page can render early; submits stay parked until `worker.ready`. Not for a background fork.
-   * Synchronous; must not throw.
-   */
-  onUiReady?: (info: {
-    sessionId: string
-    cwd: string
-    projectRoot: string
-    usedSandboxProjectRoot: boolean
-    hostMode: string | undefined
-    messages: Message[]
-    /**
-     * This build's own store. The worker stamps transcript lines from it;
-     * the process-global slot may already name another session's.
-     */
-    conversationStore?: BrowserConversationStore
-    /** This build's file-snapshot recorder; the turn-diff history reads it. */
-    fileSnapshotRecorder?: FileSnapshotRecorder
-    /** This build's filesystem; the display state reads the plan file with it. */
-    installedFs?: RuntimeFs
-    /** The auto-compact reader the built runtime exposes; not yet loaded. */
-    autoCompactWindows?: AutoCompactWindowSettings
-    /** The per-source permission settings the build seeds its rules from. */
-    permissionSettings?: Promise<PermissionSettingsBySource>
-  }) => void
-  /**
-   * Mid-turn task-notification drain.
-   * Called by the session's main query loop between tool rounds; returns this
-   * session's pending background-task `<task-notification>` batch (removed
-   * from the delivery queue) or null. `includeLater` is true when the round
-   * just ran Sleep, which also admits sub-agent completions. Unset → results
-   * arrive only as the idle re-activation turn.
-   */
-  drainTaskNotifications?: (
-    sessionId: string,
-    opts: { includeLater: boolean },
-  ) => { prompt: string; enqueuedAt: number } | null
-  /**
-   * Mid-turn team-mailbox drain: the frames queued for this session (it is a
-   * teammate, or a lead), removed and marked read as they are returned.
-   * Called between tool rounds next to the notification drain. Unset →
-   * frames arrive only as turns.
-   */
-  drainTeamMessages?: (
-    sessionId: string,
-  ) => Array<{ prompt: string; enqueuedAt: number }>
-  /** A turn's start: this session's queued child reports as one block, taken
-   *  once (F-36). Unset → no child reports. */
-  takeChildReports?: (
-    sessionId: string,
-    opts: { autoContinuation: boolean },
-  ) => Promise<string | null>
-  /**
-   * Aborts when the runtime scope this build belongs to is disposed (the
-   * worker's `RuntimeScope.abortController`). Published on
-   * `ToolUseContext.options.runtimeScopeSignal` so work that outlives its tool
-   * call can stop with the scope. See toolkit/toolContract.ts.
-   */
-  runtimeScopeSignal?: AbortSignal
-  /**
-   * Mid-turn user input drain: take this session's parked inject messages
-   * (plain Enter while busy), removing them from the worker's queue. Called
-   * by the main query loop between tool rounds, next to the notification
-   * drain. Unset → inject messages only land as the next turn.
-   */
-  drainInjectMessages?: () => Array<{
-    uuid: string
-    prompt: string | Array<ContentBlockParam>
-    enqueuedAt: number
-  }>
-  /**
-   * Peek (never take) whether `drainInjectMessages` has anything parked.
-   * Published on `ToolUseContext.options.hasPendingInjectMessages` so the
-   * Sleep tool can end early when the user sends a message. See toolkit/toolContract.ts.
-   */
-  hasPendingInjectMessages?: () => boolean
-  /**
-   * A plugin's `$.prompt.submit` (F-25): queue the prompt the chain let
-   * in as a turn of its own, run once the session is idle. The worker's turn
-   * controller owns the queue. Unset (a headless or sub-agent build) → the
-   * noun is refused by name.
-   */
-  enqueuePluginTurn?: (turn: import('../../mods/promptNouns').PluginPromptTurn) => void
-  /**
-   * Every session reloads its plugins (the worker host's fan-out): after
-   * `$.config.set` stored a plugin's option. Unset → this session's engine
-   * alone reloads.
-   */
-  reloadPluginsOnAllSessions?: () => void
-  /**
-   * The session draws a prompt box on a page (F-25): `$.prompt.read` /
-   * `.fill` / `.suggest` ask it over `mods/ui/<sessionId>`. Unset (a headless
-   * or sub-agent build) → answered as headless: the empty box, `no_composer`.
-   */
-  drawsComposer?: boolean
-}
-
 // Convert a host-supplied skill (C++ *.skill.json, fetched via
 // catalog.listSkills) into a model-invocable Skill command. The
 // `instructions` become the skill body injected on Skill('<name>');
@@ -307,8 +182,6 @@ function hostedSkillToCommand(
     permittedTools: skill.toolNames,
   }
 }
-
-const metaNote = (text: string): Message => createGeneratedUserMessage(text, { isMeta: true })
 
 /** The project's session-storage dir: a sub-agent's path is `<project>/<parent>/subagents`. */
 function sessionStorageRootOf(sessionStoragePath: string, isSubAgent: boolean): string {
@@ -529,58 +402,13 @@ export async function createBrowserRuntime(
     setActiveSidechainStore(installedSidechainStore)
   }
 
-  // Memory extraction (fire-and-forget at end of turn), with the same sidechain store. Off under
-  // `e2eTrace` unless `e2eEnableExtractMemories`; production sets neither.
-  if (
-    !runtimeConfig.flagOn('e2eTrace') ||
-    runtimeConfig.flagOn('e2eEnableExtractMemories')
-  ) {
-    registerMemoryExtractor({
-      runtimeConfig,
-      sidechainStore: installedSidechainStore ?? undefined,
-    })
-  }
-
-  // Background memory consolidation, gated by time + session count + lock; the same e2e suppression
-  // (re-enabled by `e2eEnablePeriodicTidy`). No base path → the session-count gate makes it inert.
-  if (
-    !runtimeConfig.flagOn('e2eTrace') ||
-    runtimeConfig.flagOn('e2eEnablePeriodicTidy')
-  ) {
-    const backend = resolvedOptions.conversationStorageBackend
-    // e2e-only threshold overrides so the dedicated periodic-tidy spec can fire the
-    // consolidation fork in a single turn without seeding 24h + 5 sessions.
-    // Production guest URLs never set these query params → config is undefined →
-    // the hardcoded MIN_HOURS/MIN_SESSIONS defaults apply.
-    const numEnv = (name: string): number | undefined => {
-      const v = runtimeConfig.getEnv(name)
-      if (v === undefined) return undefined
-      const n = Number(v)
-      return Number.isFinite(n) ? n : undefined
-    }
-    const minSessionsOverride = numEnv('e2ePeriodicTidyMinSessions')
-    const minHoursOverride = numEnv('e2ePeriodicTidyMinHours')
-    const periodicTidyConfig =
-      minSessionsOverride !== undefined || minHoursOverride !== undefined
-        ? {
-            ...(minSessionsOverride !== undefined
-              ? { minSessions: minSessionsOverride }
-              : {}),
-            ...(minHoursOverride !== undefined
-              ? { minHours: minHoursOverride }
-              : {}),
-          }
-        : undefined
-    registerMemoryConsolidator({
-      runtimeConfig,
-      sidechainStore: installedSidechainStore ?? undefined,
-      listSessions: backend?.listSessions
-        ? () => backend.listSessions!()
-        : undefined,
-      historyFolder: sidechainBasePath,
-      config: periodicTidyConfig,
-    })
-  }
+  // Memory extraction and background consolidation, with the same sidechain store.
+  registerSessionMemoryJobs({
+    runtimeConfig,
+    installedSidechainStore,
+    backend: resolvedOptions.conversationStorageBackend,
+    sidechainBasePath,
+  })
 
   // Progressive tool disclosure is PER-SKILL now (no master switch): each
   // deferrable skill has its own switch = user override (Deferred Tools
@@ -684,32 +512,8 @@ export async function createBrowserRuntime(
     persistedEnabledPlugins
     ?? resolvedOptions.enabledPlugins
     ?? parseEnabledPluginsEnv(runtimeConfig.getEnv('NEXUS_ENABLED_PLUGINS'))
-  // Also load the marketplace install registry +
-  // settings.json's `enabledPlugins` map so marketplace-installed
-  // plugins (under `~/.velloc/plugins/cache/...`) are discovered
-  // alongside legacy directory-walk plugins. Failure here is
-  // non-fatal — marketplace state simply isn't loaded for this
-  // session and the legacy plugin path keeps working.
-  let installRegistry: import('../../pluginHost/registryFormats').InstalledPluginsFile
-    | undefined
-  let enabledPluginIdentifiers: Record<string, boolean> | undefined
-  try {
-    const homeDir = settingsHome()
-    const fs = installedFs
-    const installState = await import('../../pluginHost/loadPlugins')
-      .then(m => m.loadMarketplaceInstallState({ homeDir }, installedFs))
-    installRegistry = installState.installRegistry
-    const enabledPluginsModule = await import(
-      '../../pluginHost/enabledPlugins'
-    )
-    enabledPluginIdentifiers = await enabledPluginsModule.getEnabledPluginsMap(
-      { homeDir }, fs,
-    )
-  } catch (e) {
-    console.warn(
-      `[createBrowserRuntime] marketplace plugin discovery skipped: ${e instanceof Error ? e.message : String(e)}`,
-    )
-  }
+  // Marketplace-installed plugins are discovered beside the directory-walk ones; non-fatal.
+  const { installRegistry, enabledPluginIdentifiers } = await loadMarketplaceDiscovery(settingsHome, installedFs)
   // Anchored at the project folder, not cwd (`cwdOverride` for a worktree-
   // isolated sub-agent): a project's plugins live in, and are switched by,
   // `<projectRoot>/.velloc/` — the same root `/plugins install` writes and
@@ -802,29 +606,15 @@ export async function createBrowserRuntime(
       : {}),
     supportedSlashCommands,
     pluginLoadResult,
-    // `/plugins enable <name>` of a folder copied in after this session
-    // loaded: the same discovery as boot and reload, read off the disk now.
-    rescanPlugins: async () => {
-      const [loader, enabledStore] = await Promise.all([
-        import('../../pluginHost/loadPlugins'),
-        import('../../pluginHost/enabledPlugins'),
-      ])
-      const pathCtx = { homeDir: settingsHome() }
-      const [installState, enabledIds, allowlist] = await Promise.all([
-        loader.loadMarketplaceInstallState(pathCtx, installedFs).catch(() => undefined),
-        enabledStore.getEnabledPluginsMap(pathCtx, installedFs).catch(() => undefined),
-        loadEffectiveEnabledPlugins({ cwd: resolvedProjectRoot, fs: installedFs, homeDir }),
-      ])
-      return loader.gatherPlugins({
-        cwd: resolvedProjectRoot,
-        runtimeConfig,
-        homeDir,
-        fs: installedFs,
-        enabledPlugins: allowlist ?? enabledPlugins,
-        installRegistry: installState?.installRegistry,
-        enabledPluginIdentifiers: enabledIds,
-      })
-    },
+    // `/plugins enable <name>`: the boot discovery again, read off the disk now.
+    rescanPlugins: () => rescanSessionPlugins({
+      settingsHome,
+      installedFs,
+      resolvedProjectRoot,
+      runtimeConfig,
+      homeDir,
+      enabledPlugins,
+    }),
     // `/plugin` + `/marketplace` resolve `~/.velloc/...` paths; the worker env
     // HOME/USERPROFILE is empty in production (the env-based resolver throws),
     // so thread the bridge-resolved settings home; undefined with no home.
@@ -1193,75 +983,16 @@ export async function createBrowserRuntime(
     promptContextProvider,
     userInputPipeline,
     systemInitEmitter,
-    queryRuntimeDeps: options.queryRuntimeDeps ?? assembleTurnDependencies(
+    queryRuntimeDeps: options.queryRuntimeDeps ?? assembleSessionTurnDependencies({
+      options,
+      resolvedOptions,
       runtimeConfig,
-      {
-        microcompact: createBrowserToolMicrocompact(
-          options.hostManifest?.compactableToolNames,
-        ),
-        // Forward the per-engine `messageCompaction` override so the
-        // autocompact closure sees the same thresholds the QueryEngine
-        // does. Without this, autocompact construction binds the
-        // hard-coded defaults (25 steps / 40K chars) and any override
-        // passed via `BrowserRuntimeOptions.agentLoopSettings` is
-        // silently ignored — that's the bug the e2e compaction test
-        // surfaced.
-        autocompact: createBrowserAutoCompact(
-          options.bridgeTransport,
-          runtimeConfig,
-          options.agentLoopSettings?.messageCompaction,
-          autoCompactWindows,
-        ),
-        autoCompactWindows,
-        // User-triggered `/compact [instructions]`. Bypasses the
-        // step-cadence and char-floor gates that `autocompact` runs
-        // (those gates are for the per-turn auto-trigger, not the
-        // user's explicit ask). Shares `performCompaction` with the
-        // auto path so the wire shape and summary format stay
-        // identical.
-        forceCompact: async ({ messages, mainLoopModel, customInstructions, providerId }) => {
-          return performCompaction({
-            messages,
-            bridgeTransport: options.bridgeTransport,
-            runtimeConfig,
-            mainLoopModel,
-            providerId,
-            trigger: 'manual',
-            customInstructions,
-            requester: {
-              sessionId: resolvedSessionId,
-              spawnerSessionId: (resolvedOptions as { spawnerSessionId?: string }).spawnerSessionId,
-            },
-          })
-        },
-        async saveStrippedResults(strippedResults) {
-          for (const [toolCallId, compactContent] of strippedResults) {
-            await conversationStore.promoteToolCallDetailToOrigin(toolCallId, compactContent)
-          }
-        },
-      },
-      {
-        bridgeTransport: options.bridgeTransport,
-        runtimeConfig,
-        traceLogger: options.traceLogger,
-        turnEndCheck: appSurface
-          ? appSurface.wrapTurnEndCheck(createA2uiTurnEndCheck(metaNote), metaNote)
-          : createA2uiTurnEndCheck(metaNote),
-        queuedAttachmentProvider: params =>
-          collectQueuedAttachmentMessages({
-            messages: params.messages,
-            toolUseContext: params.toolUseContext,
-            runtimeConfig,
-            assistantMessages: params.assistantMessages,
-            querySource: params.querySource,
-            sessionId: resolvedOptions.sessionId,
-            drainTaskNotifications: options.drainTaskNotifications,
-            drainTeamMessages: options.drainTeamMessages,
-            drainInjectMessages: options.drainInjectMessages,
-            takeModFaults,
-          }),
-      },
-    ),
+      autoCompactWindows,
+      resolvedSessionId,
+      conversationStore,
+      appSurface,
+      takeModFaults,
+    }),
     tools,
     readFileCache,
     initialMessages,
@@ -1340,61 +1071,12 @@ export async function createBrowserRuntime(
 
   // APPEND the user-context block from the settings `profile` to the system prompt (additive, unlike
   // `customSystemPrompt`). Read once before the engine is built; a read failure is non-fatal.
-  let effectiveAppendSystemPrompt = coreState.options.appendSystemPrompt
-  try {
-    // First adopter of the settings source hierarchy (gap #3): merge
-    // user/project/local so a project's `.velloc/settings.json` can contribute
-    // profile / output-style / permission rules. With only a user file present
-    // this is identical to the old single-source `readUserLayer`.
-    const { settings } = await loadEffectiveSettings(
-      { homeDir: settingsHome(), projectRoot: coreState.options.projectRoot },
-      installedFs,
-    )
-    const profileBlock = buildProfilePromptBlock(settings.profile)
-    if (profileBlock) {
-      effectiveAppendSystemPrompt = effectiveAppendSystemPrompt
-        ? `${effectiveAppendSystemPrompt}\n\n${profileBlock}`
-        : profileBlock
-    }
-    // Reply style: prepend the active style's `# Reply style:` block (before
-    // the profile block) so the persona frames the rest of the addendum. Read
-    // from the same settings.json; default / unknown style → no block.
-    const outputStyleBlock = resolveOutputStyleSection(settings.outputStyle)
-    if (outputStyleBlock) {
-      effectiveAppendSystemPrompt = effectiveAppendSystemPrompt
-        ? `${outputStyleBlock}\n\n${effectiveAppendSystemPrompt}`
-        : outputStyleBlock
-    }
-    // Seed permission rules per settings source, the default mode, `additionalWorkingDirectories`
-    // and the `disableBypassPermissionsMode` killswitch BEFORE the engine starts. No block → allow-all.
-    const permissionsBySource = await permissionSettings
-    if (permissionsBySource.some(entry => entry.permissions)) {
-      coreState.setAppState(prev => ({
-        ...prev,
-        permissionRules: applyPermissionRulesBySource(
-          prev.permissionRules,
-          permissionsBySource,
-        ),
-      }))
-      // Shadowed-rule warning (spec 5-5-8 — also listed in the
-      // /permissions panel). With ask out-ranking allow (the rule order), an
-      // allow rule under a broader ask/deny rule can never fire — the classic
-      // case being "Always allow" persisting a rule that a configured
-      // whole-tool `ask` keeps shadowing, so the prompt returns every session.
-      // Diagnostics only; never fatal.
-      try {
-        for (const shadowed of findShadowedRules(
-          coreState.getAppState().permissionRules,
-        )) {
-          console.warn(`[permissions] ${shadowed.reason} ${shadowed.fix}`)
-        }
-      } catch {
-        /* diagnostics only */
-      }
-    }
-  } catch {
-    /* keep the caller's appendSystemPrompt — non-fatal, same as the agent overlay */
-  }
+  let effectiveAppendSystemPrompt = await buildSettingsPromptSuffix({
+    coreState,
+    settingsHome,
+    installedFs,
+    permissionSettings,
+  })
   if (appSurface) effectiveAppendSystemPrompt = [effectiveAppendSystemPrompt, appSurface.promptBlock].filter(Boolean).join('\n\n')
 
   // Security: a sub-agent or headless session has no interactive surface, so every would-be
@@ -1466,27 +1148,8 @@ ${teammateAddendum}`
     resolvedMemory = { ...UNTRUSTED_CHILD_MEMORY_SETTINGS }
   }
 
-  // Sub-session model routing (Settings → Session models): seed this realm's
-  // snapshot so the pure tier helpers in engine/contextWindow.ts (the dictionary +
-  // router) see the user's settings — the seam's contract is "no caller
-  // changes", hence a realm snapshot instead of threading. Live updates land
-  // via `QueryEngine.applySessionModelSettings` (worker.applyRuntimeSettings).
-  // Non-fatal: on failure the helpers keep the built-in ladder/census.
-  // `mods.headless` rides the same read (F-25 debt 7).
-  let headlessMods = false
-  try {
-    const { settings } = await loadEffectiveSettings(
-      { homeDir: settingsHome(), projectRoot: coreState.options.projectRoot },
-      installedFs,
-    )
-    setSessionModelSettingsSnapshot({
-      modelTiers: settings.modelTiers,
-      sessionModelPolicy: settings.sessionModelPolicy,
-    })
-    headlessMods = settings.mods?.headless === true
-  } catch {
-    /* non-fatal — built-in ladder/census apply */
-  }
+  // Sub-session model routing snapshot; `mods.headless` rides the same read (F-25).
+  const headlessMods = await seedSessionModelSettings({ coreState, settingsHome, installedFs })
   // The end-of-turn extract fork is opt-in via `autoExtractEnabled` (default
   // off). The `e2eEnableExtractMemories` harness flag exists precisely to
   // exercise that fork in the single-turn extract-memories e2e spec, so it
@@ -1498,6 +1161,8 @@ ${teammateAddendum}`
     resolvedMemory = { ...resolvedMemory, autoExtractEnabled: true }
   }
 
+  // A main UI session never practically runs out of steps; a sub-agent keeps its explicit cap so
+  // runaway background work stays bounded (a persisted `agent.maxTurns` may override it below).
   const mainSessionMaxTurns = options.isSubAgent === true
     ? coreState.options.maxTurns
     : 10000
@@ -1741,38 +1406,7 @@ ${teammateAddendum}`
     })
   }
 
-  // Main UI sessions use a fixed high max-turn cap (10000) so they never
-  // practically run out of steps. Sub-agents keep their explicit caps (e.g.
-  // SpawnAgentTool foreground forks at 25 turns) so runaway background work remains
-  // bounded. For backward compatibility, an old persisted `agent.maxTurns`
-  // override is still applied to sub-agent runtimes only.
-  //
-  // Failure is non-fatal — if settings.json is missing, malformed, or
-  // the file read errors out, the engine keeps the constructor values.
-  try {
-    const homeDir = settingsHome()
-    const { settings } = await readUserLayer(homeDir, installedFs)
-    const agent = settings.agent
-    // Restore the persisted `/debug name` product-name override. Module
-    // state in this realm is lost on worker restart; settings.json is the
-    // source of truth (absent key ⇒ build brand), so assign unconditionally
-    // rather than only-when-present — a cleared key must also clear a stale
-    // in-memory override.
-    setProductNameOverride(agent?.productNameOverride)
-    // Internal-user mode (`/debug internal`) is EXTERNAL unless settings.json
-    // says otherwise. Applied only when the persisted value CHANGED since the
-    // last boot applied it: every runtime boot (each background sub-agent
-    // included) runs this, and an unconditional assign reverted an unsaved
-    // `/debug internal` flip at the next agent spawn.
-    applyPersistedInternalUser(agent?.internalUser === true)
-    if (options.isSubAgent === true && agent && agent.maxTurns !== undefined) {
-      engine.applyRuntimeSettings({ maxTurns: agent.maxTurns })
-    }
-  } catch (e) {
-    console.warn(
-      `[createBrowserRuntime] agent settings overlay skipped: ${e instanceof Error ? e.message : String(e)}`,
-    )
-  }
+  await applyAgentSettingsOverlay({ settingsHome, installedFs, options, engine })
 
   // The composer's "until auto-compact" figure reads the reader without I/O;
   // load it before the runtime is handed out so the first snapshot already

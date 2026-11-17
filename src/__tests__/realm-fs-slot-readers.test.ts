@@ -460,6 +460,10 @@ describe('no realm-slot reads on session paths (source guard)', () => {
     'browser/runtime/sessionMcpPool.ts',
     'browser/runtime/sessionModSlot.ts',
     'browser/runtime/sessionPluginReload.ts',
+    'browser/runtime/sessionMemoryJobs.ts',
+    'browser/runtime/sessionPluginDiscovery.ts',
+    'browser/runtime/sessionSettingsOverlays.ts',
+    'browser/runtime/sessionTurnDependencies.ts',
     'browser/worker/AgentPermissionCoordinator.ts',
     'browser/worker/AgentModelController.ts',
     'browser/worker/AgentRuntimeRecovery.ts',
@@ -500,7 +504,7 @@ describe('no realm-slot reads on session paths (source guard)', () => {
   })
 
   it('runtime boot hands installedFs to every loader it calls', () => {
-    const src = ['createAgentRuntime.ts', 'sessionPluginReload.ts', 'sessionMcpPool.ts']
+    const src = ['createAgentRuntime.ts', 'sessionPluginReload.ts', 'sessionMcpPool.ts', 'sessionPluginDiscovery.ts']
       .map(file => readFileSync(join(__dirname, '..', 'browser/runtime', file), 'utf8'))
       .join('\n')
     for (const loader of [
