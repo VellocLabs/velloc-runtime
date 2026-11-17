@@ -230,7 +230,6 @@ export async function runModTests(options: ModTestOptions): Promise<ModTestRepor
   }
 }
 
-/** The report as text, one line per case. */
 const FILE_ERROR_TEXT: Record<ModTestFileErrorKind, (detail: string) => string> = {
   compile: detail => `it did not compile: ${detail}`,
   noWorker: detail => `no worker to run it in: ${detail}`,
@@ -244,6 +243,7 @@ const FILE_ERROR_TEXT: Record<ModTestFileErrorKind, (detail: string) => string> 
 export const modTestFileErrorText = (file: ModTestFile): string =>
   FILE_ERROR_TEXT[file.errorKind ?? 'run'](file.error ?? '')
 
+/** The report as text, one line per case. */
 export function formatModTestReport(report: ModTestReport): string {
   const lines: string[] = []
   if (report.files.length === 0) return `No test files (*.test.ts, *.test.js, …) under ${report.folder}.`
