@@ -84,6 +84,7 @@ import { MCP_AUTH_ACTION_SCOPES } from '../../mcp/oauth/mcpAuthProtocol'
 import { buildRegisteredApp, runRegisteredAppAction, viewRegisteredApp } from '../../mods/app/appSurfaceRegistry'
 import {
   isModsAppActionPayload,
+  isModsAppPagePayload,
   isModsAppPressPayload,
   isModsAppViewPayload,
   isModsBuildAppPayload,
@@ -95,7 +96,10 @@ import {
   type ModsAppActionResult,
   type ModsBuildAppPayload,
   type ModsBuildAppResult,
+  type ModsAppPagePayload,
+  type ModsAppPageResult,
 } from '../runtimeProtocol/modApps'
+import { readAppPage } from '../../mods/app/appPage'
 import type { TopicBroker } from './TopicBroker'
 import type { ConnectionInfo, SnapshotPage, TopicProvider } from './types'
 
@@ -284,6 +288,8 @@ export function registerModsCapability(
     appView?: (sessionId: string, client: string, layout: ModsAppViewPayload['layout']) => void
     /** `mods.appPress`: offer a press on an app's icon to its module; defaults to the realm's seated dispatch. */
     appPress?: (appId: string, trigger: ModsAppPressPayload['trigger'], item: string | undefined, client: string) => Promise<AppPressIntent | null>
+    /** `mods.appPage`: the page of an app drawn as one sandboxed page; defaults to reading the plugin's file. */
+    appPage?: (appId: string) => Promise<ModsAppPageResult>
   } = {},
 ): { publish(): void; dispose(): void } {
   const getState = options.getState ?? modsStatePayload
@@ -345,8 +351,13 @@ export function registerModsCapability(
         scope: MODS_ACTION_SCOPES.appPress,
         guard: isModsAppPressPayload,
       },
+      // Not session-bound for the same reason as `appPress`: it names an app, not a session.
+      appPage: {
+        scope: MODS_ACTION_SCOPES.appPage,
+        guard: isModsAppPagePayload,
+      },
     },
-    handle: async request => {
+    handle: async (request, context) => {
       switch (request.route.act) {
         case 'reload':
           options.reloadAll?.()
@@ -493,6 +504,10 @@ export function registerModsCapability(
           const { appId, trigger, item } = request.payload as ModsAppPressPayload
           const intent = await (options.appPress ?? dispatchAppPress)(appId, trigger, item, request.conn.connectionId)
           return (intent && appPressIntentFor(intent, request.conn) ? { intent } : {}) satisfies ModsAppPressResult
+        }
+        case 'appPage': {
+          const { appId } = request.payload as ModsAppPagePayload
+          return options.appPage ? options.appPage(appId) : readAppPage(appId, context.fs)
         }
         case 'setOptions': {
           const payload = request.payload as ModsSetOptionsPayload

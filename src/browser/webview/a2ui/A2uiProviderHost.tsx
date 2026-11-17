@@ -6,7 +6,9 @@
 import {
   Component,
   createContext,
+  lazy,
   memo,
+  Suspense,
   useContext,
   useEffect,
   useMemo,
@@ -53,6 +55,12 @@ type SurfaceActionHandler = (action: ActionPayload) => void
 type VellocProcessor = MessageProcessor<ReactCatalogComponent>
 
 const ProcessorContext = createContext<VellocProcessor | null>(null)
+
+// An app drawn as one plugin page loads its frame code only when such a pane opens (F-42).
+const LazyAppPageFrame = lazy(async () => {
+  const m = await import('../apps/AppPageFrame')
+  return { default: m.AppPageFrame }
+})
 
 // Text renders simple Markdown. Security: the renderer sanitises its HTML
 // (DOMPurify); it loads as its own chunk on the first Text drawn.
@@ -282,6 +290,16 @@ function A2uiPanePortal({ sessionId, board }: { sessionId: string; board: AppBoa
   }, [filled, sessionId])
 
   if (!shown || (!selectedSurfaceId && !board)) return null
+  if (board?.readPage) {
+    return createPortal(
+      <div data-slot="a2ui-pane-content" className="flex h-full min-h-0 flex-col">
+        <Suspense fallback={null}>
+          <LazyAppPageFrame readPage={board.readPage} />
+        </Suspense>
+      </div>,
+      shown,
+    )
+  }
   const reload =
     showsBar && board && actionsSlot ? createPortal(<AppReloadButton board={board} busy={busy} />, actionsSlot) : null
   const body = createPortal(

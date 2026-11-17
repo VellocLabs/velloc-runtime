@@ -861,6 +861,8 @@ export const ja: Messages = {
   'apps.buildFailed': 'アプリのビルドに失敗しました。',
   'apps.dataFileError': 'アプリのデータファイルを読み込めなかったため、前回のデータを表示しています。',
   'apps.reload': 'アプリを再読み込み',
+  'apps.pageFrame': 'アプリのページ',
+  'apps.pageFailed': 'アプリのページを開けませんでした。',
   'topbar.pluginItemWaiting': 'このプラグインは先にプロバイダーの設定が必要です',
   'topbar.pluginItemUnavailable': 'この項目は利用できなくなりました',
   'topbar.pluginItemNoSession': 'この項目を使うにはセッションを開いてください',

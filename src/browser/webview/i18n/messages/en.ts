@@ -898,6 +898,8 @@ export const en = {
   'apps.buildFailed': 'The app did not build.',
   'apps.dataFileError': "The app's data file could not be read, so its last data is shown.",
   'apps.reload': 'Reload app',
+  'apps.pageFrame': 'App page',
+  'apps.pageFailed': 'The app page could not be opened.',
   'topbar.pluginItemWaiting': 'This plugin needs its provider set up first',
   'topbar.pluginItemUnavailable': 'This item is no longer available',
   'topbar.pluginItemNoSession': 'Open a session to use this item',

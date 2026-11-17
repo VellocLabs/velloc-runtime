@@ -65,6 +65,15 @@ export type AppViewLayout = 'full' | 'beside'
 /** `mods.appView`: this client shows the session's app in `layout`, or no longer shows it (null). */
 export type ModsAppViewPayload = { sessionId: string; layout: AppViewLayout | null }
 
+/** `mods.appPage`: the page of an app whose pane is one sandboxed page (F-42). */
+export type ModsAppPagePayload = { appId: string }
+
+/**
+ * The page's HTML and the topics its frame may subscribe to, or why it could
+ * not be read. The page runs only inside a sandboxed frame on a capped port.
+ */
+export type ModsAppPageResult = { ok: true; html: string; topics: string[] } | { ok: false; message: string }
+
 /** How the person pressed an app's topbar icon: the icon, its context menu, or an item of a menu the module answered with. */
 export const APP_PRESS_TRIGGERS = ['primary', 'context', 'menu'] as const
 export type AppPressTrigger = (typeof APP_PRESS_TRIGGERS)[number]
@@ -218,6 +227,10 @@ export function readAppPressIntent(value: unknown): AppPressIntent | null {
     default:
       return null
   }
+}
+
+export function isModsAppPagePayload(value: unknown): value is ModsAppPagePayload {
+  return isRecord(value) && typeof value.appId === 'string' && value.appId.length > 0 && value.appId.length <= 64
 }
 
 export function isModsAppViewPayload(value: unknown): value is ModsAppViewPayload {

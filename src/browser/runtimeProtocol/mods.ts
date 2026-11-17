@@ -88,6 +88,10 @@ export const MODS_ACTION_SCOPES = {
    *  module, which answers what the press should do: runs the plugin's own
    *  handler — `control`. */
   appPress: 'control',
+  /** The page of an app drawn as one sandboxed page: its HTML and the topics
+   *  its frame may read. A plugin's own file, read as the manifest names it,
+   *  and handed only to a frame on an `observe` port — `observe`. */
+  appPage: 'observe',
 } as const satisfies Record<string, ScopeMode>
 export type ModsAction = keyof typeof MODS_ACTION_SCOPES
 

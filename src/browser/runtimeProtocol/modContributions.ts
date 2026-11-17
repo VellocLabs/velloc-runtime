@@ -77,6 +77,8 @@ export type ContributedApp = {
   /** The http MCP server URLs its plugin declares, for a sign-in at the press (F-10); absent when none. */
   signInUrls?: string[]
   icon?: ContributionIcon
+  /** Its pane is one sandboxed page (`mods.appPage`) instead of surfaces (F-42); absent for a surface app. */
+  page?: true
 }
 
 /** A plugin the person switched on whose `requires` is not met. */

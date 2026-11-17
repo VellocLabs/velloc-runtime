@@ -12,6 +12,7 @@ import {
   modsAppTopic,
   type AppSurfaceState,
   type ModsAppActionResult,
+  type ModsAppPageResult,
   type ModsBuildAppResult,
 } from '../../runtimeProtocol/modApps'
 import { useModContributions } from '../mods/modContributionsView'
@@ -91,6 +92,8 @@ export type AppBoard = {
   reload(): Promise<ModsBuildAppResult | undefined>
   /** `mods.appAction`: offers a surface action to the app's background module; undefined when there is no connection. */
   act(action: string, context: unknown): Promise<ModsAppActionResult | undefined>
+  /** Set when the app's pane is one sandboxed page (F-42): `mods.appPage` for it. */
+  readPage?: () => Promise<ModsAppPageResult | undefined>
 }
 
 /**
@@ -103,7 +106,9 @@ export function useAppBoard(
   templateType: string | undefined,
 ): AppBoard | undefined {
   const { apps } = useModContributions()
-  const isApp = templateType !== undefined && (apps ?? []).some(app => app.type === templateType)
+  const app = templateType === undefined ? undefined : (apps ?? []).find(entry => entry.type === templateType)
+  const isApp = app !== undefined
+  const pageAppId = app?.page ? app.appId : undefined
   const state = useAppSurface(runtimeConnection, sessionId, isApp)
   const reload = useCallback(async (): Promise<ModsBuildAppResult | undefined> => {
     if (!runtimeConnection || !sessionId) return undefined
@@ -118,6 +123,14 @@ export function useAppBoard(
     },
     [runtimeConnection, sessionId],
   )
-  const board = useMemo(() => ({ state, reload, act }), [state, reload, act])
+  const readPage = useCallback(async (): Promise<ModsAppPageResult | undefined> => {
+    if (!runtimeConnection || pageAppId === undefined) return undefined
+    const connection = await runtimeConnection()
+    return connection.request<ModsAppPageResult>('mods.appPage', { appId: pageAppId })
+  }, [runtimeConnection, pageAppId])
+  const board = useMemo(
+    () => ({ state, reload, act, ...(pageAppId !== undefined ? { readPage } : {}) }),
+    [state, reload, act, pageAppId, readPage],
+  )
   return isApp ? board : undefined
 }

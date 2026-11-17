@@ -856,6 +856,8 @@ export const zh: Messages = {
   'apps.buildFailed': '应用构建失败。',
   'apps.dataFileError': '无法读取应用的数据文件，正在显示上一次的数据。',
   'apps.reload': '重新加载应用',
+  'apps.pageFrame': '应用页面',
+  'apps.pageFailed': '无法打开应用页面。',
   'topbar.pluginItemWaiting': '请先设置此插件的服务商',
   'topbar.pluginItemUnavailable': '此项已不可用',
   'topbar.pluginItemNoSession': '请先打开一个会话再使用此项',

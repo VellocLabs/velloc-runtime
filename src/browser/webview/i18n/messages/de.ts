@@ -867,6 +867,8 @@ export const de: Messages = {
   'apps.buildFailed': 'Die App konnte nicht gebaut werden.',
   'apps.dataFileError': 'Die Datendatei der App konnte nicht gelesen werden, daher werden die letzten Daten angezeigt.',
   'apps.reload': 'App neu laden',
+  'apps.pageFrame': 'App-Seite',
+  'apps.pageFailed': 'Die App-Seite konnte nicht geöffnet werden.',
   'topbar.pluginItemWaiting': 'Für dieses Plugin muss zuerst sein Anbieter eingerichtet werden',
   'topbar.pluginItemUnavailable': 'Dieses Element ist nicht mehr verfügbar',
   'topbar.pluginItemNoSession': 'Öffne eine Sitzung, um dieses Element zu verwenden',

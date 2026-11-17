@@ -868,6 +868,8 @@ export const es: Messages = {
   'apps.buildFailed': 'No se pudo compilar la aplicación.',
   'apps.dataFileError': 'No se pudo leer el archivo de datos de la aplicación, así que se muestran los últimos datos.',
   'apps.reload': 'Recargar la aplicación',
+  'apps.pageFrame': 'Página de la aplicación',
+  'apps.pageFailed': 'No se pudo abrir la página de la aplicación.',
   'topbar.pluginItemWaiting': 'Este complemento necesita que configures antes su proveedor',
   'topbar.pluginItemUnavailable': 'Este elemento ya no está disponible',
   'topbar.pluginItemNoSession': 'Abre una sesión para usar este elemento',

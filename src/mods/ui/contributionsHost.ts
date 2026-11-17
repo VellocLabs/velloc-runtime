@@ -460,6 +460,7 @@ export class ModUiContributionsHost {
             title: template.decl.title,
             ...(signInUrls.length > 0 ? { signInUrls } : {}),
             ...(icon ? { icon } : {}),
+            ...(template.decl.app.page ? { page: true as const } : {}),
           })
         }
         const welcome = this.assets.get(plugin.name)?.welcome.get(template.key)

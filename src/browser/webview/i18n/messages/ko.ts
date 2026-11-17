@@ -858,6 +858,8 @@ export const ko: Messages = {
   'apps.buildFailed': '앱을 빌드하지 못했습니다.',
   'apps.dataFileError': '앱의 데이터 파일을 읽을 수 없어 마지막 데이터를 표시합니다.',
   'apps.reload': '앱 다시 불러오기',
+  'apps.pageFrame': '앱 페이지',
+  'apps.pageFailed': '앱 페이지를 열 수 없습니다.',
   'topbar.pluginItemWaiting': '이 플러그인은 먼저 제공업체를 설정해야 합니다',
   'topbar.pluginItemUnavailable': '이 항목은 더 이상 사용할 수 없습니다',
   'topbar.pluginItemNoSession': '이 항목을 사용하려면 세션을 여세요',

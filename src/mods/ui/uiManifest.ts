@@ -59,6 +59,16 @@ export type PluginAppDecl = {
   backgroundFs?: FolderScopes
   /** The background module may start headless agent runs in the app's folder (`$.app.analyze`). */
   backgroundAgent?: true
+  /** The pane is this one page in a sandboxed frame instead of surfaces built from `entry` (F-42). */
+  page?: AppPageDecl
+}
+
+/** A plugin page drawn in a sandboxed frame that reads the runtime through a capped port. */
+export type AppPageDecl = {
+  /** Plugin-relative `.html` file, `./`-prefixed. */
+  file: string
+  /** The topics the page asks to read; the host keeps only those it allows. */
+  topics: string[]
 }
 
 export type PluginTopbarItemDecl = {
@@ -92,6 +102,8 @@ const APP_PATH_MAX = 200
 const LOCAL_ACTION = /^[A-Za-z0-9_-]{1,64}$/
 const LOCAL_ACTIONS_MAX = 16
 const SEED_VERSION_MAX = 1_000_000
+const PAGE_TOPICS_MAX = 8
+const PAGE_TOPIC = /^[a-z][a-z0-9-]{0,31}$/
 /** The entry file of an app that names none. */
 export const APP_ENTRY_DEFAULT = 'app.a2ui'
 
@@ -224,6 +236,17 @@ function readApp(value: unknown, label: string, appId: string, bad: Bad): Plugin
       else bad(`${label}.background.agent: expected true or false`)
     }
   }
+  let page: AppPageDecl | undefined
+  if (value.page !== undefined) {
+    const declared = value.page
+    const file = isRecord(declared) ? declared.file : undefined
+    const topics = isRecord(declared) ? declared.topics : undefined
+    const fileOk = typeof file === 'string' && insidePlugin(file) && /\.html$/i.test(file)
+    const topicsOk =
+      Array.isArray(topics) && topics.length <= PAGE_TOPICS_MAX && topics.every(topic => typeof topic === 'string' && PAGE_TOPIC.test(topic))
+    if (fileOk && topicsOk) page = { file: file as string, topics: [...new Set(topics as string[])] }
+    else bad(`${label}.page: expected { file: "./<path>.html", topics: [at most ${PAGE_TOPICS_MAX} topic names] }`)
+  }
   if (!seed || !entry || data === null) return null
   return {
     seed,
@@ -234,6 +257,7 @@ function readApp(value: unknown, label: string, appId: string, bad: Bad): Plugin
     ...(background ? { background } : {}),
     ...(background && backgroundFs ? { backgroundFs } : {}),
     ...(background && backgroundAgent ? { backgroundAgent: true as const } : {}),
+    ...(page ? { page } : {}),
   }
 }
 

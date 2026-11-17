@@ -868,6 +868,8 @@ export const fr: Messages = {
   'apps.buildFailed': "L'application n'a pas pu être construite.",
   'apps.dataFileError': "Le fichier de données de l'application est illisible, les dernières données sont affichées.",
   'apps.reload': "Recharger l'application",
+  'apps.pageFrame': "Page de l'application",
+  'apps.pageFailed': "Impossible d'ouvrir la page de l'application.",
   'topbar.pluginItemWaiting': "Cette extension a d'abord besoin que son fournisseur soit configuré",
   'topbar.pluginItemUnavailable': "Cet élément n'est plus disponible",
   'topbar.pluginItemNoSession': 'Ouvrez une session pour utiliser cet élément',

@@ -34,6 +34,7 @@ import {
   createBrowserRuntimeSharedWorker,
   type BrowserWorkerClientTransport,
 } from '../webview/BrowserRuntimeClient'
+import { provideObserverPorts } from '../runtimeClient/observerPorts'
 import {
   connectRuntimeOverSharedWorker,
   createHostBridgeTransportOverConnection,
@@ -760,6 +761,7 @@ async function prepareNexusBoot(
   // the handshake is not awaited (the seam queues until `welcome`).
   const bootEnv = (initPayload as { env?: Record<string, string> }).env ?? {}
   const scopeCeiling = readRuntimeScopeCeilingFromUrl()
+  provideObserverPorts(sharedWorkerPort, bootEnv.HOME ?? bootEnv.USERPROFILE ?? '')
   const connectToRuntime = (ceiling: typeof scopeCeiling) =>
     connectRuntimeOverSharedWorker(sharedWorkerPort, {
       homeDir: bootEnv.HOME ?? bootEnv.USERPROFILE ?? '',
