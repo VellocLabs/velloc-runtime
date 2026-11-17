@@ -142,6 +142,24 @@ describe('runModTests', () => {
     expect(formatModTestReport(report)).toContain(`✗ counter > this one fails: expected: "hi [x]" to be "nope" (${ROOT}/hooks/register.test.ts:38)`)
   })
 
+  it('names a failure at its source line when the stack names the module by its sourceURL', async () => {
+    const renamed = [
+      `import { test, expect } from '${KIT}'`,
+      '',
+      "test('renamed', () => {",
+      '  try {',
+      '    expect(1).toBe(2)',
+      '  } catch (error) {',
+      '    const e = error as Error',
+      "    e.stack = String(e.stack).replace(/data:text\\/javascript;base64,[A-Za-z0-9+\\/=]*/g, 'velloc-mod-module.js')",
+      '    throw e',
+      '  }',
+      '})',
+    ].join('\n')
+    const report = await runModTests({ folder: ROOT, fs: fsOf({ [`${ROOT}/hooks/renamed.test.ts`]: renamed }), openWorker })
+    expect(report.files[0]!.tests[0]!.at).toEqual({ file: `${ROOT}/hooks/renamed.test.ts`, line: 5 })
+  })
+
   it('a test file that reaches the network does not compile; nothing runs', async () => {
     const fs = fsOf({
       [`${ROOT}/hooks/register.ts`]: 'export function register() {}',

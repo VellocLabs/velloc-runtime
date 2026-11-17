@@ -477,7 +477,8 @@ function loadPlugin(register, setup) {
 
 // ── the run ──
 
-const FRAME = /data:text\/javascript;base64,[A-Za-z0-9+/=]*:(\d+):(\d+)/g;
+// The module is named by its `sourceURL` in a mod worker, by its `data:` URL elsewhere.
+const FRAME = /(?:data:text\/javascript;base64,[A-Za-z0-9+/=]*|velloc-mod-module\.js):(\d+):(\d+)/g;
 
 function framesOf(error) {
   const stack = error && typeof error.stack === "string" ? error.stack : "";
