@@ -462,6 +462,8 @@ function fakeOffers(options: {
   fail?: boolean
   about?: unknown
   aboutFails?: boolean
+  aboutHangs?: boolean
+  marketRepo?: () => string
   servers?: Record<string, NexusMcpServerConfig>
   installFails?: boolean
   removeFails?: boolean
@@ -475,7 +477,9 @@ function fakeOffers(options: {
     fetchJson: async url => {
       calls.push(`fetch ${url}`)
       if (url.startsWith('https://api.github.com/')) {
+        if (options.aboutHangs) return new Promise(() => {})
         if (options.aboutFails) throw new Error('HTTP 403')
+        if (options.marketRepo) return { description: `About ${url.slice('https://api.github.com/repos/'.length)}` }
         return options.about ?? {}
       }
       if (options.fail) throw new Error('offline')
@@ -483,7 +487,7 @@ function fakeOffers(options: {
       return { data: options.records?.[filter] ?? [] }
     },
     listMarketplaces: async () => [
-      { name: 'official-market', source: { source: 'github', repo: 'acme/market' }, isOfficial: true },
+      { name: 'official-market', source: { source: 'github', repo: options.marketRepo?.() ?? 'acme/market' }, isOfficial: true },
     ],
     listMarketplaceListings: async () => [
       { name: 'notion', source: { source: 'url', url: 'https://github.com/makenotion/notion-plugin.git' }, installed: false },
@@ -861,6 +865,32 @@ describe('customizePage service — the page item', () => {
     await r.call('describeMarketplace', { marketplace: 'official-market' })
     expect(o.calls.filter(c => c.startsWith('fetch'))).toEqual(['fetch https://api.github.com/repos/acme/market'])
     await expect(r.call('describeMarketplace', { marketplace: 'not-added' })).resolves.toEqual({ plugins: {} })
+  })
+
+  it('an About lookup that never answers stops waiting, and the details still arrive', async () => {
+    vi.useFakeTimers()
+    try {
+      const o = fakeOffers({ aboutHangs: true })
+      const r = rig(() => fakeHost().host, o.deps)
+      const answer = r.call('describeMarketplace', { marketplace: 'official-market' })
+      await vi.advanceTimersByTimeAsync(5_000)
+      await expect(answer).resolves.toEqual({ plugins: {} })
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('a marketplace name added again from another repository shows that repository\'s About', async () => {
+    let repo = 'acme/market'
+    const o = fakeOffers({ marketRepo: () => repo })
+    const r = rig(() => fakeHost().host, o.deps)
+    await expect(r.call('describeMarketplace', { marketplace: 'official-market' })).resolves.toMatchObject({
+      about: 'About acme/market',
+    })
+    repo = 'other-org/market'
+    await expect(r.call('describeMarketplace', { marketplace: 'official-market' })).resolves.toMatchObject({
+      about: 'About other-org/market',
+    })
   })
 
   it('a failed or empty About lookup leaves the answer without one, and a failed details read still throws', async () => {

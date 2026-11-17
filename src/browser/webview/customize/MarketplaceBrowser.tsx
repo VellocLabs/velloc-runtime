@@ -19,7 +19,7 @@ import {
 } from './ItemDetailsSections'
 import { installKey, type MarketplaceShelf, type MarketplaceShelvesView } from './useMarketplaceCatalog'
 
-/** Cards a marketplace's section shows before "Show all": three rows of three. */
+/** Cards a marketplace's section shows before "Show all": four rows of two. */
 export const SECTION_LIMIT = 8
 
 /** The page column: as wide as the directory's, centred, with the same side margins. */

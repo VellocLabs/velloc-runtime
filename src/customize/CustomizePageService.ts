@@ -29,7 +29,7 @@ import {
   type DirectoryPageItem,
 } from './directoryOffer'
 import { DIRECTORY_API_ORIGIN, DIRECTORY_SITE_HOST } from './directorySite'
-import { describeMarketplaceAbout } from './marketplaceAbout'
+import { describeRepositoryAbout, marketplaceRepo } from './marketplaceAbout'
 
 /** The page-script calls the service makes (the native `pageScript` primitive). */
 export type CustomizePageScript = {
@@ -59,8 +59,10 @@ export type CustomizePageHost = {
 export type CustomizePageErrorCode = 'host_unavailable' | 'not_shown' | 'no_item'
 
 const MARKETPLACE_DESCRIPTION_TTL_MS = 10 * 60_000
-/** A marketplace's About is kept an hour, a failed lookup included: GitHub limits anonymous reads. */
+/** A repository's About is kept an hour, a failed lookup included: GitHub limits anonymous reads. */
 const MARKETPLACE_ABOUT_TTL_MS = 60 * 60_000
+/** An About lookup slower than this counts as failed, so it never holds back the directory's details. */
+const MARKETPLACE_ABOUT_WAIT_MS = 5_000
 /** The same address opens in a window at most once in this long. */
 const OPEN_ELSEWHERE_REPEAT_MS = 5_000
 /** At most this many pages open elsewhere within `OPEN_ELSEWHERE_LIMIT_MS`, whatever their addresses. */
@@ -239,11 +241,13 @@ export class CustomizePageService {
     return value
   }
 
-  private about(marketplace: string, offers: DirectoryOfferDeps): Promise<string | undefined> {
-    const kept = this.abouts.get(marketplace)
+  private async about(marketplace: string, offers: DirectoryOfferDeps): Promise<string | undefined> {
+    const repo = await marketplaceRepo(marketplace, offers)
+    if (!repo) return undefined
+    const kept = this.abouts.get(repo)
     if (kept && Date.now() - kept.at < MARKETPLACE_ABOUT_TTL_MS) return kept.value
-    const value = describeMarketplaceAbout(marketplace, offers).catch(() => undefined)
-    this.abouts.set(marketplace, { at: Date.now(), value })
+    const value = settleWithin(describeRepositoryAbout(repo, offers), MARKETPLACE_ABOUT_WAIT_MS)
+    this.abouts.set(repo, { at: Date.now(), value })
     return value
   }
 
@@ -568,6 +572,19 @@ async function connectorUnsupported(
   try {
     const support = await Promise.race([deps.checkConnector(target.config.url).catch(() => 'unknown' as const), timeout])
     return support === 'needs_registered_client' ? support : undefined
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
+/** `lookup`'s answer, or undefined when it fails or has not settled within `ms`. */
+async function settleWithin<T>(lookup: Promise<T>, ms: number): Promise<T | undefined> {
+  let timer: ReturnType<typeof setTimeout> | undefined
+  const timeout = new Promise<undefined>(resolve => {
+    timer = setTimeout(() => resolve(undefined), ms)
+  })
+  try {
+    return await Promise.race([lookup.catch(() => undefined), timeout])
   } finally {
     clearTimeout(timer)
   }

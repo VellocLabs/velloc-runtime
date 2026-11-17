@@ -309,7 +309,6 @@ export function CustomizeScreen({
   )
 }
 
-/** A row of the left list; with `onRemove`, a remove button shows on hover, focus, or selection. */
 /** The GitHub avatar of the account a marketplace comes from, or the store icon when it has none or the image fails. */
 function MarketplaceIcon({ iconUrl }: { iconUrl: string | undefined }) {
   const [broken, setBroken] = React.useState(false)
@@ -328,6 +327,7 @@ function MarketplaceIcon({ iconUrl }: { iconUrl: string | undefined }) {
   )
 }
 
+/** A row of the left list; with `onRemove`, a remove button shows on hover, focus, or selection. */
 function MarketRow({
   testId,
   name,

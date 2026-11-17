@@ -22,24 +22,6 @@ const LINK_LABELS: Array<{ key: keyof NonNullable<DirectoryItemDetails['links']>
   { key: 'privacy', label: 'customize.detail.links.privacy' },
 ]
 
-/** The parts an item brings, grouped by kind: one count per kind. */
-export function PartCounts({ parts }: { parts: DirectoryComponent[] | undefined }) {
-  const t = useT()
-  if (!parts?.length) return null
-  return (
-    <span className="flex flex-wrap gap-1.5">
-      {COMPONENT_GROUPS.map(group => {
-        const count = parts.filter(p => p.type === group.type).length
-        return count ? (
-          <Badge key={group.type} variant="outline" className="font-normal text-muted-foreground">
-            {t(group.label)} · {count}
-          </Badge>
-        ) : null
-      })}
-    </span>
-  )
-}
-
 /** "Verified" beside a name, for an item the directory reviewed; `compact` shows the badge alone. */
 export function VerifiedMark({ details, compact }: { details: DirectoryItemDetails | undefined; compact?: boolean }) {
   const t = useT()
@@ -51,7 +33,7 @@ export function VerifiedMark({ details, compact }: { details: DirectoryItemDetai
         data-testid="customize-verified"
         aria-label={t('customize.detail.verified')}
         title={t('customize.detail.verifiedHint')}
-        className="inline-flex shrink-0 text-muted-foreground"
+        className="relative inline-flex shrink-0 text-muted-foreground"
       >
         <BadgeCheckIcon className="size-4" />
       </span>
