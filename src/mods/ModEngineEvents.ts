@@ -4,7 +4,7 @@
  * events, session messages, agents and child sessions, skills and compaction.
  * Each raise checks the slot is live, dispatches the chain and validates its
  * answer; a failing chain falls back to the engine's own behaviour.
- * ModRuntime extends this with the slot's lifecycle, UI and commands.
+ * ModUiSurface extends this with the slot's UI.
  */
 
 import type { DispatchContext, TraceEntry } from './modTypes'
@@ -12,7 +12,7 @@ import { skillPromptInputProblem, type SkillPromptInput } from './toolCallEvent'
 import { answerAuthorsOf } from './chainAuthors'
 import type { DispatchedStream } from './streamChain'
 import type { ModDispatcher } from './ModDispatcher'
-import type { ModRuntimeOptions } from './ModRuntime'
+import type { ModRuntimeOptions } from './modRuntimeContract'
 import type { ModUiTurnNote } from './modUi'
 import { errorMessage } from './chainRules'
 import {

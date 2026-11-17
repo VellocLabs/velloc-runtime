@@ -8,7 +8,7 @@ import { errorMessage } from './chainRules'
 import { refuseModuleSource } from './modAdmission'
 import type { ModBuildStore, ModCompileFn } from './modBuildStore'
 import type { ModCompileGraph } from './modCompiler'
-import type { ModModuleRef } from './ModRuntime'
+import type { ModModuleRef } from './modRuntimeContract'
 import type { ModUses } from './modScan'
 
 /** The module's text could not be read: environmental (a file lock, a plugin

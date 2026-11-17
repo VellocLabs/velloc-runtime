@@ -4,7 +4,7 @@
  * compiled at build time, never polled by the dev loop).
  */
 
-import type { ModModuleRef } from './ModRuntime'
+import type { ModModuleRef } from './modRuntimeContract'
 
 export type BuiltinModDefinition = {
   /** The plugin's name, as the chain and the state rows show it. */

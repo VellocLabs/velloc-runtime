@@ -10,7 +10,7 @@ import type { RuntimeFs } from '../utils/fs/runtimeFs'
 import { isAbsoluteRuntimePath, joinRuntimePath, normalizeRuntimePath, relativeRuntimePath } from '../utils/runtimePaths'
 import { MODS_ABI } from './modAdmission'
 import type { ModCompileGraph, ModCompileRecord } from './modCompiler'
-import type { ModModuleRef } from './ModRuntime'
+import type { ModModuleRef } from './modRuntimeContract'
 import type { ModUses } from './modScan'
 import { isModLineMap } from './modLineMap'
 

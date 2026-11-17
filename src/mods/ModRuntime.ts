@@ -9,6 +9,8 @@
 import { ModDispatcher, type HookFailureReport } from './ModDispatcher'
 import { stateKeyOf } from './ModUiSurface'
 import { ModPluginNouns } from './ModPluginNouns'
+import { errorMessage } from './chainRules'
+import { isRecord } from './modNounKit'
 import { pluginRootOf, type Loaded, type Seat } from './modSeat'
 import {
   MOD_RESPAWN_BACKOFF_MS,
@@ -95,10 +97,6 @@ function compileErrorWhere(error: unknown): Partial<ModSourceLocation> | undefin
   const { file, line } = (error ?? {}) as { file?: unknown; line?: unknown }
   if (typeof file !== 'string') return undefined
   return typeof line === 'number' ? { file, line } : { file }
-}
-
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error)
 }
 
 /**
@@ -1346,10 +1344,6 @@ export class ModRuntime extends ModPluginNouns implements TurnExtensions {
       this.dispatcher.unregister(seat.key)
     }
   }
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
 function describeFailure(report: HookFailureReport): string {

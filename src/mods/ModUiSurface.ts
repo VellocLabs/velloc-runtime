@@ -3,7 +3,7 @@
  * person's presses and typings routed back to their handlers, panes, the
  * page and prompt-box round trips, the prompt box's edit / autocomplete /
  * change hooks, the `$.state` values each drawing read, and `$.ui.invalidate`.
- * ModRuntime extends this with the slot's lifecycle and commands.
+ * ModTurnRaises extends this with the turn-seam raises and commands.
  */
 
 import type { DispatchContext, TraceEntry } from './modTypes'

@@ -5,7 +5,7 @@
  * without mods pays nothing.
  */
 
-import type { ModModuleRef } from './ModRuntime'
+import type { ModModuleRef } from './modRuntimeContract'
 import type { PluginUserConfigField } from '../pluginHost/pluginModel'
 import { optionsLoadError, publicOptions, settleOptions } from './optionValues'
 import { builtinModRefs } from './builtinMods'
