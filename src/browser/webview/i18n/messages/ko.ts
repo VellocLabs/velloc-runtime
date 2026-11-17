@@ -2084,6 +2084,8 @@ export const ko: Messages = {
   'settings.remoteAccess.recommendedBadge': '권장',
   'settings.remoteAccess.addressThisDeviceName': '이 디바이스 전용',
   'settings.remoteAccess.copyLinkPrimary': '연결 링크 복사',
+  'settings.remoteAccess.qrLabel': '액세스 링크 QR 코드',
+  'settings.remoteAccess.qrEnlarge': 'QR 코드 크게 보기',
   'settings.remoteAccess.securityTitle': '액세스 보안',
   'settings.remoteAccess.securityNoteTitle': '액세스 링크는 비밀번호와 같습니다',
   'settings.remoteAccess.devicesTitle': '연결된 디바이스',

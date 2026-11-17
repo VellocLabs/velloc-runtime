@@ -2062,6 +2062,8 @@ export const zh: Messages = {
   'settings.remoteAccess.recommendedBadge': '推荐',
   'settings.remoteAccess.addressThisDeviceName': '仅限本设备',
   'settings.remoteAccess.copyLinkPrimary': '复制连接链接',
+  'settings.remoteAccess.qrLabel': '访问链接的二维码',
+  'settings.remoteAccess.qrEnlarge': '显示大二维码',
   'settings.remoteAccess.securityTitle': '访问安全',
   'settings.remoteAccess.securityNoteTitle': '访问链接相当于密码',
   'settings.remoteAccess.devicesTitle': '已连接设备',

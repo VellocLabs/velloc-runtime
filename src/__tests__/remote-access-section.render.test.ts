@@ -10,6 +10,7 @@ import {
 } from '../browser/webview/settings/sections/RemoteAccessSection'
 import type { RemoteAccessState } from '../browser/runtimeHub/remoteAccessDriver'
 import type { RemoteState } from '../browser/runtimeHub/remoteCapability'
+import { qrModules, qrPath } from '../browser/webview/remote/QrCodeSvg'
 
 /**
  * RemoteAccessSection: all state from the `remote/state` topic; disabled shows only the master toggle; the first
@@ -301,6 +302,34 @@ describe('RemoteAccessSection', () => {
     }
     // Every address keeps its own copy button.
     expect(links.querySelectorAll('[data-testid="remote-access-copy-link"]').length).toBe(4)
+  })
+
+  it('draws the recommended link as a QR code before its copy button, and opens it full size', async () => {
+    renderSection({
+      relay: 'off',
+      pairings: [makePairing()],
+      access: makeAccess({ enabled: true, state: 'listening' }),
+    })
+    await waitFor(() => {
+      expect(screen.getAllByTestId('remote-access-address-link').length).toBe(4)
+    })
+    const rows = screen.getAllByTestId('remote-access-address-link')
+    const url = 'http://192.168.1.10:7331/#rt=abc'
+    const thumbnail = await screen.findByTestId('remote-access-qr-thumbnail')
+    expect(rows[0]!.contains(thumbnail)).toBe(true)
+    // Only the recommended row carries one; the others stay a copy button.
+    expect(rows.slice(1).every(r => !r.querySelector('[data-testid="remote-access-qr-thumbnail"]'))).toBe(true)
+    // It sits before the copy button.
+    const copy = rows[0]!.querySelector('[data-testid="remote-access-copy-link"]')!
+    expect(thumbnail.compareDocumentPosition(copy) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    // The thumbnail encodes the recommended link, never prints it.
+    await waitFor(() => expect(thumbnail.querySelector('svg path')).not.toBeNull())
+    expect(thumbnail.querySelector('svg path')!.getAttribute('d')).toBe(qrPath(qrModules(url)))
+    expect(rows[0]!.textContent).not.toContain('#rt=')
+    fireEvent.click(thumbnail)
+    const large = await screen.findByTestId('remote-access-qr')
+    expect(large.getAttribute('aria-label')).toBe('QR code of the access link')
+    await waitFor(() => expect(large.querySelector('path')?.getAttribute('d')).toBe(qrPath(qrModules(url))))
   })
 
   it('never recommends a Windows vEthernet adapter, even when it is listed before Wi-Fi', async () => {

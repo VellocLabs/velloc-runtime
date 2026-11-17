@@ -2087,6 +2087,8 @@ export const ja: Messages = {
   'settings.remoteAccess.recommendedBadge': 'おすすめ',
   'settings.remoteAccess.addressThisDeviceName': 'このデバイスのみ',
   'settings.remoteAccess.copyLinkPrimary': '接続リンクをコピー',
+  'settings.remoteAccess.qrLabel': 'アクセスリンクの QR コード',
+  'settings.remoteAccess.qrEnlarge': 'QR コードを拡大表示',
   'settings.remoteAccess.securityTitle': 'アクセスのセキュリティ',
   'settings.remoteAccess.securityNoteTitle': 'アクセスリンクはパスワードと同じです',
   'settings.remoteAccess.devicesTitle': '接続中のデバイス',

@@ -2165,6 +2165,8 @@ export const en = {
   'settings.remoteAccess.recommendedBadge': 'Recommended',
   'settings.remoteAccess.addressThisDeviceName': 'This device only',
   'settings.remoteAccess.copyLinkPrimary': 'Copy connection link',
+  'settings.remoteAccess.qrLabel': 'QR code of the access link',
+  'settings.remoteAccess.qrEnlarge': 'Show a larger QR code',
   'settings.remoteAccess.securityTitle': 'Access security',
   'settings.remoteAccess.securityNoteTitle': 'The access link works like a password',
   'settings.remoteAccess.devicesTitle': 'Connected devices',

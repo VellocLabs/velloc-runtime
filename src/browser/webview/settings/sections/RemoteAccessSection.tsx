@@ -16,6 +16,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Switch } from "@/components/ui/switch";
 
 import { writeClipboard } from "../../../../utils/clipboard";
@@ -231,6 +232,51 @@ function CopyLinkButton({ url, primary = false }: { url: string; primary?: boole
   );
 }
 
+// The QR encoder loads with the first enabled render, off the settings chunk.
+const QrCodeSvg = React.lazy(async () => ({
+  default: (await import("../../remote/QrCodeSvg")).QrCodeSvg,
+}));
+
+/**
+ * The recommended link's QR code, as tall as the row's text block so the row
+ * keeps its height; a click opens it full size for a phone camera. Security:
+ * the URL is only encoded, never printed.
+ */
+function LinkQrThumbnail({ url }: { url: string }) {
+  const t = useT();
+  return (
+    <Popover>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          className="shrink-0 rounded-sm"
+          aria-label={t("settings.remoteAccess.qrEnlarge")}
+          title={t("settings.remoteAccess.qrEnlarge")}
+          data-testid="remote-access-qr-thumbnail"
+        >
+          <React.Suspense fallback={<div aria-hidden className="size-[54px]" />}>
+            <QrCodeSvg
+              text={url}
+              label={t("settings.remoteAccess.qrLabel")}
+              className="block size-[54px] rounded-sm"
+            />
+          </React.Suspense>
+        </button>
+      </PopoverTrigger>
+      <PopoverContent side="bottom" align="end" className="w-auto p-2">
+        <React.Suspense fallback={<div aria-hidden className="size-48" />}>
+          <QrCodeSvg
+            text={url}
+            label={t("settings.remoteAccess.qrLabel")}
+            testId="remote-access-qr"
+            className="block size-48 rounded-sm"
+          />
+        </React.Suspense>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
 /**
  * One address's copy row: interface name over `address:port`. Security: the full URL
  * carries the pairing secret, so it is never printed — only the tooltip and the copy.
@@ -279,7 +325,14 @@ function AddressLinkRow({
           {`${row.address}:${port}`}
         </p>
       </div>
-      <CopyLinkButton url={row.url} primary={recommended} />
+      {recommended ? (
+        <div className="flex shrink-0 items-center gap-3">
+          <LinkQrThumbnail url={row.url} />
+          <CopyLinkButton url={row.url} primary />
+        </div>
+      ) : (
+        <CopyLinkButton url={row.url} />
+      )}
     </div>
   );
 }

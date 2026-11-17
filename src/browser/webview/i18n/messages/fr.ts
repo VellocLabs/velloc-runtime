@@ -2124,6 +2124,8 @@ export const fr: Messages = {
   'settings.remoteAccess.recommendedBadge': 'Recommandée',
   'settings.remoteAccess.addressThisDeviceName': 'Cet appareil uniquement',
   'settings.remoteAccess.copyLinkPrimary': 'Copier le lien de connexion',
+  'settings.remoteAccess.qrLabel': 'Code QR du lien d’accès',
+  'settings.remoteAccess.qrEnlarge': 'Afficher un code QR plus grand',
   'settings.remoteAccess.securityTitle': 'Sécurité de l’accès',
   'settings.remoteAccess.securityNoteTitle': 'Le lien d’accès fonctionne comme un mot de passe',
   'settings.remoteAccess.devicesTitle': 'Appareils connectés',
