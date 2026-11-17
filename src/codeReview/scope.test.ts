@@ -222,6 +222,22 @@ describe('local scope', () => {
       expect(result.files[0]).toMatchObject({ path: 'doc.md', status: 'large', patch: '' })
       expect(result.notices).not.toContain('line-endings-ignored')
     })
+    it('keeps the file large when the diff ignoring line endings fails', async () => {
+      const f = fixture({ refs: { main: base, feature: head }, patch: flipped })
+      const original = f.options.git.query
+      f.options.git.query = async (q, signal) => q.kind === 'diff' && q.ignoreCrAtEol ? { exitCode: 1, stdout: encode('') } : original(q, signal)
+      f.options.maxFileBytes = 400
+      const result = await resolveLocalReviewScope(f.options, { kind: 'range', expression: 'main..feature' })
+      expect(result).toMatchObject({ status: 'partial', complete: false })
+      expect(result.files[0]).toMatchObject({ path: 'doc.md', status: 'large' })
+    })
+    it('does not diff a large file again when its diff holds no carriage return', async () => {
+      const f = rangeFixture(narrowed)
+      f.options.git.query = (query => async (q, signal) => q.kind === 'diff' && !q.ignoreCrAtEol ? { exitCode: 0, stdout: encode(flipped.replaceAll('\r', '')) } : query(q, signal))(f.options.git.query)
+      const result = await resolveLocalReviewScope(f.options, { kind: 'range', expression: 'main..feature' })
+      expect(result.files[0]).toMatchObject({ path: 'doc.md', status: 'large' })
+      expect(f.queries.some(q => q.kind === 'diff' && q.ignoreCrAtEol)).toBe(false)
+    })
     it('leaves a file under the limit to the plain diff', async () => {
       const f = fixture({ refs: { main: base, feature: head } })
       const result = await resolveLocalReviewScope(f.options, { kind: 'range', expression: 'main..feature' })

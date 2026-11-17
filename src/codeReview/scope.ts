@@ -71,6 +71,7 @@ function diffPath(value: string, prefix: 'a/' | 'b/'): string | undefined {
   if (!path.startsWith(prefix)) throw new ScopeError('invalid-diff')
   return validateReviewPath(path.slice(2))
 }
+const byteLength = (text: string) => new TextEncoder().encode(text).length
 export async function parseUnifiedDiff(patch: string, revisions: { base: string; head: string; workingCopy?: boolean }, limits: { maxFileBytes?: number; skipPath?: (path: string) => boolean } = {}): Promise<DiffFile[]> {
   if (!patch.trim()) return []
   if (!patch.startsWith('diff --git ')) throw new ScopeError('invalid-diff')
@@ -90,7 +91,7 @@ export async function parseUnifiedDiff(patch: string, revisions: { base: string;
     if (afterHeader) path = diffPath(afterHeader.slice(4), 'b/')
     path ??= beforePath
     if (!path) throw new ScopeError('invalid-diff')
-    const status = limits.skipPath?.(path) ? 'skipped' : new TextEncoder().encode(block).length > (limits.maxFileBytes ?? 512 * 1024) ? 'large' : metadata.some(l => l.startsWith('Binary files ') || l === 'GIT binary patch') ? 'binary' : 'included'
+    const status = limits.skipPath?.(path) ? 'skipped' : byteLength(block) > (limits.maxFileBytes ?? 512 * 1024) ? 'large' : metadata.some(l => l.startsWith('Binary files ') || l === 'GIT binary patch') ? 'binary' : 'included'
     const file: DiffFile = { path, beforePath, status, patch: status === 'included' ? block : '', anchors: [] }
     if (status === 'included') {
       for (let index = Math.max(1, firstHunk); index < lines.length; index++) {
@@ -191,7 +192,6 @@ function utf8(bytes: Uint8Array): string | undefined {
   if (bytes.includes(0)) return undefined
   try { return new TextDecoder('utf-8', { fatal: true }).decode(bytes) } catch { return undefined }
 }
-const byteLength = (text: string) => new TextEncoder().encode(text).length
 /** Notice and file reason for a file reviewed from its diff with line-ending differences ignored (F-38). */
 export const LINE_ENDINGS_IGNORED = 'line-endings-ignored'
 /** A changed file in which no line differs but by its ending: covered, with nothing to read. */
@@ -201,7 +201,7 @@ async function rangeIgnoringLineEndings(git: ReviewGitRunner, file: DiffFile, re
   const paths = [...new Set([file.beforePath, file.path].filter((p): p is string => !!p))]
   let text: string
   try { text = await gitText(git, { kind: 'diff', ...revisions, paths, ignoreCrAtEol: true }, signal) } catch (error) {
-    if (error instanceof GitAdapterError && error.code === 'output-limit') return undefined
+    if (error instanceof GitAdapterError && error.code !== 'cancelled') return undefined
     throw error
   }
   const parsed = await parseUnifiedDiff(text, revisions, { maxFileBytes })
@@ -241,9 +241,9 @@ export async function resolveLocalReviewScope(options: ScopeResolverOptions, tar
   if (!workspace) {
     try {
       const patch = await gitText(git, { kind: 'diff', base, head, paths }, signal)
-      if (new TextEncoder().encode(patch).length > maxDiffBytes) notices.push('diff-output-limit')
+      if (byteLength(patch) > maxDiffBytes) notices.push('diff-output-limit')
       else for (const file of await parseUnifiedDiff(patch, { base, head }, { maxFileBytes, skipPath: options.skipPath })) {
-        files.push(file.status === 'large' ? await rangeIgnoringLineEndings(git, file, { base, head }, maxFileBytes, signal) ?? file : file)
+        files.push(file.status === 'large' && patch.includes('\r') ? await rangeIgnoringLineEndings(git, file, { base, head }, maxFileBytes, signal) ?? file : file)
       }
     } catch (error) {
       if (!(error instanceof GitAdapterError) || error.code !== 'output-limit') throw error
