@@ -73,7 +73,7 @@ function isAsyncIterator(value: unknown): value is AsyncGenerator<unknown, unkno
 
 type Pending = { resolve: (value: unknown) => void; reject: (error: Error) => void }
 
-export type Invocation = {
+type Invocation = {
   id: string
   controller: AbortController
   /** The error object the latest rejected `next` threw into the hook. */
@@ -894,7 +894,7 @@ export function installModWorkerHost(
     }
   }
 
-  const { handles, makeUi, settleHandles, runHandle } = createWorkerUiNoun({
+  const { dropHandles, makeUi, settleHandles, runHandle } = createWorkerUiNoun({
     get plugin() {
       return plugin
     },
@@ -1413,7 +1413,7 @@ export function installModWorkerHost(
         void runHandle(msg)
         return
       case 'mod.dropHandles':
-        for (const handle of msg.handles) handles.delete(handle)
+        dropHandles(msg.handles)
         return
       case 'mod.serve':
         void serve(msg)

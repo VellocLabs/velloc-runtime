@@ -6,21 +6,21 @@
 
 import type { ModRunHandleMessage } from './modWire'
 import { DESKTOP_ELEMENTS, RENDER_SURFACE } from './modRender'
-import type { Invocation } from './ModWorkerHost'
 
-export type WorkerUiNounDeps = {
+/** `I` is the host's invocation record; only its `id` is read here. */
+export type WorkerUiNounDeps<I extends { id: string }> = {
   /** The loaded plugin's name, read at each use (it changes on `mod.load`). */
   readonly plugin: string
-  callRuntime: (invocation: Invocation | undefined, noun: string, method: string, args: unknown[]) => Promise<unknown>
+  callRuntime: (invocation: I | undefined, noun: string, method: string, args: unknown[]) => Promise<unknown>
   post: (message: Record<string, unknown>) => void
   deepFreeze: <T>(value: T) => T
   errorMessage: (error: unknown) => string
 }
 
-export function createWorkerUiNoun(deps: WorkerUiNounDeps): {
-  handles: Map<number, { element: string; fns: Record<string, (...args: unknown[]) => unknown> }>
-  makeUi: (invocation: Invocation | undefined) => unknown
-  settleHandles: (invocation: Invocation, event: string, result: unknown) => void
+export function createWorkerUiNoun<I extends { id: string }>(deps: WorkerUiNounDeps<I>): {
+  dropHandles: (ids: readonly number[]) => void
+  makeUi: (invocation: I | undefined) => unknown
+  settleHandles: (invocation: I, event: string, result: unknown) => void
   runHandle: (msg: ModRunHandleMessage) => Promise<void>
 } {
   const { callRuntime, post, deepFreeze, errorMessage } = deps
@@ -35,7 +35,7 @@ export function createWorkerUiNoun(deps: WorkerUiNounDeps): {
   let nextHandle = 0
 
   const keepHandle = (
-    invocation: Invocation | undefined,
+    invocation: I | undefined,
     element: string,
     fns: Record<string, (...args: unknown[]) => unknown>,
   ): number => {
@@ -70,7 +70,7 @@ export function createWorkerUiNoun(deps: WorkerUiNounDeps): {
 
   /** An invocation is over: of the handles it made, keep those its `ui.render`
    *  answer holds, forget the rest. */
-  const settleHandles = (invocation: Invocation, event: string, result: unknown): void => {
+  const settleHandles = (invocation: I, event: string, result: unknown): void => {
     const made = createdIn.get(invocation.id)
     if (!made) return
     createdIn.delete(invocation.id)
@@ -91,7 +91,7 @@ export function createWorkerUiNoun(deps: WorkerUiNounDeps): {
     return rest
   }
 
-  const makeElements = (invocation: Invocation | undefined): Record<string, unknown> => {
+  const makeElements = (invocation: I | undefined): Record<string, unknown> => {
     const styled = (type: 'Box' | 'Text') => (props: unknown) => ({
       type,
       props: withoutChildren(props),
@@ -158,7 +158,7 @@ export function createWorkerUiNoun(deps: WorkerUiNounDeps): {
   }
 
   /** `$.ui`: `resolve` is a read served here; the rest cross as calls. */
-  const makeUi = (invocation: Invocation | undefined): unknown => {
+  const makeUi = (invocation: I | undefined): unknown => {
     let elements: Record<string, unknown> | undefined
     const local = {
       resolve: (e: unknown): unknown => {
@@ -211,5 +211,10 @@ export function createWorkerUiNoun(deps: WorkerUiNounDeps): {
     }
   }
 
-  return { handles, makeUi, settleHandles, runHandle }
+  /** The runtime replaced a drawing: forget the handles it held. */
+  const dropHandles = (ids: readonly number[]): void => {
+    for (const id of ids) handles.delete(id)
+  }
+
+  return { dropHandles, makeUi, settleHandles, runHandle }
 }
