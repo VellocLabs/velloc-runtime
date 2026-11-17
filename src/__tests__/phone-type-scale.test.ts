@@ -24,6 +24,14 @@ describe('phone type scale', () => {
     expect(phoneTypeScale(15)).toBe(1)
   })
 
+  it("is 1 at the default step's prose size in globals.css", () => {
+    const css = readFileSync(join(__dirname, '..', 'styles', 'globals.css'), 'utf8')
+    const block = css.match(/:root,\s*:root\[data-text-size="2"\]\s*\{([^}]*)\}/)?.[1] ?? ''
+    const prose = Number(block.match(/--nx-step-prose-size:\s*([\d.]+)px/)?.[1])
+    expect(prose).toBeGreaterThan(0)
+    expect(phoneTypeScale(prose)).toBe(1)
+  })
+
   it('bounds the system size and ignores unusable readings', () => {
     expect(phoneTypeScale(53) * 15).toBeCloseTo(30, 2)
     expect(phoneTypeScale(8) * 15).toBeCloseTo(14, 2)
