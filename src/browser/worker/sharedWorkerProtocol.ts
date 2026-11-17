@@ -43,9 +43,10 @@ export type SharedWorkerInboundMessage =
   | { type: 'workerHost.attachControlPort' }
     /**
      * Attach a UI ⇄ Runtime protocol client: `event.ports[0]` becomes one `ClientConnection` (the client
-     * speaks `hello` first). `panelId` is optional.
+     * speaks `hello` first). `panelId` is optional. `delegate` caps a port meant for code the
+     * page does not trust (F-42); a malformed one refuses the attach.
      */
-  | { type: 'bridge.attachRuntimePort'; homeDir: string; panelId?: string }
+  | { type: 'bridge.attachRuntimePort'; homeDir: string; panelId?: string; delegate?: unknown }
   /**
    * The page is going away (`pagehide` / `beforeunload`): release this
    * MessagePort's subscriptions, session attachments and diagnostics

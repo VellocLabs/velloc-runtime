@@ -569,8 +569,8 @@ export class SharedWorkerSessionManager {
       this.frameRouter.handleSessionMessage(port, message),
     setHostBridgePort: port => this.bridgeRouter.setHostPort(port),
     handlePortDisconnect: port => this.handlePortDisconnect(port),
-    attachRuntimePort: (port, homeDir, panelId) =>
-      this.runtimeHub.attachPort(port, homeDir, panelId),
+    attachRuntimePort: (port, homeDir, panelId, delegate) =>
+      this.runtimeHub.attachPort(port, homeDir, panelId, delegate),
     buildSessionInfoList: () => this.buildSessionInfoList(),
     detachSessionPort: (sessionId, port) =>
       this.detachSessionPort(sessionId, port),

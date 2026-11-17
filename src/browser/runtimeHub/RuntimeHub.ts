@@ -38,6 +38,7 @@ import {
 import { createMessagePortTransport, type FrameTransport } from '../runtimeTransport'
 import { CapabilityRegistry, scopeAllows } from './CapabilityRegistry'
 import { ConnectionHub, type AttachOptions, type ConnectionHandle } from './ConnectionHub'
+import type { PortDelegation } from './portDelegation'
 import { createPairingTable } from './pairingTable'
 import { createRelayDialer, type RelayDialer } from './relayDialer'
 import {
@@ -481,11 +482,12 @@ export class RuntimeHub {
   }
 
   /** `bridge.attachRuntimePort`: one `ClientConnection` over the transferred port. */
-  attachPort(port: MessagePort, homeDir: string, panelId?: string): void {
+  attachPort(port: MessagePort, homeDir: string, panelId?: string, delegate?: PortDelegation): void {
     // Upgrade-only: never overwrite a known homeDir with an empty one.
     if (homeDir && !this.context.homeDir) this.setHomeDir(homeDir)
     this.attachTransport(createMessagePortTransport(port), {
       ...(panelId !== undefined ? { panelId } : {}),
+      ...(delegate !== undefined ? { delegate } : {}),
     })
   }
 

@@ -44,6 +44,7 @@ import type { Pairing, PairingTable } from './pairingTable'
 import { BlobInbox, type BlobInboxLimits } from './BlobInbox'
 import { CapabilityRegistry, scopeAllows } from './CapabilityRegistry'
 import { toWireError } from './errors'
+import type { PortDelegation } from './portDelegation'
 import type { TopicBroker, TopicSubscriber } from './TopicBroker'
 import type { BlobOffers, ConnectionInfo, HandlerRequest, RuntimeContext } from './types'
 
@@ -95,7 +96,20 @@ export type ConnectionHubOptions = {
 export type AttachOptions = {
   /** Panel the port belongs to, when the attach message knew it; `hello.client.panelId` wins. */
   panelId?: string
+  /**
+   * Security: set by whoever created the port, before any client code holds it (F-42). The
+   * connection is clamped to `scope` whatever `hello` asks, may subscribe only to `topics`,
+   * may send no action, and never resumes another connection's identity.
+   */
+  delegate?: PortDelegation
 }
+
+/** Routes a delegated connection may send: the subscription pair and the ping. */
+const DELEGATED_ROUTES: ReadonlySet<string> = new Set([
+  TOPICS_SUBSCRIBE_ROUTE,
+  TOPICS_UNSUBSCRIBE_ROUTE,
+  SYS_PING_ROUTE,
+])
 
 export type ConnectionHandle = {
   /** Set once the handshake completed. */
@@ -689,7 +703,8 @@ class ClientConnection implements TopicSubscriber {
     // (a later window may run a newer page against an older worker).
     this.hub.options.onHelloBuild?.(hello)
 
-    const resume = hello.resume
+    const delegate = this.attachOptions.delegate
+    const resume = delegate ? undefined : hello.resume
     const resumed =
       resume !== undefined &&
       this.hub.claimResume(resume, hello.client.clientId, null, this.transport.kind)
@@ -699,7 +714,7 @@ class ClientConnection implements TopicSubscriber {
       connectionId,
       clientId: hello.client.clientId,
       kind: hello.client.kind,
-      scope: clampScope(LOCAL_SCOPE, hello.scopeCeiling),
+      scope: clampScope(delegate ? clampScope(LOCAL_SCOPE, delegate.scope) : LOCAL_SCOPE, hello.scopeCeiling),
       transport: this.transport.kind,
       ...(panelId !== undefined ? { panelId } : {}),
       // A remote page states its browser; this machine's own shell sends
@@ -767,6 +782,9 @@ class ClientConnection implements TopicSubscriber {
     if (!route) throw wireError('unknown_route', `malformed route '${req.route}'`)
     const key = routeKey(route)
 
+    if (this.attachOptions.delegate && !DELEGATED_ROUTES.has(key)) {
+      throw wireError('forbidden_scope', `'${key}' is not open to a delegated connection`)
+    }
     if (key === TOPICS_SUBSCRIBE_ROUTE) return this.subscribeTopics(req.payload)
     if (key === TOPICS_UNSUBSCRIBE_ROUTE) return this.unsubscribeTopics(req.payload)
     if (key === SYS_PING_ROUTE) {
@@ -822,7 +840,11 @@ class ClientConnection implements TopicSubscriber {
       throw wireError('bad_payload', 'topics.subscribe wants { topics: [{ topic, since? }] }')
     }
     const broker = this.hub.options.broker
+    const allowed = this.attachOptions.delegate?.topics
     for (const { topic } of payload.topics) {
+      if (allowed && !allowed.includes(topic)) {
+        throw wireError('forbidden_scope', `topic '${topic}' is outside this connection's scope`, { topic })
+      }
       const verdict = broker.authorize(topic, this.conn)
       if (verdict === 'not_found') throw wireError('not_found', `no provider serves topic '${topic}'`, { topic })
       if (verdict === 'forbidden') throw wireError('forbidden_scope', `topic '${topic}' is outside this connection's scope`, { topic })

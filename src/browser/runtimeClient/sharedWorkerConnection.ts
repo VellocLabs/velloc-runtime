@@ -14,6 +14,7 @@ import {
 } from '../runtimeTransport'
 import { connectRuntime, type RuntimeConnection } from './RuntimeConnection'
 import { randomUuid } from '../../utils/randomUuid'
+import type { PortDelegation } from '../runtimeHub/portDelegation'
 
 export type SharedWorkerConnectOptions = {
   /** Same hint the legacy WebUI attach carries; often empty in production. */
@@ -66,7 +67,7 @@ export function resolveRuntimeClientId(): string {
  */
 export function attachRuntimePort(
   sharedWorkerPort: MessagePort,
-  options: { homeDir: string; panelId?: string },
+  options: { homeDir: string; panelId?: string; delegate?: PortDelegation },
 ): MessagePort {
   const channel = new MessageChannel()
   sharedWorkerPort.postMessage(
@@ -74,6 +75,7 @@ export function attachRuntimePort(
       type: 'bridge.attachRuntimePort',
       homeDir: options.homeDir,
       ...(options.panelId !== undefined ? { panelId: options.panelId } : {}),
+      ...(options.delegate !== undefined ? { delegate: options.delegate } : {}),
     },
     [channel.port2],
   )

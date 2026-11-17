@@ -5,6 +5,7 @@ import type {
   ForkRetarget,
 } from './sharedWorkerProtocol'
 import { isForkRetarget, isSafeSessionId, isSessionMessage } from './sharedWorkerProtocol'
+import { parsePortDelegation, type PortDelegation } from '../runtimeHub/portDelegation'
 import { traceLine } from '../../utils/debugLog'
 import { setKernelControlPort } from '../workerKernel/IsolatedWorkerKernel'
 
@@ -25,7 +26,12 @@ export interface PortMessageRouterHost {
   handlePortDisconnect(port: MessagePort): void
   // UI ⇄ Runtime protocol: one ClientConnection per transferred port
   // (`RuntimeHub.attachPort`). Sits beside the legacy WebUI attach.
-  attachRuntimePort(port: MessagePort, homeDir: string, panelId: string | undefined): void
+  attachRuntimePort(
+    port: MessagePort,
+    homeDir: string,
+    panelId: string | undefined,
+    delegate?: PortDelegation,
+  ): void
   // Session registry queries + lifecycle.
   buildSessionInfoList(): SessionCard[]
   detachSessionPort(sessionId: string, port: MessagePort): void
@@ -154,9 +160,18 @@ export class PortMessageRouter {
 
       case 'bridge.attachRuntimePort': {
         const runtimePort = event.ports?.[0]
-        if (runtimePort) {
+        if (!runtimePort) return
+        if (message.delegate === undefined) {
           this.host.attachRuntimePort(runtimePort, message.homeDir, message.panelId)
+          return
         }
+        const delegate = parsePortDelegation(message.delegate)
+        // Security: an unreadable cap never falls back to an uncapped attach.
+        if (!delegate) {
+          runtimePort.close()
+          return
+        }
+        this.host.attachRuntimePort(runtimePort, message.homeDir, message.panelId, delegate)
         return
       }
 
