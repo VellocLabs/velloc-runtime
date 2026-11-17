@@ -308,6 +308,7 @@ export async function openSessionModSlot(input: SessionModSlotInput) {
           assemblePluginAt(dir, `dev:${dir}`, true, folderName, installedFs).then(({ plugin }) =>
             (plugin.hookModules?.length ?? 0) > 0 ? plugin : undefined,
           ),
+        isInstalled: name => modPlugins.some(plugin => plugin.name === name),
         permissionMode: () => String(coreState.getAppState().permissionRules.mode),
         canAsk: true,
         ask: plugins => openDevModsAsk(resolvedSessionId, plugins, options.runtimeScopeSignal),

@@ -33,6 +33,7 @@ import {
   noteModSlotChanged,
   noteModUiEvent,
   onModSlotsChanged,
+  openDevModsAsk,
   registerModSlot,
   resetModSlotRegistryForTests,
   type ModSlot,
@@ -567,6 +568,25 @@ describe('the drawing actions', () => {
     expect(late.ok && late.result).toEqual({ accepted: false })
     const bad = await control.client.request('mods.composerAnswer', { sessionId: 's1', requestId: 'c3', op: 'read', box: { text: 'a', cursor: 5 } })
     expect(bad.ok).toBe(false)
+  })
+
+  it('mods.devModsAnswer is control, answers the session\'s open dev mods question, and refuses an unknown answer', async () => {
+    const asking = openDevModsAsk('s1', ['panel-mod'])
+    const observe = makeRig()
+    await observe.client.hello({ scopeCeiling: 'observe' })
+    const refused = await observe.client.request('mods.devModsAnswer', { sessionId: 's1', requestId: 'x', answer: 'on' })
+    expect(!refused.ok && refused.error.code).toBe('forbidden_scope')
+    const control = makeRig()
+    await control.client.hello({ scopeCeiling: 'control' })
+    const bad = await control.client.request('mods.devModsAnswer', { sessionId: 's1', requestId: 'x', answer: 'always' })
+    expect(bad.ok).toBe(false)
+    const wrong = await control.client.request('mods.devModsAnswer', { sessionId: 's1', requestId: 'not-it', answer: 'on' })
+    expect(wrong.ok && wrong.result).toEqual({ accepted: false })
+    const { modSlotUiState } = await import('../mods/modSlotRegistry')
+    const requestId = modSlotUiState('s1').devModsAsk!.requestId
+    const accepted = await control.client.request('mods.devModsAnswer', { sessionId: 's1', requestId, answer: 'declined' })
+    expect(accepted.ok && accepted.result).toEqual({ accepted: true })
+    await expect(asking).resolves.toBe('declined')
   })
 
   it('a mod question rides the ui state; mods.askAnswer is control and reaches the slot; an empty answer is refused ($.ui.ask)', async () => {

@@ -477,6 +477,9 @@ export function modsForAgentLoop(sessionId: string, agentId: string): AgentLoopM
       const slot = findModSlot(sessionId)
       return slot ? slot.toolCall(e, core, signal, context) : Promise.resolve({ settled: false })
     },
+    async reloadPluginIfChanged(plugin: string): Promise<void> {
+      await findModSlot(sessionId)?.reloadPluginIfChanged?.(plugin)
+    },
     // A child loop's permission checks are the slot's `tool.check`, carrying
     // its `agentId` (stamped by the tool path from this holder's).
     hasToolCheckHooks(): boolean {

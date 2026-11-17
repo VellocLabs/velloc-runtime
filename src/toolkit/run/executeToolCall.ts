@@ -21,6 +21,7 @@ import {
   type ToolCheckResult,
 } from '../../mods/toolCallEvent'
 import type { DispatchContext } from '../../mods/modTypes'
+import { isModRegisteredTool } from '../../mods/modRegisteredTools'
 import { createGeneratedUserMessage } from '../../messages/messageFactories'
 import {
   callToolThroughMods,
@@ -171,8 +172,8 @@ export async function* executeToolCall(
   if (mods?.ready) await mods.ready
   // A tool a mod registered: that mod's edited files reload first (F-25).
   if (mods?.reloadPluginIfChanged) {
-    const owner = (resolveToolByName(callContext.options.tools, block.toolName) as { modPlugin?: unknown } | undefined)?.modPlugin
-    if (typeof owner === 'string') await mods.reloadPluginIfChanged(owner)
+    const tool = resolveToolByName(callContext.options.tools, block.toolName)
+    if (tool && isModRegisteredTool(tool)) await mods.reloadPluginIfChanged(tool.modPlugin)
   }
   const runStages = (call: QueryToolUseBlock, context: ToolCallContext) =>
     executeToolCallStages(call, modelReply, decidePermission, context, deps, stages)

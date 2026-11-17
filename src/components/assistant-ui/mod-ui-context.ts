@@ -5,6 +5,7 @@
 import { createContext, useContext } from 'react'
 import type {
   ModStateName,
+  ModsDevModsAnswer,
   ModsPageAnswer,
   ModsPageRequest,
   ModsPromptAutocompleteQuery,
@@ -178,7 +179,7 @@ export type ModUiContextValue = {
   devModsAsk?: { requestId: string; plugins: readonly string[] }
   /** Answer it. Absent where the connection may not (`mods.devModsAnswer`
    *  is `control`). */
-  answerDevMods?: (requestId: string, answer: 'on' | 'declined' | 'dismissed') => Promise<void>
+  answerDevMods?: (requestId: string, answer: ModsDevModsAnswer) => Promise<void>
   /** Ask the session's mods to draw a site. Absent where the connection
    *  cannot (no `mods.render`): nothing is drawn. */
   render?: (input: {

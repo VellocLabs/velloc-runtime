@@ -277,7 +277,7 @@ export function noTurnExtensions(): TurnExtensions {
  *  path's seams, `turn.start` and `turn.step`, each resolved by the parent at
  *  call time. */
 export type AgentLoopParent = Pick<TurnExtensions, 'ready' | 'hasToolCallHooks' | 'toolCall'> &
-  Partial<Pick<TurnExtensions, 'hasTurnStepHooks' | 'turnStep' | 'report' | 'hasClassicHooks' | 'classic' | 'turnStart' | TurnLevelMember>>
+  Partial<Pick<TurnExtensions, 'hasTurnStepHooks' | 'turnStep' | 'report' | 'hasClassicHooks' | 'classic' | 'turnStart' | 'reloadPluginIfChanged' | TurnLevelMember>>
 
 /** The turn-level seams a child loop reaches of its parent's slot. */
 type TurnLevelMember =
@@ -299,6 +299,7 @@ export type AgentLoopExtensions = Pick<
   | 'ready'
   | 'hasToolCallHooks'
   | 'toolCall'
+  | 'reloadPluginIfChanged'
   | 'hasTurnStepHooks'
   | 'turnStep'
   | 'report'
@@ -317,6 +318,7 @@ export function agentLoopExtensions(parent: AgentLoopParent, agentId: string): A
     },
     hasToolCallHooks: () => parent.hasToolCallHooks(),
     toolCall: (e, core, signal, context) => parent.toolCall(e, core, signal, context),
+    reloadPluginIfChanged: async plugin => parent.reloadPluginIfChanged?.(plugin),
     hasTurnStepHooks: () => parent.hasTurnStepHooks?.() === true,
     turnStep: (e, core, signal) => parent.turnStep?.(e, core, signal),
     hasTurnRequestHooks: () => parent.hasTurnRequestHooks?.() === true,

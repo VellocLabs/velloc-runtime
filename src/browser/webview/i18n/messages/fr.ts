@@ -2405,6 +2405,7 @@ export const fr: Messages = {
   'mods.devAsk.detail': 'Ils ne s’exécutent que dans cette session, avec son accès aux fichiers et aux commandes. Les modifications sont rechargées à la fin de chaque tour.',
   'mods.devAsk.turnOn': 'Les activer',
   'mods.devAsk.notNow': 'Pas maintenant',
+  'mods.devAsk.never': 'Pas dans cette session',
   'mods.ask.dismiss': 'Ignorer',
   'mods.ask.yes': 'Oui',
   'mods.ask.no': 'Non',

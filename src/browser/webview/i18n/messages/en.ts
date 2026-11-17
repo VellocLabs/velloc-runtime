@@ -2442,6 +2442,7 @@ export const en = {
   'mods.devAsk.detail': "They run in this session only, with the session's access to files and commands. Edits reload at the end of each turn.",
   'mods.devAsk.turnOn': 'Turn them on',
   'mods.devAsk.notNow': 'Not now',
+  'mods.devAsk.never': 'Not in this session',
   'mods.ask.dismiss': 'Dismiss',
   'mods.ask.yes': 'Yes',
   'mods.ask.no': 'No',

@@ -2365,6 +2365,7 @@ export const ja: Messages = {
   'mods.devAsk.detail': 'このセッションでのみ動作し、セッションのファイルとコマンドの権限を持ちます。変更は各ターンの終わりに再読み込みされます。',
   'mods.devAsk.turnOn': '有効にする',
   'mods.devAsk.notNow': '今はしない',
+  'mods.devAsk.never': 'このセッションでは使わない',
   'mods.ask.dismiss': '閉じる',
   'mods.ask.yes': 'はい',
   'mods.ask.no': 'いいえ',

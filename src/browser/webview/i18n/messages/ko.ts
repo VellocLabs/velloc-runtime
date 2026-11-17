@@ -2359,6 +2359,7 @@ export const ko: Messages = {
   'mods.devAsk.detail': '이 세션에서만 실행되며 세션의 파일 및 명령 권한을 가집니다. 변경 사항은 매 턴이 끝날 때 다시 로드됩니다.',
   'mods.devAsk.turnOn': '켜기',
   'mods.devAsk.notNow': '나중에',
+  'mods.devAsk.never': '이 세션에서는 사용 안 함',
   'mods.ask.dismiss': '닫기',
   'mods.ask.yes': '예',
   'mods.ask.no': '아니요',

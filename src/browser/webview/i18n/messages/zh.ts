@@ -2333,6 +2333,7 @@ export const zh: Messages = {
   'mods.devAsk.detail': '它们只在本会话中运行，拥有本会话的文件与命令权限。每轮结束时重新加载修改。',
   'mods.devAsk.turnOn': '开启',
   'mods.devAsk.notNow': '暂不',
+  'mods.devAsk.never': '本会话不再询问',
   'mods.ask.dismiss': '忽略',
   'mods.ask.yes': '是',
   'mods.ask.no': '否',

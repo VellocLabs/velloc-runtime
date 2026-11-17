@@ -17,19 +17,30 @@ const dir = (name: string): RuntimeFsEntry => ({
   isSymbolicLink: () => false,
 })
 
-function folderWorld(options: { mode?: string; canAsk?: boolean; answer?: DevModsAnswer } = {}) {
+function folderWorld(
+  options: {
+    mode?: string | (() => string)
+    canAsk?: boolean
+    answer?: DevModsAnswer
+    installed?: string[]
+    changed?: () => Promise<void>
+  } = {},
+) {
   /** folder name → manifest mtime (absent: no manifest). */
   const manifests = new Map<string, number>()
+  /** folder name → hooks/hooks.json mtime. */
+  const hooks = new Map<string, number>()
   const reports: string[] = []
   const asked: string[][] = []
   let answer: (value: DevModsAnswer) => void = () => {}
-  const changed = vi.fn(async () => {})
+  const changed = vi.fn(options.changed ?? (async () => {}))
   const opts: DevModsFolderOptions = {
     folder: '/home/.velloc/dev-mods/s1',
     readdir: async () => [...manifests.keys(), 'loose'].map(dir),
     mtime: async path => {
       const name = path.split('/')[5]
-      return path.endsWith('/plugin.json') ? manifests.get(name) : undefined
+      if (path.endsWith('/plugin.json')) return manifests.get(name)
+      return path.endsWith('/hooks/hooks.json') ? hooks.get(name) : undefined
     },
     join: (base, ...segments) => [base, ...segments].join('/'),
     assemble: async (pluginDir, folderName) =>
@@ -39,7 +50,8 @@ function folderWorld(options: { mode?: string; canAsk?: boolean; answer?: DevMod
         manifest: { name: `${folderName}-mod` },
         hookModules: [`${pluginDir}/hooks/register.ts`],
       }) as unknown as ActivePlugin,
-    permissionMode: () => options.mode ?? 'default',
+    isInstalled: name => (options.installed ?? []).includes(name),
+    permissionMode: () => (typeof options.mode === 'function' ? options.mode() : (options.mode ?? 'default')),
     canAsk: options.canAsk ?? true,
     ask: plugins => {
       asked.push([...plugins])
@@ -52,7 +64,7 @@ function folderWorld(options: { mode?: string; canAsk?: boolean; answer?: DevMod
     report: line => reports.push(line),
   }
   const folder = createDevModsFolder(opts)
-  return { folder, manifests, reports, asked, changed, answer: (value: DevModsAnswer) => answer(value) }
+  return { folder, manifests, hooks, reports, asked, changed, answer: (value: DevModsAnswer) => answer(value) }
 }
 
 const settle = () => new Promise(resolve => setTimeout(resolve, 0))
@@ -144,6 +156,61 @@ describe('createDevModsFolder', () => {
     w.manifests.set('panel', 2)
     await w.folder.afterTurn()
     expect(w.changed).toHaveBeenCalledTimes(3)
+  })
+
+  it('a hooks.json written after the manifest loads the plugin at the next turn end', async () => {
+    const w = folderWorld({ mode: 'bypassPermissions' })
+    w.manifests.set('panel', 1)
+    await w.folder.afterTurn()
+    expect(w.changed).toHaveBeenCalledTimes(1)
+    w.hooks.set('panel', 5)
+    await w.folder.afterTurn()
+    expect(w.changed).toHaveBeenCalledTimes(2)
+    w.hooks.set('panel', 6)
+    await w.folder.afterTurn()
+    expect(w.changed).toHaveBeenCalledTimes(3)
+  })
+
+  it('a dev plugin named like an installed one is left out, and the report says so', async () => {
+    const w = folderWorld({ mode: 'bypassPermissions', installed: ['panel-mod'] })
+    w.manifests.set('panel', 1)
+    w.manifests.set('band', 1)
+    await w.folder.afterTurn()
+    expect(w.folder.plugins().map(p => p.name)).toEqual(['band-mod'])
+    expect(w.reports.some(line => line.includes('panel-mod') && line.includes('installed'))).toBe(true)
+  })
+
+  it('off in dontAsk, then asked once the mode can ask', async () => {
+    let mode = 'dontAsk'
+    const w = folderWorld({ mode: () => mode })
+    w.manifests.set('panel', 1)
+    await w.folder.afterTurn()
+    expect(w.folder.state()).toBe('off')
+    mode = 'default'
+    await w.folder.afterTurn()
+    expect(w.asked).toEqual([['panel-mod']])
+    expect(w.folder.state()).toBe('asking')
+  })
+
+  it('"on" whose load fails is reported, never an unhandled rejection', async () => {
+    const unhandled = vi.fn()
+    process.on('unhandledRejection', unhandled)
+    try {
+      const w = folderWorld({
+        answer: 'on',
+        changed: async () => {
+          throw new Error('reconcile broke')
+        },
+      })
+      w.manifests.set('panel', 1)
+      await w.folder.afterTurn()
+      await settle()
+      await settle()
+      expect(w.reports.some(line => line.includes('reconcile broke'))).toBe(true)
+      expect(unhandled).not.toHaveBeenCalled()
+    } finally {
+      process.off('unhandledRejection', unhandled)
+    }
   })
 })
 

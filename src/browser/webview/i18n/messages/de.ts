@@ -2396,6 +2396,7 @@ export const de: Messages = {
   'mods.devAsk.detail': 'Sie laufen nur in dieser Sitzung, mit deren Zugriff auf Dateien und Befehle. Änderungen werden am Ende jeder Runde neu geladen.',
   'mods.devAsk.turnOn': 'Einschalten',
   'mods.devAsk.notNow': 'Nicht jetzt',
+  'mods.devAsk.never': 'Nicht in dieser Sitzung',
   'mods.ask.dismiss': 'Verwerfen',
   'mods.ask.yes': 'Ja',
   'mods.ask.no': 'Nein',

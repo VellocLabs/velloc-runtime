@@ -378,11 +378,13 @@ export type ModsUiState = {
 }
 
 /** The dev mods folder's question: answered by `mods.devModsAnswer`. */
-export type ModsDevModsAsk = { requestId: string; plugins: string[] }
+export type ModsDevModsAsk = { requestId: string; plugins: readonly string[] }
 
 /** `mods.devModsAnswer`: turn the folder on, decline it for the session, or
  *  dismiss the question (asked again after the next turn). */
-export type ModsDevModsAnswerPayload = { sessionId: string; requestId: string; answer: 'on' | 'declined' | 'dismissed' }
+export type ModsDevModsAnswer = 'on' | 'declined' | 'dismissed'
+
+export type ModsDevModsAnswerPayload = { sessionId: string; requestId: string; answer: ModsDevModsAnswer }
 
 export function isModsDevModsAsk(value: unknown): value is ModsDevModsAsk {
   return (

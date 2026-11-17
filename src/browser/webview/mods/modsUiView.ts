@@ -6,6 +6,7 @@
 import * as React from 'react'
 
 import {
+  type ModsDevModsAnswer,
   MODS_CAPABILITY,
   MODS_UI_COMPOSER_EVENT,
   MODS_UI_PAGE_EVENT,
@@ -275,7 +276,7 @@ export function modsUiActions(
       : {}),
     ...(can('devModsAnswer')
       ? {
-          answerDevMods: async (requestId: string, answer: 'on' | 'declined' | 'dismissed') => {
+          answerDevMods: async (requestId: string, answer: ModsDevModsAnswer) => {
             await connection.request('mods.devModsAnswer', { sessionId, requestId, answer })
           },
         }

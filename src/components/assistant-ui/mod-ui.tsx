@@ -7,6 +7,7 @@
 import * as React from "react";
 import { useState } from "react";
 import { HelpCircleIcon, PuzzleIcon, XIcon } from "lucide-react";
+import type { ModsDevModsAnswer, ModsDevModsAsk } from "@/browser/runtimeProtocol";
 import { useT } from "@/browser/webview/i18n";
 import { cn } from "@/lib/utils";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -361,12 +362,12 @@ function DevModsAskCard({
   ask,
   answer,
 }: {
-  ask: { requestId: string; plugins: readonly string[] };
+  ask: ModsDevModsAsk;
   answer: ReturnType<typeof useModUi>["answerDevMods"];
 }) {
   const t = useT();
   const [isSending, setIsSending] = useState(false);
-  const send = (outcome: "on" | "declined" | "dismissed") => {
+  const send = (outcome: ModsDevModsAnswer) => {
     if (!answer || isSending) return;
     setIsSending(true);
     void answer(ask.requestId, outcome).catch(() => setIsSending(false));
@@ -403,12 +404,21 @@ function DevModsAskCard({
         </button>
         <button
           type="button"
+          data-testid="mod-dev-ask-later"
+          disabled={!answer || isSending}
+          onClick={() => send("dismissed")}
+          className="flex-1 rounded-md border px-4 py-1.5 text-sm disabled:opacity-50"
+        >
+          {t("mods.devAsk.notNow")}
+        </button>
+        <button
+          type="button"
           data-testid="mod-dev-ask-decline"
           disabled={!answer || isSending}
           onClick={() => send("declined")}
           className="flex-1 rounded-md border px-4 py-1.5 text-sm disabled:opacity-50"
         >
-          {t("mods.devAsk.notNow")}
+          {t("mods.devAsk.never")}
         </button>
       </div>
     </div>

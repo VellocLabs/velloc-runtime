@@ -104,6 +104,15 @@ describe('extension factories', () => {
     expect({ ...child }.ready).toBe(second)
   })
 
+  it('a child loop reloads a plugin through its parent before the plugin\'s tool runs', async () => {
+    const reloaded: string[] = []
+    const parent = { ...noTurnExtensions(), reloadPluginIfChanged: async (plugin: string) => void reloaded.push(plugin) }
+    await agentLoopExtensions(parent, 'agent-1').reloadPluginIfChanged('panel')
+    expect(reloaded).toEqual(['panel'])
+    const bare = agentLoopExtensions({ ready: Promise.resolve(), hasToolCallHooks: () => false, toolCall: async () => ({ settled: false }) }, 'a')
+    await expect(bare.reloadPluginIfChanged('panel')).resolves.toBeUndefined()
+  })
+
   it('a child loop with a bare parent runs every core', async () => {
     const child = agentLoopExtensions(
       { ready: Promise.resolve(), hasToolCallHooks: () => false, toolCall: async () => ({ settled: false }) },

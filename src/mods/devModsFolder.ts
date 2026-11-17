@@ -25,6 +25,8 @@ export type DevModsFolderOptions = {
   join(base: string, ...segments: string[]): string
   /** The plugin in `dir`, or undefined when it does not assemble. */
   assemble(dir: string, folderName: string): Promise<ActivePlugin | undefined>
+  /** Whether an installed plugin already has `name`: the installed one wins. */
+  isInstalled?(name: string): boolean
   /** The session's permission mode as the engine reads it now. */
   permissionMode(): string
   /** Whether a page can be asked (an interactive session). */
@@ -62,8 +64,9 @@ export function createDevModsFolder(options: DevModsFolderOptions): DevModsFolde
     options.onStateChanged?.(next)
   }
 
-  /** Each child folder holding a manifest, with the manifest's time. */
-  const scan = async (): Promise<Array<{ name: string; dir: string; mtime: number }>> => {
+  /** Each child folder holding a manifest, with the times of its manifest
+   *  and its `hooks/hooks.json` (which names the plugin's modules). */
+  const scan = async (): Promise<Array<{ name: string; dir: string; mtime: string }>> => {
     let entries: RuntimeFsEntry[]
     try {
       entries = await options.readdir(options.folder)
@@ -75,12 +78,14 @@ export function createDevModsFolder(options: DevModsFolderOptions): DevModsFolde
         .filter(entry => entry.isDirectory())
         .map(async entry => {
           const dir = options.join(options.folder, entry.name)
-          const mtime = await options.mtime(getPluginManifestPath(dir)).catch(() => undefined)
-          return mtime === undefined ? undefined : { name: entry.name, dir, mtime }
+          const manifest = await options.mtime(getPluginManifestPath(dir)).catch(() => undefined)
+          if (manifest === undefined) return undefined
+          const hooks = await options.mtime(options.join(dir, 'hooks', 'hooks.json')).catch(() => undefined)
+          return { name: entry.name, dir, mtime: `${manifest}/${hooks ?? '-'}` }
         }),
     )
     return found
-      .filter((item): item is { name: string; dir: string; mtime: number } => item !== undefined)
+      .filter((item): item is { name: string; dir: string; mtime: string } => item !== undefined)
       .sort((a, b) => a.name.localeCompare(b.name))
   }
 
@@ -98,6 +103,10 @@ export function createDevModsFolder(options: DevModsFolderOptions): DevModsFolde
         options.report(`dev mods: ${folder.dir} repeats the plugin name ${plugin.name}; left out`)
         continue
       }
+      if (options.isInstalled?.(plugin.name)) {
+        options.report(`dev mods: ${folder.dir} is named ${plugin.name}, which an installed plugin already is; left out`)
+        continue
+      }
       plugins.push({ ...plugin, enabled: true, installIdentifier: `${plugin.name}@${DEV_MODS_MARKETPLACE}` })
     }
     loaded = plugins
@@ -111,7 +120,11 @@ export function createDevModsFolder(options: DevModsFolderOptions): DevModsFolde
       async answer => {
         if (answer === 'on') {
           setState('on')
-          await load(await scan())
+          try {
+            await load(await scan())
+          } catch (error) {
+            options.report(`dev mods: ${error instanceof Error ? error.message : String(error)}`)
+          }
         } else if (answer === 'declined') {
           setState('declined')
         } else {
@@ -130,7 +143,7 @@ export function createDevModsFolder(options: DevModsFolderOptions): DevModsFolde
     plugins: () => (state === 'on' ? loaded : []),
     async afterTurn() {
       try {
-        if (state === 'asking' || state === 'declined' || state === 'off') return
+        if (state === 'asking' || state === 'declined') return
         const folders = await scan()
         if (state === 'on') {
           await load(folders)
@@ -138,6 +151,8 @@ export function createDevModsFolder(options: DevModsFolderOptions): DevModsFolde
         }
         if (folders.length === 0) return
         const mode = options.permissionMode()
+        // Off is where nobody could be asked: a later mode that can ask, asks.
+        if (state === 'off' && (NEVER_ASK_MODES.has(mode) || !options.canAsk)) return
         if (UNASKED_ON_MODES.has(mode)) {
           setState('on')
           await load(folders)

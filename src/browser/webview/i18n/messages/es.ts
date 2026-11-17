@@ -2399,6 +2399,7 @@ export const es: Messages = {
   'mods.devAsk.detail': 'Se ejecutan solo en esta sesión, con su acceso a archivos y comandos. Los cambios se recargan al final de cada turno.',
   'mods.devAsk.turnOn': 'Activarlos',
   'mods.devAsk.notNow': 'Ahora no',
+  'mods.devAsk.never': 'No en esta sesión',
   'mods.ask.dismiss': 'Descartar',
   'mods.ask.yes': 'Sí',
   'mods.ask.no': 'No',
