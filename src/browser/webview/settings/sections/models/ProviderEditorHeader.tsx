@@ -59,7 +59,6 @@ export function renderProviderEditorHeader({
       ? resolveCustomProviderIconSvg(selectedRecord.providerIcon, catalog)
       : selectedProvider?.iconSvg;
 
-
   return (
     <header className="mb-4 flex flex-col gap-1 border-border/60 border-b pb-5">
       <Button

@@ -71,7 +71,6 @@ import {
   isProviderNameTaken,
   resolveCustomProviderIconSvg,
   type CustomProviderDraft,
-  type CustomProviderRecord,
 } from "../customProviderHelpers";
 import {
   opencodeZenDraft,

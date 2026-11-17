@@ -21,7 +21,7 @@ import {
 const SECTIONS_DIR = join(__dirname, '../browser/webview/settings/sections')
 
 function sectionSources(): Array<[string, string]> {
-  return readdirSync(SECTIONS_DIR)
+  return readdirSync(SECTIONS_DIR, { recursive: true, encoding: 'utf8' })
     .filter((f) => f.endsWith('.tsx'))
     .map((f) => [f, readFileSync(join(SECTIONS_DIR, f), 'utf8')])
 }
