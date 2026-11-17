@@ -6,7 +6,7 @@ import { describe, expect, it } from 'vitest'
 /**
  * Functional status indicators keep animating under reduced-motion (the release WebUI reports
  * `prefers-reduced-motion: reduce` regardless of the user): a reduced-motion block in globals.css re-enables
- * `.animate-spin` and each `.nexus-blob-*` layer.
+ * `.animate-spin` and each animated session status icon state.
  */
 
 const here = dirname(fileURLToPath(import.meta.url))
@@ -87,17 +87,19 @@ describe('reduced-motion functional-animation exemption (globals.css)', () => {
     ).toBe(true)
   })
 
-  // The conversation running-indicator (gooey-metaball blob) is a functional
-  // "agent is working" indicator, exactly like .qs-runner / .animate-spin. Each
-  // of its animated layers must be re-asserted with !important under
-  // reduced-motion so the release WebUI's spurious `reduce` can't freeze it.
-  const BLOB_LAYERS = [
-    { cls: '.nexus-blob-orbit', anim: 'nexus-blob-spin' },
-    { cls: '.nexus-blob-core', anim: 'nexus-blob-pulse' },
+  // The session status icon (F-17) is a functional "agent is working"
+  // indicator, exactly like .qs-runner / .animate-spin. Each animated state
+  // must be re-asserted with !important under reduced-motion so the release
+  // WebUI's spurious `reduce` can't freeze it.
+  const STATUS_LAYERS = [
+    { cls: '.nexus-session-status[data-status="thinking"] {', anim: 'nexus-status-breathe' },
+    { cls: '.nexus-session-status[data-status="thinking"] > path {', anim: 'nexus-status-fire' },
+    { cls: '.nexus-session-status[data-status="tools"] > path', anim: 'nexus-status-ratchet' },
+    { cls: '.nexus-session-status[data-status="awaiting"] > path', anim: 'nexus-status-hop' },
   ] as const
 
-  for (const { cls, anim } of BLOB_LAYERS) {
-    it(`re-enables ${cls} (running-indicator blob) under reduced-motion`, () => {
+  for (const { cls, anim } of STATUS_LAYERS) {
+    it(`re-enables ${anim} (session status icon) under reduced-motion`, () => {
       const reenabled = reducedMotionBlocks(GLOBALS_CSS).some(
         body =>
           body.includes(cls) &&
@@ -108,7 +110,7 @@ describe('reduced-motion functional-animation exemption (globals.css)', () => {
         reenabled,
         `globals.css must re-enable \`${cls}\` with \`animation: ${anim} ... ` +
           '!important\` inside a prefers-reduced-motion:reduce block so the ' +
-          'conversation running-indicator blob keeps animating in the release WebUI.',
+          'session status icon keeps animating in the release WebUI.',
       ).toBe(true)
     })
   }

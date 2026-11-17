@@ -9,6 +9,7 @@ import {
   type SessionStatusEntry,
 } from '../browser/webview/sessionStatusStore'
 import {
+  collapsedRowStatus,
   sessionRunStatusOf,
   useSessionRunStatus,
 } from '../browser/webview/sessionRunStatus'
@@ -88,6 +89,34 @@ describe('useSessionRunStatus', () => {
     const { result } = renderHook(() => useSessionRunStatus('s1', { running: true }))
     expect(result.current).toBe('thinking')
   })
+
+  it('re-renders only when the status changes, not on every entry update', () => {
+    let renders = 0
+    renderHook(() => {
+      renders++
+      return useSessionRunStatus('s1')
+    })
+    act(() => publishSessionStatuses([entry({ running: true, activity: { kind: 'tool', tool: 'Read' } })]))
+    const afterTools = renders
+    act(() => publishSessionStatuses([entry({ running: true, activity: { kind: 'tool', tool: 'Edit' }, updatedAt: 2 })]))
+    act(() => publishSessionStatuses([entry({ running: true, activity: { kind: 'tool', tool: 'Bash' }, previewText: 'x' })]))
+    act(() => publishSessionStatuses([entry({ running: true, activity: { kind: 'tool', tool: 'Bash' } }), entry({ sessionId: 's2', running: true })]))
+    expect(renders).toBe(afterTools)
+  })
+})
+
+describe('collapsedRowStatus', () => {
+  const idle = { running: false, needsAnswer: false }
+  it('keeps the parent own status when it has a live one', () => {
+    expect(collapsedRowStatus('thinking', { running: true, needsAnswer: false })).toBe('thinking')
+    expect(collapsedRowStatus('paused', idle)).toBe('paused')
+    expect(collapsedRowStatus(null, idle)).toBeNull()
+  })
+  it('reads running descendants as tools and a halt below as awaiting', () => {
+    expect(collapsedRowStatus(null, { running: true, needsAnswer: false })).toBe('tools')
+    expect(collapsedRowStatus('paused', { running: true, needsAnswer: false })).toBe('tools')
+    expect(collapsedRowStatus('tools', { running: true, needsAnswer: true })).toBe('awaiting')
+  })
 })
 
 describe('SessionStatusIcon', () => {
@@ -151,5 +180,25 @@ describe('session list row', () => {
     expect(leading('c')).toEqual({ status: 'awaiting', typeIcon: false })
     expect(leading('d')).toEqual({ status: 'paused', typeIcon: false })
     expect(leading('e')).toEqual({ status: null, typeIcon: true })
+  })
+
+  it('shows a collapsed parent idle while its child runs a tool as tools, not thinking', () => {
+    localStorage.setItem('nexus:sidebar:childrenCollapsed', JSON.stringify(['p']))
+    publishSessionStatuses([
+      { sessionId: 'p', title: 'p', ending: 'finished' },
+      { sessionId: 'c', title: 'c', parentSessionId: 'p', running: true, activity: { kind: 'tool', tool: 'Bash' } },
+    ])
+    renderRows([
+      item('p'),
+      item('c', { parentSessionId: 'p', lineageKind: 'side_session', running: true }),
+    ])
+    expect(leading('p').status).toBe('tools')
+  })
+
+  it('labels the waiting icon only where no attention dot already says it', () => {
+    publishSessionStatuses([{ sessionId: 'c', title: 'c', needsAnswer: true }])
+    renderRows([item('c', { needsAnswer: true })])
+    const icon = screen.getByTestId('sidebar-row-c').querySelector('[data-slot="session-status-icon"]')!
+    expect(icon.getAttribute('aria-hidden')).toBe('true')
   })
 })

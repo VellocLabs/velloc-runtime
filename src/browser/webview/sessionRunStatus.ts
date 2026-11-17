@@ -5,7 +5,12 @@
  * reasoning stream.
  */
 import type { NexusSessionActivity, NexusTurnEnding } from '../bridge/protocol/ui'
-import { useSessionStatus } from './sessionStatusStore'
+import { useSyncExternalStore } from 'react'
+import {
+  sessionStatusOf,
+  subscribeSessionStatuses,
+  type SessionStatusEntry,
+} from './sessionStatusStore'
 
 /**
  * - `thinking`: a model request is in flight, from submit until its reply arrives.
@@ -35,16 +40,9 @@ export function sessionRunStatusOf(input: SessionRunStatusInput): SessionRunStat
   return resumable ? 'paused' : null
 }
 
-/**
- * The status of one listed session, re-rendering only when it changes. `known`
- * adds what the caller already holds: a true `running` / `needsAnswer` from a
- * wider source, and the open session's exact resumability.
- */
-export function useSessionRunStatus(
-  sessionId: string | null | undefined,
-  known?: Pick<SessionRunStatusInput, 'running' | 'needsAnswer' | 'resumable'>,
-): SessionRunStatus | null {
-  const entry = useSessionStatus(sessionId)
+type KnownRunState = Pick<SessionRunStatusInput, 'running' | 'needsAnswer' | 'resumable'>
+
+function statusFrom(entry: SessionStatusEntry | undefined, known: KnownRunState | undefined) {
   // A run the caller sees before the published list does is a turn that has
   // just been submitted: its request is what is in flight.
   const justSubmitted = !!known?.running && !entry?.running
@@ -55,4 +53,33 @@ export function useSessionRunStatus(
     ending: entry?.ending,
     resumable: known?.resumable,
   })
+}
+
+/**
+ * The status of one session, re-rendering only when the status itself changes.
+ * `known` describes the same session and adds what the caller already holds: a
+ * `running` / `needsAnswer` it sees first, and the open session's exact
+ * resumability.
+ */
+export function useSessionRunStatus(
+  sessionId: string | null | undefined,
+  known?: KnownRunState,
+): SessionRunStatus | null {
+  const snapshot = () => statusFrom(sessionId ? sessionStatusOf(sessionId) : undefined, known)
+  return useSyncExternalStore(subscribeSessionStatuses, snapshot, snapshot)
+}
+
+/**
+ * A collapsed parent row stands in for its subtree: a halt anywhere below is
+ * `awaiting`, and descendants running while the parent itself is not read as
+ * `tools`, since the aggregate does not say what they are doing.
+ */
+export function collapsedRowStatus(
+  own: SessionRunStatus | null,
+  below: { running: boolean; needsAnswer: boolean },
+): SessionRunStatus | null {
+  if (own === 'awaiting' || below.needsAnswer) return 'awaiting'
+  if (own === 'thinking' || own === 'tools') return own
+  if (below.running) return 'tools'
+  return own
 }

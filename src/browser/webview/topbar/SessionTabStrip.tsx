@@ -18,7 +18,7 @@ import {
 /**
  * The topbar tab strip: the session you are in plus, for a team lead, its teammates
  * — the only place a teammate is reachable. Selecting a tab is a plain session
- * switch. Each tab's icon slot is its status light (busy ripple, attention dot).
+ * switch. Each tab's icon slot shows its type icon and the attention dot.
  * Too narrow: trailing tabs collapse into an overflow tab (`planTabOverflow`), then
  * whole titles drop from the right (`fitTabLabels`). Samples are cached per session,
  * keyed on the label text.
@@ -230,9 +230,9 @@ export function SessionTabStrip(props: {
   const onStripEntries = entries.filter(
     (e) => !overflowIds.has(e.session.sessionId),
   );
-  // A collapsed teammate's status has nowhere else to go: the strip is the
-  // only place it is reachable, so the overflow tab carries the union of what
-  // its rows would have shown.
+  // A collapsed teammate's attention has nowhere else to go: the strip is the
+  // only place it is reachable, so the overflow tab carries the union of its
+  // rows' attention dots.
   const overflowRunning = overflowed.some((s) => !!s.running);
   const overflowNeedsAnswer = overflowed.some((s) => !!s.needsAnswer);
   const overflowLabel =

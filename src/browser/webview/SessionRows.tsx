@@ -18,7 +18,7 @@ import {
   XIcon,
 } from 'lucide-react'
 import { SessionStatusIcon } from '@/components/assistant-ui/session-status-icon'
-import { useSessionRunStatus } from './sessionRunStatus'
+import { collapsedRowStatus, useSessionRunStatus } from './sessionRunStatus'
 import { SessionAttentionDot } from '@/components/assistant-ui/session-attention-dot'
 import { DropdownMenu as DropdownMenuPrimitive } from 'radix-ui'
 import { Fragment, useState } from 'react'
@@ -483,10 +483,11 @@ function SessionRow({
   // control is already on screen there).
   const needsAnswer =
     ((!!session.needsAnswer || below.needsAnswer) && !isActive) || !!session.sideChatNeedsAnswer
-  const runStatus = useSessionRunStatus(session.sessionId, {
-    running: isRunning,
+  const ownStatus = useSessionRunStatus(session.sessionId, {
+    running: !!session.running,
     needsAnswer: !!session.needsAnswer,
   })
+  const runStatus = collapsed ? collapsedRowStatus(ownStatus, below) : ownStatus
   // This copy owns the editor only if the rename was opened HERE; the
   // other copy of the same session stays a plain row (see
   // `SessionRowEditing`).
@@ -660,7 +661,10 @@ function SessionRow({
                 data-needs-answer={needsAnswer || undefined}
               >
                 {runStatus ? (
-                  <SessionStatusIcon status={runStatus} />
+                  <SessionStatusIcon
+                    status={runStatus}
+                    decorative={runStatus === 'awaiting' && needsAnswer}
+                  />
                 ) : session.starting && !session.startFailed ? (
                   <Loader2Icon
                     aria-hidden

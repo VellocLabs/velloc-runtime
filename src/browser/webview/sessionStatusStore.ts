@@ -76,7 +76,8 @@ export function sessionStatusOf(sessionId: string): SessionStatusEntry | undefin
   return entries.get(sessionId)
 }
 
-function subscribe(listener: Listener): () => void {
+/** Listen for any change to the index; returns the unsubscribe. */
+export function subscribeSessionStatuses(listener: Listener): () => void {
   listeners.add(listener)
   return () => {
     listeners.delete(listener)
@@ -86,7 +87,7 @@ function subscribe(listener: Listener): () => void {
 /** The published entry for one session; undefined while the runtime has not listed it. */
 export function useSessionStatus(sessionId: string | null | undefined): SessionStatusEntry | undefined {
   return useSyncExternalStore(
-    subscribe,
+    subscribeSessionStatuses,
     () => (sessionId ? entries.get(sessionId) : undefined),
     () => (sessionId ? entries.get(sessionId) : undefined),
   )
