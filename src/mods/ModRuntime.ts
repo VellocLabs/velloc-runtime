@@ -19,7 +19,8 @@ import {
   refuseRegistrations,
   unraisedRenderSites,
 } from './modAdmission'
-import { implementedNouns, isOpResult, serveNoun, serveNounStream, type ModEnvHost, type ModNounHost } from './modNouns'
+import { implementedNouns, serveNoun, serveNounStream, type ModEnvHost, type ModNounHost } from './modNouns'
+import { isOpResult } from './modNounKit'
 import { HEADLESS_COMPOSER, ModComposerBridge } from './modComposer'
 import { EMPTY_USES, ENGINE_NOUNS, pluginNounCalls, unsupportedEngineCalls, type ModUses } from './modScan'
 import { isBuiltinModPath } from './builtinMods'
