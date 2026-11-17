@@ -342,10 +342,13 @@ export function modAskAnswerOf(
  *  (`ModPluginFrame`), so it carries the asking plugin's icon like the band
  *  and a pane do. */
 export function ModAsks() {
-  const { asks, answerAsk, devModsAsk, answerDevMods } = useModUi();
-  if (asks.length === 0 && !devModsAsk) return null;
+  const { asks, answerAsk, devModsAsk, devModsOn, answerDevMods } = useModUi();
+  if (asks.length === 0 && !devModsAsk && !devModsOn) return null;
   return (
     <div data-slot="mod-asks" className="flex w-full flex-col gap-2">
+      {devModsOn ? (
+        <DevModsOnNotice key={devModsOn.requestId} notice={devModsOn} answer={answerDevMods} />
+      ) : null}
       {devModsAsk ? (
         <DevModsAskCard key={devModsAsk.requestId} ask={devModsAsk} answer={answerDevMods} />
       ) : null}
@@ -421,6 +424,50 @@ function DevModsAskCard({
           {t("mods.devAsk.never")}
         </button>
       </div>
+    </div>
+  );
+}
+
+/** The dev folder turned on without asking (`bypassPermissions`):
+ *  says so and names every plugin it loaded, until dismissed (F-25). */
+function DevModsOnNotice({
+  notice,
+  answer,
+}: {
+  notice: ModsDevModsAsk;
+  answer: ReturnType<typeof useModUi>["answerDevMods"];
+}) {
+  const t = useT();
+  const [isSending, setIsSending] = useState(false);
+  const dismiss = () => {
+    if (!answer || isSending) return;
+    setIsSending(true);
+    void answer(notice.requestId, "dismissed").catch(() => setIsSending(false));
+  };
+  return (
+    <div
+      role="status"
+      aria-label={t("mods.devOn.label")}
+      data-testid="mod-dev-on"
+      className={cn(FOOTER_BAR_FRAME, "flex items-start gap-2 p-3")}
+    >
+      <PuzzleIcon className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+      <span className="min-w-0 flex-1 break-words text-sm">
+        {t("mods.devOn.text", { names: notice.plugins.join(", ") })}
+      </span>
+      {answer ? (
+        <button
+          type="button"
+          data-testid="mod-dev-on-dismiss"
+          aria-label={t("mods.devOn.dismiss")}
+          title={t("mods.devOn.dismiss")}
+          disabled={isSending}
+          onClick={dismiss}
+          className="shrink-0 rounded-sm p-0.5 text-muted-foreground hover:text-foreground disabled:opacity-50"
+        >
+          <XIcon className="size-3.5" />
+        </button>
+      ) : null}
     </div>
   );
 }

@@ -177,6 +177,9 @@ export type ModUiContextValue = {
   /** Whether to turn on the session's dev mods folder, with the plugins found
    *  in it; absent when no question waits. */
   devModsAsk?: { requestId: string; plugins: readonly string[] }
+  /** The folder turned on without asking, with every plugin it loaded;
+   *  dismissed through `answerDevMods` with `dismissed`. */
+  devModsOn?: { requestId: string; plugins: readonly string[] }
   /** Answer it. Absent where the connection may not (`mods.devModsAnswer`
    *  is `control`). */
   answerDevMods?: (requestId: string, answer: ModsDevModsAnswer) => Promise<void>

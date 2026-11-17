@@ -375,6 +375,9 @@ export type ModsUiState = {
   /** The question whether to turn on the session's dev mods folder, with the
    *  plugins found in it; absent when none waits. */
   devModsAsk?: ModsDevModsAsk
+  /** The notice that the folder turned on without asking, naming each plugin
+   *  it loaded; dismissed with `mods.devModsAnswer` `dismissed`. */
+  devModsOn?: ModsDevModsAsk
 }
 
 /** The dev mods folder's question: answered by `mods.devModsAnswer`. */
@@ -897,7 +900,8 @@ export function isModsUiState(value: unknown): value is ModsUiState {
       (isRecord(value.turnNote) && typeof value.turnNote.turnId === 'string' && typeof value.turnNote.text === 'string')) &&
     (value.asks === undefined || (Array.isArray(value.asks) && value.asks.every(isModsUiAsk))) &&
     (value.view === undefined || isModsAgentView(value.view)) &&
-    (value.devModsAsk === undefined || isModsDevModsAsk(value.devModsAsk))
+    (value.devModsAsk === undefined || isModsDevModsAsk(value.devModsAsk)) &&
+    (value.devModsOn === undefined || isModsDevModsAsk(value.devModsOn))
   )
 }
 

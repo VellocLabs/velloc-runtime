@@ -17,6 +17,7 @@ import { traceLine } from '../../utils/debugLog'
 import {
   modRoster,
   openDevModsAsk,
+  showDevModsNotice,
   type ModSlot,
   undoWhenScopeEnds,
   watchModRoster,
@@ -312,6 +313,7 @@ export async function openSessionModSlot(input: SessionModSlotInput) {
         permissionMode: () => String(coreState.getAppState().permissionRules.mode),
         canAsk: true,
         ask: plugins => openDevModsAsk(resolvedSessionId, plugins, options.runtimeScopeSignal),
+        notifyOn: plugins => showDevModsNotice(resolvedSessionId, plugins, options.runtimeScopeSignal),
         onPluginsChanged: () => reconcileMods(modPlugins),
         report: line => {
           traceLine(`[mods] ${line}`, { level: 'warn' })

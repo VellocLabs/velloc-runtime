@@ -1,12 +1,12 @@
 /**
  * The session's dev mods folder (F-25): found at a turn end, turned on once
- * (asked, or at once in the bypass and auto modes), never in `dontAsk` or
+ * (asked, or at once with a notice in the bypass mode), never in `dontAsk` or
  * where nobody can be asked; a later change to its plugins reconciles; and
  * the question reaches the session's pages through the registry.
  */
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createDevModsFolder, type DevModsAnswer, type DevModsFolderOptions } from '../mods/devModsFolder'
-import { answerDevModsAsk, modSlotUiState, onModUiEvents, openDevModsAsk } from '../mods/modSlotRegistry'
+import { answerDevModsAsk, modSlotUiState, onModUiEvents, openDevModsAsk, showDevModsNotice } from '../mods/modSlotRegistry'
 import type { ActivePlugin } from '../pluginHost/pluginModel'
 import type { RuntimeFsEntry } from '../utils/fs/runtimeFs'
 
@@ -32,6 +32,7 @@ function folderWorld(
   const hooks = new Map<string, number>()
   const reports: string[] = []
   const asked: string[][] = []
+  const notified: string[][] = []
   let answer: (value: DevModsAnswer) => void = () => {}
   const changed = vi.fn(options.changed ?? (async () => {}))
   const opts: DevModsFolderOptions = {
@@ -60,11 +61,12 @@ function folderWorld(
         answer = resolve
       })
     },
+    notifyOn: plugins => notified.push([...plugins]),
     onPluginsChanged: changed,
     report: line => reports.push(line),
   }
   const folder = createDevModsFolder(opts)
-  return { folder, manifests, hooks, reports, asked, changed, answer: (value: DevModsAnswer) => answer(value) }
+  return { folder, manifests, hooks, reports, asked, notified, changed, answer: (value: DevModsAnswer) => answer(value) }
 }
 
 const settle = () => new Promise(resolve => setTimeout(resolve, 0))
@@ -123,13 +125,39 @@ describe('createDevModsFolder', () => {
     expect(w.asked).toHaveLength(2)
   })
 
-  it.each(['bypassPermissions', 'auto'])('%s turns it on without asking', async mode => {
-    const w = folderWorld({ mode })
+  it('bypassPermissions turns it on without asking, and the notice names each plugin it loaded', async () => {
+    const w = folderWorld({ mode: 'bypassPermissions', installed: ['clash-mod'] })
     w.manifests.set('panel', 1)
+    w.manifests.set('band', 1)
+    w.manifests.set('clash', 1)
     await w.folder.afterTurn()
     expect(w.asked).toEqual([])
     expect(w.folder.state()).toBe('on')
-    expect(w.folder.plugins()).toHaveLength(1)
+    expect(w.folder.plugins().map(p => p.name)).toEqual(['band-mod', 'panel-mod'])
+    expect(w.notified).toEqual([['band-mod', 'panel-mod']])
+    w.manifests.set('panel', 2)
+    await w.folder.afterTurn()
+    expect(w.notified).toHaveLength(1)
+    w.manifests.set('extra', 1)
+    await w.folder.afterTurn()
+    expect(w.notified).toEqual([['band-mod', 'panel-mod'], ['extra-mod']])
+  })
+
+  it('auto asks, and loads nothing until the answer', async () => {
+    const w = folderWorld({ mode: 'auto' })
+    w.manifests.set('panel', 1)
+    await w.folder.afterTurn()
+    expect(w.asked).toEqual([['panel-mod']])
+    expect(w.folder.state()).toBe('asking')
+    expect(w.folder.plugins()).toEqual([])
+    expect(w.changed).not.toHaveBeenCalled()
+    await w.folder.afterTurn()
+    expect(w.folder.plugins()).toEqual([])
+    w.answer('on')
+    await settle()
+    await settle()
+    expect(w.folder.plugins().map(p => p.name)).toEqual(['panel-mod'])
+    expect(w.notified).toEqual([])
   })
 
   it('dontAsk, or nobody to ask: off, said once in the report', async () => {
@@ -241,6 +269,33 @@ describe('the dev mods question on mods/ui/<sessionId>', () => {
       { sessionId: 'dev-s1', asked: true },
       { sessionId: 'dev-s1', asked: false },
     ])
+  })
+
+  it('the turned-on notice names every plugin, grows with new ones, and a page dismisses it', async () => {
+    const events: boolean[] = []
+    undo.push(
+      onModUiEvents((sessionId, event) => {
+        if (sessionId === 'dev-n1' && event.kind === 'state') events.push(event.state.devModsOn !== undefined)
+      }),
+    )
+    showDevModsNotice('dev-n1', ['band-mod', 'panel-mod'])
+    expect(modSlotUiState('dev-n1').devModsOn?.plugins).toEqual(['band-mod', 'panel-mod'])
+    expect(modSlotUiState('dev-n2').devModsOn).toBeUndefined()
+    showDevModsNotice('dev-n1', ['extra-mod'])
+    const notice = modSlotUiState('dev-n1').devModsOn!
+    expect(notice.plugins).toEqual(['band-mod', 'panel-mod', 'extra-mod'])
+    expect(answerDevModsAsk('dev-n1', notice.requestId, 'on')).toBe(false)
+    expect(answerDevModsAsk('dev-n2', notice.requestId, 'dismissed')).toBe(false)
+    expect(answerDevModsAsk('dev-n1', notice.requestId, 'dismissed')).toBe(true)
+    expect(modSlotUiState('dev-n1').devModsOn).toBeUndefined()
+    expect(events).toEqual([true, true, false])
+  })
+
+  it('an aborted session drops the notice', () => {
+    const controller = new AbortController()
+    showDevModsNotice('dev-n3', ['x'], controller.signal)
+    controller.abort()
+    expect(modSlotUiState('dev-n3').devModsOn).toBeUndefined()
   })
 
   it('an aborted session settles it dismissed', async () => {

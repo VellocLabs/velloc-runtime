@@ -32,6 +32,9 @@ export type DevModsFolderOptions = {
   /** Whether a page can be asked (an interactive session). */
   canAsk: boolean
   ask(pluginNames: readonly string[]): Promise<DevModsAnswer>
+  /** The folder turned on without asking and loaded `pluginNames`: tell the
+   *  person. Called again for each plugin it loads later, never twice for one. */
+  notifyOn?(pluginNames: readonly string[]): void
   /** The folder's plugin set changed while on: reconcile the session's mods. */
   onPluginsChanged(): Promise<void>
   onStateChanged?(state: DevModsState): void
@@ -41,8 +44,8 @@ export type DevModsFolderOptions = {
 /** The install id a dev-folder plugin is known by (`$.plugin`, settings). */
 export const DEV_MODS_MARKETPLACE = 'dev'
 
-/** Modes in which the folder turns on without asking. */
-const UNASKED_ON_MODES: ReadonlySet<string> = new Set(['bypassPermissions', 'auto'])
+/** Modes in which the folder turns on without asking (and says so). */
+const UNASKED_ON_MODES: ReadonlySet<string> = new Set(['bypassPermissions'])
 /** Modes in which nobody is asked and nothing loads. */
 const NEVER_ASK_MODES: ReadonlySet<string> = new Set(['dontAsk'])
 
@@ -57,6 +60,9 @@ export function createDevModsFolder(options: DevModsFolderOptions): DevModsFolde
   let state: DevModsState = 'unasked'
   let loaded: ActivePlugin[] = []
   let loadedKey = ''
+  /** Turned on without asking: each newly loaded plugin is announced. */
+  let onUnasked = false
+  const announced = new Set<string>()
 
   const setState = (next: DevModsState): void => {
     if (state === next) return
@@ -112,6 +118,11 @@ export function createDevModsFolder(options: DevModsFolderOptions): DevModsFolde
     loaded = plugins
     loadedKey = key
     await options.onPluginsChanged()
+    if (!onUnasked) return
+    const fresh = plugins.map(plugin => plugin.name).filter(name => !announced.has(name))
+    if (fresh.length === 0) return
+    for (const name of fresh) announced.add(name)
+    options.notifyOn?.(fresh)
   }
 
   const askNow = (names: readonly string[]): void => {
@@ -154,6 +165,7 @@ export function createDevModsFolder(options: DevModsFolderOptions): DevModsFolde
         // Off is where nobody could be asked: a later mode that can ask, asks.
         if (state === 'off' && (NEVER_ASK_MODES.has(mode) || !options.canAsk)) return
         if (UNASKED_ON_MODES.has(mode)) {
+          onUnasked = true
           setState('on')
           await load(folders)
           return

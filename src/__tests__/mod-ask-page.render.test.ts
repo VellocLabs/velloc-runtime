@@ -170,3 +170,33 @@ describe('the card', () => {
     expect(container.querySelector('[data-slot="mod-asks"]')).toBeNull()
   })
 })
+
+describe('the dev mods turned-on notice', () => {
+  it('a state delta carries it to the view and one without it clears it', () => {
+    const { connection, emit } = fakeConnection()
+    const views: ModsUiView[] = []
+    const release = holdModsUiView(connection, 's1', view => views.push(view))
+    const notice = { requestId: 'dev7', plugins: ['band-mod', 'panel-mod'] }
+    emit('mods/ui/s1', 'state', { status: [], notices: [], devModsOn: notice })
+    expect(views.at(-1)!.devModsOn).toEqual(notice)
+    emit('mods/ui/s1', 'state', { status: [], notices: [] })
+    expect(views.at(-1)!.devModsOn).toBeUndefined()
+    release()
+  })
+
+  it('names every plugin it loaded, and dismissing it sends mods.devModsAnswer dismissed', () => {
+    const answerDevMods = vi.fn(async () => {})
+    render(withUi({ devModsOn: { requestId: 'dev7', plugins: ['band-mod', 'panel-mod'] }, answerDevMods }))
+    const notice = screen.getByTestId('mod-dev-on')
+    expect(notice.getAttribute('role')).toBe('status')
+    expect(notice.textContent).toContain('band-mod, panel-mod')
+    fireEvent.click(screen.getByTestId('mod-dev-on-dismiss'))
+    expect(answerDevMods).toHaveBeenCalledWith('dev7', 'dismissed')
+  })
+
+  it('is still shown, without a dismiss button, where the connection may not answer', () => {
+    render(withUi({ devModsOn: { requestId: 'dev7', plugins: ['band-mod'] } }))
+    expect(screen.getByTestId('mod-dev-on').textContent).toContain('band-mod')
+    expect(screen.queryByTestId('mod-dev-on-dismiss')).toBeNull()
+  })
+})

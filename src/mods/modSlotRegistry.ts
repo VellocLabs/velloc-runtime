@@ -67,6 +67,8 @@ export type ModSlotUiState = {
   view?: ModAgentView
   /** The question whether to turn on the session's dev mods folder. */
   devModsAsk?: DevModsAsk
+  /** The notice that the folder turned on without asking, naming its plugins. */
+  devModsOn?: DevModsAsk
 }
 
 /** The dev mods folder's question as the page draws it: the plugins found. */
@@ -327,12 +329,39 @@ export function modSlotUiState(sessionId: string): ModSlotUiState {
 /** The dev mods folder's open question per session. It lives here, not in a
  *  slot: the folder is asked about before any mod runtime exists. */
 const devModsAsks = new Map<string, { ask: DevModsAsk; settle: (answer: DevModsAnswer) => void }>()
+/** The folder's turned-on notice per session, until a page dismisses it. */
+const devModsNotices = new Map<string, { notice: DevModsAsk; drop: () => void }>()
 let nextDevModsAsk = 0
 
 function withDevModsAsk(sessionId: string, state: ModSlotUiState): ModSlotUiState {
   const pending = devModsAsks.get(sessionId)
-  const { devModsAsk: _, ...rest } = state
-  return pending ? { ...rest, devModsAsk: { ...pending.ask, plugins: [...pending.ask.plugins] } } : rest
+  const notice = devModsNotices.get(sessionId)?.notice
+  const { devModsAsk: _, devModsOn: __, ...rest } = state
+  return {
+    ...rest,
+    ...(pending ? { devModsAsk: { ...pending.ask, plugins: [...pending.ask.plugins] } } : {}),
+    ...(notice ? { devModsOn: { ...notice, plugins: [...notice.plugins] } } : {}),
+  }
+}
+
+/** Tells the pages of `sessionId` that its dev mods folder turned on without
+ *  asking and loaded `plugins`. A notice still shown gains the new names;
+ *  it stays until a page dismisses it or `signal` aborts. */
+export function showDevModsNotice(sessionId: string, plugins: readonly string[], signal?: AbortSignal): void {
+  const shown = devModsNotices.get(sessionId)
+  const names = [...(shown?.notice.plugins ?? []), ...plugins.filter(name => !shown?.notice.plugins.includes(name))]
+  shown?.drop()
+  const requestId = `dev${++nextDevModsAsk}`
+  const onAbort = (): void => drop()
+  const drop = (): void => {
+    if (devModsNotices.get(sessionId)?.notice.requestId !== requestId) return
+    devModsNotices.delete(sessionId)
+    signal?.removeEventListener('abort', onAbort)
+  }
+  devModsNotices.set(sessionId, { notice: { requestId, plugins: names }, drop })
+  if (signal?.aborted) drop()
+  else signal?.addEventListener('abort', onAbort, { once: true })
+  noteModUiEvent(sessionId, { kind: 'state', state: modSlotUiState(sessionId) })
 }
 
 /** Asks the pages of `sessionId` whether to turn on its dev mods folder.
@@ -357,11 +386,18 @@ export function openDevModsAsk(sessionId: string, plugins: readonly string[], si
   })
 }
 
-/** A page's answer to the dev mods question; false when none waits. */
+/** A page's answer to the dev mods question, or `dismissed` for the
+ *  turned-on notice; false when neither waits under `requestId`. */
 export function answerDevModsAsk(sessionId: string, requestId: string, answer: DevModsAnswer): boolean {
   const pending = devModsAsks.get(sessionId)
-  if (!pending || pending.ask.requestId !== requestId) return false
-  pending.settle(answer)
+  if (pending && pending.ask.requestId === requestId) {
+    pending.settle(answer)
+    return true
+  }
+  const notice = devModsNotices.get(sessionId)
+  if (!notice || notice.notice.requestId !== requestId || answer !== 'dismissed') return false
+  notice.drop()
+  noteModUiEvent(sessionId, { kind: 'state', state: modSlotUiState(sessionId) })
   return true
 }
 
