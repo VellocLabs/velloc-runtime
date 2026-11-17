@@ -19,14 +19,20 @@ export type ModValidateInput = { folder: string }
 
 type GateContext = Pick<ToolCallContext, 'options' | 'readAppState'> & Partial<ToolCallContext>
 
+/** Which asks a validation's reads may pass: every one (the person ran the
+ *  command), none, or those for the reason the person allowed on the folder. */
+export type ModValidateAsks = 'any' | 'none' | { allowed: string }
+
+const askReason = (verdict: ToolPermissionResult): string => JSON.stringify(verdict.verdictReason ?? null)
+
 /**
  * Security: the read gate for a validation, one path at a time: the session's
  * untrusted-read boundary, then the Read tool's file permission (a deny rule
- * refuses; an ask refuses too unless `askAllowed` — the person ran the
- * command, or allowed the folder when the tool asked — or the session bypasses
- * permissions). Nothing here prompts.
+ * refuses; an ask refuses too unless `asks` lets it through, or the session
+ * bypasses permissions). An ask for another reason than the one allowed — a
+ * narrower rule inside the folder — still refuses. Nothing here prompts.
  */
-export function modFolderReadGate(context: GateContext, askAllowed: boolean): (path: string) => Promise<void> {
+export function modFolderReadGate(context: GateContext, asks: ModValidateAsks): (path: string) => Promise<void> {
   return async path => {
     const boundary = await assertUntrustedReadAllowed(path, context, fsForContext(context as ToolCallContext))
     if (!boundary.ok) throw new Error(`${boundary.reason}; this session reads only under ${context.options.untrustedReadRoot}`)
@@ -34,18 +40,19 @@ export function modFolderReadGate(context: GateContext, askAllowed: boolean): (p
     if (!rules) return
     const verdict = await vetFileRead(READ_TOOL_ID, { file_path: path }, buildFilePermissionContext(context as ToolCallContext, rules))
     if (verdict.behavior === 'deny') throw new Error(verdict.message ?? 'a permission rule denies reading it')
-    if (verdict.behavior === 'ask' && !askAllowed && rules.mode !== 'bypassPermissions') {
+    const passes = asks === 'any' || (asks !== 'none' && askReason(verdict) === asks.allowed)
+    if (verdict.behavior === 'ask' && !passes && rules.mode !== 'bypassPermissions') {
       throw new Error(verdict.message ?? 'reading it needs permission')
     }
   }
 }
 
 /** Validate `folder` (relative to the session's cwd) as the session may read it. */
-export function validateFolderForSession(folder: string, context: GateContext, askAllowed: boolean): Promise<ModValidateReport> {
+export function validateFolderForSession(folder: string, context: GateContext, asks: ModValidateAsks): Promise<ModValidateReport> {
   const absolute = resolveRuntimePath(context.options.cwd, folder)
   return validateModFolder(absolute, {
     fs: fsForContext(context as ToolCallContext),
-    gate: modFolderReadGate(context, askAllowed),
+    gate: modFolderReadGate(context, asks),
   })
 }
 
@@ -95,9 +102,10 @@ export const ModValidateTool: ToolContract<ModValidateInput, string> = declareTo
   async call(input: ModValidateInput, context: ToolCallContext) {
     const folder = resolveRuntimePath(context.options.cwd, input.folder)
     const rules = context.readAppState?.().permissionRules
-    // Reaching `call` after an ask on the folder means the person allowed it, reads inside included.
-    const asked = rules !== undefined && (await vetFileRead(READ_TOOL_ID, { file_path: folder }, buildFilePermissionContext(context, rules))).behavior === 'ask'
-    const report = await validateFolderForSession(input.folder, context, asked)
+    const verdict = rules ? await vetFileRead(READ_TOOL_ID, { file_path: folder }, buildFilePermissionContext(context, rules)) : undefined
+    // Reaching `call` after an ask on the folder means the person allowed that ask.
+    const asks: ModValidateAsks = verdict?.behavior === 'ask' ? { allowed: askReason(verdict) } : 'none'
+    const report = await validateFolderForSession(input.folder, context, asks)
     return { data: JSON.stringify(report, (name, value: unknown) => (name === 'detail' ? undefined : value), 2) }
   },
 })

@@ -2965,7 +2965,6 @@ export const ja: Messages = {
   'slash.out.modValidate.finding.engineCreateWithholds': 'engine.create が next(e) の結果を返していません：下位のすべての名詞を差し止めます',
   'slash.out.modValidate.finding.guardWithoutCatch': '{event} のフックは操作を拒否できますが、.catch がありません：フック自身のコードが失敗すると、操作はそのまま実行されます',
   'slash.out.modValidate.finding.hookFormUnknown': '{event} のフックはモジュール自身のファイルの関数ではありません：形式は読み込み時にのみ検証されます',
-  'slash.out.modValidate.finding.importNotRead': 'インポートを検証できませんでした：{reason}',
   'slash.out.modValidate.finding.matcherNotObject': 'on("{event}")：マッチャーがオブジェクトではありません（イベント引数の一部を指定します）',
   'slash.out.modValidate.finding.noFolder': 'ここにフォルダーがありません（{error}）',
   'slash.out.modValidate.finding.noManifest': 'プラグインのマニフェストがありません：プラグイン名はフォルダー名（「{name}」）になります',

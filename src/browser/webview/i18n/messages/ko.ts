@@ -2955,7 +2955,6 @@ export const ko: Messages = {
   'slash.out.modValidate.finding.engineCreateWithholds': 'engine.create가 next(e)의 결과 없이 반환합니다: 아래의 모든 명사를 보류합니다',
   'slash.out.modValidate.finding.guardWithoutCatch': '{event}의 훅은 작업을 거부할 수 있지만 .catch가 없습니다: 훅 자체 코드가 실패하면 작업이 그대로 진행됩니다',
   'slash.out.modValidate.finding.hookFormUnknown': '{event}의 훅이 모듈 자체 파일의 함수가 아닙니다: 형식은 로드할 때만 검사됩니다',
-  'slash.out.modValidate.finding.importNotRead': '가져오기를 검증하지 못했습니다: {reason}',
   'slash.out.modValidate.finding.matcherNotObject': 'on("{event}"): 매처가 객체가 아닙니다(이벤트 인수의 일부)',
   'slash.out.modValidate.finding.noFolder': '여기에 폴더가 없습니다 ({error})',
   'slash.out.modValidate.finding.noManifest': '플러그인 매니페스트가 없습니다: 플러그인 이름은 폴더 이름("{name}")을 따릅니다',

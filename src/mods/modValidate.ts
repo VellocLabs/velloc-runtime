@@ -104,7 +104,8 @@ function said(key: MessageKey, params?: Record<string, string | number>): Said {
 /**
  * A read-only view of `fs`. Security: every read passes `gate` first, and a
  * file's content is read only within `MOD_VALIDATE_LIMITS`, once. A path not
- * read lands in `skipped` with the finding that reports it.
+ * read lands in `skipped` with the finding that reports it; a later read of it
+ * answers the same refusal.
  */
 function gatedFs(fs: RuntimeFs, gate: (path: string) => Promise<void>, skipped: Map<string, ModValidateFinding>): RuntimeFs {
   let budget = MOD_VALIDATE_LIMITS.files
@@ -240,7 +241,7 @@ export async function validateModFolder(folder: string, deps: ModValidateDeps): 
     })
   }
   for (const [path, kind] of listed.slice(0, MOD_VALIDATE_LIMITS.modules)) {
-    const checked = await validateModule(path, kind, root, plugin.name, fs, loadTs, findings, skipped)
+    const checked = await validateModule(path, kind, root, plugin.name, fs, loadTs, findings)
     if (!checked) continue
     modules.push(checked.module)
     for (const step of checked.module.engineCreate) for (const noun of step.adds) ownNouns.add(noun)
@@ -266,7 +267,6 @@ async function validateModule(
   fs: RuntimeFs,
   loadTs: () => Promise<typeof TS>,
   findings: ModValidateFinding[],
-  skipped: Map<string, ModValidateFinding>,
 ): Promise<{ module: ModValidateModule; uses: ModUses } | null> {
   const refuse = (text: Said, code: string, where: { file?: string; line?: number } = { file: path }): null => {
     findings.push({ level: 'refused', code, ...text, ...where })
@@ -282,27 +282,23 @@ async function validateModule(
   const refusedSource = refuseModuleSource(path, source, true)
   if (refusedSource) return refuse({ message: refusedSource }, 'source')
   const ts = await loadTs()
-  const before = new Set(skipped.keys())
   let compiled
   try {
-    compiled = await compileModModule({ entry: path, root, fs, entrySource: source, loadTypeScript: async () => ts })
+    compiled = await compileModModule({
+      entry: path,
+      root,
+      fs,
+      entrySource: source,
+      loadTypeScript: async () => ts,
+      readRefused: error => error instanceof GateRefusal,
+    })
   } catch (error) {
     if (error instanceof GateRefusal) return null
     if (error instanceof ModCompileError) {
-      const where = {
+      return refuse({ message: error.message }, 'compile', {
         ...(error.file !== undefined ? { file: error.file } : { file: path }),
         ...(error.line !== undefined ? { line: error.line } : {}),
-      }
-      // The compiler takes a refused candidate for a missing one: report the refusal once, at the import.
-      const unread = [...skipped.keys()].filter(candidate => !before.has(candidate))
-      if (unread.length > 0) {
-        const first = skipped.get(unread[0]!)!
-        for (const candidate of unread) skipped.delete(candidate)
-        const reason = String(first.detail?.params?.reason ?? first.message)
-        findings.push({ level: 'error', code: 'import-not-read', ...said('slash.out.modValidate.finding.importNotRead', { reason }), ...where })
-        return null
-      }
-      return refuse({ message: error.message }, 'compile', where)
+      })
     }
     return refuse(said('slash.out.modValidate.finding.didNotCompile', { error: errorText(error) }), 'compile')
   }

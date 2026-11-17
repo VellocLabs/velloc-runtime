@@ -9,6 +9,7 @@
 import type * as TS from 'typescript'
 import { isStreamingEvent, type HookRegistration } from './modTypes'
 import { scriptKindOf } from './modScan'
+import { MOD_MODULE_EXTENSIONS, extensionOf } from './modCompilerSurface'
 
 /** A matcher the source spells as plain data, or the marker for one it does not. */
 export const MATCHER_NOT_LITERAL: unique symbol = Symbol('matcher-not-literal')
@@ -92,19 +93,20 @@ export function readRegistrations(ts: typeof TS, files: ReadonlyArray<{ path: st
       continue
     }
   }
-  // An exported name two files share resolves to neither.
-  const exported = new Map<string, TS.Node | null>()
-  for (const { file } of parsed) {
-    for (const [name, fn] of exportedFunctions(ts, file)) exported.set(name, exported.has(name) ? null : fn)
-  }
+  const byStem = new Map<string, TS.SourceFile>()
+  for (const { path, file } of parsed) byStem.set(stemOf(path), file)
   for (const { path, file } of parsed) {
-    const imported = new Map<string, string>()
+    const imported = new Map<string, TS.Node>()
     for (const statement of file.statements) {
       if (!ts.isImportDeclaration(statement) || !ts.isStringLiteral(statement.moduleSpecifier)) continue
-      if (!statement.moduleSpecifier.text.startsWith('.')) continue
+      const target = importedFile(byStem, path, statement.moduleSpecifier.text)
       const named = statement.importClause?.namedBindings
-      if (!named || !ts.isNamedImports(named)) continue
-      for (const element of named.elements) imported.set(element.name.text, (element.propertyName ?? element.name).text)
+      if (!target || !named || !ts.isNamedImports(named)) continue
+      const exports = new Map(exportedFunctions(ts, target))
+      for (const element of named.elements) {
+        const fn = exports.get((element.propertyName ?? element.name).text)
+        if (fn) imported.set(element.name.text, fn)
+      }
     }
     const lineOf = (node: TS.Node): number => file.getLineAndCharacterOfPosition(node.getStart(file)).line + 1
     const functions = new Map<string, TS.Node>()
@@ -126,10 +128,7 @@ export function readRegistrations(ts: typeof TS, files: ReadonlyArray<{ path: st
     declare(file)
     const resolveFunction = (node: TS.Node | undefined): TS.Node | undefined => {
       if (!node || !ts.isIdentifier(node)) return node
-      const local = functions.get(node.text)
-      if (local) return local
-      const name = imported.get(node.text)
-      return name === undefined ? undefined : (exported.get(name) ?? undefined)
+      return functions.get(node.text) ?? imported.get(node.text)
     }
 
     const visit = (node: TS.Node): void => {
@@ -237,6 +236,26 @@ function engineStepShape(ts: typeof TS, hook: TS.SignatureDeclaration): { form: 
     return { form: 'other', adds: [] }
   }
   return { form: spreadsBuilt ? 'built' : 'none', adds }
+}
+
+/** `path` without its module suffix, `/` separated. */
+function stemOf(path: string): string {
+  const slashed = path.replace(/\\/g, '/')
+  const extension = extensionOf(slashed)
+  return MOD_MODULE_EXTENSIONS.includes(extension) ? slashed.slice(0, -extension.length) : slashed
+}
+
+/** The graph file a relative `specifier` of `importer` names, if any. */
+function importedFile(byStem: ReadonlyMap<string, TS.SourceFile>, importer: string, specifier: string): TS.SourceFile | undefined {
+  if (specifier !== '.' && specifier !== '..' && !specifier.startsWith('./') && !specifier.startsWith('../')) return undefined
+  const segments = importer.replace(/\\/g, '/').split('/').slice(0, -1)
+  for (const segment of specifier.split('/')) {
+    if (segment === '' || segment === '.') continue
+    if (segment === '..') segments.pop()
+    else segments.push(segment)
+  }
+  const base = stemOf(segments.join('/'))
+  return byStem.get(base) ?? byStem.get(`${base}/index`)
 }
 
 /** The functions `file` exports by name: declarations and `const` functions. */

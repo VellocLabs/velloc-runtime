@@ -2908,7 +2908,6 @@ export const zh: Messages = {
   'slash.out.modValidate.finding.engineCreateWithholds': 'engine.create 返回时未带 next(e) 的结果：它会扣留其下的所有名词',
   'slash.out.modValidate.finding.guardWithoutCatch': '其在 {event} 上的钩子可以拒绝操作，但没有 .catch：如果它自身的代码失败，操作会照常进行',
   'slash.out.modValidate.finding.hookFormUnknown': '其在 {event} 上的钩子不是模块自身文件中的函数：其形式仅在加载时检查',
-  'slash.out.modValidate.finding.importNotRead': '有一个导入未检查：{reason}',
   'slash.out.modValidate.finding.matcherNotObject': 'on("{event}")：匹配器不是对象（应为事件参数的部分对象）',
   'slash.out.modValidate.finding.noFolder': '此处没有文件夹（{error}）',
   'slash.out.modValidate.finding.noManifest': '没有插件清单：插件以其文件夹命名（“{name}”）',

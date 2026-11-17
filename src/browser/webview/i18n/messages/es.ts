@@ -3038,7 +3038,6 @@ export const es: Messages = {
   'slash.out.modValidate.finding.engineCreateWithholds': 'engine.create devuelve sin el resultado de next(e): retiene todos los sustantivos de debajo',
   'slash.out.modValidate.finding.guardWithoutCatch': 'su hook en {event} puede rechazar una acción y no tiene .catch: si su propio código falla, la acción sigue adelante',
   'slash.out.modValidate.finding.hookFormUnknown': 'su hook en {event} no es una función de los archivos propios del módulo: su forma solo se comprueba al cargar',
-  'slash.out.modValidate.finding.importNotRead': 'no se comprobó una importación: {reason}',
   'slash.out.modValidate.finding.matcherNotObject': 'on("{event}"): el matcher no es un objeto (una parte del argumento del evento)',
   'slash.out.modValidate.finding.noFolder': 'aquí no hay ninguna carpeta ({error})',
   'slash.out.modValidate.finding.noManifest': 'no hay manifiesto del complemento: el complemento toma el nombre de su carpeta ("{name}")',

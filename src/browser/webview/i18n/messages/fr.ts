@@ -3043,7 +3043,6 @@ export const fr: Messages = {
   'slash.out.modValidate.finding.engineCreateWithholds': 'engine.create renvoie sans le résultat de next(e) : il retient tous les noms en dessous',
   'slash.out.modValidate.finding.guardWithoutCatch': 'son hook sur {event} peut refuser une action et n’a pas de .catch : si son propre code échoue, l’action passe',
   'slash.out.modValidate.finding.hookFormUnknown': 'son hook sur {event} n’est pas une fonction des fichiers propres au module : sa forme n’est vérifiée qu’au chargement',
-  'slash.out.modValidate.finding.importNotRead': 'un import n’a pas été vérifié : {reason}',
   'slash.out.modValidate.finding.matcherNotObject': 'on("{event}") : le matcher n’est pas un objet (une partie de l’argument de l’événement)',
   'slash.out.modValidate.finding.noFolder': 'aucun dossier ici ({error})',
   'slash.out.modValidate.finding.noManifest': 'aucun manifeste d’extension : l’extension prend le nom de son dossier (« {name} »)',

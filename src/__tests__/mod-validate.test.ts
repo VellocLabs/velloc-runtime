@@ -297,7 +297,7 @@ describe('validateModFolder — the source as the loader reads it', () => {
     expect(report.modules[0]!.engineCreate).toEqual([{ file: `${ROOT}/hooks/index.ts`, line: 1, form: 'built', adds: [] }])
   })
 
-  it('an import the gate refuses is one finding at the import, not a missing file', async () => {
+  it('an import the gate refuses is reported as not read, not as a missing file', async () => {
     const report = await validateModFolder(ROOT, {
       fs: treeFs(
         plugin("import { x } from './lib/x'\nexport function register(on) { on('session.start', async ($, e, next) => { x(); return next(e) }) }", {
@@ -308,9 +308,36 @@ describe('validateModFolder — the source as the loader reads it', () => {
         if (path.startsWith(`${ROOT}/hooks/lib/`)) throw new Error('denied by a rule')
       },
     })
-    expect(codes(report)).toEqual(['import-not-read'])
-    expect(report.findings[0]).toMatchObject({ level: 'error', file: `${ROOT}/hooks/index.ts` })
+    expect(codes(report)).toEqual(['not-readable'])
+    expect(report.findings[0]).toMatchObject({ level: 'error', file: `${ROOT}/hooks/lib/x.ts` })
     expect(report.findings[0]!.message).toContain('denied by a rule')
+  })
+
+  it('a refused file two modules reach is reported, whichever reads it first', async () => {
+    const files = {
+      [getPluginManifestPath(ROOT)]: JSON.stringify({ name: 'demo' }),
+      [`${ROOT}/hooks/hooks.json`]: JSON.stringify({ modules: ['./index.ts', './lib/b.ts'] }),
+      [`${ROOT}/hooks/index.ts`]: "import { b } from './lib/b'\nexport function register(on) { b }",
+      [`${ROOT}/hooks/lib/b.ts`]: 'export const b = 1\nexport function register(on) {}',
+    }
+    const report = await validateModFolder(ROOT, {
+      fs: treeFs(files),
+      gate: async path => {
+        if (path.startsWith(`${ROOT}/hooks/lib/`)) throw new Error('denied by a rule')
+      },
+    })
+    expect(codes(report)).toEqual(['not-readable'])
+    expect(report.findings[0]!.file).toBe(`${ROOT}/hooks/lib/b.ts`)
+  })
+
+  it('an imported hook is the function of the file its import names', async () => {
+    const report = await validate(
+      plugin("import { step } from './a'\nexport function register(on) { on('turn.step', step) }", {
+        [`${ROOT}/hooks/a.ts`]: 'export async function* step($, e, next) { yield* next(e) }',
+        [`${ROOT}/hooks/b.ts`]: 'export function step() {}',
+      }),
+    )
+    expect(report.modules[0]!.hooks[0]!.form).toBe('generator')
   })
 
   it('a file over the size limit is not read', async () => {

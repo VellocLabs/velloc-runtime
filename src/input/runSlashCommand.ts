@@ -287,7 +287,7 @@ export async function dispatchCommandInput(
         })
         if (!name) return reply([key('slash.out.modValidate.usage')])
         try {
-          return reply(modValidateReportParts(await validateFolderForSession(name, params.context, true)))
+          return reply(modValidateReportParts(await validateFolderForSession(name, params.context, 'any')))
         } catch (error) {
           return reply([key('slash.out.modValidate.couldNotRun', { error: error instanceof Error ? error.message : String(error) })])
         }

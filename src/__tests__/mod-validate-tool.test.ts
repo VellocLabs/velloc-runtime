@@ -82,6 +82,13 @@ describe('ModValidate tool', () => {
     expect(report.modules).toHaveLength(1)
   })
 
+  it('an ask narrower than the allowed one still refuses its path', async () => {
+    const reads: string[] = []
+    const report = await call(contextWith([], reads, ['Read(demo/hooks/**)', 'Read(demo)']))
+    expect(reads).not.toContain('D:/work/demo/hooks/index.ts')
+    expect(report.findings.map(finding => finding.code)).toContain('not-readable')
+  })
+
   it('answers JSON without the catalog entries of its findings', async () => {
     const outcome = await ModValidateTool.call({ folder: 'demo' }, contextWith([]), (async () => ({ behavior: 'allow' })) as never, {} as Message)
     expect(outcome.data).toContain('guard-without-catch')

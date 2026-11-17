@@ -3032,7 +3032,6 @@ export const de: Messages = {
   'slash.out.modValidate.finding.engineCreateWithholds': 'engine.create gibt ohne das Ergebnis von next(e) zurück: Es hält jedes Nomen darunter zurück',
   'slash.out.modValidate.finding.guardWithoutCatch': 'sein Hook auf {event} kann eine Aktion ablehnen und hat kein .catch: Schlägt sein eigener Code fehl, wird die Aktion ausgeführt',
   'slash.out.modValidate.finding.hookFormUnknown': 'sein Hook auf {event} ist keine Funktion der eigenen Dateien des Moduls: Seine Form wird erst beim Laden geprüft',
-  'slash.out.modValidate.finding.importNotRead': 'ein Import wurde nicht geprüft: {reason}',
   'slash.out.modValidate.finding.matcherNotObject': 'on("{event}"): Der Matcher ist kein Objekt (ein Teil des Arguments des Ereignisses)',
   'slash.out.modValidate.finding.noFolder': 'hier ist kein Ordner ({error})',
   'slash.out.modValidate.finding.noManifest': 'kein Plugin-Manifest: Das Plugin heißt wie sein Ordner („{name}“)',

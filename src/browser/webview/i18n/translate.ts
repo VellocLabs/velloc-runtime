@@ -353,7 +353,6 @@ export const BOOTSTRAP_MESSAGES: Partial<Record<MessageKey, string>> = {
   'slash.out.modValidate.finding.engineCreateWithholds': 'engine.create returns without next(e)\'s result: it withholds every noun beneath',
   'slash.out.modValidate.finding.guardWithoutCatch': 'its hook on {event} can refuse an action, and has no .catch: if its own code fails, the action goes through',
   'slash.out.modValidate.finding.hookFormUnknown': 'its hook on {event} is no function of the module\'s own files: its form is checked only at load',
-  'slash.out.modValidate.finding.importNotRead': 'an import was not checked: {reason}',
   'slash.out.modValidate.finding.matcherNotObject': 'on("{event}"): the matcher is not an object (a partial of the event\'s argument)',
   'slash.out.modValidate.finding.noFolder': 'no folder here ({error})',
   'slash.out.modValidate.finding.noManifest': 'no plugin manifest: the plugin is named after its folder ("{name}")',

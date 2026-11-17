@@ -107,6 +107,9 @@ export type ModCompileOptions = {
    *  loads, and a built-in that is not on disk compiles too. Read through
    *  `fs` when absent. */
   entrySource?: string
+  /** A read error that is a refusal, not an absence: it ends the compile as
+   *  thrown instead of counting the candidate as missing. */
+  readRefused?: (error: unknown) => boolean
 }
 
 export type ModCompileResult = ModCompileGraph & {
@@ -336,6 +339,7 @@ async function resolveRelative(
   fs: ModCompileFs,
   texts: Map<string, string>,
   missing: Set<string>,
+  readRefused?: (error: unknown) => boolean,
 ): Promise<{ path: string; text: string } | null> {
   const base = normalize(`${dirname(importer)}/${specifier}`)
   const written = extensionOf(base)
@@ -352,7 +356,8 @@ async function resolveRelative(
       const text = await fs.readFile(candidate, { encoding: 'utf-8' })
       texts.set(candidate, text)
       return { path: candidate, text }
-    } catch {
+    } catch (error) {
+      if (readRefused?.(error)) throw error
       missing.add(candidate)
     }
   }
@@ -523,7 +528,7 @@ export async function compileModModule(options: ModCompileOptions): Promise<ModC
       if (!isInside(root, candidate)) {
         throw new ModCompileError(`"${specifier}" is outside the plugin (${root})`, { file: path, line })
       }
-      const resolved = await resolveRelative(specifier, path, root, fs, texts, missing)
+      const resolved = await resolveRelative(specifier, path, root, fs, texts, missing, options.readRefused)
       if (!resolved) {
         throw new ModCompileError(`"${specifier}" names no file of the plugin`, { file: path, line })
       }
