@@ -47,6 +47,7 @@ export function runFolderTestsForSession(
   context: GateContext,
   askAllowed: boolean,
   openWorker: () => Promise<ModTestWorker> = openModTestWorker,
+  signal: AbortSignal | undefined = context.cancelSource?.signal,
 ): Promise<ModTestReport> {
   const absolute = resolveRuntimePath(context.options.cwd, folder).replace(/\\/g, '/')
   const base = fsForContext(context as ToolCallContext)
@@ -61,7 +62,7 @@ export function runFolderTestsForSession(
       return base.readdir(path)
     },
   }
-  return runModTests({ folder: absolute, fs, openWorker })
+  return runModTests({ folder: absolute, fs, openWorker, ...(signal ? { signal } : {}) })
 }
 
 const DESCRIPTION = [
@@ -69,14 +70,14 @@ const DESCRIPTION = [
   '',
   `A test file imports test, describe, expect, mock and loadPlugin from the API module's /testing path. loadPlugin(register, { store, state, env, messages, now }) gives a plugin whose $ is a mock: fire(event, e) runs its hooks, on(event, hook) adds the hook below it, calls(which) lists the $ calls it made, stub(which, answer) answers one, clock.advance(ms) moves its timers, mount('desktop', component, props) draws a ui.render component and lets the test press, select, input and find in it.`,
   '',
-  'Each file runs in a sandboxed mod worker of its own; nothing a test does reaches the session, the network or the disk.',
+  'Each file runs in a sandboxed mod worker of its own; nothing a test does reaches the session, the network or the disk. A case may take 10 s, a file 60 s.',
   '',
   'Reports each case as passed or failed, with the failure and its source file and line, then the totals.',
 ].join('\n')
 
 export const ModTestTool: ToolContract<ModTestInput, string> = declareTool({
   name: MOD_TEST_TOOL_NAME,
-  discoveryHint: "run a mod or plugin folder's *.test.ts files",
+  discoveryHint: "run a mod or plugin folder's *.test.ts / *.test.js files",
   argsSchema: {
     type: 'object',
     properties: {

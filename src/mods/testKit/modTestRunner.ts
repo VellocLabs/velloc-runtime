@@ -22,10 +22,15 @@ export type ModTestCase = {
   at?: ModSourceLocation
 }
 
+/** Why a file has no case results. */
+export type ModTestFileErrorKind = 'compile' | 'noWorker' | 'timeout' | 'run' | 'noResults' | 'unreadable'
+
 export type ModTestFile = {
   file: string
   /** The file did not compile, load or run: no case result. */
   error?: string
+  /** Set with `error`; `error` is the detail. */
+  errorKind?: ModTestFileErrorKind
   tests: ModTestCase[]
 }
 
@@ -51,6 +56,12 @@ export type ModTestOptions = {
   openWorker: () => Promise<ModWorkerHandle>
   /** The time one file's tests may take, all together. */
   timeoutMs?: number
+  /** The time one case may take. */
+  caseTimeoutMs?: number
+  /** How long before the file's budget the kit stops starting cases. */
+  fileMarginMs?: number
+  /** Stop: the file running is cut short and its worker closed. */
+  signal?: AbortSignal
   loadTypeScript?: () => Promise<typeof TS>
 }
 
@@ -58,18 +69,36 @@ export const MOD_TEST_FILE = /\.test\.(ts|tsx|mts|js|jsx|mjs)$/
 const MAX_FILES = 50
 const MAX_DEPTH = 6
 const DEFAULT_TIMEOUT_MS = 60_000
+const DEFAULT_CASE_TIMEOUT_MS = 10_000
+/** The kit stops starting cases this long before the file's budget ends. */
+const FILE_MARGIN_MS = 2_000
+const MAX_CASES = 500
+const MAX_NAME = 200
+const MAX_MESSAGE = 2_000
+
+const clip = (value: string, max: number): string => (value.length > max ? `${value.slice(0, max - 1)}…` : value)
 
 const join = (dir: string, name: string): string => `${dir.replace(/[\\/]+$/, '')}/${name}`
 
-/** The test files under `folder`, sorted; dot folders and `node_modules` skipped. */
-export async function findModTestFiles(folder: string, fs: Pick<ModTestFs, 'readdir'>): Promise<string[]> {
+/**
+ * The test files under `folder`, sorted; dot folders and `node_modules`
+ * skipped. Rejects when `folder` itself cannot be listed; a subfolder that
+ * cannot is passed to `onUnreadable`.
+ */
+export async function findModTestFiles(
+  folder: string,
+  fs: Pick<ModTestFs, 'readdir'>,
+  onUnreadable: (dir: string, error: unknown) => void = () => {},
+): Promise<string[]> {
   const found: string[] = []
   const walk = async (dir: string, depth: number): Promise<void> => {
     if (depth > MAX_DEPTH || found.length >= MAX_FILES) return
     let entries: Awaited<ReturnType<ModTestFs['readdir']>>
     try {
       entries = await fs.readdir(dir)
-    } catch {
+    } catch (error) {
+      if (depth === 0) throw error
+      onUnreadable(dir, error)
       return
     }
     for (const entry of [...entries].sort((a, b) => a.name.localeCompare(b.name))) {
@@ -100,13 +129,13 @@ function locate(lines: ModLineMap | undefined, frames: unknown): ModSourceLocati
 function casesOf(value: unknown, lines: ModLineMap | undefined): ModTestCase[] | undefined {
   const tests = (value as { tests?: unknown } | null | undefined)?.tests
   if (!Array.isArray(tests)) return undefined
-  return tests.map(raw => {
+  return tests.slice(0, MAX_CASES).map(raw => {
     const test = (raw ?? {}) as { name?: unknown; ok?: unknown; message?: unknown; frames?: unknown }
     const at = test.ok === true ? undefined : locate(lines, test.frames)
     return {
-      name: String(test.name ?? ''),
+      name: clip(String(test.name ?? ''), MAX_NAME),
       ok: test.ok === true,
-      ...(test.ok === true ? {} : { message: String(test.message ?? 'failed') }),
+      ...(test.ok === true ? {} : { message: clip(String(test.message ?? 'failed'), MAX_MESSAGE) }),
       ...(at ? { at } : {}),
     }
   })
@@ -126,21 +155,25 @@ async function runFile(file: string, options: ModTestOptions): Promise<ModTestFi
     source = built.source
     lines = built.lines
   } catch (error) {
-    return { file, error: error instanceof ModCompileError ? error.message : `it did not compile: ${errorText(error)}`, tests: [] }
+    return { file, error: clip(errorText(error), MAX_MESSAGE), errorKind: 'compile', tests: [] }
   }
+  options.signal?.throwIfAborted()
   let worker: ModWorkerHandle
   try {
     worker = await options.openWorker()
   } catch (error) {
-    return { file, error: `no worker to run it in: ${errorText(error)}`, tests: [] }
+    return { file, error: clip(errorText(error), MAX_MESSAGE), errorKind: 'noWorker', tests: [] }
   }
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS
-  let failure: string | undefined
+  let failure: Pick<ModTestFile, 'error' | 'errorKind'> | undefined
   const dispatcher = new ModDispatcher({
     budgetMs: timeoutMs,
     catchMs: 1_000,
     onHookFailure: report => {
-      failure = report.failure.kind === 'timeout' ? `the tests ran past ${timeoutMs} ms` : (report.failure.message ?? 'the run failed')
+      failure =
+        report.failure.kind === 'timeout'
+          ? { error: `${timeoutMs}`, errorKind: 'timeout' }
+          : { error: clip(report.failure.message ?? '', MAX_MESSAGE), errorKind: 'run' }
     },
   })
   const instance = new ModInstance({
@@ -158,22 +191,36 @@ async function runFile(file: string, options: ModTestOptions): Promise<ModTestFi
   })
   try {
     await instance.load(source, {})
-    const result = await dispatcher.dispatch('test.run', {}, () => undefined)
+    const run = {
+      caseMs: options.caseTimeoutMs ?? DEFAULT_CASE_TIMEOUT_MS,
+      fileMs: Math.max(0, timeoutMs - (options.fileMarginMs ?? FILE_MARGIN_MS)),
+    }
+    const result = await dispatcher.dispatch('test.run', run, () => undefined, options.signal ? { signal: options.signal } : {})
     const tests = casesOf(result, lines)
-    if (!tests) return { file, error: failure ?? 'the run returned no results', tests: [] }
+    if (!tests) return { file, ...(failure ?? { error: '', errorKind: 'noResults' }), tests: [] }
     return { file, tests }
   } catch (error) {
-    return { file, error: errorText(error), tests: [] }
+    options.signal?.throwIfAborted()
+    return { file, error: clip(errorText(error), MAX_MESSAGE), errorKind: 'run', tests: [] }
   } finally {
     instance.dispose()
     worker.close()
   }
 }
 
-/** Every test file under the folder, one after the other. Never rejects. */
+/**
+ * Every test file under the folder, one after the other. Rejects when the
+ * folder cannot be listed, and on `signal`'s abort.
+ */
 export async function runModTests(options: ModTestOptions): Promise<ModTestReport> {
   const files: ModTestFile[] = []
-  for (const file of await findModTestFiles(options.folder, options.fs)) files.push(await runFile(file, options))
+  const found = await findModTestFiles(options.folder, options.fs, (dir, error) =>
+    files.push({ file: dir, error: clip(errorText(error), MAX_MESSAGE), errorKind: 'unreadable', tests: [] }),
+  )
+  for (const file of found) {
+    options.signal?.throwIfAborted()
+    files.push(await runFile(file, options))
+  }
   const cases = files.flatMap(file => file.tests)
   return {
     folder: options.folder,
@@ -184,12 +231,25 @@ export async function runModTests(options: ModTestOptions): Promise<ModTestRepor
 }
 
 /** The report as text, one line per case. */
+const FILE_ERROR_TEXT: Record<ModTestFileErrorKind, (detail: string) => string> = {
+  compile: detail => `it did not compile: ${detail}`,
+  noWorker: detail => `no worker to run it in: ${detail}`,
+  timeout: ms => `the tests ran past ${ms} ms`,
+  run: detail => `the run failed: ${detail}`,
+  noResults: () => 'the run returned no results',
+  unreadable: detail => `this folder could not be read: ${detail}`,
+}
+
+/** A file's error as model-facing text. */
+export const modTestFileErrorText = (file: ModTestFile): string =>
+  FILE_ERROR_TEXT[file.errorKind ?? 'run'](file.error ?? '')
+
 export function formatModTestReport(report: ModTestReport): string {
   const lines: string[] = []
   if (report.files.length === 0) return `No test files (*.test.ts, *.test.js, …) under ${report.folder}.`
   for (const file of report.files) {
     lines.push(file.file)
-    if (file.error !== undefined) lines.push(`  ✗ ${file.error}`)
+    if (file.error !== undefined) lines.push(`  ✗ ${modTestFileErrorText(file)}`)
     for (const test of file.tests) {
       const where = test.at ? ` (${test.at.file}:${test.at.line})` : ''
       lines.push(test.ok ? `  ✓ ${test.name}` : `  ✗ ${test.name}: ${test.message ?? ''}${where}`)

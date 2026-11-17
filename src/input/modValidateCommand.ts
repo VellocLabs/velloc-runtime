@@ -18,7 +18,7 @@ const LEVEL_KEYS: Record<ModValidateLevel, MessageKey> = {
   note: 'slash.out.modValidate.level.note',
 }
 
-const code = (value: string): string => `\`${value.replace(/`/g, "'")}\``
+export const code = (value: string): string => `\`${value.replace(/`/g, "'")}\``
 
 /** The report as the person reads it. */
 export function modValidateReportParts(report: ModValidateReport): SystemMessagePart[] {

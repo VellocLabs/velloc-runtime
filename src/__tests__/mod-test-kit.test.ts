@@ -167,6 +167,112 @@ describe('runModTests', () => {
       [`${ROOT}/node_modules/d/e.test.js`]: '',
     })
     expect(await findModTestFiles(ROOT, fs)).toEqual([`${ROOT}/hooks/a.test.ts`, `${ROOT}/test/b.test.mjs`])
-    expect(formatModTestReport(await runModTests({ folder: '/nothing', fs, openWorker }))).toContain('No test files')
+    const empty = fsOf({ [`${ROOT}/hooks/register.ts`]: '' })
+    expect(formatModTestReport(await runModTests({ folder: `${ROOT}/hooks`, fs: empty, openWorker }))).toContain('No test files')
+  })
+
+  it('reports a folder it cannot list instead of an empty run', async () => {
+    await expect(runModTests({ folder: '/missing', fs: fsOf({ [`${ROOT}/a.test.ts`]: '' }), openWorker })).rejects.toThrow('ENOENT /missing')
+    const fs = fsOf({ [`${ROOT}/hooks/a.test.ts`]: '' })
+    const refusing: ModTestFs = {
+      ...fs,
+      readdir: async dir => {
+        if (dir === `${ROOT}/hooks`) throw new Error('a permission rule denies reading it')
+        return fs.readdir(dir)
+      },
+    }
+    const report = await runModTests({ folder: ROOT, fs: refusing, openWorker })
+    expect(report.files).toEqual([{ file: `${ROOT}/hooks`, error: 'a permission rule denies reading it', errorKind: 'unreadable', tests: [] }])
+    expect(report.failed).toBe(1)
+  })
+})
+
+const KIT_CASES = [
+  `import { test, expect, loadPlugin } from '${KIT}'`,
+  'const register = (on: any) => {',
+  "  on('session.start', ($: any) => { $.clock.every(1000, () => { void $.ui.toast('tick') }) })",
+  "  on('ui.render', { component: 'A' }, ($: any, e: any) => { const { Button } = $.ui.resolve(e); return Button({ label: 'A', onPress: () => { void $.ui.toast('a') } }) })",
+  "  on('ui.render', { component: 'B' }, ($: any, e: any) => { const { Button } = $.ui.resolve(e); return Button({ label: 'B', onPress: () => {} }) })",
+  '}',
+  "test('an un-awaited toThrow fails its case', () => { expect(() => 1).toThrow() })",
+  "test('an un-awaited async toThrow fails its case', () => { void expect(async () => 1).toThrow() })",
+  "test('a sync toThrow passes', () => { expect(() => { throw new Error('bad input') }).toThrow('bad') })",
+  'test(\'every repeats until cancelled\', async () => {',
+  '  const p = loadPlugin(register)',
+  "  await p.fire('session.start', {})",
+  '  await p.clock.advance(3000)',
+  "  expect(p.calls('ui.toast')).toHaveLength(3)",
+  '})',
+  "test('maps compare by entries', () => { expect(loadPlugin(register, { store: { tag: 'dev' } }).store).toEqual(new Map([['tag', 'x']])) })",
+  'test(\'two mounted views keep their own presses\', async () => {',
+  '  const p = loadPlugin(register)',
+  "  const a = await p.mount('desktop', 'A')",
+  "  await p.mount('desktop', 'B')",
+  "  await a.press('A')",
+  "  expect(p.calls('ui.toast')).toHaveLength(1)",
+  '})',
+  "test('a hung case fails alone', () => new Promise(() => {}))",
+  "test('the case after it still runs', () => { expect(1).toBe(1) })",
+].join('\n')
+
+describe('kit matchers and mocks', () => {
+  it('fails un-awaited throws, repeats every, compares maps, keeps each view\'s handlers, limits a case', async () => {
+    const fs = fsOf({ [`${ROOT}/kit.test.ts`]: KIT_CASES })
+    const report = await runModTests({ folder: ROOT, fs, openWorker, caseTimeoutMs: 200 })
+    const file = report.files[0]!
+    expect(file.error).toBeUndefined()
+    expect(file.tests.map(t => [t.name, t.ok])).toEqual([
+      ['an un-awaited toThrow fails its case', false],
+      ['an un-awaited async toThrow fails its case', false],
+      ['a sync toThrow passes', true],
+      ['every repeats until cancelled', true],
+      ['maps compare by entries', false],
+      ['two mounted views keep their own presses', true],
+      ['a hung case fails alone', false],
+      ['the case after it still runs', true],
+    ])
+    expect(file.tests[0]!.message).toContain('nothing was thrown')
+    expect(file.tests[6]!.message).toBe('the test ran past 200 ms')
+  })
+})
+
+describe('runModTests bounds', () => {
+  const ONE = {
+    [`${ROOT}/a.test.ts`]: `import { test } from '${KIT}'\ntest('a', () => {})`,
+    [`${ROOT}/b.test.ts`]: `import { test } from '${KIT}'\ntest('b', () => {})`,
+  }
+
+  it('closes each file\'s worker, and a stop ends the run between files', async () => {
+    let closed = 0
+    const counting = async (): Promise<ModWorkerHandle> => {
+      const worker = await openWorker()
+      return { ...worker, close: () => (closed++, worker.close()) }
+    }
+    const report = await runModTests({ folder: ROOT, fs: fsOf(ONE), openWorker: counting })
+    expect(report).toMatchObject({ passed: 2, failed: 0 })
+    expect(closed).toBe(2)
+
+    const stop = new AbortController()
+    let opened = 0
+    const stopping = async (): Promise<ModWorkerHandle> => {
+      opened++
+      stop.abort()
+      return counting()
+    }
+    await expect(runModTests({ folder: ROOT, fs: fsOf(ONE), openWorker: stopping, signal: stop.signal })).rejects.toThrow()
+    expect(opened).toBe(1)
+    expect(closed).toBe(3)
+  })
+
+  it('a file past its budget is a timeout error and its worker is closed', async () => {
+    let closed = 0
+    const counting = async (): Promise<ModWorkerHandle> => {
+      const worker = await openWorker()
+      return { ...worker, close: () => (closed++, worker.close()) }
+    }
+    const fs = fsOf({ [`${ROOT}/slow.test.ts`]: `import { test } from '${KIT}'\ntest('slow', () => new Promise(() => {}))` })
+    const report = await runModTests({ folder: ROOT, fs, openWorker: counting, timeoutMs: 300, caseTimeoutMs: 5_000, fileMarginMs: -5_000 })
+    expect(report.files[0]).toMatchObject({ errorKind: 'timeout', error: '300' })
+    expect(closed).toBe(1)
   })
 })

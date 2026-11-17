@@ -6,6 +6,9 @@
 
 const cases = [];
 const groups = [];
+// Assertions still settling when their test returns (an un-awaited async
+// `toThrow`); the case fails if one of them rejects.
+let pending = [];
 
 function test(name, fn) {
   if (typeof name !== "string" || typeof fn !== "function") throw new TypeError("test(name, fn)");
@@ -37,6 +40,16 @@ function deepEqual(a, b) {
   if (Object.is(a, b)) return true;
   if (typeof a !== "object" || typeof b !== "object" || a === null || b === null) return false;
   if (Array.isArray(a) !== Array.isArray(b)) return false;
+  if (a instanceof Map || b instanceof Map) {
+    if (!(a instanceof Map && b instanceof Map) || a.size !== b.size) return false;
+    for (const [k, v] of a) if (!b.has(k) || !deepEqual(v, b.get(k))) return false;
+    return true;
+  }
+  if (a instanceof Set || b instanceof Set) {
+    if (!(a instanceof Set && b instanceof Set) || a.size !== b.size) return false;
+    for (const v of a) if (!b.has(v)) return false;
+    return true;
+  }
   const ka = Object.keys(a).filter((k) => a[k] !== undefined);
   const kb = Object.keys(b).filter((k) => b[k] !== undefined);
   if (ka.length !== kb.length) return false;
@@ -69,17 +82,27 @@ function expect(actual) {
       toBeFalsy: () => check(!actual, show(actual) + " to be falsy"),
       toBeUndefined: () => check(actual === undefined, show(actual) + " to be undefined"),
       toBeDefined: () => check(actual !== undefined, show(actual) + " to be defined"),
-      toThrow: async (pattern) => {
-        let thrown;
+      // Synchronous for a function that returns no promise; a promise
+      // (awaited by the case even when the test does not) otherwise.
+      toThrow: (pattern) => {
+        const verdict = (threw, thrown) => {
+          const message = thrown instanceof Error ? thrown.message : String(thrown);
+          const ok = threw && (pattern === undefined || new RegExp(pattern).test(message));
+          check(ok, "a throw" + (pattern === undefined ? "" : " matching " + String(pattern)) + (threw ? ", got " + show(message) : ", nothing was thrown"));
+        };
+        let run;
         try {
-          const run = typeof actual === "function" ? actual() : actual;
-          if (run && typeof run.then === "function") await run;
+          run = typeof actual === "function" ? actual() : actual;
         } catch (error) {
-          thrown = error;
+          return verdict(true, error);
         }
-        const message = thrown instanceof Error ? thrown.message : String(thrown);
-        const ok = thrown !== undefined && (pattern === undefined || new RegExp(pattern).test(message));
-        check(ok, "a throw" + (pattern === undefined ? "" : " matching " + String(pattern)) + (thrown === undefined ? ", nothing was thrown" : ", got " + show(message)));
+        if (!run || typeof run.then !== "function") return verdict(false, undefined);
+        const settled = Promise.resolve(run).then(
+          () => verdict(false, undefined),
+          (error) => verdict(true, error),
+        );
+        pending.push(settled);
+        return settled;
       },
     };
     return m;
@@ -127,6 +150,8 @@ function loadPlugin(register, setup) {
   const timers = [];
   const handlers = new Map();
   let handleCount = 0;
+  // The handles of the view drawing now, so a redraw drops only its own.
+  let drawing;
 
   const later = (ms, fire) => {
     const timer = { at: now + Math.max(0, Number(ms) || 0), fire, live: true };
@@ -139,6 +164,7 @@ function loadPlugin(register, setup) {
   const keep = (fns) => {
     const handle = "k" + ++handleCount;
     handlers.set(handle, fns);
+    if (drawing) drawing.add(handle);
     return handle;
   };
 
@@ -246,14 +272,20 @@ function loadPlugin(register, setup) {
     if (typeof callback !== "function") throw new TypeError("$.clock." + which + "(ms, fn)");
     recorded.push({ noun: "clock", method: which, args: [ms] });
     let timer;
+    let cancelled = false;
     const arm = () => {
       timer = later(ms, () => {
         callback();
-        if (which === "every" && timer.live) arm();
+        if (which === "every" && !cancelled) arm();
       });
     };
     arm();
-    return { cancel: () => (timer.live = false) };
+    return {
+      cancel: () => {
+        cancelled = true;
+        timer.live = false;
+      },
+    };
   };
 
   const dollar = () => {
@@ -356,11 +388,19 @@ function loadPlugin(register, setup) {
     }
     const view = { tree: undefined };
     let requestCount = 0;
+    const own = new Set();
     const draw = async () => {
-      handlers.clear();
-      const out = await fire("ui.render", { surface: "desktop", component, requestId: "r" + ++requestCount, props: props || {} }, () => ({ type: "engine", ref: component }));
-      view.tree = out;
-      return out;
+      for (const handle of own) handlers.delete(handle);
+      own.clear();
+      const outer = drawing;
+      drawing = own;
+      try {
+        const out = await fire("ui.render", { surface: "desktop", component, requestId: "r" + ++requestCount, props: props || {} }, () => ({ type: "engine", ref: component }));
+        view.tree = out;
+        return out;
+      } finally {
+        drawing = outer;
+      }
     };
     const textOf = (node) =>
       typeof node === "string" || typeof node === "number"
@@ -449,11 +489,32 @@ function framesOf(error) {
   return out;
 }
 
-async function runAll() {
+// One case's time limit: a hung case fails alone, and the cases after it
+// still run while the file's budget lasts.
+function within(ms, run) {
+  let timer;
+  const limit = new Promise((_, reject) => {
+    timer = setTimeout(() => reject(new Error("the test ran past " + ms + " ms")), ms);
+  });
+  return Promise.race([run, limit]).finally(() => clearTimeout(timer));
+}
+
+async function runAll(e) {
+  const caseMs = e && typeof e.caseMs === "number" ? e.caseMs : 10000;
+  const deadline = Date.now() + (e && typeof e.fileMs === "number" ? e.fileMs : 50000);
   const results = [];
   for (const c of cases) {
+    const left = deadline - Date.now();
+    if (left <= 0) {
+      results.push({ name: c.name, ok: false, message: "not run: the file ran out of time", frames: [] });
+      continue;
+    }
+    pending = [];
     try {
-      await c.fn();
+      await within(Math.min(caseMs, left), (async () => {
+        await c.fn();
+        await Promise.all(pending);
+      })());
       results.push({ name: c.name, ok: true });
     } catch (error) {
       results.push({
@@ -475,5 +536,5 @@ exports.mock = mock;
 exports.loadPlugin = loadPlugin;
 // The runner's door: the test build's own register.
 exports.__register = (on) => {
-  on("test.run", () => runAll());
+  on("test.run", ($, e) => runAll(e));
 };

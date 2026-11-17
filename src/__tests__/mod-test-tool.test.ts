@@ -124,18 +124,20 @@ describe('/plugins test output', () => {
             { name: 'drops it', ok: false, message: 'expected 1 to be 2', at: { file: 'D:/work/demo/hooks/register.test.ts', line: 9 } },
           ],
         },
-        { file: 'D:/work/demo/hooks/net.test.ts', error: 'fetch is not available', tests: [] },
+        { file: 'D:/work/demo/hooks/net.test.ts', error: 'fetch is not available', errorKind: 'compile', tests: [] },
+        { file: 'D:/work/demo/hooks/slow.test.ts', error: '60000', errorKind: 'timeout', tests: [] },
       ],
       passed: 1,
-      failed: 2,
+      failed: 3,
     }
     const text = renderPartsEnglish(modTestReportParts(report))
     expect(text).toContain('### Tests of D:/work/demo')
     expect(text).toContain('#### `hooks/register.test.ts`')
     expect(text).toContain('- ✓ adds a bang')
     expect(text).toContain('- ✗ drops it `hooks/register.test.ts:9`: expected 1 to be 2')
-    expect(text).toContain('- ✗ It did not run: fetch is not available')
-    expect(text).toContain('Not passed: 2 failed, 1 passed.')
+    expect(text).toContain('- ✗ It did not compile: fetch is not available')
+    expect(text).toContain('- ✗ The tests ran past 60000 ms.')
+    expect(text).toContain('Not passed: 3 failed, 1 passed.')
     expect(renderPartsEnglish(modTestReportParts({ folder: 'D:/x', files: [], passed: 0, failed: 0 }))).toContain('No test files')
   })
 })
