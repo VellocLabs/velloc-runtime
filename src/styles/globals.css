@@ -127,58 +127,70 @@
  * Type scale behind the `text-prose` / `text-body` / `text-caption` /
  * `text-code` / `text-composer` utilities: five steps on `<html
  * data-text-size>` (boot/guestTextSize.ts, Settings · Appearance). The bare
- * `:root` block is step 2, the default. Only these tokens step.
+ * `:root` block is step 2, the default. Only these tokens step. Each token is
+ * its step value times `--nx-type-scale`, 1 unless the phone entry sets it
+ * from the platform's body text size (boot/phoneTypeScale.ts).
  * ------------------------------------------------------------------------- */
+:root {
+  --nx-prose-size: calc(var(--nx-step-prose-size) * var(--nx-type-scale, 1));
+  --nx-prose-leading: calc(var(--nx-step-prose-leading) * var(--nx-type-scale, 1));
+  --nx-body-size: calc(var(--nx-step-body-size) * var(--nx-type-scale, 1));
+  --nx-body-leading: calc(var(--nx-step-body-leading) * var(--nx-type-scale, 1));
+  --nx-caption-size: calc(var(--nx-step-caption-size) * var(--nx-type-scale, 1));
+  --nx-caption-leading: calc(var(--nx-step-caption-leading) * var(--nx-type-scale, 1));
+  --nx-code-size: calc(var(--nx-step-code-size) * var(--nx-type-scale, 1));
+  --nx-code-leading: calc(var(--nx-step-code-leading) * var(--nx-type-scale, 1));
+}
 :root,
 :root[data-text-size="2"] {
-  --nx-prose-size: 15px;
-  --nx-prose-leading: 21px;
-  --nx-body-size: 13px;
-  --nx-body-leading: 19px;
-  --nx-caption-size: 11px;
-  --nx-caption-leading: 17px;
-  --nx-code-size: 12px;
-  --nx-code-leading: 17px;
+  --nx-step-prose-size: 15px;
+  --nx-step-prose-leading: 21px;
+  --nx-step-body-size: 13px;
+  --nx-step-body-leading: 19px;
+  --nx-step-caption-size: 11px;
+  --nx-step-caption-leading: 17px;
+  --nx-step-code-size: 12px;
+  --nx-step-code-leading: 17px;
 }
 :root[data-text-size="1"] {
-  --nx-prose-size: 13px;
-  --nx-prose-leading: 19px;
-  --nx-body-size: 12px;
-  --nx-body-leading: 17px;
-  --nx-caption-size: 10px;
-  --nx-caption-leading: 15px;
-  --nx-code-size: 12px;
-  --nx-code-leading: 17px;
+  --nx-step-prose-size: 13px;
+  --nx-step-prose-leading: 19px;
+  --nx-step-body-size: 12px;
+  --nx-step-body-leading: 17px;
+  --nx-step-caption-size: 10px;
+  --nx-step-caption-leading: 15px;
+  --nx-step-code-size: 12px;
+  --nx-step-code-leading: 17px;
 }
 :root[data-text-size="3"] {
-  --nx-prose-size: 15px;
-  --nx-prose-leading: 22px;
-  --nx-body-size: 14px;
-  --nx-body-leading: 20px;
-  --nx-caption-size: 12px;
-  --nx-caption-leading: 17px;
-  --nx-code-size: 13px;
-  --nx-code-leading: 19px;
+  --nx-step-prose-size: 15px;
+  --nx-step-prose-leading: 22px;
+  --nx-step-body-size: 14px;
+  --nx-step-body-leading: 20px;
+  --nx-step-caption-size: 12px;
+  --nx-step-caption-leading: 17px;
+  --nx-step-code-size: 13px;
+  --nx-step-code-leading: 19px;
 }
 :root[data-text-size="4"] {
-  --nx-prose-size: 16px;
-  --nx-prose-leading: 24px;
-  --nx-body-size: 14px;
-  --nx-body-leading: 20px;
-  --nx-caption-size: 12px;
-  --nx-caption-leading: 17px;
-  --nx-code-size: 13px;
-  --nx-code-leading: 19px;
+  --nx-step-prose-size: 16px;
+  --nx-step-prose-leading: 24px;
+  --nx-step-body-size: 14px;
+  --nx-step-body-leading: 20px;
+  --nx-step-caption-size: 12px;
+  --nx-step-caption-leading: 17px;
+  --nx-step-code-size: 13px;
+  --nx-step-code-leading: 19px;
 }
 :root[data-text-size="5"] {
-  --nx-prose-size: 18px;
-  --nx-prose-leading: 27px;
-  --nx-body-size: 15px;
-  --nx-body-leading: 22px;
-  --nx-caption-size: 13px;
-  --nx-caption-leading: 19px;
-  --nx-code-size: 14px;
-  --nx-code-leading: 21px;
+  --nx-step-prose-size: 18px;
+  --nx-step-prose-leading: 27px;
+  --nx-step-body-size: 15px;
+  --nx-step-body-leading: 22px;
+  --nx-step-caption-size: 13px;
+  --nx-step-caption-leading: 19px;
+  --nx-step-code-size: 14px;
+  --nx-step-code-leading: 21px;
 }
 
 /* Mobile browsers zoom the page when a focused input types under 16px; the

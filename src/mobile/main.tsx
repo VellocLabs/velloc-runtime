@@ -11,6 +11,7 @@ import { getProductName } from '../branding/productName'
 import { installChunkLoadFailureOverlay } from '../browser/boot/chunkLoadFailure'
 import { installGuestColorScheme } from '../browser/boot/guestColorScheme'
 import { installGuestTextSize } from '../browser/boot/guestTextSize'
+import { installPhoneTypeScale } from '../browser/boot/phoneTypeScale'
 import { installGuestWindowErrorLogging } from '../browser/boot/guestWindowErrors'
 import { readRemotePairing, reloadOnPairingLink } from '../browser/boot/remotePairing'
 import type { ShellComponent } from '../browser/boot/renderShell'
@@ -20,6 +21,7 @@ document.title = getProductName()
 installChunkLoadFailureOverlay(window)
 installGuestColorScheme(window, document.documentElement)
 installGuestTextSize(document.documentElement)
+installPhoneTypeScale(document.documentElement)
 installGuestWindowErrorLogging(globalThis as unknown as Window)
 
 function loadMobileShell(): Promise<ShellComponent> {

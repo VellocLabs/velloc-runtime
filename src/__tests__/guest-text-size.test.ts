@@ -158,7 +158,7 @@ describe('globals.css type scale', () => {
     if (!m) throw new Error(`no block for ${selector}`)
     const out: Record<string, string> = {}
     for (const line of m[3]!.split('\n')) {
-      const d = line.match(/--nx-([a-z-]+):\s*([^;]+);/)
+      const d = line.match(/--nx-step-([a-z-]+):\s*([^;]+);/)
       if (d) out[d[1]!] = d[2]!.trim()
     }
     return out
@@ -193,6 +193,15 @@ describe('globals.css type scale', () => {
           .toBeGreaterThanOrEqual(px(at(s - 1)[t]!))
       }
     }
+  })
+
+  it('derives each token from its step value times the phone type scale', () => {
+    // The scale defaults to 1, so the desktop reads the step values unchanged;
+    // only the phone entry sets it (phoneTypeScale.ts).
+    for (const t of TOKENS) {
+      expect(css).toContain(`--nx-${t}: calc(var(--nx-step-${t}) * var(--nx-type-scale, 1));`)
+    }
+    expect(css).not.toMatch(/--nx-type-scale:/)
   })
 
   it('exposes each token pair as a Tailwind font-size utility', () => {
