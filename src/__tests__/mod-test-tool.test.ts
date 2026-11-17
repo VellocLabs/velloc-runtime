@@ -3,13 +3,24 @@
  * session's read gate and run in a mod worker; the tool answers text, the
  * command renders catalog-keyed parts.
  */
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { unconfiguredFs, type RuntimeFs, type RuntimeFsEntry } from '../utils/fs/runtimeFs'
 import { ModTestTool, MOD_TEST_TOOL_NAME, runFolderTestsForSession, type ModTestRefusal } from '../toolkit/builtin/modTest'
 import { getToolsForPreset } from '../toolkit/toolRegistry'
 import { TOOL_GROUPS } from '../toolkit/builtin/toolGroups'
 import { modTestRefusalParts, modTestReportParts } from '../input/modTestCommand'
-import { answerDevModsAsk, modSlotUiState } from '../mods/modSlotRegistry'
+import { answerDevModsAsk, modRosterAttach, modRosterDetach, modSlotUiState } from '../mods/modSlotRegistry'
+import { ConversationEngine } from '../engine/conversationEngine'
+import {
+  DefaultRuntimeConfig,
+  MemoryConversationStore,
+  NoopPlatformCapabilities,
+  NoopPromptContextProvider,
+  NoopSystemInitEmitter,
+  NoopUserInputPipeline,
+  createEmptyAppState,
+  createMemoryFileStateCache,
+} from '../runtime/testing/noopAdapters'
 import { renderPartsEnglish } from '../input/systemMessageParts'
 import { MOD_API_SPECIFIER, MOD_TEST_KIT_SPECIFIER } from '../mods/modCompiler'
 import { installModWorkerHost } from '../mods/ModWorkerHost'
@@ -119,6 +130,9 @@ describe('ModTest tool', () => {
 })
 
 describe('running a folder follows the dev-folder rule', () => {
+  beforeEach(() => modRosterAttach('session-1', { clientId: 'page-1', surface: 'desktop' }))
+  afterEach(() => modRosterDetach('session-1', 'page-1'))
+
   it('bypassPermissions runs unasked', async () => {
     const ask = vi.fn(async () => 'on' as const)
     const report = await runFolderTestsForSession('demo', contextWith([], [], 'bypassPermissions'), { asks: 'none', openWorker, ask })
@@ -153,9 +167,9 @@ describe('running a folder follows the dev-folder rule', () => {
     expect(ask).not.toHaveBeenCalled()
   })
 
-  it('refuses without asking where nobody can be asked: headless, a sub-agent, a teammate', async () => {
+  it('refuses without asking where nobody can be asked: no page draws the session, a sub-agent, a teammate', async () => {
     const ask = vi.fn(async () => 'on' as const)
-    for (const extra of [{ isNonInteractiveSession: true }, { sessionId: 'subagent-1' }, { teammateName: 'ana' }]) {
+    for (const extra of [{ sessionId: 'session-no-page' }, { sessionId: 'subagent-1' }, { teammateName: 'ana' }]) {
       const result = await runFolderTestsForSession('demo', contextWith([], [], 'default', extra), { asks: 'none', openWorker, ask })
       expect(result).toMatchObject({ refused: 'cannotAsk' })
     }
@@ -178,6 +192,59 @@ describe('running a folder follows the dev-folder rule', () => {
     const out = await ModTestTool.call({ folder: 'demo' }, contextWith([], [], 'dontAsk'), (async () => ({ behavior: 'allow' })) as never, {} as Message)
     expect(out).toMatchObject({ isError: true })
     expect(String((out as { data: string }).data)).toContain('nobody can be asked')
+  })
+})
+
+describe('running a folder from a session call context', () => {
+  const SESSION = 'session-real-context'
+  function sessionContext(mode: string): ToolCallContext {
+    const runtimeConfig = new DefaultRuntimeConfig()
+    const base = createEmptyAppState()
+    const state = { ...base, permissionRules: { ...base.permissionRules, mode } } as typeof base
+    const engine = new ConversationEngine({
+      cwd: CWD,
+      projectRoot: CWD,
+      tools: [],
+      commands: [],
+      mcpClients: [],
+      agents: [],
+      decidePermission: async () => ({ behavior: 'allow' }),
+      readAppState: () => state,
+      writeAppState: () => {},
+      fileReadSeed: createMemoryFileStateCache(),
+      platformCapabilities: new NoopPlatformCapabilities(),
+      promptContextProvider: new NoopPromptContextProvider(),
+      conversationStore: new MemoryConversationStore(SESSION),
+      userInputPipeline: new NoopUserInputPipeline(runtimeConfig, false),
+      systemInitEmitter: new NoopSystemInitEmitter(),
+      runtimeConfig,
+      fsOperations: treeFs([]),
+    })
+    return (engine as unknown as { ledger: { callContext(): ToolCallContext } }).ledger.callContext()
+  }
+  afterEach(() => modRosterDetach(SESSION, 'page-1'))
+
+  it('default with a page drawing the session asks, and the allowed run reports', async () => {
+    modRosterAttach(SESSION, { clientId: 'page-1', surface: 'desktop' })
+    const ask = vi.fn(async () => 'on' as const)
+    const report = await runFolderTestsForSession('demo', sessionContext('default'), { asks: 'none', openWorker, ask })
+    expect(ask).toHaveBeenCalledWith(SESSION, ['D:/work/demo'], expect.anything(), 'test')
+    expect(report).toMatchObject({ passed: 1, failed: 0 })
+  })
+
+  it('default with no page drawing the session refuses without asking', async () => {
+    const ask = vi.fn(async () => 'on' as const)
+    expect(await runFolderTestsForSession('demo', sessionContext('default'), { asks: 'none', openWorker, ask })).toEqual({ refused: 'cannotAsk', folder: 'D:/work/demo' })
+    expect(ask).not.toHaveBeenCalled()
+  })
+
+  it('dontAsk refuses and bypassPermissions runs unasked, page or not', async () => {
+    modRosterAttach(SESSION, { clientId: 'page-1', surface: 'desktop' })
+    const ask = vi.fn(async () => 'on' as const)
+    expect(await runFolderTestsForSession('demo', sessionContext('dontAsk'), { asks: 'none', openWorker, ask })).toMatchObject({ refused: 'cannotAsk' })
+    modRosterDetach(SESSION, 'page-1')
+    expect(await runFolderTestsForSession('demo', sessionContext('bypassPermissions'), { asks: 'none', openWorker, ask })).toMatchObject({ passed: 1, failed: 0 })
+    expect(ask).not.toHaveBeenCalled()
   })
 })
 

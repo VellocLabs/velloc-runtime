@@ -13,7 +13,7 @@ import {
   type ModTestReport,
   type ModTestWorker,
 } from '../../mods/testKit/modTestRunner'
-import { openDevModsAsk } from '../../mods/modSlotRegistry'
+import { modRoster, openDevModsAsk } from '../../mods/modSlotRegistry'
 import type { DevModsAnswer } from '../../mods/devModsFolder'
 import { ModValidateTool, allowedFolderAsks, modFolderReadGate, type ModValidateAsks } from './modValidate'
 
@@ -51,18 +51,19 @@ export type RunFolderTestsOptions = {
   ask?: (sessionId: string, folders: readonly string[], signal: AbortSignal | undefined, purpose: 'test') => Promise<DevModsAnswer>
 }
 
-/** Whether a person can be asked from here: an interactive main loop, not a
- *  sub-agent or teammate, whose session no page shows. */
+/** Whether a person can be asked from here: the session's own loop, not a
+ *  sub-agent or teammate, and a page draws the session (its roster is not
+ *  empty), so the dev-folder question has somewhere to appear. */
 function canAskFrom(context: GateContext): boolean {
   const sessionId = context.options.sessionId ?? ''
   return (
-    context.options.isNonInteractiveSession !== true &&
     context.agentId === undefined &&
     context.options.mods?.agentId === undefined &&
     context.options.teammateName === undefined &&
     sessionId !== '' &&
     !sessionId.startsWith('subagent-') &&
-    !sessionId.startsWith('teammate-')
+    !sessionId.startsWith('teammate-') &&
+    modRoster(sessionId).length > 0
   )
 }
 
