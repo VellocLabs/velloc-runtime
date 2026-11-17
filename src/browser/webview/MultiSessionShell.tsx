@@ -6,7 +6,6 @@ import {
   useReducer,
   useRef,
   useState,
-  useSyncExternalStore,
   type ReactNode,
 } from 'react'
 import type { AppendMessage } from '@assistant-ui/react'
@@ -86,7 +85,6 @@ import {
   orderCatalogProviders,
   isSelectionEnabled,
 } from './modelCatalog'
-import { setCustomProviderRecords } from '../../config/customProviderRegistry'
 import {
   deriveSessionTabs,
   resolveTeammateJumpTarget,
@@ -102,7 +100,6 @@ import { useAppViewAsks } from './apps/appViewAsk'
 import { subscribeTeammateJump } from './teammateJumpRequests'
 import { publishSessionStatuses } from './sessionStatusStore'
 import {
-  sessionActivityFromSummary,
   sessionStatusEntries,
   type SessionActivityById,
 } from './sessionStatusEntries'
@@ -132,29 +129,13 @@ import {
   followGlobalDefault,
 } from './globalDefaultSelection'
 import {
-  createProvidersReadGate,
-  isProvidersChangedEvent,
-  providersChangeAffectsCatalog,
-} from './settings/clients'
-import type { NexusProviderConfig } from '../../settings/settingsTypes'
-import {
   openUrl,
-  setActiveSessionTitle,
   revealProjectFolder,
-  subscribeAgentConfig,
   subscribeSessionTabsChanged,
   subscribeSessionTabListChanged,
 } from './nexusBridgeActions'
 import type { SessionTabEntry } from '../bridge/protocol/session'
 import { postMainContentsLayout } from './useMainContentsLayout'
-import {
-  applyE2eTestCodePrefix,
-  formatWindowTitle,
-  getE2eTestCode,
-  resolveActiveSessionWindowTitle,
-  subscribeE2eTestCode,
-} from './windowTitle'
-import { getProductName } from '../../branding/productName'
 import {
   removeProject,
 } from './projectsStorage'
@@ -177,24 +158,18 @@ import { useTranscriptSearchGate } from './topbar/useTranscriptSearchGate'
 import {
   countRunning,
   filterSubAgentRowsBySession,
-  subAgentsEqual,
 } from './backgroundSubAgents'
 import { createPlanAutoOpenGate } from './planAutoOpenGate'
 import { snapshotNeedsAnswer } from '@/utils/sessionNeedsAnswer'
 import { randomUuid } from '@/utils/randomUuid'
 import type {
-  NexusSessionActivity,
   NexusSessionSkillRow,
   NexusTaskDetail,
-  NexusTaskInfo,
   NexusTaskSummaryRow,
-  NexusTaskTranscriptEntry,
-  NexusTurnEnding,
 } from '../bridge/protocol/ui'
 import {
   buildSessionSkillPanelList,
   restoreSessionSkillsFromTranscript,
-  sessionSkillsEqual,
 } from './sessionSkills'
 // Settings, the right panel and the import dialog load on demand — see
 // `coldUi.ts` for the measurement and for why the prefetch below is part of
@@ -207,8 +182,7 @@ import {
   prefetchColdUi,
 } from './coldUi'
 import { useResolvedConnection, useTerminalsState } from './terminal/useTerminals'
-import { cliOfTemplateType, getLauncherCatalog, getTemplateTitle } from '../../prompting/templateCatalog'
-import { TERMINAL_CAPABILITY } from '../../terminal/protocol'
+import { cliOfTemplateType, getTemplateTitle } from '../../prompting/templateCatalog'
 import { WorkspaceProjectFolderDialog } from './ThreadDialogs'
 
 const NO_CLIS: readonly string[] = []
@@ -226,6 +200,8 @@ import { useSessionManager } from './useSessionManager'
 import { useMultiSessionClients } from './useMultiSessionClients'
 import { useGuestReadySignal } from './useGuestReadySignal'
 import { useSessionAttention } from './useSessionAttention'
+import { useSessionChannelFeed } from './useSessionChannelFeed'
+import { useHostSettingsSync } from './useHostSettingsSync'
 import { createSessionMessageCallbackFactory } from './sessionMessageCallbacks'
 import {
   mountedWithSideChat,
@@ -234,7 +210,7 @@ import {
   sideChatsOf,
   withoutListedSideChats,
 } from './sideChat'
-import { createForkSendRegistry, deliverForkSend } from './forkSend'
+import { createForkSendRegistry } from './forkSend'
 import {
   readStoredActiveSessionId,
   resolveBootSession,
@@ -250,7 +226,6 @@ import {
   getBootDiagnosticTraceId,
   installSessionTracer,
 } from '../../utils/sessionTrace'
-import { useClientActivityReport } from './clientActivityReport'
 import {
   CLI_SESSION_PANES,
   PaneSessionUi,
@@ -469,7 +444,6 @@ export type MultiSessionShellProps = {
 
 // The "last active session" pointer lives in `bootSessionPointer.ts` — key,
 // read, write, and the durability caveat that makes a restored id a hint.
-const NEXUS_ACTIVE_SESSION_CHANGED_EVENT = 'nexus:activeSessionChanged'
 
 /**
  * Number of recent thread trees kept mounted: switching among them is a `display:` toggle;
@@ -927,267 +901,34 @@ export function MultiSessionShell({
     writeStoredActiveSessionId(activeSessionId)
   }, [activeSessionId])
 
-  useEffect(() => {
-    if (!sessionChannel) return
-
-    function handleWorkerMessage(data: Record<string, unknown>) {
-      if (typeof data.type !== 'string') return
-
-      if (
-        data.type === 'session.list' &&
-        Array.isArray((data.payload as Record<string, unknown>)?.sessions)
-      ) {
-        const payload = data.payload as {
-          sessions: Array<{
-            sessionId: string
-            title?: string
-            previewText?: string
-            updatedAt?: number
-            messageCount?: number
-            templateType?: string
-            composerDraft?: string
-            lastComposerEditAt?: number
-          }>
-        }
-        applyRemoteList(payload.sessions)
-        // Real milestone → boot-welcome footer: the first session list has
-        // arrived (sidebar populated) while the active session's runtime is
-        // still spinning up. Once-guarded so later session.updated-driven list
-        // refreshes don't re-fire it.
-        if (!bootSessionsStageFiredRef.current) {
-          bootSessionsStageFiredRef.current = true
-          onBootStageRef.current?.('sessions')
-        }
-        return
-      }
-
-      if (data.type === 'session.updated') {
-        const payload = data.payload as {
-          session?: {
-            sessionId: string
-            title?: string
-            previewText?: string
-            updatedAt?: number
-            messageCount?: number
-            templateType?: string
-            composerDraft?: string
-            lastComposerEditAt?: number
-          }
-        }
-        if (payload?.session?.sessionId) {
-          applyRemoteUpdate(payload.session)
-        }
-        return
-      }
-
-      if (data.type === 'session.removed') {
-        const payload = data.payload as { sessionId?: string }
-        if (payload?.sessionId) {
-          applyRemoteRemoval(payload.sessionId)
-          sessionRemovalWaitersRef.current.get(payload.sessionId)?.(true)
-        }
-        return
-      }
-
-      if (data.type === 'session.forked') {
-        // The manager copied the transcript into the new session (and broadcast
-        // its summary via session.updated); switch the active view to it.
-        const payload = data.payload as {
-          newSessionId?: string
-          requestId?: string
-        }
-        if (payload?.newSessionId) {
-          // If this fork was a REWIND, drop the original (now superseded by the
-          // truncated copy). Delete first (it auto-switches away), then force
-          // the active session to the rewound copy so it wins the batch.
-          const rid = payload.requestId
-          const rewoundFrom = rid
-            ? pendingRewindRef.current.get(rid)
-            : undefined
-          if (rid) pendingRewindRef.current.delete(rid)
-          const ownFork = rid !== undefined && ownForkRequestsRef.current.delete(rid)
-          // Another client's fork: its copy reaches the list via session.updated.
-          if (!ownFork && !rewoundFrom) return
-          if (rewoundFrom && rewoundFrom !== payload.newSessionId) {
-            handleDeleteThread(rewoundFrom)
-          }
-          // A side chat opens in its parent's pane; the view stays on the parent.
-          const sideChatParent = rid ? ownSideChatForksRef.current.get(rid) : undefined
-          if (sideChatParent) {
-            if (rid) ownSideChatForksRef.current.delete(rid)
-            const newSideChatId = payload.newSessionId
-            setSideChatSelection(prev => new Map(prev).set(sideChatParent, newSideChatId))
-            openSideChatPaneForRef.current(sideChatParent)
-            return
-          }
-          focusSession(payload.newSessionId)
-          // A fork-send: the copy exists and is now active — send the
-          // composer's message into it. Its client is created here if the
-          // switch has not mounted it yet (the same client the mount reuses).
-          // Settled only once the submit went out: a failed one resolves the
-          // sender false, which hands the text back to its composer.
-          const forkSend = forkSendRegistry.take(rid)
-          if (forkSend) {
-            const newSessionId = payload.newSessionId
-            void deliverForkSend(forkSend, message =>
-              submitComposerMessageToSessionRef.current(newSessionId, message),
-            )
-          }
-        }
-        return
-      }
-
-      if (data.type === 'session.summary') {
-        // Compact, all-sessions snapshot from the unified state feed.
-        // The manager re-broadcasts this to native (`nexusSessionsSummary`)
-        // for the WebUI session-list; here we just need the per-session
-        // `running` flag to decorate the in-flow rows.
-        const payload = data.payload as {
-          sessions?: Array<{
-            sessionId: string
-            running?: boolean
-            needsAnswer?: boolean
-            activity?: NexusSessionActivity
-            ending?: NexusTurnEnding
-            lastReply?: string
-          }>
-          subAgents?: NexusTaskSummaryRow[]
-          skills?: NexusSessionSkillRow[]
-        } | null
-        if (Array.isArray(payload?.sessions)) {
-          const next = new Set<string>()
-          // Worker-derived halted-on-ask flags — the sidebar dot's source for
-          // sessions whose client was disposed (mount-LRU eviction). Optional
-          // field: an old SharedWorker bundle serving a newer UI simply never
-          // sets it, and the client-derived union below still covers mounted
-          // sessions.
-          const nextNeedsAnswer = new Set<string>()
-          for (const row of payload.sessions) {
-            if (row.running) {
-              next.add(row.sessionId)
-              runningSeenSinceDetectRef.current.add(row.sessionId)
-            }
-            if (row.needsAnswer) nextNeedsAnswer.add(row.sessionId)
-          }
-          setSessionActivity(prev => sessionActivityFromSummary(prev, payload.sessions!))
-          setRunningSessionIds(prev => {
-            // Preserve referential identity when nothing changed — most
-            // updates are counter bumps that don't flip the running set.
-            if (prev.size !== next.size) return next
-            for (const id of next) {
-              if (!prev.has(id)) return next
-            }
-            return prev
-          })
-          setSummaryNeedsAnswerIds(prev => {
-            if (prev.size !== nextNeedsAnswer.size) return nextNeedsAnswer
-            for (const id of nextNeedsAnswer) {
-              if (!prev.has(id)) return nextNeedsAnswer
-            }
-            return prev
-          })
-        }
-        // Background sub-agents (G2/G5). Dedupe so an unrelated summary flush
-        // (counter bump) doesn't churn the shell when the sub-agent set is
-        // unchanged.
-        {
-          const nextSub = Array.isArray(payload?.subAgents)
-            ? payload!.subAgents!
-            : []
-          setSubAgentRows(prev => (subAgentsEqual(prev, nextSub) ? prev : nextSub))
-        }
-        // Skills invoked per session (the Skill panel's "loaded in this
-        // session" list). Same dedupe pattern as the sub-agent rows.
-        {
-          const nextSkills = Array.isArray(payload?.skills)
-            ? payload!.skills!
-            : []
-          setSessionSkillRows(prev =>
-            sessionSkillsEqual(prev, nextSkills) ? prev : nextSkills,
-          )
-        }
-        return
-      }
-
-      if (data.type === 'task.stopped') {
-        // Test seam: the drawer's Stop is fire-and-forget (the row flips on
-        // the next session.summary), but the worker's stop OUTCOME
-        // ('stopped' | 'already_finished' | 'stop_pending' | 'stop_failed' |
-        // 'not_found' | sub-agent statuses) is invaluable when a Stop
-        // appears to do nothing. Recorded on a global for debugging.
-        ;(globalThis as unknown as {
-          __NEXUS_LAST_TASK_STOP__?: unknown
-        }).__NEXUS_LAST_TASK_STOP__ = data.payload
-      }
-      if (data.type === 'task.turnDiff') {
-        const payload = data.payload as { requestId?: string; files?: TurnFileChange[] | null } | null
-        const requestId = payload?.requestId
-        const resolve = requestId ? agentTurnDiffWaitersRef.current.get(requestId) : undefined
-        if (requestId && resolve) {
-          agentTurnDiffWaitersRef.current.delete(requestId)
-          resolve(payload?.files ?? null)
-        }
-        return
-      }
-      if (data.type === 'task.transcript') {
-        // Reply to a drawer detail-view request — resolve the pending promise
-        // with the transcript + header info bundle.
-        const payload = data.payload as {
-          requestId?: string
-          entries?: NexusTaskTranscriptEntry[] | null
-          info?: NexusTaskInfo | null
-        } | null
-        const requestId = payload?.requestId
-        if (requestId) {
-          const waiters = subAgentTranscriptWaitersRef.current
-          const resolve = waiters.get(requestId)
-          if (resolve) {
-            waiters.delete(requestId)
-            resolve({
-              entries: payload?.entries ?? null,
-              info: payload?.info ?? null,
-            })
-          }
-        }
-        return
-      }
-    }
-
-    // Every session's metadata — the sidebar shows every session — and the
-    // background-task replies. The `sessions` topic opens with the current list
-    // (`session.list`), then carries `session.updated` / `session.removed` diffs.
-    return sessionChannel.onMessage(handleWorkerMessage)
-  }, [
+  useSessionChannelFeed({
     sessionChannel,
     applyRemoteList,
     applyRemoteUpdate,
     applyRemoteRemoval,
-  ])
-
-  // Whenever the user switches sessions (clicking the sidebar, "New Thread",
-  // session.list selection), tell the runtime which session THIS client is
-  // viewing (`presence.setViewing`). The runtime has no "current session": it
-  // answers with that session's full status snapshot (topbar pill, composer
-  // gate, running indicator all read it) and gives turn-end notifications to
-  // sessions some client is viewing. The entry dies with the connection.
-  useEffect(() => {
-    if (!activeSessionId) return
-    ;(globalThis as { __nexusActiveSessionId?: string }).__nexusActiveSessionId =
-      activeSessionId
-    try {
-      globalThis.dispatchEvent?.(
-        new CustomEvent(NEXUS_ACTIVE_SESSION_CHANGED_EVENT, {
-          detail: { sessionId: activeSessionId },
-        }),
-      )
-    } catch {
-      // CustomEvent may be unavailable in non-browser tests.
-    }
-    sessionChannel?.request('presence.setViewing', { sessionId: activeSessionId })
-  }, [sessionChannel, activeSessionId])
-
-  // Input and visibility postpone the runtime's render-cache purge.
-  useClientActivityReport(sessionChannel)
+    bootSessionsStageFiredRef,
+    onBootStageRef,
+    sessionRemovalWaitersRef,
+    pendingRewindRef,
+    ownForkRequestsRef,
+    // Declared further down; the closure reads it when a rewind lands, after render.
+    handleDeleteThread: sessionId => handleDeleteThread(sessionId),
+    ownSideChatForksRef,
+    setSideChatSelection,
+    openSideChatPaneForRef,
+    focusSession,
+    forkSendRegistry,
+    submitComposerMessageToSessionRef,
+    runningSeenSinceDetectRef,
+    setSessionActivity,
+    setRunningSessionIds,
+    setSummaryNeedsAnswerIds,
+    setSubAgentRows,
+    setSessionSkillRows,
+    agentTurnDiffWaitersRef,
+    subAgentTranscriptWaitersRef,
+    activeSessionId,
+  })
 
   // The Customize screen (F-35) takes the window like Settings and shows its
   // utility tab in the native tab view; exclusive with Settings.
@@ -2701,163 +2442,20 @@ export function MultiSessionShell({
   // default. Keeping the last defined value inherits what the user was using.
   if (activeSelection) activeSelectionRef.current = activeSelection
 
-  // Mirror the active session's title into the NATIVE window title via the host bridge (and
-  // document.title). Under e2e (`?e2eTrace=1`) the running test's code is prefixed; in
-  // production `applyE2eTestCodePrefix` is the identity function.
-  const e2eTestCode = useSyncExternalStore(
-    subscribeE2eTestCode,
-    getE2eTestCode,
-    getE2eTestCode,
-  )
-  const activeWindowTitle = resolveActiveSessionWindowTitle(
+  useHostSettingsSync({
+    hostBridgeTransport,
     sessions,
     activeSessionId,
-  )
-  // Only the NATIVE title carries the prefix: `document.title` stays the bare composed
-  // title, a guest-visible contract.
-  const hostWindowTitle = applyE2eTestCodePrefix(activeWindowTitle, e2eTestCode)
-  useEffect(() => {
-    void setActiveSessionTitle(hostBridgeTransport, hostWindowTitle).catch(
-      () => {
-        // Best-effort — dev/mock hosts don't implement ui.setActiveSessionTitle.
-      },
-    )
-    document.title = formatWindowTitle(activeWindowTitle, getProductName())
-  }, [hostBridgeTransport, activeWindowTitle, hostWindowTitle])
-
-  // `session.applyAgentConfig`: route only the `model` key to the active session and mirror
-  // it into `browserDefaultSelection`; other keys are ignored (global keys ride `agent.changed`).
-  useEffect(() => {
-    return subscribeAgentConfig(hostBridgeTransport, event => {
-      const model = event.config?.['model'] as
-          | { providerId?: unknown; modelId?: unknown; thinkingTier?: unknown }
-          | undefined
-      if (
-        model &&
-        typeof model.providerId === 'string' &&
-        typeof model.modelId === 'string'
-      ) {
-        const newSelection: BrowserLlmSelection = {
-          providerId: model.providerId,
-          modelId: model.modelId,
-          ...(typeof model.thinkingTier === 'string'
-            ? { thinkingTier: model.thinkingTier }
-            : {}),
-        }
-        void setModelSelection(newSelection)
-        setBrowserDefaultSelection(newSelection)
-        // A profile-wide pick is a global one: new sessions follow it. The
-        // runtime writes it to `~/.velloc/settings.json` `agent.model` and
-        // publishes it to every page.
-        pickGlobalDefaultSelection(newSelection)
-      }
-    })
-  }, [
-    hostBridgeTransport,
     setModelSelection,
+    setBrowserDefaultSelection,
     pickGlobalDefaultSelection,
-  ])
-
-  // Refresh the model catalogue and the git branch when the view regains focus. Two calls on
-  // purpose: `refreshModelCatalog` does not re-resolve the branch.
-  useEffect(() => {
-    function triggerRefresh() {
-      void refreshModelCatalog()
-      void refreshProjectBranch()
-    }
-
-    function handleVisibilityChange() {
-      if (typeof document !== 'undefined' && !document.hidden) {
-        triggerRefresh()
-      }
-    }
-
-    if (typeof document !== 'undefined') {
-      document.addEventListener('visibilitychange', handleVisibilityChange)
-    }
-    if (typeof window !== 'undefined') {
-      window.addEventListener('focus', triggerRefresh)
-    }
-
-    return () => {
-      if (typeof document !== 'undefined') {
-        document.removeEventListener('visibilitychange', handleVisibilityChange)
-      }
-      if (typeof window !== 'undefined') {
-        window.removeEventListener('focus', triggerRefresh)
-      }
-    }
-  }, [refreshModelCatalog, refreshProjectBranch])
-
-  // Re-read which CLIs are installed when the view regains focus (F-34), so a
-  // CLI installed meanwhile gets its launcher. Only where the catalog lists one.
-  const canRescanClis = runtimeCapabilities.can(TERMINAL_CAPABILITY, 'rescanClis')
-  useEffect(() => {
-    if (!terminalConnection || !canRescanClis) return
-    if (!getLauncherCatalog().some(meta => meta.kind === 'terminal')) return
-    const rescan = (): void => {
-      if (document.hidden) return
-      void terminalConnection.request(`${TERMINAL_CAPABILITY}.rescanClis`, {}).catch(() => {})
-    }
-    document.addEventListener('visibilitychange', rescan)
-    window.addEventListener('focus', rescan)
-    return () => {
-      document.removeEventListener('visibilitychange', rescan)
-      window.removeEventListener('focus', rescan)
-    }
-  }, [terminalConnection, canRescanClis])
-
-  // Refresh the catalog on `providers.changed` too (an in-shell settings save fires no focus
-  // event). One read gate for this and the boot read, so an older `providers.list` never wins.
-  const providersReadGate = useMemo(() => createProvidersReadGate(), [])
-  useEffect(() => {
-    if (!settingsBridge) return
-    return settingsBridge.subscribeEvents(envelope => {
-      if (isProvidersChangedEvent(envelope)) {
-        providersReadGate.noteChanged()
-        const payload = envelope.payload as {
-          configs?: Record<string, NexusProviderConfig>
-          order?: string[]
-          reason?: string
-        }
-        // Mirror the worker's registry into the PAGE realm. The two run in
-        // separate JS contexts, each with its own `NEXUS_MODEL_CONFIG`, so
-        // without this the shell-side lookups (context-window meter, tier
-        // pills, curated-rule matching) would miss every custom model even
-        // though the worker resolves them fine.
-        if (payload?.configs) setCustomProviderRecords(payload.configs)
-        if (Array.isArray(payload?.order)) setProviderOrder(payload.order)
-        // A reorder configures no provider: the picker re-sorts from
-        // `providerOrder` alone, so the catalog round trip is skipped.
-        if (providersChangeAffectsCatalog(payload)) void refreshModelCatalog()
-      }
-    })
-  }, [settingsBridge, refreshModelCatalog, providersReadGate])
-
-  // Seed the page-realm custom-provider registry once at boot — the
-  // `providers.changed` subscription above only fires on WRITES, so a
-  // restored session on a custom provider would otherwise render with
-  // built-in-only model metadata until the user touched the settings page.
-  useEffect(() => {
-    if (!settingsBridge) return
-    let cancelled = false
-    void providersReadGate
-      .read(settingsBridge)
-      .then(result => {
-        // `null`: a `providers.changed` landed first and already applied a
-        // state at least as new as this read.
-        if (cancelled || !result) return
-        setCustomProviderRecords(result.configs)
-        // An older worker answers without `order`: keep the catalog order.
-        if (Array.isArray(result.order)) setProviderOrder(result.order)
-      })
-      .catch(() => {
-        /* best-effort — the worker seeds its own registry independently */
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [settingsBridge, providersReadGate])
+    refreshModelCatalog,
+    refreshProjectBranch,
+    runtimeCapabilities,
+    terminalConnection,
+    settingsBridge,
+    setProviderOrder,
+  })
 
   // sessionItems intentionally excludes `isActive` — the Sidebar
   // computes that internally from the separate `activeSessionId`

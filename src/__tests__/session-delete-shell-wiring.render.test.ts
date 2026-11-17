@@ -353,7 +353,9 @@ describe('MultiSessionShell wiring', () => {
   })
 
   it("settles a delete as removed on the runtime's removal of that session", () => {
-    const removed = /if \(data\.type === 'session\.removed'\) \{([\s\S]*?)\n {6}\}/.exec(shellSource)?.[1] ?? ''
+    const feedSource = readFileSync(join(__dirname, '..', 'browser', 'webview', 'useSessionChannelFeed.ts'), 'utf8')
+    expect(shellSource).toMatch(/useSessionChannelFeed\(\{[\s\S]*?\n {4}sessionRemovalWaitersRef,\n[\s\S]*?\n {2}\}\)/)
+    const removed = /if \(data\.type === 'session\.removed'\) \{([\s\S]*?)\n {6}\}/.exec(feedSource)?.[1] ?? ''
     expect(removed).toMatch(/sessionRemovalWaitersRef\.current\.get\(payload\.sessionId\)\?\.\(true\)/)
   })
 
