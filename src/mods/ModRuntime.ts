@@ -6,9 +6,21 @@
  * restarts in a minute. `session.end` runs under one short wall-clock bound.
  */
 
-import type { ModRosterClient } from './modSlotRegistry'
 import { ModDispatcher, type HookFailureReport } from './ModDispatcher'
-import { ModUiSurface, stateKeyOf } from './ModUiSurface'
+import { stateKeyOf } from './ModUiSurface'
+import { ModPluginNouns } from './ModPluginNouns'
+import { pluginRootOf, type Loaded, type Seat } from './modSeat'
+import {
+  MOD_RESPAWN_BACKOFF_MS,
+  MOD_RESPAWN_LIMIT,
+  MOD_RESPAWN_WINDOW_MS,
+  MOD_UNRESPONSIVE_TIMEOUTS,
+  type ModModuleRef,
+  type ModRuntimeOptions,
+  type ModSessionEndReason,
+  type ModState,
+  type ModWorkerHandle,
+} from './modRuntimeContract'
 import { type ConfigRowSpec, type ConfigValue } from './modConfig'
 import { ModInstance, type ModCall } from './ModInstance'
 import {
@@ -20,319 +32,61 @@ import {
   unraisedRenderSites,
 } from './modAdmission'
 import { implementedNouns, serveNoun, serveNounStream, type ModEnvHost, type ModNounHost } from './modNouns'
-import { isOpResult } from './modNounKit'
 import { HEADLESS_COMPOSER, ModComposerBridge } from './modComposer'
-import { EMPTY_USES, pluginNounCalls, unsupportedEngineCalls, type ModUses } from './modScan'
+import { EMPTY_USES, unsupportedEngineCalls, type ModUses } from './modScan'
 import { isBuiltinModPath } from './builtinMods'
-import type { ModBuildStore, ModCompileFn } from './modBuildStore'
 import type { ModCompileGraph } from './modCompiler'
+import { ModStateStore } from './modState'
 import type { ModFault } from './modFault'
-import { modFramesOfError, sourceLocationOf, type ModFrame, type ModLineMap, type ModSourceLocation } from './modLineMap'
-import { isEngineTable, type EngineTable } from './modEngineTable'
-import { ModStateStore, type ModStateAddress } from './modState'
+import { modFramesOfError, sourceLocationOf, type ModFrame, type ModSourceLocation } from './modLineMap'
 import { MemoryModStore, type ModStoreHost } from './modStore'
-import {
-  aggregateOfClassicResult,
-  classicResultOfAggregate,
-  isClassicResult,
-  isPreToolUseResult,
-  preToolUseResultOfAggregate,
-  type ClassicAggregate,
-  type ClassicEventRaised,
-  type ClassicResult,
-  type PreToolUseResult,
-} from './classicEvent'
-import { ModUiState, type ModUiAskArgs, type ModUiEvent } from './modUi'
+import { ModUiState, type ModUiAskArgs } from './modUi'
 import { askArgsOfArrived, askCoreAnswered, askCoreDismissed, askOutcomeOf, askToolEventOf } from './modAsk'
-import type { WindowAudioPlayer } from '../browser/workerKernel/windowAudio'
 import type { ModAudioHost } from './modAudio'
 import { ModPlaceRegistry, uiPlaceCore } from './modPlaces'
-import { MOD_BAND_ID, ModPageBridge, copyEverywhere, type ModClipboardHost, type ModPageHost } from './modPage'
+import { MOD_BAND_ID, ModPageBridge, copyEverywhere, type ModPageHost } from './modPage'
 import { PausableDeadline } from '../browser/workerKernel/pausableDeadline'
-import { runProgram, type RunProgramOptions, type RunProgramResult } from '../browser/runJs/runProgram'
+import { runProgram } from '../browser/runJs/runProgram'
 import { createModScriptHost, type ModScriptCaller } from './modScript'
-import type { ModAgentOutcome } from './modAgents'
-import type { PluginTaskStopEvent } from '../browser/worker/PluginTaskCoordinator'
 import { ModPaneRegistry, type ModPane, type ModPaneOpenArgs } from './modPanes'
 import { ModThemeState, themeClearCore, themeSetCore, type ThemeSetArgs } from './modTheme'
-import type { PluginUserConfigField } from '../pluginHost/pluginModel'
-import {
-  ModCommandRegistry,
-  commandRunArgsOf,
-  commandRunEventOf,
-  isCommandRunResult,
-  type CommandRunResult,
-  type ModCommandInfo,
-  type ModCommandOrigin,
-  type ModCommandSpec,
-} from './modCommands'
-import type { ModPeer } from './modWire'
+import { ModCommandRegistry, type ModCommandInfo, type ModCommandSpec } from './modCommands'
 import type {
   CommandRunCore,
   CommandRunSettlement,
   PromptSubmitOutcome,
-  SessionEndReason,
   TurnExtensions,
 } from '../engine/extensionSeam'
 import { refusedStream, type DispatchedStream } from './streamChain'
 import { normalizeModLocale } from './modLocale'
-import type { DispatchContext, PluginTier, TraceEntry } from './modTypes'
+import type { DispatchContext } from './modTypes'
 import { ModNotifyBookings, type ModNotice, type ModNotifyHost } from './modNotify'
 import type { ModAgentView } from './modAgentView'
-import type { PluginPromptArgs, PluginPromptOrigin, PluginPromptResult, PluginPromptTurn } from './promptNouns'
-import {
-  isToolCallResult,
-  type ToolCallCore,
-  type ToolCallEvent,
-  type ToolCallSettlement,
-  settledToolCheck,
-  takesToolCheckResult,
-  type ToolCheckCore,
-  type ToolCheckEvent,
-  type ToolCheckResult,
-  type ToolCheckSettlement,
-} from './toolCallEvent'
 
-/** One hooks module to load: the plugin it belongs to and where its text is. */
-export type ModModuleRef = {
-  readonly plugin: string
-  /** Absolute path of the module file. */
-  readonly path: string
-  /** The plugin's directory, absolute — `$.plugin.root`. Absent, it is taken
-   *  to be the parent of the module's own directory (`<root>/hooks/x.js`). */
-  readonly root?: string
-  /** The values of the manifest's `userConfig` fields, defaults
-   *  filled in — what `register(on, options)` receives. */
-  readonly options?: unknown
-  /** Why the module cannot load with these options (a required field with
-   *  no value): the seat fails with this reason instead of loading. */
-  readonly optionsError?: string
-  /** The manifest's fields and the values as the state publishes them (a
-   *  sensitive one masked), for Settings → Plugins. */
-  readonly config?: ModModuleConfig
-  /** The manifest's `version`, when it states one — `plugin.register`'s. */
-  readonly version?: string
-  /** The manifest's `description`, for Settings → Plugins & Mods. */
-  readonly description?: string
-  /** "Where the plugin came from, as the loader keys it": `<name>@<marketplace>`
-   *  installed, `<name>@inline` otherwise. Absent: `<name>@inline`. */
-  readonly provenance?: string
-  /** The module is one of the session dev mods folder's (`dev:` plugin
-   *  source): its failures go to the model and the person. */
-  readonly devFolder?: true
-  /** The tier the module loads in: `builtin` for a bundled mod
-   *  (`builtinMods.ts`); absent, `user` — everything a person installs. */
-  readonly tier?: PluginTier
-}
-
-export type ModModuleConfig = {
-  fields: Readonly<Record<string, PluginUserConfigField>>
-  values: Readonly<Record<string, string | number | boolean | readonly string[]>>
-}
-
-/** A spawned mod worker, as the kernel hands it over. */
-export type ModWorkerHandle = {
-  readonly port: ModPeer
-  /** Settles when the worker is gone, whoever's doing that was. */
-  readonly closed: Promise<{ reason: 'closed' | 'crashed'; message?: string }>
-  close(): void
-}
-
-export type ModRuntimeOptions = {
-  modules: readonly ModModuleRef[]
-  readModule: (path: string) => Promise<string>
-  /** The compiler (`mods/modCompiler.ts`): a TypeScript / TSX module, or one
-   *  that imports, becomes one JavaScript module. Rejects with the reason
-   *  (file and line) when it cannot. Absent: such a module is refused. May
-   *  answer the graph's files too (`{ source, files }`), which the dev loop
-   *  polls, and `graph`, kept with the build so the next compile of
-   *  unchanged files is answered from it (`previous`). */
-  compile?: ModCompileFn
-  /** The scan for a module whose compile answered no `uses` (or a runtime
-   *  with no compiler): what it hooks and calls, read off its text. Absent,
-   *  and with no `uses` from the compiler: nothing is known of the module
-   *  before it runs — `plugin.register` carries its registrations alone,
-   *  and an unsupported noun is refused at the call. */
-  scan?: (ref: ModModuleRef, source: string) => Promise<ModUses>
-  /** What a module's last load produced (`modBuildStore.ts`): a load of
-   *  unchanged files takes it instead of reading, compiling and scanning.
-   *  Absent: every load does all three. */
-  builds?: ModBuildStore
-  /** The dev loop: a file's modification time, in milliseconds, or
-   *  undefined when it cannot be read. Absent: `afterTurn` polls nothing. */
-  statModule?: (path: string) => Promise<number | undefined>
-  openWorker: (plugin: string) => Promise<ModWorkerHandle>
-  session: ModNounHost
-  /** One line per thing worth saying: a module that did not load, a hook that
-   *  failed, a worker that died. */
-  report: (line: string) => void
-  /** The same failures as data: plugin, what failed, why, and the source
-   *  line where the runtime can tell. */
-  onFault?: (fault: ModFault) => void
-  /** The window's language tag (the page's locale as the runtime was given
-   *  it): `$.plugin.locale` and `session.start`'s `locale`. Fixed for the
-   *  runtime's life — the language changes on the next launch. Absent or
-   *  blank: `en`. */
-  locale?: string
-  /** How long the first `session.start` may hold the first prompt. */
-  startTimeoutMs?: number
-  /** The one wall-clock bound `session.end`'s whole chain shares. */
-  endTimeoutMs?: number
-  /** How long to wait before each restart of a module's worker. The last
-   *  entry repeats. */
-  respawnBackoffMs?: readonly number[]
-  /** The bound on a plugin-noun method or a press handler run in a worker.
-   *  Default `MOD_SERVE_TIMEOUT_MS`. */
-  serveTimeoutMs?: number
-  /** Runs a `$.script.run` script. Default the kernel's `runProgram`; a
-   *  test passes one that needs no window. */
-  runProgram?: (opts: RunProgramOptions) => Promise<RunProgramResult>
-  /** The slot's `$.state`, when it outlives this runtime: the idle unload
-   *  builds a new runtime over the same values. Never disposed here.
-   *  Absent: a store of this runtime's own. */
-  stateStore?: ModStateStore
-  /** A `$.state.set` landed (the drawings that read it redraw). */
-  onStateChanged?: (address: ModStateAddress) => void
-  /** `status()` changed: a module loaded, was refused, crashed, came back, or
-   *  was given up on. What publishes the state to the UI hangs off it. */
-  onStatusChanged?: () => void
-  /** The registered commands changed: the picker's list is stale. */
-  onCommandsChanged?: () => void
-  /** A mod's status line or notice changed (`state`), or a toast was shown. */
-  onUiChanged?: (event: ModUiEvent) => void
-  /** The session draws a prompt box on a page (the interactive session):
-   *  `$.prompt.read` / `.fill` / `.suggest` ask it over `onUiChanged`
-   *  (`composer` events), answered by `composerAnswer`. Absent: headless. */
-  drawsComposer?: boolean
-  /** How long a composer request waits for a page (test seam). */
-  composerTimeoutMs?: number
-  /** The host's own clipboard, written from the runtime: `$.ui.copy`'s first
-   *  path (`modPage.ts`). Absent: the host has none to write. */
-  clipboard?: ModClipboardHost
-  /** The window player behind `$.audio` (`modAudio.ts`). Absent, or with no
-   *  `session.fs` to read a plugin's asset from: `$.audio` is refused by name. */
-  audio?: WindowAudioPlayer
-  /** How long a `page` request waits for a page (test seam). */
-  pageTimeoutMs?: number
-  /** The engine's own slash commands, for `$.command.list` — built-ins and
-   *  skills as the picker lists them. Absent: the registered ones alone. */
-  engineCommands?: () => ModCommandInfo[]
-  /** Test seams, passed to the dispatcher. */
-  budgetMs?: number
-  catchMs?: number
-  /** Test seam, passed to each module's instance. */
-  lingerMs?: number
-  /** `dispose()` ran: the slot's entry in the registry goes with it, whatever
-   *  tore the runtime down (debt 11). Called once. */
-  onDisposed?: () => void
-}
-
-export type ModState = {
-  readonly plugin: string
-  readonly path: string
-  /**
-   * `crashed`: its worker is gone and a restart is pending. `dead`: it was
-   * restarted too often and stays off until the session is reloaded.
-   */
-  readonly state: 'loaded' | 'refused' | 'failed' | 'crashed' | 'dead'
-  /** Why it is not loaded. */
-  readonly reason?: string
-  /** How many times it was loaded: 1, then one more per restart. */
-  readonly generation?: number
-  /** The patterns it hooks, when loaded. */
-  readonly events?: readonly string[]
-  /** The module's `userConfig` fields and values, when it has any. */
-  readonly config?: ModModuleConfig
-  /** What the module uses, as scanned and registered, when loaded. */
-  readonly uses?: ModUses
-  /** The nouns its `engine.create` step added to `$`, when any. */
-  readonly nouns?: readonly string[]
-  /** Who the module is, as its ref says (Settings → Plugins & Mods): the
-   *  manifest's `version` and `description`, `provenance`, the plugin's
-   *  directory, and the tier (`builtin` for a bundled mod). Each is absent
-   *  when the ref leaves it out: `<name>@inline` and `user`. */
-  readonly version?: string
-  readonly description?: string
-  readonly provenance?: string
-  readonly root?: string
-  readonly tier?: PluginTier
-}
-
-/** What a `classic.<Event>` dispatch settled on, as the call site reads it:
- *  the executor's aggregate (its own run's, or one built from a hook's
- *  answer). PreToolUse's `allow` / `ask` / `updatedInput` are not supported
- *  yet: reported, and the call goes on as if the hook had answered none
- *  (F-25). */
-export type ClassicSettlement =
-  | { settled: true; aggregate: ClassicAggregate }
-  | { settled: false }
-
-/** Runs the classic settings hooks for the event — the executor — and
- *  answers their aggregate. */
-export type ClassicCore = (signal: AbortSignal) => Promise<ClassicAggregate>
-
-export const MOD_SESSION_START_TIMEOUT_MS = 30_000
-
-/** "One short wall-clock bound (1.5 s by default) covers every hook, its `$`
- *  waits and core." */
-export const MOD_SESSION_END_TIMEOUT_MS = 1_500
-
-/** Wait before the 1st, 2nd, 3rd restart of a module's worker. */
-export const MOD_RESPAWN_BACKOFF_MS: readonly number[] = Object.freeze([1_000, 5_000, 30_000])
-/** This many restarts inside the window and the module stays off. */
-export const MOD_RESPAWN_LIMIT = 3
-export const MOD_RESPAWN_WINDOW_MS = 60_000
-/** This many hooks IN A ROW out of time and the worker is taken for stuck. */
-export const MOD_UNRESPONSIVE_TIMEOUTS = 3
-
-type Loaded = { instance: ModInstance; worker: ModWorkerHandle }
+export {
+  MOD_RESPAWN_BACKOFF_MS,
+  MOD_RESPAWN_LIMIT,
+  MOD_RESPAWN_WINDOW_MS,
+  MOD_SESSION_END_TIMEOUT_MS,
+  MOD_SESSION_START_TIMEOUT_MS,
+  MOD_UNRESPONSIVE_TIMEOUTS,
+} from './modRuntimeContract'
+export type {
+  ClassicCore,
+  ClassicSettlement,
+  ModModuleConfig,
+  ModModuleRef,
+  ModRuntimeOptions,
+  ModSessionEndReason,
+  ModState,
+  ModWorkerHandle,
+} from './modRuntimeContract'
 
 /** The worker died before it answered `mod.load`. */
 class WorkerGoneWhileLoading extends Error {
   constructor(detail: string | undefined) {
     super(`its worker is gone${detail ? ` (${detail})` : ''}`)
   }
-}
-
-/** One module's place in the slot, across the generations of its worker. */
-type Seat = {
-  /** Replaced when a reconcile brings the same path with other options. */
-  ref: ModModuleRef
-  /** The chain group's key: the plugin's name, `#n` for its nth module. */
-  readonly key: string
-  generation: number
-  loaded?: Loaded
-  /** The module's text as last read, before compiling — what a reload
-   *  compares against ("changed modules only"). */
-  source?: string
-  /** What the compiler made of it, when it needed compiling — the whole
-   *  graph's, so an edit to an imported file shows. */
-  compiled?: string
-  /** `compiled`'s lines back to source lines. */
-  lines?: ModLineMap
-  /** When each restart happened, for the limit. */
-  restarts: number[]
-  /** Hooks out of time in a row, this generation. */
-  timeouts: number
-  /** The last generation whose worker was lost: what its hooks still had
-   *  running fails with the loss, which was reported already. */
-  lostGeneration?: number
-  timer?: ReturnType<typeof setTimeout>
-  /** The files the loaded module was built from (the entry alone for a
-   *  plain one), and their modification times as last read — what the dev
-   *  loop compares at turn end. */
-  files?: readonly string[]
-  mtimes?: Map<string, number | undefined>
-  /** The last load failed to compile: a reload compiles it again to see
-   *  whether a fix (in the entry or a file it imports) landed. */
-  compileFailed?: boolean
-  /** What the module uses: the scan's calls / env / state, the
-   *  registrations' events. */
-  uses?: ModUses
-  /** Hooks by name on a namespace no engine event is under (`voice.say`),
-   *  admitted at the whole-set load on the chance a plugin's `engine.create`
-   *  step adds the noun — held to the fold's table once it ran. */
-  tentative?: string[]
 }
 
 /** A compile refusal's file and source line (`ModCompileError`), read off
@@ -345,15 +99,6 @@ function compileErrorWhere(error: unknown): Partial<ModSourceLocation> | undefin
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
-}
-
-/** `<root>/hooks/register.js` → `<root>`: the plugin directory a module's
- *  conventional place implies, for a ref that does not say. */
-function pluginRootOf(modulePath: string): string {
-  const parts = modulePath.replace(/\\/g, '/').split('/')
-  parts.pop()
-  if (parts.length > 0 && parts[parts.length - 1] === 'hooks') parts.pop()
-  return parts.join('/')
 }
 
 /**
@@ -379,15 +124,13 @@ export class SlotEnv implements ModEnvHost {
 }
 
 export type { CommandRunCore, CommandRunSettlement, PromptSubmitOutcome }
-/** Why a session ends (the engine's `SessionEndReason`). */
-export type ModSessionEndReason = SessionEndReason
 
-export class ModRuntime extends ModUiSurface implements TurnExtensions {
+export class ModRuntime extends ModPluginNouns implements TurnExtensions {
   readonly dispatcher: ModDispatcher
   /** Resolves once every module was loaded (or refused) and the first
    *  `session.start` settled or ran out of time. Never rejects. */
   readonly ready: Promise<void>
-  private readonly seats: Seat[] = []
+  protected readonly seats: Seat[] = []
   /** The slot's wall-clock bounds now running (`session.start`'s): each is
    *  paused while the person is being asked anything (`waitOnPerson`). */
   private readonly bounds = new Set<PausableDeadline>()
@@ -397,22 +140,6 @@ export class ModRuntime extends ModUiSurface implements TurnExtensions {
   /** How many `$` calls of the slot's workers are in flight (a stream until
    *  its result settles): a mod doing something is not idle. */
   private callsInFlight = 0
-  /** `session.end` is running: its one short bound is not paused, so a
-   *  question is refused rather than cut off. */
-  private ending = false
-  /** Settles when the `session.end` in progress has finished. */
-  private endingDone: Promise<void> = Promise.resolve()
-  /** The clients attached to the session (`session.attach`), by id, in the
-   *  order they attached. */
-  private readonly roster = new Map<string, ModRosterClient>()
-  /** `session.start` has run: a client that attached before it is raised
-   *  after it. */
-  private rosterOpen = false
-  /** The roster's events, one after another, so a detach never overtakes
-   *  its attach. */
-  private rosterChain: Promise<void> = Promise.resolve()
-  /** `agent.complete` and `task.stop` raises, one at a time. */
-  private agentChain: Promise<void> = Promise.resolve()
   /** The host the nouns are served with: the session's, with `env`, `state`
    *  and `store` defaulted where it supplies none. */
   private readonly nounHost: ModNounHost
@@ -439,11 +166,11 @@ export class ModRuntime extends ModUiSurface implements TurnExtensions {
   private readonly painters = new Set<string>()
   /** `$.ui.notify`'s booked notices; absent where the session runs no
    *  `Notification` hooks. */
-  private readonly bookings: ModNotifyBookings | undefined
+  protected readonly bookings: ModNotifyBookings | undefined
 
   /** The person's own prompt or command began at `startedAt`, marked
    *  `mark`, and ran. */
-  private personRan(startedAt: number, mark: number): void {
+  protected personRan(startedAt: number, mark: number): void {
     this.personRanAt = Math.max(this.personRanAt, startedAt)
     this.bookings?.personBack(mark)
   }
@@ -461,20 +188,8 @@ export class ModRuntime extends ModUiSurface implements TurnExtensions {
   private withRunCutoff(host: ModPageHost): ModPageHost {
     return Object.assign(Object.create(host) as ModPageHost, { ranSince: () => this.personRanAt })
   }
-  /** How many of the person's commands and prompts are being answered now:
-   *  a `$.ui.open` under one is asked — "the person's command, prompt or
-   *  press behind it" — and placed and shown at once. */
-  private personAsks = 0
   private readonly memoryStores = new Map<string, ModStoreHost>()
   private readonly unwatchState: () => void
-  /** The nouns plugins' `engine.create` steps added to `$`: each
-   *  served by the seat that provides it. */
-  private readonly pluginNouns = new Map<string, { seat: Seat; methods: readonly string[] }>()
-  /** The nouns a step withheld from `$`, by the plugin that did: "the host
-   *  refuses an op on one". */
-  private readonly withheld = new Map<string, string>()
-  /** The `engine.create` steps that failed in the fold under way, by link. */
-  private readonly createFailures = new Set<string>()
 
   constructor(protected readonly options: ModRuntimeOptions) {
     super()
@@ -704,9 +419,9 @@ export class ModRuntime extends ModUiSurface implements TurnExtensions {
     return this.seats.map(seat => this.states.get(seat)!).filter(Boolean)
   }
 
-  private readonly states = new Map<Seat, ModState>()
+  protected readonly states = new Map<Seat, ModState>()
 
-  private note(seat: Seat, state: Omit<ModState, 'plugin' | 'path' | 'generation'>): void {
+  protected note(seat: Seat, state: Omit<ModState, 'plugin' | 'path' | 'generation'>): void {
     const nouns = [...this.pluginNouns].filter(([, entry]) => entry.seat === seat).map(([noun]) => noun)
     this.states.set(seat, {
       plugin: seat.ref.plugin,
@@ -1297,258 +1012,6 @@ export class ModRuntime extends ModUiSurface implements TurnExtensions {
     return {}
   }
 
-  // ── `plugin.register`, `engine.create`, and the nouns plugins add ──
-
-  /** The `$` calls the plugins' nouns raise, as events (`voice.say`). */
-  private pluginNounEvents(): string[] {
-    return [...this.pluginNouns].flatMap(([noun, entry]) => entry.methods.map(method => `${noun}.${method}`))
-  }
-
-  /**
-   * `plugin.register` for a seat whose module has run `register` but whose
-   * hooks have not joined: "`{ allow: true }` from core, or `{ refuse:
-   * reason }`". Resolves to the refusal line, naming who refused, or null.
-   * A hook that fails is skipped; a dispatch that fails admits (a broken
-   * judge never blocks).
-   */
-  private async pluginRegister(seat: Seat): Promise<string | null> {
-    if (!this.dispatcher.hasHooksFor('plugin.register')) return null
-    const { ref } = seat
-    const e = {
-      name: ref.plugin,
-      tier: ref.tier ?? 'user',
-      root: ref.root ?? pluginRootOf(ref.path),
-      ...(ref.version !== undefined ? { version: ref.version } : {}),
-      provenance: ref.provenance ?? `${ref.plugin}@inline`,
-      uses: seat.uses ?? EMPTY_USES,
-    }
-    let entries: readonly TraceEntry[] = []
-    try {
-      const result = (await this.dispatcher.dispatch('plugin.register', e, () => ({ allow: true }), {
-        accepts: isPluginRegisterResult,
-        refusal: reason => ({ refuse: reason }),
-        // A restarting seat (this one's own previous generation included) is
-        // not among the plugins admitted before it: it does not judge.
-        passStandIns: true,
-        trace: trace => {
-          entries = trace
-        },
-      })) as { allow?: true; refuse?: string }
-      if (typeof result.refuse !== 'string') return null
-      const reason = result.refuse
-      // Who refused: the deepest hook whose own answer carries this reason;
-      // failing that, the outermost that answered.
-      const answered = entries.filter(entry => entry.outcome === 'returned' && entry.plugin !== 'engine')
-      const refuser =
-        [...answered].reverse().find(entry => isRecord(entry.returned) && entry.returned.refuse === reason) ??
-        answered[0]
-      return `${refuser?.plugin ?? 'a plugin'} refused it at plugin.register — ${reason}`
-    } catch (error) {
-      this.options.report(`mods: plugin.register failed: ${errorMessage(error)}; ${ref.plugin} loads`)
-      return null
-    }
-  }
-
-  /** The table `$` is built from as it stands: the engine's nouns less the
-   *  withheld, and every plugin noun but those of `folding`. */
-  private engineTable(folding: readonly Seat[]): EngineTable {
-    const nouns: Record<string, string[]> = {}
-    const owners: Record<string, string> = {}
-    for (const call of implementedNouns()) {
-      const noun = call.slice(0, call.indexOf('.'))
-      if (this.withheld.has(noun)) continue
-      ;(nouns[noun] ??= []).push(call.slice(noun.length + 1))
-      owners[noun] = 'engine'
-    }
-    if (!this.withheld.has('plugin')) {
-      nouns.plugin = []
-      owners.plugin = 'engine'
-    }
-    for (const [noun, entry] of this.pluginNouns) {
-      if (folding.includes(entry.seat)) continue
-      nouns[noun] = [...entry.methods]
-      owners[noun] = entry.seat.ref.plugin
-    }
-    return { nouns, owners, withheld: Object.fromEntries(this.withheld) }
-  }
-
-  /**
-   * `engine.create`: "the fold that builds `$`, once per load, core
-   * innermost … `plugins`: the whole set at a load, this plugin alone at its
-   * reload". The result is the table every `$` call is then held to: a
-   * plugin's noun is served by the seat that added it, a withheld one is
-   * refused. "A step that fails unloads its plugin; `$` is rebuilt": the
-   * fold runs again without it. Never rejects.
-   */
-  private async createEngine(seats: readonly Seat[], options: { alone?: boolean } = {}): Promise<void> {
-    let folding = seats.filter(seat => seat.loaded)
-    // No step anywhere: `$` is the engine's table, and nothing is to do — a
-    // slot whose modules add nothing pays no dispatch.
-    if (!this.dispatcher.hasHooksFor('engine.create')) return
-    for (let round = 0; folding.length > 0 && !this.disposed; round++) {
-      const e = { plugins: folding.map(seat => seat.ref.plugin) }
-      this.createFailures.clear()
-      let table: EngineTable
-      try {
-        table = await this.dispatcher.dispatch('engine.create', e, () => this.engineTable(folding), {
-          accepts: isEngineTable,
-          // Seats loaded alone fold alone, the rest of the table standing;
-          // the whole set folds together.
-          ...(options.alone ? { onlyGroup: folding.map(seat => seat.key) } : {}),
-        })
-      } catch (error) {
-        this.options.report(`mods: engine.create failed: ${errorMessage(error)}; $ stands as it was`)
-        return
-      }
-      const failed = folding.filter(seat =>
-        [...this.createFailures].some(linkId => linkId.startsWith(`${seat.key}#${seat.generation}/`)),
-      )
-      this.createFailures.clear()
-      if (failed.length === 0) {
-        this.applyEngineTable(table, folding)
-        return
-      }
-      for (const seat of failed) {
-        this.unload(seat, 'failed', 'its engine.create step failed (see the line above); its plugin does not load')
-      }
-      folding = folding.filter(seat => !failed.includes(seat) && seat.loaded)
-      if (round >= this.seats.length) return
-    }
-  }
-
-  /** Read the fold's result into the tables `serveCall` consults. */
-  private applyEngineTable(table: EngineTable, folding: readonly Seat[]): void {
-    for (const seat of folding) this.dropNouns(seat)
-    for (const [noun, methods] of Object.entries(table.nouns)) {
-      const owner = table.owners[noun]
-      if (owner === undefined || owner === 'engine') continue
-      const seat = folding.find(s => s.ref.plugin === owner && s.loaded) ?? this.pluginNouns.get(noun)?.seat
-      if (!seat?.loaded) continue
-      this.pluginNouns.set(noun, { seat, methods })
-    }
-    // A noun of the engine's missing from the table was withheld — by the
-    // step the table names, or by the one that returned without `next`.
-    const engineNouns = new Set(implementedNouns().map(call => call.slice(0, call.indexOf('.'))))
-    engineNouns.add('plugin')
-    for (const noun of engineNouns) {
-      if (noun in table.nouns) this.withheld.delete(noun)
-      else {
-        const by = table.withheld[noun] ?? table.withheldAll ?? this.withheld.get(noun) ?? 'a plugin'
-        if (!this.withheld.has(noun)) this.options.report(`${by}: $.${noun} is withheld at engine.create`)
-        this.withheld.set(noun, by)
-      }
-    }
-    for (const seat of folding) {
-      const state = this.states.get(seat)
-      if (state?.state === 'loaded') this.note(seat, { state: 'loaded', ...(state.events ? { events: state.events } : {}) })
-      const provided = [...this.pluginNouns].filter(([, entry]) => entry.seat === seat).map(([noun]) => noun)
-      if (provided.length > 0) this.options.report(`${seat.ref.plugin}: added $.${provided.join(', $.')} at engine.create`)
-    }
-  }
-
-  /** "A module calling a noun no plugin provides", or hooking one by name:
-   *  refused once the fold has run, naming the call. True when the seat
-   *  stands. */
-  private admitPluginNounCalls(seat: Seat): boolean {
-    if (!seat.loaded) return false
-    const provides = (call: string): boolean => {
-      const noun = call.slice(0, call.indexOf('.'))
-      return this.pluginNouns.get(noun)?.methods.includes(call.slice(noun.length + 1)) === true
-    }
-    const provided = this.pluginNouns.size > 0 ? ` (the plugins provide: ${this.pluginNounEvents().join(', ')})` : ''
-    const unraised = (seat.tentative ?? []).filter(pattern => !provides(pattern))
-    seat.tentative = []
-    if (unraised.length > 0) {
-      this.unload(
-        seat,
-        'refused',
-        `it hooks ${unraised.length === 1 ? 'an event' : 'events'} this engine does not raise yet: ${unraised.join(', ')}` +
-          ` (no loaded plugin's engine.create step adds the noun${provided})`,
-      )
-      return false
-    }
-    if (!seat.uses) return true
-    const missing = pluginNounCalls(seat.uses).filter(({ call }) => !provides(call))
-    if (missing.length === 0) return true
-    this.unload(
-      seat,
-      'refused',
-      `it calls ${missing.map(({ call }) => `$.${call}`).join(', ')}, which no loaded plugin's engine.create step provides${provided}`,
-    )
-    return false
-  }
-
-  /** A loaded seat that is not to stay loaded (its step failed, it calls
-   *  what nothing provides): its worker closed, its hooks and nouns out,
-   *  reported. */
-  private unload(seat: Seat, state: 'refused' | 'failed', reason: string): void {
-    const loaded = seat.loaded
-    seat.loaded = undefined
-    if (loaded) {
-      loaded.instance.dispose()
-      loaded.worker.close()
-    }
-    this.bookings?.dropSeat(seat.key)
-    this.dispatcher.unregister(seat.key)
-    this.commands.unregisterSeat(seat.key)
-    this.dropNouns(seat)
-    this.forgetTools(seat.ref.plugin)
-    this.note(seat, { state, reason })
-    this.options.report(`${seat.ref.plugin}: the hooks module was ${state === 'refused' ? 'refused' : 'not loaded'} — ${reason}`)
-  }
-
-  /** The seat's nouns leave `$`, and what its plugin withheld is withheld
-   *  no more. */
-  private dropNouns(seat: Seat): void {
-    for (const [noun, entry] of [...this.pluginNouns]) if (entry.seat === seat) this.pluginNouns.delete(noun)
-    if (!this.seats.some(other => other !== seat && other.ref.plugin === seat.ref.plugin && other.loaded)) {
-      for (const [noun, by] of [...this.withheld]) if (by === seat.ref.plugin) this.withheld.delete(noun)
-    }
-  }
-
-  /** A `$` call of a noun a plugin added: raised like any other, its core
-   *  the providing seat's worker. */
-  private servePluginNoun(call: ModCall, entry: { seat: Seat; methods: readonly string[] }): Promise<unknown> {
-    const provider = entry.seat
-    if (!entry.methods.includes(call.method)) {
-      const error = new Error(
-        `$.${call.noun}.${call.method} is not a method ${provider.ref.plugin} provides ` +
-          `(it provides: ${entry.methods.map(method => `${call.noun}.${method}`).join(', ')})`,
-      )
-      error.name = 'NotSupportedError'
-      return Promise.reject(error)
-    }
-    const e: unknown = call.args.length > 0 ? call.args[0] : {}
-    return this.dispatcher
-      .dispatch(
-        `${call.noun}.${call.method}`,
-        e,
-        async arrived => {
-          const loaded = provider.loaded
-          if (!loaded) {
-            throw new Error(`$.${call.noun}.${call.method}: ${provider.ref.plugin}, which provides it, is not loaded`)
-          }
-          const args = call.args.length > 0 ? [arrived, ...call.args.slice(1)] : []
-          return { value: await loaded.instance.serve(call.noun, call.method, args, call.plugin, call.signal) }
-        },
-        {
-          context: call.context,
-          scope: call.scope,
-          ...(call.signal ? { signal: call.signal } : {}),
-          accepts: result => isOpResult(result, undefined),
-        },
-      )
-      .then(result => {
-        const settled = result as { value?: unknown; deny?: string }
-        if (typeof settled.deny === 'string') {
-          const error = new Error(settled.deny)
-          error.name = 'DeniedError'
-          throw error
-        }
-        return settled.value
-      })
-  }
-
   /** A method of a `$.script.run` noun, served by the worker that started
    *  the run — the seat that called, else the plugin's loaded one. */
   private serveScriptNoun(by: ModScriptCaller, noun: string, method: string, args: unknown[]): Promise<unknown> {
@@ -1663,44 +1126,6 @@ export class ModRuntime extends ModUiSurface implements TurnExtensions {
       await this.sessionStart(seat.key)
     } catch (error) {
       this.options.report(`${seat.ref.plugin}: restart failed: ${errorMessage(error)}`)
-    }
-  }
-
-  /**
-   * `session.start`: "fires once per process for each loaded plugin, before
-   * the first prompt … The first is awaited." Observe-only: core echoes
-   * `{ cwd }` and a hook's own value changes nothing. Bounded, so a module
-   * that hangs there cannot hold the session's first prompt forever.
-   *
-   * `onlyKey`: after a restart, for that module's hooks alone.
-   */
-  private async sessionStart(onlyKey?: string): Promise<void> {
-    const controller = new AbortController()
-    const timeoutMs = this.options.startTimeoutMs ?? MOD_SESSION_START_TIMEOUT_MS
-    // Paused while the person is asked: a module asking at session.start is
-    // waiting on them, not hanging.
-    const bound = this.bound(timeoutMs, () => controller.abort())
-    try {
-      const cwd = this.options.session.cwd()
-      await this.dispatcher.dispatch(
-        'session.start',
-        // Velloc draws on the `desktop` surface, and a person is at the prompt.
-        { cwd, surface: 'desktop', isInteractive: true, locale: normalizeModLocale(this.options.locale) },
-        e => ({ cwd: (e as { cwd?: unknown })?.cwd ?? cwd }),
-        {
-          signal: controller.signal,
-          accepts: isRecord,
-          ...(onlyKey !== undefined ? { onlyGroup: onlyKey } : {}),
-        },
-      )
-    } catch (error) {
-      this.options.report(
-        controller.signal.aborted
-          ? `mods: session.start did not finish within ${timeoutMs}ms; the session goes on without waiting`
-          : `mods: session.start failed: ${errorMessage(error)}`,
-      )
-    } finally {
-      this.unbound(bound)
     }
   }
 
@@ -1849,7 +1274,7 @@ export class ModRuntime extends ModUiSurface implements TurnExtensions {
   }
 
   /** A wall-clock bound of `ms` that stops while the person is waited on. */
-  private bound(ms: number, onExpire: () => void): PausableDeadline {
+  protected bound(ms: number, onExpire: () => void): PausableDeadline {
     const bound = new PausableDeadline(onExpire)
     // Begun inside a wait: held until every open wait ends.
     for (let i = 0; i < this.personWaits; i += 1) bound.pause()
@@ -1858,14 +1283,14 @@ export class ModRuntime extends ModUiSurface implements TurnExtensions {
     return bound
   }
 
-  private unbound(bound: PausableDeadline): void {
+  protected unbound(bound: PausableDeadline): void {
     bound.stop()
     this.bounds.delete(bound)
   }
 
   /** "A removed one's" registered tools go the way its commands do; the
    *  restart's `session.start` registers them again. */
-  private forgetTools(plugin: string): void {
+  protected forgetTools(plugin: string): void {
     try {
       this.options.session.tools?.forget?.(plugin)
       this.options.session.agents?.forget(plugin)
@@ -1878,664 +1303,9 @@ export class ModRuntime extends ModUiSurface implements TurnExtensions {
     return this.seats.find(seat => seat.ref.plugin === plugin && seat.loaded)?.loaded?.instance
   }
 
-  /**
-   * `prompt.submit`: hooks may rewrite, add model-only context, or `{ drop }`. A
-   * broken plugin never blocks a prompt: any failure enters it as typed. Only what
-   * reached core entered.
-   */
-  async promptSubmit(text: string, signal?: AbortSignal): Promise<PromptSubmitOutcome> {
-    const startedAt = Date.now()
-    const mark = this.bookings?.personRunBegins() ?? 0
-    try {
-      return await this.promptSubmitThroughHooks(text, signal)
-    } finally {
-      this.personRan(startedAt, mark)
-    }
-  }
-
-  private async promptSubmitThroughHooks(text: string, signal?: AbortSignal): Promise<PromptSubmitOutcome> {
-    const typed: PromptSubmitOutcome = { entered: true, text, context: [] }
-    if (this.disposed || !this.dispatcher.hasHooksFor('prompt.submit')) return typed
-    let entered: { text: string; context: string[] } | undefined
-    // The person's prompt: a pane opened under it is asked.
-    this.personAsks += 1
-    try {
-      const result = await this.dispatcher.dispatch(
-        'prompt.submit',
-        { text, wait: false, origin: { kind: 'composer' } },
-        e => {
-          const arrived = (e ?? {}) as { text?: unknown; context?: unknown }
-          entered = {
-            text: typeof arrived.text === 'string' ? arrived.text : text,
-            context: Array.isArray(arrived.context)
-              ? arrived.context.filter((c): c is string => typeof c === 'string' && c !== '')
-              : [],
-          }
-          return {
-            text: entered.text,
-            ...(entered.context.length > 0 ? { context: entered.context } : {}),
-          }
-        },
-        {
-          ...(signal ? { signal } : {}),
-          accepts: isPromptSubmitResult,
-          refusal: (reason, plugin) => ({ drop: reason, unreachable: plugin }),
-        },
-      )
-      if (entered) return { entered: true, ...entered }
-      const { drop, unreachable } = result as { drop?: unknown; unreachable?: unknown }
-      return {
-        entered: false,
-        ...(typeof drop === 'string' && drop !== '' ? { reason: drop } : {}),
-        ...(typeof unreachable === 'string' ? { unreachable } : {}),
-      }
-    } catch (error) {
-      if (signal?.aborted) throw error
-      this.options.report(`mods: prompt.submit failed: ${errorMessage(error)}; the prompt enters as typed`)
-      return entered ? { entered: true, ...entered } : typed
-    } finally {
-      this.personAsks -= 1
-    }
-  }
-
-  /**
-   * `$.prompt.submit`: a plugin's prompt, raised past the caller's hook; core queues
-   * it as its own turn (not raised again). Resolves once queued, or `{ drop }`.
-   */
-  async pluginSubmit(
-    args: PluginPromptArgs,
-    enqueue: (turn: PluginPromptTurn) => void | Promise<void>,
-    raise: { context: DispatchContext; signal?: AbortSignal },
-  ): Promise<PluginPromptResult> {
-    const name = raise.context.origin.plugin
-    const origin: PluginPromptOrigin = { kind: 'plugin', name, ...(args.asUser ? { asUser: true as const } : {}) }
-    const queue = async (text: string, context: string[]): Promise<PluginPromptResult> => {
-      await enqueue({ text, context, plugin: name, ...(args.asUser ? { asUser: true as const } : {}) })
-      return { text, ...(context.length > 0 ? { context } : {}), origin }
-    }
-    if (this.disposed || !this.dispatcher.hasHooksFor('prompt.submit')) return queue(args.text, [])
-    let queued: PluginPromptResult | undefined
-    try {
-      const result = await this.dispatcher.dispatch(
-        'prompt.submit',
-        { text: args.text, wait: false, origin },
-        async e => {
-          const arrived = (e ?? {}) as { text?: unknown; context?: unknown; origin?: unknown }
-          // "`next(e)` passes it on as received; no hook may set one."
-          if (arrived.origin !== undefined && JSON.stringify(arrived.origin) !== JSON.stringify(origin)) {
-            throw new Error('the rewritten event is refused: origin is pinned')
-          }
-          const text = typeof arrived.text === 'string' && arrived.text.trim() !== '' ? arrived.text : args.text
-          const context = Array.isArray(arrived.context)
-            ? arrived.context.filter((c): c is string => typeof c === 'string' && c !== '')
-            : []
-          queued = await queue(text, context)
-          return queued
-        },
-        {
-          signal: raise.signal,
-          context: raise.context,
-          accepts: isPromptSubmitResult,
-          refusal: reason => ({ drop: reason }),
-        },
-      )
-      if (queued) return queued
-      const drop = (result as { drop?: unknown }).drop
-      const reason = typeof drop === 'string' && drop !== '' ? drop : 'a hook answered without next'
-      this.options.report(`mods: prompt.submit (${name}) dropped by a hook: ${reason}`)
-      return { drop: reason }
-    } catch (error) {
-      if (queued) return queued
-      if (raise.signal?.aborted) throw error
-      this.options.report(`mods: prompt.submit (${name}) failed: ${errorMessage(error)}; the prompt is queued as written`)
-      return queue(args.text, [])
-    }
-  }
-
-  /** Whether any loaded hook selects `tool.call`. A session whose mods do not
-   *  hook it runs its tools exactly as a session without mods. */
-  hasToolCallHooks(): boolean {
-    return !this.disposed && this.dispatcher.hasHooksFor('tool.call')
-  }
-
-  /**
-   * Contract: `tool.call`. `core` runs the call as it ARRIVED and may run more than
-   * once or never. When the chain settles, every core run nobody awaits is aborted.
-   * Never rejects: not settled means abandoned or failed, and the caller falls back
-   * to the engine's own behaviour.
-   */
-  async toolCall(
-    e: ToolCallEvent,
-    core: ToolCallCore,
-    signal?: AbortSignal,
-    context?: DispatchContext,
-  ): Promise<ToolCallSettlement> {
-    // The model's call is only raised when a hook selects it. A plugin's own
-    // (`context` given) always is: with no other hook the chain is core alone.
-    if (this.disposed && context) return { settled: false, refused: "the session's mods are gone" }
-    if (this.disposed || (!context && !this.hasToolCallHooks())) return { settled: false }
-    const running = new Set<AbortController>()
-    try {
-      const result = await this.dispatcher.dispatch(
-        'tool.call',
-        e,
-        async arrived => {
-          const run = new AbortController()
-          running.add(run)
-          try {
-            return await core(arrived, run.signal)
-          } finally {
-            running.delete(run)
-          }
-        },
-        {
-          ...(signal ? { signal } : {}),
-          ...(context ? { context } : {}),
-          accepts: isToolCallResult,
-          refusal: reason => ({ deny: reason }),
-        },
-      )
-      return { settled: true, result }
-    } catch (error) {
-      if (signal?.aborted) return { settled: false }
-      if (context) {
-        // A call from inside the chain (a hook's `$.tool.call`): run without
-        // its hooks it would pass every guard the chain holds — and at the
-        // depth bound, every level unwinding would run one.
-        this.options.report(`mods: tool.call failed: ${errorMessage(error)}; the call is refused`)
-        return { settled: false, refused: `tool.call failed: ${errorMessage(error)}` }
-      }
-      this.options.report(
-        `mods: tool.call failed: ${errorMessage(error)}; the call runs without its hooks`,
-      )
-      return { settled: false }
-    } finally {
-      for (const run of running) run.abort()
-    }
-  }
-
-  /** Whether any loaded hook selects `tool.check`. A session whose mods do
-   *  not hook it decides its tools' permission exactly as without mods. */
-  hasToolCheckHooks(): boolean {
-    return !this.disposed && this.dispatcher.hasHooksFor('tool.check')
-  }
-
-  /**
-   * `tool.check`: `e` is pinned and `core` is the engine's verdict; this only settles
-   * the chain. Never rejects: not settled means the engine's own verdict stands.
-   */
-  async toolCheck(
-    e: ToolCheckEvent,
-    core: ToolCheckCore,
-    signal?: AbortSignal,
-    context?: DispatchContext,
-  ): Promise<ToolCheckSettlement> {
-    if (this.disposed || (!context && !this.hasToolCheckHooks())) return { settled: false }
-    const running = new Set<AbortController>()
-    let entries: readonly TraceEntry[] = []
-    try {
-      const result = await this.dispatcher.dispatch(
-        'tool.check',
-        e,
-        async () => {
-          const run = new AbortController()
-          running.add(run)
-          try {
-            return await core(run.signal)
-          } finally {
-            running.delete(run)
-          }
-        },
-        {
-          ...(signal ? { signal } : {}),
-          ...(context ? { context } : {}),
-          accepts: takesToolCheckResult,
-          refusal: reason => ({ decision: 'deny', reason }),
-          trace: settled => {
-            entries = settled
-          },
-        },
-      )
-      return { settled: true, result: settledToolCheck(result as ToolCheckResult, entries) }
-    } catch (error) {
-      if (!signal?.aborted) {
-        this.options.report(
-          `mods: tool.check failed: ${errorMessage(error)}; the engine's own verdict stands`,
-        )
-      }
-      return { settled: false }
-    } finally {
-      for (const run of running) run.abort()
-    }
-  }
-
   /** A line for the slot's report, from a call site outside the runtime. */
   report(line: string): void {
     this.options.report(line)
-  }
-
-  /** Whether any loaded hook selects `classic.<event>`. A session whose mods
-   *  do not hook it runs the classic hooks exactly as before. */
-  hasClassicHooks(event: ClassicEventRaised): boolean {
-    return !this.disposed && this.dispatcher.hasHooksFor(`classic.${event}`)
-  }
-
-  /**
-   * `classic.<Event>`: the settings hooks beneath every plugin's hooks; `core` runs
-   * the executor. Answering without `next` pre-empts them. Never rejects.
-   */
-  async classic(
-    event: ClassicEventRaised,
-    e: Record<string, unknown>,
-    core: ClassicCore,
-    signal?: AbortSignal,
-    context?: DispatchContext,
-  ): Promise<ClassicSettlement> {
-    if (!this.hasClassicHooks(event)) return { settled: false }
-    const runs = new Map<number, ClassicAggregate>()
-    const running = new Set<AbortController>()
-    const isPreToolUse = event === 'PreToolUse'
-    try {
-      const result = await this.dispatcher.dispatch(
-        `classic.${event}`,
-        e,
-        async () => {
-          const run = new AbortController()
-          running.add(run)
-          try {
-            const aggregate = await core(run.signal)
-            const ref = runs.size + 1
-            runs.set(ref, aggregate)
-            return isPreToolUse
-              ? preToolUseResultOfAggregate(aggregate, ref)
-              : classicResultOfAggregate(aggregate, ref)
-          } finally {
-            running.delete(run)
-          }
-        },
-        {
-          ...(signal ? { signal } : {}),
-          ...(context ? { context } : {}),
-          accepts: isPreToolUse ? isPreToolUseResult : isClassicResult,
-          ...(isPreToolUse ? { refusal: (reason: string) => ({ deny: reason }) } : {}),
-        },
-      )
-      const settled = result as ClassicResult | PreToolUseResult
-      if (isPreToolUse) {
-        const decision = settled as PreToolUseResult
-        if (decision.allow !== undefined || decision.ask !== undefined) {
-          // Velloc's permission flow runs BEFORE its PreToolUse hooks, so
-          // there is no prompt left to skip or to force here. Said, never
-          // silently dropped.
-          this.options.report(
-            `mods: classic.PreToolUse answered ${decision.allow ? '{ allow }' : '{ ask }'}, which this engine ` +
-              'does not support yet; the call goes through the permission flow as before',
-          )
-        }
-        if (decision.updatedInput !== undefined) {
-          // The same order: the permission flow has already judged the
-          // model's input, so a rewrite here would run unchecked. A mod
-          // rewrites a tool's arguments through `tool.call`, which core checks.
-          this.options.report(
-            'mods: classic.PreToolUse answered { updatedInput }, which this engine does not support yet; ' +
-              'the tool runs with the input the permission flow checked — rewrite arguments through tool.call',
-          )
-        }
-      } else {
-        const classic = settled as ClassicResult
-        if (classic.preventContinuation) {
-          this.options.report(
-            `mods: classic.${event} answered { preventContinuation }, which this engine does not support yet; ` +
-              'the session goes on',
-          )
-        }
-      }
-      return {
-        settled: true,
-        aggregate: aggregateOfClassicResult(settled, runs),
-      }
-    } catch (error) {
-      if (!signal?.aborted) {
-        this.options.report(
-          `mods: classic.${event} failed: ${errorMessage(error)}; the classic hooks run without it`,
-        )
-      }
-      return { settled: false }
-    } finally {
-      for (const run of running) run.abort()
-    }
-  }
-
-  /** Whether any loaded hook selects `command.run`. */
-  hasCommandRunHooks(): boolean {
-    return !this.disposed && this.dispatcher.hasHooksFor('command.run')
-  }
-
-  /** The registered command of that name, if a mod serves one. */
-  registeredCommand(name: string): ModCommandSpec | undefined {
-    const command = this.commands.get(name)
-    return command
-      ? {
-          name: command.name,
-          description: command.description,
-          ...(command.argumentHint !== undefined ? { argumentHint: command.argumentHint } : {}),
-          ...(command.immediate ? { immediate: true as const } : {}),
-        }
-      : undefined
-  }
-
-  /** The registered commands, in registration order, with who serves each. */
-  listRegisteredCommands(): Array<ModCommandSpec & { plugin: string }> {
-    return this.commands.list().map(({ seat: _seat, ...command }) => command)
-  }
-
-  /** `$.command.list()`: the engine's commands, then the registered ones that
-   *  do not share a name with one — the order the picker lists them. */
-  listCommands(): ModCommandInfo[] {
-    const engine = this.options.engineCommands?.() ?? []
-    const taken = new Set(engine.map(c => c.name))
-    const registered = this.commands
-      .list()
-      .filter(c => !taken.has(c.name))
-      .map(c => ({ name: c.name, description: c.description, source: 'plugin' as const, plugin: c.plugin }))
-    return [...engine, ...registered]
-  }
-
-  /**
-   * `command.run`: core is the engine's command (a registered one has none and is
-   * `unanswered` unless a hook answered); `command` and `presentation` are pinned.
-   * Never rejects: not settled runs the engine's command as if there were no mods.
-   */
-  async commandRun(
-    input: { command: string; args: string },
-    core: CommandRunCore | undefined,
-    signal?: AbortSignal,
-    context?: DispatchContext,
-    origin: ModCommandOrigin = { kind: 'composer' },
-  ): Promise<CommandRunSettlement> {
-    const startedAt = Date.now()
-    const person = !context && origin.kind !== 'plugin'
-    const mark = person ? (this.bookings?.personRunBegins() ?? 0) : 0
-    try {
-      return await this.commandRunThroughHooks(input, core, signal, context, origin)
-    } finally {
-      if (person) this.personRan(startedAt, mark)
-    }
-  }
-
-  private async commandRunThroughHooks(
-    input: { command: string; args: string },
-    core: CommandRunCore | undefined,
-    signal: AbortSignal | undefined,
-    context: DispatchContext | undefined,
-    origin: ModCommandOrigin,
-  ): Promise<CommandRunSettlement> {
-    const registered = this.commands.has(input.command)
-    if (this.disposed || (!context && !registered && !this.hasCommandRunHooks())) {
-      return { settled: false }
-    }
-    const running = new Set<AbortController>()
-    let ref = 0
-    let answeredByCore = false
-    // The person's command (not a plugin's `$.command.run`): a pane opened
-    // under it is asked.
-    const isPersons = !context && origin.kind !== 'plugin'
-    if (isPersons) this.personAsks += 1
-    try {
-      const result = await this.dispatcher.dispatch(
-        'command.run',
-        commandRunEventOf(input.command, input.args, origin),
-        async arrived => {
-          ref += 1
-          const args = commandRunArgsOf(arrived, input.args)
-          if (!core) {
-            // A registered command has no engine behaviour: the chain alone
-            // answers, and a run nobody answered says so.
-            return { ref, text: undefined } as CommandRunResult
-          }
-          const run = new AbortController()
-          running.add(run)
-          try {
-            const answer = await core(args, run.signal)
-            answeredByCore = true
-            return { ...answer, ref }
-          } finally {
-            running.delete(run)
-          }
-        },
-        {
-          ...(signal ? { signal } : {}),
-          ...(context ? { context } : {}),
-          accepts: isCommandRunResult,
-        },
-      )
-      const settled = result as CommandRunResult
-      const unanswered = !core && settled.ref !== undefined && settled.text === undefined && !answeredByCore
-      return { settled: true, result: settled, unanswered }
-    } catch (error) {
-      if (!signal?.aborted) {
-        this.options.report(
-          `mods: command.run failed: ${errorMessage(error)}; /${input.command} runs without its hooks`,
-        )
-      }
-      return { settled: false }
-    } finally {
-      if (isPersons) this.personAsks -= 1
-      for (const run of running) run.abort()
-    }
-  }
-
-  /** Whether `/<name>` is a registered command that declared `immediate`. */
-  isImmediateCommand(name: string): boolean {
-    return !this.disposed && this.commands.get(name)?.immediate === true
-  }
-
-  /**
-   * An `immediate` command during a turn: its text shows as the plugin's toast (a row
-   * would break the running turn's tool pairing); `context` is dropped. Stop does
-   * not abort it. Never rejects.
-   */
-  async commandRunImmediate(input: { command: string; args: string }): Promise<void> {
-    const plugin = this.commands.get(input.command)?.plugin
-    if (plugin === undefined) return
-    const settlement = await this.commandRun(input, undefined)
-    if (!settlement.settled) return
-    const { result, unanswered } = settlement
-    if (unanswered) {
-      this.options.report(`mods: no hook answered /${input.command}, run while a turn was in flight`)
-      return
-    }
-    if (typeof result.text === 'string' && result.text !== '') this.ui.toast(plugin, result.text)
-    if (result.context?.some(c => c !== '')) {
-      this.options.report(
-        `mods: /${input.command} ran while a turn was in flight; its context has no prompt to ride and was dropped`,
-      )
-    }
-  }
-
-  /** `$.command.run` from a hook: a registered command through the chain
-   *  (the calling hook skipped); an engine command is not run from here yet
-   *  — refused by name (F-25). */
-  private async runCommandForMod(
-    input: { command: string; args: string },
-    raise: { context: DispatchContext; signal?: AbortSignal },
-  ): Promise<CommandRunResult> {
-    if (!this.commands.has(input.command)) {
-      const engine = this.options.engineCommands?.() ?? []
-      const error = engine.some(c => c.name === input.command)
-        ? Object.assign(
-            new Error(
-              `$.command.run: /${input.command} is the engine's own command, which a plugin cannot run yet; ` +
-                'only a command registered with $.command.register runs through $.command.run',
-            ),
-            { name: 'NotSupportedError' },
-          )
-        : new Error(`$.command.run: no command is named "${input.command}"`)
-      throw error
-    }
-    const settlement = await this.commandRun(
-      input,
-      undefined,
-      raise.signal,
-      raise.context,
-      { kind: 'plugin', name: raise.context.origin.plugin },
-    )
-    if (!settlement.settled) {
-      const error = new Error(`$.command.run: /${input.command} was abandoned`)
-      error.name = 'AbortError'
-      throw error
-    }
-    // "Absent on … `$.command.run`'s": no `ref` — the run is not the
-    // conversation's.
-    const { ref: _ref, ...result } = settlement.result
-    return result
-  }
-
-  /**
-   * `session.end`, observe-only, under one short wall-clock bound for the whole
-   * chain. On `clear` the modules, variables and timers stay. Never rejects.
-   */
-  async sessionEnd(reason: ModSessionEndReason): Promise<void> {
-    if (this.disposed) return
-    // "Fires when a client leaves the roster: … the session ended with it
-    // attached." A `/clear` ends the conversation, not the session the
-    // clients are attached to: they stay.
-    const leaving = reason === 'clear' || !this.rosterOpen ? [] : [...this.roster.values()]
-    if (reason !== 'clear') this.roster.clear()
-    const detaching = leaving.length > 0 && this.dispatcher.hasHooksFor('session.detach')
-    if (!this.dispatcher.hasHooksFor('session.end') && !detaching) return
-    const controller = new AbortController()
-    const timeoutMs = this.options.endTimeoutMs ?? MOD_SESSION_END_TIMEOUT_MS
-    const startedAt = Date.now()
-    const timer = setTimeout(() => controller.abort(), timeoutMs)
-    this.ending = true
-    let ended!: () => void
-    this.endingDone = new Promise<void>(resolve => {
-      ended = resolve
-    })
-    try {
-      if (this.dispatcher.hasHooksFor('session.end')) {
-        const sessionId = this.options.session.id()
-        await this.dispatcher.dispatch(
-          'session.end',
-          // The id is also what a resume takes: a Velloc session is reopened by
-          // its own id.
-          { reason, sessionId, resume: { id: sessionId } },
-          () => ({ sessionId }),
-          // The hooks share the bound: `next.budget` reads it, not the
-          // ordinary 10 s (debt 5).
-          { signal: controller.signal, accepts: isRecord, budgetMs: timeoutMs },
-        )
-      }
-    } catch (error) {
-      this.options.report(
-        controller.signal.aborted
-          ? `mods: session.end did not finish within ${timeoutMs}ms; the session ends without waiting`
-          : `mods: session.end failed: ${errorMessage(error)}`,
-      )
-    }
-    try {
-      // "With reason `end` it runs inside `session.end`'s one short bound:
-      // there `next.budget` reads that bound and `next.signal` aborts at it."
-      for (const client of detaching ? leaving : []) {
-        if (controller.signal.aborted) break
-        await this.dispatcher.dispatch(
-          'session.detach',
-          { surface: client.surface, clientId: client.clientId, reason: 'end' },
-          () => ({ clientId: client.clientId }),
-          {
-            signal: controller.signal,
-            accepts: isRecord,
-            budgetMs: Math.max(0, timeoutMs - (Date.now() - startedAt)),
-          },
-        )
-      }
-    } catch (error) {
-      this.options.report(
-        controller.signal.aborted
-          ? `mods: session.detach did not finish within session.end's ${timeoutMs}ms`
-          : `mods: session.detach failed: ${errorMessage(error)}`,
-      )
-    } finally {
-      this.ending = false
-      ended()
-      clearTimeout(timer)
-    }
-  }
-
-  // ── the session's roster of attached clients ──
-
-  /**
-   * A client joined the session's roster (the hub: its first subscription
-   * to the session's topics). `session.attach`: "fires when a remote client
-   * joins the session's roster of attached surfaces … Observe; `next(e)`
-   * resolves to `{ clientId }`." Raised once `session.start` has run.
-   */
-  clientAttached(client: ModRosterClient): void {
-    if (this.disposed || this.roster.has(client.clientId)) return
-    this.roster.set(client.clientId, client)
-    if (this.rosterOpen) this.raiseRoster('session.attach', client)
-  }
-
-  /** A client left (its last subscription went): `session.detach` with
-   *  reason `detach`. A client that left before `session.start` ran was
-   *  never raised, and raises nothing. */
-  clientDetached(clientId: string): void {
-    const client = this.roster.get(clientId)
-    if (this.disposed || !client) return
-    this.roster.delete(clientId)
-    if (this.rosterOpen) this.raiseRoster('session.detach', client)
-  }
-
-  private openRoster(): void {
-    if (this.rosterOpen || this.disposed) return
-    this.rosterOpen = true
-    for (const client of this.roster.values()) this.raiseRoster('session.attach', client)
-  }
-
-  /** `agent.complete`: observe-only, raised once per subagent run that
-   *  reached a terminal state, in the order the runs ended. Never rejects. */
-  agentComplete(e: ModAgentOutcome): void {
-    this.agentChain = this.agentChain.then(async () => {
-      if (this.disposed || !this.dispatcher.hasHooksFor('agent.complete')) return
-      try {
-        await this.dispatcher.dispatch('agent.complete', e, () => ({ agentId: e.agentId }), { accepts: isRecord })
-      } catch (error) {
-        this.options.report(`mods: agent.complete failed: ${errorMessage(error)}`)
-      }
-    })
-  }
-
-  /** `task.stop`: observe-only, raised once per stop asked of a plugin
-   *  task; the owning plugin ends its work and finishes the task. Never
-   *  rejects. */
-  taskStop(e: PluginTaskStopEvent): void {
-    this.agentChain = this.agentChain.then(async () => {
-      if (this.disposed || !this.dispatcher.hasHooksFor('task.stop')) return
-      try {
-        await this.dispatcher.dispatch('task.stop', e, () => ({ taskId: e.taskId }), { accepts: isRecord })
-      } catch (error) {
-        this.options.report(`mods: task.stop failed: ${errorMessage(error)}`)
-      }
-    })
-  }
-
-  private raiseRoster(event: 'session.attach' | 'session.detach', client: ModRosterClient): void {
-    const e =
-      event === 'session.attach'
-        ? { surface: client.surface, clientId: client.clientId }
-        : { surface: client.surface, clientId: client.clientId, reason: 'detach' as const }
-    this.rosterChain = this.rosterChain.then(async () => {
-      if (this.disposed || !this.dispatcher.hasHooksFor(event)) return
-      try {
-        // Observe: core echoes the id; a hook's own value changes nothing.
-        await this.dispatcher.dispatch(event, e, () => ({ clientId: client.clientId }), {
-          accepts: isRecord,
-        })
-      } catch (error) {
-        this.options.report(`mods: ${event} failed: ${errorMessage(error)}`)
-      }
-    })
   }
 
   /** The slot is going away: `session.end`, then leave the chain and close
@@ -2580,17 +1350,6 @@ export class ModRuntime extends ModUiSurface implements TurnExtensions {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
-}
-
-function isPluginRegisterResult(value: unknown): boolean {
-  if (!isRecord(value)) return false
-  return value.allow === true || typeof value.refuse === 'string'
-}
-
-function isPromptSubmitResult(value: unknown): boolean {
-  if (!isRecord(value)) return false
-  const { text, drop } = value as { text?: unknown; drop?: unknown }
-  return typeof text === 'string' || typeof drop === 'string'
 }
 
 function describeFailure(report: HookFailureReport): string {

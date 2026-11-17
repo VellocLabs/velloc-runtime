@@ -127,7 +127,11 @@ describe('extension factories', () => {
 
 describe('extension seam layering', () => {
   it('the engine and the toolkit never import the concrete extension runtime', () => {
-    const runtime = new Set([join(SRC, 'mods', 'ModRuntime.ts'), join(SRC, 'mods', 'ModEngineEvents.ts')])
+    const runtime = new Set(
+      ['ModRuntime.ts', 'ModPluginNouns.ts', 'ModSessionLifecycle.ts', 'ModTurnRaises.ts', 'modRuntimeContract.ts', 'modSeat.ts', 'ModEngineEvents.ts'].map(
+        (file) => join(SRC, 'mods', file),
+      ),
+    )
     const offenders: string[] = []
     for (const file of [...sourceFiles(join(SRC, 'engine')), ...sourceFiles(join(SRC, 'toolkit'))]) {
       const info = ts.preProcessFile(readFileSync(file, 'utf8'), true, true)
