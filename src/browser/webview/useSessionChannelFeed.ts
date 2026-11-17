@@ -28,6 +28,9 @@ const NEXUS_ACTIVE_SESSION_CHANGED_EVENT = 'nexus:activeSessionChanged'
 
 type SessionManager = ReturnType<typeof useSessionManager>
 
+// Contract: the channel subscription re-subscribes only when `sessionChannel` or
+// an `applyRemote*` function changes; every other callback is read from the
+// render that subscribed, so pass identity-stable functions or refs.
 export type SessionChannelFeedInput = {
   sessionChannel: SessionListChannel | undefined
   applyRemoteList: SessionManager['applyRemoteList']

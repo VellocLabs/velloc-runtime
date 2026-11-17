@@ -614,7 +614,7 @@ export function MultiSessionShell({
 
   // Pending `task.transcript` requests, keyed by requestId, resolved when
   // the worker replies (see the `task.transcript` branch in
-  // handleWorkerMessage). Drives the drawer's read-only detail view.
+  // useSessionChannelFeed). Drives the drawer's read-only detail view.
   const subAgentTranscriptWaitersRef = useRef<
     Map<string, (detail: NexusTaskDetail | null) => void>
   >(new Map())
@@ -642,7 +642,7 @@ export function MultiSessionShell({
   const sessionRemovalWaitersRef = useRef<Map<string, (removed: boolean) => void>>(new Map())
   // Fork-sends (the composer's Ctrl/Cmd+Alt+Enter) waiting on their
   // `session.forked` ack: the message to send into the new session.
-  // Read through a ref: the worker-message effect below does not re-subscribe
+  // Read through a ref: the useSessionChannelFeed subscription does not re-subscribe
   // when the clients hook hands out a new function.
   const submitComposerMessageToSessionRef = useRef<
     (sessionId: string, message: AppendMessage) => Promise<void>
@@ -875,7 +875,7 @@ export function MultiSessionShell({
   const renderStartRef = useRef(0)
   renderStartRef.current = performance.now()
   // Boot-welcome footer: latest onBootStage reporter (a stable prop, but read
-  // via a ref so the long-lived session.list message-listener effect below
+  // via a ref so the long-lived session.list listener in useSessionChannelFeed
   // never captures a stale closure) plus a once-guard so the `sessions` stage
   // fires only on the FIRST session.list, not on every later diff broadcast.
   const onBootStageRef = useRef(onBootStage)
