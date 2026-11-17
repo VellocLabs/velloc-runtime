@@ -41,10 +41,8 @@ export async function buildSettingsPromptSuffix({
 }): Promise<string | undefined> {
   let effectiveAppendSystemPrompt = coreState.options.appendSystemPrompt
   try {
-    // First adopter of the settings source hierarchy (gap #3): merge
-    // user/project/local so a project's `.velloc/settings.json` can contribute
-    // profile / output-style / permission rules. With only a user file present
-    // this is identical to the old single-source `readUserLayer`.
+    // Merge user/project/local so a project's `.velloc/settings.json` can
+    // contribute profile / output-style / permission rules.
     const { settings } = await loadEffectiveSettings(
       { homeDir: settingsHome(), projectRoot: coreState.options.projectRoot },
       installedFs,
@@ -75,8 +73,7 @@ export async function buildSettingsPromptSuffix({
           permissionsBySource,
         ),
       }))
-      // Shadowed-rule warning (spec 5-5-8 — also listed in the
-      // /permissions panel). With ask out-ranking allow (the rule order), an
+      // Shadowed-rule warning (also listed in the /permissions panel). With ask out-ranking allow (the rule order), an
       // allow rule under a broader ask/deny rule can never fire — the classic
       // case being "Always allow" persisting a rule that a configured
       // whole-tool `ask` keeps shadowing, so the prompt returns every session.
@@ -102,7 +99,7 @@ export async function buildSettingsPromptSuffix({
  * pure tier helpers in engine/contextWindow.ts see the user's settings — the seam's contract
  * is "no caller changes", hence a realm snapshot instead of threading. Live updates land via
  * `QueryEngine.applySessionModelSettings` (worker.applyRuntimeSettings). Non-fatal: on failure
- * the helpers keep the built-in ladder/census. `mods.headless` rides the same read (F-25 debt 7).
+ * the helpers keep the built-in ladder/census. `mods.headless` rides the same read (F-25).
  */
 export async function seedSessionModelSettings({
   coreState,
@@ -156,8 +153,8 @@ export async function applyAgentSettingsOverlay({
     // Internal-user mode (`/debug internal`) is EXTERNAL unless settings.json
     // says otherwise. Applied only when the persisted value CHANGED since the
     // last boot applied it: every runtime boot (each background sub-agent
-    // included) runs this, and an unconditional assign reverted an unsaved
-    // `/debug internal` flip at the next agent spawn.
+    // included) runs this, so an unconditional assign would revert an
+    // unsaved `/debug internal` flip at the next agent spawn.
     applyPersistedInternalUser(agent?.internalUser === true)
     if (options.isSubAgent === true && agent && agent.maxTurns !== undefined) {
       engine.applyRuntimeSettings({ maxTurns: agent.maxTurns })

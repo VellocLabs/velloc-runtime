@@ -984,11 +984,9 @@ export async function createBrowserRuntime(
     userInputPipeline,
     systemInitEmitter,
     queryRuntimeDeps: options.queryRuntimeDeps ?? assembleSessionTurnDependencies({
-      options,
       resolvedOptions,
       runtimeConfig,
       autoCompactWindows,
-      resolvedSessionId,
       conversationStore,
       appSurface,
       takeModFaults,

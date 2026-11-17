@@ -17,11 +17,9 @@ import type { CreateBrowserRuntimeOptions } from './createAgentRuntimeOptions'
 const metaNote = (text: string): Message => createGeneratedUserMessage(text, { isMeta: true })
 
 export type SessionTurnDependenciesInput = {
-  options: CreateBrowserRuntimeOptions
   resolvedOptions: CreateBrowserRuntimeOptions & { sessionId: string }
   runtimeConfig: BrowserRuntimeConfig
   autoCompactWindows: AutoCompactWindowSettings
-  resolvedSessionId: string
   conversationStore: BrowserConversationStore
   appSurface: Pick<AppSurfaceHost, 'wrapTurnEndCheck'> | undefined
   takeModFaults: NonNullable<Parameters<typeof collectQueuedAttachmentMessages>[0]['takeModFaults']>
@@ -29,11 +27,9 @@ export type SessionTurnDependenciesInput = {
 
 /** The session's turn dependencies: compaction (automatic and `/compact`), queued attachments, the turn-end check. */
 export function assembleSessionTurnDependencies({
-  options,
-  resolvedOptions,
+  resolvedOptions: options,
   runtimeConfig,
   autoCompactWindows,
-  resolvedSessionId,
   conversationStore,
   appSurface,
   takeModFaults,
@@ -46,11 +42,8 @@ export function assembleSessionTurnDependencies({
       ),
       // Forward the per-engine `messageCompaction` override so the
       // autocompact closure sees the same thresholds the QueryEngine
-      // does. Without this, autocompact construction binds the
-      // hard-coded defaults (25 steps / 40K chars) and any override
-      // passed via `BrowserRuntimeOptions.agentLoopSettings` is
-      // silently ignored — that's the bug the e2e compaction test
-      // surfaced.
+      // does; otherwise it binds the hard-coded defaults (25 steps /
+      // 40K chars) and ignores `agentLoopSettings`.
       autocompact: createBrowserAutoCompact(
         options.bridgeTransport,
         runtimeConfig,
@@ -74,8 +67,8 @@ export function assembleSessionTurnDependencies({
           trigger: 'manual',
           customInstructions,
           requester: {
-            sessionId: resolvedSessionId,
-            spawnerSessionId: (resolvedOptions as { spawnerSessionId?: string }).spawnerSessionId,
+            sessionId: options.sessionId,
+            spawnerSessionId: (options as { spawnerSessionId?: string }).spawnerSessionId,
           },
         })
       },
@@ -99,7 +92,7 @@ export function assembleSessionTurnDependencies({
           runtimeConfig,
           assistantMessages: params.assistantMessages,
           querySource: params.querySource,
-          sessionId: resolvedOptions.sessionId,
+          sessionId: options.sessionId,
           drainTaskNotifications: options.drainTaskNotifications,
           drainTeamMessages: options.drainTeamMessages,
           drainInjectMessages: options.drainInjectMessages,
