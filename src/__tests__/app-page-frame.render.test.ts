@@ -46,6 +46,7 @@ describe('AppPageFrame', () => {
       return found!
     })
     expect(frame.getAttribute('sandbox')).toBe('allow-scripts')
+    expect(frame.getAttribute('csp')).toBe(APP_PAGE_CSP)
     expect(frame.getAttribute('srcdoc')).toBe(`<meta http-equiv="Content-Security-Policy" content="${APP_PAGE_CSP}"><p>office</p>`)
     expect(frame.title).toBe('App page')
 

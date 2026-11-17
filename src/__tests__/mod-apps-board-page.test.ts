@@ -95,6 +95,23 @@ describe('the board store', () => {
     await expect(result.current?.reload()).resolves.toEqual({ ok: true, surfaceIds: ['dashboard'] })
     expect(rig.request).toHaveBeenCalledWith('mods.buildApp', { sessionId: 's1' })
   })
+
+  it('the hook: a page app reads its page and never subscribes to the board', async () => {
+    const rig = fakeConnection()
+    rig.request.mockResolvedValue({ ok: true, html: '<p/>', topics: ['sessions'] } as never)
+    const connect = async () => rig.connection
+    act(() =>
+      setModContributions({
+        ...EMPTY_MOD_CONTRIBUTIONS,
+        apps: [{ type: 'office:floor', appId: 'office-floor', plugin: 'office', title: 'Office', page: true }],
+      }),
+    )
+    const { result } = renderHook(() => useAppBoard(connect, 's1', 'office:floor'))
+    expect(result.current?.state).toBeNull()
+    await expect(result.current?.readPage?.()).resolves.toEqual({ ok: true, html: '<p/>', topics: ['sessions'] })
+    expect(rig.request).toHaveBeenCalledWith('mods.appPage', { appId: 'office-floor' })
+    expect(rig.subscribe).not.toHaveBeenCalled()
+  })
 })
 
 describe('the board in the session\'s processor', () => {

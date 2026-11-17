@@ -208,5 +208,6 @@ describe('the page policy', () => {
       `<!DOCTYPE html>${meta}<html><head><meta http-equiv="Content-Security-Policy" content="default-src *"></head></html>`,
     )
     expect(withAppPageCsp('<p><!doctype html></p>')).toBe(`${meta}<p><!doctype html></p>`)
+    expect(withAppPageCsp('<!-- licence --><!doctype html><p>x</p>')).toBe(`<!-- licence --><!doctype html>${meta}<p>x</p>`)
   })
 })

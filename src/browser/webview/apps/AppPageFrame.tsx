@@ -3,7 +3,9 @@
  *
  * Security: the page runs in `<iframe sandbox="allow-scripts" srcdoc>`, so its
  * origin is opaque and it reaches neither this document nor storage, under a
- * policy that refuses network requests (`withAppPageCsp`). Its only line to the
+ * policy that refuses network requests: in the page (`withAppPageCsp`) and
+ * required of every document the frame loads (`csp`), so a remote document it
+ * navigates to is refused. Its only line to the
  * runtime is a port capped to `observe` on the topics the host allows
  * (`openObserverPort`), handed to the first document only: when the frame
  * loads another document, or the pane closes, that connection ends.
@@ -13,7 +15,7 @@ import { useEffect, useRef, useState } from 'react'
 import type { ModsAppPageResult } from '../../runtimeProtocol/modApps'
 import { openObserverPort } from '../../runtimeClient/observerPorts'
 import { useT } from '../i18n'
-import { withAppPageCsp } from './appPageCsp'
+import { APP_PAGE_CSP, withAppPageCsp } from './appPageCsp'
 import { APP_PAGE_PORT_MESSAGE, relayAppPagePort, type AppPageRelay } from './appPageRelay'
 
 export type AppPageFrameProps = {
@@ -58,6 +60,7 @@ export function AppPageFrame({ readPage }: AppPageFrameProps) {
         }
         const created = document.createElement('iframe')
         created.setAttribute('sandbox', 'allow-scripts')
+        created.setAttribute('csp', APP_PAGE_CSP)
         created.setAttribute('data-slot', 'app-page-frame')
         created.title = titleRef.current
         created.className = 'h-full w-full border-0'
