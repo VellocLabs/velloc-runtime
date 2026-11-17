@@ -82,6 +82,7 @@ export interface ShellSessionThreadInputs {
   composerInsert: { sessionId: string; text: string; nonce: number } | null
   handleComposerEdit: ThreadProps['onComposerEdit']
   composerEnterSends?: ThreadProps['composerEnterSends']
+  interceptComposerText?: ThreadProps['interceptComposerText']
 }
 
 // One session's conversation: in the chat slot (shown when active, kept
@@ -110,7 +111,7 @@ export function renderShellSessionThread(
     handleLoadProviderMissingPrompt, handleAdoptDefaultSelection, handleSessionSelectModel,
     handleSetAutoCompactWindow, handleSelectProjectFolder, handleOpenProjectFolder,
     handleRevealProjectFolder, sessionDraftBySessionId, composerInsert, handleComposerEdit,
-    composerEnterSends,
+    composerEnterSends, interceptComposerText,
   } = inputs
   const isActive = inPane || sessionId === activeSessionId
   const bound = inPane ? sessionActionsFor(sessionId) : null
@@ -162,6 +163,7 @@ export function renderShellSessionThread(
                 submitActionMessage={bound?.submitActionMessage ?? submitActionMessage}
                 continueConversation={bound?.continueConversation ?? continueConversation}
                 submitComposerMessage={bound?.submitComposerMessage ?? submitComposerMessage}
+                interceptComposerText={interceptComposerText}
                 onPickAttachmentFiles={pickComposerAttachmentFiles}
                 submitToolResult={bound?.submitToolResult ?? submitToolResult}
                 loadToolCallDetail={bound?.loadToolCallDetail ?? loadToolCallDetail}

@@ -70,11 +70,25 @@ export type MarketplaceShelf = {
   manifestDescription?: string
 }
 
+/** One install as the corner toasts show it: running, then how it ended. */
+export type InstallNotice = {
+  /** `<plugin>@<marketplace>` */
+  key: string
+  marketplace: string
+  plugin: string
+  phase: 'running' | 'installed' | 'notListed' | 'failed'
+}
+
 export type MarketplaceShelvesView = {
   shelves: Record<string, MarketplaceShelf>
   /** `<plugin>@<marketplace>` keys whose install is running / whose last install failed. */
   installing: ReadonlySet<string>
   installFailed: ReadonlySet<string>
+  /** Plugins an install found gone from their marketplace's listing, per marketplace. */
+  withdrawn: Record<string, readonly string[]>
+  /** Installs started here, oldest first, until dismissed. */
+  notices: readonly InstallNotice[]
+  dismissNotice: (key: string) => void
   install: (marketplace: string, plugin: string) => void
   /** Fetches a marketplace's list from its source and reads it again. */
   refresh: (marketplace: string) => void
@@ -89,8 +103,9 @@ export const installKey = (marketplace: string, plugin: string) => `${plugin}@${
  * Every browsed marketplace's plugins (F-35). Each is read from its local
  * copy at once, then fetched from its source in the background — every time
  * the screen mounts, and when it joins the list — and read again; the
- * directory's details for its plugins follow. `install` installs
- * `<plugin>@<marketplace>` and reads that list again.
+ * directory's details for its plugins follow. `install` installs in the
+ * background and reads that list again; a plugin the current listing lacks
+ * leaves the shelf and is named in `withdrawn`.
  */
 export function useMarketplaceShelves(
   bridge: NexusSettingsBridge | null,
@@ -100,6 +115,8 @@ export function useMarketplaceShelves(
   const [shelves, setShelves] = React.useState<Record<string, MarketplaceShelf>>({})
   const [installing, setInstalling] = React.useState<ReadonlySet<string>>(NONE)
   const [installFailed, setInstallFailed] = React.useState<ReadonlySet<string>>(NONE)
+  const [withdrawn, setWithdrawn] = React.useState<Record<string, readonly string[]>>({})
+  const [notices, setNotices] = React.useState<readonly InstallNotice[]>([])
   const live = React.useRef(true)
   React.useEffect(() => {
     live.current = true
@@ -178,18 +195,44 @@ export function useMarketplaceShelves(
     }
   }, [bridge, key, read, fetchLatest, describe, patch])
 
+  const dismissNotice = React.useCallback((key: string) => {
+    setNotices(all => all.filter(n => n.key !== key || n.phase === 'running'))
+  }, [])
+
   const install = React.useCallback(
     (marketplace: string, plugin: string) => {
       if (!bridge) return
       const id = installKey(marketplace, plugin)
       const without = (set: ReadonlySet<string>) => new Set([...set].filter(k => k !== id))
+      const announce = (phase: InstallNotice['phase']) => {
+        if (!live.current) return
+        const notice: InstallNotice = { key: id, marketplace, plugin, phase }
+        setNotices(all => [...all.filter(n => n.key !== id), notice])
+      }
       setInstalling(set => new Set(set).add(id))
       setInstallFailed(without)
+      announce('running')
+      // The install reads the marketplace's current listing (and its repo when
+      // the plugin is kept there), so the shelf is read again whatever the result.
       pluginsInstall(bridge, id)
         .then(
-          () => read(marketplace),
+          async result => {
+            await read(marketplace)
+            if (result.ok) {
+              announce('installed')
+              return
+            }
+            if (live.current) {
+              setWithdrawn(all => ({
+                ...all,
+                [marketplace]: [...(all[marketplace] ?? []).filter(n => n !== plugin), plugin],
+              }))
+            }
+            announce('notListed')
+          },
           () => {
             if (live.current) setInstallFailed(set => new Set(set).add(id))
+            announce('failed')
           },
         )
         .finally(() => {
@@ -199,5 +242,5 @@ export function useMarketplaceShelves(
     [bridge, read],
   )
 
-  return { shelves, installing, installFailed, install, refresh }
+  return { shelves, installing, installFailed, withdrawn, notices, dismissNotice, install, refresh }
 }

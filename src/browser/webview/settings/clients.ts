@@ -253,12 +253,8 @@ export function pluginsListMarketplacePlugins(
 export function pluginsInstall(
   bridge: NexusSettingsBridge,
   identifier: string,
-  refreshFirst = false,
 ): Promise<BrowserBridgeResult<'plugins', 'install'>> {
-  return bridge.request(createBridgeRoute('plugins', 'install'), {
-    identifier,
-    refreshFirst,
-  })
+  return bridge.request(createBridgeRoute('plugins', 'install'), { identifier })
 }
 
 export function pluginsUninstall(

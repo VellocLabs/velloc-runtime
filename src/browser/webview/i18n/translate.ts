@@ -404,6 +404,7 @@ export const BOOTSTRAP_MESSAGES: Partial<Record<MessageKey, string>> = {
   'slash.out.plugin.unknownSubcommand': 'Unknown subcommand: /plugin {sub}',
   'slash.out.plugin.error': 'Error running /plugin {sub}: {error}',
   'slash.out.plugin.install.usage': 'Usage: /plugin install <name>@<marketplace>',
+  'slash.out.plugin.install.notListed': '{name} is no longer in marketplace {marketplace}: its current plugin list doesn\'t include it. Nothing was installed.',
   'slash.out.plugin.invalidIdentifier': 'Invalid identifier: {message}',
   'slash.out.plugin.install.success': 'Installed {identifier} (v{version})',
   'slash.out.plugin.install.fileCount': '{count} files → `{path}`',

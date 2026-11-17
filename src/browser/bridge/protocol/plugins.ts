@@ -104,11 +104,9 @@ export type PluginsBridgeActionMap = {
       /** `<name>@<marketplace>` identifier — same shape the slash
        *  command accepts. */
       identifier: string
-      /** When true, refresh the marketplace before installing. Useful
-       *  when the user wants to install something they just added.
-       *  Default false. */
-      refreshFirst?: boolean
     }
+    /** An install reads the marketplace's current listing first; `notListed`:
+     *  the plugin is no longer in it, and the cached listing now says so. */
     result: {
       ok: true
       /** The new installed-plugins.json entry, with enabled merged in. */
@@ -116,6 +114,9 @@ export type PluginsBridgeActionMap = {
       /** Number of files written to the cache slot — surfaced in the
        *  "Installed N files" confirmation. */
       fileCount: number
+    } | {
+      ok: false
+      reason: 'notListed'
     }
   }
   /** Install a plugin-directory record's reviewed commit as

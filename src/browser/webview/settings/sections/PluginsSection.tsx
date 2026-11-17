@@ -503,10 +503,15 @@ export function PluginsSection({
     if (!bridge) return;
     setInstallingId(identifier);
     try {
-      await pluginsInstall(bridge, identifier);
-      await reloadInstalled();
+      const result = await pluginsInstall(bridge, identifier);
       const mp = identifier.split("@")[1];
+      // The install read the marketplace's current listing; show that listing.
       if (mp && fetchState[mp]) await fetchMarketplace(mp, false);
+      if (!result.ok) {
+        showToast(t("settings.plugins.notListed", { name: identifier.split("@")[0] ?? identifier }));
+        return;
+      }
+      await reloadInstalled();
       showToast(t("settings.plugins.pluginInstalledToast"));
       await askForSetup(identifier.split("@")[0] ?? identifier, identifier);
     } catch (e) {

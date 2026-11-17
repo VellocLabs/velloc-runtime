@@ -18,7 +18,7 @@ import {
   getEnabledPluginsMap,
   setPluginEnabled,
 } from '../../../pluginHost/enabledPlugins'
-import { setupPlugin, teardownPlugin } from '../../../pluginHost/installSteps'
+import { PluginNotListedError, setupPlugin, teardownPlugin } from '../../../pluginHost/installSteps'
 import {
   removeLocalPlugin,
   setLocalPluginEnabled,
@@ -32,7 +32,7 @@ import { WORKSPACE_STATE_FILE } from '../../runtimeHub/workspaceCapability'
 import { loadInstalledPlugins } from '../../../pluginHost/installedRegistry'
 import { describeInstalledPlugin } from '../../../pluginHost/loadPlugins'
 import {
-  fetchCatalog,
+  fetchCatalogListing,
   listingsVisibleOn,
   loadKnownMarketplaces,
   parseMarketplaceManifest,
@@ -228,15 +228,21 @@ async function handleInstall(
   if (blockReason) {
     throw new Error(blockReason)
   }
-  const result = await setupPlugin(
-    pathCtx, ctx.fs,
-    parsed.marketplace, parsed.name,
-    {
-      nowIso: nowOf(ctx),
-      fetchImpl: pickFetch(ctx),
-      refreshFirst: payload.refreshFirst,
-    },
-  )
+  let result: Awaited<ReturnType<typeof setupPlugin>>
+  try {
+    result = await setupPlugin(
+      pathCtx, ctx.fs,
+      parsed.marketplace, parsed.name,
+      {
+        nowIso: nowOf(ctx),
+        fetchImpl: pickFetch(ctx),
+        freshListing: true,
+      },
+    )
+  } catch (error) {
+    if (error instanceof PluginNotListedError) return { ok: false, reason: 'notListed' }
+    throw error
+  }
   const enabledMap = await getEnabledPluginsMap(
     { homeDir: ctx.homeDir }, ctx.fs,
   )
@@ -419,7 +425,8 @@ async function handleRefreshMarketplace(
   ctx: PluginsAdapterContext,
 ): Promise<PluginsBridgeActionMap['refreshMarketplace']['result']> {
   const pathCtx = pathContextOf(ctx)
-  const result = await fetchCatalog(
+  // A GitHub marketplace refreshes its manifest alone; installs download the repo.
+  const result = await fetchCatalogListing(
     pathCtx, ctx.fs, payload.name, nowOf(ctx),
     pickFetch(ctx),
   )

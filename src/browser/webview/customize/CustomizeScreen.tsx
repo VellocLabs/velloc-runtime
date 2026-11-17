@@ -16,6 +16,7 @@ import { TOP_BAR_HEIGHT_CLASS } from '../topbar/barHeight'
 import { useWindowDragRegions } from '../topbar/useWindowDragRegions'
 import { WebviewArea } from '../WebviewArea'
 import { AddItemDialog } from './AddItemDialog'
+import { InstallToasts } from './InstallToasts'
 import { DirectoryItemStatus } from './DirectoryItemStatus'
 import { pluginsAddMarketplace, pluginsRemoveMarketplace } from '../settings/clients'
 import { MarketplaceBrowser } from './MarketplaceBrowser'
@@ -34,6 +35,8 @@ export type CustomizeScreenProps = {
   /** Settings → MCP, scrolled to the server `id`'s row, which flashes. */
   onOpenMcpServerSettings?: (id: string) => void
   onDragRegionsChange?: (regions: WindowDragRect[]) => void
+  /** A `/plugin marketplace add` typed in a composer: the Add a marketplace dialog opens on it and adds it. */
+  marketplaceAddRequest?: { source: string; seq: number } | null
 }
 
 /**
@@ -60,6 +63,7 @@ export function CustomizeScreen({
   onOpenPluginSettings,
   onOpenMcpServerSettings,
   onDragRegionsChange,
+  marketplaceAddRequest = null,
 }: CustomizeScreenProps) {
   const t = useT()
   const headerRef = React.useRef<HTMLElement | null>(null)
@@ -72,6 +76,15 @@ export function CustomizeScreen({
   const names = React.useMemo(() => (list.marketplaces ?? []).map(m => m.name), [list.marketplaces])
   const shelves = useMarketplaceShelves(bridge, names, tab.describeMarketplace)
   const [addingMarket, setAddingMarket] = React.useState(false)
+  // The typed request the dialog adds, held until the bridge can take it.
+  const [addRequest, setAddRequest] = React.useState<{ source: string; seq: number } | null>(null)
+  const takenSeq = React.useRef<number | null>(null)
+  React.useEffect(() => {
+    if (!marketplaceAddRequest || !bridge || takenSeq.current === marketplaceAddRequest.seq) return
+    takenSeq.current = marketplaceAddRequest.seq
+    setAddRequest(marketplaceAddRequest)
+    setAddingMarket(true)
+  }, [marketplaceAddRequest, bridge])
   const [removing, setRemoving] = React.useState<string | null>(null)
   const nonce = React.useRef(0)
   const browse = React.useCallback((name: string | null) => {
@@ -302,8 +315,13 @@ export function CustomizeScreen({
         open={addingMarket}
         onAdd={addMarket}
         onShow={browse}
-        onClose={() => setAddingMarket(false)}
+        onClose={() => {
+          setAddingMarket(false)
+          setAddRequest(null)
+        }}
+        request={addRequest}
       />
+      <InstallToasts notices={shelves.notices} onDismiss={shelves.dismissNotice} />
       <RemoveMarketplaceDialog name={removing} onRemove={removeMarket} onClose={() => setRemoving(null)} />
     </div>
   )

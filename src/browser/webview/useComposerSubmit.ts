@@ -17,6 +17,7 @@ export function useComposerSubmit({
   activeSessionId,
   submitPrompt,
   submitComposerMessage,
+  interceptComposerText,
   onSendInForkedSession,
   onAdoptDefaultSelection,
   snapshotRef,
@@ -33,6 +34,7 @@ export function useComposerSubmit({
   activeSessionId: AssistantUiThreadProps['activeSessionId']
   submitPrompt: AssistantUiThreadProps['submitPrompt']
   submitComposerMessage: AssistantUiThreadProps['submitComposerMessage']
+  interceptComposerText?: AssistantUiThreadProps['interceptComposerText']
   onSendInForkedSession: AssistantUiThreadProps['onSendInForkedSession']
   onAdoptDefaultSelection: AssistantUiThreadProps['onAdoptDefaultSelection']
   snapshotRef: RefObject<AgentRuntimeWorkerSnapshot | null>
@@ -54,6 +56,16 @@ export function useComposerSubmit({
       const delivery = nextDeliveryRef.current
       nextDeliveryRef.current = undefined
       if (readOnly) return
+      // A command the shell acts on itself is taken whole, and only when no
+      // quote card or attachment rides with it.
+      if (
+        interceptComposerText
+        && !rawMessage.attachments?.length
+        && passageStore.getPassages().length === 0
+        && interceptComposerText(extractTextFromAppendMessage(rawMessage))
+      ) {
+        return
+      }
       // The cards leave the composer with its own send, like its text; every
       // path below that hands the text back hands them back too.
       const takenPassages = passageStore.takeForSend(composerSendText(rawMessage.content))
@@ -150,6 +162,7 @@ export function useComposerSubmit({
     [
       passageStore,
       submitComposerMessage,
+      interceptComposerText,
       submitPrompt,
       onAdoptDefaultSelection,
       activeSessionId,

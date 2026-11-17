@@ -14,7 +14,7 @@ import {
 } from '../browser/runtimeHub/pluginUpdatesCapability'
 import type { BuiltinSeedOutcome } from '../pluginHost/builtinMarketplaceSeed'
 import { setPluginEnabled } from '../pluginHost/enabledPlugins'
-import { setupPlugin } from '../pluginHost/installSteps'
+import { PluginNotListedError, setupPlugin } from '../pluginHost/installSteps'
 import { forgetRegistryFile, loadInstalledPlugins, recordPluginSetup } from '../pluginHost/installedRegistry'
 import {
   MARKETPLACE_MANIFEST_REPO_PATH,
@@ -702,5 +702,45 @@ describe('adding a GitHub marketplace', () => {
 
     expect(outcome).toMatchObject({ ok: false, stage: 'fetch' })
     expect(r.tarballs()).toBe(0)
+  })
+})
+
+describe("a person's install reads the marketplace's current listing", () => {
+  const source = { source: 'github' as const, repo: 'me/mkt' }
+  const fresh = (r: Awaited<ReturnType<typeof rig>>) => ({ fetchImpl: r.fetchImpl, freshListing: true })
+
+  it('a plugin dropped since the add is not listed: nothing downloads, and the cached listing drops it too', async () => {
+    const r = await rig([])
+    await r.publish([{ name: 'cool', version: '1.0.0' }, { name: 'gone', version: '1.0.0' }])
+    await registerMarketplaceSource(ctx, r.fs, source, '2026-10-12T00:00:00.000Z', r.fetchImpl)
+    await r.publish([{ name: 'cool', version: '1.0.0' }])
+
+    const failure = await setupPlugin(ctx, r.fs, 'my-mkt', 'gone', fresh(r)).catch((error: unknown) => error)
+
+    expect(failure).toBeInstanceOf(PluginNotListedError)
+    expect(r.tarballs()).toBe(0)
+    expect(await r.installed('gone@my-mkt')).toBeUndefined()
+    const listed = JSON.parse(await r.fs.readFile(
+      `${getMarketplaceContentDir(ctx, 'my-mkt')}/${PLUGIN_MANIFEST_DIR_NAME}/marketplace.json`,
+      { encoding: 'utf-8' },
+    )) as { plugins: { name: string }[] }
+    expect(listed.plugins.map(p => p.name)).toEqual(['cool'])
+  })
+
+  it('downloads the repo on every install of a plugin kept in it, so a later install brings the newer files', async () => {
+    const r = await rig([])
+    await r.publish([{ name: 'cool', version: '1.0.0' }])
+    await registerMarketplaceSource(ctx, r.fs, source, '2026-10-12T00:00:00.000Z', r.fetchImpl)
+
+    await setupPlugin(ctx, r.fs, 'my-mkt', 'cool', fresh(r))
+    expect(r.tarballs()).toBe(1)
+    expect((await r.installed())?.version).toBe('1.0.0')
+
+    await r.publish([{ name: 'cool', version: '2.0.0', dir: 'cool-next' }])
+    await setupPlugin(ctx, r.fs, 'my-mkt', 'cool', fresh(r))
+    expect(r.tarballs()).toBe(2)
+    const record = await r.installed()
+    expect(record?.version).toBe('2.0.0')
+    expect(await r.fs.readFile(`${record!.installPath}/skills/hello/SKILL.md`, { encoding: 'utf-8' })).toBe('v2.0.0\n')
   })
 })

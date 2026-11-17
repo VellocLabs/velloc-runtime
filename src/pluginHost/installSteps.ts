@@ -25,9 +25,11 @@ import {
   ensureMarketplaceRepo,
   findCatalogPlugin,
   fetchCatalog,
+  fetchCatalogListing,
   loadKnownMarketplaces,
   parseMarketplaceManifest,
 } from './marketplaces'
+import { BUILTIN_MARKETPLACE_KEY } from './builtinMarketplace'
 import { joinPluginRef, splitPluginRef } from './pluginRef'
 import {
   getMarketplaceContentDir,
@@ -115,8 +117,25 @@ function joinAndNormalize(basePath: string, subPath: string): string {
   return normalizePath(joined)
 }
 
+/** The plugin is not in its marketplace's listing. */
+export class PluginNotListedError extends Error {
+  constructor(readonly pluginName: string, readonly catalogKey: string) {
+    super(
+      `[installPlugin] '${pluginName}' is not listed in marketplace '${catalogKey}'.`
+      + ` Run \`/marketplace update ${catalogKey}\` to refresh the listing, or check the plugin name.`,
+    )
+    this.name = 'PluginNotListedError'
+  }
+}
+
 export type InstallPluginOptions = {
   refreshFirst?: boolean
+  /**
+   * Reads the marketplace's current listing before the lookup: the manifest
+   * alone, then the repo when the plugin is kept inside it, with the lookup
+   * repeated on the downloaded manifest. A person's install asks for it.
+   */
+  freshListing?: boolean
   fetchImpl?: typeof fetch
   nowIso?: string
 }
@@ -152,23 +171,10 @@ export async function setupPlugin(
     return placePlugin(ctx, fs, catalogKey, pluginName, listing, fetched, { nowIso })
   }
 
-  // The listing is read after the repo download, so it and the files come from one commit.
-  const downloaded = !options.refreshFirst
-    && await ensureMarketplaceRepo(ctx, fs, catalogKey, nowIso, fetchImpl)
-  let entry: CatalogListing | null = options.refreshFirst
-    ? await refreshAndLookup(ctx, fs, catalogKey, pluginName, nowIso, fetchImpl)
-    : await findCatalogPlugin(ctx, fs, catalogKey, pluginName)
-  if (!entry && !downloaded) {
-    entry = await refreshAndLookup(
-      ctx, fs, catalogKey, pluginName, nowIso, fetchImpl,
-    )
-  }
-  if (!entry) {
-    throw new Error(
-      `[installPlugin] '${pluginName}' is not listed in marketplace '${catalogKey}'.`
-      + ` Run \`/marketplace update ${catalogKey}\` to refresh the listing, or check the plugin name.`,
-    )
-  }
+  const entry = options.freshListing && catalogKey !== BUILTIN_MARKETPLACE_KEY
+    ? await lookupInFreshListing(ctx, fs, catalogKey, pluginName, nowIso, fetchImpl)
+    : await lookupInCachedListing(ctx, fs, catalogKey, pluginName, nowIso, fetchImpl, options.refreshFirst === true)
+  if (!entry) throw new PluginNotListedError(pluginName, catalogKey)
 
   const fetched = await fetchListingFiles(ctx, fs, catalogKey, entry, identifier, fetchImpl, nowIso)
   const marketplaceSource = entry.source.source === 'local'
@@ -373,6 +379,43 @@ async function collectFilesUnder(
       out.push({ path: rel, content: await fs.readFileBytes(abs) })
     }
   }
+}
+
+/** The listing read after the repo download, so it and the files come from one commit. */
+async function lookupInCachedListing(
+  ctx: PluginInstallPathContext,
+  fs: RuntimeFs,
+  catalogKey: string,
+  pluginName: string,
+  nowIso: string,
+  fetchImpl: typeof fetch,
+  refreshFirst: boolean,
+): Promise<CatalogListing | null> {
+  if (refreshFirst) return refreshAndLookup(ctx, fs, catalogKey, pluginName, nowIso, fetchImpl)
+  const downloaded = await ensureMarketplaceRepo(ctx, fs, catalogKey, nowIso, fetchImpl)
+  const entry = await findCatalogPlugin(ctx, fs, catalogKey, pluginName)
+  if (entry || downloaded) return entry
+  return refreshAndLookup(ctx, fs, catalogKey, pluginName, nowIso, fetchImpl)
+}
+
+/**
+ * The listing as the marketplace publishes it now. A plugin kept inside the
+ * repo is looked up again in the manifest of the repo just downloaded.
+ */
+async function lookupInFreshListing(
+  ctx: PluginInstallPathContext,
+  fs: RuntimeFs,
+  catalogKey: string,
+  pluginName: string,
+  nowIso: string,
+  fetchImpl: typeof fetch,
+): Promise<CatalogListing | null> {
+  await fetchCatalogListing(ctx, fs, catalogKey, nowIso, fetchImpl)
+  const listed = await findCatalogPlugin(ctx, fs, catalogKey, pluginName)
+  if (listed?.source.source !== 'local') return listed
+  return (await ensureMarketplaceRepo(ctx, fs, catalogKey, nowIso, fetchImpl))
+    ? findCatalogPlugin(ctx, fs, catalogKey, pluginName)
+    : listed
 }
 
 async function refreshAndLookup(

@@ -124,6 +124,7 @@ import {
 } from './externalLinkClicks'
 import type { RuntimeConnection } from '../runtimeClient/RuntimeConnection'
 import { ForbiddenScopeNotice } from './forbiddenScopeNotice'
+import { currentUiChannel } from '../../branding/updateChannels'
 import {
   createGlobalDefaultMirror,
   followGlobalDefault,
@@ -309,6 +310,7 @@ import {
   createShellHandleOpenNexusSettings,
   createShellHandleOpenCustomize,
   createShellHandleCloseCustomize,
+  createShellInterceptMarketplaceAdd,
   createShellHandleOpenProviderSettings,
   createShellHandleDragRegionsChange,
   createShellHandleTopbarSelectModel,
@@ -2302,6 +2304,19 @@ export function MultiSessionShell({
     () => createShellHandleCloseCustomize(setCustomizeOpen),
     [],
   )
+  // `/plugin marketplace add <repo>` typed in a composer opens Customize's
+  // Add a marketplace dialog on that repo instead of reaching the session.
+  const [marketplaceAddRequest, setMarketplaceAddRequest] = useState<{ source: string; seq: number } | null>(null)
+  useEffect(() => {
+    if (!customizeOpen) setMarketplaceAddRequest(null)
+  }, [customizeOpen])
+  const customizeShown = remoteHost === undefined
+    && runtimeCapabilities.can('customizePage', 'show')
+    && currentUiChannel() === 'beta'
+  const interceptComposerText = useMemo(
+    () => createShellInterceptMarketplaceAdd(customizeShown, setMarketplaceAddRequest, handleOpenCustomize),
+    [customizeShown, handleOpenCustomize],
+  )
   const handleOpenProviderSettings = useMemo(
     () => createShellHandleOpenProviderSettings(setProviderSettingsRequest, setSettingsSection),
     [],
@@ -2959,6 +2974,7 @@ export function MultiSessionShell({
     handleLoadProviderMissingPrompt, handleAdoptDefaultSelection, handleSessionSelectModel,
     handleSetAutoCompactWindow, handleSelectProjectFolder, handleOpenProjectFolder,
     handleRevealProjectFolder, sessionDraftBySessionId, composerInsert, handleComposerEdit,
+    interceptComposerText,
   }
   const renderSessionThread = (sessionId: string, inPane: boolean): ReactNode =>
     renderShellSessionThread(sessionThreadInputs, sessionId, inPane)
@@ -3117,6 +3133,7 @@ export function MultiSessionShell({
             onOpenPluginSettings={handleOpenPluginSettings}
             onOpenMcpServerSettings={handleOpenMcpServerSettings}
             onDragRegionsChange={handleDragRegionsChange}
+            marketplaceAddRequest={marketplaceAddRequest}
           />
         </Suspense>
       ) : null}

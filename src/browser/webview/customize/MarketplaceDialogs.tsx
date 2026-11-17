@@ -1,5 +1,16 @@
 import * as React from 'react'
-import { Loader2Icon } from 'lucide-react'
+import {
+  ArrowRightIcon,
+  CheckIcon,
+  CircleAlertIcon,
+  CircleCheckIcon,
+  FileJsonIcon,
+  FolderGit2Icon,
+  InfoIcon,
+  Loader2Icon,
+  PlusIcon,
+  StoreIcon,
+} from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import {
@@ -11,6 +22,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
+import { cn } from '@/lib/utils'
 
 import { parseMarketplaceSource } from '../../../pluginHost/marketplaceSource'
 import type { PluginsBridgeActionMap } from '../../bridge/protocol/plugins'
@@ -26,6 +38,8 @@ export type AddMarketplaceDialogProps = {
   /** The marketplace that was added, or the one already holding the repository. */
   onShow: (name: string) => void
   onClose: () => void
+  /** A source to add as the dialog opens, as if typed and Add pressed; a new `seq` adds again. */
+  request?: { source: string; seq: number } | null
 }
 
 type AddState =
@@ -52,11 +66,12 @@ const EDITING: AddState = { step: 'editing', invalid: false }
 
 /**
  * Adds a marketplace by its GitHub repository (F-35): the text is checked as
- * it is typed, the add downloads the marketplace's plugin list, and the
- * dialog closes onto the new marketplace's section. A repository that is
- * already added, or one that cannot be read, is said plainly.
+ * it is typed, the add reads only the marketplace's plugin list (each plugin
+ * is downloaded when it is added), and the dialog closes onto the new
+ * marketplace's section. A repository that is already added, or one that
+ * cannot be read, is said plainly.
  */
-export function AddMarketplaceDialog({ open, onAdd, onShow, onClose }: AddMarketplaceDialogProps) {
+export function AddMarketplaceDialog({ open, onAdd, onShow, onClose, request }: AddMarketplaceDialogProps) {
   const t = useT()
   const [text, setText] = React.useState('')
   const [state, setState] = React.useState<AddState>(EDITING)
@@ -67,27 +82,19 @@ export function AddMarketplaceDialog({ open, onAdd, onShow, onClose }: AddMarket
       live.current = false
     }
   }, [])
-  React.useEffect(() => {
-    if (open) {
-      setText('')
-      setState(EDITING)
-    }
-  }, [open])
 
   const adding = state.step === 'adding'
   const parsed = parseMarketplaceSource(text)
 
-  const submit = async (event: React.FormEvent) => {
-    event.preventDefault()
-    if (adding) return
-    if (!parsed) {
+  const add = async (value: string) => {
+    if (!parseMarketplaceSource(value)) {
       setState({ step: 'editing', invalid: true })
       return
     }
     setState({ step: 'adding' })
     let result: AddMarketplaceResult
     try {
-      result = await onAdd(text.trim())
+      result = await onAdd(value.trim())
     } catch (error) {
       if (live.current) setState({ step: 'failed', reason: 'save', name: '', error: messageOf(error) })
       return
@@ -108,6 +115,25 @@ export function AddMarketplaceDialog({ open, onAdd, onShow, onClose }: AddMarket
         setState({ step: 'failed', reason: failedReasonOf(result.stage), name: result.name, error: result.error })
     }
   }
+  const addRef = React.useRef(add)
+  addRef.current = add
+
+  const requestRef = React.useRef(request)
+  requestRef.current = request
+  const requestSeq = request?.seq
+  // A new open, or a new request while open, starts over.
+  React.useEffect(() => {
+    if (!open) return
+    const source = requestRef.current?.source ?? ''
+    setText(source)
+    setState(EDITING)
+    if (source) void addRef.current(source)
+  }, [open, requestSeq])
+
+  const submit = (event: React.FormEvent) => {
+    event.preventDefault()
+    if (!adding) void add(text)
+  }
 
   const invalid = state.step === 'editing' && state.invalid
   return (
@@ -117,75 +143,134 @@ export function AddMarketplaceDialog({ open, onAdd, onShow, onClose }: AddMarket
         if (!next && !adding) onClose()
       }}
     >
-      <DialogContent data-testid="customize-add-market-dialog" className="sm:max-w-md">
-        <form className="flex flex-col gap-4" onSubmit={submit} noValidate>
-          <DialogHeader>
-            <DialogTitle>{t('customize.addMarket.title')}</DialogTitle>
-            <DialogDescription>{t('customize.addMarket.description')}</DialogDescription>
-          </DialogHeader>
-          <div className="flex flex-col gap-1.5">
-            <label htmlFor="customize-add-market-source" className="text-sm font-medium text-foreground">
-              {t('customize.addMarket.label')}
-            </label>
-            <Input
-              id="customize-add-market-source"
-              data-testid="customize-add-market-input"
-              autoFocus
-              autoComplete="off"
-              spellCheck={false}
-              value={text}
-              disabled={adding}
-              placeholder={t('customize.addMarket.placeholder')}
-              aria-invalid={invalid || undefined}
-              aria-describedby="customize-add-market-hint"
-              onChange={event => {
-                setText(event.target.value)
-                if (state.step !== 'adding') setState(EDITING)
-              }}
-            />
-            <p
-              id="customize-add-market-hint"
-              data-testid="customize-add-market-hint"
-              role={invalid ? 'alert' : undefined}
-              className={invalid ? 'text-xs text-destructive' : 'text-xs text-muted-foreground'}
+      <DialogContent data-testid="customize-add-market-dialog" className="gap-0 overflow-hidden p-0 sm:max-w-md">
+        <form className="flex flex-col" onSubmit={submit} noValidate>
+          <DialogHeader className="flex-row items-start gap-3.5 space-y-0 border-b bg-muted/30 px-6 pt-6 pb-5 text-left">
+            <span
+              aria-hidden
+              className="flex size-10 shrink-0 items-center justify-center rounded-xl border bg-background text-primary shadow-xs"
             >
-              {t(invalid ? 'customize.addMarket.invalid' : 'customize.addMarket.hint')}
-            </p>
-          </div>
-          {adding ? (
-            <p role="status" className="flex items-center gap-2 text-sm text-muted-foreground">
-              <Loader2Icon className="size-4 animate-spin" />
-              {t('customize.addMarket.adding')}
-            </p>
-          ) : null}
-          {state.step === 'already' ? (
-            <div role="status" data-testid="customize-add-market-already" className="flex items-center gap-3">
-              <p className="min-w-0 flex-1 text-sm text-foreground">
-                {t('customize.addMarket.already', { name: state.name })}
-              </p>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                data-testid="customize-add-market-show"
-                onClick={() => {
-                  onShow(state.name)
-                  onClose()
-                }}
+              <StoreIcon className="size-5" />
+            </span>
+            <div className="flex min-w-0 flex-col gap-1">
+              <DialogTitle>{t('customize.addMarket.title')}</DialogTitle>
+              <DialogDescription>{t('customize.addMarket.description')}</DialogDescription>
+            </div>
+          </DialogHeader>
+
+          <div className="flex flex-col gap-4 px-6 py-5">
+            <div className="flex flex-col gap-1.5">
+              <label htmlFor="customize-add-market-source" className="text-sm font-medium text-foreground">
+                {t('customize.addMarket.label')}
+              </label>
+              <div className="relative">
+                <FolderGit2Icon
+                  aria-hidden
+                  className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground"
+                />
+                <Input
+                  id="customize-add-market-source"
+                  data-testid="customize-add-market-input"
+                  autoFocus
+                  autoComplete="off"
+                  spellCheck={false}
+                  value={text}
+                  disabled={adding}
+                  placeholder={t('customize.addMarket.placeholder')}
+                  aria-invalid={invalid || undefined}
+                  aria-describedby="customize-add-market-hint"
+                  className="h-10 pl-9 font-mono"
+                  onChange={event => {
+                    setText(event.target.value)
+                    if (state.step !== 'adding') setState(EDITING)
+                  }}
+                />
+                {parsed && !invalid && !adding ? (
+                  <CheckIcon
+                    aria-hidden
+                    data-testid="customize-add-market-valid"
+                    className="pointer-events-none absolute top-1/2 right-3 size-4 -translate-y-1/2 text-primary"
+                  />
+                ) : null}
+              </div>
+              <p
+                id="customize-add-market-hint"
+                data-testid="customize-add-market-hint"
+                role={invalid ? 'alert' : undefined}
+                className={cn(
+                  'flex items-start gap-1.5 text-xs',
+                  invalid ? 'text-destructive' : 'text-muted-foreground',
+                )}
               >
-                {t('customize.addMarket.show')}
-              </Button>
+                {invalid ? (
+                  <CircleAlertIcon aria-hidden className="mt-px size-3.5 shrink-0" />
+                ) : (
+                  <InfoIcon aria-hidden className="mt-px size-3.5 shrink-0" />
+                )}
+                {t(invalid ? 'customize.addMarket.invalid' : 'customize.addMarket.hint')}
+              </p>
             </div>
-          ) : null}
-          {state.step === 'failed' ? (
-            <div role="alert" data-testid="customize-add-market-failed" className="flex flex-col gap-1">
-              <p className="text-sm text-destructive">{t(FAILED_HEADLINE[state.reason], { name: state.name })}</p>
-              {(state.reason === 'fetch' || state.reason === 'save') && state.error ? (
-                <ErrorDetail detail={state.error} />
-              ) : null}
+
+            <div
+              data-testid="customize-add-market-manifest-note"
+              className="flex items-start gap-2.5 rounded-lg border border-dashed px-3 py-2.5"
+            >
+              <FileJsonIcon aria-hidden className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+              <p className="text-xs leading-relaxed text-muted-foreground">{t('customize.addMarket.manifestOnly')}</p>
             </div>
-          ) : null}
-          <DialogFooter>
+
+            {adding ? (
+              <p
+                role="status"
+                className="flex items-center gap-2 rounded-lg bg-muted/50 px-3 py-2.5 text-sm text-muted-foreground"
+              >
+                <Loader2Icon aria-hidden className="size-4 shrink-0 animate-spin" />
+                {t('customize.addMarket.adding')}
+              </p>
+            ) : null}
+            {state.step === 'already' ? (
+              <div
+                role="status"
+                data-testid="customize-add-market-already"
+                className="flex items-center gap-3 rounded-lg border bg-muted/40 px-3 py-2.5"
+              >
+                <CircleCheckIcon aria-hidden className="size-4 shrink-0 text-primary" />
+                <p className="min-w-0 flex-1 text-sm text-foreground">
+                  {t('customize.addMarket.already', { name: state.name })}
+                </p>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  data-testid="customize-add-market-show"
+                  onClick={() => {
+                    onShow(state.name)
+                    onClose()
+                  }}
+                >
+                  {t('customize.addMarket.show')}
+                  <ArrowRightIcon aria-hidden className="size-3.5" />
+                </Button>
+              </div>
+            ) : null}
+            {state.step === 'failed' ? (
+              <div
+                role="alert"
+                data-testid="customize-add-market-failed"
+                className="flex items-start gap-2.5 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2.5"
+              >
+                <CircleAlertIcon aria-hidden className="mt-0.5 size-4 shrink-0 text-destructive" />
+                <div className="flex min-w-0 flex-col gap-1">
+                  <p className="text-sm text-destructive">{t(FAILED_HEADLINE[state.reason], { name: state.name })}</p>
+                  {(state.reason === 'fetch' || state.reason === 'save') && state.error ? (
+                    <ErrorDetail detail={state.error} />
+                  ) : null}
+                </div>
+              </div>
+            ) : null}
+          </div>
+
+          <DialogFooter className="border-t bg-muted/20 px-6 py-4">
             <Button
               type="button"
               variant="outline"
@@ -196,7 +281,7 @@ export function AddMarketplaceDialog({ open, onAdd, onShow, onClose }: AddMarket
               {t('customize.addMarket.cancel')}
             </Button>
             <Button type="submit" data-testid="customize-add-market-confirm" disabled={adding || !text.trim()}>
-              {adding ? <Loader2Icon className="size-4 animate-spin" /> : null}
+              {adding ? <Loader2Icon aria-hidden className="size-4 animate-spin" /> : <PlusIcon aria-hidden className="size-4" />}
               {t(adding ? 'customize.addMarket.confirming' : 'customize.addMarket.confirm')}
             </Button>
           </DialogFooter>

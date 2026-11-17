@@ -1,5 +1,14 @@
 import * as React from 'react'
-import { ArrowLeftIcon, CheckIcon, ArrowRightIcon, GlobeIcon, Loader2Icon, PlusIcon } from 'lucide-react'
+import {
+  ArrowLeftIcon,
+  ArrowRightIcon,
+  CheckIcon,
+  DownloadIcon,
+  GlobeIcon,
+  Loader2Icon,
+  PackageXIcon,
+  PlusIcon,
+} from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 
@@ -185,6 +194,7 @@ function Section({
   const shown = limit === undefined ? shelf.plugins : shelf.plugins.slice(0, limit)
   const more = shelf.plugins.length > shown.length
   const about = shelf.about ?? shelf.manifestDescription
+  const gone = (view.withdrawn[marketplace] ?? []).filter(name => !shelf.plugins.some(p => p.name === name))
 
   let body: React.ReactNode
   if (shelf.status === 'loading') {
@@ -286,6 +296,18 @@ function Section({
           {about}
         </p>
       ) : null}
+      {gone.map(name => (
+        <p
+          key={name}
+          role="status"
+          data-testid="customize-market-withdrawn"
+          data-name={name}
+          className="flex items-center gap-2 rounded-lg border border-dashed px-3 py-2 text-sm text-muted-foreground"
+        >
+          <PackageXIcon aria-hidden className="size-4 shrink-0" />
+          {t('customize.market.withdrawn', { name })}
+        </p>
+      ))}
       {body}
     </section>
   )
@@ -344,7 +366,16 @@ function PluginCard({
             {publisher ? <span className="truncate">{t('customize.item.byPublisher', { publisher })}</span> : null}
           </span>
         ) : null}
-        {failed ? (
+        {view.installing.has(installKey(marketplace, plugin.name)) ? (
+          <p
+            role="status"
+            data-testid="customize-market-installing"
+            className="flex items-start gap-1.5 text-xs text-muted-foreground"
+          >
+            <DownloadIcon aria-hidden className="mt-px size-3.5 shrink-0" />
+            {t('customize.item.installingBackground')}
+          </p>
+        ) : failed ? (
           <p role="status" className="text-xs text-destructive">
             {t('customize.item.failed.install')}
           </p>
@@ -441,7 +472,12 @@ function PluginDetail({
             <VerifiedMark details={details} />
           </span>
           {summary ? <p className="mt-1 max-w-2xl text-sm text-foreground">{summary}</p> : null}
-          {failed ? (
+          {view.installing.has(installKey(marketplace, plugin.name)) ? (
+            <p role="status" className="flex items-center gap-1.5 text-sm text-muted-foreground">
+              <DownloadIcon aria-hidden className="size-3.5 shrink-0" />
+              {t('customize.item.installingBackground')}
+            </p>
+          ) : failed ? (
             <p role="status" className="text-sm text-destructive">
               {t('customize.item.failed.install')}
             </p>

@@ -49,6 +49,8 @@ export type AssistantUiThreadProps = {
     message: AppendMessage,
     options?: { delivery?: SubmitDelivery },
   ) => Promise<void>
+  /** Takes a composer text the shell acts on itself, so it never reaches the session; true when taken. */
+  interceptComposerText?: (text: string) => boolean
   /**
    * Open the host's native multi-file picker (the guest `<webview>` cannot raise its own
    * `<input type=file>`). Absent ⇒ assistant-ui's built-in `<input>`. `allowImages` follows

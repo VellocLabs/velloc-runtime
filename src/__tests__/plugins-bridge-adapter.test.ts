@@ -412,10 +412,9 @@ describe('pluginsHandlers.install + uninstall + setEnabled', () => {
     })
 
     const ctx = makeCtx({ fs, fetchImpl: stubFetch })
-    const installResult = await pluginsHandlers.install(
+    const installResult = installedOf(await pluginsHandlers.install(
       { identifier: 'cool@my-mkt' }, ctx,
-    )
-    expect(installResult.ok).toBe(true)
+    ))
     expect(installResult.entry.name).toBe('cool')
     expect(installResult.entry.version).toBe('3.0.0')
     expect(installResult.entry.enabled).toBe(true)
@@ -456,12 +455,62 @@ describe('pluginsHandlers.install + uninstall + setEnabled', () => {
     })
     const reloadPluginsOnAllSessions = vi.fn()
     const ctx = { ...makeCtx({ fs, fetchImpl: stubFetch }), reloadPluginsOnAllSessions }
-    const { entry } = await pluginsHandlers.install({ identifier: 'queue@my-mkt' }, ctx)
+    const { entry } = installedOf(await pluginsHandlers.install({ identifier: 'queue@my-mkt' }, ctx))
     expect(reloadPluginsOnAllSessions).toHaveBeenCalledTimes(1)
     expect(entry.isMod).toBe(true)
     expect(entry.description).toBe('Holds a prompt.')
   })
 
+  it("install answers notListed for a plugin its marketplace no longer lists, and the listing it shows drops it", async () => {
+    const { fs } = makeMemoryFs()
+    await addMarketplace(
+      { homeDir: '/home/user' }, fs, 'my-mkt',
+      { source: 'github', repo: 'me/mkt' }, NOW_ISO,
+    )
+    const marketplaceTar = await buildGitHubTarball('me-mkt-abc', [{
+      name: `${PLUGIN_MANIFEST_DIR_NAME}/${MARKETPLACE_MANIFEST_FILE_NAME}`,
+      content: JSON.stringify({ name: 'my-mkt', plugins: [] }),
+    }])
+    const stubFetch = vi.fn(async (input: RequestInfo | URL) => {
+      const url = typeof input === 'string' ? input : input.toString()
+      if (url.includes('/me/mkt/'))
+        return new Response(new Uint8Array(marketplaceTar), { status: 200 })
+      throw new Error(`unexpected fetch: ${url}`)
+    })
+    const ctx = makeCtx({ fs, fetchImpl: stubFetch })
+
+    const result = await pluginsHandlers.install({ identifier: 'ghost@my-mkt' }, ctx)
+
+    expect(result).toEqual({ ok: false, reason: 'notListed' })
+    const listing = await pluginsHandlers.listMarketplacePlugins({ marketplace: 'my-mkt' }, ctx)
+    expect(listing.manifest?.plugins).toEqual([])
+  })
+
+  it('refreshing a GitHub marketplace reads its manifest alone', async () => {
+    const { fs, files } = makeMemoryFs()
+    await addMarketplace(
+      { homeDir: '/home/user' }, fs, 'my-mkt',
+      { source: 'github', repo: 'me/mkt' }, NOW_ISO,
+    )
+    const manifest = JSON.stringify({ name: 'my-mkt', plugins: [{ name: 'cool', source: './plugins/cool' }] })
+    const requested: string[] = []
+    const fetchImpl = (async (input: RequestInfo | URL) => {
+      const url = typeof input === 'string' ? input : input.toString()
+      requested.push(url)
+      if (url.startsWith('https://raw.githubusercontent.com/me/mkt/') && url.endsWith(MARKETPLACE_MANIFEST_FILE_NAME))
+        return new Response(manifest, { status: 200 })
+      return new Response('not here', { status: 404 })
+    }) as typeof fetch
+    const ctx = { ...makeCtx({ fs }), fetchImpl }
+
+    const result = await pluginsHandlers.refreshMarketplace({ name: 'my-mkt' }, ctx)
+
+    expect(result.manifest?.plugins.map(p => p.name)).toEqual(['cool'])
+    expect(requested.filter(url => url.includes('codeload.github.com'))).toEqual([])
+    const contentDir = getMarketplaceContentDir({ homeDir: '/home/user' }, 'my-mkt').replace(/\\/g, '/')
+    expect([...files.keys()].map(k => k.replace(/\\/g, '/')).filter(k => k.startsWith(`${contentDir}/`)))
+      .toEqual([`${contentDir}/${PLUGIN_MANIFEST_DIR_NAME}/${MARKETPLACE_MANIFEST_FILE_NAME}`])
+  })
   it('install honors a sticky-disabled override', async () => {
     const { fs } = makeMemoryFs()
     // Simulate "previously installed + explicitly disabled, then
@@ -492,9 +541,9 @@ describe('pluginsHandlers.install + uninstall + setEnabled', () => {
       return new Response(new Uint8Array(pluginTar), { status: 200 })
     })
     const ctx = makeCtx({ fs, fetchImpl: stubFetch })
-    const result = await pluginsHandlers.install(
+    const result = installedOf(await pluginsHandlers.install(
       { identifier: 'cool@my-mkt' }, ctx,
-    )
+    ))
     expect(result.entry.enabled).toBe(false)
     expect(result.entry.enabledSource).toBe('explicit')
   })
@@ -1050,3 +1099,9 @@ describe('adding a marketplace whose name another source holds', () => {
     expect(Object.keys(await registry(fs)).sort()).toEqual(before)
   })
 })
+
+/** The installed result of a bridge install, failing the test on any other. */
+function installedOf<T extends { ok: boolean }>(result: T): Extract<T, { ok: true }> {
+  expect(result.ok).toBe(true)
+  return result as Extract<T, { ok: true }>
+}

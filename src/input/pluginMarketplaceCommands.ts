@@ -15,6 +15,7 @@ import {
   setPluginEnabled,
 } from '../pluginHost/enabledPlugins'
 import {
+  PluginNotListedError,
   setupPlugin,
   teardownPlugin,
 } from '../pluginHost/installSteps'
@@ -220,16 +221,26 @@ async function runPluginInstall(
   )
   if (blockReason) return [...registered, text(blockReason)]
   const pathCtx = buildPathContext(ctx)
-  const result = await setupPlugin(
-    pathCtx,
-    ctx.fs,
-    parsed.value.marketplace,
-    parsed.value.name,
-    {
-      nowIso: nowIsoOf(ctx),
-      fetchImpl: ctx.fetchImpl,
-    },
-  )
+  let result: Awaited<ReturnType<typeof setupPlugin>>
+  try {
+    result = await setupPlugin(
+      pathCtx,
+      ctx.fs,
+      parsed.value.marketplace,
+      parsed.value.name,
+      {
+        nowIso: nowIsoOf(ctx),
+        fetchImpl: ctx.fetchImpl,
+        freshListing: true,
+      },
+    )
+  } catch (error) {
+    if (!(error instanceof PluginNotListedError)) throw error
+    return [
+      ...registered,
+      key('slash.out.plugin.install.notListed', { name: parsed.value.name, marketplace: parsed.value.marketplace }),
+    ]
+  }
   return [
     ...registered,
     key('slash.out.plugin.install.success', {

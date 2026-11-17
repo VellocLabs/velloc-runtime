@@ -13,6 +13,7 @@ import { saveModPanesAsked } from './layout/layoutStorage'
 import { getProviderMissingPrompt, revealProjectFolder, setWindowDragRegions } from './nexusBridgeActions'
 import type { WindowDragRect } from '../bridge/protocol/ui'
 import type { SettingsSectionId } from './settings/SettingsScreen'
+import { marketplaceAddSourceOf } from './customize/marketplaceAddCommand'
 
 /** The Plugins pane's px around its body's cells: frame borders, the body's insets, the scrollbar's room. */
 const MODS_PANE_CHROME_PX = 40
@@ -127,6 +128,24 @@ export function createShellHandleCloseCustomize(
 ) {
   return () => {
     setCustomizeOpen(false)
+  }
+}
+/**
+ * Takes a composer line that adds a marketplace (F-35) where Customize has an
+ * entry: Customize opens on it instead of the line reaching the session.
+ */
+export function createShellInterceptMarketplaceAdd(
+  customizeShown: boolean,
+  setMarketplaceAddRequest: Dispatch<SetStateAction<{ source: string; seq: number } | null>>,
+  openCustomize: () => void,
+) {
+  return (text: string): boolean => {
+    if (!customizeShown) return false
+    const source = marketplaceAddSourceOf(text)
+    if (source === null) return false
+    setMarketplaceAddRequest(prev => ({ source, seq: (prev?.seq ?? 0) + 1 }))
+    openCustomize()
+    return true
   }
 }
 export function createShellHandleOpenProviderSettings(

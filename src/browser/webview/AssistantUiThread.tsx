@@ -238,6 +238,7 @@ export const AssistantUiThread = memo(function AssistantUiThread({
   submitActionMessage,
   continueConversation,
   submitComposerMessage,
+  interceptComposerText,
   onPickAttachmentFiles,
   submitToolResult,
   loadToolCallDetail,
@@ -304,6 +305,7 @@ export const AssistantUiThread = memo(function AssistantUiThread({
       submitActionMessage={readOnly ? undefined : submitActionMessage}
       continueConversation={readOnly ? undefined : continueConversation}
       submitComposerMessage={readOnly ? undefined : submitComposerMessage}
+      interceptComposerText={readOnly ? undefined : interceptComposerText}
       onPickAttachmentFiles={readOnly ? undefined : onPickAttachmentFiles}
       composerInsert={readOnly ? null : composerInsert}
       submitToolResult={readOnly ? readOnlyNoop : submitToolResult}
@@ -371,6 +373,7 @@ function InteractiveAssistantUiThread({
   submitActionMessage,
   continueConversation,
   submitComposerMessage,
+  interceptComposerText,
   onPickAttachmentFiles,
   submitToolResult,
   loadToolCallDetail,
@@ -815,6 +818,7 @@ function InteractiveAssistantUiThread({
     activeSessionId,
     submitPrompt,
     submitComposerMessage,
+    interceptComposerText,
     onSendInForkedSession,
     onAdoptDefaultSelection,
     snapshotRef,

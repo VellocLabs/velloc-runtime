@@ -190,6 +190,10 @@ function fakeBridge(
     marketplaces?: FakeMarket[]
     manifests?: Record<string, { plugins: Array<Record<string, unknown>>; description?: string } | null>
     installFails?: boolean
+    /** Plugins an install finds gone from their marketplace: it answers notListed and they leave its list. */
+    withdrawn?: string[]
+    /** Installs stay pending until `finishInstalls()`. */
+    holdInstall?: boolean
     refreshFails?: boolean
     holdRefresh?: boolean
     addAnswers?: AddAnswer[]
@@ -202,6 +206,8 @@ function fakeBridge(
   const control = { refreshFails: options.refreshFails ?? false }
   let release: () => void = () => {}
   const held = options.holdRefresh ? new Promise<void>(resolve => (release = resolve)) : Promise.resolve()
+  let finishInstalls: () => void = () => {}
+  const installHeld = options.holdInstall ? new Promise<void>(resolve => (finishInstalls = resolve)) : Promise.resolve()
   const addAnswers = [...(options.addAnswers ?? [])]
   const bridge = {
     request: async (route: Route, payload: Record<string, unknown>) => {
@@ -223,8 +229,14 @@ function fakeBridge(
           return { ok: true, pluginCount: 0, manifest: null }
         }
         case 'plugins.install': {
+          await installHeld
           if (options.installFails) throw new Error('blocked')
           const [name, market] = (payload.identifier as string).split('@')
+          if (options.withdrawn?.includes(name!)) {
+            const listed = manifests[market!]
+            if (listed) listed.plugins = listed.plugins.filter(plugin => plugin.name !== name)
+            return { ok: false, reason: 'notListed' }
+          }
           for (const plugin of manifests[market!]?.plugins ?? []) if (plugin.name === name) plugin.installed = true
           return { ok: true }
         }
@@ -248,7 +260,7 @@ function fakeBridge(
       }
     },
   } as unknown as NexusSettingsBridge
-  return { bridge, requests, control, release: () => release() }
+  return { bridge, requests, control, release: () => release(), finishInstalls: () => finishInstalls() }
 }
 
 function screen(
@@ -259,6 +271,7 @@ function screen(
     onClose?: () => void
     onOpenPluginSettings?: (name: string) => void
     onOpenMcpServerSettings?: (id: string) => void
+    marketplaceAddRequest?: { source: string; seq: number } | null
   } = {},
 ) {
   return render(
@@ -272,6 +285,7 @@ function screen(
         onOpenSettings: options.onOpenSettings ?? (() => {}),
         onOpenPluginSettings: options.onOpenPluginSettings,
         onOpenMcpServerSettings: options.onOpenMcpServerSettings,
+        marketplaceAddRequest: options.marketplaceAddRequest ?? null,
       }),
     ),
   )
@@ -600,7 +614,7 @@ describe('CustomizeScreen — the marketplaces\' start page', () => {
     expect(view.getByTestId('customize-market-section').textContent).toContain('2 plugins')
     fireEvent.click(view.getByTestId('customize-market-add'))
     await waitFor(() => expect(view.queryByTestId('customize-market-add')).toBeNull())
-    expect(requests).toContain('plugins.install {"identifier":"lint@team-tools","refreshFirst":false}')
+    expect(requests).toContain('plugins.install {"identifier":"lint@team-tools"}')
     expect(view.getAllByTestId('customize-market-installed')).toHaveLength(2)
   })
 
@@ -1188,7 +1202,7 @@ describe('CustomizeScreen — a marketplace plugin\'s detail page', () => {
     fireEvent.click(view.getAllByTestId('customize-market-open')[0]!)
     await view.findByTestId('customize-market-detail')
     fireEvent.click(view.getByTestId('customize-market-add'))
-    await waitFor(() => expect(requests).toContain('plugins.install {"identifier":"lint@team-tools","refreshFirst":false}'))
+    await waitFor(() => expect(requests).toContain('plugins.install {"identifier":"lint@team-tools"}'))
     fireEvent.click(view.getByTestId('customize-market-in-directory'))
     await waitFor(() =>
       expect(fake.answered).toContain(
@@ -1205,5 +1219,97 @@ describe('CustomizeScreen — a marketplace plugin\'s detail page', () => {
     expect(detail.textContent).toContain('Writes docs')
     expect(view.getByTestId('customize-detail-not-listed').textContent).toBe(EN_MESSAGES['customize.detail.notInDirectory'])
     expect(view.queryByTestId('customize-market-in-directory')).toBeNull()
+  })
+})
+
+describe('CustomizeScreen — installing in the background', () => {
+  async function opened(bridgeOptions: Parameters<typeof fakeBridge>[0]) {
+    const fake = fakeConnection(['ok'])
+    const b = fakeBridge({ marketplaces: [{ name: 'team-tools' }], ...bridgeOptions })
+    const view = screen(fake.getConnection, { bridge: b.bridge })
+    fireEvent.click((await view.findAllByTestId('customize-market'))[0]!)
+    return { view, fake, ...b }
+  }
+  const fill = (key: keyof typeof EN_MESSAGES, params: Record<string, string>) =>
+    Object.entries(params).reduce((text, [name, value]) => text.split(`{${name}}`).join(value), EN_MESSAGES[key])
+
+  it('an install says it runs in the background on its card and in a corner toast, then the toast says it is installed and the card shows Installed', async () => {
+    const { view, finishInstalls } = await opened({
+      manifests: { 'team-tools': { plugins: [{ name: 'lint', installed: false }] } },
+      holdInstall: true,
+    })
+    fireEvent.click(await view.findByTestId('customize-market-add'))
+
+    expect((await view.findByTestId('customize-market-installing')).textContent).toBe(EN_MESSAGES['customize.item.installingBackground'])
+    const toast = view.getByTestId('customize-install-toast')
+    expect(toast.getAttribute('data-phase')).toBe('running')
+    expect(toast.textContent).toContain(fill('customize.install.toast.running', { name: 'lint' }))
+    expect(toast.textContent).toContain(fill('customize.install.toast.runningDetail', { marketplace: 'team-tools' }))
+
+    finishInstalls()
+    await waitFor(() => expect(view.getByTestId('customize-install-toast').getAttribute('data-phase')).toBe('installed'))
+    expect(view.getByTestId('customize-install-toast').textContent).toContain(fill('customize.install.toast.installed', { name: 'lint' }))
+    expect(view.getByTestId('customize-market-installed')).not.toBeNull()
+    expect(view.queryByTestId('customize-market-installing')).toBeNull()
+
+    fireEvent.click(view.getByTestId('customize-install-toast-dismiss'))
+    expect(view.queryByTestId('customize-install-toast')).toBeNull()
+  })
+
+  it('a plugin the marketplace no longer lists leaves the page, and its section and a toast say so', async () => {
+    const { view } = await opened({
+      manifests: { 'team-tools': { plugins: [{ name: 'lint', installed: false }, { name: 'fmt', installed: false }] } },
+      withdrawn: ['lint'],
+    })
+    const lint = (await view.findAllByTestId('customize-market-plugin')).find(row => row.getAttribute('data-name') === 'lint')!
+    fireEvent.click(lint.querySelector('[data-testid="customize-market-add"]')!)
+
+    const notice = await view.findByTestId('customize-market-withdrawn')
+    expect(notice.textContent).toBe(fill('customize.market.withdrawn', { name: 'lint' }))
+    expect(view.getAllByTestId('customize-market-plugin').map(row => row.getAttribute('data-name'))).toEqual(['fmt'])
+    const toast = view.getByTestId('customize-install-toast')
+    expect(toast.getAttribute('data-phase')).toBe('notListed')
+    expect(toast.getAttribute('role')).toBe('alert')
+    expect(toast.textContent).toContain(fill('customize.install.toast.notListed', { name: 'lint', marketplace: 'team-tools' }))
+  })
+
+  it('a failed install says so in a toast as well as on its card', async () => {
+    const { view } = await opened({
+      manifests: { 'team-tools': { plugins: [{ name: 'lint', installed: false }] } },
+      installFails: true,
+    })
+    fireEvent.click(await view.findByTestId('customize-market-add'))
+    await waitFor(() => expect(view.getByTestId('customize-install-toast').getAttribute('data-phase')).toBe('failed'))
+    expect(view.getByTestId('customize-install-toast').textContent).toContain(fill('customize.install.toast.failed', { name: 'lint' }))
+  })
+})
+
+describe('CustomizeScreen — a marketplace add typed in a composer', () => {
+  it('opens the dialog on the typed repository and adds it at once', async () => {
+    const fake = fakeConnection(['ok'])
+    const b = fakeBridge({ addAnswers: [{ ok: true, status: 'added', name: 'acme-market', pluginCount: 1 }] })
+    const view = screen(fake.getConnection, { bridge: b.bridge, marketplaceAddRequest: { source: 'acme/tools', seq: 1 } })
+
+    await waitFor(() => expect(b.requests).toContain('plugins.addMarketplace {"source":"acme/tools"}'))
+    await waitFor(() => expect(view.queryByTestId('customize-add-market-dialog')).toBeNull())
+    expect(b.requests.filter(r => r.startsWith('plugins.addMarketplace'))).toHaveLength(1)
+    const row = view.getAllByTestId('customize-market').find(r => r.getAttribute('data-name') === 'acme-market')!
+    expect(row.getAttribute('aria-current')).toBe('page')
+  })
+
+  it('a failed add stays open with the repository filled in, to try again', async () => {
+    const fake = fakeConnection(['ok'])
+    const b = fakeBridge({ addAnswers: [{ ok: true, status: 'failed', stage: 'fetch', name: '', error: 'HTTP 404' }] })
+    const view = screen(fake.getConnection, { bridge: b.bridge, marketplaceAddRequest: { source: 'acme/missing', seq: 1 } })
+
+    await view.findByTestId('customize-add-market-failed')
+    expect((view.getByTestId('customize-add-market-input') as HTMLInputElement).value).toBe('acme/missing')
+  })
+
+  it('without a settings bridge nothing is added until one is there', async () => {
+    const fake = fakeConnection(['ok'])
+    const view = screen(fake.getConnection, { marketplaceAddRequest: { source: 'acme/tools', seq: 1 } })
+    await act(async () => {})
+    expect(view.queryByTestId('customize-add-market-dialog')).toBeNull()
   })
 })
