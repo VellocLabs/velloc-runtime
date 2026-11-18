@@ -489,6 +489,22 @@ export const Thread: FC<{
   const statusChannel = useSessionStatusChannel();
   const { sessionPhase } = useNexusSessionStatus(statusChannel, sessionId);
   const modThemeLook = useModThemeLook();
+  // Under a scene the footer floats over the conversation instead of scrolling
+  // with it, so the viewport ends above it: its height is the viewport's bottom margin.
+  const isSceneThemed = modThemeLook.attributes["data-mod-backdrop"] === "scene";
+  useEffect(() => {
+    const viewport = viewportRef.current;
+    const footer = viewport?.querySelector<HTMLElement>(".aui-thread-viewport-footer");
+    if (!isSceneThemed || !viewport || !footer || typeof ResizeObserver === "undefined") return;
+    const measure = () => viewport.style.setProperty("--thread-footer-h", `${footer.offsetHeight}px`);
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(footer);
+    return () => {
+      observer.disconnect();
+      viewport.style.removeProperty("--thread-footer-h");
+    };
+  }, [isSceneThemed]);
   const injectContext = useMemo(
     () => ({
       restore: injectRestore ?? null,

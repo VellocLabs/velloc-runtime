@@ -3036,9 +3036,11 @@ export function MultiSessionShell({
         position: 'relative',
       }}
     >
-      <ModUiContext.Provider value={shellModUi}>
-        <ModBackdrop />
-      </ModUiContext.Provider>
+      <ModShellPaintsThemeContext.Provider value={false}>
+        <ModUiContext.Provider value={shellModUi}>
+          <ModBackdrop />
+        </ModUiContext.Provider>
+      </ModShellPaintsThemeContext.Provider>
       <NexusTopBar
         // Settings takes the whole window: its header replaces the topbar as
         // the drag surface and caption reserve.

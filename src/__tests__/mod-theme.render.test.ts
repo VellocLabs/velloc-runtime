@@ -239,6 +239,19 @@ describe('the backdrop', () => {
     cleanup()
     render(withUi({ theme: ground }, createElement(ModShellPaintsThemeContext.Provider, { value: true }, createElement(ModBackdrop))))
     expect(screen.queryByTestId('mod-backdrop')).toBeNull()
+    cleanup()
+    // The shell's own backdrop stands outside what it tells the threads.
+    render(
+      withUi(
+        { theme: ground },
+        createElement(
+          ModShellPaintsThemeContext.Provider,
+          { value: true },
+          createElement(ModShellPaintsThemeContext.Provider, { value: false }, createElement(ModBackdrop)),
+        ),
+      ),
+    )
+    expect(screen.getByTestId('mod-backdrop')).toBeTruthy()
   })
 
   it('draws a still ground behind the conversation with presses passing through; an image ground keeps the app\'s own', () => {

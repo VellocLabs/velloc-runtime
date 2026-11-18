@@ -1070,6 +1070,22 @@
   backdrop-filter: none;
 }
 
+/* A scene behind the conversation: the footer floats over its bottom edge and
+ * the viewport ends above it, so the conversation never shows through the
+ * composer or the bands. `--thread-footer-h` is the footer's height. */
+[data-mod-backdrop='scene'] .aui-thread-viewport {
+  position: static;
+  margin-bottom: var(--thread-footer-h, 0px);
+}
+
+[data-mod-backdrop='scene'] .aui-thread-viewport-footer {
+  position: absolute;
+  bottom: 0;
+  left: 1.5rem;
+  right: var(--thread-end-reserve, 24px);
+  width: auto;
+}
+
 /* A scene behind the conversation: the composer's footer lets it show through. */
 [data-mod-backdrop='scene'] .aui-thread-viewport-footer,
 [data-mod-backdrop='scene'] .aui-thread-viewport-footer :is([data-slot='mod-above-prompt'], [data-slot='mod-band-section'], [data-slot='mod-panes']) {
