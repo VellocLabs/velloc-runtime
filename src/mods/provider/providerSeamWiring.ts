@@ -13,7 +13,7 @@ import { ProviderIdMapper } from './ids/idMapper'
 import type { ProviderIdDeps } from './nouns/providerNounDeps'
 import { createIdsHook, createProviderSeam } from './providerSeamAdapter'
 import { getProviderCredentials } from './login/credentialDeps'
-import { providerEgressPools } from './providerEgressPools'
+import { egressMemberLookup, providerEgressPools } from './providerEgressPools'
 
 /** The seam for a registration: the adapter's, or — when the adapter refuses
  *  the provider's declaration — one that fails every request closed. */
@@ -37,10 +37,7 @@ export function seamForRegistration(
     )
     if (manifest.policy) seam.policy = manifest.policy
     const pools = manifest.egressPools
-    if (pools) {
-      seam.egressMember = (pool, member) =>
-        Object.prototype.hasOwnProperty.call(pools, pool) ? providerEgressPools.member(providerId, pool, member, pools[pool]!) : undefined
-    }
+    if (pools) seam.egressMember = egressMemberLookup(providerId, pools)
     // The id mapper exists only for a provider that states `ids` rules; one
     // that states none pays nothing. Rules that cannot run must not be
     // skipped (the vendor's ids would go out unmapped): that is an error here.

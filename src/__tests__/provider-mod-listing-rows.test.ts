@@ -139,12 +139,22 @@ describe('a listing that states how long it stays fresh', () => {
     expect(list).toHaveBeenCalledTimes(2)
   })
 
-  it('without ttlMs it stays fresh for the hour, as before', async () => {
+  it('without ttlMs it stays fresh for MODEL_LISTING_TTL_MS', async () => {
     runtimeHost()
     register()
     setRuntimeProviderConfigs(STORED)
     await refreshRuntimeProviderModels(transport, ID, { now: T })
     await refreshRuntimeProviderModels(transport, ID, { now: T + 61_000 })
+    expect(list).toHaveBeenCalledTimes(1)
+  })
+
+  it('holds a cached ttlMs within the bounds', async () => {
+    runtimeHost(JSON.stringify({ models: LISTED, fetchedAt: T, ttlMs: 1 }))
+    register()
+    setRuntimeProviderConfigs(STORED)
+    await refreshRuntimeProviderModels(transport, ID, { now: T + 29_000 })
+    expect(list).not.toHaveBeenCalled()
+    await refreshRuntimeProviderModels(transport, ID, { now: T + 31_000 })
     expect(list).toHaveBeenCalledTimes(1)
   })
 

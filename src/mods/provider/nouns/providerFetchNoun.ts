@@ -231,18 +231,30 @@ function checkRoute(init: Record<string, unknown>, url: URL, target: ProviderFet
 function withoutProxyAddress(message: string, egress: RoutedEgress | undefined): string {
   if (!egress) return message
   let out = message.split(egress.url).join(`the proxy "${egress.name}"`)
+  let proxy: URL | undefined
   try {
-    const proxy = new URL(egress.url)
-    for (const secret of [proxy.username, proxy.password, decodeURIComponent(proxy.password)]) {
-      if (secret) out = out.split(secret).join('***')
-    }
-    for (const part of [proxy.host, ...egress.hosts]) {
-      if (part) out = out.split(part).join(`"${egress.name}"`)
-    }
+    proxy = new URL(egress.url)
   } catch {
-    // The registry accepted the address, so it parses; nothing else to strip.
+    proxy = undefined
+  }
+  // Hosts before credentials: a short credential may be part of the host text.
+  for (const part of [proxy?.host, ...egress.hosts]) {
+    if (part) out = out.split(part).join(`"${egress.name}"`)
+  }
+  const secrets = [proxy?.username, proxy?.password, decoded(proxy?.username), decoded(proxy?.password)]
+  for (const secret of secrets.filter((s): s is string => !!s).sort((a, b) => b.length - a.length)) {
+    out = out.split(secret).join('***')
   }
   return out
+}
+
+function decoded(text: string | undefined): string | undefined {
+  if (!text) return undefined
+  try {
+    return decodeURIComponent(text)
+  } catch {
+    return undefined
+  }
 }
 
 function checkTimeout(init: Record<string, unknown>): number {

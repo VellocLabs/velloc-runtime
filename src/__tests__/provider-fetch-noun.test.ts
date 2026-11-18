@@ -494,4 +494,21 @@ describe('the route (F-27)', () => {
     expect(error.message).toContain('exits/p1')
     for (const leaked of ['203.0.113.7', 'alice', 's3cret']) expect(error.message).not.toContain(leaked)
   })
+
+  it('hides the address and credentials of a member whose password holds a bare "%"', async () => {
+    const registry = new ProviderEgressPoolRegistry()
+    registry.set('mod.acme.zen', 'exits', POOL, [{ id: 'p3', url: 'http://bob:50%off@198.51.100.9:3128' }])
+    const { call } = routed(
+      () => {
+        throw new RawProviderStreamError('NETWORK_ERROR', 'proxy 198.51.100.9:3128 refused bob with 50%off')
+      },
+      { egressMember: (pool, member) => registry.member('mod.acme.zen', pool, member, POOL) },
+    )
+    const error = (await call('/models', { route: { egress: 'exits', member: 'p3' } }).then(
+      () => new Error('resolved'),
+      (e: unknown) => e as Error,
+    ))
+    expect(error.message).toContain('exits/p3')
+    for (const leaked of ['198.51.100.9', 'bob', '50%off']) expect(error.message).not.toContain(leaked)
+  })
 })

@@ -54,6 +54,7 @@ import { sanitizeUserModels, withUserModels } from '../../config/nexusModelConfi
 import { buildEntryRows, effectiveEntries } from './modelEntryCatalog'
 import { listProviderModels, verifyProvider } from './providerDocuments'
 import { confineModelWire, parseModelWire } from './modelWire'
+import { clampModelsTtl, MODELS_TTL_MAX_MS } from '../../config/nexusModelConfig/providerDefinition'
 import {
   isRuntimeOnlyProvider,
   listsModelsInRuntime,
@@ -63,7 +64,7 @@ import {
 } from './driverRegistry'
 
 /** A listing is re-fetched after this long; a failed refresh keeps the last. */
-export const MODEL_LISTING_TTL_MS = 60 * 60 * 1000
+export const MODEL_LISTING_TTL_MS = MODELS_TTL_MAX_MS
 /** How long a catalog fetch waits for the listings before answering. */
 export const LISTING_WAIT_MS = 5_000
 /** After a failed listing fetch, how long an unforced refresh answers with
@@ -377,7 +378,9 @@ async function loadCachedListing(providerId: string): Promise<void> {
         (m): m is ProviderModelInfo => !!m && typeof m.id === 'string' && typeof m.supportsTools === 'boolean',
       ),
       fetchedAt: parsed.fetchedAt,
-      ...(typeof parsed.ttlMs === 'number' && parsed.ttlMs > 0 ? { ttlMs: Math.min(parsed.ttlMs, MODEL_LISTING_TTL_MS) } : {}),
+      ...(typeof parsed.ttlMs === 'number' && Number.isFinite(parsed.ttlMs) && parsed.ttlMs > 0
+        ? { ttlMs: clampModelsTtl(parsed.ttlMs) }
+        : {}),
       ...(parsed.removed ? { removed: parsed.removed } : {}),
     })
   } catch {

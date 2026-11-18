@@ -25,7 +25,7 @@ import { queueProviderEntryWrite } from '../login/providerEntryWrites'
 import { createLoginNouns } from '../login/providerLoginNouns'
 import { createProviderFetch, type ProviderFetchTarget } from './providerFetchNoun'
 import { createProviderNouns, type ProviderNounDeps, type ProviderNouns } from './providerNounTable'
-import { providerEgressPools } from '../providerEgressPools'
+import { egressMemberLookup, providerEgressPools } from '../providerEgressPools'
 import { createProviderSettings } from './providerSettingsNoun'
 import {
   IndexedDbKeyRecords,
@@ -263,11 +263,7 @@ export function createProviderNounSet(options: ProviderNounSetOptions): Provider
       baseUrl: stored || registration.manifest.defaultBaseUrl,
       domains: registration.manifest.domains,
       secrets: declaredSecretNames(registration.manifest),
-      egressMember: (pool, member) => {
-        const pools = registration.manifest.egressPools
-        if (!pools || !Object.prototype.hasOwnProperty.call(pools, pool)) return undefined
-        return providerEgressPools.member(providerId, pool, member, pools[pool]!)
-      },
+      egressMember: egressMemberLookup(providerId, registration.manifest.egressPools ?? {}),
     }
   }
   const extra = options.extraNouns ?? createLoginNouns(getProviderCredentials())

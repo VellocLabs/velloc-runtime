@@ -17,7 +17,12 @@
  * network. No message of this module contains a member's address: it can
  * carry a password.
  */
-import type { ProviderEgress, ProviderEgressPool } from '../../models/drivers/providerEgress'
+import type {
+  ProviderEgress,
+  ProviderEgressMemberLookup,
+  ProviderEgressPool,
+  ProviderEgressPools,
+} from '../../models/drivers/providerEgress'
 import { HOST_NAME, SCHEMES, SOCKS5_NO_CREDENTIALS } from './providerEgressManifest'
 
 export const POOL_MEMBER_URL_MAX_LENGTH = 512
@@ -116,3 +121,12 @@ export class ProviderEgressPoolRegistry {
 
 /** This realm's registry: one runtime serves one set of providers. */
 export const providerEgressPools = new ProviderEgressPoolRegistry()
+
+/**
+ * Security: the member lookup for one provider. Only a pool `pools` declares
+ * is read, and only that provider's members in it; anything else answers none.
+ */
+export function egressMemberLookup(providerId: string, pools: ProviderEgressPools): ProviderEgressMemberLookup {
+  return (pool, member) =>
+    Object.prototype.hasOwnProperty.call(pools, pool) ? providerEgressPools.member(providerId, pool, member, pools[pool]!) : undefined
+}

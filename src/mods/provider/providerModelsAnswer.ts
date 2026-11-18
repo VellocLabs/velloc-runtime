@@ -9,7 +9,7 @@
 import { THINKING_TIER_ORDER } from '../../config/nexusModelConfig/providers/shared/listing'
 import { isLocalizedText, resolveLocalizedText } from '../../config/localizedText'
 import type { LocalizedText } from '../../config/localizedText'
-import type { ProviderModelInfo } from '../../config/nexusModelConfig/providerDefinition'
+import { clampModelsTtl, type ProviderModelInfo } from '../../config/nexusModelConfig/providerDefinition'
 import { sanitizeModelWire } from '../../models/drivers/modelWire'
 import { traceLine } from '../../utils/debugLog'
 import { PLATFORM_FREE_TAG } from './providerManifest'
@@ -25,9 +25,7 @@ export const MODEL_FIGURE_MAX = 1_000_000_000
 /** A price above this (USD per million tokens) is a mistake. */
 export const MODEL_PRICE_MAX = 1_000_000
 
-/** The bounds of an answer's `ttlMs`; the upper one is the default freshness. */
-export const MODELS_TTL_MIN_MS = 30_000
-export const MODELS_TTL_MAX_MS = 60 * 60 * 1000
+export { MODELS_TTL_MAX_MS, MODELS_TTL_MIN_MS } from '../../config/nexusModelConfig/providerDefinition'
 
 export type ParsedModelsAnswer = {
   models: ProviderModelInfo[]
@@ -107,7 +105,7 @@ export function parseModelsAnswer(
       if (typeof answer.ttlMs !== 'number' || !Number.isFinite(answer.ttlMs) || answer.ttlMs <= 0) {
         throw new Error('provider.models: ttlMs must be a positive number of milliseconds')
       }
-      ttlMs = Math.min(MODELS_TTL_MAX_MS, Math.max(MODELS_TTL_MIN_MS, Math.floor(answer.ttlMs)))
+      ttlMs = clampModelsTtl(answer.ttlMs)
     }
     answer = answer.models
   }

@@ -153,6 +153,15 @@ export type ProviderDocumentSource<T> = {
   parse(document: unknown, now: number): T
 }
 
+/** The bounds of a listing's `ttlMs`; the upper one is the default freshness. */
+export const MODELS_TTL_MIN_MS = 30_000
+export const MODELS_TTL_MAX_MS = 60 * 60 * 1000
+
+/** A positive `ttlMs` held within the bounds. */
+export function clampModelsTtl(ttlMs: number): number {
+  return Math.min(MODELS_TTL_MAX_MS, Math.max(MODELS_TTL_MIN_MS, Math.floor(ttlMs)))
+}
+
 /** A listing and, when its source said so, how long it stays fresh. */
 export type ProviderModelListing = {
   models: ProviderModelInfo[]
