@@ -242,6 +242,8 @@ describe('theme args and state', () => {
     expect(themeSetArgsOf({ backdrop: { color: 'rgb(1, 2, 3)' } })).toEqual({ backdrop: { color: 'rgb(1, 2, 3)' } })
     expect(() => themeSetArgsOf({ backdrop: { color: 'red' } })).toThrow(/backdrop.color/)
     expect(() => themeSetArgsOf({ backdrop: { scene: 'a', color: '#fff' } })).toThrow(/exactly one/)
+    expect(themeSetArgsOf({ backdrop: { scene: 'a', id: 'a', glass: { blur: 8 } } })).toEqual({ backdrop: { scene: 'a', glass: { blur: 8 } } })
+    expect(() => themeSetArgsOf({ backdrop: { scene: 'a', other: 1 } })).toThrow(/no key named "other"/)
     expect(() => themeSetArgsOf({ backdrop: { scene: 'a b' } })).toThrow(/backdrop.scene/)
     expect(() => themeSetArgsOf({ backdrop: { scene: 'a', glass: { tint: 'surface-0' } } })).toThrow(/tint/)
     expect(() => themeSetArgsOf({ backdrop: { scene: 'a', glass: { blur: 65 } } })).toThrow(/blur/)
