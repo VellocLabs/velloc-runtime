@@ -169,7 +169,11 @@ describe('the worker bundles are named by a short sourceURL', () => {
     // A plain V8 process: the test runner's own stack formatter ignores `sourceURL`.
     const url = moduleDataUrl('export function fail() { throw new Error("from the bundle") }', MOD_WORKER_SOURCE_URL)
     const probe = `const m = await import(${JSON.stringify(url)}); try { m.fail() } catch (e) { process.stdout.write(e.stack) }`
-    const stack = execFileSync(process.execPath, ['--input-type=module', '-e', probe], { encoding: 'utf8' })
+    const stack = execFileSync(process.execPath, ['--input-type=module', '-e', probe], {
+      encoding: 'utf8',
+      env: { ...process.env, NODE_OPTIONS: '' },
+      timeout: 15_000,
+    })
     expect(stack).toContain(`${MOD_WORKER_SOURCE_URL}:1:`)
     expect(stack).not.toContain('data:text/javascript')
     // A worker frame is not a hooks-module frame.
