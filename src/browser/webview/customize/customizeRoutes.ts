@@ -4,6 +4,12 @@
  */
 import { DIRECTORY_HOME_PATH } from '../../../customize/customizePageProtocol'
 import { DIRECTORY_SITE_ORIGIN } from '../../../customize/directorySite'
+import { currentUiChannel } from '../../../branding/updateChannels'
+
+/** Whether this channel offers the Customize screen at all (F-35: beta only for now). */
+export function customizeOnThisChannel(): boolean {
+  return currentUiChannel() === 'beta'
+}
 
 /** The page's origin. An e2e run points it at a local server through a guest global. */
 function directoryOrigin(): string {

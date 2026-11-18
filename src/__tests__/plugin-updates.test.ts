@@ -21,9 +21,11 @@ import {
   PLUGIN_MANIFEST_REPO_PATH,
   addMarketplace,
   fetchCatalog,
+  fetchCatalogListing,
   fetchRemoteCatalog,
   forgetCatalogs,
   marketplaceRawBaseUrl,
+  withMarketplaceContent,
 } from '../pluginHost/marketplaces'
 import { createPluginUpdateService, startPluginUpdateSchedule } from '../pluginHost/pluginUpdates'
 import { registerMarketplaceSource } from '../pluginHost/marketplaceRegister'
@@ -742,5 +744,51 @@ describe("a person's install reads the marketplace's current listing", () => {
     const record = await r.installed()
     expect(record?.version).toBe('2.0.0')
     expect(await r.fs.readFile(`${record!.installPath}/skills/hello/SKILL.md`, { encoding: 'utf-8' })).toBe('v2.0.0\n')
+  })
+
+  it('two installs from one marketplace at once both install whole', async () => {
+    const r = await rig([])
+    await r.publish([{ name: 'cool', version: '1.0.0' }, { name: 'other', version: '1.0.0' }])
+    await registerMarketplaceSource(ctx, r.fs, source, '2026-10-12T00:00:00.000Z', r.fetchImpl)
+
+    await Promise.all([
+      setupPlugin(ctx, r.fs, 'my-mkt', 'cool', fresh(r)),
+      setupPlugin(ctx, r.fs, 'my-mkt', 'other', fresh(r)),
+    ])
+
+    for (const id of ['cool@my-mkt', 'other@my-mkt']) {
+      const record = await r.installed(id)
+      expect(record?.version).toBe('1.0.0')
+      expect(await r.fs.readFile(`${record!.installPath}/skills/hello/SKILL.md`, { encoding: 'utf-8' })).toBe('v1.0.0\n')
+    }
+  })
+
+  it('a listing refresh that lands while an install copies from the repo leaves that install whole', async () => {
+    const r = await rig([])
+    await r.publish([{ name: 'cool', version: '1.0.0' }, { name: 'other', version: '1.0.0' }])
+    await registerMarketplaceSource(ctx, r.fs, source, '2026-10-12T00:00:00.000Z', r.fetchImpl)
+    const coolDir = `${getMarketplaceContentDir(ctx, 'my-mkt')}/plugins/cool`
+    let copying!: () => void
+    const copyStarted = new Promise<void>(resolve => { copying = resolve })
+    let resumeCopy!: () => void
+    const copyResumed = new Promise<void>(resolve => { resumeCopy = resolve })
+    const fs: typeof r.fs = Object.create(r.fs)
+    fs.readdir = (async (path: string, ...rest: unknown[]) => {
+      if (path === coolDir) {
+        copying()
+        await copyResumed
+      }
+      return (r.fs.readdir as (...a: unknown[]) => unknown)(path, ...rest)
+    }) as typeof r.fs.readdir
+
+    const first = setupPlugin(ctx, fs, 'my-mkt', 'cool', fresh(r))
+    await copyStarted
+    const refresh = withMarketplaceContent(ctx, 'my-mkt', () => fetchCatalogListing(ctx, fs, 'my-mkt', '2026-10-12T00:00:00.000Z', r.fetchImpl))
+    await new Promise(resolve => setTimeout(resolve, 20))
+    resumeCopy()
+    await Promise.all([first, refresh])
+
+    const record = await r.installed('cool@my-mkt')
+    expect(await r.fs.readFile(`${record!.installPath}/skills/hello/SKILL.md`, { encoding: 'utf-8' })).toBe('v1.0.0\n')
   })
 })

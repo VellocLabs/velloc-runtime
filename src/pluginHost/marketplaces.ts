@@ -577,6 +577,29 @@ export async function fetchCatalogListing(
   return { marketplace: remote.marketplace, cachePath }
 }
 
+const contentTurns = new Map<string, Promise<void>>()
+
+/**
+ * Runs `work` after every earlier `work` on the same marketplace's cached
+ * content has settled, so a listing refresh cannot clear a repo an install is
+ * still copying from. Not re-entrant: `work` must not call it for the same
+ * marketplace.
+ */
+export function withMarketplaceContent<T>(
+  ctx: PluginInstallPathContext,
+  catalogKey: string,
+  work: () => Promise<T>,
+): Promise<T> {
+  const key = getMarketplaceContentDir(ctx, catalogKey)
+  const run = (contentTurns.get(key) ?? Promise.resolve()).then(work)
+  const settled = run.then(() => undefined, () => undefined)
+  contentTurns.set(key, settled)
+  void settled.then(() => {
+    if (contentTurns.get(key) === settled) contentTurns.delete(key)
+  })
+  return run
+}
+
 /** Replaces a marketplace's cached content with `manifestRaw` as its only file. */
 async function keepManifestOnly(fs: RuntimeFs, cachePath: string, catalogKey: string, manifestRaw: string): Promise<void> {
   await fs.rm(cachePath, { recursive: true, force: true })

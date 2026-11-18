@@ -28,6 +28,7 @@ import {
   fetchCatalogListing,
   loadKnownMarketplaces,
   parseMarketplaceManifest,
+  withMarketplaceContent,
 } from './marketplaces'
 import { BUILTIN_MARKETPLACE_KEY } from './builtinMarketplace'
 import { joinPluginRef, splitPluginRef } from './pluginRef'
@@ -171,12 +172,13 @@ export async function setupPlugin(
     return placePlugin(ctx, fs, catalogKey, pluginName, listing, fetched, { nowIso })
   }
 
-  const entry = options.freshListing && catalogKey !== BUILTIN_MARKETPLACE_KEY
-    ? await lookupInFreshListing(ctx, fs, catalogKey, pluginName, nowIso, fetchImpl)
-    : await lookupInCachedListing(ctx, fs, catalogKey, pluginName, nowIso, fetchImpl, options.refreshFirst === true)
-  if (!entry) throw new PluginNotListedError(pluginName, catalogKey)
-
-  const fetched = await fetchListingFiles(ctx, fs, catalogKey, entry, identifier, fetchImpl, nowIso)
+  const { entry, fetched } = await withMarketplaceContent(ctx, catalogKey, async () => {
+    const listed = options.freshListing && catalogKey !== BUILTIN_MARKETPLACE_KEY
+      ? await lookupInFreshListing(ctx, fs, catalogKey, pluginName, nowIso, fetchImpl)
+      : await lookupInCachedListing(ctx, fs, catalogKey, pluginName, nowIso, fetchImpl, options.refreshFirst === true)
+    if (!listed) throw new PluginNotListedError(pluginName, catalogKey)
+    return { entry: listed, fetched: await fetchListingFiles(ctx, fs, catalogKey, listed, identifier, fetchImpl, nowIso) }
+  })
   const marketplaceSource = entry.source.source === 'local'
     ? (await loadKnownMarketplaces(ctx, fs, nowIso)).registry[catalogKey]?.source
     : undefined

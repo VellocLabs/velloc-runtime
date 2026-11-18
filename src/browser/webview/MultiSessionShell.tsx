@@ -124,7 +124,7 @@ import {
 } from './externalLinkClicks'
 import type { RuntimeConnection } from '../runtimeClient/RuntimeConnection'
 import { ForbiddenScopeNotice } from './forbiddenScopeNotice'
-import { currentUiChannel } from '../../branding/updateChannels'
+import { customizeOnThisChannel } from './customize/customizeRoutes'
 import {
   createGlobalDefaultMirror,
   followGlobalDefault,
@@ -2312,7 +2312,7 @@ export function MultiSessionShell({
   }, [customizeOpen])
   const customizeShown = remoteHost === undefined
     && runtimeCapabilities.can('customizePage', 'show')
-    && currentUiChannel() === 'beta'
+    && customizeOnThisChannel()
   const interceptComposerText = useMemo(
     () => createShellInterceptMarketplaceAdd(customizeShown, setMarketplaceAddRequest, handleOpenCustomize),
     [customizeShown, handleOpenCustomize],

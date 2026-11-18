@@ -37,6 +37,7 @@ import {
   loadKnownMarketplaces,
   parseMarketplaceManifest,
   removeMarketplace,
+  withMarketplaceContent,
 } from '../../../pluginHost/marketplaces'
 import { githubRepoOf, parseMarketplaceSource, registerMarketplaceSource } from '../../../pluginHost/marketplaceRegister'
 import { directoryFallbackName, installFromDirectory } from '../../../pluginHost/directoryInstall'
@@ -426,10 +427,10 @@ async function handleRefreshMarketplace(
 ): Promise<PluginsBridgeActionMap['refreshMarketplace']['result']> {
   const pathCtx = pathContextOf(ctx)
   // A GitHub marketplace refreshes its manifest alone; installs download the repo.
-  const result = await fetchCatalogListing(
+  const result = await withMarketplaceContent(pathCtx, payload.name, () => fetchCatalogListing(
     pathCtx, ctx.fs, payload.name, nowOf(ctx),
     pickFetch(ctx),
-  )
+  ))
   const { registry: installed } = await loadInstalledPlugins(pathCtx, ctx.fs)
   const installedIdentifiers = new Set(Object.keys(installed.plugins))
   const visible = listingsVisibleOn(result.marketplace.plugins, channelOf(ctx))
