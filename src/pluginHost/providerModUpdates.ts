@@ -17,7 +17,7 @@ import { getProviderModHost } from '../mods/provider/providerModHost'
 import { refreshDirectoryListings } from './directoryInstall'
 import { DIRECTORY_CATALOG_KEY } from './directoryListings'
 import { DIRECT_CATALOG_KEY } from './httpsSource'
-import { fetchCatalog, findCatalogPlugin } from './marketplaces'
+import { fetchCatalog, findCatalogPlugin, withMarketplaceContent } from './marketplaces'
 import {
   DEFAULT_HTTPS_LIMITS,
   HttpsSourceError,
@@ -392,6 +392,11 @@ export function createProviderModUpdateService(deps: ProviderModUpdateDeps): Pro
   }
 
   async function fetchFromMarketplace(installed: InstalledProvider, marketplace: string, record: PluginUpdateRecord): Promise<Candidate | null> {
+    const read = () => fetchFromMarketplaceContent(installed, marketplace, record)
+    return marketplace === DIRECTORY_CATALOG_KEY ? read() : withMarketplaceContent(ctx, marketplace, read)
+  }
+
+  async function fetchFromMarketplaceContent(installed: InstalledProvider, marketplace: string, record: PluginUpdateRecord): Promise<Candidate | null> {
     const listing =
       marketplace === DIRECTORY_CATALOG_KEY
         ? ((await refreshDirectoryListings(ctx, fs, [installed.name], fetchImpl))[0] ?? null)

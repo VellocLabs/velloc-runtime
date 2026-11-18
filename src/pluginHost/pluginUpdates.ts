@@ -34,6 +34,7 @@ import {
   fetchRemoteCatalog,
   loadKnownMarketplaces,
   marketplaceRawBaseUrl,
+  withMarketplaceContent,
   type RemoteCatalog,
 } from './marketplaces'
 import {
@@ -323,7 +324,7 @@ export function createPluginUpdateService(deps: PluginUpdateServiceDeps): Plugin
             readLocalManifest = remoteManifestReader(remote)
             repoFetchedSinceCheck.delete(marketplace)
           } else {
-            listings = (await fetchCatalog(ctx, fs, marketplace, now(), deps.fetchImpl())).marketplace.plugins
+            listings = (await withMarketplaceContent(ctx, marketplace, () => fetchCatalog(ctx, fs, marketplace, now(), deps.fetchImpl()))).marketplace.plugins
           }
         }
         const memberOffers = await Promise.all(members.map(async plugin => {

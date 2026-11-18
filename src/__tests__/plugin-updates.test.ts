@@ -21,12 +21,11 @@ import {
   PLUGIN_MANIFEST_REPO_PATH,
   addMarketplace,
   fetchCatalog,
-  fetchCatalogListing,
   fetchRemoteCatalog,
   forgetCatalogs,
   marketplaceRawBaseUrl,
-  withMarketplaceContent,
 } from '../pluginHost/marketplaces'
+import { pluginsHandlers } from '../browser/bridge/adapter/pluginsBridgeAdapter'
 import { createPluginUpdateService, startPluginUpdateSchedule } from '../pluginHost/pluginUpdates'
 import { registerMarketplaceSource } from '../pluginHost/marketplaceRegister'
 import { getMarketplaceContentDir, getPluginVersionCacheDir, PLUGIN_MANIFEST_DIR_NAME } from '../pluginHost/pluginDirs'
@@ -783,7 +782,7 @@ describe("a person's install reads the marketplace's current listing", () => {
 
     const first = setupPlugin(ctx, fs, 'my-mkt', 'cool', fresh(r))
     await copyStarted
-    const refresh = withMarketplaceContent(ctx, 'my-mkt', () => fetchCatalogListing(ctx, fs, 'my-mkt', '2026-10-12T00:00:00.000Z', r.fetchImpl))
+    const refresh = pluginsHandlers.refreshMarketplace({ name: 'my-mkt' }, { homeDir: HOME, fs, fetchImpl: r.fetchImpl })
     await new Promise(resolve => setTimeout(resolve, 20))
     resumeCopy()
     await Promise.all([first, refresh])

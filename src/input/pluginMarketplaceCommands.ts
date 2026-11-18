@@ -28,6 +28,7 @@ import {
   listingsVisibleOn,
   loadKnownMarketplaces,
   removeMarketplace,
+  withMarketplaceContent,
 } from '../pluginHost/marketplaces'
 import { isBuiltinMarketplace } from '../pluginHost/builtinMarketplace'
 import { currentTemplateChannel } from '../branding/updateChannels'
@@ -613,13 +614,14 @@ async function runMarketplaceUpdate(
 ): Promise<SlashCommandText> {
   const name = rest.trim()
   if (!name) return [key('slash.out.marketplace.update.usage')]
-  const result = await refreshMarketplace(
-    buildPathContext(ctx),
+  const pathCtx = buildPathContext(ctx)
+  const result = await withMarketplaceContent(pathCtx, name, () => refreshMarketplace(
+    pathCtx,
     ctx.fs,
     name,
     nowIsoOf(ctx),
     ctx.fetchImpl ?? globalThis.fetch.bind(globalThis),
-  )
+  ))
   const sha = result.sha ? `, sha ${result.sha.slice(0, 8)}` : ''
   return [
     key('slash.out.marketplace.update.success', { name, sha }),

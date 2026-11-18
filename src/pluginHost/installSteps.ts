@@ -172,13 +172,19 @@ export async function setupPlugin(
     return placePlugin(ctx, fs, catalogKey, pluginName, listing, fetched, { nowIso })
   }
 
-  const { entry, fetched } = await withMarketplaceContent(ctx, catalogKey, async () => {
+  const looked = await withMarketplaceContent(ctx, catalogKey, async () => {
     const listed = options.freshListing && catalogKey !== BUILTIN_MARKETPLACE_KEY
       ? await lookupInFreshListing(ctx, fs, catalogKey, pluginName, nowIso, fetchImpl)
       : await lookupInCachedListing(ctx, fs, catalogKey, pluginName, nowIso, fetchImpl, options.refreshFirst === true)
     if (!listed) throw new PluginNotListedError(pluginName, catalogKey)
-    return { entry: listed, fetched: await fetchListingFiles(ctx, fs, catalogKey, listed, identifier, fetchImpl, nowIso) }
+    // Only a plugin kept inside the repo copies from the marketplace's content.
+    const copied = listed.source.source === 'local'
+      ? await fetchListingFiles(ctx, fs, catalogKey, listed, identifier, fetchImpl, nowIso)
+      : null
+    return { listed, copied }
   })
+  const entry = looked.listed
+  const fetched = looked.copied ?? await fetchListingFiles(ctx, fs, catalogKey, entry, identifier, fetchImpl, nowIso)
   const marketplaceSource = entry.source.source === 'local'
     ? (await loadKnownMarketplaces(ctx, fs, nowIso)).registry[catalogKey]?.source
     : undefined
