@@ -13,6 +13,7 @@ import { act, cleanup, fireEvent, render, renderHook, waitFor } from '@testing-l
 import type { RuntimeConnection } from '../browser/runtimeClient/RuntimeConnection'
 import { useCustomizeTab } from '../browser/webview/customize/useCustomizeTab'
 import { CustomizeScreen } from '../browser/webview/customize/CustomizeScreen'
+import { SECTION_FLASH_MS } from '../browser/webview/customize/MarketplaceBrowser'
 import { directoryUrl } from '../browser/webview/customize/customizeRoutes'
 import { en as EN_MESSAGES } from '../browser/webview/i18n/messages/en'
 import { SettingsBridgeContext, type NexusSettingsBridge } from '../browser/webview/nexusSettingsBridge'
@@ -836,6 +837,7 @@ describe('CustomizeScreen — adding a marketplace', () => {
         addAnswers: [{ ok: true, status: 'added', name: 'acme-market', pluginCount: 1 }],
       })
       type('acme/tools')
+      const addedAt = Date.now()
       confirm()
       await waitFor(() => expect(view.queryByTestId('customize-add-market-dialog')).toBeNull())
       expect(scrolled).toEqual(['acme-market'])
@@ -847,9 +849,10 @@ describe('CustomizeScreen — adding a marketplace', () => {
       expect(flashing()).toEqual(['acme-market'])
       expect(view.getAllByTestId('customize-market-title').find(t => t.textContent === 'acme-market')!.className).toContain('shimmer')
 
-      act(() => void vi.advanceTimersByTime(9_000))
+      // The fake clock also moves with real time, so the window is measured from the add.
+      act(() => void vi.advanceTimersByTime(addedAt + SECTION_FLASH_MS - 100 - Date.now()))
       expect(flashing()).toEqual(['acme-market'])
-      act(() => void vi.advanceTimersByTime(1_100))
+      act(() => void vi.advanceTimersByTime(1_000))
       expect(flashing()).toEqual([])
       expect(view.getAllByTestId('customize-market-title').some(t => t.className.includes('shimmer'))).toBe(false)
 
