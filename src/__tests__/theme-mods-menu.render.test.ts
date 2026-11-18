@@ -48,6 +48,8 @@ describe('theme mods menu', () => {
       ['bubblegum', true, false],
       ['looks', true, true],
     ])
+    // A mod just disabled is not the one showing, even while its theme still stands.
+    expect(orderThemeMods(MODS, plugin => plugin !== 'looks', 'looks').some(row => row.showing)).toBe(false)
   })
 
   it('treats only empty space of the conversation as its own', () => {
