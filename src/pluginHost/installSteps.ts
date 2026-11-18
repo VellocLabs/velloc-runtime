@@ -26,10 +26,12 @@ import {
   findCatalogPlugin,
   fetchCatalog,
   loadKnownMarketplaces,
+  parseMarketplaceManifest,
 } from './marketplaces'
 import { joinPluginRef, splitPluginRef } from './pluginRef'
 import {
   getMarketplaceContentDir,
+  getMarketplaceManifestPath,
   getPluginVersionCacheDir,
   type PluginInstallPathContext,
 } from './pluginDirs'
@@ -275,6 +277,7 @@ export async function fetchListingFiles(
     const localPath = entry.source.path
     await ensureMarketplaceRepo(ctx, fs, catalogKey, nowIso, fetchImpl)
     files = await readLocalPluginFiles(ctx, fs, catalogKey, localPath)
+    if (localPath === '') files = await withoutSiblingPlugins(ctx, fs, catalogKey, files)
     if (files.length === 0) {
       throw new Error(
         `[installPlugin] '${identifier}' local source './${localPath}' is empty or`
@@ -334,6 +337,19 @@ async function readLocalPluginFiles(
   const out: ExtractedFile[] = []
   await collectFilesUnder(fs, root, '', out)
   return out
+}
+
+/** A repo-root listing's files minus the folders the marketplace lists as other plugins. */
+async function withoutSiblingPlugins(
+  ctx: PluginInstallPathContext,
+  fs: RuntimeFs,
+  catalogKey: string,
+  files: ExtractedFile[],
+): Promise<ExtractedFile[]> {
+  const raw = await fs.readFile(getMarketplaceManifestPath(ctx, catalogKey), { encoding: 'utf-8' })
+  const siblings = parseMarketplaceManifest(raw, catalogKey).plugins
+    .flatMap(p => (p.source.source === 'local' && p.source.path !== '' ? [`${p.source.path}/`] : []))
+  return files.filter(file => !siblings.some(prefix => file.path.startsWith(prefix)))
 }
 
 async function collectFilesUnder(

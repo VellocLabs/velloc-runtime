@@ -262,4 +262,18 @@ describe('installing these listings from a GitHub marketplace', () => {
     expect(outcome.entry.version).toBe('0.3.0')
     expect(await m.fs.readFile(`${outcome.entry.installPath}/skills/themes/SKILL.md`, { encoding: 'utf-8' })).toBe('pick a theme')
   })
+
+  it('a "./" listing leaves out the folders the marketplace lists as other plugins', async () => {
+    const m = await marketplace([{ name: 'themes', source: './' }, { name: 'extra', source: './plugins/extra' }], [
+      { name: PLUGIN_JSON, content: JSON.stringify({ name: 'themes', version: '0.3.0' }) },
+      { name: 'skills/themes/SKILL.md', content: 'pick a theme' },
+      { name: `plugins/extra/${PLUGIN_JSON}`, content: JSON.stringify({ name: 'extra', version: '1.0.0' }) },
+      { name: 'plugins/extra/skills/extra/SKILL.md', content: 'other plugin' },
+    ])
+
+    const outcome = await setupPlugin(ctx, m.fs, 'mkt', 'themes', { fetchImpl: m.fetchImpl, nowIso: NOW })
+
+    expect(await m.fs.readFile(`${outcome.entry.installPath}/skills/themes/SKILL.md`, { encoding: 'utf-8' })).toBe('pick a theme')
+    await expect(m.fs.readFile(`${outcome.entry.installPath}/plugins/extra/skills/extra/SKILL.md`, { encoding: 'utf-8' })).rejects.toThrow()
+  })
 })
