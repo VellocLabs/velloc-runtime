@@ -14,7 +14,9 @@
  * path is relative to this file. */
 @source not "../../deploy";
 
-@custom-variant dark (&:is(.dark *));
+/* `.light` on an element turns what is inside it back to light on a dark page
+ * (a mod theme made for the other mode, F-25). */
+@custom-variant dark (&:is(.dark *):not(:is(.light *)));
 
 @theme inline {
   --color-background: var(--background);
@@ -203,7 +205,8 @@
   }
 }
 
-:root {
+:root,
+.light {
   --radius: 0.625rem;
   --background: oklch(1 0 0);
   /* Chrome's toolbar / active-tab surface (kColorToolbar): the topbar and the
@@ -1087,8 +1090,7 @@
 }
 
 /* A scene behind the conversation: the composer's footer lets it show through. */
-[data-mod-backdrop='scene'] .aui-thread-viewport-footer,
-[data-mod-backdrop='scene'] .aui-thread-viewport-footer :is([data-slot='mod-above-prompt'], [data-slot='mod-band-section'], [data-slot='mod-panes']) {
+[data-mod-backdrop='scene'] .aui-thread-viewport-footer {
   background-color: transparent;
   backdrop-filter: none;
 }

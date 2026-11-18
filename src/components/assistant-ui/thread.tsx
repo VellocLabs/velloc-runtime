@@ -531,7 +531,7 @@ export const Thread: FC<{
         conversation and its composer end above it (F-24). */}
     <ThreadPrimitive.Root
       data-thread-session={sessionId}
-      className="aui-root aui-thread-root @container relative flex h-full flex-col bg-background pb-[var(--thread-bottom-inset,0px)] has-[[data-slot=session-card-stack]]:[--thread-end-reserve:clamp(24px,calc(var(--thread-max-width)+654px-100cqw),315px)]"
+      className={cn("aui-root aui-thread-root @container relative flex h-full flex-col bg-background pb-[var(--thread-bottom-inset,0px)] has-[[data-slot=session-card-stack]]:[--thread-end-reserve:clamp(24px,calc(var(--thread-max-width)+654px-100cqw),315px)]", modThemeLook.className)}
       {...modThemeLook.attributes}
       style={{
         ...modThemeLook.style,

@@ -109,7 +109,7 @@ function withUi(value: Partial<ModUiContextValue>, child: React.ReactElement) {
 
 function ThemedRoot() {
   const look = useModThemeLook()
-  return createElement('div', { 'data-testid': 'root', ...look.attributes, style: look.style })
+  return createElement('div', { 'data-testid': 'root', ...look.attributes, className: look.className, style: look.style })
 }
 
 describe('the palette', () => {
@@ -176,6 +176,27 @@ describe('the palette', () => {
     expect(root.style.getPropertyValue('--background')).toBe('#efe6d3')
     document.documentElement.classList.add('dark')
     await waitFor(() => expect(root.style.getPropertyValue('--background')).toBe('#1f1a15'))
+  })
+
+  it("a theme made for the other mode turns its carrier to that mode; one made for the page's own mode changes nothing", () => {
+    const dark: ModsUiTheme = { plugin: 'look', requestId: 'backdrop', backdrop: { scene: 'night', glass: false }, overrideColorScheme: 'dark' }
+    const { unmount } = render(withUi({ theme: dark }, createElement(ThemedRoot)))
+    const root = screen.getByTestId('root')
+    expect(root.getAttribute('data-mod-scheme')).toBe('dark')
+    expect(root.className).toBe('dark')
+    expect(root.style.colorScheme).toBe('dark')
+    unmount()
+    document.documentElement.classList.add('dark')
+    render(withUi({ theme: dark }, createElement(ThemedRoot)))
+    const same = screen.getByTestId('root')
+    expect(same.getAttribute('data-mod-scheme')).toBeNull()
+    expect(same.className).toBe('')
+    cleanup()
+    // A dark page under a theme made for light windows turns light, and paints the palette's light side.
+    render(withUi({ theme: { plugin: 'look', requestId: 'theme', colors: PAPER, overrideColorScheme: 'light' } }, createElement(ThemedRoot)))
+    const light = screen.getByTestId('root')
+    expect(light.className).toBe('light')
+    expect(light.getAttribute('data-mod-theme-palette')).not.toBe('none')
   })
 
   it('no theme: the root carries nothing', () => {

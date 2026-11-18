@@ -61,11 +61,45 @@ function noTokens(): Record<string, string> {
   return EMPTY_TOKENS;
 }
 
-/** The app's own token values, as the page root holds them, live; read only
- *  while `enabled`. */
-function useOwnTokens(enabled: boolean): Record<string, string> {
+const schemeProbes = new Map<ThemeMode, HTMLElement>();
+const schemeTokens = new Map<ThemeMode, { key: string; tokens: Record<string, string> }>();
+
+/** The app's own token values in `mode`, whatever the page's mode: read off a
+ *  hidden element that carries the mode's class. */
+function schemeTokensNow(mode: ThemeMode): Record<string, string> {
+  const held = schemeTokens.get(mode)?.tokens ?? EMPTY_TOKENS;
+  if (typeof document === "undefined" || typeof getComputedStyle === "undefined" || !document.body) return held;
+  let probe = schemeProbes.get(mode);
+  if (!probe || !probe.isConnected) {
+    probe = document.createElement("div");
+    probe.className = mode;
+    probe.hidden = true;
+    probe.setAttribute("aria-hidden", "true");
+    probe.setAttribute("data-slot", "mod-scheme-probe");
+    document.body.appendChild(probe);
+    schemeProbes.set(mode, probe);
+  }
+  const style = getComputedStyle(probe);
+  const next: Record<string, string> = {};
+  for (const token of THEME_TOKENS) {
+    const value = style.getPropertyValue(token).trim();
+    if (value) next[token] = value;
+  }
+  const key = JSON.stringify(next);
+  if (schemeTokens.get(mode)?.key === key) return held;
+  schemeTokens.set(mode, { key, tokens: next });
+  return next;
+}
+
+const lightTokensNow = () => schemeTokensNow("light");
+const darkTokensNow = () => schemeTokensNow("dark");
+
+/** The app's own token values, live; read only while `enabled`. As the page
+ *  root holds them, or as the app paints `scheme` where one is given. */
+function useOwnTokens(enabled: boolean, scheme?: ThemeMode): Record<string, string> {
   const subscribe = React.useCallback((listener: () => void) => (enabled ? subscribeRoot(listener) : () => {}), [enabled]);
-  return React.useSyncExternalStore(subscribe, enabled ? ownTokensNow : noTokens, enabled ? () => ownTokens : noTokens);
+  const read = !enabled ? noTokens : scheme === "light" ? lightTokensNow : scheme === "dark" ? darkTokensNow : ownTokensNow;
+  return React.useSyncExternalStore(subscribe, read, enabled && scheme === undefined ? () => ownTokens : noTokens);
 }
 
 /** What the thread root carries for the standing theme. */
@@ -75,6 +109,9 @@ export type ModThemeLook = {
   style: Record<string, string>;
   /** Data attributes for the thread root. */
   attributes: Record<string, string>;
+  /** The mode's class where the theme overrides the page's light or dark
+   *  mode; empty otherwise. */
+  className: string;
 };
 
 /** The standing theme as the thread root paints it. */
@@ -89,11 +126,14 @@ export const ModShellPaintsThemeContext = React.createContext(false);
 /** A theme as the element that carries it paints it: the thread root, or the
  *  shell around the whole window. */
 export function useThemeLookOf(theme: ModsUiTheme | undefined): ModThemeLook {
-  const mode = usePageMode();
+  const pageMode = usePageMode();
+  // A theme made for the other mode turns what carries it to that mode.
+  const override = theme?.overrideColorScheme !== undefined && theme.overrideColorScheme !== pageMode ? theme.overrideColorScheme : undefined;
+  const mode = override ?? pageMode;
   const glass = theme ? sceneGlassOf(theme.backdrop) : undefined;
-  const own = useOwnTokens(glass !== undefined || theme?.colors !== undefined);
+  const own = useOwnTokens(glass !== undefined || theme?.colors !== undefined, override);
   return React.useMemo(() => {
-    if (!theme) return { theme, style: {}, attributes: {} };
+    if (!theme) return { theme, style: {}, attributes: {}, className: "" };
     const palette = theme.colors ? paletteTokensOf(theme.colors, mode, own) : ({ kind: "none" } as const);
     const painted = palette.kind === "painted" ? palette.tokens : {};
     const style: Record<string, string> = { ...painted };
@@ -110,8 +150,12 @@ export function useThemeLookOf(theme: ModsUiTheme | undefined): ModThemeLook {
       style["--mod-glass-blur"] = `${glass.blur}px`;
       attributes["data-mod-glass"] = "";
     }
-    return { theme, style, attributes };
-  }, [theme, mode, glass?.blur, glass?.tint, glass?.opacity, own]); // eslint-disable-line react-hooks/exhaustive-deps
+    if (override) {
+      style.colorScheme = override;
+      attributes["data-mod-scheme"] = override;
+    }
+    return { theme, style, attributes, className: override ?? "" };
+  }, [theme, mode, override, glass?.blur, glass?.tint, glass?.opacity, own]); // eslint-disable-line react-hooks/exhaustive-deps
 }
 
 /** Keeps the app's own look for what it wraps (permission prompts), under

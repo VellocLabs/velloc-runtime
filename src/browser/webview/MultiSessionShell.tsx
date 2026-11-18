@@ -3023,6 +3023,7 @@ export function MultiSessionShell({
     <ModShellPaintsThemeContext.Provider value={shellModUi.theme?.backdrop !== undefined}>
     <main
       data-mod-shell=""
+      className={shellThemeLook.className || undefined}
       {...shellThemeLook.attributes}
       style={{
         ...shellThemeLook.style,
