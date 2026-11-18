@@ -127,6 +127,13 @@ export function useWindowColorScheme(look: ModThemeLook): void {
   React.useEffect(() => showColorScheme(scheme), [scheme]);
 }
 
+/** The mode `theme` turns its carrier to: the one it is made for, where that
+ *  is not the page's own; undefined otherwise. */
+function useShownOverride(theme: ModsUiTheme | undefined): ThemeMode | undefined {
+  const pageMode = usePageMode();
+  return theme?.overrideColorScheme !== undefined && theme.overrideColorScheme !== pageMode ? theme.overrideColorScheme : undefined;
+}
+
 /** True where the app shell paints the theme's backdrop for the whole window,
  *  so a thread inside it draws none of its own. */
 export const ModShellPaintsThemeContext = React.createContext(false);
@@ -137,8 +144,7 @@ export const ModShellPaintsThemeContext = React.createContext(false);
  *  glass's tint where it names one. */
 export function useThemeLookOf(theme: ModsUiTheme | undefined, backdropBehind = true): ModThemeLook {
   const pageMode = usePageMode();
-  // A theme made for the other mode turns what carries it to that mode.
-  const override = theme?.overrideColorScheme !== undefined && theme.overrideColorScheme !== pageMode ? theme.overrideColorScheme : undefined;
+  const override = useShownOverride(theme);
   const mode = override ?? pageMode;
   const glass = theme ? sceneGlassOf(theme.backdrop) : undefined;
   const own = useOwnTokens(glass !== undefined || theme?.colors !== undefined, override);
@@ -177,9 +183,8 @@ export function useThemeLookOf(theme: ModsUiTheme | undefined, backdropBehind = 
  *  scene, glass or ground shows through what a person must be able to trust. */
 export function ModAppLook({ children }: { children: React.ReactNode }) {
   const { theme } = useModUi();
-  const pageMode = usePageMode();
   // The app's own look in the mode the window shows.
-  const shown = theme?.overrideColorScheme !== undefined && theme.overrideColorScheme !== pageMode ? theme.overrideColorScheme : undefined;
+  const shown = useShownOverride(theme);
   const own = useOwnTokens(theme !== undefined, shown);
   if (!theme) return <>{children}</>;
   return (

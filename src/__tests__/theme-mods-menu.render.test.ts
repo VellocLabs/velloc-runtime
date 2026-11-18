@@ -113,6 +113,31 @@ describe('theme mods menu', () => {
     expect(screen.getByTestId('theme-mods-menu-single').getAttribute('aria-checked')).toBe('true')
   })
 
+  it('leaves a mod no plugin list knows unpressable, and one at a time passes it by', async () => {
+    const calls: [string, boolean][] = []
+    const setEnabled = vi.fn(async (mod: { plugin: string }, on: boolean) => void calls.push([mod.plugin, on]))
+    mount(
+      {
+        mods: [...MODS, { plugin: 'devlook', id: 'devlook@dev' }],
+        backdropScope: 'window',
+        single: true,
+        refresh: () => {},
+        enabled: { looks: true, aurora: false, bubblegum: false },
+        setEnabled,
+      },
+      { plugins: { devlook: { state: 'loaded' } } as never },
+    )
+    fireEvent.contextMenu(screen.getByTestId('blank'))
+    fireEvent.keyDown(await screen.findByTestId('theme-mods-menu-mods'), { key: 'ArrowRight' })
+    const devlook = await screen.findByTestId('theme-mod:devlook')
+    expect(devlook.getAttribute('aria-checked')).toBe('true')
+    expect(devlook.hasAttribute('data-disabled')).toBe(true)
+    fireEvent.click(devlook)
+    fireEvent.click(screen.getByTestId('theme-mod:aurora'))
+    await waitFor(() => expect(calls).toHaveLength(2))
+    expect(calls).toEqual([['aurora', true], ['looks', false]])
+  })
+
   it('draws no menu where the window offers none', () => {
     mount(undefined)
     expect(fireEvent.contextMenu(screen.getByTestId('blank'))).toBe(true)

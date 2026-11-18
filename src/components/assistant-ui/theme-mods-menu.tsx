@@ -147,12 +147,14 @@ export const ThemeModsMenu: FC<{ sessionId?: string; isForeground?: boolean }> =
   if (!themes) return null;
   const { setEnabled, setBackdropScope, openThemeStore } = themes;
   const on = rows.filter((row) => row.enabled).length;
+  // A mod no plugin list knows (a dev folder's, an uninstalled one) has no stored state a press could change.
+  const canToggle = (row: ThemeModRow) => setEnabled !== undefined && (stored === undefined || row.plugin in stored);
 
   const toggle = (row: ThemeModRow, next: boolean) => {
-    if (!setEnabled) return;
+    if (!setEnabled || !canToggle(row)) return;
     setFailure(null);
     // One at a time: enabling a mod disables every other enabled one, after it.
-    const others = next && themes.single ? rows.filter((other) => other.enabled && other.plugin !== row.plugin) : [];
+    const others = next && themes.single ? rows.filter((other) => other.enabled && other.plugin !== row.plugin && canToggle(other)) : [];
     setPressed((previous) => ({
       ...previous,
       ...Object.fromEntries(others.map((other) => [other.plugin, false])),
@@ -224,7 +226,7 @@ export const ThemeModsMenu: FC<{ sessionId?: string; isForeground?: boolean }> =
                       key={row.plugin}
                       data-testid={`theme-mod:${row.plugin}`}
                       checked={row.enabled}
-                      disabled={!setEnabled}
+                      disabled={!canToggle(row)}
                       onCheckedChange={(value) => toggle(row, value === true)}
                       onSelect={(event) => event.preventDefault()}
                       className={ITEM_CLASS}

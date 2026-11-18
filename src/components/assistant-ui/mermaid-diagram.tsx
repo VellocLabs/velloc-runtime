@@ -1,4 +1,4 @@
-import { SHOWN_SCHEME_ATTR, shownColorScheme } from "@/lib/shownColorScheme";
+import { shownColorScheme, watchShownColorScheme } from "@/lib/shownColorScheme";
 import { useEffect, useId, useRef, useState, useSyncExternalStore } from "react";
 
 import { cn } from "@/lib/utils";
@@ -58,27 +58,20 @@ function primeMermaidTheme(mermaid: MermaidModule, dark: boolean): void {
 }
 
 const darkClassListeners = new Set<() => void>();
-let darkClassObserver: MutationObserver | null = null;
+let releaseDarkClassWatch: (() => void) | null = null;
 
 function subscribeDarkClass(listener: () => void): () => void {
   darkClassListeners.add(listener);
-  if (!darkClassObserver && typeof document !== "undefined") {
-    darkClassObserver = new MutationObserver(() => {
+  if (!releaseDarkClassWatch && typeof document !== "undefined") {
+    releaseDarkClassWatch = watchShownColorScheme(() => {
       for (const l of darkClassListeners) l();
-    });
-    darkClassObserver.observe(document.documentElement, {
-      attributes: true,
-      attributeFilter: ["class"],
-    });
-    if (document.body) {
-      darkClassObserver.observe(document.body, { attributes: true, attributeFilter: [SHOWN_SCHEME_ATTR] });
-    }
+    }, document);
   }
   return () => {
     darkClassListeners.delete(listener);
-    if (darkClassListeners.size === 0 && darkClassObserver) {
-      darkClassObserver.disconnect();
-      darkClassObserver = null;
+    if (darkClassListeners.size === 0 && releaseDarkClassWatch) {
+      releaseDarkClassWatch();
+      releaseDarkClassWatch = null;
     }
   };
 }

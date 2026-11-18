@@ -4,7 +4,7 @@
  * for the scrollbar, and a fixed ANSI palette per scheme. Pure given a token resolver; `resolveCssToken` is
  * the DOM-backed one.
  */
-import { SHOWN_SCHEME_ATTR, shownColorScheme, shownTokenSource } from '@/lib/shownColorScheme'
+import { shownColorScheme, shownTokenSource, watchShownColorScheme } from '@/lib/shownColorScheme'
 
 /** The xterm `ITheme` fields this view sets. */
 export interface TerminalTheme {
@@ -183,15 +183,12 @@ export function watchDocumentTheme(
   if (!doc?.documentElement || typeof MutationObserver === 'undefined') return () => {}
   const build = (): TerminalTheme => buildTerminalTheme(documentScheme(doc), token => resolve(token, doc))
   let last = JSON.stringify(build())
-  const observer = new MutationObserver(() => {
+  return watchShownColorScheme(() => {
     const theme = build()
     const key = JSON.stringify(theme)
     if (key !== last) {
       last = key
       onChange(theme)
     }
-  })
-  observer.observe(doc.documentElement, { attributes: true, attributeFilter: ['class', 'style'] })
-  if (doc.body) observer.observe(doc.body, { attributes: true, attributeFilter: [SHOWN_SCHEME_ATTR] })
-  return () => observer.disconnect()
+  }, doc)
 }

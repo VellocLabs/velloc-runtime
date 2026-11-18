@@ -412,6 +412,8 @@ export function glassTokensOf(
     if (!base) continue
     tokens[token] = `color-mix(in srgb, ${base} ${Math.round(glass.opacity * 100)}%, transparent)`
   }
+  // Opaque glass hides what is behind it, so its highlights stay opaque too.
+  if (glass.opacity >= 1) return tokens
   for (const token of GLASS_HIGHLIGHT_TOKENS) {
     const base = painted[token] ?? own[token]
     if (!base) continue

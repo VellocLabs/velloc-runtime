@@ -5,6 +5,8 @@
  * still grounds as CSS; a scene drawn by the `Backdrop` site under glass; the
  * app's own look around permission prompts; a cleared theme leaves the page.
  */
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { createElement } from 'react'
 import { afterEach, describe, expect, it } from 'vitest'
 import { cleanup, render, screen, waitFor } from '@testing-library/react'
@@ -285,6 +287,19 @@ describe('the backdrop', () => {
     expect(carrier.style.getPropertyValue('--background')).toBe('color-mix(in srgb, #102030 100%, transparent)')
     expect(carrier.style.getPropertyValue('--sidebar')).toBe('color-mix(in srgb, #102030 100%, transparent)')
     expect(carrier.style.getPropertyValue('--mod-glass-blur')).toBe('')
+    // A selected or hovered control keeps an opaque fill on an opaque surface.
+    const opaque = glassTokensOf({ blur: 8, opacity: 1, tint: '#102030' }, {}, { '--muted': '#cccccc', '--accent': '#eeeeee' })
+    expect(opaque['--muted']).toBeUndefined()
+    expect(opaque['--accent']).toBeUndefined()
+  })
+
+  it('a scene floats the footer only in a thread whose own theme draws it, never under the window carrier alone', () => {
+    // The footer's height is measured only by such a thread; a thread under a scene-carrying shell without one
+    // (a side chat of an unthemed session) would lose its last messages behind the composer.
+    const css = readFileSync(join(__dirname, '../styles/globals.css'), 'utf8')
+    const sceneRules = css.match(/^[^\n{]*\[data-mod-backdrop='scene'\][^\n{]*\{/gm) ?? []
+    expect(sceneRules.length).toBeGreaterThan(0)
+    for (const rule of sceneRules) expect(rule.startsWith(".aui-thread-root[data-mod-backdrop='scene']")).toBe(true)
   })
 
   it('the carrier of a theme names the kind of backdrop it stands before, and a shell that paints it leaves the thread none', () => {
