@@ -37,7 +37,7 @@ export const SECTION_LIMIT = 8
 export const SECTION_FLASH_MS = 10_000
 
 /** The page column: as wide as the directory's, centred, with the same side margins. */
-const PAGE_COLUMN = 'mx-auto w-full max-w-[64rem] px-8'
+export const PAGE_COLUMN = 'mx-auto w-full max-w-[64rem] px-8'
 
 export type MarketplaceBrowserProps = {
   /** The browsed marketplaces, in the left list's order. */

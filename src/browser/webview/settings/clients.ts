@@ -250,6 +250,17 @@ export function pluginsListMarketplacePlugins(
   })
 }
 
+/** The built-in marketplace's theme listings, each look's preview an address to show. */
+export function pluginsListMarketplaceThemes(
+  bridge: NexusSettingsBridge,
+  marketplace: string,
+): Promise<BrowserBridgeResult<'plugins', 'listMarketplacePlugins'>> {
+  return bridge.request(createBridgeRoute('plugins', 'listMarketplacePlugins'), {
+    marketplace,
+    kind: 'themes',
+  })
+}
+
 export function pluginsInstall(
   bridge: NexusSettingsBridge,
   identifier: string,

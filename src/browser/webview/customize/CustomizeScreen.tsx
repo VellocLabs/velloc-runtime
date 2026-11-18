@@ -1,5 +1,5 @@
 import * as React from 'react'
-import { ArrowLeftIcon, ChevronLeftIcon, GlobeIcon, HomeIcon, PlusIcon, StoreIcon, Trash2Icon } from 'lucide-react'
+import { ArrowLeftIcon, ChevronLeftIcon, GlobeIcon, HomeIcon, PaletteIcon, PlusIcon, StoreIcon, Trash2Icon } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
@@ -20,9 +20,11 @@ import { InstallToasts } from './InstallToasts'
 import { DirectoryItemStatus } from './DirectoryItemStatus'
 import { pluginsAddMarketplace, pluginsRemoveMarketplace } from '../settings/clients'
 import { MarketplaceBrowser } from './MarketplaceBrowser'
+import { ThemeBrowser } from './ThemeBrowser'
 import { AddMarketplaceDialog, RemoveMarketplaceDialog } from './MarketplaceDialogs'
 import { useCustomizeTab } from './useCustomizeTab'
 import { useMarketplaceList, useMarketplaceShelves } from './useMarketplaceCatalog'
+import { useThemeCatalog, type ThemeTarget } from './useThemeCatalog'
 
 export type CustomizeScreenProps = {
   runtimeConnection?: () => Promise<RuntimeConnection>
@@ -37,15 +39,18 @@ export type CustomizeScreenProps = {
   onDragRegionsChange?: (regions: WindowDragRect[]) => void
   /** A `/plugin marketplace add` typed in a composer: the Add a marketplace dialog opens on it and adds it. */
   marketplaceAddRequest?: { source: string; seq: number } | null
+  /** The session a theme look is applied to; null when the window shows none that takes one. */
+  themeTarget?: ThemeTarget | null
 }
 
 /**
- * The left list's selection: the directory page, or the marketplaces' start
+ * The left list's selection: the directory page, the theme directory, or the marketplaces' start
  * page scrolled to the one last chosen (a new `nonce` scrolls to it again;
  * `flash` marks its title, as after an add).
  */
 type Selection =
   | { kind: 'directory' }
+  | { kind: 'themes' }
   | { kind: 'browse'; focus: { name: string; nonce: number; flash: boolean } | null }
 
 const DIRECTORY: Selection = { kind: 'directory' }
@@ -67,6 +72,7 @@ export function CustomizeScreen({
   onOpenMcpServerSettings,
   onDragRegionsChange,
   marketplaceAddRequest = null,
+  themeTarget = null,
 }: CustomizeScreenProps) {
   const t = useT()
   const headerRef = React.useRef<HTMLElement | null>(null)
@@ -78,6 +84,7 @@ export function CustomizeScreen({
   const list = useMarketplaceList(bridge)
   const names = React.useMemo(() => (list.marketplaces ?? []).map(m => m.name), [list.marketplaces])
   const shelves = useMarketplaceShelves(bridge, names, tab.describeMarketplace)
+  const themes = useThemeCatalog(bridge, runtimeConnection)
   const [addingMarket, setAddingMarket] = React.useState(false)
   // The typed request the dialog adds, held until the bridge can take it.
   const [addRequest, setAddRequest] = React.useState<{ source: string; seq: number } | null>(null)
@@ -161,7 +168,13 @@ export function CustomizeScreen({
           >
             <ArrowLeftIcon className="size-4" />
             <span data-testid="customize-title" className="truncate">
-              {t(onDirectory ? 'customize.directory.title' : 'customize.browse.title')}
+              {t(
+                onDirectory
+                  ? 'customize.directory.title'
+                  : selection.kind === 'themes'
+                    ? 'customize.themes.title'
+                    : 'customize.browse.title',
+              )}
             </span>
           </Button>
         </div>
@@ -240,6 +253,14 @@ export function CustomizeScreen({
             detail={t('customize.markets.directoryDetail')}
             onSelect={() => setSelection(DIRECTORY)}
           />
+          <MarketRow
+            testId="customize-market-themes"
+            selected={selection.kind === 'themes'}
+            icon={<PaletteIcon className="size-4" />}
+            name={t('customize.themes.title')}
+            detail={t('customize.themes.detail')}
+            onSelect={() => setSelection({ kind: 'themes' })}
+          />
           <div className="mt-3 flex items-center gap-1 px-2 pb-1">
             <span className="min-w-0 flex-1 truncate text-xs font-medium text-muted-foreground">
               {t('customize.markets.yours')}
@@ -286,7 +307,9 @@ export function CustomizeScreen({
         </nav>
 
         <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-          {selection.kind === 'browse' ? (
+          {selection.kind === 'themes' ? (
+            <ThemeBrowser view={themes} target={themeTarget} onClose={onClose} />
+          ) : selection.kind === 'browse' ? (
             <MarketplaceBrowser
               marketplaces={names}
               view={shelves}

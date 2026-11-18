@@ -2310,6 +2310,12 @@ export function MultiSessionShell({
   useEffect(() => {
     if (!customizeOpen) setMarketplaceAddRequest(null)
   }, [customizeOpen])
+  // The session a theme look is applied to: the one the window shows, unless a CLI runs it.
+  const themeTarget = useMemo(() => {
+    const shown = sessions.find(s => s.sessionId === activeSessionId)
+    if (!shown || cliOfTemplateType(shown.templateType)) return null
+    return { sessionId: shown.sessionId, title: shown.title, busy: runningSessionIds.has(shown.sessionId) }
+  }, [sessions, activeSessionId, runningSessionIds])
   const customizeShown = remoteHost === undefined
     && runtimeCapabilities.can('customizePage', 'show')
     && customizeOnThisChannel()
@@ -3134,6 +3140,7 @@ export function MultiSessionShell({
             onOpenMcpServerSettings={handleOpenMcpServerSettings}
             onDragRegionsChange={handleDragRegionsChange}
             marketplaceAddRequest={marketplaceAddRequest}
+            themeTarget={themeTarget}
           />
         </Suspense>
       ) : null}
