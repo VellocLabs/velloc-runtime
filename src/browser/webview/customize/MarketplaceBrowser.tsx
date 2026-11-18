@@ -90,7 +90,13 @@ export function MarketplaceBrowser(props: MarketplaceBrowserProps) {
   }, [focus])
   React.useEffect(() => {
     if (!focus || route.page !== 'home') return
-    sections.current.get(focus.name)?.scrollIntoView?.({ block: 'start', behavior: 'smooth' })
+    const section = sections.current.get(focus.name)
+    const box = scroller.current
+    if (!section || !box) return
+    // Only the page's own scroller moves: scrollIntoView would also scroll
+    // the screen's clipped ancestors and push the top bar out of view.
+    const top = section.getBoundingClientRect().top - box.getBoundingClientRect().top + box.scrollTop
+    box.scrollTo?.({ top, behavior: 'smooth' })
   }, [focus, route.page])
   React.useEffect(() => {
     if (route.page !== 'home') scroller.current?.scrollTo?.({ top: 0 })

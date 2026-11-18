@@ -362,11 +362,18 @@ describe('CustomizeScreen — the left list', () => {
   })
 
   it('a marketplace shows the start page scrolled to its section; the directory shows the tab again', async () => {
+    // Only the page's own scroller may move: scrollIntoView would also scroll
+    // the screen's clipped ancestors and push the top bar out of view.
     const scrolled: string[] = []
-    const original = Element.prototype.scrollIntoView
+    const originalInto = Element.prototype.scrollIntoView
+    const originalTo = Element.prototype.scrollTo
+    const intoCalls: Element[] = []
     Element.prototype.scrollIntoView = function (this: Element) {
-      scrolled.push(this.getAttribute('data-marketplace') ?? '')
+      intoCalls.push(this)
     }
+    Element.prototype.scrollTo = function (this: Element) {
+      scrolled.push(this.getAttribute('data-testid') ?? '')
+    } as typeof Element.prototype.scrollTo
     try {
       const fake = fakeConnection(['ok'])
       const { bridge } = fakeBridge({
@@ -383,18 +390,20 @@ describe('CustomizeScreen — the left list', () => {
         'alpha',
         'team-tools',
       ])
-      expect(scrolled).toEqual(['team-tools'])
+      expect(scrolled).toEqual(['customize-browse'])
       expect(view.getAllByTestId('customize-market')[1]!.getAttribute('aria-current')).toBe('page')
 
       // Choosing it again scrolls to it again.
       fireEvent.click(view.getAllByTestId('customize-market')[1]!)
-      expect(scrolled).toEqual(['team-tools', 'team-tools'])
+      expect(scrolled).toEqual(['customize-browse', 'customize-browse'])
 
       fireEvent.click(view.getByTestId('customize-market-directory'))
       expect(view.queryByTestId('webview-area')).not.toBeNull()
       await waitFor(() => expect(fake.shows).toHaveLength(2))
     } finally {
-      Element.prototype.scrollIntoView = original
+      expect(intoCalls).toEqual([])
+      Element.prototype.scrollIntoView = originalInto
+      Element.prototype.scrollTo = originalTo
     }
   })
 })
@@ -825,10 +834,10 @@ describe('CustomizeScreen — adding a marketplace', () => {
 
   it('an added marketplace scrolls to its section, whose title alone shimmers for ten seconds; a list click does not', async () => {
     const scrolled: string[] = []
-    const original = Element.prototype.scrollIntoView
-    Element.prototype.scrollIntoView = function (this: Element) {
-      scrolled.push(this.getAttribute('data-marketplace') ?? '')
-    }
+    const original = Element.prototype.scrollTo
+    Element.prototype.scrollTo = function () {
+      scrolled.push('scroll')
+    } as typeof Element.prototype.scrollTo
     vi.useFakeTimers({ shouldAdvanceTime: true })
     try {
       const { view, type, confirm } = await opened({
@@ -840,7 +849,7 @@ describe('CustomizeScreen — adding a marketplace', () => {
       const addedAt = Date.now()
       confirm()
       await waitFor(() => expect(view.queryByTestId('customize-add-market-dialog')).toBeNull())
-      expect(scrolled).toEqual(['acme-market'])
+      expect(scrolled).toEqual(['scroll'])
       const flashing = () =>
         view
           .getAllByTestId('customize-market-title')
@@ -858,11 +867,11 @@ describe('CustomizeScreen — adding a marketplace', () => {
       expect(view.getAllByTestId('customize-market-title').some(t => t.className.includes('shimmer'))).toBe(false)
 
       fireEvent.click(view.getAllByTestId('customize-market').find(r => r.getAttribute('data-name') === 'alpha')!)
-      expect(scrolled).toEqual(['acme-market', 'alpha'])
+      expect(scrolled).toEqual(['scroll', 'scroll'])
       expect(flashing()).toEqual([])
     } finally {
       vi.useRealTimers()
-      Element.prototype.scrollIntoView = original
+      Element.prototype.scrollTo = original
     }
   })
 
