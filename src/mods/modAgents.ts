@@ -327,5 +327,10 @@ export function agentInfoOf(entry: SubAgentListEntry, spawnedBy?: string): ModAg
 /** The controller rows `$.agent.list` answers: sub-agents only, never a
  *  background shell or script listed beside them. */
 export function agentInfosOf(entries: readonly SubAgentListEntry[]): ModAgentInfo[] {
-  return entries.filter(entry => (entry.kind ?? 'agent') === 'agent').map(entry => agentInfoOf(entry))
+  return agentRowsOf(entries).map(entry => agentInfoOf(entry))
+}
+
+/** The sub-agent rows of a controller list; a row with no `kind` is one. */
+export function agentRowsOf(entries: readonly SubAgentListEntry[]): SubAgentListEntry[] {
+  return entries.filter(entry => (entry.kind ?? 'agent') === 'agent')
 }

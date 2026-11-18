@@ -4,7 +4,7 @@
  * tree to React, the inline panes and the band above the prompt, and the
  * input they send back as `uiInput`.
  */
-import { createElement } from 'react'
+import { Profiler, createElement } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import {
@@ -346,6 +346,40 @@ describe('ModPanes and ModAbovePrompt', () => {
     const before = render$.mock.calls.length
     act(() => {
       stale = { all: 1, sites: {} }
+      for (const listener of listeners) listener()
+    })
+    await waitFor(() => expect(render$).toHaveBeenCalledTimes(before + 1))
+  })
+
+  it("a bump of another site's counter neither re-renders nor re-asks the pane", async () => {
+    let commits = 0
+    const counted = (child: React.ReactElement) => createElement(Profiler, { id: 'panes', onRender: () => { commits += 1 } }, child)
+    const render$ = vi.fn(async () => ({ kind: 'engine' as const }))
+    let stale = { all: 0, sites: {} as Record<string, number> }
+    const listeners = new Set<() => void>()
+    const staleSource = {
+      subscribe: (listener: () => void) => {
+        listeners.add(listener)
+        return () => {
+          listeners.delete(listener)
+        }
+      },
+      read: () => stale,
+    }
+    render(withUi({ panes: [pane('x', true)], hooked: [{ plugin: 'p' }], render: render$, staleSource }, counted(createElement(ModPanes))))
+    await waitFor(() => expect(render$).toHaveBeenCalled())
+    await new Promise(resolve => setTimeout(resolve, 20))
+    const before = render$.mock.calls.length
+    const commitsBefore = commits
+    act(() => {
+      stale = { all: 0, sites: { 'Pane\u0000other': 1 } }
+      for (const listener of listeners) listener()
+    })
+    await new Promise(resolve => setTimeout(resolve, 20))
+    expect(render$).toHaveBeenCalledTimes(before)
+    expect(commits).toBe(commitsBefore)
+    act(() => {
+      stale = { all: 0, sites: { 'Pane\u0000other': 1, 'Pane\u0000x': 1 } }
       for (const listener of listeners) listener()
     })
     await waitFor(() => expect(render$).toHaveBeenCalledTimes(before + 1))

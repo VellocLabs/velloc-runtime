@@ -1656,6 +1656,32 @@ describe('$.agent through the engine', () => {
       setTeamMessenger(null)
     }
   })
+
+  it('$.agent is sub-agents only: a background shell or script id is not listed, waited on, viewed or read', async () => {
+    const { engine } = makeEngine(passThrough())
+    const own = engine.boundSessionId()
+    setSubAgentController({
+      list: (spawner: string) =>
+        spawner === own
+          ? [
+              { sessionId: 'a1', status: 'running', description: 'scan', agentType: 'Explore', startedAt: 0, kind: 'agent' },
+              { sessionId: 'shell-1', status: 'running', description: 'npm run dev', startedAt: 1, kind: 'shell' },
+              { sessionId: 'script-1', status: 'success', description: 'a script', startedAt: 2, kind: 'script' },
+            ]
+          : [],
+      waitForCompletion: () => Promise.reject(new Error('a shell must not be waited on')),
+    } as unknown as SubAgentController)
+    try {
+      expect(engine.modAgents.list().map(info => info.id)).toEqual(['a1'])
+      expect(engine.modAgents.viewTarget?.('shell-1')).toBeUndefined()
+      expect(engine.modAgents.viewTarget?.('a1')).toEqual({ kind: 'subagent', sessionId: 'a1' })
+      await expect(engine.modAgents.wait!('shell-1', {})).rejects.toMatchObject({ name: 'NotFoundError' })
+      await expect(engine.modAgents.wait!('script-1', {})).rejects.toMatchObject({ name: 'NotFoundError' })
+      expect(await engine.modTranscript.agentRows!('shell-1')).toMatchObject({ deny: expect.stringContaining("not one of this session's agents") })
+    } finally {
+      setSubAgentController(null)
+    }
+  })
 })
 
 describe('$.tool.register through the engine', () => {

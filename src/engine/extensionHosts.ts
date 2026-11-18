@@ -21,6 +21,7 @@ import {
   ModRegisteredAgents,
   agentInfosOf,
   agentOutcomeOf,
+  agentRowsOf,
   agentToolInputOf,
   denialOfLaunch,
   isModRegisteredAgent,
@@ -267,8 +268,7 @@ function agentHost({ ledger }: HostParts, registeredAgents: ModRegisteredAgents,
     list: () => agentInfosOf(getSubAgentController()?.list(ledger.sessionId()) ?? []),
     viewTarget: agentId => {
       // A subagent answers to its task id and to the id its own loop's events carry.
-      const subagent = getSubAgentController()
-        ?.list(ledger.sessionId())
+      const subagent = agentRowsOf(getSubAgentController()?.list(ledger.sessionId()) ?? [])
         .find(entry => entry.sessionId === agentId || entry.loopId === agentId)
       if (subagent) return { kind: 'subagent', sessionId: subagent.sessionId }
       const roster = getTeamMessenger()?.listMembers?.(ledger.sessionId()) ?? []
@@ -294,7 +294,7 @@ function agentHost({ ledger }: HostParts, registeredAgents: ModRegisteredAgents,
     wait: async (agentId, { signal }) => {
       const controller = getSubAgentController()
       if (!controller) throw refusal('NotSupportedError', '$.agent.wait is not available: this session runs no subagents')
-      if (!controller.list(ledger.sessionId()).some(entry => entry.sessionId === agentId)) {
+      if (!agentRowsOf(controller.list(ledger.sessionId())).some(entry => entry.sessionId === agentId)) {
         throw refusal('NotFoundError', `$.agent.wait: ${agentId} is not one of this session's agents`)
       }
       // Held before the run can end, so its notification is never queued
@@ -354,7 +354,7 @@ function transcriptHost({ ledger }: HostParts, startedAt: number): Required<ModT
   return {
     rows: () => ledger.rows as unknown as readonly StoredRow[],
     agentRows: async agentId => {
-      const listed = getSubAgentController()?.list(ledger.sessionId()).some(entry => entry.sessionId === agentId) ?? false
+      const listed = agentRowsOf(getSubAgentController()?.list(ledger.sessionId()) ?? []).some(entry => entry.sessionId === agentId)
       if (!listed) return agentDeny(agentId, "not one of this session's agents")
       const rows = await getRecordedMessagesForSession(agentId, config.conversationStore)
       if (rows.length === 0) return agentDeny(agentId, 'no saved transcript to read yet')

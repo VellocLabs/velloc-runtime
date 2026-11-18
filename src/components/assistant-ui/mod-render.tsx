@@ -630,12 +630,13 @@ export function useModRender(
   plugin?: string,
 ): ModUiRenderResult | undefined {
   const { hooked, stale: viewStale, staleSource, render } = useModUi();
-  const stale = React.useSyncExternalStore(
-    staleSource?.subscribe ?? subscribeToNothing,
-    staleSource?.read ?? (() => viewStale),
-  );
+  // Numbers, not the counters object: a bump of another site leaves this one unrendered.
+  const subscribe = staleSource?.subscribe ?? subscribeToNothing;
+  const readStale = staleSource?.read ?? (() => viewStale);
+  const staleKey = staleKeyOf(component, requestId);
+  const staleCount = React.useSyncExternalStore(subscribe, () => readStale().sites[staleKey] ?? 0);
+  const staleAll = React.useSyncExternalStore(subscribe, () => readStale().all);
   const isHooked = isSiteHooked(hooked, component, requestId);
-  const staleCount = stale.sites[staleKeyOf(component, requestId)] ?? 0;
   const propsDigest = JSON.stringify(props);
   const [result, setResult] = React.useState<ModUiRenderResult | undefined>(undefined);
   const askRef = React.useRef(0);
@@ -661,7 +662,7 @@ export function useModRender(
     );
     // `viewport.rows`: "a change of height alone re-draws nothing".
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isHooked, render, component, requestId, plugin, propsDigest, viewport.columns, staleCount, stale.all]);
+  }, [isHooked, render, component, requestId, plugin, propsDigest, viewport.columns, staleCount, staleAll]);
   return result;
 }
 
