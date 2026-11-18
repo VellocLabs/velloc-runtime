@@ -41,9 +41,12 @@ export type CustomizeScreenProps = {
 
 /**
  * The left list's selection: the directory page, or the marketplaces' start
- * page scrolled to the one last chosen (a new `nonce` scrolls to it again).
+ * page scrolled to the one last chosen (a new `nonce` scrolls to it again;
+ * `flash` marks its title, as after an add).
  */
-type Selection = { kind: 'directory' } | { kind: 'browse'; focus: { name: string; nonce: number } | null }
+type Selection =
+  | { kind: 'directory' }
+  | { kind: 'browse'; focus: { name: string; nonce: number; flash: boolean } | null }
 
 const DIRECTORY: Selection = { kind: 'directory' }
 
@@ -87,10 +90,11 @@ export function CustomizeScreen({
   }, [marketplaceAddRequest, bridge])
   const [removing, setRemoving] = React.useState<string | null>(null)
   const nonce = React.useRef(0)
-  const browse = React.useCallback((name: string | null) => {
+  const browse = React.useCallback((name: string | null, flash = false) => {
     nonce.current += 1
-    setSelection({ kind: 'browse', focus: name === null ? null : { name, nonce: nonce.current } })
+    setSelection({ kind: 'browse', focus: name === null ? null : { name, nonce: nonce.current, flash } })
   }, [])
+  const showAdded = React.useCallback((name: string) => browse(name, true), [browse])
   const addMarket = React.useCallback(
     async (source: string) => {
       if (!bridge) throw new Error('')
@@ -314,7 +318,7 @@ export function CustomizeScreen({
       <AddMarketplaceDialog
         open={addingMarket}
         onAdd={addMarket}
-        onShow={browse}
+        onShow={showAdded}
         onClose={() => {
           setAddingMarket(false)
           setAddRequest(null)

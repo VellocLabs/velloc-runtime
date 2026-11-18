@@ -11,6 +11,7 @@ import {
 } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
+import { cn } from '@/lib/utils'
 
 import type { DirectoryItemDetails } from '../../../customize/directoryOffer'
 import { listingIconUrl } from '../../../customize/listingIcon'
@@ -31,6 +32,9 @@ import { installKey, type MarketplaceShelf, type MarketplaceShelvesView } from '
 /** Cards a marketplace's section shows before "Show all": four rows of two. */
 export const SECTION_LIMIT = 8
 
+/** How long a section's title shimmers after the dialog shows it. */
+export const SECTION_FLASH_MS = 10_000
+
 /** The page column: as wide as the directory's, centred, with the same side margins. */
 const PAGE_COLUMN = 'mx-auto w-full max-w-[64rem] px-8'
 
@@ -38,8 +42,8 @@ export type MarketplaceBrowserProps = {
   /** The browsed marketplaces, in the left list's order. */
   marketplaces: readonly string[]
   view: MarketplaceShelvesView
-  /** The marketplace last chosen in the left list; a new `nonce` scrolls to it again. */
-  focus: { name: string; nonce: number } | null
+  /** The marketplace last chosen; a new `nonce` scrolls to it again, and `flash` shimmers its title. */
+  focus: { name: string; nonce: number; flash?: boolean } | null
   /** Opens the add-marketplace dialog; offered when nothing is added yet. */
   onAdd?: () => void
   /** Shows a directory page (by path) in the plugin directory. */
@@ -70,8 +74,19 @@ export function MarketplaceBrowser(props: MarketplaceBrowserProps) {
   const scroller = React.useRef<HTMLDivElement | null>(null)
   const sections = React.useRef(new Map<string, HTMLElement>())
 
+  const [flashing, setFlashing] = React.useState<string | null>(null)
+
   React.useEffect(() => {
     if (focus) setRoute({ page: 'home' })
+  }, [focus])
+  React.useEffect(() => {
+    if (!focus?.flash) {
+      setFlashing(null)
+      return
+    }
+    setFlashing(focus.name)
+    const timer = setTimeout(() => setFlashing(null), SECTION_FLASH_MS)
+    return () => clearTimeout(timer)
   }, [focus])
   React.useEffect(() => {
     if (!focus || route.page !== 'home') return
@@ -158,6 +173,7 @@ export function MarketplaceBrowser(props: MarketplaceBrowserProps) {
               shelf={shelfOf(name)}
               view={view}
               limit={SECTION_LIMIT}
+              flash={flashing === name}
               sectionRef={el => {
                 if (el) sections.current.set(name, el)
                 else sections.current.delete(name)
@@ -178,6 +194,7 @@ function Section({
   shelf,
   view,
   limit,
+  flash = false,
   sectionRef,
   onShowAll,
   onOpen,
@@ -186,6 +203,8 @@ function Section({
   shelf: MarketplaceShelf
   view: MarketplaceShelvesView
   limit?: number
+  /** Shimmers the title. */
+  flash?: boolean
   sectionRef?: (el: HTMLElement | null) => void
   onShowAll?: () => void
   onOpen: (plugin: string) => void
@@ -260,7 +279,16 @@ function Section({
       className="@container flex scroll-mt-2 flex-col gap-3 py-4"
     >
       <div className="flex min-h-7 items-center gap-2">
-        <h3 className="truncate text-[15px] leading-5 font-semibold text-foreground">{marketplace}</h3>
+        <h3
+          data-testid="customize-market-title"
+          data-flash={flash ? 'true' : undefined}
+          className={cn(
+            'truncate text-[15px] leading-5 font-semibold text-foreground',
+            flash && 'shimmer motion-reduce:animate-none',
+          )}
+        >
+          {marketplace}
+        </h3>
         {shelf.status === 'ready' ? (
           <span
             data-testid="customize-market-count"

@@ -6,7 +6,7 @@
  * the page's own add button opens, the marketplaces' start page with cards
  * and detail pages, and adding and removing a marketplace.
  */
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createElement } from 'react'
 import { act, cleanup, fireEvent, render, renderHook, waitFor } from '@testing-library/react'
 
@@ -820,6 +820,46 @@ describe('CustomizeScreen — adding a marketplace', () => {
     expect(row.getAttribute('aria-current')).toBe('page')
     expect(view.getByTestId('customize-title').textContent).toBe(EN_MESSAGES['customize.browse.title'])
     await waitFor(() => expect(view.getByTestId('customize-market-plugin').getAttribute('data-name')).toBe('fresh'))
+  })
+
+  it('an added marketplace scrolls to its section, whose title alone shimmers for ten seconds; a list click does not', async () => {
+    const scrolled: string[] = []
+    const original = Element.prototype.scrollIntoView
+    Element.prototype.scrollIntoView = function (this: Element) {
+      scrolled.push(this.getAttribute('data-marketplace') ?? '')
+    }
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    try {
+      const { view, type, confirm } = await opened({
+        marketplaces: [{ name: 'alpha' }],
+        manifests: { alpha: { plugins: [] } },
+        addAnswers: [{ ok: true, status: 'added', name: 'acme-market', pluginCount: 1 }],
+      })
+      type('acme/tools')
+      confirm()
+      await waitFor(() => expect(view.queryByTestId('customize-add-market-dialog')).toBeNull())
+      expect(scrolled).toEqual(['acme-market'])
+      const flashing = () =>
+        view
+          .getAllByTestId('customize-market-title')
+          .filter(t => t.getAttribute('data-flash') === 'true')
+          .map(t => t.textContent)
+      expect(flashing()).toEqual(['acme-market'])
+      expect(view.getAllByTestId('customize-market-title').find(t => t.textContent === 'acme-market')!.className).toContain('shimmer')
+
+      act(() => void vi.advanceTimersByTime(9_900))
+      expect(flashing()).toEqual(['acme-market'])
+      act(() => void vi.advanceTimersByTime(200))
+      expect(flashing()).toEqual([])
+      expect(view.getAllByTestId('customize-market-title').some(t => t.className.includes('shimmer'))).toBe(false)
+
+      fireEvent.click(view.getAllByTestId('customize-market').find(r => r.getAttribute('data-name') === 'alpha')!)
+      expect(scrolled).toEqual(['acme-market', 'alpha'])
+      expect(flashing()).toEqual([])
+    } finally {
+      vi.useRealTimers()
+      Element.prototype.scrollIntoView = original
+    }
   })
 
   it('a repository already added says under which name, and Show it goes there', async () => {
