@@ -22,6 +22,7 @@ let uniq = 0
 function world(modules: Record<string, string>, drawsComposer: boolean) {
   const reports: string[] = []
   const states: ModUiSnapshot[] = []
+  const events: ModUiEvent[] = []
   const refs: ModModuleRef[] = Object.keys(modules).map(plugin => ({ plugin, path: `/plugins/${plugin}/hooks/register.js` }))
   const runtime = new ModRuntime({
     modules: refs,
@@ -40,13 +41,14 @@ function world(modules: Record<string, string>, drawsComposer: boolean) {
     report: line => reports.push(line),
     drawsComposer,
     onUiChanged: (event: ModUiEvent) => {
+      events.push(event)
       if (event.kind === 'state') states.push(event.state)
     },
   })
   runtimes.push(runtime)
   const logs = (plugin: string) =>
     reports.filter(r => r.startsWith(`${plugin}: `)).map(r => JSON.parse(r.slice(plugin.length + 2)) as Record<string, unknown>)
-  return { runtime, reports, states, logs, refs }
+  return { runtime, reports, states, events, logs, refs }
 }
 
 const PALETTE = { v: 1, label: 'Paper', inputs: { light: { 'gray-20': '#efe6d3', 'gray-900': '#2a241d' } } }
@@ -272,11 +274,10 @@ describe('$.theme', () => {
   })
 
   it("a scene that passes to another plugin drops the former owner's drawing's handles", async () => {
-    const scene = (name: string, delay: number) => `
+    const FIRST = `
       export function register(on) {
         on('session.start', async ($, e, next) => {
-          await $.clock.sleep(${delay});
-          await $.theme.set({ backdrop: { scene: '${name}' } });
+          await $.theme.set({ backdrop: { scene: 'tide' } });
           return next(e);
         });
         on('ui.render', { component: 'Backdrop' }, ($, e) => {
@@ -285,43 +286,61 @@ describe('$.theme', () => {
         });
       }
     `
-    const { runtime } = world({ first: scene('tide', 0), second: scene('dunes', 300) }, true)
+    const SECOND = `
+      export function register(on) {
+        on('session.start', async ($, e, next) => {
+          await $.command.register({ name: 'dunes', description: 'Sets the dunes scene.', immediate: true });
+          return next(e);
+        });
+        on('command.run', { command: 'dunes' }, async ($, e) => {
+          await $.theme.set({ backdrop: { scene: 'dunes' } });
+          return { text: 'dunes' };
+        });
+      }
+    `
+    const { runtime } = world({ first: FIRST, second: SECOND }, true)
     const ask = { component: 'Backdrop' as const, requestId: 'backdrop', props: { scene: 'tide', plugin: 'first', glass: false as const } }
-    const deadline = Date.now() + 2_000
-    while (runtime.uiSnapshot().theme?.plugin !== 'first') {
-      if (Date.now() > deadline) throw new Error('timed out waiting')
-      await new Promise(resolve => setTimeout(resolve, 5))
-    }
+    await runtime.ready
+    expect(runtime.uiSnapshot().theme?.plugin).toBe('first')
     const drawn = await runtime.render(ask)
     if (drawn.kind !== 'tree') throw new Error('expected a tree')
     const handle = (drawn.tree as { press?: { handle: number } }).press!.handle
-    await runtime.ready
+    await runtime.commandRunImmediate({ command: 'dunes', args: '' })
     expect(runtime.uiSnapshot().theme?.plugin).toBe('second')
     expect(
       await runtime.uiInput({ kind: 'press', plugin: 'first', element: 'wave', component: 'Backdrop', requestId: 'backdrop', handle }),
     ).toEqual({ ok: false, reason: 'the drawing is gone' })
   })
 
-  it('a scene drawing still in flight when the scene goes keeps none of its handles', async () => {
+  it('a scene drawing still in flight when the scene goes keeps none of its handles or reads', async () => {
     const CLEARS_WHILE_DRAWING = `
+      const mood = { plugin: 'scene', key: 'mood' }
       export function register(on) {
         on('session.start', async ($, e, next) => {
           await $.theme.set({ backdrop: { scene: 'tide' } });
+          await $.command.register({ name: 'mood', description: 'Changes the mood.', immediate: true });
           return next(e);
         });
-        on('command.run', async ($, e, next) => next(e));
+        on('command.run', { command: 'mood' }, async ($, e) => {
+          await $.state.set(mood, 'calm');
+          return { text: 'mood' };
+        });
         on('ui.render', { component: 'Backdrop' }, async ($, e) => {
+          await $.state.get(mood);
           await $.theme.clear();
           const { Button } = $.ui.resolve(e);
           return Button({ key: 'wave', label: 'Wave', onPress: async () => {} });
         });
       }
     `
-    const { runtime } = world({ scene: CLEARS_WHILE_DRAWING }, true)
+    const { runtime, events } = world({ scene: CLEARS_WHILE_DRAWING }, true)
     await runtime.ready
     const drawn = await runtime.render({ component: 'Backdrop', requestId: 'backdrop', props: { scene: 'tide', plugin: 'scene', glass: false } })
     expect(runtime.uiSnapshot().theme).toBeUndefined()
     expect(drawn).toEqual({ kind: 'engine' })
+    const before = events.length
+    await runtime.commandRunImmediate({ command: 'mood', args: '' })
+    expect(events.slice(before).filter(e => e.kind === 'stale')).toEqual([])
   })
 
   it('a plugin that unloads takes its theme with it', async () => {
