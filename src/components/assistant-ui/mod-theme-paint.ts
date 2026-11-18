@@ -110,7 +110,7 @@ export const GLASS_TOKENS: readonly string[] = ['--background', '--base', '--too
 /** The fills of a hovered or pressed control and of a chip or badge. On glass
  *  each keeps its own color at this share, so it lets the glass show through. */
 export const GLASS_HIGHLIGHT_TOKENS: readonly string[] = ['--accent', '--sidebar-accent', '--muted', '--secondary']
-export const GLASS_HIGHLIGHT_OPACITY = 0.3
+export const GLASS_HIGHLIGHT_OPACITY = 0.15
 
 /** Velloc's floor for every text token on every surface token; under it, or
  *  where a pair cannot be judged, the whole palette is refused. */
