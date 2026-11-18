@@ -17,6 +17,7 @@ import type { DirectoryItemDetails } from '../../../customize/directoryOffer'
 import { listingIconUrl } from '../../../customize/listingIcon'
 import type { PluginAvailableUiEntry } from '../../bridge/protocol/plugins'
 import { useT } from '../i18n'
+import { alignTopInScroller } from '../scrollWithinParent'
 import type { SettingsSectionId } from '../settings/settingsNav'
 import { ItemAvatar } from './ItemAvatar'
 import {
@@ -92,11 +93,7 @@ export function MarketplaceBrowser(props: MarketplaceBrowserProps) {
     if (!focus || route.page !== 'home') return
     const section = sections.current.get(focus.name)
     const box = scroller.current
-    if (!section || !box) return
-    // Only the page's own scroller moves: scrollIntoView would also scroll
-    // the screen's clipped ancestors and push the top bar out of view.
-    const top = section.getBoundingClientRect().top - box.getBoundingClientRect().top + box.scrollTop
-    box.scrollTo?.({ top, behavior: 'smooth' })
+    if (section && box) alignTopInScroller(section, box)
   }, [focus, route.page])
   React.useEffect(() => {
     if (route.page !== 'home') scroller.current?.scrollTo?.({ top: 0 })

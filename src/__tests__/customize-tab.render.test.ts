@@ -17,6 +17,7 @@ import { SECTION_FLASH_MS } from '../browser/webview/customize/MarketplaceBrowse
 import { directoryUrl } from '../browser/webview/customize/customizeRoutes'
 import { en as EN_MESSAGES } from '../browser/webview/i18n/messages/en'
 import { SettingsBridgeContext, type NexusSettingsBridge } from '../browser/webview/nexusSettingsBridge'
+import * as scrollWithinParent from '../browser/webview/scrollWithinParent'
 
 afterEach(() => cleanup())
 
@@ -365,15 +366,14 @@ describe('CustomizeScreen — the left list', () => {
     // Only the page's own scroller may move: scrollIntoView would also scroll
     // the screen's clipped ancestors and push the top bar out of view.
     const scrolled: string[] = []
+    const align = vi.spyOn(scrollWithinParent, 'alignTopInScroller').mockImplementation((section, scroller) => {
+      scrolled.push(`${scroller.getAttribute('data-testid')}:${section.getAttribute('data-marketplace')}`)
+    })
     const originalInto = Element.prototype.scrollIntoView
-    const originalTo = Element.prototype.scrollTo
     const intoCalls: Element[] = []
     Element.prototype.scrollIntoView = function (this: Element) {
       intoCalls.push(this)
     }
-    Element.prototype.scrollTo = function (this: Element) {
-      scrolled.push(this.getAttribute('data-testid') ?? '')
-    } as typeof Element.prototype.scrollTo
     try {
       const fake = fakeConnection(['ok'])
       const { bridge } = fakeBridge({
@@ -390,20 +390,20 @@ describe('CustomizeScreen — the left list', () => {
         'alpha',
         'team-tools',
       ])
-      expect(scrolled).toEqual(['customize-browse'])
+      expect(scrolled).toEqual(['customize-browse:team-tools'])
       expect(view.getAllByTestId('customize-market')[1]!.getAttribute('aria-current')).toBe('page')
 
       // Choosing it again scrolls to it again.
       fireEvent.click(view.getAllByTestId('customize-market')[1]!)
-      expect(scrolled).toEqual(['customize-browse', 'customize-browse'])
+      expect(scrolled).toEqual(['customize-browse:team-tools', 'customize-browse:team-tools'])
 
       fireEvent.click(view.getByTestId('customize-market-directory'))
       expect(view.queryByTestId('webview-area')).not.toBeNull()
       await waitFor(() => expect(fake.shows).toHaveLength(2))
-    } finally {
       expect(intoCalls).toEqual([])
+    } finally {
       Element.prototype.scrollIntoView = originalInto
-      Element.prototype.scrollTo = originalTo
+      align.mockRestore()
     }
   })
 })
@@ -834,10 +834,9 @@ describe('CustomizeScreen — adding a marketplace', () => {
 
   it('an added marketplace scrolls to its section, whose title alone shimmers for ten seconds; a list click does not', async () => {
     const scrolled: string[] = []
-    const original = Element.prototype.scrollTo
-    Element.prototype.scrollTo = function () {
-      scrolled.push('scroll')
-    } as typeof Element.prototype.scrollTo
+    const align = vi.spyOn(scrollWithinParent, 'alignTopInScroller').mockImplementation(section => {
+      scrolled.push(section.getAttribute('data-marketplace') ?? '')
+    })
     vi.useFakeTimers({ shouldAdvanceTime: true })
     try {
       const { view, type, confirm } = await opened({
@@ -849,7 +848,7 @@ describe('CustomizeScreen — adding a marketplace', () => {
       const addedAt = Date.now()
       confirm()
       await waitFor(() => expect(view.queryByTestId('customize-add-market-dialog')).toBeNull())
-      expect(scrolled).toEqual(['scroll'])
+      expect(scrolled).toEqual(['acme-market'])
       const flashing = () =>
         view
           .getAllByTestId('customize-market-title')
@@ -867,11 +866,11 @@ describe('CustomizeScreen — adding a marketplace', () => {
       expect(view.getAllByTestId('customize-market-title').some(t => t.className.includes('shimmer'))).toBe(false)
 
       fireEvent.click(view.getAllByTestId('customize-market').find(r => r.getAttribute('data-name') === 'alpha')!)
-      expect(scrolled).toEqual(['scroll', 'scroll'])
+      expect(scrolled).toEqual(['acme-market', 'alpha'])
       expect(flashing()).toEqual([])
     } finally {
       vi.useRealTimers()
-      Element.prototype.scrollTo = original
+      align.mockRestore()
     }
   })
 
