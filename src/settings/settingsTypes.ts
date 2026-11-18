@@ -12,6 +12,7 @@ import type { SettingsModeId } from '../permissions/sessionModes'
 import type { MemoryMaintenanceMode } from '../memory/memoryPaths'
 import type { NexusDocumentInputMode } from '../config/nexusModelConfig/types'
 import type { UserModelDef } from '../config/nexusModelConfig/userModels'
+import type { ThemeBackdropScope, ThemeModEntry } from '../mods/themeMods'
 
 /** Declarative permission rules — the `settings.json` `permissions` block.
  *  Rule strings are `ToolName` (whole tool) or
@@ -400,7 +401,13 @@ export type NexusSettingsV1 = {
    *  remote trigger) load the enabled plugins' hooks modules, which it
    *  otherwise never does — nobody is at a headless session to see a mod
    *  misbehave, so loading there is the user's explicit choice. */
-  mods?: { headless?: boolean }
+  mods?: {
+    headless?: boolean
+    /** The plugins that have set a theme, oldest first; the runtime writes it. */
+    themeMods?: ThemeModEntry[]
+    /** How far a theme's backdrop reaches. Absent reads as the whole window. */
+    backdropScope?: ThemeBackdropScope
+  }
   /** Model catalog (F-28). Hidden: `sourceUrl` points the catalog fetcher at
    *  another copy of the public model document (a test server, an enterprise
    *  mirror). Absent = the built-in default. No settings page edits it. */

@@ -1,5 +1,6 @@
 import { SHELL_TOOL_ID } from '../../prompting/processToolNames'
-import { readUserLayer } from '../../settings/settingsStore'
+import { readUserLayer, updateSectionInSource } from '../../settings/settingsStore'
+import { withThemeMod } from '../../mods/themeMods'
 import { isMemoryEnabled, resolveMemoryDir } from '../../memory/memoryPaths'
 import { getScratchpadDirectoryPath, resolveSessionStorageBase } from '../../utils/conversationStoragePaths'
 import { pluginTasksForSession } from '../../mods/modTasks'
@@ -167,6 +168,7 @@ export async function buildSlotModRuntime(
   // Declared before the runtime so its `dispose` can call it: the registry
   // entry goes with the runtime, not only with the scope's abort.
   let unregisterSlot: (() => void) | undefined
+  const notedThemeMods = new Map<string, string>()
   const modRuntime = new ModRuntime({
     modules,
     // `$.plugin.locale` / `session.start`'s `locale`: the page's language.
@@ -474,6 +476,28 @@ export async function buildSlotModRuntime(
     // A registered command changes the picker's list, which rides the
     // worker snapshot: the same fan-out republishes it.
     onCommandsChanged: () => noteModSlotChanged(slot.resolvedSessionId),
+    // A plugin that sets a theme is a theme mod from then on: settings.json
+    // `mods.themeMods`, written once per plugin and module set.
+    ...(settingsHomeDir
+      ? {
+          onThemeSet: (ref: { plugin: string; provenance?: string; root?: string }) => {
+            const id = ref.provenance ?? `${ref.plugin}@inline`
+            const entry = { plugin: ref.plugin, id, ...(id.endsWith('@inline') && ref.root ? { root: ref.root } : {}) }
+            const noted = `${entry.id}
+${entry.root ?? ''}`
+            if (notedThemeMods.get(entry.plugin) === noted) return
+            notedThemeMods.set(entry.plugin, noted)
+            void updateSectionInSource('userSettings', { homeDir: settingsHomeDir }, slot.installedFs, 'mods', previous => {
+              const before = previous?.themeMods ?? []
+              const after = withThemeMod(before, entry)
+              return after === before ? previous : { ...(previous ?? {}), themeMods: [...after] }
+            }).catch(error => {
+              notedThemeMods.delete(entry.plugin)
+              reportMods(`the theme mod ${entry.plugin} could not be recorded: ${error instanceof Error ? error.message : String(error)}`)
+            })
+          },
+        }
+      : {}),
     // A mod's status line, notice or toast: `mods/ui/<sessionId>`, through
     // the same registry.
     onUiChanged: event => noteModUiEvent(slot.resolvedSessionId, event),

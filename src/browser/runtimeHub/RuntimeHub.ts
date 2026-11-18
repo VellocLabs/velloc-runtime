@@ -67,6 +67,7 @@ import { registerChaptersCapability } from './chaptersCapability'
 import { registerTurnTopic } from './turnCapability'
 import { registerReviewCapability } from './reviewCapability'
 import { registerPluginUpdatesCapability } from './pluginUpdatesCapability'
+import { registerThemeModsCapability } from './themeModsCapability'
 import { resolveHostHome } from './hostFs'
 import { currentTemplateChannel } from '../../branding/updateChannels'
 import { registerCatalogCapability } from './catalogCapability'
@@ -375,6 +376,13 @@ export class RuntimeHub {
       fs: () => this.context.webUiBridge.fs,
       resolveHome: () => resolveHostHome(this.context),
       channel: currentTemplateChannel,
+    })
+    // Theme mods (F-25): the plugins that have set a theme and the
+    // backdrop's reach on `mods/themes`; `read` is `observe`,
+    // `setBackdropScope` is `control`.
+    registerThemeModsCapability(this.registry, this.broker, {
+      context: () => ({ fs: this.context.webUiBridge.fs }),
+      resolveHome: () => resolveHostHome(this.context),
     })
     // Model data (F-28): the catalog status on `catalog/status` and the
     // `catalog.refresh` action (`manager`); the service comes from the seam in

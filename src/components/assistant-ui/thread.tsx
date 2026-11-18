@@ -42,6 +42,7 @@ import {
 import { ModAbovePrompt, ModPanes } from "./mod-render";
 import { ModPlacedProvider } from "./mod-placed";
 import { ModAppLook, ModBackdrop, useModThemeLook } from "./mod-theme";
+import { ThemeModsMenu } from "./theme-mods-menu";
 import { EnterPlanModeFooterControl } from "./enter-plan-mode-footer-control";
 import { SessionCardStack } from "./session-card-stack";
 import { NextMessageStrip } from "./next-message-strip";
@@ -559,6 +560,7 @@ export const Thread: FC<{
       <ModPageResponder />
       <ReplySelectionToolbar listRef={messageListRef} isForeground={isForeground} />
       <MessageContextMenu listRef={messageListRef} sessionId={sessionId} isForeground={isForeground} />
+      <ThemeModsMenu sessionId={sessionId} isForeground={isForeground} />
       {/* Whole-pane drop target. The composer has its own dropzone, but the
           conversation area is the larger, more natural place to drop a file —
           dropping anywhere here adds it as a composer attachment (resolves the

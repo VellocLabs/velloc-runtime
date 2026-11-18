@@ -124,6 +124,8 @@ export type ModRuntimeOptions = {
   onStatusChanged?: () => void
   /** The registered commands changed: the picker's list is stale. */
   onCommandsChanged?: () => void
+  /** A plugin set a theme; `ref` is one of its modules. */
+  onThemeSet?: (ref: ModModuleRef) => void
   /** A mod's status line or notice changed (`state`), or a toast was shown. */
   onUiChanged?: (event: ModUiEvent) => void
   /** The session draws a prompt box on a page (the interactive session):

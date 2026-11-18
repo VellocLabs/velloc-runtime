@@ -19,7 +19,7 @@ afterEach(() => {
 })
 
 let uniq = 0
-function world(modules: Record<string, string>, drawsComposer: boolean) {
+function world(modules: Record<string, string>, drawsComposer: boolean, onThemeSet?: (ref: ModModuleRef) => void) {
   const reports: string[] = []
   const states: ModUiSnapshot[] = []
   const events: ModUiEvent[] = []
@@ -40,6 +40,7 @@ function world(modules: Record<string, string>, drawsComposer: boolean) {
     session: { id: () => 's', cwd: () => '/work/project' },
     report: line => reports.push(line),
     drawsComposer,
+    ...(onThemeSet ? { onThemeSet } : {}),
     onUiChanged: (event: ModUiEvent) => {
       events.push(event)
       if (event.kind === 'state') states.push(event.state)
@@ -341,6 +342,14 @@ describe('$.theme', () => {
     const before = events.length
     await runtime.commandRunImmediate({ command: 'mood', args: '' })
     expect(events.slice(before).filter(e => e.kind === 'stale')).toEqual([])
+  })
+
+  it('tells its host which plugin set a theme', async () => {
+    const setters: string[] = []
+    const { runtime } = world({ guard: GUARD, setter: SETTER }, true, ref => setters.push(ref.plugin))
+    await runtime.ready
+    expect(setters.length).toBeGreaterThan(0)
+    expect(new Set(setters)).toEqual(new Set(['setter']))
   })
 
   it('a plugin that unloads takes its theme with it', async () => {

@@ -6,6 +6,7 @@
 
 import { parseHooksSettings } from '../lifecycleHooks/hookTypes'
 import { isMemoryMaintenanceMode } from '../memory/memoryPaths'
+import { isThemeBackdropScope, readThemeMods } from '../mods/themeMods'
 import {
   NEXUS_SETTINGS_VERSION,
   type CustomModelCapabilities,
@@ -425,10 +426,16 @@ export function normalizeSettings(
   if (typeof raw.pluginAutoUpdate === 'boolean') out.pluginAutoUpdate = raw.pluginAutoUpdate
 
   // mods (F-25): `headless: true` opts a headless run (routine, cron,
-  // remote trigger) into loading mods. Only a boolean survives.
+  // remote trigger) into loading mods; `themeMods` and `backdropScope` are
+  // the theme mods and the backdrop's reach. Only well-formed values survive.
   if (raw.mods && typeof raw.mods === 'object' && !Array.isArray(raw.mods)) {
-    const headless = (raw.mods as { headless?: unknown }).headless
-    if (typeof headless === 'boolean') out.mods = { headless }
+    const { headless, themeMods, backdropScope } = raw.mods as Record<string, unknown>
+    const mods: NonNullable<NexusSettingsV1['mods']> = {}
+    if (typeof headless === 'boolean') mods.headless = headless
+    const themes = readThemeMods(themeMods)
+    if (themes.length > 0) mods.themeMods = themes
+    if (isThemeBackdropScope(backdropScope)) mods.backdropScope = backdropScope
+    if (Object.keys(mods).length > 0) out.mods = mods
   }
 
   // catalog (F-28, hidden): only an absolute http(s) `sourceUrl` survives;
