@@ -108,7 +108,8 @@ describe('$.theme', () => {
   })
 
   it('draws the scene as the Backdrop site with its scene and plugin', async () => {
-    const { runtime } = world({ setter: SETTER }, true)
+    // The guard refuses the flat ground, so the scene is what stands.
+    const { runtime } = world({ guard: GUARD, setter: SETTER }, true)
     await runtime.ready
     const drawn = await runtime.render({
       component: 'Backdrop',
@@ -117,6 +118,71 @@ describe('$.theme', () => {
     })
     expect(drawn.kind).toBe('tree')
     expect(JSON.stringify(drawn)).toContain('setter/tide')
+  })
+
+  it("a scene is drawn by its theme's plugin alone: another plugin's Backdrop hook is not asked unless it names every plugin, and none is asked with no scene", async () => {
+    // Draws whatever Backdrop it hears and never passes it on.
+    const GRABBER = `
+      export function register(on) {
+        on('ui.render', { component: 'Backdrop' }, ($, e) => {
+          const { Svg } = $.ui.resolve(e);
+          return h(Svg, { source: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"></svg>', alt: 'grabbed' });
+        });
+      }
+    `
+    const OWNER = `
+      export function register(on) {
+        on('session.start', async ($, e, next) => {
+          await $.theme.set({ backdrop: { scene: 'tide' } });
+          return next(e);
+        });
+        on('command.run', async ($, e, next) => next(e));
+        on('ui.render', { component: 'Backdrop' }, ($, e) => {
+          const { Svg } = $.ui.resolve(e);
+          return h(Svg, { source: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"></svg>', alt: 'owned by ' + e.plugin });
+        });
+      }
+    `
+    const ask = { component: 'Backdrop' as const, requestId: 'backdrop', props: { scene: 'tide', plugin: 'owner', glass: false as const } }
+    // The grabber is first in the chain: unowned, it would answer.
+    const { runtime } = world({ grabber: GRABBER, owner: OWNER }, true)
+    await runtime.ready
+    const drawn = JSON.stringify(await runtime.render(ask))
+    expect(drawn).toContain('owned by owner')
+    expect(drawn).not.toContain('grabbed')
+
+    const EVERY = GRABBER.replace("{ component: 'Backdrop' }", "{ component: 'Backdrop', plugin: '*' }")
+    const every = world({ grabber: EVERY, owner: OWNER }, true)
+    await every.runtime.ready
+    expect(JSON.stringify(await every.runtime.render(ask))).toContain('grabbed')
+
+    const none = world({ grabber: GRABBER }, true)
+    await none.runtime.ready
+    expect(await none.runtime.render(ask)).toEqual({ kind: 'engine' })
+  })
+
+  it("a set over another plugin's theme is reported by name; a plugin's own later set is not", async () => {
+    const FIRST = `
+      export function register(on) {
+        on('session.start', async ($, e, next) => {
+          await $.theme.set({ backdrop: { color: '#102030' } });
+          await $.theme.set({ backdrop: { color: '#203040' } });
+          return next(e);
+        });
+      }
+    `
+    const SECOND = `
+      export function register(on) {
+        on('session.start', async ($, e, next) => {
+          await $.theme.set({ backdrop: { color: '#304050' } });
+          return next(e);
+        });
+      }
+    `
+    const { runtime, reports } = world({ first: FIRST, second: SECOND }, true)
+    await runtime.ready
+    expect(runtime.uiSnapshot().theme?.plugin).toBe('second')
+    expect(reports.filter(line => line.includes('replaced the theme'))).toEqual(['second: $.theme.set replaced the theme first had set'])
   })
 
   it("a hook's rewrite of the attributes is what stands; a clear removes another plugin's theme", async () => {

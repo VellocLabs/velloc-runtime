@@ -175,8 +175,9 @@ export type RenderInput = {
   component: RenderSite
   requestId: string
   /** Whose drawing this is, where it is one plugin's: the plugin that opened
-   *  a `Pane`. A hook whose matcher leaves it out hears its own plugin's
-   *  drawings alone; `{ plugin: '*' }` hears every plugin's. */
+   *  a `Pane`, or set the theme whose scene a `Backdrop` draws. A hook whose
+   *  matcher leaves it out hears its own plugin's drawings alone;
+   *  `{ plugin: '*' }` hears every plugin's. */
   plugin?: string
   viewport?: RenderViewport
   props:

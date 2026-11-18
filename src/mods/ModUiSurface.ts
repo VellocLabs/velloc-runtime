@@ -160,6 +160,9 @@ export abstract class ModUiSurface extends ModEngineEvents {
     if (this.disposed || !this.dispatcher.hasHooksFor('ui.render')) return { kind: 'engine' }
     // The band's arrangement is raised inside the band's own drawing, never asked for.
     if (input.component === BAND_LIST_COMPONENT) return { kind: 'engine' }
+    // A scene is its theme's plugin's to draw; with none standing no hook is asked.
+    const isBackdrop = input.component === 'Backdrop'
+    if (isBackdrop && !this.theme.hasScene()) return { kind: 'engine' }
     const key = drawingKeyOf(input.component, input.requestId, input.client)
     // The latest ask for a drawing is the one its client shows: an earlier
     // one still in flight must not replace its handles when it settles.
@@ -167,7 +170,12 @@ export abstract class ModUiSurface extends ModEngineEvents {
     this.latestRender.set(key, ask)
     const overtaken = (): boolean => this.latestRender.get(key) !== ask
     this.unsubscribeAll(key)
-    const owner = input.component === 'Pane' ? this.paneOwnerOf(input.requestId, input.plugin) : undefined
+    const owner =
+      input.component === 'Pane'
+        ? this.paneOwnerOf(input.requestId, input.plugin)
+        : isBackdrop
+          ? this.theme.current()?.plugin
+          : undefined
     const e: RenderInput = {
       surface: RENDER_SURFACE,
       component: input.component,
