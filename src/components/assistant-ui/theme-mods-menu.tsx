@@ -93,7 +93,7 @@ export const ThemeModsMenu: FC<{ sessionId?: string; isForeground?: boolean }> =
   const { theme, plugins } = useModUi();
   const anchorRef = useRef<HTMLSpanElement>(null);
   const [menu, setMenu] = useState<OpenMenu | null>(null);
-  // A press shows at once; the runtime's list of loaded mods then takes over.
+  // A press shows at once; the stored state then takes over.
   const [pressed, setPressed] = useState<Readonly<Record<string, boolean>>>({});
   const [failure, setFailure] = useState<string | null>(null);
 
@@ -125,18 +125,20 @@ export const ThemeModsMenu: FC<{ sessionId?: string; isForeground?: boolean }> =
   useEffect(() => {
     setMenu(null);
   }, [sessionId]);
+  // What is stored, once read again, replaces what a press showed.
+  const stored = themes?.enabled;
   useEffect(() => {
     setPressed({});
-  }, [plugins]);
+  }, [stored]);
 
   const rows = useMemo(
     () =>
       orderThemeMods(
         themes?.mods ?? [],
-        (plugin) => pressed[plugin] ?? plugins?.[plugin] !== undefined,
+        (plugin) => pressed[plugin] ?? stored?.[plugin] ?? plugins?.[plugin] !== undefined,
         theme?.plugin,
       ),
-    [themes?.mods, pressed, plugins, theme?.plugin],
+    [themes?.mods, pressed, stored, plugins, theme?.plugin],
   );
 
   if (!themes) return null;

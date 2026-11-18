@@ -8,6 +8,8 @@ export type ThemeModsContextValue = {
   /** The plugins that have set a theme, oldest first. */
   mods: readonly ThemeModEntry[]
   backdropScope: ThemeBackdropScope
+  /** Whether each mod's plugin is enabled, by plugin name, as stored; a mod it leaves out is not known yet. */
+  enabled?: Readonly<Record<string, boolean>>
   /** Read the list again. */
   refresh: () => void
   setBackdropScope?: (scope: ThemeBackdropScope) => Promise<void>

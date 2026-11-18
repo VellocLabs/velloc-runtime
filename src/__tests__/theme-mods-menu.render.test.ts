@@ -9,6 +9,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import { EMPTY_MOD_UI, ModUiContext, type ModUiContextValue } from '../components/assistant-ui/mod-ui-context'
 import { ThemeModsContext, type ThemeModsContextValue } from '../components/assistant-ui/theme-mods-context'
 import { ThemeModsMenu, isBlankThreadTarget, orderThemeMods } from '../components/assistant-ui/theme-mods-menu'
+import { themeModEnablement } from '../browser/webview/mods/useThemeModsMenu'
 
 afterEach(cleanup)
 
@@ -67,6 +68,28 @@ describe('theme mods menu', () => {
     expect(fireEvent.contextMenu(screen.getByTestId('blank'))).toBe(false)
     await waitFor(() => expect(screen.getByTestId('theme-mods-menu')).toBeTruthy())
     expect(refresh).toHaveBeenCalledTimes(1)
+  })
+
+  it('reads a mod as enabled from what is stored, over which mods happen to be loaded', () => {
+    const lists = {
+      byId: new Map([['looks@market', false], ['aurora@market', true]]),
+      byFolder: new Map([['c:/users/u/.velloc/plugins/mine', true]]),
+    }
+    const mine = { plugin: 'mine', id: 'mine@inline', root: 'C:\\Users\\u\\.velloc\\plugins\\mine\\' }
+    expect(themeModEnablement([...MODS, mine], lists)).toEqual({ looks: false, aurora: true, mine: true })
+  })
+
+  it('checks a stored-enabled mod that no session has loaded, and unchecks a stored-disabled one that is still loaded', async () => {
+    mount(
+      { mods: MODS, backdropScope: 'window', refresh: () => {}, enabled: { looks: false, aurora: true } },
+      { plugins: { looks: { state: 'loaded' } } as never },
+    )
+    fireEvent.contextMenu(screen.getByTestId('blank'))
+    const trigger = await screen.findByTestId('theme-mods-menu-mods')
+    fireEvent.keyDown(trigger, { key: 'ArrowRight' })
+    const aurora = await screen.findByTestId('theme-mod:aurora')
+    expect(aurora.getAttribute('aria-checked')).toBe('true')
+    expect(screen.getByTestId('theme-mod:looks').getAttribute('aria-checked')).toBe('false')
   })
 
   it('draws no menu where the window offers none', () => {

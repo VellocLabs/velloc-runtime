@@ -14,9 +14,6 @@ import { getProviderMissingPrompt, revealProjectFolder, setWindowDragRegions } f
 import type { WindowDragRect } from '../bridge/protocol/ui'
 import type { SettingsSectionId } from './settings/SettingsScreen'
 import { marketplaceAddSourceOf } from './customize/marketplaceAddCommand'
-import type { NexusSettingsBridge } from './nexusSettingsBridge'
-import { pluginsSetEnabled, pluginsSetLocalEnabled } from './settings/clients'
-import type { ThemeModEntry } from '../../mods/themeMods'
 
 /** The Plugins pane's px around its body's cells: frame borders, the body's insets, the scrollbar's room. */
 const MODS_PANE_CHROME_PX = 40
@@ -115,15 +112,6 @@ export function createShellHandleOpenNexusSettings(
     setPluginSettingsRequest(null)
     setMcpSettingsRequest(null)
     setSettingsSection(section)
-  }
-}
-/** Enables or disables a theme mod's plugin: a directory plugin by its folder, any other by its id. Undefined without a bridge. */
-export function createShellSetThemeModEnabled(bridge: NexusSettingsBridge | null | undefined) {
-  if (!bridge) return undefined
-  return async (mod: ThemeModEntry, enabled: boolean): Promise<void> => {
-    if (!mod.id.endsWith('@inline')) await pluginsSetEnabled(bridge, mod.id, enabled)
-    else if (mod.root) await pluginsSetLocalEnabled(bridge, mod.root, enabled)
-    else throw new Error(mod.plugin)
   }
 }
 export function createShellHandleOpenCustomize(
