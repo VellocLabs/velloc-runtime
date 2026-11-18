@@ -240,7 +240,10 @@ export abstract class ModUiSurface extends ModEngineEvents {
       return { kind: 'engine' }
     }
     const held = handlesIn(result)
-    if (overtaken()) {
+    // A scene that went, or passed to another plugin, while it was drawn is nobody's.
+    const isSceneGone = isBackdrop && (!this.theme.hasScene() || this.theme.current()?.plugin !== owner)
+    if (overtaken() || isSceneGone) {
+      if (!overtaken()) this.latestRender.delete(key)
       // Nobody shows this tree: its handlers, and the refused trees', go.
       const current = this.drawings.get(key) ?? new Map<string, Set<number>>()
       this.dropRefused([...refused, { tree: result }], current)

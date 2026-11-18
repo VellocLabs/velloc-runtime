@@ -271,6 +271,59 @@ describe('$.theme', () => {
     }
   })
 
+  it("a scene that passes to another plugin drops the former owner's drawing's handles", async () => {
+    const scene = (name: string, delay: number) => `
+      export function register(on) {
+        on('session.start', async ($, e, next) => {
+          await $.clock.sleep(${delay});
+          await $.theme.set({ backdrop: { scene: '${name}' } });
+          return next(e);
+        });
+        on('ui.render', { component: 'Backdrop' }, ($, e) => {
+          const { Button } = $.ui.resolve(e);
+          return Button({ key: 'wave', label: 'Wave', onPress: async () => {} });
+        });
+      }
+    `
+    const { runtime } = world({ first: scene('tide', 0), second: scene('dunes', 300) }, true)
+    const ask = { component: 'Backdrop' as const, requestId: 'backdrop', props: { scene: 'tide', plugin: 'first', glass: false as const } }
+    const deadline = Date.now() + 2_000
+    while (runtime.uiSnapshot().theme?.plugin !== 'first') {
+      if (Date.now() > deadline) throw new Error('timed out waiting')
+      await new Promise(resolve => setTimeout(resolve, 5))
+    }
+    const drawn = await runtime.render(ask)
+    if (drawn.kind !== 'tree') throw new Error('expected a tree')
+    const handle = (drawn.tree as { press?: { handle: number } }).press!.handle
+    await runtime.ready
+    expect(runtime.uiSnapshot().theme?.plugin).toBe('second')
+    expect(
+      await runtime.uiInput({ kind: 'press', plugin: 'first', element: 'wave', component: 'Backdrop', requestId: 'backdrop', handle }),
+    ).toEqual({ ok: false, reason: 'the drawing is gone' })
+  })
+
+  it('a scene drawing still in flight when the scene goes keeps none of its handles', async () => {
+    const CLEARS_WHILE_DRAWING = `
+      export function register(on) {
+        on('session.start', async ($, e, next) => {
+          await $.theme.set({ backdrop: { scene: 'tide' } });
+          return next(e);
+        });
+        on('command.run', async ($, e, next) => next(e));
+        on('ui.render', { component: 'Backdrop' }, async ($, e) => {
+          await $.theme.clear();
+          const { Button } = $.ui.resolve(e);
+          return Button({ key: 'wave', label: 'Wave', onPress: async () => {} });
+        });
+      }
+    `
+    const { runtime } = world({ scene: CLEARS_WHILE_DRAWING }, true)
+    await runtime.ready
+    const drawn = await runtime.render({ component: 'Backdrop', requestId: 'backdrop', props: { scene: 'tide', plugin: 'scene', glass: false } })
+    expect(runtime.uiSnapshot().theme).toBeUndefined()
+    expect(drawn).toEqual({ kind: 'engine' })
+  })
+
   it('a plugin that unloads takes its theme with it', async () => {
     const { runtime, refs } = world({ setter: SETTER, other: 'export function register(on) {}' }, true)
     await runtime.ready

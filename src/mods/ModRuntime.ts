@@ -271,10 +271,11 @@ export class ModRuntime extends ModPluginNouns implements TurnExtensions {
           set: (plugin: string, args: ThemeSetArgs) => {
             const before = this.theme.current()?.plugin
             const result = themeSetCore(this.theme, plugin, args, this.page !== undefined)
-            if (before !== undefined && before !== plugin) {
+            const isReplaced = before !== undefined && before !== plugin
+            if (isReplaced) {
               this.options.report(`${plugin}: $.theme.set replaced the theme ${before} had set`)
             }
-            if (!this.theme.hasScene()) this.forgetBackdrop()
+            if (isReplaced || !this.theme.hasScene()) this.forgetBackdrop()
             return result
           },
           clear: () => {
