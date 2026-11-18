@@ -12,6 +12,7 @@
  */
 import type { CommandRunSettlement } from '../engine/extensionSeam'
 import type { CatalogListing } from '../pluginHost/registryFormats'
+import { isLookId } from '../pluginHost/themeListing'
 import type { ModCommandOrigin } from './modCommands'
 
 export const THEME_CAPABILITY = 'theme'
@@ -46,7 +47,6 @@ export type ThemeClearResult = { ok: true; cleared: boolean }
 
 const SESSION_ID_MAX = 128
 const PLUGIN_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/
-const LOOK_ID = /^[a-z0-9][a-z0-9-]{0,63}$/
 
 function hasOnlyKeys(value: unknown, keys: readonly string[]): value is Record<string, unknown> {
   return (
@@ -66,8 +66,7 @@ export function isThemeUseLookPayload(value: unknown): value is ThemeUseLookPayl
     isSessionId(value.sessionId) &&
     typeof value.plugin === 'string' &&
     PLUGIN_NAME.test(value.plugin) &&
-    typeof value.lookId === 'string' &&
-    LOOK_ID.test(value.lookId)
+    isLookId(value.lookId)
   )
 }
 
@@ -86,7 +85,9 @@ export type ThemeLookSlot = {
     context?: undefined,
     origin?: ModCommandOrigin,
   ): Promise<CommandRunSettlement>
-  /** Reloads every module loaded from `provenance`; how many did. */
+  /** Whether a module loaded from `provenance` is running in the session. */
+  hasLoaded?(provenance: string): boolean
+  /** Reloads every module loaded from `provenance`; how many loaded again. */
   reloadPlugin?(provenance: string): Promise<number>
   /** Clears the session's theme; whether one stood. */
   clearTheme?(): boolean
@@ -117,6 +118,7 @@ export async function useThemeLook(
     const reloaded = (await slot.reloadPlugin?.(installed).catch(() => 0)) ?? 0
     return reloaded > 0 ? { ok: true, via: 'reload' } : { ok: false, reason: 'notLoaded' }
   }
+  if (slot.hasLoaded && !slot.hasLoaded(installed)) return { ok: false, reason: 'notLoaded' }
   const owner = slot.commandOwner?.(look.use.command)
   if (!slot.commandRun || owner?.plugin !== ask.plugin || owner.provenance !== installed) {
     return { ok: false, reason: 'notOwnCommand' }

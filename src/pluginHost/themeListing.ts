@@ -12,6 +12,11 @@
 
 import type { ListingTheme, ThemeLook, ThemeLookUse } from './registryFormats'
 
+/** A look id as the catalogue keeps it, and as `theme.useLook` accepts it. */
+export function isLookId(value: unknown): value is string {
+  return typeof value === 'string' && LOOK_ID.test(value)
+}
+
 /** At most this many looks are kept per listing. */
 export const THEME_LOOKS_MAX = 64
 

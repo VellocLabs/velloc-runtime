@@ -95,6 +95,9 @@ describe('useThemeLook', () => {
     expect(await use(unsourced.slot, 'pack', 'lagoon')).toEqual({ ok: false, reason: 'notOwnCommand' })
     const nobody = fakeSlot({ commandOwner: () => undefined })
     expect(await use(nobody.slot, 'pack', 'lagoon')).toEqual({ ok: false, reason: 'notOwnCommand' })
+    const installedElsewhere = fakeSlot({ hasLoaded: provenance => provenance === `pack@their-own`, commandOwner: () => undefined })
+    expect(await use(installedElsewhere.slot, 'pack', 'lagoon')).toEqual({ ok: false, reason: 'notLoaded' })
+    expect(installedElsewhere.ran).toEqual([])
     expect([...ran, ...elsewhere.ran, ...unsourced.ran, ...nobody.ran]).toEqual([])
   })
 
@@ -368,5 +371,26 @@ describe('a session\'s mod runtime, as a look uses it', () => {
     expect(reads.single).toBeGreaterThan(before.single!)
     expect(reads.later).toBe(before.later)
     expect(await runtime.reloadPlugin(`single@elsewhere`)).toBe(0)
+  })
+
+  it('a pack look whose plugin is not loaded in the session is notLoaded, not notOwnCommand', async () => {
+    const { runtime } = world({ other: { text: single(PAPER), provenance: `other@${MP}` } })
+    await runtime.ready
+    expect(runtime.hasLoaded(`pack@${MP}`)).toBe(false)
+    expect(runtime.hasLoaded(`other@${MP}`)).toBe(true)
+    const result = await useThemeLook({ marketplace: MP, listings: LISTINGS, slot: runtime }, { plugin: 'pack', lookId: 'lagoon' })
+    expect(result).toEqual({ ok: false, reason: 'notLoaded' })
+  })
+
+  it('a single look whose module no longer loads is notLoaded, and the theme it had set is gone', async () => {
+    const modules = { single: { text: single(PAPER), provenance: `single@${MP}` } }
+    const { runtime } = world(modules)
+    await runtime.ready
+    expect(runtime.theme.current()).toMatchObject({ plugin: 'single' })
+    modules.single.text = 'this is not ( valid javascript'
+    const result = await useThemeLook({ marketplace: MP, listings: LISTINGS, slot: runtime }, { plugin: 'single', lookId: 'single' })
+    expect(result).toEqual({ ok: false, reason: 'notLoaded' })
+    expect(runtime.hasLoaded(`single@${MP}`)).toBe(false)
+    expect(runtime.theme.current()).toBeUndefined()
   })
 })

@@ -151,7 +151,7 @@ async function writeBuiltinSeedState(
 }
 
 /** The cached manifest, or null when the marketplace was never downloaded. */
-async function readCachedManifest(
+export async function readCachedManifest(
   ctx: PluginInstallPathContext,
   fs: RuntimeFs,
 ): Promise<MarketplaceCatalog | null> {

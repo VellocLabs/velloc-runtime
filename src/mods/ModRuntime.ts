@@ -619,14 +619,26 @@ export class ModRuntime extends ModPluginNouns implements TurnExtensions {
     return { plugin: command.plugin, ...(provenance !== undefined ? { provenance } : {}) }
   }
 
+  /** Whether a module loaded from `provenance` is running now. */
+  hasLoaded(provenance: string): boolean {
+    return this.seats.some(seat => seat.ref.provenance === provenance && seat.loaded !== undefined)
+  }
+
   /** Reloads every module loaded from `provenance`, changed or not, so the
-   *  plugin registers again. How many reloaded. Serialized; never rejects. */
+   *  plugin registers again. How many loaded again; a module whose load
+   *  failed does not count. Serialized; never rejects. */
   reloadPlugin(provenance: string): Promise<number> {
     const run = this.reconciling.then(() =>
       this.reconcileNow(this.seats.map(seat => seat.ref), { force: provenance }),
     )
     this.reconciling = run.catch(() => undefined)
-    return run.then(outcome => outcome.reloaded.length, () => 0)
+    return run.then(
+      outcome =>
+        this.seats.filter(
+          seat => seat.ref.provenance === provenance && seat.loaded !== undefined && outcome.reloaded.includes(seat.ref.path),
+        ).length,
+      () => 0,
+    )
   }
 
   /** Clears the session's theme, whoever set it. Whether one stood. */

@@ -18,8 +18,8 @@ import {
 } from '../../mods/modThemeLooks'
 import { modSlotFor } from '../../mods/modSlotRegistry'
 import { BUILTIN_MARKETPLACE_KEY } from '../../pluginHost/builtinMarketplace'
-import { listingsVisibleOn, parseMarketplaceManifest } from '../../pluginHost/marketplaces'
-import { getMarketplaceManifestPath } from '../../pluginHost/pluginDirs'
+import { readCachedManifest } from '../../pluginHost/builtinMarketplaceSeed'
+import { listingsVisibleOn } from '../../pluginHost/marketplaces'
 import type { CatalogListing } from '../../pluginHost/registryFormats'
 import type { UpdateChannel } from '../../branding/updateChannels'
 import type { RuntimeFs } from '../../utils/fs/runtimeFs'
@@ -43,8 +43,8 @@ export async function readCachedBuiltinListings(
   channel: UpdateChannel,
 ): Promise<CatalogListing[] | null> {
   try {
-    const raw = await fs.readFile(getMarketplaceManifestPath({ homeDir }, BUILTIN_MARKETPLACE_KEY), { encoding: 'utf-8' })
-    return listingsVisibleOn(parseMarketplaceManifest(raw, BUILTIN_MARKETPLACE_KEY).plugins, channel)
+    const manifest = await readCachedManifest({ homeDir }, fs)
+    return manifest ? listingsVisibleOn(manifest.plugins, channel) : null
   } catch {
     return null
   }
