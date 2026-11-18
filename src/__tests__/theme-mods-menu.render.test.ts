@@ -53,7 +53,7 @@ describe('theme mods menu', () => {
   })
 
   it('treats only empty space of the conversation as its own', () => {
-    mount({ mods: MODS, backdropScope: 'window', refresh: () => {} })
+    mount({ mods: MODS, backdropScope: 'window', single: false, refresh: () => {} })
     const root = screen.getByTestId('root')
     expect(isBlankThreadTarget(screen.getByTestId('blank'), root)).toBe(true)
     expect(isBlankThreadTarget(root, root)).toBe(true)
@@ -64,7 +64,7 @@ describe('theme mods menu', () => {
 
   it('opens on a right-click on empty space, reads the list again, and leaves a message its own menu', async () => {
     const refresh = vi.fn()
-    mount({ mods: MODS, backdropScope: 'window', refresh })
+    mount({ mods: MODS, backdropScope: 'window', single: false, refresh })
     expect(fireEvent.contextMenu(screen.getByTestId('message'))).toBe(true)
     expect(screen.queryByTestId('theme-mods-menu')).toBeNull()
     expect(fireEvent.contextMenu(screen.getByTestId('blank'))).toBe(false)
@@ -83,7 +83,7 @@ describe('theme mods menu', () => {
 
   it('checks a stored-enabled mod that no session has loaded, and unchecks a stored-disabled one that is still loaded', async () => {
     mount(
-      { mods: MODS, backdropScope: 'window', refresh: () => {}, enabled: { looks: false, aurora: true } },
+      { mods: MODS, backdropScope: 'window', single: false, refresh: () => {}, enabled: { looks: false, aurora: true } },
       { plugins: { looks: { state: 'loaded' } } as never },
     )
     fireEvent.contextMenu(screen.getByTestId('blank'))
@@ -94,6 +94,25 @@ describe('theme mods menu', () => {
     expect(screen.getByTestId('theme-mod:looks').getAttribute('aria-checked')).toBe('false')
   })
 
+  it('one at a time: enabling a mod disables every other enabled one', async () => {
+    const calls: [string, boolean][] = []
+    const setEnabled = vi.fn(async (mod: { plugin: string }, on: boolean) => void calls.push([mod.plugin, on]))
+    mount({
+      mods: MODS,
+      backdropScope: 'window',
+      single: true,
+      refresh: () => {},
+      enabled: { looks: true, aurora: false, bubblegum: true },
+      setEnabled,
+    })
+    fireEvent.contextMenu(screen.getByTestId('blank'))
+    fireEvent.keyDown(await screen.findByTestId('theme-mods-menu-mods'), { key: 'ArrowRight' })
+    fireEvent.click(await screen.findByTestId('theme-mod:aurora'))
+    await waitFor(() => expect(calls).toHaveLength(3))
+    expect(calls).toEqual([['aurora', true], ['bubblegum', false], ['looks', false]])
+    expect(screen.getByTestId('theme-mods-menu-single').getAttribute('aria-checked')).toBe('true')
+  })
+
   it('draws no menu where the window offers none', () => {
     mount(undefined)
     expect(fireEvent.contextMenu(screen.getByTestId('blank'))).toBe(true)
@@ -102,7 +121,7 @@ describe('theme mods menu', () => {
 
   it('asks for the other reach on a press and marks the standing one', async () => {
     const setBackdropScope = vi.fn(async () => {})
-    mount({ mods: MODS, backdropScope: 'window', refresh: () => {}, setBackdropScope })
+    mount({ mods: MODS, backdropScope: 'window', single: false, refresh: () => {}, setBackdropScope })
     fireEvent.contextMenu(screen.getByTestId('blank'))
     const standing = await screen.findByTestId('theme-backdrop-scope:window')
     expect(standing.getAttribute('aria-checked')).toBe('true')

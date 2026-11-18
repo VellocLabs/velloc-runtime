@@ -151,15 +151,21 @@ export const ThemeModsMenu: FC<{ sessionId?: string; isForeground?: boolean }> =
   const toggle = (row: ThemeModRow, next: boolean) => {
     if (!setEnabled) return;
     setFailure(null);
-    setPressed((previous) => ({ ...previous, [row.plugin]: next }));
-    void setEnabled(row, next).catch((error: unknown) => {
-      setPressed((previous) => {
-        const { [row.plugin]: _dropped, ...rest } = previous;
-        return rest;
-      });
+    // One at a time: enabling a mod disables every other enabled one, after it.
+    const others = next && themes.single ? rows.filter((other) => other.enabled && other.plugin !== row.plugin) : [];
+    setPressed((previous) => ({
+      ...previous,
+      ...Object.fromEntries(others.map((other) => [other.plugin, false])),
+      [row.plugin]: next,
+    }));
+    const fail = (enabling: boolean) => (error: unknown) => {
+      setPressed({});
       const reason = error instanceof Error ? error.message : String(error);
-      setFailure(t(next ? "settings.plugins.enableFailed" : "settings.plugins.disableFailed", { error: reason }));
-    });
+      setFailure(t(enabling ? "settings.plugins.enableFailed" : "settings.plugins.disableFailed", { error: reason }));
+    };
+    void setEnabled(row, next).then(async () => {
+      for (const other of others) await setEnabled(other, false).catch(fail(false));
+    }, fail(next));
   };
 
   return (
@@ -246,6 +252,22 @@ export const ThemeModsMenu: FC<{ sessionId?: string; isForeground?: boolean }> =
                       {failure}
                     </div>
                   )}
+                  <DropdownMenuPrimitive.Separator className={SEPARATOR_CLASS} />
+                  <DropdownMenuPrimitive.CheckboxItem
+                    data-testid="theme-mods-menu-single"
+                    checked={themes.single}
+                    disabled={!themes.setSingle}
+                    onCheckedChange={(value) => void themes.setSingle?.(value === true).catch(() => undefined)}
+                    onSelect={(event) => event.preventDefault()}
+                    className={ITEM_CLASS}
+                  >
+                    <span className="flex size-4 items-center justify-center">
+                      <DropdownMenuPrimitive.ItemIndicator>
+                        <CheckIcon aria-hidden className="size-4 text-primary" />
+                      </DropdownMenuPrimitive.ItemIndicator>
+                    </span>
+                    <span className="flex-1">{t("themeMenu.single")}</span>
+                  </DropdownMenuPrimitive.CheckboxItem>
                   {openThemeStore && (
                     <>
                       <DropdownMenuPrimitive.Separator className={SEPARATOR_CLASS} />

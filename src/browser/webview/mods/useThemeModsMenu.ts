@@ -103,16 +103,18 @@ export function useThemeModsMenu(options: ThemeModsMenuOptions): ThemeModsContex
 
   const state = view.state
   const setBackdropScope = view.setBackdropScope
+  const setSingle = view.setSingle
   return React.useMemo(() => {
     if (!state) return undefined
     return {
       mods: state.mods,
       backdropScope: state.backdropScope,
+      single: state.single,
       ...(lists ? { enabled: themeModEnablement(state.mods, lists) } : {}),
       refresh,
-      ...(canSetBackdropScope ? { setBackdropScope } : {}),
+      ...(canSetBackdropScope ? { setBackdropScope, setSingle } : {}),
       ...(bridge && canSetEnabled ? { setEnabled } : {}),
       ...(openThemeStore ? { openThemeStore } : {}),
     }
-  }, [state, lists, refresh, setBackdropScope, setEnabled, bridge, canSetEnabled, canSetBackdropScope, openThemeStore])
+  }, [state, lists, refresh, setBackdropScope, setSingle, setEnabled, bridge, canSetEnabled, canSetBackdropScope, openThemeStore])
 }

@@ -2500,6 +2500,7 @@ export const fr: Messages = {
   'themeMenu.showing': 'Affiché',
   'themeMenu.empty': 'Aucun mod n’a encore défini de thème',
   'themeMenu.getMore': 'Obtenir plus de thèmes',
+  'themeMenu.single': 'Un seul à la fois',
   'themeMenu.backdrop': 'Le fond couvre',
   'themeMenu.backdropConversation': 'La conversation seulement',
   'themeMenu.backdropWindow': 'Toute la fenêtre',

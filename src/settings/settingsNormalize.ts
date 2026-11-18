@@ -429,12 +429,13 @@ export function normalizeSettings(
   // remote trigger) into loading mods; `themeMods` and `backdropScope` are
   // the theme mods and the backdrop's reach. Only well-formed values survive.
   if (raw.mods && typeof raw.mods === 'object' && !Array.isArray(raw.mods)) {
-    const { headless, themeMods, backdropScope } = raw.mods as Record<string, unknown>
+    const { headless, themeMods, backdropScope, singleThemeMod } = raw.mods as Record<string, unknown>
     const mods: NonNullable<NexusSettingsV1['mods']> = {}
     if (typeof headless === 'boolean') mods.headless = headless
     const themes = readThemeMods(themeMods)
     if (themes.length > 0) mods.themeMods = themes
     if (isThemeBackdropScope(backdropScope)) mods.backdropScope = backdropScope
+    if (singleThemeMod === true) mods.singleThemeMod = true
     if (Object.keys(mods).length > 0) out.mods = mods
   }
 

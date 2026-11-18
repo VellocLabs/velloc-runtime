@@ -2,9 +2,9 @@
  * Security: theme mods (F-25) are the plugins that have set a theme, and how
  * far a backdrop reaches; both live in settings.json `mods`.
  * Clients read topic `mods/themes` (`observe`) and ask through
- * `themeMods.read` (`observe`) and `themeMods.setBackdropScope` (`control`).
- * The list is written by the runtime alone, when a plugin sets a theme; a
- * client can change only the scope, to one of two words.
+ * `themeMods.read` (`observe`), `themeMods.setBackdropScope` and
+ * `themeMods.setSingle` (`control`). The runtime alone writes the list; a
+ * client changes only the scope, to one of two words, and the one-at-a-time flag.
  */
 import type { ScopeMode } from '../browser/runtimeProtocol'
 
@@ -35,11 +35,14 @@ export const THEME_MODS_EVENT = 'state'
 export const THEME_MODS_ACTION_SCOPES = {
   read: 'observe',
   setBackdropScope: 'control',
+  setSingle: 'control',
 } as const satisfies Record<string, ScopeMode>
 export type ThemeModsAction = keyof typeof THEME_MODS_ACTION_SCOPES
 
-export type ThemeModsState = { mods: ThemeModEntry[]; backdropScope: ThemeBackdropScope }
+/** `single`: enabling one theme mod disables the others. */
+export type ThemeModsState = { mods: ThemeModEntry[]; backdropScope: ThemeBackdropScope; single: boolean }
 export type ThemeModsScopePayload = { scope: ThemeBackdropScope }
+export type ThemeModsSinglePayload = { on: boolean }
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -57,6 +60,10 @@ export function isThemeModsReadPayload(value: unknown): boolean {
 
 export function isThemeModsScopePayload(value: unknown): value is ThemeModsScopePayload {
   return isRecord(value) && Object.keys(value).every(key => key === 'scope') && isThemeBackdropScope(value.scope)
+}
+
+export function isThemeModsSinglePayload(value: unknown): value is ThemeModsSinglePayload {
+  return isRecord(value) && Object.keys(value).every(key => key === 'on') && typeof value.on === 'boolean'
 }
 
 /** The well-formed entries of `raw`, one per plugin, at most the limit. */
@@ -80,6 +87,7 @@ export function readThemeModsState(value: unknown): ThemeModsState | null {
   return {
     mods: readThemeMods(value.mods),
     backdropScope: isThemeBackdropScope(value.backdropScope) ? value.backdropScope : DEFAULT_THEME_BACKDROP_SCOPE,
+    single: value.single === true,
   }
 }
 

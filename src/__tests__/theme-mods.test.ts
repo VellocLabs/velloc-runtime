@@ -14,6 +14,7 @@ import {
   THEME_MODS_TOPIC,
   isThemeModsReadPayload,
   isThemeModsScopePayload,
+  isThemeModsSinglePayload,
   readThemeMods,
   readThemeModsState,
   withThemeMod,
@@ -68,7 +69,7 @@ function rig(initial: Record<string, unknown>) {
       { conn: conn(), send: evt => events.push((evt as unknown as { payload: ThemeModsState }).payload), bufferedBytes: () => 0 },
       THEME_MODS_TOPIC,
     )
-  const ask = (act: 'read' | 'setBackdropScope', payload: unknown = {}) =>
+  const ask = (act: 'read' | 'setBackdropScope' | 'setSingle', payload: unknown = {}) =>
     registry
       .resolve('themeMods', act)!
       .handle({ id: '1', route: { cap: 'themeMods', act }, payload, conn: conn() } as never, {} as never)
@@ -113,25 +114,25 @@ describe('theme mods', () => {
   })
 
   it('declares an observe read and a control write, and guards both payloads', () => {
-    expect(THEME_MODS_ACTION_SCOPES).toEqual({ read: 'observe', setBackdropScope: 'control' })
+    expect(THEME_MODS_ACTION_SCOPES).toEqual({ read: 'observe', setBackdropScope: 'control', setSingle: 'control' })
     expect(isThemeModsReadPayload(undefined)).toBe(true)
     expect(isThemeModsReadPayload({ mods: [] })).toBe(false)
     expect(isThemeModsScopePayload({ scope: 'conversation' })).toBe(true)
     expect(isThemeModsScopePayload({ scope: 'sidebar' })).toBe(false)
     expect(isThemeModsScopePayload({ scope: 'window', mods: [] })).toBe(false)
-    expect(readThemeModsState({ mods: [AURORA] })).toEqual({ mods: [AURORA], backdropScope: 'window' })
-    expect(readThemeModsState({ backdropScope: 'window' })).toBeNull()
+    expect(readThemeModsState({ mods: [AURORA] })).toEqual({ mods: [AURORA], backdropScope: 'window', single: false })
+    expect(readThemeModsState({ backdropScope: 'window', single: false })).toBeNull()
   })
 
   it('snapshots the stored state, defaults the reach to the window, and shows a later read to every reader', async () => {
     const r = rig({ version: 1, mods: { themeMods: [AURORA] } })
     r.subscribe()
     await expect.poll(() => r.events.length).toBe(1)
-    expect(r.events[0]).toEqual({ mods: [AURORA], backdropScope: 'window' })
+    expect(r.events[0]).toEqual({ mods: [AURORA], backdropScope: 'window', single: false })
     // A session recorded another plugin since.
     r.replace({ version: 1, mods: { themeMods: [AURORA, LOCAL] } })
-    expect(await r.ask('read')).toEqual({ mods: [AURORA, LOCAL], backdropScope: 'window' })
-    expect(r.events.at(-1)).toEqual({ mods: [AURORA, LOCAL], backdropScope: 'window' })
+    expect(await r.ask('read')).toEqual({ mods: [AURORA, LOCAL], backdropScope: 'window', single: false })
+    expect(r.events.at(-1)).toEqual({ mods: [AURORA, LOCAL], backdropScope: 'window', single: false })
   })
 
   it('stores a reach other than the default, keeps the rest of the section, and publishes it', async () => {
@@ -141,11 +142,22 @@ describe('theme mods', () => {
     expect(await r.ask('setBackdropScope', { scope: 'conversation' })).toEqual({
       mods: [AURORA],
       backdropScope: 'conversation',
+      single: false,
     })
     expect(r.current().mods).toEqual({ headless: true, themeMods: [AURORA], backdropScope: 'conversation' })
     expect(r.events.at(-1)!.backdropScope).toBe('conversation')
     await r.ask('setBackdropScope', { scope: 'window' })
     expect(r.current().mods).toEqual({ headless: true, themeMods: [AURORA] })
     expect(r.registry.resolve('themeMods', 'setBackdropScope')!.spec.scope).toBe('control')
+  })
+
+  it('stores the one-at-a-time flag only while it is on', async () => {
+    const r = rig({ version: 1, mods: { themeMods: [AURORA] } })
+    expect(isThemeModsSinglePayload({ on: true })).toBe(true)
+    expect(isThemeModsSinglePayload({ on: 'yes' })).toBe(false)
+    expect(await r.ask('setSingle', { on: true })).toEqual({ mods: [AURORA], backdropScope: 'window', single: true })
+    expect(r.current().mods).toEqual({ themeMods: [AURORA], singleThemeMod: true })
+    await r.ask('setSingle', { on: false })
+    expect(r.current().mods).toEqual({ themeMods: [AURORA] })
   })
 })

@@ -54,6 +54,7 @@ export type ThemeModsView = {
   refresh: () => void
   /** Rejects when the runtime refuses; the topic's last state stands. */
   setBackdropScope: (scope: ThemeBackdropScope) => Promise<void>
+  setSingle: (on: boolean) => Promise<void>
 }
 
 export function useThemeMods(runtimeConnection: (() => Promise<RuntimeConnection>) | undefined): ThemeModsView {
@@ -82,7 +83,7 @@ export function useThemeMods(runtimeConnection: (() => Promise<RuntimeConnection
     }
   }, [runtimeConnection])
   const ask = React.useCallback(
-    async (action: 'read' | 'setBackdropScope', payload: Record<string, unknown>): Promise<void> => {
+    async (action: 'read' | 'setBackdropScope' | 'setSingle', payload: Record<string, unknown>): Promise<void> => {
       if (!runtimeConnection) throw new Error('no runtime connection')
       const conn = await runtimeConnection()
       await conn.request(`${THEME_MODS_CAPABILITY}.${action}` as RouteKey, payload)
@@ -93,5 +94,6 @@ export function useThemeMods(runtimeConnection: (() => Promise<RuntimeConnection
     void ask('read', {}).catch(() => undefined)
   }, [ask])
   const setBackdropScope = React.useCallback((scope: ThemeBackdropScope) => ask('setBackdropScope', { scope }), [ask])
-  return React.useMemo(() => ({ state, refresh, setBackdropScope }), [state, refresh, setBackdropScope])
+  const setSingle = React.useCallback((on: boolean) => ask('setSingle', { on }), [ask])
+  return React.useMemo(() => ({ state, refresh, setBackdropScope, setSingle }), [state, refresh, setBackdropScope, setSingle])
 }

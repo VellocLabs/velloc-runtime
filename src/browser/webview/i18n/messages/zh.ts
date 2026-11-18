@@ -2428,6 +2428,7 @@ export const zh: Messages = {
   'themeMenu.showing': '显示中',
   'themeMenu.empty': '还没有模组设置过主题',
   'themeMenu.getMore': '获取更多主题',
+  'themeMenu.single': '一次只启用一个',
   'themeMenu.backdrop': '背景范围',
   'themeMenu.backdropConversation': '仅对话区',
   'themeMenu.backdropWindow': '整个窗口',

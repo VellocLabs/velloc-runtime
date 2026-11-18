@@ -12,7 +12,9 @@ import {
   THEME_MODS_TOPIC,
   isThemeModsReadPayload,
   isThemeModsScopePayload,
+  isThemeModsSinglePayload,
   type ThemeModsScopePayload,
+  type ThemeModsSinglePayload,
   type ThemeModsState,
 } from '../../mods/themeMods'
 import { readLayerFresh, updateSectionInSource } from '../../settings/settingsStore'
@@ -29,7 +31,7 @@ export type ThemeModsCapabilityOptions = {
   report?: (line: string) => void
 }
 
-const EMPTY: ThemeModsState = { mods: [], backdropScope: DEFAULT_THEME_BACKDROP_SCOPE }
+const EMPTY: ThemeModsState = { mods: [], backdropScope: DEFAULT_THEME_BACKDROP_SCOPE, single: false }
 
 export function registerThemeModsCapability(
   registry: CapabilityRegistry,
@@ -46,6 +48,7 @@ export function registerThemeModsCapability(
       return {
         mods: settings.mods?.themeMods ?? [],
         backdropScope: settings.mods?.backdropScope ?? DEFAULT_THEME_BACKDROP_SCOPE,
+        single: settings.mods?.singleThemeMod === true,
       }
     } catch (error) {
       report(`the theme mods could not be read: ${error instanceof Error ? error.message : String(error)}`)
@@ -72,6 +75,7 @@ export function registerThemeModsCapability(
     actions: {
       read: { scope: THEME_MODS_ACTION_SCOPES.read, guard: isThemeModsReadPayload },
       setBackdropScope: { scope: THEME_MODS_ACTION_SCOPES.setBackdropScope, guard: isThemeModsScopePayload },
+      setSingle: { scope: THEME_MODS_ACTION_SCOPES.setSingle, guard: isThemeModsSinglePayload },
     },
     handle: async request => {
       const act = request.route.act
@@ -83,15 +87,20 @@ export function registerThemeModsCapability(
         }
         return next
       }
-      if (act !== 'setBackdropScope') throw wireError('unknown_route', `themeMods has no action '${act}'`)
-      const { scope } = request.payload as ThemeModsScopePayload
+      if (act !== 'setBackdropScope' && act !== 'setSingle') throw wireError('unknown_route', `themeMods has no action '${act}'`)
       const homeDir = await options.resolveHome().catch(() => '')
       if (!homeDir) throw wireError('host_unavailable', 'themeMods: the host did not report a home folder')
       try {
         await updateSectionInSource('userSettings', { homeDir }, options.context().fs, 'mods', previous => {
           const next = { ...(previous ?? {}) }
-          if (scope === DEFAULT_THEME_BACKDROP_SCOPE) delete next.backdropScope
-          else next.backdropScope = scope
+          if (act === 'setSingle') {
+            if ((request.payload as ThemeModsSinglePayload).on) next.singleThemeMod = true
+            else delete next.singleThemeMod
+          } else {
+            const { scope } = request.payload as ThemeModsScopePayload
+            if (scope === DEFAULT_THEME_BACKDROP_SCOPE) delete next.backdropScope
+            else next.backdropScope = scope
+          }
           return Object.keys(next).length > 0 ? next : undefined
         })
       } catch (error) {

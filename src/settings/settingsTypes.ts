@@ -407,6 +407,8 @@ export type NexusSettingsV1 = {
     themeMods?: ThemeModEntry[]
     /** How far a theme's backdrop reaches. Absent reads as the whole window. */
     backdropScope?: ThemeBackdropScope
+    /** Enabling one theme mod disables the others. Absent reads as off. */
+    singleThemeMod?: boolean
   }
   /** Model catalog (F-28). Hidden: `sourceUrl` points the catalog fetcher at
    *  another copy of the public model document (a test server, an enterprise

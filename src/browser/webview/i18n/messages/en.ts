@@ -2537,6 +2537,7 @@ export const en = {
   'themeMenu.showing': 'Showing',
   'themeMenu.empty': 'No mod has set a theme yet',
   'themeMenu.getMore': 'Get more themes',
+  'themeMenu.single': 'Only one at a time',
   'themeMenu.backdrop': 'Backdrop covers',
   'themeMenu.backdropConversation': 'Conversation only',
   'themeMenu.backdropWindow': 'Whole window',
