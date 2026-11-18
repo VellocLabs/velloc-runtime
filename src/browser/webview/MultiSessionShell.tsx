@@ -73,12 +73,7 @@ import {
 } from './layout/modsPane'
 import { loadModPanesAsked } from './layout/layoutStorage'
 import { useModCellWidth } from '@/components/assistant-ui/mod-render'
-import { ModBackdrop, ModShellPaintsThemeContext, useThemeLookOf, useWindowColorScheme } from '@/components/assistant-ui/mod-theme'
-import { ThemeModsContext } from '@/components/assistant-ui/theme-mods-context'
-import { DEFAULT_THEME_BACKDROP_SCOPE } from '@/mods/themeMods'
-import { useThemeMods } from './mods/themeModsView'
-import { useThemeModsMenu } from './mods/useThemeModsMenu'
-import { ModUiContext } from '@/components/assistant-ui/mod-ui-context'
+import { ShellBackdrop, ShellThemeProviders, useShellTheme } from './shellTheme'
 import type { ModUiSeatPlaces } from '@/components/assistant-ui/mod-ui-context'
 import { useSessionModUi } from './mods/useSessionModUi'
 import { useModAgentView } from './mods/useModAgentView'
@@ -2097,14 +2092,6 @@ export function MultiSessionShell({
     onOpenPluginSettings: handleOpenPluginSettings,
     panesDocked: modPanesDocked,
   })
-  // The active session's theme paints the whole window: its tokens and backdrop sit on the shell.
-  // Under the `conversation` reach the window shows the theme's colours and
-  // mode on opaque surfaces, and each conversation draws the backdrop itself.
-  const themeMods = useThemeMods(runtimeConnection)
-  const backdropScope = themeMods.state?.backdropScope ?? DEFAULT_THEME_BACKDROP_SCOPE
-  const shellPaintsBackdrop = backdropScope === 'window' && shellModUi.theme?.backdrop !== undefined
-  const shellThemeLook = useThemeLookOf(shellModUi.theme, backdropScope === 'window')
-  useWindowColorScheme(shellThemeLook)
   // The panes the person asked for and has not closed by hand, across
   // sessions: from `REMEMBERED_FLOOR_CELLS` a mod's own open of one is placed.
   const [modPanesAsked, setModPanesAsked] = useState<readonly string[]>(loadModPanesAsked)
@@ -2333,17 +2320,14 @@ export function MultiSessionShell({
   const customizeShown = remoteHost === undefined
     && runtimeCapabilities.can('customizePage', 'show')
     && customizeOnThisChannel()
-  // The conversation's theme menu (F-25): the mods that set a theme, each
-  // one's switch, the backdrop's reach, and the way to more themes.
-  // Customize is where themes are installed from; the menu's way there does
-  // not wait for the channel that lists Customize in the top bar.
-  const themeStoreShown = remoteHost === undefined && runtimeCapabilities.can('customizePage', 'show')
-  const themeModsMenu = useThemeModsMenu({
-    view: themeMods,
-    bridge: settingsBridge,
-    canSetEnabled: runtimeCapabilities.can('plugins', 'setEnabled') && runtimeCapabilities.can('plugins', 'setLocalEnabled'),
-    canSetBackdropScope: runtimeCapabilities.can('themeMods', 'setBackdropScope'),
-    ...(themeStoreShown ? { openThemeStore: handleOpenCustomize } : {}),
+  // The active session's theme paints the whole window: its tokens and backdrop sit on the shell.
+  const shellTheme = useShellTheme({
+    runtimeConnection,
+    theme: shellModUi.theme,
+    capabilities: runtimeCapabilities,
+    isRemoteHost: remoteHost !== undefined,
+    settingsBridge,
+    openCustomize: handleOpenCustomize,
   })
   const interceptComposerText = useMemo(
     () => createShellInterceptMarketplaceAdd(customizeShown, setMarketplaceAddRequest, handleOpenCustomize),
@@ -3042,14 +3026,13 @@ export function MultiSessionShell({
     <>
     <SettingsHostActionsContext.Provider value={settingsHostActions}>
     <SettingsSessionContext.Provider value={activeSessionId ?? null}>
-    <ThemeModsContext.Provider value={themeModsMenu}>
-    <ModShellPaintsThemeContext.Provider value={shellPaintsBackdrop}>
+    <ShellThemeProviders shellTheme={shellTheme}>
     <main
       data-mod-shell=""
-      className={shellThemeLook.className || undefined}
-      {...shellThemeLook.attributes}
+      className={shellTheme.look.className || undefined}
+      {...shellTheme.look.attributes}
       style={{
-        ...shellThemeLook.style,
+        ...shellTheme.look.style,
         // NO fixed min-height: a floor taller than the panel is clipped by `#app`'s overflow,
         // cutting off the composer.
         minHeight: 0,
@@ -3060,11 +3043,7 @@ export function MultiSessionShell({
         position: 'relative',
       }}
     >
-      <ModShellPaintsThemeContext.Provider value={false}>
-        <ModUiContext.Provider value={shellModUi}>
-          {shellPaintsBackdrop && <ModBackdrop />}
-        </ModUiContext.Provider>
-      </ModShellPaintsThemeContext.Provider>
+      <ShellBackdrop shellTheme={shellTheme} modUi={shellModUi} />
       <NexusTopBar
         // Settings takes the whole window: its header replaces the topbar as
         // the drag surface and caption reserve.
@@ -3380,8 +3359,7 @@ export function MultiSessionShell({
         />
       ) : null}
     </main>
-    </ModShellPaintsThemeContext.Provider>
-    </ThemeModsContext.Provider>
+    </ShellThemeProviders>
     </SettingsSessionContext.Provider>
     </SettingsHostActionsContext.Provider>
     </>
