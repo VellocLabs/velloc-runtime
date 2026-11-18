@@ -1,12 +1,9 @@
 /**
- * A `.zip` plugin archive into an in-memory file list, via its central directory.
- * Security: stored and deflate entries only; encrypted entries, zip64 and
- * spanned archives are refused. Every inflate is streamed under the per-file
- * and total caps, whatever sizes the archive declares. Entry paths go through
- * `sanitizeArchivePath` after `\\` becomes `/` (unsafe ones are dropped, as tar
- * entries are); a path that repeats another, ignoring case, refuses the archive.
- * Directories, symlinks and `__MACOSX/` metadata are skipped. Each entry's
- * CRC-32 is checked.
+ * Security: a `.zip` plugin archive, read via its central directory. Stored and
+ * deflate only; encrypted, zip64 and spanned refused; every inflate streamed under
+ * the per-file and total caps; CRC-32 checked. Names go through `sanitizeArchivePath`
+ * with `\` as `/`; a case-folded duplicate refuses the archive; directories,
+ * symlinks and `__MACOSX/` are skipped.
  */
 
 import { InflateLimitError, inflateRawCapped, sanitizeArchivePath, type ExtractedFile } from './extract'
