@@ -257,7 +257,7 @@ function backdropOf(value: unknown): ThemeScene | ThemeGround | false {
   if (kinds.length !== 1) fail('backdrop must name exactly one of scene, color, gradient, vector or image')
   const kind = kinds[0]
   if (kind === 'scene') {
-    // `id` is the scene's older name: read by engines that predate `scene`, ignored here.
+    // `id` is accepted as an alias of `scene` for mods that target several engines, and ignored.
     onlyKeys(value, ['scene', 'glass', 'id'], 'backdrop')
     if (!isPaneId(value.scene)) fail('backdrop.scene must be 1-64 of letters, digits, _ and -')
     return value.glass === undefined ? { scene: value.scene } : { scene: value.scene, glass: glassOf(value.glass) }
