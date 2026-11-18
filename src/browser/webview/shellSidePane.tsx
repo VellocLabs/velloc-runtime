@@ -5,6 +5,7 @@ import { RightPanelContentContext } from '@/components/assistant-ui/right-panel-
 import { FilePathContext } from '@/components/assistant-ui/file-path-context'
 import { setMaximized, type SidePaneKind, type SessionPaneRecord } from './layout/paneLayout'
 import { PaneFrame } from './panes/PaneFrame'
+import { PANE_BODY } from './panes/paneSurface'
 import { A2uiPaneActionsSlot } from './a2ui/A2uiPaneSlot'
 import { ModsPane } from './panes/ModsPane'
 import { SideChatPane } from './panes/SideChatPane'
@@ -256,7 +257,7 @@ export function renderShellSidePane(inputs: ShellSidePaneInputs, kind: SidePaneK
         {label}
         {tabs}
       </>,
-      <div className="flex h-full min-h-0 flex-col">
+      <div className={PANE_BODY}>
         <BrowserAddressBar tab={activeTab} onNavigate={navigateBrowserTab} />
         <WebviewArea active={!customizeOpen} shell={shellChannel ?? null} />
       </div>,

@@ -44,6 +44,7 @@ import {
   useA2uiPresentation,
 } from './A2uiPresentationContext'
 import { useT } from '../i18n'
+import { PANE_BODY } from '../panes/paneSurface'
 import { getActionsSlot, getOwner, getSlot, setOwner, subscribeSlot } from './a2uiPaneBus'
 import { AppSurfaceFeeder, appSurfaceIds } from './AppSurfaceFeeder'
 import type { AppBoard } from '../apps/appSurfaceView'
@@ -292,7 +293,7 @@ function A2uiPanePortal({ sessionId, board }: { sessionId: string; board: AppBoa
   if (!shown || (!selectedSurfaceId && !board)) return null
   if (board?.readPage) {
     return createPortal(
-      <div data-slot="a2ui-pane-content" className="flex h-full min-h-0 flex-col">
+      <div data-slot="a2ui-pane-content" className={PANE_BODY}>
         <Suspense fallback={null}>
           <LazyAppPageFrame readPage={board.readPage} />
         </Suspense>
@@ -303,7 +304,7 @@ function A2uiPanePortal({ sessionId, board }: { sessionId: string; board: AppBoa
   const reload =
     showsBar && board && actionsSlot ? createPortal(<AppReloadButton board={board} busy={busy} />, actionsSlot) : null
   const body = createPortal(
-    <div data-slot="a2ui-pane-content" className="flex h-full min-h-0 flex-col">
+    <div data-slot="a2ui-pane-content" className={PANE_BODY}>
       {paneSurfaceIds.length > 1 && (
         <div
           role="tablist"

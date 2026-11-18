@@ -8,6 +8,7 @@ import { cleanup, render } from '@testing-library/react'
 import { BackgroundTasksDrawer } from '../browser/webview/BackgroundTasksDrawer'
 import { PlanDetailsPanel } from '../browser/webview/PlanDetailsPanel'
 import { I18nProvider } from '../browser/webview/i18n'
+import { PaneFrame } from '../browser/webview/panes/PaneFrame'
 import { PANE_BODY, PANE_SURFACE } from '../browser/webview/panes/paneSurface'
 
 /**
@@ -27,7 +28,22 @@ describe('side pane surface', () => {
   it('the frame paints the surface and a body paints no ground', () => {
     expect(PANE_SURFACE).toMatch(GROUND)
     expect(PANE_BODY).not.toMatch(/\bbg-/)
-    expect(read('browser/webview/panes/PaneFrame.tsx')).toContain('PANE_SURFACE')
+    for (const maximized of [false, true]) {
+      const view = render(
+        createElement(PaneFrame, {
+          kind: 'diff',
+          name: 'Diff',
+          title: 'Diff',
+          maximized,
+          onToggleMaximized: () => {},
+          onClose: () => {},
+          children: null,
+        }),
+      )
+      const classes = view.getByTestId('pane-diff').classList
+      for (const token of PANE_SURFACE.split(' ')) expect(classes.contains(token)).toBe(true)
+      view.unmount()
+    }
   })
 
   it('each pane body roots on the shared body class', () => {
@@ -37,6 +53,8 @@ describe('side pane surface', () => {
       'browser/webview/SkillPanel.tsx',
       'browser/webview/DiffPanel.tsx',
       'browser/webview/panes/SideChatPane.tsx',
+      'browser/webview/shellSidePane.tsx',
+      'browser/webview/a2ui/A2uiProviderHost.tsx',
     ]
     const missing = bodies.filter(rel => !read(rel).includes('className={PANE_BODY}'))
     expect(missing).toEqual([])
@@ -44,9 +62,9 @@ describe('side pane surface', () => {
 
   it('the terminal placeholder leaves the frame surface showing', () => {
     const text = read('browser/webview/terminal/TerminalPane.tsx')
-    const placeholder = text.slice(text.indexOf('data-testid="pane-terminal-placeholder"'))
-    const className = placeholder.slice(0, placeholder.indexOf('>'))
-    expect(className).not.toMatch(GROUND)
+    const match = /data-testid="pane-terminal-placeholder"[^<]*?className="([^"]*)"/.exec(text)
+    expect(match).not.toBeNull()
+    expect(match![1]).not.toMatch(GROUND)
   })
 
   it('the Background Tasks and Plan bodies render without a ground of their own', () => {
