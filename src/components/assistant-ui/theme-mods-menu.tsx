@@ -33,16 +33,15 @@ export function isBlankThreadTarget(target: EventTarget | null, root: Element): 
 
 export type ThemeModRow = ThemeModEntry & { enabled: boolean; showing: boolean };
 
-/** The rows in menu order: the mod whose theme shows, the other enabled ones, the disabled ones; by name within each. */
+/** The rows in menu order: by name, so a row keeps its place whatever its state. */
 export function orderThemeMods(
   mods: readonly ThemeModEntry[],
   enabled: (plugin: string) => boolean,
   showing: string | undefined,
 ): ThemeModRow[] {
-  const rank = (row: ThemeModRow) => (row.showing ? 0 : row.enabled ? 1 : 2);
   return mods
     .map((mod) => ({ ...mod, enabled: enabled(mod.plugin), showing: mod.plugin === showing }))
-    .sort((a, b) => rank(a) - rank(b) || a.plugin.localeCompare(b.plugin));
+    .sort((a, b) => a.plugin.localeCompare(b.plugin));
 }
 
 const ITEM_CLASS =

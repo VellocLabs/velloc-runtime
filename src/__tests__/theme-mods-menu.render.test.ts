@@ -41,12 +41,12 @@ function mount(themes: ThemeModsContextValue | undefined, ui: Partial<ModUiConte
 }
 
 describe('theme mods menu', () => {
-  it('orders the mod whose theme shows first, then the enabled, then the disabled', () => {
+  it('orders the mods by name, whatever is enabled or showing', () => {
     const rows = orderThemeMods(MODS, plugin => plugin !== 'aurora', 'looks')
     expect(rows.map(row => [row.plugin, row.enabled, row.showing])).toEqual([
-      ['looks', true, true],
-      ['bubblegum', true, false],
       ['aurora', false, false],
+      ['bubblegum', true, false],
+      ['looks', true, true],
     ])
   })
 
