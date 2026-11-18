@@ -33,7 +33,7 @@ import {
   type ModsUiInputResult,
 } from '../../runtimeProtocol'
 import type { RuntimeConnection } from '../../runtimeClient/RuntimeConnection'
-import type { ModUiContextValue, ModUiToastRow } from '../../../components/assistant-ui/mod-ui-context'
+import type { ModUiContextValue, ModUiStaleSource, ModUiToastRow } from '../../../components/assistant-ui/mod-ui-context'
 import { EMPTY_MOD_UI, staleKeyOf } from '../../../components/assistant-ui/mod-ui-context'
 
 export type ModsUiView = Pick<ModUiContextValue, 'isLoaded' | 'status' | 'notices' | 'toasts' | 'panes' | 'placed' | 'theme' | 'hooked' | 'editHooked' | 'autocompleteHooked' | 'changeHooked' | 'stale' | 'turnNote' | 'asks' | 'view' | 'devModsAsk' | 'devModsOn' | 'devModFaults'>
@@ -54,6 +54,9 @@ type Store = {
   /** Who answers the session's `page` requests (`$.ui.copy` / `.focus` /
    *  `.scroll`): the thread the page draws for it. */
   pages: Set<(request: ModsPageRequest) => void>
+  /** Told of each stale bump, which changes no view. */
+  staleListeners: Set<() => void>
+  staleSource: ModUiStaleSource | null
 }
 
 const stores = new WeakMap<Pick<RuntimeConnection, 'subscribe'>, Map<string, Store>>()
@@ -68,7 +71,7 @@ function storeFor(connection: Pick<RuntimeConnection, 'subscribe'>, sessionId: s
   }
   let store = bySession.get(sessionId)
   if (!store) {
-    store = { view: emptyView(), listeners: new Set(), unsubscribe: null, toasts: new Map(), nextId: 0, composers: new Set(), pages: new Set() }
+    store = { view: emptyView(), listeners: new Set(), unsubscribe: null, toasts: new Map(), nextId: 0, composers: new Set(), pages: new Set(), staleListeners: new Set(), staleSource: null }
     bySession.set(sessionId, store)
   }
   return store
@@ -115,6 +118,25 @@ export function modsUiToastControls(
       }
     },
   }
+}
+
+/** The session's live stale counters (`staleSource`): one object per
+ *  session, so a context holding it stays equal across stale bumps. */
+export function modsUiStaleSource(
+  connection: Pick<RuntimeConnection, 'subscribe'>,
+  sessionId: string,
+): ModUiStaleSource {
+  const store = storeFor(connection, sessionId)
+  store.staleSource ??= {
+    subscribe: listener => {
+      store.staleListeners.add(listener)
+      return () => {
+        store.staleListeners.delete(listener)
+      }
+    },
+    read: () => store.view.stale,
+  }
+  return store.staleSource
 }
 
 export function holdModsUiView(
@@ -168,7 +190,7 @@ export function holdModsUiView(
               }
             : { ...store.view.stale, all: store.view.stale.all + 1 }
         store.view = { ...store.view, stale }
-        emit(store)
+        for (const each of Array.from(store.staleListeners)) each()
         return
       }
       if (!isModsUiState(event.payload)) return
@@ -389,6 +411,7 @@ export function useModsUiView(
         if (!live) return
         const controls = modsUiToastControls(conn, sessionId)
         const actions = {
+          staleSource: modsUiStaleSource(conn, sessionId),
           ...modsUiActions(conn, sessionId),
           ...modsComposerControls(conn, sessionId),
           ...modsPageControls(conn, sessionId),

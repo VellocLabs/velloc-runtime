@@ -73,8 +73,9 @@ export abstract class ModUiSurface extends ModEngineEvents {
   /** Which drawings read which `$.state` value while drawn, both ways. */
   private readonly readersOf = new Map<string, Set<string>>()
   private readonly readsOf = new Map<string, Set<string>>()
-  /** `$.ui.invalidate` folds: "ten a second at most". */
-  private readonly invalidations = new Map<string, ReturnType<typeof setTimeout>>()
+  /** `$.ui.invalidate` folds, "ten a second at most": a plugin's open
+   *  window, and whether a call came in during it. */
+  private readonly invalidations = new Map<string, { timer: ReturnType<typeof setTimeout>; isPending: boolean }>()
 
   // ── `ui.render`, the panes, and the input a drawing raises ──
 
@@ -605,7 +606,8 @@ export abstract class ModUiSurface extends ModEngineEvents {
   }
 
   /** `$.ui.invalidate(event)`: the plugin's drawings are asked for again,
-   *  folded to ten a second. */
+   *  folded to ten a second. The first call of a quiet plugin is sent at
+   *  once; calls inside the next 100 ms fold into one sent as it ends. */
   protected invalidate(plugin: string, event: string): void {
     if (this.disposed) return
     // The describe caches: cleared, and the picker's list built again.
@@ -623,14 +625,24 @@ export abstract class ModUiSurface extends ModEngineEvents {
       return
     }
     if (event !== 'ui.render') return
-    if (this.invalidations.has(plugin)) return
-    this.invalidations.set(
-      plugin,
-      setTimeout(() => {
+    const open = this.invalidations.get(plugin)
+    if (open) {
+      open.isPending = true
+      return
+    }
+    this.markPluginStale(plugin)
+  }
+
+  private markPluginStale(plugin: string): void {
+    const fold = {
+      isPending: false,
+      timer: setTimeout(() => {
         this.invalidations.delete(plugin)
-        if (!this.disposed) this.emitUi({ kind: 'stale', stale: { plugin } })
+        if (fold.isPending && !this.disposed) this.markPluginStale(plugin)
       }, 100),
-    )
+    }
+    this.invalidations.set(plugin, fold)
+    this.emitUi({ kind: 'stale', stale: { plugin } })
   }
 
   protected stateWritten(address: { plugin: string; key: string; id?: string }): void {
@@ -699,7 +711,7 @@ export abstract class ModUiSurface extends ModEngineEvents {
   /** The slot is disposed: pending invalidations are cancelled and every
    *  drawing's handlers and `$.state` reads are let go. */
   protected disposeUi(): void {
-    for (const timer of this.invalidations.values()) clearTimeout(timer)
+    for (const fold of this.invalidations.values()) clearTimeout(fold.timer)
     this.invalidations.clear()
     this.drawings.clear()
     this.readersOf.clear()

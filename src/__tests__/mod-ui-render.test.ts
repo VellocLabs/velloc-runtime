@@ -969,7 +969,7 @@ describe('the person closes a pane; invalidation; a plugin gone', () => {
     expect((lastState()?.state.panes as Array<{ id: string }>).map(p => p.id)).toEqual(['keep'])
   })
 
-  it('showPane shows a tab; $.ui.invalidate marks the plugin\'s drawings stale, folded', async () => {
+  it('showPane shows a tab; $.ui.invalidate marks the plugin\'s drawings stale at once, the calls after it folded into one', async () => {
     const { runtime, stale, lastState } = world({
       tabs: `
         on('session.start', async ($, e, next) => { await $.ui.open({ id: 'one' }); await $.ui.open({ id: 'two' }); return next(e) })
@@ -981,9 +981,13 @@ describe('the person closes a pane; invalidation; a plugin gone', () => {
     expect(runtime.showPane('tabs', 'one')).toBe(true)
     expect((lastState()?.state.panes as Array<{ id: string; isShown: boolean }>).find(p => p.isShown)?.id).toBe('one')
     await runtime.promptSubmit('go')
-    await until(() => stale().length > 0, 1_000)
-    await sleep(150)
+    // The first call is sent before the fold's 100 ms run out; the second
+    // is sent once, as the fold ends.
     expect(stale()).toEqual([{ plugin: 'tabs' }])
+    await sleep(150)
+    expect(stale()).toEqual([{ plugin: 'tabs' }, { plugin: 'tabs' }])
+    await sleep(150)
+    expect(stale()).toHaveLength(2)
   })
 
   it('two clients drawing one site keep their own handles; a client that leaves takes its drawing with it', async () => {

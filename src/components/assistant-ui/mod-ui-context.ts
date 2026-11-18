@@ -113,6 +113,13 @@ export type ModUiStale = { all: number; sites: Readonly<Record<string, number>> 
 
 export const staleKeyOf = (component: string, requestId: string): string => `${component}\u0000${requestId}`
 
+/** The live stale counters, read apart from the rest of the view: a bump
+ *  redraws the drawings it names, never the page around them. */
+export type ModUiStaleSource = {
+  subscribe: (listener: () => void) => () => void
+  read: () => ModUiStale
+}
+
 /** A request to the prompt box (`$.prompt.read` / `.fill` / `.suggest` / `.paint`). */
 export type ModUiComposerRequest =
   | { requestId: string; op: 'read' }
@@ -169,6 +176,9 @@ export type ModUiContextValue = {
   panesDocked?: boolean
   hooked: readonly ModUiHookedSite[]
   stale: ModUiStale
+  /** Where present, the counters as they change; `stale` is then only the
+   *  value at the view's last change. */
+  staleSource?: ModUiStaleSource
   /** What a `turn.complete` hook answered beneath the last answer. */
   turnNote?: { turnId: string; text: string; by?: string[] }
   /** The agent view a mod last asked for (`$.ui.view`); absent before any. */

@@ -615,6 +615,8 @@ export function useModCellWidth(): number {
   return width;
 }
 
+const subscribeToNothing = (): (() => void) => () => {};
+
 /**
  * One site's drawing: asked for when hooked, and again when its props, the
  * viewport's width, or the runtime's stale counter for it change. A result
@@ -627,7 +629,11 @@ export function useModRender(
   viewport: ModUiViewport,
   plugin?: string,
 ): ModUiRenderResult | undefined {
-  const { hooked, stale, render } = useModUi();
+  const { hooked, stale: viewStale, staleSource, render } = useModUi();
+  const stale = React.useSyncExternalStore(
+    staleSource?.subscribe ?? subscribeToNothing,
+    staleSource?.read ?? (() => viewStale),
+  );
   const isHooked = isSiteHooked(hooked, component, requestId);
   const staleCount = stale.sites[staleKeyOf(component, requestId)] ?? 0;
   const propsDigest = JSON.stringify(props);

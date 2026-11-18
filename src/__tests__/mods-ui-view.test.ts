@@ -5,7 +5,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { RuntimeConnection } from '../browser/runtimeClient/RuntimeConnection'
-import { holdModsUiView, modsUiToastControls, type ModsUiView } from '../browser/webview/mods/modsUiView'
+import { holdModsUiView, modsUiStaleSource, modsUiToastControls, type ModsUiView } from '../browser/webview/mods/modsUiView'
 
 type Handler = (event: { type?: string; payload: unknown }) => void
 
@@ -98,7 +98,7 @@ describe('holdModsUiView', () => {
 })
 
 describe('holdModsUiView — panes, hooked sites and stale', () => {
-  it('reads the panes and the hooked sites off the state; a stale delta bumps one site or all', () => {
+  it('reads the panes and the hooked sites off the state; a stale delta bumps one site or all through the stale source, emitting no view', () => {
     const { connection, emit } = fakeConnection()
     const views: ModsUiView[] = []
     holdModsUiView(connection, 's1', view => views.push(view))
@@ -114,13 +114,21 @@ describe('holdModsUiView — panes, hooked sites and stale', () => {
     expect(views.at(-1)!.panes).toEqual([{ plugin: 'p', id: 'clock', title: 'Clock', isShown: true, isFocused: false, closeOnEscape: false }])
     expect(views.at(-1)!.hooked).toEqual([{ plugin: 'p', component: 'Pane', requestId: 'clock' }])
     expect(views.at(-1)!.isLoaded).toBe(true)
+    const source = modsUiStaleSource(connection, 's1')
+    expect(modsUiStaleSource(connection, 's1')).toBe(source)
+    const bumps = vi.fn()
+    const stop = source.subscribe(bumps)
+    const viewsBefore = views.length
     emit('mods/ui/s1', 'stale', { component: 'Pane', requestId: 'clock' })
     emit('mods/ui/s1', 'stale', { component: 'Pane', requestId: 'clock' })
-    expect(views.at(-1)!.stale).toEqual({ all: 0, sites: { 'Pane\u0000clock': 2 } })
+    expect(source.read()).toEqual({ all: 0, sites: { 'Pane\u0000clock': 2 } })
     emit('mods/ui/s1', 'stale', { plugin: 'p' })
-    expect(views.at(-1)!.stale.all).toBe(1)
+    expect(source.read().all).toBe(1)
     emit('mods/ui/s1', 'stale', { component: 3 })
-    expect(views.at(-1)!.stale.all).toBe(1)
+    expect(source.read().all).toBe(1)
+    expect(bumps).toHaveBeenCalledTimes(3)
+    expect(views.length).toBe(viewsBefore)
+    stop()
     // An older runtime's state carries no panes: none, not undefined.
     emit('mods/ui/s1', 'state', { status: [], notices: [] })
     expect(views.at(-1)!.panes).toEqual([])

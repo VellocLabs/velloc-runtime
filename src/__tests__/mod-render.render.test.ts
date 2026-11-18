@@ -6,7 +6,7 @@
  */
 import { createElement } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import {
   ModAbovePrompt,
   ModCommandOutputSite,
@@ -325,6 +325,30 @@ describe('ModPanes and ModAbovePrompt', () => {
     await waitFor(() => expect(render$).toHaveBeenCalledTimes(2))
     rerender(withUi({ panes: [pane('x', true)], hooked, render: render$, stale: { all: 1, sites: { 'Pane\u0000x': 1 } } }, createElement(ModPanes)))
     await waitFor(() => expect(render$).toHaveBeenCalledTimes(3))
+  })
+
+  it('a bump of the stale source asks the pane again without a new view', async () => {
+    const render$ = vi.fn(async () => ({ kind: 'engine' as const }))
+    let stale = { all: 0, sites: {} as Record<string, number> }
+    const listeners = new Set<() => void>()
+    const staleSource = {
+      subscribe: (listener: () => void) => {
+        listeners.add(listener)
+        return () => {
+          listeners.delete(listener)
+        }
+      },
+      read: () => stale,
+    }
+    render(withUi({ panes: [pane('x', true)], hooked: [{ plugin: 'p' }], render: render$, staleSource }, createElement(ModPanes)))
+    await waitFor(() => expect(render$).toHaveBeenCalled())
+    await new Promise(resolve => setTimeout(resolve, 20))
+    const before = render$.mock.calls.length
+    act(() => {
+      stale = { all: 1, sites: {} }
+      for (const listener of listeners) listener()
+    })
+    await waitFor(() => expect(render$).toHaveBeenCalledTimes(before + 1))
   })
 
   it('several panes are tabs: the shown one is selected, a click shows another', () => {
