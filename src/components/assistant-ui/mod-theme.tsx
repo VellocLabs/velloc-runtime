@@ -132,8 +132,10 @@ export function useWindowColorScheme(look: ModThemeLook): void {
 export const ModShellPaintsThemeContext = React.createContext(false);
 
 /** A theme as the element that carries it paints it: the thread root, or the
- *  shell around the whole window. */
-export function useThemeLookOf(theme: ModsUiTheme | undefined): ModThemeLook {
+ *  shell around the whole window. `backdropBehind: false` is a carrier with no
+ *  backdrop behind it: its surfaces are the theme's colours, opaque — a
+ *  glass's tint where it names one. */
+export function useThemeLookOf(theme: ModsUiTheme | undefined, backdropBehind = true): ModThemeLook {
   const pageMode = usePageMode();
   // A theme made for the other mode turns what carries it to that mode.
   const override = theme?.overrideColorScheme !== undefined && theme.overrideColorScheme !== pageMode ? theme.overrideColorScheme : undefined;
@@ -149,11 +151,13 @@ export function useThemeLookOf(theme: ModsUiTheme | undefined): ModThemeLook {
       "data-mod-theme": theme.plugin,
       "data-mod-theme-palette": palette.kind,
     };
-    if (theme.backdrop) {
+    if (theme.backdrop && backdropBehind) {
       style.isolation = "isolate";
       attributes["data-mod-backdrop"] = typeof theme.backdrop.scene === "string" ? "scene" : "ground";
     }
-    if (glass) {
+    if (glass && !backdropBehind) {
+      Object.assign(style, glassTokensOf({ ...glass, opacity: 1 }, painted, own));
+    } else if (glass) {
       Object.assign(style, glassTokensOf(glass, painted, own));
       style["--mod-glass-blur"] = `${glass.blur}px`;
       attributes["data-mod-glass"] = "";
@@ -165,7 +169,7 @@ export function useThemeLookOf(theme: ModsUiTheme | undefined): ModThemeLook {
       attributes["data-mod-scheme"] = override;
     }
     return { theme, style, attributes, className: override ?? "" };
-  }, [theme, mode, override, glass?.blur, glass?.tint, glass?.opacity, own]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [theme, mode, override, glass?.blur, glass?.tint, glass?.opacity, own, backdropBehind]); // eslint-disable-line react-hooks/exhaustive-deps
 }
 
 /** Keeps the app's own look for what it wraps (permission prompts), under

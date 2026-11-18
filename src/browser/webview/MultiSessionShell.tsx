@@ -2098,17 +2098,12 @@ export function MultiSessionShell({
     panesDocked: modPanesDocked,
   })
   // The active session's theme paints the whole window: its tokens and backdrop sit on the shell.
-  // Under the `conversation` reach the window keeps the theme's colours and
-  // mode, and each conversation draws the backdrop itself.
+  // Under the `conversation` reach the window shows the theme's colours and
+  // mode on opaque surfaces, and each conversation draws the backdrop itself.
   const themeMods = useThemeMods(runtimeConnection)
   const backdropScope = themeMods.state?.backdropScope ?? DEFAULT_THEME_BACKDROP_SCOPE
-  const shellTheme = useMemo((): typeof shellModUi.theme => {
-    const theme = shellModUi.theme
-    if (!theme || backdropScope === 'window' || theme.backdrop === undefined) return theme
-    const { backdrop: _conversationOnly, ...rest } = theme
-    return rest
-  }, [shellModUi.theme, backdropScope])
-  const shellThemeLook = useThemeLookOf(shellTheme)
+  const shellPaintsBackdrop = backdropScope === 'window' && shellModUi.theme?.backdrop !== undefined
+  const shellThemeLook = useThemeLookOf(shellModUi.theme, backdropScope === 'window')
   useWindowColorScheme(shellThemeLook)
   // The panes the person asked for and has not closed by hand, across
   // sessions: from `REMEMBERED_FLOOR_CELLS` a mod's own open of one is placed.
@@ -3053,7 +3048,7 @@ export function MultiSessionShell({
     <SettingsHostActionsContext.Provider value={settingsHostActions}>
     <SettingsSessionContext.Provider value={activeSessionId ?? null}>
     <ThemeModsContext.Provider value={themeModsMenu}>
-    <ModShellPaintsThemeContext.Provider value={shellTheme?.backdrop !== undefined}>
+    <ModShellPaintsThemeContext.Provider value={shellPaintsBackdrop}>
     <main
       data-mod-shell=""
       className={shellThemeLook.className || undefined}
@@ -3072,7 +3067,7 @@ export function MultiSessionShell({
     >
       <ModShellPaintsThemeContext.Provider value={false}>
         <ModUiContext.Provider value={shellModUi}>
-          {shellTheme?.backdrop !== undefined && <ModBackdrop />}
+          {shellPaintsBackdrop && <ModBackdrop />}
         </ModUiContext.Provider>
       </ModShellPaintsThemeContext.Provider>
       <NexusTopBar

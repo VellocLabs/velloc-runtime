@@ -267,6 +267,26 @@ describe('the backdrop', () => {
     expect(groundStyleOf({ color: '#000', extra: 1 })).toBeUndefined()
   })
 
+  it('a carrier with no backdrop behind it shows the theme opaque: the glass tint as its surfaces, no glass, no backdrop kind', () => {
+    function Carrier({ theme }: { theme: ModsUiTheme }) {
+      const look = useThemeLookOf(theme, false)
+      return createElement('div', { 'data-testid': 'carrier', ...look.attributes, style: look.style })
+    }
+    const scene: ModsUiTheme = {
+      plugin: 'look',
+      requestId: 'backdrop',
+      backdrop: { scene: 'tide', glass: { blur: 8, opacity: 0.6, tint: '#102030' } },
+    }
+    render(createElement(Carrier, { theme: scene }))
+    const carrier = screen.getByTestId('carrier')
+    expect(carrier.getAttribute('data-mod-theme')).toBe('look')
+    expect(carrier.getAttribute('data-mod-backdrop')).toBeNull()
+    expect(carrier.getAttribute('data-mod-glass')).toBeNull()
+    expect(carrier.style.getPropertyValue('--background')).toBe('color-mix(in srgb, #102030 100%, transparent)')
+    expect(carrier.style.getPropertyValue('--sidebar')).toBe('color-mix(in srgb, #102030 100%, transparent)')
+    expect(carrier.style.getPropertyValue('--mod-glass-blur')).toBe('')
+  })
+
   it('the carrier of a theme names the kind of backdrop it stands before, and a shell that paints it leaves the thread none', () => {
     function Carrier({ theme }: { theme: ModsUiTheme | undefined }) {
       const look = useThemeLookOf(theme)

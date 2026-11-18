@@ -70,20 +70,20 @@ const ThemeModsGlyph: FC = () => (
   </svg>
 );
 
-/** A window in small: the bar, the side and the conversation, each tinted where the backdrop reaches. */
-const ScopeThumb: FC<{ scope: ThemeBackdropScope }> = ({ scope }) => {
-  const reach = scope === "window" ? "bg-primary/40" : "bg-muted";
-  return (
-    <span
-      aria-hidden="true"
-      className="grid h-7 w-10 shrink-0 grid-cols-[9px_1fr] grid-rows-[6px_1fr] overflow-hidden rounded-sm border"
-    >
-      <span className={cn("col-span-2", reach)} />
-      <span className={reach} />
-      <span className="bg-primary/40" />
-    </span>
-  );
-};
+/** A window in small: a picture in its middle alone, or all over it. */
+const ScopeThumb: FC<{ scope: ThemeBackdropScope }> = ({ scope }) => (
+  <svg
+    aria-hidden="true"
+    viewBox="0 0 16 16"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="1.3"
+    className="size-4 shrink-0 text-muted-foreground"
+  >
+    <rect x="1.65" y="1.65" width="12.7" height="12.7" rx="2.5" fill={scope === "window" ? "currentColor" : "none"} fillOpacity="0.45" />
+    {scope === "conversation" && <rect x="5" y="5" width="6" height="6" rx="1" fill="currentColor" fillOpacity="0.45" stroke="none" />}
+  </svg>
+);
 
 type OpenMenu = { x: number; y: number; returnFocus: HTMLElement | null };
 
