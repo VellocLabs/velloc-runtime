@@ -107,9 +107,9 @@ export const THEME_TOKENS: readonly string[] = [...new Set(TOKEN_SOURCES.map(([t
 /** The surface tokens a scene's glass frosts. */
 export const GLASS_TOKENS: readonly string[] = ['--background', '--base', '--toolbar', '--card', '--sidebar']
 
-/** The fills that mark a hovered or pressed control. On glass each keeps its
- *  own color at this share, so the control lets the glass show through. */
-export const GLASS_HIGHLIGHT_TOKENS: readonly string[] = ['--accent', '--sidebar-accent']
+/** The fills of a hovered or pressed control and of a chip or badge. On glass
+ *  each keeps its own color at this share, so it lets the glass show through. */
+export const GLASS_HIGHLIGHT_TOKENS: readonly string[] = ['--accent', '--sidebar-accent', '--muted', '--secondary']
 export const GLASS_HIGHLIGHT_OPACITY = 0.3
 
 /** Velloc's floor for every text token on every surface token; under it, or
