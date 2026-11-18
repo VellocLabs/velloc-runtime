@@ -315,7 +315,6 @@ import {
   createShellHandleSettingsNavigate,
   createShellHandleOpenNexusSettings,
   createShellHandleOpenCustomize,
-  createShellHandleOpenThemeStore,
   createShellHandleCloseCustomize,
   createShellInterceptMarketplaceAdd,
   createShellHandleOpenProviderSettings,
@@ -2336,16 +2335,15 @@ export function MultiSessionShell({
     && customizeOnThisChannel()
   // The conversation's theme menu (F-25): the mods that set a theme, each
   // one's switch, the backdrop's reach, and the way to more themes.
-  const handleOpenThemeStore = useMemo(
-    () => createShellHandleOpenThemeStore(customizeShown, handleOpenCustomize, setSettingsSection),
-    [customizeShown, handleOpenCustomize],
-  )
+  // Customize is where themes are installed from; the menu's way there does
+  // not wait for the channel that lists Customize in the top bar.
+  const themeStoreShown = remoteHost === undefined && runtimeCapabilities.can('customizePage', 'show')
   const themeModsMenu = useThemeModsMenu({
     view: themeMods,
     bridge: settingsBridge,
     canSetEnabled: runtimeCapabilities.can('plugins', 'setEnabled') && runtimeCapabilities.can('plugins', 'setLocalEnabled'),
     canSetBackdropScope: runtimeCapabilities.can('themeMods', 'setBackdropScope'),
-    ...(remoteHost === undefined ? { openThemeStore: handleOpenThemeStore } : {}),
+    ...(themeStoreShown ? { openThemeStore: handleOpenCustomize } : {}),
   })
   const interceptComposerText = useMemo(
     () => createShellInterceptMarketplaceAdd(customizeShown, setMarketplaceAddRequest, handleOpenCustomize),

@@ -123,17 +123,6 @@ export function createShellHandleOpenCustomize(
     setCustomizeOpen(true)
   }
 }
-/** Where themes are installed from: Customize where this window offers it, else Settings' plugins. */
-export function createShellHandleOpenThemeStore(
-  customizeShown: boolean,
-  openCustomize: () => void,
-  setSettingsSection: Dispatch<SetStateAction<SettingsSectionId | null>>,
-) {
-  return () => {
-    if (customizeShown) openCustomize()
-    else setSettingsSection('plugins')
-  }
-}
 export function createShellHandleCloseCustomize(
   setCustomizeOpen: Dispatch<SetStateAction<boolean>>,
 ) {
