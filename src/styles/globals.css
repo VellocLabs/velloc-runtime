@@ -1071,7 +1071,8 @@
 }
 
 /* A scene behind the conversation: the composer's footer lets it show through. */
-[data-mod-backdrop='scene'] .aui-thread-viewport-footer {
+[data-mod-backdrop='scene'] .aui-thread-viewport-footer,
+[data-mod-backdrop='scene'] .aui-thread-viewport-footer :is([data-slot='mod-above-prompt'], [data-slot='mod-band-section'], [data-slot='mod-panes']) {
   background-color: transparent;
   backdrop-filter: none;
 }
