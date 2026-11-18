@@ -848,11 +848,12 @@ describe('CustomizeScreen — adding a marketplace', () => {
           .map(t => t.textContent)
       expect(flashing()).toEqual(['acme-market'])
       expect(view.getAllByTestId('customize-market-title').find(t => t.textContent === 'acme-market')!.className).toContain('shimmer')
+      const shownAt = Date.now()
 
-      // The fake clock also moves with real time, so the window is measured from the add.
+      // The fake clock also moves with real time; the timer starts between addedAt and shownAt.
       act(() => void vi.advanceTimersByTime(addedAt + SECTION_FLASH_MS - 100 - Date.now()))
       expect(flashing()).toEqual(['acme-market'])
-      act(() => void vi.advanceTimersByTime(1_000))
+      act(() => void vi.advanceTimersByTime(shownAt + SECTION_FLASH_MS + 100 - Date.now()))
       expect(flashing()).toEqual([])
       expect(view.getAllByTestId('customize-market-title').some(t => t.className.includes('shimmer'))).toBe(false)
 
