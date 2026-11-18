@@ -1,6 +1,7 @@
 import { useEffect, useState, type ReactElement } from "react";
 
 import { useT } from "./i18n";
+import { PANE_BODY } from "./panes/paneSurface";
 import { DiffHunks } from "@/components/assistant-ui/edit-tool-diff";
 import type {
   RightPanelDiffTarget,
@@ -60,7 +61,7 @@ export function DiffPanel({
       <div
         data-testid="diff-panel"
         data-diff-kind="turn-history"
-        className="flex h-full min-h-0 flex-col"
+        className={PANE_BODY}
       >
         <TurnDiffHistoryView
           history={turnDiffHistory ?? null}
@@ -77,7 +78,7 @@ export function DiffPanel({
     <div
       data-testid="diff-panel"
       data-diff-kind="file"
-      className="flex h-full min-h-0 flex-col"
+      className={PANE_BODY}
     >
       <DiffDetailFrame
         filePath={fileTarget.filePath}

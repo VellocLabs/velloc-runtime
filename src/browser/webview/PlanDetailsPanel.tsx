@@ -3,6 +3,7 @@ import type { PlanPanelEntry } from '@/components/assistant-ui/plan-panel-contex
 import { StaticMarkdown } from '@/components/assistant-ui/static-markdown'
 import { useT } from './i18n'
 import { useSessionAreaVisible } from './sessionAreaVisibility'
+import { PANE_BODY } from './panes/paneSurface'
 
 /**
  * Right-side pane showing the FULL plan for the active session's pending
@@ -39,7 +40,7 @@ export function PlanDetailsPanel({
     <div
       data-testid="plan-details-panel"
       aria-label={t('planApproval.panelTitle')}
-      className="flex h-full min-h-0 flex-col bg-background"
+      className={PANE_BODY}
     >
       <div className="min-h-0 flex-1 overflow-auto px-3 py-2">
         {planText ? <StaticMarkdown content={planText} /> : null}

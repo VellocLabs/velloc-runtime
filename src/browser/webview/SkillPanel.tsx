@@ -9,6 +9,7 @@ import { isBundledSkillPath } from '@/skillLibrary/builtinSkills'
 import type { NexusSessionSkillStatus } from '../bridge/protocol/ui'
 import type { SkillPanelListRow } from './sessionSkills'
 import { useT } from './i18n'
+import { PANE_BODY } from './panes/paneSurface'
 
 /**
  * Right-panel Skill view, the one shared Skills tab: the skills invoked in THIS session
@@ -275,7 +276,7 @@ export function SkillPanel({
   }
 
   return (
-    <div data-testid="skill-panel" className="flex h-full min-h-0 flex-col">
+    <div data-testid="skill-panel" className={PANE_BODY}>
       {list}
       {target ? (
         <>

@@ -7,6 +7,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 
 import { useT } from '../i18n'
 import { sessionDisplayTitle, type SessionListItem } from '../SessionRows'
+import { PANE_BODY } from './paneSurface'
 
 /**
  * The Side chats pane (F-36): the viewed session's side chats as a scrolling
@@ -220,7 +221,7 @@ export function SideChatPane({
     </TooltipProvider>
   ) : null
   const body = (
-    <div className="flex h-full min-h-0 flex-col">
+    <div className={PANE_BODY}>
       {items.length === 0 ? (
         <div
           data-testid="side-chat-empty"

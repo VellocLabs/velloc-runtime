@@ -508,7 +508,7 @@ export function TerminalPane(props: TerminalPaneProps): ReactElement {
         data-placeholder={placeholder.id}
         disabled={placeholder.starting}
         onClick={() => void startPlaceholder(placeholder)}
-        className="flex h-full w-full cursor-text items-center justify-center bg-card px-4 text-center text-body text-muted-foreground/70 outline-none"
+        className="flex h-full w-full cursor-text items-center justify-center px-4 text-center text-body text-muted-foreground/70 outline-none"
       >
         {placeholder.starting ? t('terminal.placeholder.starting') : t('terminal.placeholder.start')}
       </button>

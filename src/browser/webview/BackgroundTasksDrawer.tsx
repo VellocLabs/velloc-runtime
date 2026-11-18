@@ -57,6 +57,7 @@ import { hasRunStats } from "../../utils/taskRunStats";
 import { AgentTypePill, TaskMetaLine } from "./TaskRowMeta";
 import { reviewTaskSummaryMessage } from '@/codeReview/messages'
 import { useSessionAreaVisible } from './sessionAreaVisibility'
+import { PANE_BODY } from './panes/paneSurface'
 
 /** Static icon + tint for each TERMINAL status. A `running` task instead shows
  *  the ink-drop ripple busy indicator (see `StatusIcon`). */
@@ -636,7 +637,7 @@ export function BackgroundTasksDrawer({
     <div
       data-testid="background-tasks-drawer"
       aria-label={t('topbar.backgroundTasks')}
-      className="flex h-full min-h-0 flex-col bg-background"
+      className={PANE_BODY}
     >
       {view.kind === 'detail' ? (
         <>

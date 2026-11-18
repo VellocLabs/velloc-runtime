@@ -15,6 +15,7 @@ import type { SidePaneKind } from '../layout/paneLayout'
 import { PANE_ICON } from './paneKinds'
 import { usePaneFlash } from './paneFlash'
 import { usePaneHandle } from './usePaneDrag'
+import { PANE_SURFACE } from './paneSurface'
 
 /**
  * The chrome every side pane shares (F-9): a 36px header (icon, title slot,
@@ -103,7 +104,8 @@ export function PaneFrame(props: PaneFrameProps): ReactElement {
         data-maximized={props.maximized ? 'true' : undefined}
         aria-label={name}
         className={cn(
-          'relative flex flex-col overflow-hidden bg-card text-card-foreground',
+          'relative flex flex-col overflow-hidden',
+          PANE_SURFACE,
           immersive ? null : 'rounded-lg border border-border',
           props.className,
         )}
