@@ -73,6 +73,8 @@ import {
 } from './layout/modsPane'
 import { loadModPanesAsked } from './layout/layoutStorage'
 import { useModCellWidth } from '@/components/assistant-ui/mod-render'
+import { ModBackdrop, ModShellPaintsThemeContext, useThemeLookOf } from '@/components/assistant-ui/mod-theme'
+import { ModUiContext } from '@/components/assistant-ui/mod-ui-context'
 import type { ModUiSeatPlaces } from '@/components/assistant-ui/mod-ui-context'
 import { useSessionModUi } from './mods/useSessionModUi'
 import { useModAgentView } from './mods/useModAgentView'
@@ -2091,6 +2093,8 @@ export function MultiSessionShell({
     onOpenPluginSettings: handleOpenPluginSettings,
     panesDocked: modPanesDocked,
   })
+  // The active session's theme paints the whole window: its tokens and backdrop sit on the shell.
+  const shellThemeLook = useThemeLookOf(shellModUi.theme)
   // The panes the person asked for and has not closed by hand, across
   // sessions: from `REMEMBERED_FLOOR_CELLS` a mod's own open of one is placed.
   const [modPanesAsked, setModPanesAsked] = useState<readonly string[]>(loadModPanesAsked)
@@ -3016,8 +3020,12 @@ export function MultiSessionShell({
     <>
     <SettingsHostActionsContext.Provider value={settingsHostActions}>
     <SettingsSessionContext.Provider value={activeSessionId ?? null}>
+    <ModShellPaintsThemeContext.Provider value={shellModUi.theme?.backdrop !== undefined}>
     <main
+      data-mod-shell=""
+      {...shellThemeLook.attributes}
       style={{
+        ...shellThemeLook.style,
         // NO fixed min-height: a floor taller than the panel is clipped by `#app`'s overflow,
         // cutting off the composer.
         minHeight: 0,
@@ -3025,8 +3033,12 @@ export function MultiSessionShell({
         width: '100%',
         display: 'flex',
         flexDirection: 'column',
+        position: 'relative',
       }}
     >
+      <ModUiContext.Provider value={shellModUi}>
+        <ModBackdrop />
+      </ModUiContext.Provider>
       <NexusTopBar
         // Settings takes the whole window: its header replaces the topbar as
         // the drag surface and caption reserve.
@@ -3342,6 +3354,7 @@ export function MultiSessionShell({
         />
       ) : null}
     </main>
+    </ModShellPaintsThemeContext.Provider>
     </SettingsSessionContext.Provider>
     </SettingsHostActionsContext.Provider>
     </>

@@ -9,7 +9,7 @@ import { createElement } from 'react'
 import { afterEach, describe, expect, it } from 'vitest'
 import { cleanup, render, screen, waitFor } from '@testing-library/react'
 import { EMPTY_MOD_UI, ModUiContext, type ModUiContextValue } from '../components/assistant-ui/mod-ui-context'
-import { ModAppLook, ModBackdrop, useModThemeLook } from '../components/assistant-ui/mod-theme'
+import { ModAppLook, ModBackdrop, ModShellPaintsThemeContext, useModThemeLook, useThemeLookOf } from '../components/assistant-ui/mod-theme'
 import {
   contrastRatio,
   glassTokensOf,
@@ -221,6 +221,24 @@ describe('the backdrop', () => {
     expect(groundStyleOf({ gradient: { stops: [{ at: 0.6, color: '#000' }, { at: 0.2, color: '#fff' }] } })).toBeUndefined()
     expect(groundStyleOf({ gradient: { stops: Array.from({ length: 17 }, () => '#000') } })).toBeUndefined()
     expect(groundStyleOf({ color: '#000', extra: 1 })).toBeUndefined()
+  })
+
+  it('the carrier of a theme names the kind of backdrop it stands before, and a shell that paints it leaves the thread none', () => {
+    function Carrier({ theme }: { theme: ModsUiTheme | undefined }) {
+      const look = useThemeLookOf(theme)
+      return createElement('div', { 'data-testid': 'carrier', ...look.attributes, style: look.style })
+    }
+    const ground: ModsUiTheme = { plugin: 'look', requestId: 'theme', backdrop: { color: '#102030' } }
+    const scene: ModsUiTheme = { plugin: 'look', requestId: 'theme', backdrop: { scene: 'tide', glass: { blur: 8, opacity: 0.6 } } }
+    const { rerender } = render(createElement(Carrier, { theme: ground }))
+    expect(screen.getByTestId('carrier').getAttribute('data-mod-backdrop')).toBe('ground')
+    rerender(createElement(Carrier, { theme: scene }))
+    expect(screen.getByTestId('carrier').getAttribute('data-mod-backdrop')).toBe('scene')
+    rerender(createElement(Carrier, { theme: { plugin: 'look', requestId: 'theme', colors: PAPER } }))
+    expect(screen.getByTestId('carrier').getAttribute('data-mod-backdrop')).toBeNull()
+    cleanup()
+    render(withUi({ theme: ground }, createElement(ModShellPaintsThemeContext.Provider, { value: true }, createElement(ModBackdrop))))
+    expect(screen.queryByTestId('mod-backdrop')).toBeNull()
   })
 
   it('draws a still ground behind the conversation with presses passing through; an image ground keeps the app\'s own', () => {

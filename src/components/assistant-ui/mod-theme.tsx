@@ -79,7 +79,16 @@ export type ModThemeLook = {
 
 /** The standing theme as the thread root paints it. */
 export function useModThemeLook(): ModThemeLook {
-  const { theme } = useModUi();
+  return useThemeLookOf(useModUi().theme);
+}
+
+/** True where the app shell paints the theme's backdrop for the whole window,
+ *  so a thread inside it draws none of its own. */
+export const ModShellPaintsThemeContext = React.createContext(false);
+
+/** A theme as the element that carries it paints it: the thread root, or the
+ *  shell around the whole window. */
+export function useThemeLookOf(theme: ModsUiTheme | undefined): ModThemeLook {
   const mode = usePageMode();
   const glass = theme ? sceneGlassOf(theme.backdrop) : undefined;
   const own = useOwnTokens(glass !== undefined || theme?.colors !== undefined);
@@ -92,7 +101,10 @@ export function useModThemeLook(): ModThemeLook {
       "data-mod-theme": theme.plugin,
       "data-mod-theme-palette": palette.kind,
     };
-    if (theme.backdrop) style.isolation = "isolate";
+    if (theme.backdrop) {
+      style.isolation = "isolate";
+      attributes["data-mod-backdrop"] = typeof theme.backdrop.scene === "string" ? "scene" : "ground";
+    }
     if (glass) {
       Object.assign(style, glassTokensOf(glass, painted, own));
       style["--mod-glass-blur"] = `${glass.blur}px`;
@@ -188,8 +200,9 @@ function SceneBackdrop({ theme }: { theme: ModsUiTheme }) {
  *  not drawn: the app keeps its own. */
 export function ModBackdrop() {
   const { theme } = useModUi();
+  const paintedByShell = React.useContext(ModShellPaintsThemeContext);
   const backdrop = theme?.backdrop;
-  if (!theme || !backdrop) return null;
+  if (!theme || !backdrop || paintedByShell) return null;
   if (typeof backdrop.scene === "string") return <SceneBackdrop theme={theme} />;
   const style = groundStyleOf(backdrop);
   const vector = style ? undefined : groundVectorOf(backdrop);

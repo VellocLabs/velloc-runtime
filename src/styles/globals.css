@@ -1062,3 +1062,16 @@
 [data-mod-glass] :is(.bg-background, .bg-card, .bg-toolbar, .bg-base-surface, .bg-sidebar) {
   backdrop-filter: blur(var(--mod-glass-blur, 16px));
 }
+
+/* A backdrop behind the window (the shell paints it): the session area and the
+ * thread stand clear of it, so what is behind shows through the conversation. */
+[data-mod-shell][data-mod-backdrop] :is([data-testid='nexus-session-area'], .aui-thread-root) {
+  background-color: transparent;
+  backdrop-filter: none;
+}
+
+/* A scene behind the conversation: the composer's footer lets it show through. */
+[data-mod-backdrop='scene'] .aui-thread-viewport-footer {
+  background-color: transparent;
+  backdrop-filter: none;
+}
