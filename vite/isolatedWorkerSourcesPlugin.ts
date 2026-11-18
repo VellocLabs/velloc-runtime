@@ -70,9 +70,20 @@ export function spawnerFrameSrcdoc(
   )
 }
 
-/** A module-worker `data:` URL for a self-contained ESM text. */
-export function moduleDataUrl(source: string): string {
-  return `data:text/javascript;base64,${Buffer.from(source, 'utf8').toString('base64')}`
+/** What each worker bundle is called in a stack frame and in DevTools
+ *  (`//# sourceURL`). Unnamed, a `data:` script goes by its whole URL, which
+ *  the inspector then copies into every frame it keeps. */
+export const RUN_JS_WORKER_SOURCE_URL = 'velloc-run-js-worker.js'
+export const MOD_WORKER_SOURCE_URL = 'velloc-mod-worker.js'
+
+/** A module-worker `data:` URL for a self-contained ESM text, named
+ *  `sourceUrl` when one is given (a bare file name). */
+export function moduleDataUrl(source: string, sourceUrl?: string): string {
+  if (sourceUrl !== undefined && !/^[\w.-]+$/.test(sourceUrl)) {
+    throw new Error(`isolated-worker-sources: ${JSON.stringify(sourceUrl)} is not a bare file name`)
+  }
+  const text = sourceUrl === undefined ? source : `${source}\n//# sourceURL=${sourceUrl}\n`
+  return `data:text/javascript;base64,${Buffer.from(text, 'utf8').toString('base64')}`
 }
 
 type Bundled = { text: string; inputs: string[] }
@@ -145,8 +156,8 @@ export async function buildIsolatedWorkerSources(
     spawnerFrameCsp: spawnerFrameCsp(hash),
     modSpawnerFrameSrcdoc: spawnerFrameSrcdoc(script, { allowEval: false }),
     modSpawnerFrameCsp: spawnerFrameCsp(hash, { allowEval: false }),
-    runJsWorkerUrl: moduleDataUrl(runJs.text),
-    modWorkerUrl: moduleDataUrl(mod.text),
+    runJsWorkerUrl: moduleDataUrl(runJs.text, RUN_JS_WORKER_SOURCE_URL),
+    modWorkerUrl: moduleDataUrl(mod.text, MOD_WORKER_SOURCE_URL),
     inputs: [...new Set([...frame.inputs, ...runJs.inputs, ...mod.inputs])],
   }
 }

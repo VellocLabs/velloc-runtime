@@ -3,6 +3,7 @@
  * frame's document and run_js's worker, as text. The policy in that document
  * is the engine-enforced half of the sandbox, so its exact shape is pinned.
  */
+import { execFileSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { describe, expect, it } from 'vitest'
 import {
@@ -14,10 +15,13 @@ import {
   spawnerFrameSrcdoc,
 } from 'virtual:isolated-worker-sources'
 import {
+  MOD_WORKER_SOURCE_URL,
   moduleDataUrl,
+  RUN_JS_WORKER_SOURCE_URL,
   spawnerFrameCsp as buildCsp,
   spawnerFrameSrcdoc as buildSrcdoc,
 } from '../../vite/isolatedWorkerSourcesPlugin'
+import { MOD_MODULE_SOURCE_URL, moduleFramesOf } from '../mods/modLineMap'
 
 function inlineScripts(html: string): string[] {
   return [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].map(m => m[1]!)
@@ -149,5 +153,32 @@ describe('the mod worker bundle', () => {
     const source = decodeDataUrl(modWorkerUrl)
     expect(source.match(/\bimport\s*\(/g)).toHaveLength(1)
     expect(source).toContain('data:text/javascript;base64,')
+  })
+})
+
+describe('the worker bundles are named by a short sourceURL', () => {
+  it('ends each bundle with its own name', () => {
+    expect(decodeDataUrl(modWorkerUrl).endsWith(`\n//# sourceURL=${MOD_WORKER_SOURCE_URL}\n`)).toBe(true)
+    expect(decodeDataUrl(runJsWorkerUrl).endsWith(`\n//# sourceURL=${RUN_JS_WORKER_SOURCE_URL}\n`)).toBe(true)
+    // Distinct from each other and from the hooks module's name, so a frame
+    // in the worker is never read as a position in the module.
+    expect(new Set([MOD_WORKER_SOURCE_URL, RUN_JS_WORKER_SOURCE_URL, MOD_MODULE_SOURCE_URL]).size).toBe(3)
+  })
+
+  it('makes a stack frame name the bundle, not its data: URL', () => {
+    // A plain V8 process: the test runner's own stack formatter ignores `sourceURL`.
+    const url = moduleDataUrl('export function fail() { throw new Error("from the bundle") }', MOD_WORKER_SOURCE_URL)
+    const probe = `const m = await import(${JSON.stringify(url)}); try { m.fail() } catch (e) { process.stdout.write(e.stack) }`
+    const stack = execFileSync(process.execPath, ['--input-type=module', '-e', probe], { encoding: 'utf8' })
+    expect(stack).toContain(`${MOD_WORKER_SOURCE_URL}:1:`)
+    expect(stack).not.toContain('data:text/javascript')
+    // A worker frame is not a hooks-module frame.
+    expect(moduleFramesOf(stack)).toEqual([])
+  })
+
+  it('takes only a bare file name', () => {
+    expect(() => moduleDataUrl('export {}', 'a b.js')).toThrow(/bare file name/)
+    expect(() => moduleDataUrl('export {}', 'x.js\n//# y')).toThrow(/bare file name/)
+    expect(() => moduleDataUrl('export {}', '../x.js')).toThrow(/bare file name/)
   })
 })
