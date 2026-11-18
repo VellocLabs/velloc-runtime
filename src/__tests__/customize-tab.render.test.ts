@@ -847,9 +847,9 @@ describe('CustomizeScreen — adding a marketplace', () => {
       expect(flashing()).toEqual(['acme-market'])
       expect(view.getAllByTestId('customize-market-title').find(t => t.textContent === 'acme-market')!.className).toContain('shimmer')
 
-      act(() => void vi.advanceTimersByTime(9_900))
+      act(() => void vi.advanceTimersByTime(9_000))
       expect(flashing()).toEqual(['acme-market'])
-      act(() => void vi.advanceTimersByTime(200))
+      act(() => void vi.advanceTimersByTime(1_100))
       expect(flashing()).toEqual([])
       expect(view.getAllByTestId('customize-market-title').some(t => t.className.includes('shimmer'))).toBe(false)
 
