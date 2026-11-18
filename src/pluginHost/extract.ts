@@ -34,12 +34,25 @@ export async function decompressGzip(
   bytes: Uint8Array,
   maxDecompressedBytes: number = MAX_DECOMPRESSED_TARBALL_BYTES,
 ): Promise<Uint8Array> {
+  return decompressCapped(bytes, 'gzip', maxDecompressedBytes)
+}
+
+/** Raw-deflate inflate (a zip entry's data) under the same streaming cap as `decompressGzip`. */
+export async function inflateRawCapped(bytes: Uint8Array, maxInflatedBytes: number): Promise<Uint8Array> {
+  return decompressCapped(bytes, 'deflate-raw', maxInflatedBytes)
+}
+
+async function decompressCapped(
+  bytes: Uint8Array,
+  format: 'gzip' | 'deflate-raw',
+  maxDecompressedBytes: number,
+): Promise<Uint8Array> {
   // The DOM lib types `DecompressionStream` with a generic-parameterised
   // `Uint8Array<ArrayBuffer>` which `ReadableStream<Uint8Array>` doesn't
   // satisfy under `noUncheckedIndexedAccess`. The runtime accepts both
   // shapes interchangeably (the spec is generic-free); cast through
   // `unknown` to bridge the lib mismatch.
-  const ds = new DecompressionStream('gzip') as unknown as ReadableWritablePair<
+  const ds = new DecompressionStream(format) as unknown as ReadableWritablePair<
     Uint8Array,
     Uint8Array
   >

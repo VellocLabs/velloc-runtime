@@ -755,7 +755,8 @@ function coercePluginOrigin(raw: unknown): PluginOrigin | null {
   // a path relative to the marketplace repo root, must start with `./`. nexus
   // stores it as `{ source:'local', path }` (discriminated-union representation;
   // marketplace repo at <path>; the install op copies it from the cached
-  // marketplace content dir rather than fetching.
+  // marketplace content dir rather than fetching. `./` alone is the repo root
+  // (path ''): the marketplace repo is the plugin.
   if (typeof raw === 'string') {
     const trimmed = raw.trim()
     if (!trimmed.startsWith('./')) return null
@@ -763,7 +764,7 @@ function coercePluginOrigin(raw: unknown): PluginOrigin | null {
       .slice(2)
       .split('/')
       .filter(s => s.length > 0 && s !== '.')
-    if (segs.length === 0 || segs.some(s => s === '..')) return null
+    if (segs.some(s => s === '..')) return null
     return { source: 'local', path: segs.join('/') }
   }
   if (!raw || typeof raw !== 'object') return null
@@ -771,7 +772,7 @@ function coercePluginOrigin(raw: unknown): PluginOrigin | null {
   const kind = r.source
   if (kind === 'local') {
     // Object round-trip form of the above (e.g. a re-normalized entry).
-    if (typeof r.path !== 'string' || r.path.length === 0) return null
+    if (typeof r.path !== 'string') return null
     return { source: 'local', path: r.path }
   }
   if (kind === 'github') {
@@ -796,7 +797,9 @@ function coercePluginOrigin(raw: unknown): PluginOrigin | null {
     if (typeof r.ref === 'string' && r.ref.length > 0) out.ref = r.ref
     return out
   }
-  if (kind === 'https') {
+  // `archive` is another name for the same thing: one archive at an https URL,
+  // optionally pinned by its sha256.
+  if (kind === 'https' || kind === 'archive') {
     if (typeof r.url !== 'string' || !r.url.startsWith('https://')) return null
     const out: PluginOrigin = { source: 'https', url: r.url }
     if (typeof r.sha256 === 'string' && /^[0-9a-f]{64}$/i.test(r.sha256)) out.sha256 = r.sha256.toLowerCase()

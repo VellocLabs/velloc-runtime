@@ -1,0 +1,173 @@
+/**
+ * Marketplace listings the parser used to drop: an `archive` source (a zip or
+ * tarball at an https URL, pinned by sha256) and `./` (the marketplace repo is
+ * the plugin). Each is listed, and each installs.
+ */
+import { beforeEach, describe, expect, it } from 'vitest'
+import { HttpsSourceError, extractPluginArchive, DEFAULT_HTTPS_LIMITS } from '../pluginHost/httpsSource'
+import { forgetRegistryFile, loadInstalledPlugins } from '../pluginHost/installedRegistry'
+import { setupPlugin } from '../pluginHost/installSteps'
+import { addMarketplace, parseMarketplaceManifest, sha256Hex } from '../pluginHost/marketplaces'
+import {
+  MARKETPLACE_MANIFEST_FILE_NAME,
+  PLUGIN_MANIFEST_DIR_NAME,
+  PLUGIN_MANIFEST_FILE_NAME,
+  type PluginInstallPathContext,
+} from '../pluginHost/pluginDirs'
+import { archive } from './_helpers/pluginArchive'
+import { makeMemFs } from './_helpers/memFs'
+import { buildZip } from './_helpers/zipArchive'
+
+const ctx: PluginInstallPathContext = { homeDir: '/home/u' }
+const NOW = '2026-11-17T00:00:00.000Z'
+const ZIP_URL = 'https://github.com/me/prism/releases/download/v1.0.0/prism-plugin.zip'
+const PLUGIN_JSON = `${PLUGIN_MANIFEST_DIR_NAME}/${PLUGIN_MANIFEST_FILE_NAME}`
+const MARKETPLACE_JSON = `${PLUGIN_MANIFEST_DIR_NAME}/${MARKETPLACE_MANIFEST_FILE_NAME}`
+
+beforeEach(() => {
+  forgetRegistryFile()
+})
+
+async function errorOf(promise: Promise<unknown>): Promise<unknown> {
+  try {
+    await promise
+  } catch (error) {
+    return error
+  }
+  throw new Error('expected a rejection')
+}
+
+describe('listing sources', () => {
+  it('an archive source is listed as an https archive, its digest kept; a non-https one is dropped', () => {
+    const parsed = parseMarketplaceManifest(
+      JSON.stringify({
+        name: 'm',
+        plugins: [
+          { name: 'prism', source: { source: 'archive', url: ZIP_URL, sha256: 'AB'.repeat(32) } },
+          { name: 'plain', source: { source: 'archive', url: 'http://x.test/p.zip' } },
+        ],
+      }),
+      'm',
+    )
+    expect(parsed.plugins.map(p => p.name)).toEqual(['prism'])
+    expect(parsed.plugins[0]!.source).toEqual({ source: 'https', url: ZIP_URL, sha256: 'ab'.repeat(32) })
+  })
+
+  it('"./" lists the marketplace repo itself; a path that climbs out is still dropped', () => {
+    const parsed = parseMarketplaceManifest(
+      JSON.stringify({
+        name: 'm',
+        plugins: [
+          { name: 'root', source: './' },
+          { name: 'dot', source: '.' },
+          { name: 'out', source: './../x' },
+        ],
+      }),
+      'm',
+    )
+    expect(parsed.plugins.map(p => [p.name, p.source])).toEqual([['root', { source: 'local', path: '' }]])
+  })
+})
+
+describe('zip plugin archives', () => {
+  const manifest = JSON.stringify({ name: 'prism', version: '1.0.0' })
+
+  it('reads stored and deflated entries, peels one wrapper folder, and skips folders, symlinks and unsafe paths', async () => {
+    const zip = await buildZip([
+      { name: 'prism/' },
+      { name: `prism/${PLUGIN_JSON}`, content: manifest },
+      { name: 'prism/skills/a/SKILL.md', content: 'a'.repeat(3000) },
+      { name: 'prism/raw.txt', content: 'stored', method: 'store' },
+      { name: 'prism/link', content: 'target', unixMode: 0o120777 },
+      { name: 'prism/../escape.txt', content: 'x' },
+      { name: '/abs.txt', content: 'x' },
+    ])
+
+    const files = await extractPluginArchive(zip)
+
+    expect(files.map(f => f.path).sort()).toEqual([PLUGIN_JSON, 'raw.txt', 'skills/a/SKILL.md'])
+    const text = (path: string) => new TextDecoder().decode(files.find(f => f.path === path)!.content)
+    expect(text('skills/a/SKILL.md')).toBe('a'.repeat(3000))
+    expect(text('raw.txt')).toBe('stored')
+  })
+
+  it('refuses an entry that inflates past the per-file cap, whatever size it declares', async () => {
+    const zip = await buildZip([
+      { name: PLUGIN_JSON, content: manifest },
+      { name: 'bomb.bin', content: new Uint8Array(200_000) },
+    ])
+    const error = await errorOf(extractPluginArchive(zip, { ...DEFAULT_HTTPS_LIMITS, maxFileBytes: 50_000 }))
+    expect((error as HttpsSourceError).code).toBe('file-too-large')
+  })
+
+  it('refuses an archive that inflates past the total cap', async () => {
+    const zip = await buildZip([
+      { name: PLUGIN_JSON, content: manifest },
+      { name: 'a.bin', content: new Uint8Array(40_000) },
+      { name: 'b.bin', content: new Uint8Array(40_000) },
+    ])
+    const error = await errorOf(extractPluginArchive(zip, { ...DEFAULT_HTTPS_LIMITS, maxInflatedBytes: 60_000 }))
+    expect((error as HttpsSourceError).code).toBe('too-large')
+  })
+
+  it('refuses an encrypted entry and a truncated archive', async () => {
+    const encrypted = await buildZip([{ name: PLUGIN_JSON, content: manifest, encrypted: true }])
+    expect(((await errorOf(extractPluginArchive(encrypted))) as HttpsSourceError).code).toBe('bad-archive')
+    const whole = await buildZip([{ name: PLUGIN_JSON, content: manifest }])
+    expect(((await errorOf(extractPluginArchive(whole.subarray(0, whole.length - 10)))) as HttpsSourceError).code).toBe('bad-archive')
+  })
+})
+
+describe('installing these listings from a GitHub marketplace', () => {
+  async function marketplace(listings: unknown[], repoFiles: { name: string; content: string }[] = []) {
+    const fs = makeMemFs()
+    await addMarketplace(ctx, fs, 'mkt', { source: 'github', repo: 'me/mkt' }, NOW)
+    const repo = await archive(
+      [{ name: MARKETPLACE_JSON, content: JSON.stringify({ name: 'mkt', plugins: listings }) }, ...repoFiles],
+      'me-mkt-abc123',
+    )
+    const served = new Map<string, Uint8Array>()
+    const fetchImpl = (async (input: RequestInfo | URL) => {
+      const url = String(input)
+      if (url.startsWith('https://codeload.github.com/me/mkt/')) return new Response(repo as BodyInit, { status: 200 })
+      const body = served.get(url)
+      return body ? new Response(body as BodyInit, { status: 200 }) : new Response('not found', { status: 404 })
+    }) as typeof fetch
+    return { fs, fetchImpl, served }
+  }
+
+  it('an archive listing installs its zip when the digest matches', async () => {
+    const zip = await buildZip([
+      { name: PLUGIN_JSON, content: JSON.stringify({ name: 'prism', version: '1.0.0' }) },
+      { name: 'skills/prism/SKILL.md', content: 'render' },
+    ])
+    const m = await marketplace([{ name: 'prism', source: { source: 'archive', url: ZIP_URL, sha256: await sha256Hex(zip) } }])
+    m.served.set(ZIP_URL, zip)
+
+    const outcome = await setupPlugin(ctx, m.fs, 'mkt', 'prism', { fetchImpl: m.fetchImpl, nowIso: NOW })
+
+    expect(outcome.entry.version).toBe('1.0.0')
+    expect(await m.fs.readFile(`${outcome.entry.installPath}/skills/prism/SKILL.md`, { encoding: 'utf-8' })).toBe('render')
+  })
+
+  it('an archive whose bytes are not the listed digest installs nothing', async () => {
+    const zip = await buildZip([{ name: PLUGIN_JSON, content: JSON.stringify({ name: 'prism', version: '1.0.0' }) }])
+    const m = await marketplace([{ name: 'prism', source: { source: 'archive', url: ZIP_URL, sha256: '0'.repeat(64) } }])
+    m.served.set(ZIP_URL, zip)
+
+    await expect(setupPlugin(ctx, m.fs, 'mkt', 'prism', { fetchImpl: m.fetchImpl, nowIso: NOW })).rejects.toThrow(/digest/)
+    expect((await loadInstalledPlugins(ctx, m.fs)).registry.plugins['prism@mkt']).toBeUndefined()
+  })
+
+  it('a "./" listing installs the marketplace repo itself', async () => {
+    const m = await marketplace([{ name: 'themes', source: './' }], [
+      { name: PLUGIN_JSON, content: JSON.stringify({ name: 'themes', version: '0.3.0' }) },
+      { name: 'skills/themes/SKILL.md', content: 'pick a theme' },
+    ])
+
+    const outcome = await setupPlugin(ctx, m.fs, 'mkt', 'themes', { fetchImpl: m.fetchImpl, nowIso: NOW })
+
+    expect(outcome.entry.version).toBe('0.3.0')
+    expect(await m.fs.readFile(`${outcome.entry.installPath}/skills/themes/SKILL.md`, { encoding: 'utf-8' })).toBe('pick a theme')
+  })
+})

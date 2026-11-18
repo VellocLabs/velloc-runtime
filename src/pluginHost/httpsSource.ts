@@ -1,5 +1,5 @@
 /**
- * The `https` install source: one `.tar.gz` at an https URL, unpacked into a
+ * The `https` install source: one `.tar.gz` or `.zip` at an https URL, unpacked into a
  * local version directory that the loader reads; nothing runs from a URL.
  *
  * Security: https only (every redirect hop too), no credentials in the URL,
@@ -15,6 +15,7 @@ import {
   type ExtractedFile,
 } from './extract'
 import { recordPluginSetup } from './installedRegistry'
+import { isZipArchive, parseZip, ZipLimitError } from './zipArchive'
 import { holdProviderPluginForConsent } from './providerPluginConsent'
 import { getPluginVersionCacheDir, type PluginInstallPathContext } from './pluginDirs'
 import { joinPluginRef } from './pluginRef'
@@ -151,9 +152,10 @@ export async function downloadHttps(
 }
 
 /**
- * Archive bytes -> files, under the limits. The paths are already confined
- * (`parseTar` drops `..`, absolute paths, links). A manifest at the archive
- * root is kept as is; otherwise one uniform wrapper directory is peeled.
+ * Archive bytes (a `.tar.gz`, or a `.zip` by its signature) -> files, under
+ * the limits. The paths are already confined (`parseTar` and `parseZip` drop
+ * `..`, absolute paths, links). A manifest at the archive root is kept as is;
+ * otherwise one uniform wrapper directory is peeled.
  */
 export async function extractPluginArchive(
   bytes: Uint8Array,
@@ -161,8 +163,11 @@ export async function extractPluginArchive(
 ): Promise<ExtractedFile[]> {
   let files: ExtractedFile[]
   try {
-    files = parseTar(await decompressGzip(bytes, limits.maxInflatedBytes))
+    files = isZipArchive(bytes)
+      ? await parseZip(bytes, limits)
+      : parseTar(await decompressGzip(bytes, limits.maxInflatedBytes))
   } catch (error) {
+    if (error instanceof ZipLimitError) throw new HttpsSourceError(error.kind, error.message)
     const message = error instanceof Error ? error.message : String(error)
     if (/limit|bomb/i.test(message)) throw new HttpsSourceError('too-large', message)
     throw new HttpsSourceError('bad-archive', `[https] the archive could not be read: ${message}`)

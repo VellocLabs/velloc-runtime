@@ -20,6 +20,7 @@ import {
   findCatalogPlugin,
   fetchCatalog,
   loadKnownMarketplaces,
+  sha256Hex,
 } from './marketplaces'
 import { joinPluginRef, splitPluginRef } from './pluginRef'
 import {
@@ -279,6 +280,15 @@ export async function fetchListingFiles(
   } else {
     const fetched = await fetchSourceTarball(entry.source, fetchImpl)
     fetchedSha = fetched.sha
+    // Security: a listing that pins its archive's digest gets exactly those bytes.
+    if (entry.source.source === 'https' && entry.source.sha256) {
+      const digest = await sha256Hex(fetched.bytes)
+      if (digest !== entry.source.sha256) {
+        throw new Error(
+          `[installPlugin] '${identifier}' archive digest ${digest} is not the listed ${entry.source.sha256}`,
+        )
+      }
+    }
     files = entry.source.source === 'https'
       ? await extractPluginArchive(fetched.bytes)
       : await extractGitHubTarball(fetched.bytes)
