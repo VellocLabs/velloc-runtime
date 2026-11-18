@@ -425,4 +425,28 @@ describe('theme args and state', () => {
     expect(isThemeResult({ isDrawn: false, reason: 'x' })).toBe(true)
     expect(isThemeResult({ isDrawn: true })).toBe(false)
   })
+
+  it('when the standing theme\'s plugin unloads, the latest theme another loaded plugin set stands again; a clear leaves none behind', () => {
+    const state = new ModThemeState(() => {})
+    themeSetCore(state, 'a', { overrideColorScheme: 'dark' }, true)
+    themeSetCore(state, 'b', { overrideColorScheme: 'light' }, true)
+    themeSetCore(state, 'c', { backdrop: { scene: 's', glass: false } }, true)
+    // b unloads while c stands: nothing shown changes, and b is no longer behind.
+    expect(state.clearPlugin('b')).toBe(false)
+    expect(state.clearPlugin('c')).toBe(true)
+    expect(state.current()).toEqual({ plugin: 'a', requestId: 'theme', overrideColorScheme: 'dark' })
+    expect(state.hasScene()).toBe(false)
+    expect(state.clearPlugin('a')).toBe(true)
+    expect(state.current()).toBeUndefined()
+    // A plugin's own later set replaces its earlier one behind the standing theme.
+    themeSetCore(state, 'a', { overrideColorScheme: 'dark' }, true)
+    themeSetCore(state, 'b', { overrideColorScheme: 'light' }, true)
+    themeSetCore(state, 'a', { overrideColorScheme: 'light' }, true)
+    expect(state.clearPlugin('a')).toBe(true)
+    expect(state.current()?.plugin).toBe('b')
+    themeSetCore(state, 'a', { overrideColorScheme: 'dark' }, true)
+    themeClearCore(state)
+    expect(state.clearPlugin('a')).toBe(false)
+    expect(state.current()).toBeUndefined()
+  })
 })

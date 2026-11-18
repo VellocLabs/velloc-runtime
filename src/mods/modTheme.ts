@@ -357,9 +357,15 @@ function snapshotOf(plugin: string, args: ThemeSetArgs): ModThemeSnapshot {
   return snapshot
 }
 
-/** The session's one theme; `changed` runs after each change. */
+/**
+ * The session's one theme; `changed` runs after each change. The theme each
+ * other plugin last set is kept behind it, so when the standing theme's
+ * plugin unloads the latest of those stands again.
+ */
 export class ModThemeState {
   private standing: ModThemeSnapshot | undefined
+  /** Replaced themes, one per plugin, oldest first. */
+  private behind: ModThemeSnapshot[] = []
 
   constructor(private readonly changed: () => void) {}
 
@@ -375,22 +381,30 @@ export class ModThemeState {
 
   /** `plugin`'s theme replaces whatever stood. */
   set(plugin: string, args: ThemeSetArgs): ModThemeSnapshot {
+    const replaced = this.standing
+    this.behind = this.behind.filter(each => each.plugin !== plugin && each.plugin !== replaced?.plugin)
+    if (replaced && replaced.plugin !== plugin) this.behind.push(replaced)
     this.standing = snapshotOf(plugin, args)
     this.changed()
     return this.standing
   }
 
-  /** Clears the standing theme, whoever set it. Whether one stood. */
+  /** Clears the standing theme, whoever set it, and every theme behind it. Whether one stood. */
   clear(): boolean {
+    this.behind = []
     if (!this.standing) return false
     this.standing = undefined
     this.changed()
     return true
   }
 
-  /** `plugin` unloaded: its theme goes. Whether one did. */
+  /** `plugin` unloaded: its theme goes, and the latest theme behind it stands. Whether the standing theme changed. */
   clearPlugin(plugin: string): boolean {
-    return this.standing?.plugin === plugin ? this.clear() : false
+    this.behind = this.behind.filter(each => each.plugin !== plugin)
+    if (this.standing?.plugin !== plugin) return false
+    this.standing = this.behind.pop()
+    this.changed()
+    return true
   }
 }
 
