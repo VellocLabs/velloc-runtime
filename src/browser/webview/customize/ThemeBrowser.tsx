@@ -7,8 +7,8 @@ import { cn } from '@/lib/utils'
 import type { ThemeLook } from '../../../pluginHost/registryFormats'
 import { useT } from '../i18n'
 import type { MessageKey } from '../i18n/messages/en'
-import { InstallToasts, INSTALL_TOAST_MS } from './InstallToasts'
-import { avatarHue } from './ItemAvatar'
+import { INSTALL_TOAST_MS } from './InstallToasts'
+import { AVATAR_TINT, avatarHue } from './ItemAvatar'
 import { PAGE_COLUMN } from './MarketplaceBrowser'
 import {
   DEFAULT_LOOK,
@@ -155,7 +155,6 @@ export function ThemeBrowser({ view, target, onClose }: ThemeBrowserProps) {
         <NoticeLine notice={view.notice} onDismiss={view.dismissNotice} onView={onClose} />
         {body}
       </div>
-      <InstallToasts notices={view.installs} onDismiss={view.dismissInstall} />
     </div>
   )
 }
@@ -289,7 +288,7 @@ function LookCard({
         type="button"
         size="xs"
         variant="outline"
-        disabled={!usable || applying}
+        disabled={!usable || view.applying !== null}
         title={blocked ? t(blocked) : undefined}
         data-testid="customize-theme-use"
         onClick={() => target && view.use(plugin.name, look, target)}
@@ -375,7 +374,7 @@ function DefaultCard({ view, target, blocked }: Shared) {
                 type="button"
                 size="xs"
                 variant="outline"
-                disabled={!usable || applying}
+                disabled={!usable || view.applying !== null}
                 title={blocked ? t(blocked) : undefined}
                 data-testid="customize-theme-default-use"
                 onClick={() => target && view.clear(target)}
@@ -403,12 +402,11 @@ function LookPreview({ name, url }: { name: string; url: string }) {
         data-testid="customize-theme-preview-fallback"
         style={{ '--avatar-hue': avatarHue(name) } as React.CSSProperties}
         className={cn(
-          'flex aspect-[16/10] w-full items-center justify-center text-2xl font-semibold',
-          'bg-[oklch(0.93_0.045_var(--avatar-hue))] text-[oklch(0.45_0.12_var(--avatar-hue))]',
-          'dark:bg-[oklch(0.33_0.06_var(--avatar-hue))] dark:text-[oklch(0.86_0.08_var(--avatar-hue))]',
+          'flex aspect-[16/10] w-full items-center justify-center text-2xl font-semibold uppercase',
+          AVATAR_TINT,
         )}
       >
-        {name.slice(0, 1).toUpperCase()}
+        {name.trim().charAt(0) || '?'}
       </div>
     )
   }

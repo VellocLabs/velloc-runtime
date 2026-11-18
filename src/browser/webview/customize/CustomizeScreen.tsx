@@ -84,7 +84,15 @@ export function CustomizeScreen({
   const list = useMarketplaceList(bridge)
   const names = React.useMemo(() => (list.marketplaces ?? []).map(m => m.name), [list.marketplaces])
   const shelves = useMarketplaceShelves(bridge, names, tab.describeMarketplace)
-  const themes = useThemeCatalog(bridge, runtimeConnection)
+  const themes = useThemeCatalog(bridge, runtimeConnection, selection.kind === 'themes')
+  const notices = React.useMemo(() => [...shelves.notices, ...themes.installs], [shelves.notices, themes.installs])
+  const dismissNotice = React.useCallback(
+    (key: string) => {
+      shelves.dismissNotice(key)
+      themes.dismissInstall(key)
+    },
+    [shelves.dismissNotice, themes.dismissInstall],
+  )
   const [addingMarket, setAddingMarket] = React.useState(false)
   // The typed request the dialog adds, held until the bridge can take it.
   const [addRequest, setAddRequest] = React.useState<{ source: string; seq: number } | null>(null)
@@ -348,7 +356,7 @@ export function CustomizeScreen({
         }}
         request={addRequest}
       />
-      <InstallToasts notices={shelves.notices} onDismiss={shelves.dismissNotice} />
+      <InstallToasts notices={notices} onDismiss={dismissNotice} />
       <RemoveMarketplaceDialog name={removing} onRemove={removeMarket} onClose={() => setRemoving(null)} />
     </div>
   )

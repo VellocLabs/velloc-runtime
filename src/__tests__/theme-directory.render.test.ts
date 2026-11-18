@@ -54,6 +54,10 @@ function setup(
     themes?: Listing[] | 'fail'
     target?: ThemeTarget | null
     useAnswer?: unknown
+    /** Answers to successive `theme.useLook` requests, before `useAnswer`. */
+    useAnswers?: unknown[]
+    /** `theme.useLook` waits for this before it answers. */
+    useGate?: Promise<void>
     installFails?: boolean
   } = {},
 ) {
@@ -95,7 +99,10 @@ function setup(
       if (route === 'customizePage.show') return { tabId: 7, created: true }
       if (route === 'customizePage.describeMarketplace') return { plugins: {} }
       runtimeAsked.push(`${route} ${JSON.stringify(payload)}`)
-      if (route === 'theme.useLook') return options.useAnswer ?? { ok: true, via: 'command' }
+      if (route === 'theme.useLook') {
+        await options.useGate
+        return options.useAnswers?.shift() ?? options.useAnswer ?? { ok: true, via: 'command' }
+      }
       if (route === 'theme.clear') return { ok: true, cleared: true }
       return { ok: true }
     },
@@ -149,6 +156,10 @@ describe('Customize — the theme directory row', () => {
     const rows = within(view.getByTestId('customize-markets')).getAllByRole('button')
     expect(rows[0]!.textContent).toContain(EN['customize.directory.title'])
     expect(rows[1]!.textContent).toContain(EN['customize.themes.title'])
+    await act(async () => {
+      await new Promise(resolve => setTimeout(resolve, 20))
+    })
+    expect(bridgeAsked.filter(line => line.includes('"kind":"themes"') || line.includes('"name":"velloc"'))).toEqual([])
     await open()
     expect(view.getByTestId('customize-title').textContent).toBe(EN['customize.themes.title'])
     expect(view.queryByTestId('webview-area')).toBeNull()
@@ -233,6 +244,58 @@ describe('Theme directory — Add and Use', () => {
     expect(notice.textContent).toContain('SCENE-1')
     fireEvent.click(view.getByTestId('customize-theme-notice-view'))
     expect(closed()).toBe(1)
+  })
+
+  it('Add & use asks again while the open session is still loading the new plugin', async () => {
+    const { view, open, card, runtimeAsked } = setup({
+      useAnswers: [{ ok: false, reason: 'notLoaded' }, { ok: false, reason: 'notOwnCommand' }],
+    })
+    await open()
+    fireEvent.click(within(card('scenes', 'scene-1')).getByTestId('customize-theme-add'))
+    await waitFor(() => expect(view.getByTestId('customize-theme-notice').getAttribute('data-kind')).toBe('applied'), {
+      timeout: 4000,
+    })
+    expect(runtimeAsked).toHaveLength(3)
+    expect(within(card('scenes', 'scene-1')).getByTestId('customize-theme-in-use')).toBeTruthy()
+  })
+
+  it('a refusal on Use is not asked again', async () => {
+    const { view, open, card, runtimeAsked } = setup({
+      themes: [{ ...pack(), installed: true }],
+      useAnswer: { ok: false, reason: 'notLoaded' },
+    })
+    await open()
+    fireEvent.click(within(card('scenes', 'scene-0')).getByTestId('customize-theme-use'))
+    await waitFor(() => expect(view.getByTestId('customize-theme-notice').getAttribute('data-kind')).toBe('failed'))
+    await new Promise(resolve => setTimeout(resolve, 700))
+    expect(runtimeAsked).toHaveLength(1)
+  })
+
+  it('while one look is applied every other Use and the default look are off', async () => {
+    let release!: () => void
+    const useGate = new Promise<void>(resolve => {
+      release = resolve
+    })
+    const { view, open, card, runtimeAsked } = setup({ themes: [{ ...pack(), installed: true }], useGate })
+    await open()
+    fireEvent.click(within(card('scenes', 'scene-0')).getByTestId('customize-theme-use'))
+    await waitFor(() => expect(runtimeAsked).toHaveLength(1))
+    const other = within(card('scenes', 'scene-1')).getByTestId('customize-theme-use') as HTMLButtonElement
+    expect(other.disabled).toBe(true)
+    expect((view.getByTestId('customize-theme-default-use') as HTMLButtonElement).disabled).toBe(true)
+    await act(async () => {
+      release()
+    })
+    await waitFor(() => expect(within(card('scenes', 'scene-0')).getByTestId('customize-theme-in-use')).toBeTruthy())
+    expect((within(card('scenes', 'scene-1')).getByTestId('customize-theme-use') as HTMLButtonElement).disabled).toBe(false)
+  })
+
+  it('an install toast is drawn in the screen\'s one stack', async () => {
+    const { view, open } = setup()
+    await open()
+    fireEvent.click(view.getByTestId('customize-theme-pack-add'))
+    await waitFor(() => expect(view.getAllByTestId('customize-install-toasts')).toHaveLength(1))
+    expect(view.getByTestId('customize-install-toasts').textContent).not.toBe('')
   })
 
   it('the pack header adds the plugin without picking a look', async () => {

@@ -9,6 +9,12 @@ export function avatarHue(name: string): number {
   return Math.abs(hash) % 360
 }
 
+/** The initial-on-tint colours, light and dark, under `--avatar-hue`. */
+export const AVATAR_TINT = cn(
+  'bg-[oklch(0.93_0.045_var(--avatar-hue))] text-[oklch(0.45_0.12_var(--avatar-hue))]',
+  'dark:bg-[oklch(0.33_0.06_var(--avatar-hue))] dark:text-[oklch(0.86_0.08_var(--avatar-hue))]',
+)
+
 /** A plugin's or connector's icon, or its initial on a tint of its own when it has none or the image fails. */
 export function ItemAvatar({ name, iconUrl, className }: { name: string; iconUrl?: string; className?: string }) {
   const [broken, setBroken] = React.useState(false)
@@ -35,8 +41,8 @@ export function ItemAvatar({ name, iconUrl, className }: { name: string; iconUrl
       style={{ '--avatar-hue': avatarHue(name) } as React.CSSProperties}
       className={cn(
         box,
-        'border-transparent bg-[oklch(0.93_0.045_var(--avatar-hue))] text-[oklch(0.45_0.12_var(--avatar-hue))] text-xs font-semibold uppercase',
-        'dark:bg-[oklch(0.33_0.06_var(--avatar-hue))] dark:text-[oklch(0.86_0.08_var(--avatar-hue))]',
+        'border-transparent text-xs font-semibold uppercase',
+        AVATAR_TINT,
       )}
     >
       {name.trim().charAt(0) || '?'}

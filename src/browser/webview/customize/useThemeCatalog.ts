@@ -63,6 +63,12 @@ export type ThemeCatalogView = {
 
 const NONE: ReadonlySet<string> = new Set()
 
+/** After an install, the open session loads the plugin in the background; Add & use asks again until it has. */
+const AFTER_INSTALL_TRIES = 12
+const AFTER_INSTALL_WAIT_MS = 500
+const loadingYet = (result: ThemeUseLookResult) =>
+  !result.ok && (result.reason === 'notLoaded' || result.reason === 'notOwnCommand')
+
 const isThemePlugin = (entry: PluginAvailableUiEntry): entry is ThemePlugin =>
   Array.isArray(entry.theme?.looks) && entry.theme.looks.length > 0
 
@@ -70,11 +76,13 @@ const isThemePlugin = (entry: PluginAvailableUiEntry): entry is ThemePlugin =>
  * The theme directory (F-35): the built-in marketplace's theme listings,
  * read from the local copy at once and again after a fetch from its source.
  * A look is applied by the runtime (`theme.useLook`), which alone decides
- * what runs; this hook sends a session, a plugin and a look id.
+ * what runs; this hook sends a session, a plugin and a look id. Nothing is
+ * read until `active` is first true.
  */
 export function useThemeCatalog(
   bridge: NexusSettingsBridge | null,
   runtimeConnection: (() => Promise<RuntimeConnection>) | undefined,
+  active = true,
 ): ThemeCatalogView {
   const [status, setStatus] = React.useState<ThemeCatalogView['status']>('loading')
   const [plugins, setPlugins] = React.useState<ThemePlugin[]>([])
@@ -121,14 +129,20 @@ export function useThemeCatalog(
       })
   }, [bridge, read])
 
+  const [started, setStarted] = React.useState(active)
   React.useEffect(() => {
+    if (active) setStarted(true)
+  }, [active])
+
+  React.useEffect(() => {
+    if (!started) return
     if (!bridge) {
       setStatus('failed')
       return
     }
     setStatus('loading')
     void read().then(fetchLatest)
-  }, [bridge, read, fetchLatest])
+  }, [started, bridge, read, fetchLatest])
 
   const refresh = React.useCallback(() => void fetchLatest(), [fetchLatest])
 
@@ -139,22 +153,25 @@ export function useThemeCatalog(
   }, [])
 
   const use = React.useCallback(
-    (plugin: string, look: ThemeLook, target: ThemeTarget) => {
+    (plugin: string, look: ThemeLook, target: ThemeTarget, tries = 1) => {
       if (!runtimeConnection) return
       const key = lookKey(plugin, look.id)
       const name = look.name ?? look.id
       setApplying(key)
-      runtimeConnection()
-        .then(conn =>
-          conn.request(`${THEME_CAPABILITY}.useLook` as RouteKey, {
-            sessionId: target.sessionId,
-            plugin,
-            lookId: look.id,
-          }),
-        )
+      const ask = async (left: number): Promise<ThemeUseLookResult> => {
+        const conn = await runtimeConnection()
+        const result = (await conn.request(`${THEME_CAPABILITY}.useLook` as RouteKey, {
+          sessionId: target.sessionId,
+          plugin,
+          lookId: look.id,
+        })) as ThemeUseLookResult
+        if (left <= 1 || !loadingYet(result) || !live.current) return result
+        await new Promise(resolve => setTimeout(resolve, AFTER_INSTALL_WAIT_MS))
+        return ask(left - 1)
+      }
+      ask(tries)
         .then(
-          answer => {
-            const result = answer as ThemeUseLookResult
+          result => {
             if (!live.current) return
             if (result.ok) {
               setInUse(all => ({ ...all, [target.sessionId]: key }))
@@ -212,7 +229,7 @@ export function useThemeCatalog(
           async result => {
             await read()
             announce(result.ok ? 'installed' : 'notListed')
-            if (result.ok && then) use(plugin, then.look, then.target)
+            if (result.ok && then) use(plugin, then.look, then.target, AFTER_INSTALL_TRIES)
           },
           () => {
             if (live.current) setInstallFailed(set => new Set(set).add(plugin))
