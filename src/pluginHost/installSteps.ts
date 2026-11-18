@@ -7,7 +7,13 @@ import type { SettingsPathContext } from '../settings/settingsStore'
 import { applyEnabledPluginsPatch } from './enabledPlugins'
 import { extractGitHubTarball, extractSubdir, type ExtractedFile } from './extract'
 import { fetchSourceTarball } from './fetch'
-import { extractPluginArchive } from './httpsSource'
+import {
+  DEFAULT_HTTPS_LIMITS,
+  HttpsSourceError,
+  downloadHttps,
+  extractPluginArchive,
+  sha256Of,
+} from './httpsSource'
 import {
   recordPluginSetup,
   getInstalledPlugin,
@@ -20,7 +26,6 @@ import {
   findCatalogPlugin,
   fetchCatalog,
   loadKnownMarketplaces,
-  sha256Hex,
 } from './marketplaces'
 import { joinPluginRef, splitPluginRef } from './pluginRef'
 import {
@@ -277,21 +282,24 @@ export async function fetchListingFiles(
         + ` — run \`/marketplace update ${catalogKey}\` and retry`,
       )
     }
-  } else {
-    const fetched = await fetchSourceTarball(entry.source, fetchImpl)
-    fetchedSha = fetched.sha
-    // Security: a listing that pins its archive's digest gets exactly those bytes.
-    if (entry.source.source === 'https' && entry.source.sha256) {
-      const digest = await sha256Hex(fetched.bytes)
+  } else if (entry.source.source === 'https') {
+    // Security: the https source's download rules (https on every hop, size cap),
+    // and a listing that pins its archive's digest gets exactly those bytes.
+    const fetched = await downloadHttps(entry.source.url, fetchImpl, DEFAULT_HTTPS_LIMITS.maxArchiveBytes)
+    if (entry.source.sha256) {
+      const digest = await sha256Of(fetched.bytes)
       if (digest !== entry.source.sha256) {
-        throw new Error(
+        throw new HttpsSourceError(
+          'digest-mismatch',
           `[installPlugin] '${identifier}' archive digest ${digest} is not the listed ${entry.source.sha256}`,
         )
       }
     }
-    files = entry.source.source === 'https'
-      ? await extractPluginArchive(fetched.bytes)
-      : await extractGitHubTarball(fetched.bytes)
+    files = await extractPluginArchive(fetched.bytes)
+  } else {
+    const fetched = await fetchSourceTarball(entry.source, fetchImpl)
+    fetchedSha = fetched.sha
+    files = await extractGitHubTarball(fetched.bytes)
     if (entry.source.source === 'git-subdir') {
       const subdir = entry.source.path
       const rerooted = extractSubdir(files, subdir)

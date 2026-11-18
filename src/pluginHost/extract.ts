@@ -26,6 +26,14 @@ export type ExtractedFile = {
  */
 export const MAX_DECOMPRESSED_TARBALL_BYTES = 256 * 1024 * 1024
 
+/** The inflate crossed its cap; thrown by `decompressGzip` and `inflateRawCapped`. */
+export class InflateLimitError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'InflateLimitError'
+  }
+}
+
 /** Async-decompress a gzip stream using the platform `DecompressionStream`.
  *  Returns the inflated bytes. Throws on invalid gzip, OR when the inflated
  *  output would exceed `maxDecompressedBytes` (gzip-bomb guard — see
@@ -78,7 +86,7 @@ async function decompressCapped(
       if (!value) continue
       total += value.byteLength
       if (total > maxDecompressedBytes) {
-        throw new Error(
+        throw new InflateLimitError(
           `[extract] decompressed tarball exceeds the ${maxDecompressedBytes}-byte`
           + ` limit (possible gzip bomb); aborting extraction`,
         )

@@ -3,11 +3,13 @@
  * Security: stored and deflate entries only; encrypted entries, zip64 and
  * spanned archives are refused. Every inflate is streamed under the per-file
  * and total caps, whatever sizes the archive declares. Entry paths go through
- * `sanitizeArchivePath` (unsafe ones are dropped, as tar entries are), and
- * directories and symlinks are skipped.
+ * `sanitizeArchivePath` after `\\` becomes `/` (unsafe ones are dropped, as tar
+ * entries are); a path that repeats another, ignoring case, refuses the archive.
+ * Directories, symlinks and `__MACOSX/` metadata are skipped. Each entry's
+ * CRC-32 is checked.
  */
 
-import { inflateRawCapped, sanitizeArchivePath, type ExtractedFile } from './extract'
+import { InflateLimitError, inflateRawCapped, sanitizeArchivePath, type ExtractedFile } from './extract'
 
 export type ZipLimits = {
   maxFiles: number
@@ -33,6 +35,7 @@ const METHOD_DEFLATE = 8
 const FLAG_ENCRYPTED = 0x1
 const UNIX_TYPE_MASK = 0o170000
 const UNIX_SYMLINK = 0o120000
+const MAC_METADATA_DIR = '__MACOSX'
 
 /** True when `bytes` open with a zip local file header. */
 export function isZipArchive(bytes: Uint8Array): boolean {
@@ -56,6 +59,7 @@ export async function parseZip(bytes: Uint8Array, limits: ZipLimits): Promise<Ex
 
   const decoder = new TextDecoder('utf-8')
   const files: ExtractedFile[] = []
+  const seen = new Set<string>()
   let inflated = 0
   let at = directoryOffset
   for (let index = 0; index < entries; index++) {
@@ -63,6 +67,7 @@ export async function parseZip(bytes: Uint8Array, limits: ZipLimits): Promise<Ex
     if (view.getUint32(at, true) !== CENTRAL_HEADER_SIG) throw new Error('[zip] bad central directory entry')
     const flags = view.getUint16(at + 8, true)
     const method = view.getUint16(at + 10, true)
+    const crc = view.getUint32(at + 16, true)
     const compressedSize = view.getUint32(at + 20, true)
     const declaredSize = view.getUint32(at + 24, true)
     const nameLength = view.getUint16(at + 28, true)
@@ -75,8 +80,11 @@ export async function parseZip(bytes: Uint8Array, limits: ZipLimits): Promise<Ex
     at += 46 + nameLength + extraLength + commentLength
 
     if (name.endsWith('/') || (unixMode & UNIX_TYPE_MASK) === UNIX_SYMLINK) continue
-    const path = sanitizeArchivePath(name)
-    if (path === null) continue
+    const path = sanitizeArchivePath(name.replace(/\\/g, '/'))
+    if (path === null || path.split('/')[0] === MAC_METADATA_DIR) continue
+    const folded = path.toLowerCase()
+    if (seen.has(folded)) throw new Error(`[zip] ${path} appears more than once`)
+    seen.add(folded)
     if (flags & FLAG_ENCRYPTED) throw new Error(`[zip] ${path} is encrypted`)
     if (method !== METHOD_STORED && method !== METHOD_DEFLATE) {
       throw new Error(`[zip] ${path} uses compression method ${method}; only stored and deflate are supported`)
@@ -101,10 +109,11 @@ export async function parseZip(bytes: Uint8Array, limits: ZipLimits): Promise<Ex
         content = await inflateRawCapped(data, room)
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error)
-        if (/limit/i.test(message)) throw overCap(path, limits, inflated, room + 1)
+        if (error instanceof InflateLimitError) throw overCap(path, limits, inflated, room + 1)
         throw new Error(`[zip] ${path} could not be inflated: ${message}`)
       }
     }
+    if (crc32(content) !== crc) throw new Error(`[zip] ${path} does not match its checksum`)
     inflated += content.byteLength
     files.push({ path, content })
     if (files.length > limits.maxFiles) {
@@ -112,6 +121,22 @@ export async function parseZip(bytes: Uint8Array, limits: ZipLimits): Promise<Ex
     }
   }
   return files
+}
+
+const CRC_TABLE = (() => {
+  const table = new Uint32Array(256)
+  for (let n = 0; n < 256; n++) {
+    let c = n
+    for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1
+    table[n] = c >>> 0
+  }
+  return table
+})()
+
+function crc32(bytes: Uint8Array): number {
+  let c = 0xffffffff
+  for (let i = 0; i < bytes.length; i++) c = CRC_TABLE[(c ^ bytes[i]!) & 0xff]! ^ (c >>> 8)
+  return (c ^ 0xffffffff) >>> 0
 }
 
 function findEndOfCentral(view: DataView): number {

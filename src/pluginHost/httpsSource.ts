@@ -10,6 +10,7 @@
 import type { RuntimeFs } from '../utils/fs/runtimeFs'
 import {
   decompressGzip,
+  InflateLimitError,
   parseTar,
   stripTopLevelDir,
   type ExtractedFile,
@@ -169,7 +170,7 @@ export async function extractPluginArchive(
   } catch (error) {
     if (error instanceof ZipLimitError) throw new HttpsSourceError(error.kind, error.message)
     const message = error instanceof Error ? error.message : String(error)
-    if (/limit|bomb/i.test(message)) throw new HttpsSourceError('too-large', message)
+    if (error instanceof InflateLimitError) throw new HttpsSourceError('too-large', message)
     throw new HttpsSourceError('bad-archive', `[https] the archive could not be read: ${message}`)
   }
   if (files.length > limits.maxFiles) {

@@ -7,6 +7,12 @@ export type ZipEntry = {
   /** Unix file mode for the external attributes (e.g. `0o120777` for a symlink). */
   unixMode?: number
   encrypted?: boolean
+  /** Uncompressed size written to the headers, in place of the real one. */
+  declaredSize?: number
+  /** CRC-32 written to the headers, in place of the real one. */
+  crc?: number
+  /** Compression method number written to the headers, in place of 0 or 8. */
+  methodId?: number
 }
 
 const CRC_TABLE = (() => {
@@ -41,9 +47,10 @@ export async function buildZip(entries: readonly ZipEntry[]): Promise<Uint8Array
     const raw = typeof entry.content === 'string' ? encoder.encode(entry.content) : (entry.content ?? new Uint8Array())
     const stored = entry.method === 'store' || entry.name.endsWith('/')
     const data = stored ? raw : await deflateRaw(raw)
-    const method = stored ? 0 : 8
+    const method = entry.methodId ?? (stored ? 0 : 8)
     const flags = (entry.encrypted ? 1 : 0) | 0x800
-    const crc = crc32(raw)
+    const crc = entry.crc ?? crc32(raw)
+    const size = entry.declaredSize ?? raw.length
 
     const local = new Uint8Array(30 + name.length + data.length)
     const lv = new DataView(local.buffer)
@@ -53,7 +60,7 @@ export async function buildZip(entries: readonly ZipEntry[]): Promise<Uint8Array
     lv.setUint16(8, method, true)
     lv.setUint32(14, crc, true)
     lv.setUint32(18, data.length, true)
-    lv.setUint32(22, raw.length, true)
+    lv.setUint32(22, size, true)
     lv.setUint16(26, name.length, true)
     local.set(name, 30)
     local.set(data, 30 + name.length)
@@ -68,7 +75,7 @@ export async function buildZip(entries: readonly ZipEntry[]): Promise<Uint8Array
     cv.setUint16(10, method, true)
     cv.setUint32(16, crc, true)
     cv.setUint32(20, data.length, true)
-    cv.setUint32(24, raw.length, true)
+    cv.setUint32(24, size, true)
     cv.setUint16(28, name.length, true)
     cv.setUint32(38, ((entry.unixMode ?? (entry.name.endsWith('/') ? 0o040755 : 0o100644)) << 16) >>> 0, true)
     cv.setUint32(42, offset, true)

@@ -1,5 +1,5 @@
 /**
- * Marketplace listings the parser used to drop: an `archive` source (a zip or
+ * Marketplace listings beyond a plain path or repo: an `archive` source (a zip or
  * tarball at an https URL, pinned by sha256) and `./` (the marketplace repo is
  * the plugin). Each is listed, and each installs.
  */
@@ -110,6 +110,75 @@ describe('zip plugin archives', () => {
     expect((error as HttpsSourceError).code).toBe('too-large')
   })
 
+  it('reads backslash-separated names, and drops drive-letter and climbing ones whatever the separator', async () => {
+    const zip = await buildZip([
+      { name: PLUGIN_JSON.replace('/', '\\'), content: manifest },
+      { name: 'skills\\a\\SKILL.md', content: 'a' },
+      { name: 'C:/evil.txt', content: 'x' },
+      { name: 'C:\\evil2.txt', content: 'x' },
+      { name: 'skills\\..\\..\\escape.txt', content: 'x' },
+      { name: '\\\\server\\share\\unc.txt', content: 'x' },
+    ])
+
+    const files = await extractPluginArchive(zip)
+
+    expect(files.map(f => f.path).sort()).toEqual([PLUGIN_JSON, 'skills/a/SKILL.md'])
+  })
+
+  it('skips the __MACOSX metadata folder so the wrapper folder is still peeled', async () => {
+    const zip = await buildZip([
+      { name: `prism/${PLUGIN_JSON}`, content: manifest },
+      { name: '__MACOSX/prism/._plugin.json', content: 'x' },
+    ])
+
+    expect((await extractPluginArchive(zip)).map(f => f.path)).toEqual([PLUGIN_JSON])
+  })
+
+  it('refuses two entries whose paths differ only in case', async () => {
+    const zip = await buildZip([
+      { name: PLUGIN_JSON, content: manifest },
+      { name: 'hooks/run.js', content: 'a' },
+      { name: 'HOOKS/Run.js', content: 'b' },
+    ])
+    expect(((await errorOf(extractPluginArchive(zip))) as HttpsSourceError).code).toBe('bad-archive')
+  })
+
+  it('stops inflating an entry that declares a small size but expands past the cap', async () => {
+    const zip = await buildZip([
+      { name: PLUGIN_JSON, content: manifest },
+      { name: 'bomb.bin', content: new Uint8Array(5_000_000), declaredSize: 10 },
+    ])
+    const error = await errorOf(extractPluginArchive(zip, { ...DEFAULT_HTTPS_LIMITS, maxFileBytes: 50_000 }))
+    expect((error as HttpsSourceError).code).toBe('file-too-large')
+  })
+
+  it('stops at the total cap when every entry declares a small size', async () => {
+    const entries = Array.from({ length: 5 }, (_, i) => ({ name: `b${i}.bin`, content: new Uint8Array(30_000), declaredSize: 1 }))
+    const zip = await buildZip([{ name: PLUGIN_JSON, content: manifest }, ...entries])
+    const error = await errorOf(extractPluginArchive(zip, { ...DEFAULT_HTTPS_LIMITS, maxInflatedBytes: 100_000 }))
+    expect((error as HttpsSourceError).code).toBe('too-large')
+  })
+
+  it('refuses an archive with more entries than the file limit', async () => {
+    const entries = Array.from({ length: 12 }, (_, i) => ({ name: `f${i}.txt`, content: 'x' }))
+    const zip = await buildZip([{ name: PLUGIN_JSON, content: manifest }, ...entries])
+    const error = await errorOf(extractPluginArchive(zip, { ...DEFAULT_HTTPS_LIMITS, maxFiles: 5 }))
+    expect((error as HttpsSourceError).code).toBe('too-many-files')
+  })
+
+  it('refuses an entry whose bytes do not match its checksum', async () => {
+    const zip = await buildZip([{ name: PLUGIN_JSON, content: manifest, crc: 0x12345678 }])
+    expect(((await errorOf(extractPluginArchive(zip))) as HttpsSourceError).code).toBe('bad-archive')
+  })
+
+  it('refuses an unsupported compression method, even under a path holding "limit"', async () => {
+    const zip = await buildZip([
+      { name: PLUGIN_JSON, content: manifest },
+      { name: 'skills/rate-limit/SKILL.md', content: 'x', method: 'store', methodId: 12 },
+    ])
+    expect(((await errorOf(extractPluginArchive(zip))) as HttpsSourceError).code).toBe('bad-archive')
+  })
+
   it('refuses an encrypted entry and a truncated archive', async () => {
     const encrypted = await buildZip([{ name: PLUGIN_JSON, content: manifest, encrypted: true }])
     expect(((await errorOf(extractPluginArchive(encrypted))) as HttpsSourceError).code).toBe('bad-archive')
@@ -155,9 +224,32 @@ describe('installing these listings from a GitHub marketplace', () => {
     const m = await marketplace([{ name: 'prism', source: { source: 'archive', url: ZIP_URL, sha256: '0'.repeat(64) } }])
     m.served.set(ZIP_URL, zip)
 
-    await expect(setupPlugin(ctx, m.fs, 'mkt', 'prism', { fetchImpl: m.fetchImpl, nowIso: NOW })).rejects.toThrow(/digest/)
+    const error = await errorOf(setupPlugin(ctx, m.fs, 'mkt', 'prism', { fetchImpl: m.fetchImpl, nowIso: NOW }))
+    expect((error as HttpsSourceError).code).toBe('digest-mismatch')
     expect((await loadInstalledPlugins(ctx, m.fs)).registry.plugins['prism@mkt']).toBeUndefined()
   })
+
+  it('an archive listing that redirects to plain http installs nothing', async () => {
+    const m = await marketplace([{ name: 'prism', source: { source: 'archive', url: ZIP_URL } }])
+    const fetchImpl = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input) !== ZIP_URL) return m.fetchImpl(input, init)
+      const response = new Response(await buildZip([{ name: PLUGIN_JSON, content: '{}' }]) as BodyInit, { status: 200 })
+      Object.defineProperty(response, 'url', { value: 'http://cdn.test/prism.zip' })
+      return response
+    }) as typeof fetch
+
+    const error = await errorOf(setupPlugin(ctx, m.fs, 'mkt', 'prism', { fetchImpl, nowIso: NOW }))
+    expect((error as HttpsSourceError).code).toBe('not-https')
+  })
+
+  it('an archive listing larger than the download cap installs nothing', async () => {
+    const m = await marketplace([{ name: 'prism', source: { source: 'archive', url: ZIP_URL } }])
+    m.served.set(ZIP_URL, new Uint8Array(DEFAULT_HTTPS_LIMITS.maxArchiveBytes + 1))
+
+    const error = await errorOf(setupPlugin(ctx, m.fs, 'mkt', 'prism', { fetchImpl: m.fetchImpl, nowIso: NOW }))
+    expect((error as HttpsSourceError).code).toBe('too-large')
+  })
+
 
   it('a "./" listing installs the marketplace repo itself', async () => {
     const m = await marketplace([{ name: 'themes', source: './' }], [
