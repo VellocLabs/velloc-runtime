@@ -107,6 +107,11 @@ export const THEME_TOKENS: readonly string[] = [...new Set(TOKEN_SOURCES.map(([t
 /** The surface tokens a scene's glass frosts. */
 export const GLASS_TOKENS: readonly string[] = ['--background', '--base', '--toolbar', '--card', '--sidebar']
 
+/** The fills that mark a hovered or pressed control. On glass each keeps its
+ *  own color at this share, so the control lets the glass show through. */
+export const GLASS_HIGHLIGHT_TOKENS: readonly string[] = ['--accent', '--sidebar-accent']
+export const GLASS_HIGHLIGHT_OPACITY = 0.3
+
 /** Velloc's floor for every text token on every surface token; under it, or
  *  where a pair cannot be judged, the whole palette is refused. */
 export const MIN_TEXT_CONTRAST = 4.5
@@ -406,6 +411,11 @@ export function glassTokensOf(
     const base = glass.tint ?? painted[token] ?? own[token]
     if (!base) continue
     tokens[token] = `color-mix(in srgb, ${base} ${Math.round(glass.opacity * 100)}%, transparent)`
+  }
+  for (const token of GLASS_HIGHLIGHT_TOKENS) {
+    const base = painted[token] ?? own[token]
+    if (!base) continue
+    tokens[token] = `color-mix(in srgb, ${base} ${Math.round(GLASS_HIGHLIGHT_OPACITY * 100)}%, transparent)`
   }
   return tokens
 }

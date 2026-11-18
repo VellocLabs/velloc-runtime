@@ -309,6 +309,10 @@ describe('the backdrop', () => {
     expect(tokens['--background']).toBe('color-mix(in srgb, #efe6d3 55%, transparent)')
     expect(tokens['--card']).toBe('color-mix(in srgb, oklch(1 0 0) 55%, transparent)')
     expect(glassTokensOf({ ...glass, tint: '#000000' }, {}, {})['--toolbar']).toBe('color-mix(in srgb, #000000 55%, transparent)')
+    // A pressed or hovered control's fill keeps its own color, never the tint, and lets the glass show through.
+    const highlights = glassTokensOf({ ...glass, tint: '#000000' }, { '--accent': '#faf5e9' }, { '--accent': '#eeeeee', '--sidebar-accent': '#dddddd' })
+    expect(highlights['--accent']).toBe('color-mix(in srgb, #faf5e9 30%, transparent)')
+    expect(highlights['--sidebar-accent']).toBe('color-mix(in srgb, #dddddd 30%, transparent)')
   })
 })
 
