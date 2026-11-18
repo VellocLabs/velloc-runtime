@@ -721,7 +721,7 @@
 }
 /* Each brain stroke has pathLength 1: drawn in, held, erased forward. */
 .nexus-session-status[data-status="thinking"] > path {
-  stroke-dasharray: 1;
+  stroke-dasharray: 1 2;
   animation: nexus-status-draw 2s ease-in-out infinite;
 }
 .nexus-session-status[data-status="tools"] > path {
@@ -737,7 +737,7 @@
 @keyframes nexus-status-draw {
   0%       { stroke-dashoffset: 1; }
   45%, 70% { stroke-dashoffset: 0; }
-  100%     { stroke-dashoffset: -1; }
+  100%     { stroke-dashoffset: -1.5; }
 }
 /* Scaled to 0.85 so the swung handle stays inside the 24-unit box. */
 @keyframes nexus-status-ratchet {

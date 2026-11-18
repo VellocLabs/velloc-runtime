@@ -1,11 +1,10 @@
-import type { FC } from "react";
+import type { ComponentType, FC } from "react";
 import {
   CirclePauseIcon,
   Icon as IconFromNodes,
   MessageCircleQuestionMarkIcon,
   WrenchIcon,
   type IconNode,
-  type LucideIcon,
   type LucideProps,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -26,11 +25,11 @@ const BRAIN_DRAW_NODES: IconNode = [
   "M6.003 5.125a4 4 0 0 0-2.526 5.77",
 ].map((d, i) => ["path", { d, pathLength: "1", key: `brain-${i}` }]);
 
-const BrainDrawIcon = ((props: LucideProps) => (
+const BrainDrawIcon: FC<LucideProps> = (props) => (
   <IconFromNodes iconNode={BRAIN_DRAW_NODES} {...props} />
-)) as LucideIcon;
+);
 
-const GLYPHS: Record<SessionRunStatus, { Icon: LucideIcon; label: MessageKey }> = {
+const GLYPHS: Record<SessionRunStatus, { Icon: ComponentType<LucideProps>; label: MessageKey }> = {
   thinking: { Icon: BrainDrawIcon, label: "sessionStatus.thinking" },
   tools: { Icon: WrenchIcon, label: "sessionStatus.runningTools" },
   awaiting: { Icon: MessageCircleQuestionMarkIcon, label: "sessionStatus.awaitingReply" },

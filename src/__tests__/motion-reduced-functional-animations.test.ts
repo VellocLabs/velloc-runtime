@@ -92,8 +92,7 @@ describe('reduced-motion functional-animation exemption (globals.css)', () => {
   // must be re-asserted with !important under reduced-motion so the release
   // WebUI's spurious `reduce` can't freeze it.
   const STATUS_LAYERS = [
-    { cls: '.nexus-session-status[data-status="thinking"] {', anim: 'nexus-status-breathe' },
-    { cls: '.nexus-session-status[data-status="thinking"] > path {', anim: 'nexus-status-fire' },
+    { cls: '.nexus-session-status[data-status="thinking"] > path {', anim: 'nexus-status-draw' },
     { cls: '.nexus-session-status[data-status="tools"] > path', anim: 'nexus-status-ratchet' },
     { cls: '.nexus-session-status[data-status="awaiting"] > path', anim: 'nexus-status-hop' },
   ] as const

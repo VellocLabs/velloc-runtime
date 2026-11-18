@@ -1,5 +1,6 @@
 // @vitest-environment happy-dom
 import { createElement } from 'react'
+import { BrainIcon } from 'lucide-react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, cleanup, render, renderHook, screen } from '@testing-library/react'
 import { Sidebar, type SessionListItem } from '../browser/webview/Sidebar'
@@ -125,6 +126,14 @@ describe('SessionStatusIcon', () => {
     const paths = [...container.querySelectorAll('[data-status="thinking"] > path')]
     expect(paths).toHaveLength(8)
     for (const path of paths) expect(path.getAttribute('pathLength')).toBe('1')
+  })
+
+  it('draws the same brain as lucide BrainIcon', () => {
+    const strokes = (el: ParentNode) =>
+      [...el.querySelectorAll('path')].map(p => p.getAttribute('d'))
+    const drawn = render(createElement(SessionStatusIcon, { status: 'thinking' })).container
+    const library = render(createElement(BrainIcon)).container
+    expect(strokes(drawn)).toEqual(strokes(library))
   })
 
   it('names each status for assistive technology', () => {
