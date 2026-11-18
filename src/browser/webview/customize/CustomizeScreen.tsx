@@ -20,6 +20,7 @@ import { InstallToasts } from './InstallToasts'
 import { DirectoryItemStatus } from './DirectoryItemStatus'
 import { pluginsAddMarketplace, pluginsRemoveMarketplace } from '../settings/clients'
 import { MarketplaceBrowser } from './MarketplaceBrowser'
+import { useModsUiView } from '../mods/modsUiView'
 import { ThemeBrowser } from './ThemeBrowser'
 import { AddMarketplaceDialog, RemoveMarketplaceDialog } from './MarketplaceDialogs'
 import { useCustomizeTab } from './useCustomizeTab'
@@ -85,6 +86,9 @@ export function CustomizeScreen({
   const names = React.useMemo(() => (list.marketplaces ?? []).map(m => m.name), [list.marketplaces])
   const shelves = useMarketplaceShelves(bridge, names, tab.describeMarketplace)
   const themes = useThemeCatalog(bridge, runtimeConnection, selection.kind === 'themes')
+  // What the theme page marks In use follows the target session's published theme.
+  const themeUi = useModsUiView(runtimeConnection, selection.kind === 'themes' ? themeTarget?.sessionId : undefined)
+  const themeStanding = !themeUi.isLoaded ? undefined : themeUi.theme ? { plugin: themeUi.theme.plugin } : null
   const notices = React.useMemo(() => [...shelves.notices, ...themes.installs], [shelves.notices, themes.installs])
   const dismissNotice = React.useCallback(
     (key: string) => {
@@ -316,7 +320,7 @@ export function CustomizeScreen({
 
         <div className="flex min-h-0 min-w-0 flex-1 flex-col">
           {selection.kind === 'themes' ? (
-            <ThemeBrowser view={themes} target={themeTarget} onClose={onClose} />
+            <ThemeBrowser view={themes} target={themeTarget} standing={themeStanding} onClose={onClose} />
           ) : selection.kind === 'browse' ? (
             <MarketplaceBrowser
               marketplaces={names}

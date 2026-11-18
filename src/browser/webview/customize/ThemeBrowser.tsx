@@ -12,11 +12,13 @@ import { AVATAR_TINT, avatarHue } from './ItemAvatar'
 import { PAGE_COLUMN } from './MarketplaceBrowser'
 import {
   DEFAULT_LOOK,
+  lookInUse,
   lookKey,
   type ThemeCatalogView,
   type ThemeFailure,
   type ThemeNotice,
   type ThemePlugin,
+  type ThemeStanding,
   type ThemeTarget,
 } from './useThemeCatalog'
 
@@ -41,6 +43,8 @@ export type ThemeBrowserProps = {
   view: ThemeCatalogView
   /** The session a look is applied to; null when the window shows none that takes one. */
   target: ThemeTarget | null
+  /** The target session's standing theme; leave out when it cannot be read. */
+  standing?: ThemeStanding
   /** Back to the conversation, to see an applied look. */
   onClose: () => void
 }
@@ -51,7 +55,7 @@ export type ThemeBrowserProps = {
  * single theme is a card of its own. Add downloads the plugin; Use applies a
  * look to the session the screen was opened from.
  */
-export function ThemeBrowser({ view, target, onClose }: ThemeBrowserProps) {
+export function ThemeBrowser({ view, target, standing, onClose }: ThemeBrowserProps) {
   const t = useT()
   const [filter, setFilter] = React.useState<Filter>('all')
   const shows = (look: ThemeLook) =>
@@ -63,7 +67,9 @@ export function ThemeBrowser({ view, target, onClose }: ThemeBrowserProps) {
     : target.busy
       ? 'customize.themes.busy'
       : null
-  const shared = { view, target, blocked }
+  const inUse = target ? lookInUse(view.inUse[target.sessionId], standing, view.plugins) : null
+  const shared = { view, target, blocked, inUse }
+  const defaultShown = filter === 'all'
 
   let body: React.ReactNode
   if (view.status === 'loading') {
@@ -93,19 +99,23 @@ export function ThemeBrowser({ view, target, onClose }: ThemeBrowserProps) {
         {packs.map(plugin => (
           <PackSection key={plugin.name} plugin={plugin} looks={plugin.theme.looks.filter(shows)} {...shared} />
         ))}
-        <section
-          data-testid="customize-themes-singles"
-          aria-label={t('customize.themes.singles')}
-          className="@container flex flex-col gap-3 py-4"
-        >
-          <h3 className="text-[15px] leading-5 font-semibold text-foreground">{t('customize.themes.singles')}</h3>
-          <ul className={GRID}>
-            {filter === 'all' ? <DefaultCard {...shared} /> : null}
-            {singles.map(plugin => (
-              <LookCard key={plugin.name} plugin={plugin} look={plugin.theme.looks[0]!} single {...shared} />
-            ))}
-          </ul>
-        </section>
+        {defaultShown || singles.length > 0 ? (
+          <section
+            data-testid="customize-themes-singles"
+            aria-label={t(singles.length > 0 ? 'customize.themes.singles' : 'customize.themes.default.name')}
+            className="@container flex flex-col gap-3 py-4"
+          >
+            {singles.length > 0 ? (
+              <h3 className="text-[15px] leading-5 font-semibold text-foreground">{t('customize.themes.singles')}</h3>
+            ) : null}
+            <ul className={GRID}>
+              {defaultShown ? <DefaultCard {...shared} /> : null}
+              {singles.map(plugin => (
+                <LookCard key={plugin.name} plugin={plugin} look={plugin.theme.looks[0]!} single {...shared} />
+              ))}
+            </ul>
+          </section>
+        ) : null}
       </>
     )
   }
@@ -159,9 +169,15 @@ export function ThemeBrowser({ view, target, onClose }: ThemeBrowserProps) {
   )
 }
 
-type Shared = { view: ThemeCatalogView; target: ThemeTarget | null; blocked: MessageKey | null }
+type Shared = {
+  view: ThemeCatalogView
+  target: ThemeTarget | null
+  blocked: MessageKey | null
+  /** The look marked In use for the target session. */
+  inUse: string | null
+}
 
-function PackSection({ plugin, looks, view, target, blocked }: Shared & { plugin: ThemePlugin; looks: ThemeLook[] }) {
+function PackSection({ plugin, looks, view, target, blocked, inUse }: Shared & { plugin: ThemePlugin; looks: ThemeLook[] }) {
   const t = useT()
   const [all, setAll] = React.useState(false)
   const shown = all ? looks : looks.slice(0, PACK_LIMIT)
@@ -234,7 +250,7 @@ function PackSection({ plugin, looks, view, target, blocked }: Shared & { plugin
       ) : (
         <ul className={GRID}>
           {shown.map(look => (
-            <LookCard key={look.id} plugin={plugin} look={look} view={view} target={target} blocked={blocked} />
+            <LookCard key={look.id} plugin={plugin} look={look} view={view} target={target} blocked={blocked} inUse={inUse} />
           ))}
         </ul>
       )}
@@ -249,6 +265,7 @@ function LookCard({
   view,
   target,
   blocked,
+  inUse,
 }: Shared & { plugin: ThemePlugin; look: ThemeLook; single?: boolean }) {
   const t = useT()
   const name = look.name ?? look.id
@@ -279,7 +296,7 @@ function LookCard({
         {t(andUse ? 'customize.themes.addAndUse' : 'customize.item.add')}
       </Button>
     )
-  } else if (target && view.inUse[target.sessionId] === key) {
+  } else if (inUse === key) {
     action = <InUseMark />
   } else {
     const applying = view.applying === key
@@ -344,7 +361,7 @@ function LookCard({
 }
 
 /** The app's own look: Use removes the session's theme. */
-function DefaultCard({ view, target, blocked }: Shared) {
+function DefaultCard({ view, target, blocked, inUse }: Shared) {
   const t = useT()
   const usable = target !== null && blocked === null
   const applying = view.applying === DEFAULT_LOOK
@@ -367,7 +384,7 @@ function DefaultCard({ view, target, blocked }: Shared) {
         </p>
         <span className="mt-auto flex pt-1">
           <span className="ms-auto shrink-0">
-            {target && view.inUse[target.sessionId] === DEFAULT_LOOK ? (
+            {inUse === DEFAULT_LOOK ? (
               <InUseMark />
             ) : (
               <Button

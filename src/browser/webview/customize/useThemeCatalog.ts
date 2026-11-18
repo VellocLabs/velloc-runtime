@@ -26,6 +26,32 @@ export type ThemePlugin = PluginAvailableUiEntry & { theme: NonNullable<PluginAv
 export const lookKey = (plugin: string, lookId: string) => `${plugin}/${lookId}`
 export const DEFAULT_LOOK = ''
 
+/** The session's standing theme as its runtime publishes it: `null` when none stands, `undefined` while not read yet. */
+export type ThemeStanding = { plugin: string } | null | undefined
+
+/** The look last applied from this window, per session id; outlives the screen. */
+const applied = new Map<string, string>()
+
+/**
+ * The look to mark In use: the one `last` applied while its plugin's theme
+ * still stands, a standing single theme's only look, the app's own look when
+ * no theme stands, and none when another source set the theme.
+ */
+export function lookInUse(
+  last: string | undefined,
+  standing: ThemeStanding,
+  plugins: readonly ThemePlugin[],
+): string | null {
+  if (standing === undefined) return last ?? null
+  if (standing === null) return DEFAULT_LOOK
+  const owner = plugins.find(
+    p => standing.plugin === p.name || standing.plugin === installKey(BUILTIN_MARKETPLACE_KEY, p.name),
+  )
+  if (!owner) return null
+  if (last?.startsWith(`${owner.name}/`)) return last
+  return owner.theme.looks.length === 1 ? lookKey(owner.name, owner.theme.looks[0]!.id) : null
+}
+
 export type ThemeFailure = Extract<ThemeUseLookResult, { ok: false }>['reason'] | 'request'
 
 type ThemeOutcome =
@@ -46,7 +72,7 @@ export type ThemeCatalogView = {
   installFailed: ReadonlySet<string>
   /** The look being applied now. */
   applying: string | null
-  /** The look last applied from this screen, per session id. */
+  /** The look last applied from this window, per session id; `lookInUse` weighs it against the standing theme. */
   inUse: Readonly<Record<string, string>>
   installs: readonly InstallNotice[]
   dismissInstall: (key: string) => void
@@ -90,7 +116,7 @@ export function useThemeCatalog(
   const [installing, setInstalling] = React.useState<ReadonlySet<string>>(NONE)
   const [installFailed, setInstallFailed] = React.useState<ReadonlySet<string>>(NONE)
   const [applying, setApplying] = React.useState<string | null>(null)
-  const [inUse, setInUse] = React.useState<Readonly<Record<string, string>>>({})
+  const [inUse, setInUse] = React.useState<Readonly<Record<string, string>>>(() => Object.fromEntries(applied))
   const [installs, setInstalls] = React.useState<readonly InstallNotice[]>([])
   const [notice, setNotice] = React.useState<ThemeNotice | null>(null)
   const seq = React.useRef(0)
@@ -174,6 +200,7 @@ export function useThemeCatalog(
           result => {
             if (!live.current) return
             if (result.ok) {
+              applied.set(target.sessionId, key)
               setInUse(all => ({ ...all, [target.sessionId]: key }))
               say({ kind: 'applied', name, session: target.title })
               return
@@ -199,6 +226,7 @@ export function useThemeCatalog(
         .then(
           answer => {
             if (!live.current || !(answer as ThemeClearResult).ok) return
+            applied.set(target.sessionId, DEFAULT_LOOK)
             setInUse(all => ({ ...all, [target.sessionId]: DEFAULT_LOOK }))
             say({ kind: 'cleared', session: target.title })
           },

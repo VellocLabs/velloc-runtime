@@ -47,20 +47,24 @@ const single = (): Listing => ({
   theme: { looks: [{ ...look('snow', 'dark', false), name: 'Snow', description: undefined }] },
 })
 
-const TARGET: ThemeTarget = { sessionId: 's1', title: 'Fix the build', busy: false }
+// A look applied to a session is remembered for the window: each setup takes a session of its own.
+let sessions = 0
 
 function setup(
   options: {
     themes?: Listing[] | 'fail'
-    target?: ThemeTarget | null
+    target?: ThemeTarget | null | 'busy'
     useAnswer?: unknown
     /** Answers to successive `theme.useLook` requests, before `useAnswer`. */
     useAnswers?: unknown[]
     /** `theme.useLook` waits for this before it answers. */
     useGate?: Promise<void>
     installFails?: boolean
+    /** The session's published theme: a plugin's, or `null` for none. Left out: never published. */
+    standing?: { plugin: string } | null
   } = {},
 ) {
+  const TARGET: ThemeTarget = { sessionId: `s${++sessions}`, title: 'Fix the build', busy: false }
   const themes = options.themes ?? [pack(), single()]
   const bridgeAsked: string[] = []
   const runtimeAsked: string[] = []
@@ -93,7 +97,13 @@ function setup(
     },
   } as unknown as NexusSettingsBridge
   const connection = {
-    subscribe: () => () => {},
+    subscribe: (_topic: string, listener: (event: { type: string; payload: unknown }) => void) => {
+      if (options.standing !== undefined) {
+        const theme = options.standing ? { theme: { plugin: options.standing.plugin, requestId: 'theme' } } : {}
+        listener({ type: 'state', payload: { status: [], notices: [], ...theme } })
+      }
+      return () => {}
+    },
     can: () => true,
     request: async (route: string, payload: unknown) => {
       if (route === 'customizePage.show') return { tabId: 7, created: true }
@@ -119,7 +129,7 @@ function setup(
           closed += 1
         },
         onOpenSettings: () => {},
-        themeTarget: options.target === undefined ? TARGET : options.target,
+        themeTarget: options.target === undefined ? TARGET : options.target === 'busy' ? { ...TARGET, busy: true } : options.target,
       }),
     ),
   )
@@ -141,6 +151,7 @@ function setup(
     view,
     open,
     card,
+    target: TARGET,
     bridgeAsked,
     runtimeAsked,
     closed: () => closed,
@@ -230,12 +241,12 @@ describe('Theme directory — the grid', () => {
 
 describe('Theme directory — Add and Use', () => {
   it('Add & use on a pack look installs the plugin, then asks the runtime for that look', async () => {
-    const { view, open, card, bridgeAsked, runtimeAsked, closed } = setup()
+    const { view, open, card, bridgeAsked, runtimeAsked, closed, target } = setup()
     await open()
     const button = within(card('scenes', 'scene-1')).getByTestId('customize-theme-add')
     expect(button.textContent).toBe(EN['customize.themes.addAndUse'])
     fireEvent.click(button)
-    await waitFor(() => expect(runtimeAsked).toEqual(['theme.useLook {"sessionId":"s1","plugin":"scenes","lookId":"scene-1"}']))
+    await waitFor(() => expect(runtimeAsked).toEqual([`theme.useLook {"sessionId":"${target.sessionId}","plugin":"scenes","lookId":"scene-1"}`]))
     expect(bridgeAsked).toContain('plugins.install {"identifier":"scenes@velloc"}')
     await waitFor(() => expect(within(card('scenes', 'scene-1')).getByTestId('customize-theme-in-use')).toBeTruthy())
     expect(within(card('scenes', 'scene-0')).getByTestId('customize-theme-use')).toBeTruthy()
@@ -307,7 +318,7 @@ describe('Theme directory — Add and Use', () => {
   })
 
   it('a single theme is added on its own; Use then asks the runtime, and a refusal says why', async () => {
-    const { view, open, card, runtimeAsked } = setup({ useAnswer: { ok: false, reason: 'notLoaded' } })
+    const { view, open, card, runtimeAsked, target } = setup({ useAnswer: { ok: false, reason: 'notLoaded' } })
     await open()
     const add = within(card('snow', 'snow')).getByTestId('customize-theme-add')
     expect(add.textContent).toBe(EN['customize.item.add'])
@@ -316,7 +327,7 @@ describe('Theme directory — Add and Use', () => {
     expect(runtimeAsked).toEqual([])
     fireEvent.click(within(card('snow', 'snow')).getByTestId('customize-theme-use'))
     await waitFor(() => expect(view.getByTestId('customize-theme-notice').getAttribute('data-kind')).toBe('failed'))
-    expect(runtimeAsked).toEqual(['theme.useLook {"sessionId":"s1","plugin":"snow","lookId":"snow"}'])
+    expect(runtimeAsked).toEqual([`theme.useLook {"sessionId":"${target.sessionId}","plugin":"snow","lookId":"snow"}`])
     expect(view.getByTestId('customize-theme-notice').textContent).toContain(EN['customize.themes.reason.notLoaded'])
     expect(within(card('snow', 'snow')).queryByTestId('customize-theme-in-use')).toBeNull()
   })
@@ -330,13 +341,13 @@ describe('Theme directory — Add and Use', () => {
   })
 
   it('the default look clears the session theme', async () => {
-    const { view, open, runtimeAsked } = setup()
+    const { view, open, runtimeAsked, target } = setup()
     await open()
     fireEvent.click(view.getByTestId('customize-theme-default-use'))
     await waitFor(() =>
       expect(within(view.getByTestId('customize-theme-default')).getByTestId('customize-theme-in-use')).toBeTruthy(),
     )
-    expect(runtimeAsked).toEqual(['theme.clear {"sessionId":"s1"}'])
+    expect(runtimeAsked).toEqual([`theme.clear {"sessionId":"${target.sessionId}"}`])
     expect(view.getByTestId('customize-theme-notice').getAttribute('data-kind')).toBe('cleared')
   })
 
@@ -344,7 +355,7 @@ describe('Theme directory — Add and Use', () => {
     const installed = [{ ...pack(), installed: true }, single()]
     for (const [target, reason] of [
       [null, EN['customize.themes.noSession']],
-      [{ ...TARGET, busy: true }, EN['customize.themes.busy']],
+      ['busy', EN['customize.themes.busy']],
     ] as const) {
       const { view, open, card, runtimeAsked } = setup({ themes: installed.map(x => ({ ...x })), target })
       await open()
@@ -361,5 +372,58 @@ describe('Theme directory — Add and Use', () => {
     await open()
     expect(within(card('scenes', 'scene-0')).getByTestId('customize-theme-add').textContent).toBe(EN['customize.item.add'])
     expect(view.getByTestId('customize-themes-target').textContent).toBe(EN['customize.themes.noSession'])
+  })
+})
+
+describe('Theme directory � what is in use', () => {
+  it('a look applied earlier is still marked when the screen opens again on that session', async () => {
+    const installed = () => [{ ...pack(), installed: true }, single()]
+    const first = setup({ themes: installed() })
+    await first.open()
+    fireEvent.click(within(first.card('scenes', 'scene-1')).getByTestId('customize-theme-use'))
+    await waitFor(() => expect(within(first.card('scenes', 'scene-1')).getByTestId('customize-theme-in-use')).toBeTruthy())
+    first.view.unmount()
+
+    const again = setup({ themes: installed(), target: first.target, standing: { plugin: 'scenes@velloc' } })
+    await again.open()
+    await waitFor(() => expect(within(again.card('scenes', 'scene-1')).getByTestId('customize-theme-in-use')).toBeTruthy())
+    expect(again.view.getAllByTestId('customize-theme-in-use')).toHaveLength(1)
+    expect(again.view.getByTestId('customize-theme-default-use')).toBeTruthy()
+  })
+
+  it('a session with no theme marks the default look; a standing single theme marks its card', async () => {
+    const installed = () => [{ ...pack(), installed: true }, { ...single(), installed: true }]
+    const none = setup({ themes: installed(), standing: null })
+    await none.open()
+    await waitFor(() =>
+      expect(within(none.view.getByTestId('customize-theme-default')).getByTestId('customize-theme-in-use')).toBeTruthy(),
+    )
+    expect(none.view.getAllByTestId('customize-theme-in-use')).toHaveLength(1)
+    none.view.unmount()
+
+    const snow = setup({ themes: installed(), standing: { plugin: 'snow' } })
+    await snow.open()
+    await waitFor(() => expect(within(snow.card('snow', 'snow')).getByTestId('customize-theme-in-use')).toBeTruthy())
+    expect(snow.view.getAllByTestId('customize-theme-in-use')).toHaveLength(1)
+  })
+
+  it('a theme set by something the directory does not list, or a pack with no look remembered, marks nothing', async () => {
+    const installed = () => [{ ...pack(), installed: true }, single()]
+    for (const plugin of ['my-own-mod', 'scenes']) {
+      const { view, open } = setup({ themes: installed(), standing: { plugin } })
+      await open()
+      await act(async () => {
+        await Promise.resolve()
+      })
+      expect(view.queryAllByTestId('customize-theme-in-use')).toHaveLength(0)
+      view.unmount()
+    }
+  })
+
+  it('with no single theme listed, the default look stands without the single themes heading', async () => {
+    const { view, open } = setup({ themes: [pack()] })
+    await open()
+    expect(view.getByTestId('customize-theme-default')).toBeTruthy()
+    expect(view.queryByText(EN['customize.themes.singles'])).toBeNull()
   })
 })

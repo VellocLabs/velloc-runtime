@@ -23,6 +23,7 @@ import { SessionStatusChannelContext } from './topbar/useNexusSessionStatus'
 import type { BrowserWorkerClientTransport } from './BrowserRuntimeClient'
 import type { SessionListItem } from './Sidebar'
 import { Sidebar } from './Sidebar'
+import { sessionDisplayTitle } from './SessionRows'
 import { SidebarSplitter } from './SidebarSplitter'
 import { SidebarPeek } from './SidebarPeek'
 import { resolveShellLayout, rightPanelWantWidth } from './layout/shellLayout'
@@ -2315,8 +2316,8 @@ export function MultiSessionShell({
   const themeTarget = useMemo(() => {
     const shown = sessions.find(s => s.sessionId === activeSessionId)
     if (!shown || cliOfTemplateType(shown.templateType)) return null
-    return { sessionId: shown.sessionId, title: shown.title, busy: runningSessionIds.has(shown.sessionId) }
-  }, [sessions, activeSessionId, runningSessionIds])
+    return { sessionId: shown.sessionId, title: sessionDisplayTitle(shown, t), busy: runningSessionIds.has(shown.sessionId) }
+  }, [sessions, activeSessionId, runningSessionIds, t])
   const customizeShown = remoteHost === undefined
     && runtimeCapabilities.can('customizePage', 'show')
     && customizeOnThisChannel()
