@@ -391,6 +391,25 @@ describe('Theme directory — what is in use', () => {
     expect(again.view.getByTestId('customize-theme-default-use')).toBeTruthy()
   })
 
+  it('a look whose answer arrives after the screen closed is still marked when it opens again', async () => {
+    const installed = () => [{ ...pack(), installed: true }, single()]
+    let answer!: () => void
+    const first = setup({ themes: installed(), useGate: new Promise<void>(resolve => (answer = resolve)) })
+    await first.open()
+    fireEvent.click(within(first.card('scenes', 'scene-1')).getByTestId('customize-theme-use'))
+    await waitFor(() => expect(first.runtimeAsked.some(r => r.startsWith('theme.useLook'))).toBe(true))
+    first.view.unmount()
+    await act(async () => {
+      answer()
+      await new Promise(resolve => setTimeout(resolve, 0))
+    })
+
+    const again = setup({ themes: installed(), target: first.target, standing: { plugin: 'scenes' } })
+    await again.open()
+    await waitFor(() => expect(within(again.card('scenes', 'scene-1')).getByTestId('customize-theme-in-use')).toBeTruthy())
+    expect(again.view.getAllByTestId('customize-theme-in-use')).toHaveLength(1)
+  })
+
   it('a session with no theme marks the default look; a standing single theme marks its card', async () => {
     const installed = () => [{ ...pack(), installed: true }, { ...single(), installed: true }]
     const none = setup({ themes: installed(), standing: null })

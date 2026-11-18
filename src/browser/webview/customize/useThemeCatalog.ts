@@ -198,9 +198,9 @@ export function useThemeCatalog(
       ask(tries)
         .then(
           result => {
+            if (result.ok) applied.set(target.sessionId, key)
             if (!live.current) return
             if (result.ok) {
-              applied.set(target.sessionId, key)
               setInUse(all => ({ ...all, [target.sessionId]: key }))
               say({ kind: 'applied', name, session: target.title })
               return
@@ -225,8 +225,9 @@ export function useThemeCatalog(
         .then(conn => conn.request(`${THEME_CAPABILITY}.clear` as RouteKey, { sessionId: target.sessionId }))
         .then(
           answer => {
-            if (!live.current || !(answer as ThemeClearResult).ok) return
+            if (!(answer as ThemeClearResult).ok) return
             applied.set(target.sessionId, DEFAULT_LOOK)
+            if (!live.current) return
             setInUse(all => ({ ...all, [target.sessionId]: DEFAULT_LOOK }))
             say({ kind: 'cleared', session: target.title })
           },
