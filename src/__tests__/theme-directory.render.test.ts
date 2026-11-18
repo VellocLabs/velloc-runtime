@@ -97,13 +97,7 @@ function setup(
     },
   } as unknown as NexusSettingsBridge
   const connection = {
-    subscribe: (_topic: string, listener: (event: { type: string; payload: unknown }) => void) => {
-      if (options.standing !== undefined) {
-        const theme = options.standing ? { theme: { plugin: options.standing.plugin, requestId: 'theme' } } : {}
-        listener({ type: 'state', payload: { status: [], notices: [], ...theme } })
-      }
-      return () => {}
-    },
+    subscribe: () => () => {},
     can: () => true,
     request: async (route: string, payload: unknown) => {
       if (route === 'customizePage.show') return { tabId: 7, created: true }
@@ -130,6 +124,7 @@ function setup(
         },
         onOpenSettings: () => {},
         themeTarget: options.target === undefined ? TARGET : options.target === 'busy' ? { ...TARGET, busy: true } : options.target,
+        themeStanding: options.standing,
       }),
     ),
   )

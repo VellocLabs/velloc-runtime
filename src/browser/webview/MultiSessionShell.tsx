@@ -2318,6 +2318,10 @@ export function MultiSessionShell({
     if (!shown || cliOfTemplateType(shown.templateType)) return null
     return { sessionId: shown.sessionId, title: sessionDisplayTitle(shown, t), busy: runningSessionIds.has(shown.sessionId) }
   }, [sessions, activeSessionId, runningSessionIds, t])
+  const themeStanding = useMemo(
+    () => (!shellModUi.isLoaded ? undefined : shellModUi.theme ? { plugin: shellModUi.theme.plugin } : null),
+    [shellModUi.isLoaded, shellModUi.theme],
+  )
   const customizeShown = remoteHost === undefined
     && runtimeCapabilities.can('customizePage', 'show')
     && customizeOnThisChannel()
@@ -3159,6 +3163,7 @@ export function MultiSessionShell({
             onDragRegionsChange={handleDragRegionsChange}
             marketplaceAddRequest={marketplaceAddRequest}
             themeTarget={themeTarget}
+            themeStanding={themeStanding}
           />
         </Suspense>
       ) : null}

@@ -20,12 +20,11 @@ import { InstallToasts } from './InstallToasts'
 import { DirectoryItemStatus } from './DirectoryItemStatus'
 import { pluginsAddMarketplace, pluginsRemoveMarketplace } from '../settings/clients'
 import { MarketplaceBrowser } from './MarketplaceBrowser'
-import { useModsUiView } from '../mods/modsUiView'
 import { ThemeBrowser } from './ThemeBrowser'
 import { AddMarketplaceDialog, RemoveMarketplaceDialog } from './MarketplaceDialogs'
 import { useCustomizeTab } from './useCustomizeTab'
 import { useMarketplaceList, useMarketplaceShelves } from './useMarketplaceCatalog'
-import { useThemeCatalog, type ThemeTarget } from './useThemeCatalog'
+import { useThemeCatalog, type ThemeStanding, type ThemeTarget } from './useThemeCatalog'
 
 export type CustomizeScreenProps = {
   runtimeConnection?: () => Promise<RuntimeConnection>
@@ -42,6 +41,8 @@ export type CustomizeScreenProps = {
   marketplaceAddRequest?: { source: string; seq: number } | null
   /** The session a theme look is applied to; null when the window shows none that takes one. */
   themeTarget?: ThemeTarget | null
+  /** The target session's published theme; `undefined` while not read yet. */
+  themeStanding?: ThemeStanding
 }
 
 /**
@@ -74,6 +75,7 @@ export function CustomizeScreen({
   onDragRegionsChange,
   marketplaceAddRequest = null,
   themeTarget = null,
+  themeStanding,
 }: CustomizeScreenProps) {
   const t = useT()
   const headerRef = React.useRef<HTMLElement | null>(null)
@@ -86,9 +88,6 @@ export function CustomizeScreen({
   const names = React.useMemo(() => (list.marketplaces ?? []).map(m => m.name), [list.marketplaces])
   const shelves = useMarketplaceShelves(bridge, names, tab.describeMarketplace)
   const themes = useThemeCatalog(bridge, runtimeConnection, selection.kind === 'themes')
-  // What the theme page marks In use follows the target session's published theme.
-  const themeUi = useModsUiView(runtimeConnection, selection.kind === 'themes' ? themeTarget?.sessionId : undefined)
-  const themeStanding = !themeUi.isLoaded ? undefined : themeUi.theme ? { plugin: themeUi.theme.plugin } : null
   const notices = React.useMemo(() => [...shelves.notices, ...themes.installs], [shelves.notices, themes.installs])
   const dismissNotice = React.useCallback(
     (key: string) => {
