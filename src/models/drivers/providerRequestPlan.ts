@@ -16,7 +16,7 @@
  */
 import { NEXUS_MODEL_CONFIG } from '../../config/nexusModelConfig'
 import { findConfiguredModelIn } from '../../config/nexusModelConfig/findConfiguredModel'
-import type { ProviderEgress, ProviderEgressMemberLookup } from './providerEgress'
+import type { ProviderEgress, ProviderEgressMemberLookup, ProviderRoute } from './providerEgress'
 import { clampTimeouts, TIMEOUT_KEYS, type ProviderTimeouts } from './providerTimeouts'
 import { traceLine } from '../../utils/debugLog'
 
@@ -32,8 +32,11 @@ export type ProviderRequestPlan = {
   /** The pool member the hook named in `route`, which carries `https`
    *  requests only. Absent: the request follows the host's own proxy
    *  setting. */
-  egress?: ProviderEgress & { name: string }
+  egress?: RoutedEgress
 }
+
+/** A pool member a `route` named: its address and the names it was named by. */
+export type RoutedEgress = ProviderEgress & { name: string; route: ProviderRoute }
 
 /** What the model's row states, when it states it. */
 export type ModelCeilings = {
@@ -117,10 +120,12 @@ function readTimeouts(value: unknown): ProviderTimeouts | undefined {
   return Object.keys(timeouts).length > 0 ? timeouts : undefined
 }
 
-function readRoute(
+/** Reads `route: { egress, member }` (also `$.provider.fetch`'s). Throws on any
+ *  other shape and on a member the pool has not registered. */
+export function readRoute(
   value: unknown,
   memberOf: ProviderEgressMemberLookup | undefined,
-): ProviderRequestPlan['egress'] {
+): RoutedEgress | undefined {
   if (value === undefined) return undefined
   const shape = 'route is not { egress, member }, the names of a pool and one of its members'
   if (!isRecord(value)) throw new Error(shape)
@@ -131,7 +136,7 @@ function readRoute(
   if (!found) {
     throw new Error(`route: "${member.slice(0, 64)}" is not a registered member of the pool "${pool.slice(0, 64)}"`)
   }
-  return { name: `${pool}/${member}`, url: found.url, hosts: found.hosts }
+  return { name: `${pool}/${member}`, url: found.url, hosts: found.hosts, route: { egress: pool, member } }
 }
 
 export function readRequestPlan(

@@ -263,6 +263,11 @@ export function createProviderNounSet(options: ProviderNounSetOptions): Provider
       baseUrl: stored || registration.manifest.defaultBaseUrl,
       domains: registration.manifest.domains,
       secrets: declaredSecretNames(registration.manifest),
+      egressMember: (pool, member) => {
+        const pools = registration.manifest.egressPools
+        if (!pools || !Object.prototype.hasOwnProperty.call(pools, pool)) return undefined
+        return providerEgressPools.member(providerId, pool, member, pools[pool]!)
+      },
     }
   }
   const extra = options.extraNouns ?? createLoginNouns(getProviderCredentials())

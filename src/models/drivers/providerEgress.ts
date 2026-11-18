@@ -35,5 +35,8 @@ export type ProviderEgressPool = {
 
 export type ProviderEgressPools = Readonly<Record<string, ProviderEgressPool>>
 
+/** A pool member by name, as a module writes it in `route`. */
+export type ProviderRoute = { egress: string; member: string }
+
 /** The registered member `member` of the pool `pool`, or undefined. */
 export type ProviderEgressMemberLookup = (pool: string, member: string) => ProviderEgress | undefined

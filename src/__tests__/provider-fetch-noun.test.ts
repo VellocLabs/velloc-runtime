@@ -17,6 +17,8 @@ import {
   resolveFetchTarget,
   type ProviderFetchTarget,
 } from '../mods/provider/nouns/providerFetchNoun'
+import { ProviderEgressPoolRegistry } from '../mods/provider/providerEgressPools'
+import { EGRESS_UNSUPPORTED } from '../models/drivers/providerEgress'
 
 const TARGET: ProviderFetchTarget = {
   baseUrl: 'https://api.zen.example/v1',
@@ -397,5 +399,99 @@ describe('the answer', () => {
     const response = await call('/m', { headers: { Authorization: 'Bearer {{secret:api_key}}' } })
     expect(JSON.stringify(opened[0]!.headers)).toContain('{{secret:api_key}}')
     expect(JSON.stringify({ ...response, body: Array.from(response.body) })).not.toContain('sk-')
+  })
+})
+
+describe('the route (F-27)', () => {
+  const POOL = { max: 4 }
+  function routed(
+    open: (request: Opened) => RawProviderStream | Promise<RawProviderStream> = () => streamOf([new TextEncoder().encode('{}')]).stream,
+    target: Partial<ProviderFetchTarget> = {},
+  ) {
+    const registry = new ProviderEgressPoolRegistry()
+    registry.set('mod.acme.zen', 'exits', POOL, [
+      { id: 'p1', url: 'http://alice:s3cret@203.0.113.7:8080' },
+      { id: 'p2', url: 'http://203.0.113.8:8080' },
+    ])
+    const routedTarget: ProviderFetchTarget = {
+      ...TARGET,
+      egressMember: (pool, member) => (pool === 'exits' ? registry.member('mod.acme.zen', pool, member, POOL) : undefined),
+      ...target,
+    }
+    const opened: Opened[] = []
+    const fetchNoun = createProviderFetch({
+      transport: () => ({}) as BrowserBridgeTransport,
+      targetOf: () => routedTarget,
+      open: async (_transport, request) => {
+        opened.push(request)
+        return open(request)
+      },
+    })
+    const call = (input: string, init?: Record<string, unknown>) =>
+      fetchNoun({ plugin: 'acme', noun: 'provider', method: 'fetch', args: [input, init], providers: ['mod.acme.zen'] } as unknown as ProviderNounCall)
+    return { call, opened }
+  }
+
+  it('sends through the named member and says which one in the answer', async () => {
+    const { call, opened } = routed()
+    const response = await call('/models', { route: { egress: 'exits', member: 'p2' } })
+    expect(opened[0]!.egress).toEqual({ url: 'http://203.0.113.8:8080', hosts: ['203.0.113.8'] })
+    expect(response.egress).toEqual({ egress: 'exits', member: 'p2' })
+  })
+
+  it('without a route the request takes the host route and the answer names none', async () => {
+    const { call, opened } = routed()
+    const response = await call('/models')
+    expect(opened[0]!.egress).toBeUndefined()
+    expect(response.egress).toBeUndefined()
+  })
+
+  it('each member is its own route: one reachable, one not, and the failed one is never retried direct', async () => {
+    const { call, opened } = routed(request => {
+      if (request.egress?.hosts[0] === '203.0.113.8') throw new RawProviderStreamError('NETWORK_ERROR', 'connect failed')
+      return streamOf([new TextEncoder().encode('{}')]).stream
+    })
+    await expect(call('/models', { route: { egress: 'exits', member: 'p1' } })).resolves.toMatchObject({ status: 200 })
+    await expect(call('/models', { route: { egress: 'exits', member: 'p2' } })).rejects.toThrow('connect failed')
+    expect(opened).toHaveLength(2)
+    expect(opened.every(request => request.egress !== undefined)).toBe(true)
+  })
+
+  it.each([
+    ['an undeclared pool', { egress: 'other', member: 'p1' }],
+    ['an unregistered member', { egress: 'exits', member: 'p9' }],
+    ['a route of the wrong shape', { egress: 'exits' }],
+    ['a route with an unknown key', { egress: 'exits', member: 'p1', proxy: 'http://x' }],
+  ])('refuses %s and opens nothing', async (_label, route) => {
+    const { call, opened } = routed()
+    await expect(call('/models', { route })).rejects.toMatchObject({ name: 'NotAllowedError' })
+    expect(opened).toHaveLength(0)
+  })
+
+  it('refuses a routed request to an http target: the proxy would read it', async () => {
+    const { call, opened } = routed(undefined, { baseUrl: 'http://127.0.0.1:8123' })
+    await expect(call('/models', { route: { egress: 'exits', member: 'p1' } })).rejects.toMatchObject({ name: 'NotAllowedError' })
+    await expect(call('/models')).resolves.toMatchObject({ status: 200 })
+    expect(opened).toHaveLength(1)
+    expect(opened[0]!.egress).toBeUndefined()
+  })
+
+  it('a host without the egress primitive is a NotSupportedError, not a direct send', async () => {
+    const { call } = routed(() => {
+      throw new RawProviderStreamError(EGRESS_UNSUPPORTED, 'this Velloc cannot send a request through a proxy; the request was not sent')
+    })
+    await expect(call('/models', { route: { egress: 'exits', member: 'p1' } })).rejects.toMatchObject({ name: 'NotSupportedError' })
+  })
+
+  it('no error names the proxy address or its credentials', async () => {
+    const { call } = routed(() => {
+      throw new RawProviderStreamError('NETWORK_ERROR', 'proxy http://alice:s3cret@203.0.113.7:8080 (203.0.113.7:8080) refused: alice/s3cret')
+    })
+    const error = (await call('/models', { route: { egress: 'exits', member: 'p1' } }).then(
+      () => new Error('resolved'),
+      (e: unknown) => e as Error,
+    ))
+    expect(error.message).toContain('exits/p1')
+    for (const leaked of ['203.0.113.7', 'alice', 's3cret']) expect(error.message).not.toContain(leaked)
   })
 })

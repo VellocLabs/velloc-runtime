@@ -20,7 +20,7 @@ import {
   refuseUnservedEgress,
   type RawProviderStream,
 } from '../../browser/bridge/rawProviderStream'
-import { EGRESS_UNSUPPORTED } from './providerEgress'
+import { EGRESS_UNSUPPORTED, type ProviderRoute } from './providerEgress'
 import { DriverChunkEmitter } from './chunkEmitter'
 import { buildSystemInstruction } from './hostCallOptions'
 import { buildThinkingBodyExtension } from '../../config/nexusModelConfig/thinkingTierParams'
@@ -183,6 +183,7 @@ class DriverStream {
   private status: number | undefined
   private firstByteMs: number | undefined
   private lastContext: PreparedProviderRequest['context'] | undefined
+  private lastRoute: ProviderRoute | undefined
   private readonly startedAt = Date.now()
   /** The caller's open outcome call, when it counts the request's streams itself. */
   private readonly outcomeCall: string | undefined
@@ -356,6 +357,7 @@ class DriverStream {
       const facts: StreamFacts = {
         sends: this.sends,
         ...(this.lastContext ? { context: this.lastContext } : {}),
+        ...(this.lastRoute ? { route: this.lastRoute } : {}),
         ...(this.status !== undefined ? { status: this.status } : {}),
         ...(this.firstByteMs !== undefined ? { firstByteMs: this.firstByteMs } : {}),
         ...(tally.finished ? { finishReason: requestFinishReason(tally.finishReason) } : {}),
@@ -559,6 +561,7 @@ class DriverStream {
       this.sends += 1
       this.status = undefined
       if (seamed) this.lastContext = seamed.prepared.context
+      this.lastRoute = egress?.route
       guard.watchdog?.start()
       this.raw = await openRawProviderStream(this.transport, {
         providerId: this.provider.id,

@@ -5,12 +5,20 @@
  * origin or exactly a DECLARED `domains` host (https, default port). No CONNECT /
  * TRACE / TRACK; `cookie`, `host`, `content-length`, `proxy-authorization` refused;
  * 4 MiB body caps both ways; 30 s time cap (120 s max).
+ *
+ * Security: `route: { egress, member }` sends the request through a member of one
+ * of the provider's declared pools, exactly as a model request's `route` does
+ * (F-27): an unregistered member, a non-https target, or a host without the
+ * egress primitive is refused, never sent direct. No error names the proxy's
+ * address.
  */
 
 import { openRawProviderStream, RawProviderStreamError, type RawProviderStream } from '../../../browser/bridge/rawProviderStream'
 import type { BrowserBridgeTransport } from '../../../browser/bridge/browserBridgeProtocol'
 import type { ProviderNounCall } from '../ProviderModRuntime'
 import { providerOf } from './providerNounTable'
+import { EGRESS_UNSUPPORTED, type ProviderEgressMemberLookup, type ProviderRoute } from '../../../models/drivers/providerEgress'
+import { readRoute, type RoutedEgress } from '../../../models/drivers/providerRequestPlan'
 
 export const PROVIDER_FETCH_MAX_BYTES = 4 * 1024 * 1024
 export const PROVIDER_FETCH_MAX_REQUEST_BYTES = 4 * 1024 * 1024
@@ -29,7 +37,7 @@ const REFUSED_METHODS = ['CONNECT', 'TRACE', 'TRACK']
 const METHOD_TOKEN = /^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/
 const SECRET_NAME = /^[A-Za-z0-9_.-]{1,64}$/
 const ABSOLUTE = /^[A-Za-z][A-Za-z0-9+.-]*:/
-const KNOWN_INIT_KEYS = ['method', 'headers', 'body', 'query', 'timeoutMs', 'provider']
+const KNOWN_INIT_KEYS = ['method', 'headers', 'body', 'query', 'timeoutMs', 'provider', 'route']
 
 /** What the fetch needs to know about one provider. */
 export type ProviderFetchTarget = {
@@ -39,6 +47,8 @@ export type ProviderFetchTarget = {
   domains: readonly string[]
   /** The secret names the manifest declares; `api_key` is always allowed. */
   secrets: readonly string[]
+  /** The registered member of one of the provider's declared pools. */
+  egressMember?: ProviderEgressMemberLookup
 }
 
 export type ProviderFetchResult = {
@@ -50,6 +60,8 @@ export type ProviderFetchResult = {
   /** Names lower-cased. */
   headers: Record<string, string>
   body: Uint8Array
+  /** The pool member the request left through; absent: the host's own route. */
+  egress?: ProviderRoute
 }
 
 export type ProviderFetchDeps = {
@@ -201,6 +213,38 @@ function checkBody(init: Record<string, unknown>, method: string): Uint8Array | 
   return bytes
 }
 
+function checkRoute(init: Record<string, unknown>, url: URL, target: ProviderFetchTarget): RoutedEgress | undefined {
+  let egress: RoutedEgress | undefined
+  try {
+    egress = readRoute(init.route, target.egressMember)
+  } catch (error) {
+    throw refusal(`$.provider.fetch: ${error instanceof Error ? error.message : 'the route is refused'}`)
+  }
+  // Security: the proxy reads whatever is not encrypted.
+  if (egress && url.protocol !== 'https:') {
+    throw refusal(`$.provider.fetch: the proxy "${egress.name}" carries https requests only`)
+  }
+  return egress
+}
+
+/** The message with the proxy's address replaced by its pool name. */
+function withoutProxyAddress(message: string, egress: RoutedEgress | undefined): string {
+  if (!egress) return message
+  let out = message.split(egress.url).join(`the proxy "${egress.name}"`)
+  try {
+    const proxy = new URL(egress.url)
+    for (const secret of [proxy.username, proxy.password, decodeURIComponent(proxy.password)]) {
+      if (secret) out = out.split(secret).join('***')
+    }
+    for (const part of [proxy.host, ...egress.hosts]) {
+      if (part) out = out.split(part).join(`"${egress.name}"`)
+    }
+  } catch {
+    // The registry accepted the address, so it parses; nothing else to strip.
+  }
+  return out
+}
+
 function checkTimeout(init: Record<string, unknown>): number {
   if (init.timeoutMs === undefined) return PROVIDER_FETCH_DEFAULT_TIMEOUT_MS
   const value = init.timeoutMs
@@ -237,6 +281,7 @@ export function createProviderFetch(deps: ProviderFetchDeps): (call: ProviderNou
     const queryParams = checkQuery(init, allowed)
     const body = checkBody(init, method)
     const timeoutMs = checkTimeout(init)
+    const egress = checkRoute(init, url, target)
 
     const transport = deps.transport()
     if (!transport) throw named('NotSupportedError', '$.provider.fetch: the host is not connected')
@@ -265,6 +310,7 @@ export function createProviderFetch(deps: ProviderFetchDeps): (call: ProviderNou
         ...(body ? { body } : {}),
         idleTimeoutMs: timeoutMs,
         maxResponseBytes: PROVIDER_FETCH_MAX_BYTES,
+        ...(egress ? { egress: { url: egress.url, hosts: [...egress.hosts] } } : {}),
         signal: controller.signal,
       })
       const chunks: Uint8Array[] = []
@@ -291,6 +337,7 @@ export function createProviderFetch(deps: ProviderFetchDeps): (call: ProviderNou
         url: stream.finalUrl,
         headers: responseHeaders,
         body: bytes,
+        ...(egress ? { egress: { ...egress.route } } : {}),
       }
     }
     const working = work()
@@ -310,8 +357,14 @@ export function createProviderFetch(deps: ProviderFetchDeps): (call: ProviderNou
       await stream?.cancel().catch(() => {})
       if (timedOut) throw named('TimeoutError', `$.provider.fetch: no complete answer within ${timeoutMs} ms`)
       if (error instanceof RawProviderStreamError) {
-        if (error.code === 'TARGET_NOT_ALLOWED') throw refusal(`$.provider.fetch: ${error.message}`)
-        throw new Error(`$.provider.fetch: ${error.message}`)
+        const message = `$.provider.fetch: ${withoutProxyAddress(error.message, egress)}`
+        if (error.code === 'TARGET_NOT_ALLOWED') throw refusal(message)
+        if (error.code === EGRESS_UNSUPPORTED) throw named('NotSupportedError', message)
+        throw new Error(message)
+      }
+      if (egress && error instanceof Error) {
+        const message = withoutProxyAddress(error.message, egress)
+        if (message !== error.message) throw named(error.name, message)
       }
       throw error
     } finally {

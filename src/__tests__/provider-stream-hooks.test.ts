@@ -752,6 +752,16 @@ describe('provider.outcome', () => {
     expect(calls.outcome[0]!.context).toMatchObject({ attempt: 1, requestId: expect.any(String) })
   })
 
+  it('names the pool member the request left through; none when it took the host route', async () => {
+    setHostPrimitives([RAW_STREAM_EGRESS_PRIMITIVE])
+    const routed = plug({ egressMember: MEMBER, request: () => ({ route: ROUTE }), outcome: () => undefined })
+    await run(scripted([]).transport)
+    expect(routed.outcome[0]!.route).toEqual(ROUTE)
+    const direct = plug({ outcome: () => undefined })
+    await run(scripted([]).transport)
+    expect(direct.outcome[0]).not.toHaveProperty('route')
+  })
+
   it('is told of a request that failed, with its verdict and every send counted', async () => {
     const calls = plug({ retry: () => ({ retry: {} }), outcome: () => undefined })
     const { transport } = scripted([

@@ -15,6 +15,7 @@
 import type { ProviderConnectivityIssue } from '../../utils/providerConnectivity'
 import { traceLine } from '../../utils/debugLog'
 import type { RequestFinishReason, RequestUsage } from './providerClassify'
+import type { ProviderRoute } from './providerEgress'
 import type { ProviderRequestContext, ProviderRequestSeam } from './providerRequestSeam'
 
 export type ProviderOutcomeEvent = {
@@ -23,6 +24,8 @@ export type ProviderOutcomeEvent = {
   /** Who served the request: for a wire provider, itself. */
   target: { provider: string; model: string }
   context?: ProviderRequestContext
+  /** The pool member the last send left through; absent: the host's own route. */
+  route?: ProviderRoute
   ok: boolean
   status?: number
   verdict?: ProviderConnectivityIssue
@@ -41,6 +44,7 @@ export type StreamFacts = {
   /** Times the stream sent the request (0: it never left). */
   sends: number
   context?: ProviderRequestContext
+  route?: ProviderRoute
   status?: number
   firstByteMs?: number
   finishReason?: RequestFinishReason
@@ -125,6 +129,7 @@ export function outcomeEvent(
     model,
     target: { provider, model },
     ...(last?.context ? { context: last.context } : {}),
+    ...(last?.route ? { route: { ...last.route } } : {}),
     ok: result.ok,
     ...(last?.status !== undefined ? { status: last.status } : {}),
     ...(result.verdict ? { verdict: result.verdict } : {}),
