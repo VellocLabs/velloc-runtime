@@ -33,6 +33,7 @@ import {
   listingsVisibleOn,
   loadKnownMarketplaces,
   parseMarketplaceManifest,
+  withMarketplaceContent,
 } from './marketplaces'
 import {
   builtinMarketplaceStateFilePath,
@@ -222,9 +223,9 @@ export async function seedBuiltinMarketplace(deps: BuiltinSeedDeps): Promise<Bui
       }
     }
     try {
-      manifest = (await fetchCatalog(ctx, fs, BUILTIN_MARKETPLACE_KEY, now(), deps.fetchImpl(), {
+      manifest = (await withMarketplaceContent(ctx, BUILTIN_MARKETPLACE_KEY, () => fetchCatalog(ctx, fs, BUILTIN_MARKETPLACE_KEY, now(), deps.fetchImpl(), {
         ...(index?.sha256 ? { sha256: index.sha256 } : {}),
-      })).marketplace
+      }))).marketplace
     } catch (error) {
       report(`the marketplace could not be downloaded: ${errorText(error)}`)
       return outcome
@@ -249,9 +250,9 @@ export async function seedBuiltinMarketplace(deps: BuiltinSeedDeps): Promise<Bui
         await writeBuiltinSeedState(ctx, fs, state)
       } else {
         try {
-          manifest = (await fetchCatalog(ctx, fs, BUILTIN_MARKETPLACE_KEY, now(), deps.fetchImpl(), {
+          manifest = (await withMarketplaceContent(ctx, BUILTIN_MARKETPLACE_KEY, () => fetchCatalog(ctx, fs, BUILTIN_MARKETPLACE_KEY, now(), deps.fetchImpl(), {
             ...(index.sha256 ? { sha256: index.sha256 } : {}),
-          })).marketplace
+          }))).marketplace
           outcome.fetched = true
           contentChanged = true
           state.buildId = index.buildId

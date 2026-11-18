@@ -24,6 +24,7 @@ import {
   fetchRemoteCatalog,
   forgetCatalogs,
   marketplaceRawBaseUrl,
+  withMarketplaceContent,
 } from '../pluginHost/marketplaces'
 import { pluginsHandlers } from '../browser/bridge/adapter/pluginsBridgeAdapter'
 import { createPluginUpdateService, startPluginUpdateSchedule } from '../pluginHost/pluginUpdates'
@@ -789,5 +790,32 @@ describe("a person's install reads the marketplace's current listing", () => {
 
     const record = await r.installed('cool@my-mkt')
     expect(await r.fs.readFile(`${record!.installPath}/skills/hello/SKILL.md`, { encoding: 'utf-8' })).toBe('v1.0.0\n')
+  })
+
+  it("a marketplace's turn runs its work one at a time, past a failure, and leaves other marketplaces free", async () => {
+    const order: string[] = []
+    let release!: () => void
+    const held = new Promise<void>(resolve => { release = resolve })
+    const first = withMarketplaceContent(ctx, 'my-mkt', async () => {
+      order.push('first:start')
+      await held
+      order.push('first:end')
+      throw new Error('first failed')
+    })
+    const second = withMarketplaceContent(ctx, 'my-mkt', async () => {
+      order.push('second')
+      return 2
+    })
+    const other = withMarketplaceContent(ctx, 'other-mkt', async () => {
+      order.push('other')
+      return 3
+    })
+
+    expect(await other).toBe(3)
+    expect(order).toEqual(['first:start', 'other'])
+    release()
+    await expect(first).rejects.toThrow('first failed')
+    expect(await second).toBe(2)
+    expect(order).toEqual(['first:start', 'other', 'first:end', 'second'])
   })
 })

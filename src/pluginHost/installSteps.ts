@@ -184,7 +184,9 @@ export async function setupPlugin(
     return { listed, copied }
   })
   const entry = looked.listed
-  const fetched = looked.copied ?? await fetchListingFiles(ctx, fs, catalogKey, entry, identifier, fetchImpl, nowIso)
+  const fetched = entry.source.source === 'local'
+    ? looked.copied!
+    : await fetchListingFiles(ctx, fs, catalogKey, entry, identifier, fetchImpl, nowIso)
   const marketplaceSource = entry.source.source === 'local'
     ? (await loadKnownMarketplaces(ctx, fs, nowIso)).registry[catalogKey]?.source
     : undefined

@@ -392,18 +392,31 @@ export function createProviderModUpdateService(deps: ProviderModUpdateDeps): Pro
   }
 
   async function fetchFromMarketplace(installed: InstalledProvider, marketplace: string, record: PluginUpdateRecord): Promise<Candidate | null> {
-    const read = () => fetchFromMarketplaceContent(installed, marketplace, record)
-    return marketplace === DIRECTORY_CATALOG_KEY ? read() : withMarketplaceContent(ctx, marketplace, read)
+    if (marketplace === DIRECTORY_CATALOG_KEY) {
+      const listing = (await refreshDirectoryListings(ctx, fs, [installed.name], fetchImpl))[0] ?? null
+      return listing ? candidateFrom(installed, marketplace, record, listing) : missingFrom(installed, marketplace)
+    }
+    // Only a plugin kept inside the repo copies from the marketplace's content.
+    const looked = await withMarketplaceContent(ctx, marketplace, async () => {
+      await fetchCatalog(ctx, fs, marketplace, iso(), fetchImpl)
+      const listing = await findCatalogPlugin(ctx, fs, marketplace, installed.name)
+      if (!listing || listing.source.source !== 'local') return { listing, candidate: undefined }
+      return { listing, candidate: await candidateFrom(installed, marketplace, record, listing) }
+    })
+    if (!looked.listing) return missingFrom(installed, marketplace)
+    return looked.candidate !== undefined ? looked.candidate : candidateFrom(installed, marketplace, record, looked.listing)
   }
 
-  async function fetchFromMarketplaceContent(installed: InstalledProvider, marketplace: string, record: PluginUpdateRecord): Promise<Candidate | null> {
-    const listing =
-      marketplace === DIRECTORY_CATALOG_KEY
-        ? ((await refreshDirectoryListings(ctx, fs, [installed.name], fetchImpl))[0] ?? null)
-        : (await fetchCatalog(ctx, fs, marketplace, iso(), fetchImpl), await findCatalogPlugin(ctx, fs, marketplace, installed.name))
-    if (!listing) {
-      throw new StageFailure('source-missing', `${installed.name} is not listed in marketplace '${marketplace}'`)
-    }
+  function missingFrom(installed: InstalledProvider, marketplace: string): never {
+    throw new StageFailure('source-missing', `${installed.name} is not listed in marketplace '${marketplace}'`)
+  }
+
+  async function candidateFrom(
+    installed: InstalledProvider,
+    marketplace: string,
+    record: PluginUpdateRecord,
+    listing: NonNullable<Awaited<ReturnType<typeof findCatalogPlugin>>>,
+  ): Promise<Candidate | null> {
     const active = installed.entry.version
     if (listing.version !== undefined && (listing.version === active || listing.version === record.skippedVersion || listing.version === record.pending?.version)) {
       return null
