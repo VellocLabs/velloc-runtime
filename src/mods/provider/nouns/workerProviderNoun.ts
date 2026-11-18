@@ -13,6 +13,13 @@ type FetchedAnswer = {
   url: string
   headers: Record<string, string>
   body: Uint8Array
+  egress?: { egress: string; member: string }
+}
+
+/** The pool member a routed request left through, by name only. */
+function routeOf(egress: FetchedAnswer['egress']): { egress?: unknown } {
+  if (typeof egress !== 'object' || egress === null) return {}
+  return { egress: Object.freeze({ egress: egress.egress, member: egress.member }) }
 }
 
 /** The host's answer to `fetch` (a body as bytes) as a response with readers. */
@@ -28,6 +35,7 @@ function fetchResponse(answer: FetchedAnswer): unknown {
     text: async (): Promise<string> => text(),
     json: async (): Promise<unknown> => JSON.parse(text()),
     bytes: async (): Promise<Uint8Array> => bytes.slice(),
+    ...routeOf(answer.egress),
   })
 }
 

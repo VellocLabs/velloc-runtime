@@ -324,6 +324,28 @@ describe('worker-side shape', () => {
     expect(noun.then).toBeUndefined()
   })
 
+  it('a routed fetch shows the mod the member it left through, by name only', async () => {
+    const answer = (egress?: unknown) => ({
+      status: 200,
+      statusText: 'OK',
+      ok: true,
+      url: 'https://api.acme.test/v1',
+      headers: { 'content-type': 'text/plain' },
+      body: new TextEncoder().encode('hi'),
+      ...(egress === undefined ? {} : { egress }),
+    })
+    const routed = makeProviderNoun(async () =>
+      answer({ egress: 'pool', member: 'p0', url: 'http://user:pw@proxy.test:8080' }),
+    ) as any
+    const response = await routed.fetch('https://api.acme.test/v1', { route: { egress: 'pool', member: 'p0' } })
+    expect(response.egress).toEqual({ egress: 'pool', member: 'p0' })
+    expect(Object.isFrozen(response.egress)).toBe(true)
+    expect(await response.text()).toBe('hi')
+
+    const direct = makeProviderNoun(async () => answer()) as any
+    expect('egress' in (await direct.fetch('https://api.acme.test/v1'))).toBe(false)
+  })
+
   it('carries the provider option to the host', async () => {
     const seen: unknown[][] = []
     const noun = makeProviderNoun(async (method, args) => {
