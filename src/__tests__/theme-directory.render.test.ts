@@ -375,7 +375,7 @@ describe('Theme directory — Add and Use', () => {
   })
 })
 
-describe('Theme directory � what is in use', () => {
+describe('Theme directory — what is in use', () => {
   it('a look applied earlier is still marked when the screen opens again on that session', async () => {
     const installed = () => [{ ...pack(), installed: true }, single()]
     const first = setup({ themes: installed() })
