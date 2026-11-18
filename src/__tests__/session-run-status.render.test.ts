@@ -120,6 +120,13 @@ describe('collapsedRowStatus', () => {
 })
 
 describe('SessionStatusIcon', () => {
+  it('draws the thinking brain from unit-length strokes', () => {
+    const { container } = render(createElement(SessionStatusIcon, { status: 'thinking' }))
+    const paths = [...container.querySelectorAll('[data-status="thinking"] > path')]
+    expect(paths).toHaveLength(8)
+    for (const path of paths) expect(path.getAttribute('pathLength')).toBe('1')
+  })
+
   it('names each status for assistive technology', () => {
     render(createElement(SessionStatusIcon, { status: 'awaiting' }))
     const icon = screen.getByRole('img')
