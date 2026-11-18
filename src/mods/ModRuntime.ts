@@ -611,9 +611,34 @@ export class ModRuntime extends ModPluginNouns implements TurnExtensions {
     return run
   }
 
+  /** Who serves `/name`: the plugin, and where its module was loaded from. */
+  commandOwner(name: string): { plugin: string; provenance?: string } | undefined {
+    const command = this.commands.get(name)
+    if (!command) return undefined
+    const provenance = this.seats.find(seat => seat.key === command.seat)?.ref.provenance
+    return { plugin: command.plugin, ...(provenance !== undefined ? { provenance } : {}) }
+  }
+
+  /** Reloads every module loaded from `provenance`, changed or not, so the
+   *  plugin registers again. How many reloaded. Serialized; never rejects. */
+  reloadPlugin(provenance: string): Promise<number> {
+    const run = this.reconciling.then(() =>
+      this.reconcileNow(this.seats.map(seat => seat.ref), { force: provenance }),
+    )
+    this.reconciling = run.catch(() => undefined)
+    return run.then(outcome => outcome.reloaded.length, () => 0)
+  }
+
+  /** Clears the session's theme, whoever set it. Whether one stood. */
+  clearTheme(): boolean {
+    const stood = this.theme.clear()
+    this.forgetBackdrop()
+    return stood
+  }
+
   private async reconcileNow(
     modules: readonly ModModuleRef[],
-    options: { reloadChanged?: boolean; only?: ReadonlySet<string> },
+    options: { reloadChanged?: boolean; only?: ReadonlySet<string>; force?: string },
   ): Promise<{ added: string[]; removed: string[]; reloaded: string[] }> {
     const outcome = { added: [] as string[], removed: [] as string[], reloaded: [] as string[] }
     if (this.disposed) return outcome
@@ -646,6 +671,7 @@ export class ModRuntime extends ModPluginNouns implements TurnExtensions {
       const wantedRef = wanted.get(seat.ref.path)
       let changed = wantedRef !== undefined && optionsDiffer(seat.ref, wantedRef)
       if (wantedRef && changed) seat.ref = wantedRef
+      if (options.force !== undefined && seat.ref.provenance === options.force) changed = true
       if (!changed && options.reloadChanged && (!options.only || options.only.has(seat.ref.path))) {
         let text: string
         try {

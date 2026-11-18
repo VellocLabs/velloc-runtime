@@ -44,10 +44,17 @@ export function isBuiltinMarketplace(name?: string): boolean {
  * server, a mirror) moves both files together.
  */
 export function builtinMarketplaceIndexUrl(source: PluginOrigin): string | null {
+  const dir = builtinMarketplaceOriginDir(source)
+  return dir === null ? null : `${dir}${BUILTIN_MARKETPLACE_INDEX_FILE}`
+}
+
+/** The directory the tarball is served from, with its trailing slash: what a
+ *  listing's relative preview path is under. */
+export function builtinMarketplaceOriginDir(source: PluginOrigin): string | null {
   if (source.source !== 'url') return null
   const slash = source.url.lastIndexOf('/')
   if (slash < 0) return null
-  return `${source.url.slice(0, slash + 1)}${BUILTIN_MARKETPLACE_INDEX_FILE}`
+  return source.url.slice(0, slash + 1)
 }
 
 /**

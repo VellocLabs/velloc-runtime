@@ -36,6 +36,7 @@ import { createPluginUpdateService } from '../pluginHost/pluginUpdates'
 import { createProviderModUpdateService } from '../pluginHost/providerModUpdates'
 import { consentCovers } from '../pluginHost/providerPluginConsent'
 import { wipeSettingsMemos } from '../settings/settingsStore'
+import { resolveListingTheme, resolveLookPreview } from '../pluginHost/themeListing'
 import { makeMemFs } from './_helpers/memFs'
 import { archive, providerJson, servedFetch, type Served } from './_helpers/pluginArchive'
 
@@ -52,6 +53,7 @@ type Listing = {
   onByDefault?: boolean
   betaOnly?: boolean
   providers?: boolean
+  theme?: boolean
 }
 
 const BASE: Listing[] = [
@@ -72,6 +74,7 @@ async function tarballOf(plugins: Listing[]): Promise<Uint8Array> {
             source: `./plugins/${p.name}`,
             ...(p.onByDefault === undefined ? {} : { onByDefault: p.onByDefault }),
             ...(p.betaOnly === undefined ? {} : { betaOnly: p.betaOnly }),
+            ...(p.theme ? { theme: { looks: [{ id: p.name, preview: `previews/${p.name}.svg` }] } } : {}),
           })),
         }),
       },
@@ -220,6 +223,84 @@ describe('listing fields', () => {
     expect(listingsVisibleOn(manifest.plugins, 'stable').map(p => p.name)).toEqual(['b'])
     expect(listingsVisibleOn(manifest.plugins, 'beta').map(p => p.name)).toEqual(['a', 'b'])
   })
+
+  it('keeps a well-formed theme and drops a look with a bad id, preview or use', () => {
+    const sha = 'c'.repeat(40)
+    const raw = `https://raw.githubusercontent.com/someone/pack/${sha}/art/one.png`
+    const look = (over: Record<string, unknown>) => ({ id: 'ok', preview: 'previews/a.svg', ...over })
+    const manifest = parseMarketplaceManifest(
+      JSON.stringify({
+        name: 'x',
+        plugins: [
+          {
+            name: 'pack',
+            source: './pack',
+            theme: {
+              official: true,
+              looks: [
+                { id: 'lagoon', name: 'Lagoon', description: 'Water.', appearance: 'light', preview: 'previews/pack/lagoon.svg', use: { command: 'pick-look', args: 'lagoon' } },
+                { id: 'pinned', appearance: 'sepia', preview: raw, use: { command: 'pick-look' } },
+                look({ id: 'lagoon' }),
+                look({ id: 'Bad Id' }),
+                look({ id: 'no-preview', preview: undefined }),
+                look({ id: 'script', preview: 'previews/a.js' }),
+                look({ id: 'climbs', preview: 'previews/../../a.svg' }),
+                look({ id: 'rooted', preview: '/previews/a.svg' }),
+                look({ id: 'plain-http', preview: 'http://plugins.velloc.app/previews/a.svg' }),
+                look({ id: 'data', preview: 'data:image/svg+xml,<svg/>' }),
+                look({ id: 'query', preview: 'https://plugins.velloc.app/a.svg?x=1' }),
+                look({ id: 'spaced-command', use: { command: 'pick look' } }),
+                look({ id: 'slash-command', use: { command: '/clear' } }),
+                look({ id: 'loud-args', use: { command: 'pick-look', args: 'Lagoon' } }),
+                look({ id: 'prompt-args', use: { command: 'pick-look', args: 'a b' } }),
+                look({ id: 'long-args', use: { command: 'pick-look', args: 'a'.repeat(65) } }),
+                look({ id: 'no-command', use: { args: 'x' } }),
+                look({ id: 'use-text', use: 'pick-look lagoon' }),
+              ],
+            },
+          },
+          { name: 'broken', source: './broken', theme: 'yes' },
+          { name: 'plain', source: './plain', theme: null },
+        ],
+      }),
+      'x',
+    )
+    expect(manifest.plugins[0]!.theme).toEqual({
+      official: true,
+      looks: [
+        { id: 'lagoon', name: 'Lagoon', description: 'Water.', appearance: 'light', preview: 'previews/pack/lagoon.svg', use: { command: 'pick-look', args: 'lagoon' } },
+        { id: 'pinned', preview: raw, use: { command: 'pick-look' } },
+      ],
+    })
+    // A listing that writes `theme` stays a theme listing, with no looks.
+    expect(manifest.plugins[1]!.theme).toEqual({ looks: [] })
+    expect(manifest.plugins[2]).toEqual({ name: 'plain', source: { source: 'local', path: 'plain' } })
+  })
+
+  it("shows a preview only from the marketplace's own directory or a commit-pinned raw file",() => {
+    const dir = 'https://plugins.velloc.app/'
+    const sha = 'd'.repeat(40)
+    const raw = `https://raw.githubusercontent.com/someone/pack/${sha}/art/one.gif`
+    expect(resolveLookPreview('previews/a.svg', dir)).toBe('https://plugins.velloc.app/previews/a.svg')
+    expect(resolveLookPreview('https://plugins.velloc.app/previews/a.webp', dir)).toBe('https://plugins.velloc.app/previews/a.webp')
+    expect(resolveLookPreview(raw, dir)).toBe(raw)
+    expect(resolveLookPreview(raw, null)).toBe(raw)
+    expect(resolveLookPreview('previews/a.svg', 'http://127.0.0.1:9/')).toBe('http://127.0.0.1:9/previews/a.svg')
+    for (const [preview, origin] of [
+      ['previews/a.svg', null],
+      ['previews/a.svg', 'http://mirror.example/'],
+      ['https://elsewhere.example/a.svg', dir],
+      ['https://plugins.velloc.app.evil.example/a.svg', dir],
+      ['https://raw.githubusercontent.com/someone/pack/main/art/one.gif', dir],
+      [`https://raw.githubusercontent.com/someone/pack/${sha}/art/../../x/one.gif`, dir],
+      [`https://raw.githubusercontent.com/someone/pack/${sha}/art/one.html`, dir],
+    ] as const) {
+      expect(resolveLookPreview(preview, origin), preview).toBeNull()
+    }
+    expect(
+      resolveListingTheme({ looks: [{ id: 'a', preview: 'previews/a.svg' }, { id: 'b', preview: 'https://elsewhere.example/b.svg' }] }, dir),
+    ).toEqual({ looks: [{ id: 'a', preview: 'https://plugins.velloc.app/previews/a.svg' }] })
+  })
 })
 
 describe('first launch', () => {
@@ -297,6 +378,23 @@ describe('first launch', () => {
     expect(outcome.installed).toEqual([id('off-plugin')])
     expect(outcome.skipped).toEqual([id('on-plugin')])
     expect((await readBuiltinSeedState(ctx, r.fs))?.seeded[id('on-plugin')]).toBeDefined()
+  })
+
+  it('never installs a theme listing and never records it, by hand-installed or not', async () => {
+    const r = await rig([...BASE, { name: 'theme-pack', version: '1.0.0', theme: true }])
+    const first = await r.run()
+    expect(first.installed.sort()).toEqual([id('off-plugin'), id('on-plugin')])
+    expect(first.skipped).toEqual([])
+    expect(first.failed).toEqual([])
+    expect(await r.installedVersion('theme-pack')).toBeUndefined()
+    expect((await readBuiltinSeedState(ctx, r.fs))?.seeded[id('theme-pack')]).toBeUndefined()
+    // The person adds it from the theme directory: still not the seeder's.
+    await setupPlugin(ctx, r.fs, MP, 'theme-pack', { fetchImpl: r.fetchImpl, nowIso: r.now() })
+    const second = await r.run()
+    expect(second.installed).toEqual([])
+    expect(second.skipped).toEqual([])
+    expect(await r.installedVersion('theme-pack')).toBe('1.0.0')
+    expect((await readBuiltinSeedState(ctx, r.fs))?.seeded[id('theme-pack')]).toBeUndefined()
   })
 
   it('leaves a blocklisted listing out and never records it', async () => {

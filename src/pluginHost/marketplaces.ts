@@ -37,6 +37,7 @@ import type {
   RegistryReadResult,
 } from './registryFormats'
 import { writeExtractedFiles } from './writeExtracted'
+import { normalizeListingTheme } from './themeListing'
 
 // ---------------------------------------------------------------------------
 // `memoize` from lodash on `getMarketplace` and exposes
@@ -763,6 +764,8 @@ function normalizePluginEntry(raw: unknown): CatalogListing | null {
   if (r.author && typeof r.author === 'object') out.author = r.author
   if (typeof r.onByDefault === 'boolean') out.onByDefault = r.onByDefault
   if (typeof r.betaOnly === 'boolean') out.betaOnly = r.betaOnly
+  const theme = normalizeListingTheme((raw as Record<string, unknown>).theme)
+  if (theme) out.theme = theme
   return out
 }
 

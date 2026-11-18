@@ -278,6 +278,8 @@ export async function seedBuiltinMarketplace(deps: BuiltinSeedDeps): Promise<Bui
   // Reconcile: install what the channel shows and was never seeded.
   const channel = deps.channel()
   for (const listing of listingsVisibleOn(manifest.plugins, channel)) {
+    // A theme is installed by the person from the theme directory, never here.
+    if (listing.theme) continue
     const id = joinPluginRef(listing.name, BUILTIN_MARKETPLACE_KEY)
     if (state.seeded[id]) continue
     if (pluginBlockReason(id)) {

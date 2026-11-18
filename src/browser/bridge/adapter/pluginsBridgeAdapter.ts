@@ -42,7 +42,9 @@ import {
 import { githubRepoOf, parseMarketplaceSource, registerMarketplaceSource } from '../../../pluginHost/marketplaceRegister'
 import { directoryFallbackName, installFromDirectory } from '../../../pluginHost/directoryInstall'
 import { DIRECTORY_CATALOG_KEY } from '../../../pluginHost/directoryListings'
-import { isBuiltinMarketplace } from '../../../pluginHost/builtinMarketplace'
+import { builtinMarketplaceOriginDir, isBuiltinMarketplace } from '../../../pluginHost/builtinMarketplace'
+import { resolveListingTheme } from '../../../pluginHost/themeListing'
+import type { CatalogListing } from '../../../pluginHost/registryFormats'
 import { currentTemplateChannel, type UpdateChannel } from '../../../branding/updateChannels'
 import { pluginBlockReason } from '../../../pluginHost/blocklist'
 import { getPluginConfigsMap, mergePluginOptions, readPluginManifests } from '../../../pluginHost/pluginConfigs'
@@ -196,12 +198,9 @@ async function handleListMarketplacePlugins(
     return { marketplace: payload.marketplace, manifest: null }
   }
   const manifest = parseMarketplaceManifest(raw, payload.marketplace)
-  const { registry: installed } = await loadInstalledPlugins(pathCtx, ctx.fs)
-  const installedIdentifiers = new Set(Object.keys(installed.plugins))
-  const enriched: PluginAvailableUiEntry[] = listingsVisibleOn(manifest.plugins, channelOf(ctx)).map(p => {
-    const id = joinPluginRef(p.name, payload.marketplace)
-    return { ...p, installed: installedIdentifiers.has(id) }
-  })
+  const enriched = await listedEntries(
+    ctx, payload.marketplace, listingsVisibleOn(manifest.plugins, channelOf(ctx)), payload.kind === 'themes' ? 'themes' : 'plugins',
+  )
   return {
     marketplace: payload.marketplace,
     manifest: {
@@ -211,6 +210,36 @@ async function handleListMarketplacePlugins(
       plugins: enriched,
     },
   }
+}
+
+/**
+ * The entries one listing kind shows, with `installed` merged in. Only the
+ * built-in marketplace has theme listings: `plugins` leaves them out and
+ * `themes` is them alone, each preview an absolute address. Anywhere else a
+ * `theme` block is not honoured and the listing is an ordinary plugin.
+ */
+async function listedEntries(
+  ctx: PluginsAdapterContext,
+  marketplace: string,
+  visible: readonly CatalogListing[],
+  kind: 'plugins' | 'themes',
+): Promise<PluginAvailableUiEntry[]> {
+  const pathCtx = pathContextOf(ctx)
+  const builtin = isBuiltinMarketplace(marketplace)
+  if (kind === 'themes' && !builtin) return []
+  const { registry: installed } = await loadInstalledPlugins(pathCtx, ctx.fs)
+  const entryOf = (listing: CatalogListing): PluginAvailableUiEntry => ({
+    ...listing,
+    installed: Object.hasOwn(installed.plugins, joinPluginRef(listing.name, marketplace)),
+  })
+  if (!builtin) return visible.map(({ theme: _notHonoured, ...listing }) => entryOf(listing))
+  if (kind === 'plugins') return visible.filter(listing => !listing.theme).map(entryOf)
+  const { registry } = await loadKnownMarketplaces(pathCtx, ctx.fs, nowOf(ctx))
+  const record = Object.entries(registry).find(([name]) => isBuiltinMarketplace(name))?.[1]
+  const originDir = record ? builtinMarketplaceOriginDir(record.source) : null
+  return visible.flatMap(listing =>
+    listing.theme ? [entryOf({ ...listing, theme: resolveListingTheme(listing.theme, originDir) })] : [],
+  )
 }
 
 async function handleInstall(
@@ -431,16 +460,12 @@ async function handleRefreshMarketplace(
     pathCtx, ctx.fs, payload.name, nowOf(ctx),
     pickFetch(ctx),
   ))
-  const { registry: installed } = await loadInstalledPlugins(pathCtx, ctx.fs)
-  const installedIdentifiers = new Set(Object.keys(installed.plugins))
-  const visible = listingsVisibleOn(result.marketplace.plugins, channelOf(ctx))
-  const enriched: PluginAvailableUiEntry[] = visible.map(p => {
-    const id = joinPluginRef(p.name, payload.name)
-    return { ...p, installed: installedIdentifiers.has(id) }
-  })
+  const enriched = await listedEntries(
+    ctx, payload.name, listingsVisibleOn(result.marketplace.plugins, channelOf(ctx)), 'plugins',
+  )
   return {
     ok: true,
-    pluginCount: visible.length,
+    pluginCount: enriched.length,
     ...(result.sha ? { sha: result.sha } : {}),
     manifest: {
       name: result.marketplace.name,

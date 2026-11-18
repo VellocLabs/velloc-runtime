@@ -63,7 +63,9 @@ export type PluginMarketplaceUiEntry = CatalogRecord & {
 
 /** One entry in `plugins/listMarketplacePlugins`'s `plugins[]` — the
  *  marketplace.json's plugin entry plus an `installed` flag the UI uses
- *  to render Install vs Uninstall actions. */
+ *  to render Install vs Uninstall actions. `theme` rides only on the
+ *  built-in marketplace's `themes` list, each look's `preview` an absolute
+ *  https address to show in an `<img>`. */
 export type PluginAvailableUiEntry = CatalogListing & {
   /** True when this plugin currently appears in the installed registry
    *  (any version). Distinct from `enabled`. */
@@ -86,6 +88,10 @@ export type PluginsBridgeActionMap = {
   listMarketplacePlugins: {
     payload: {
       marketplace: string
+      /** `plugins` (the default): the listings that are not themes.
+       *  `themes`: the built-in marketplace's theme listings alone; empty
+       *  for any other marketplace. */
+      kind?: 'plugins' | 'themes'
     }
     result: {
       marketplace: string

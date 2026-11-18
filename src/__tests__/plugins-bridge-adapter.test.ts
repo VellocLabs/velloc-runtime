@@ -24,8 +24,9 @@ import { __setPluginBlocklistForTests } from '../pluginHost/blocklist'
 import { registerBuiltinMod, unregisterBuiltinMod } from '../mods/builtinMods'
 import { wipeSettingsMemos } from '../settings/settingsStore'
 import { rawHostFromTarballs } from './_helpers/rawHostFromTarballs'
-import { getMarketplaceContentDir, MARKETPLACE_MANIFEST_FILE_NAME, PLUGIN_MANIFEST_DIR_NAME } from '../pluginHost/pluginDirs'
+import { getMarketplaceContentDir, getMarketplaceManifestPath, MARKETPLACE_MANIFEST_FILE_NAME, PLUGIN_MANIFEST_DIR_NAME } from '../pluginHost/pluginDirs'
 import { loadDirectoryPlugins } from '../pluginHost/directoryListings'
+import { BUILTIN_MARKETPLACE_KEY } from '../pluginHost/builtinMarketplace'
 
 // --- shared fs + tar fixtures (parallel to other plugins-install tests) --
 
@@ -285,6 +286,79 @@ describe('pluginsHandlers.listMarketplacePlugins', () => {
     const onBeta = await pluginsHandlers.listMarketplacePlugins({ marketplace: 'my-mkt' }, beta)
     expect(onBeta.manifest!.plugins.map(p => p.name)).toEqual(['everyone', 'testers'])
     expect(onBeta.manifest!.plugins[1]).toMatchObject({ betaOnly: true, onByDefault: false })
+  })
+
+  it("lists the built-in marketplace's themes apart from its plugins, previews absolute",async () => {
+    const { fs } = makeMemoryFs()
+    const home = { homeDir: '/home/user' }
+    const sha = 'e'.repeat(40)
+    const raw = `https://raw.githubusercontent.com/someone/pack/${sha}/art/pinned.png`
+    await fs.writeFile(
+      getMarketplaceManifestPath(home, BUILTIN_MARKETPLACE_KEY),
+      JSON.stringify({
+        name: BUILTIN_MARKETPLACE_KEY,
+        plugins: [
+          { name: 'tool', source: './plugins/tool' },
+          {
+            name: 'pack',
+            source: { source: 'github', repo: 'someone/pack', sha },
+            theme: {
+              official: true,
+              looks: [
+                { id: 'lagoon', appearance: 'light', preview: 'previews/pack/lagoon.svg', use: { command: 'pick-look', args: 'lagoon' } },
+                { id: 'pinned', preview: raw },
+                { id: 'elsewhere', preview: 'https://elsewhere.example/a.png' },
+                { id: 'shouting', preview: 'previews/pack/x.svg', use: { command: 'pick-look', args: 'NOPE' } },
+              ],
+            },
+          },
+          { name: 'beta-theme', source: './plugins/beta-theme', betaOnly: true, theme: { looks: [{ id: 'beta-theme', preview: 'previews/b.svg' }] } },
+        ],
+      }),
+    )
+    await recordInstalledPlugin(home, fs, `pack@${BUILTIN_MARKETPLACE_KEY}`, {
+      scope: 'user', installPath: '/x', version: '1.0.0', installedAt: NOW_ISO, lastUpdated: NOW_ISO,
+    })
+    const ctx = { ...makeCtx({ fs }), channel: () => 'stable' as const }
+    const plugins = await pluginsHandlers.listMarketplacePlugins({ marketplace: BUILTIN_MARKETPLACE_KEY }, ctx)
+    expect(plugins.manifest!.plugins).toEqual([{ name: 'tool', source: { source: 'local', path: 'plugins/tool' }, installed: false }])
+    const themes = await pluginsHandlers.listMarketplacePlugins({ marketplace: BUILTIN_MARKETPLACE_KEY, kind: 'themes' }, ctx)
+    expect(themes.manifest!.plugins).toEqual([
+      {
+        name: 'pack',
+        source: { source: 'github', repo: 'someone/pack', sha },
+        installed: true,
+        theme: {
+          official: true,
+          looks: [
+            { id: 'lagoon', appearance: 'light', preview: 'https://plugins.velloc.app/previews/pack/lagoon.svg', use: { command: 'pick-look', args: 'lagoon' } },
+            { id: 'pinned', preview: raw },
+          ],
+        },
+      },
+    ])
+    const onBeta = await pluginsHandlers.listMarketplacePlugins(
+      { marketplace: BUILTIN_MARKETPLACE_KEY, kind: 'themes' }, { ...ctx, channel: () => 'beta' as const },
+    )
+    expect(onBeta.manifest!.plugins.map(p => p.name)).toEqual(['pack', 'beta-theme'])
+  })
+
+  it('does not honour a theme block outside the built-in marketplace', async () => {
+    const { fs } = makeMemoryFs()
+    const home = { homeDir: '/home/user' }
+    await addMarketplace(home, fs, 'my-mkt', { source: 'github', repo: 'me/mkt' }, NOW_ISO)
+    await fs.writeFile(
+      getMarketplaceManifestPath(home, 'my-mkt'),
+      JSON.stringify({
+        name: 'my-mkt',
+        plugins: [{ name: 'claims', source: './claims', theme: { looks: [{ id: 'claims', preview: 'a.svg' }] } }],
+      }),
+    )
+    const ctx = makeCtx({ fs })
+    const plugins = await pluginsHandlers.listMarketplacePlugins({ marketplace: 'my-mkt' }, ctx)
+    expect(plugins.manifest!.plugins).toEqual([{ name: 'claims', source: { source: 'local', path: 'claims' }, installed: false }])
+    const themes = await pluginsHandlers.listMarketplacePlugins({ marketplace: 'my-mkt', kind: 'themes' }, ctx)
+    expect(themes.manifest!.plugins).toEqual([])
   })
 
   it('returns manifest: null when no local manifest yet', async () => {

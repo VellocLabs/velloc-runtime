@@ -159,7 +159,8 @@ export type ModRosterClient = {
  *  became of its modules (for the `mods/state` topic), its mods' lines
  *  (for `mods/ui/<sessionId>`), and its drawings. */
 export type ModSlot = ToolCallMods &
-  Partial<ModSlotDrawing> & {
+  Partial<ModSlotDrawing> &
+  import('./modThemeLooks').ThemeLookSlot & {
     status?(): readonly ModSlotStatus[]
     uiState?(): ModSlotUiState
     /** A client joined the session's roster (`session.attach`). */

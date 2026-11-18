@@ -71,6 +71,7 @@ import { resolveHostHome } from './hostFs'
 import { currentTemplateChannel } from '../../branding/updateChannels'
 import { registerCatalogCapability } from './catalogCapability'
 import { registerAppUpdateCapability } from './appUpdateCapability'
+import { registerThemeCapability } from './themeCapability'
 import { registerMcpAuthCapability } from './mcpAuthCapability'
 import { registerRenderCacheCapability } from './renderCacheCapability'
 import { registerProviderLoginCapability } from './providerLoginCapability'
@@ -367,6 +368,13 @@ export class RuntimeHub {
           await recordProviderPluginConsent(pluginId, at)
         },
       },
+    })
+    // Theme looks (F-35): `theme.useLook` and `theme.clear`, both `full`; the
+    // look is read from the built-in marketplace's cached listing.
+    registerThemeCapability(this.registry, {
+      fs: () => this.context.webUiBridge.fs,
+      resolveHome: () => resolveHostHome(this.context),
+      channel: currentTemplateChannel,
     })
     // Model data (F-28): the catalog status on `catalog/status` and the
     // `catalog.refresh` action (`manager`); the service comes from the seam in

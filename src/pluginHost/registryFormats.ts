@@ -12,6 +12,23 @@ export type PluginOrigin =
 
 type ContactInfo = { name?: string; email?: string; url?: string }
 
+/** The plugin's own slash command that picks a look, and its one argument. */
+export type ThemeLookUse = { command: string; args?: string }
+
+/** One look a theme plugin offers. Without `use`, loading the plugin is the look. */
+export type ThemeLook = {
+  id: string
+  name?: string
+  description?: string
+  appearance?: 'light' | 'dark' | 'both'
+  /** A picture: a path under the marketplace's directory, or an https address. */
+  preview: string
+  use?: ThemeLookUse
+}
+
+/** A listing's `theme` block: the plugin is a theme, with these looks. */
+export type ListingTheme = { official?: boolean; looks: ThemeLook[] }
+
 export type CatalogListing = {
   name: string
   description?: string
@@ -25,6 +42,9 @@ export type CatalogListing = {
   onByDefault?: boolean
   /** `true`: listed and seeded only on the beta channel. Absent = every channel. */
   betaOnly?: boolean
+  /** The listing is a theme: shown in the theme directory, never installed
+   *  by the built-in seeder. */
+  theme?: ListingTheme
 }
 
 /** Contents of a `marketplace.json`. */
