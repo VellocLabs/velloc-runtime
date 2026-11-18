@@ -19,7 +19,7 @@ import { mcpServerSkillName } from '../mcp/toolAdapter'
 import { registerExtensionToolUnits } from '../toolkit/run/deferredTools'
 import {
   ModRegisteredAgents,
-  agentInfoOf,
+  agentInfosOf,
   agentOutcomeOf,
   agentToolInputOf,
   denialOfLaunch,
@@ -264,7 +264,7 @@ function agentHost({ ledger }: HostParts, registeredAgents: ModRegisteredAgents,
   return {
     register: (spec, plugin) => registeredAgents.register(spec, plugin),
     forget: plugin => registeredAgents.forget(plugin),
-    list: () => getSubAgentController()?.list(ledger.sessionId()).map(entry => agentInfoOf(entry)) ?? [],
+    list: () => agentInfosOf(getSubAgentController()?.list(ledger.sessionId()) ?? []),
     viewTarget: agentId => {
       // A subagent answers to its task id and to the id its own loop's events carry.
       const subagent = getSubAgentController()

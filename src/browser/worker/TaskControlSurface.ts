@@ -620,6 +620,7 @@ export class TaskControlSurface {
       }
       running.push({
         sessionId: shell.taskId,
+        kind: 'shell',
         status: 'running',
         description: shell.command,
         startedAt: shell.startedAt,
@@ -632,6 +633,7 @@ export class TaskControlSurface {
       }
       running.push({
         sessionId: script.taskId,
+        kind: 'script',
         status: 'running',
         description: script.description,
         startedAt: script.startedAt,
@@ -659,6 +661,7 @@ export class TaskControlSurface {
       }
       finished.push({
         sessionId: shell.taskId,
+        kind: 'shell',
         status: shell.status,
         description: shell.command,
         startedAt: shell.startedAt,
@@ -671,6 +674,7 @@ export class TaskControlSurface {
       }
       finished.push({
         sessionId: script.taskId,
+        kind: 'script',
         status: script.status,
         description: script.description,
         startedAt: script.startedAt,

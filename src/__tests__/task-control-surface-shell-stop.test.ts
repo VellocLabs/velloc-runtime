@@ -128,3 +128,12 @@ describe('TaskControlSurface.stopAndWait — background shells', () => {
     })
   })
 })
+
+describe('TaskControlSurface.list — row kinds', () => {
+  it('a background shell is listed as a shell, live and finished', async () => {
+    const { surface } = setup('stopped')
+    expect(surface.list('sess-A')).toEqual([expect.objectContaining({ sessionId: 'shell-1', kind: 'shell', status: 'running' })])
+    await surface.stopAndWait('shell-1')
+    expect(surface.list('sess-A')).toEqual([expect.objectContaining({ sessionId: 'shell-1', kind: 'shell', status: 'stopped' })])
+  })
+})

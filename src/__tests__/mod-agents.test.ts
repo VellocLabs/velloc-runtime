@@ -11,6 +11,7 @@ import type { ModNounHost } from '../mods/modNouns'
 import {
   ModRegisteredAgents,
   agentInfoOf,
+  agentInfosOf,
   agentToolInputOf,
   buildModAgentDefinition,
   denialOfLaunch,
@@ -139,6 +140,16 @@ describe('a spawn and the list', () => {
     expect(agentInfoOf({ ...row, status: 'error', agentType: undefined }, 'lab')).toMatchObject({ type: 'general-purpose', status: 'failed', spawnedBy: 'lab' })
     expect(agentInfoOf({ ...row, status: 'stopped' }).status).toBe('killed')
     expect(agentInfoOf({ ...row, status: 'running' }).status).toBe('running')
+  })
+
+  it('$.agent.list answers sub-agents only: a background shell or script listed beside them is left out', () => {
+    const rows = [
+      { sessionId: 'a1', status: 'running' as const, description: 'review it', agentType: 'Explore', startedAt: 1, kind: 'agent' as const },
+      { sessionId: 'b1', status: 'running' as const, description: 'python watch.py', startedAt: 2, kind: 'shell' as const },
+      { sessionId: 's1', status: 'success' as const, description: 'a script', startedAt: 3, kind: 'script' as const },
+      { sessionId: 'a2', status: 'success' as const, description: 'older row', startedAt: 4 },
+    ]
+    expect(agentInfosOf(rows).map(info => info.id)).toEqual(['a1', 'a2'])
   })
 })
 

@@ -55,7 +55,12 @@ export type SubAgentListEntry = {
   updates?: number
   /** The id the sub-agent's own loop carries as `agentId` on its events. */
   loopId?: string
+  /** What the row runs: a sub-agent, a background shell or a script. Absent
+   *  means a sub-agent. */
+  kind?: SubAgentListKind
 }
+
+export type SubAgentListKind = 'agent' | 'shell' | 'script'
 
 /** The `agentId` a sub-agent's own loop carries, from its native session id. */
 export function subAgentLoopId(nativeSessionId: string): string {
