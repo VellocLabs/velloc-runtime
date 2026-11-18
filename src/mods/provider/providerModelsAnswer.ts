@@ -2,7 +2,8 @@
  * Security: a `provider.models` answer is untrusted. Not an array = a failure (the
  * cached listing stays); unusable rows are dropped; malformed fields left out and
  * sizes capped; unknown `thinkingTiers` dropped (a mod cannot add a tier name);
- * `wire` sanitized against the provider's base URL.
+ * `wire` sanitized against the provider's base URL. `{ models, ttlMs }` may stand
+ * for the bare list; `ttlMs` is held within `MODELS_TTL_MIN_MS`..`MODELS_TTL_MAX_MS`.
  */
 
 import { THINKING_TIER_ORDER } from '../../config/nexusModelConfig/providers/shared/listing'
@@ -24,8 +25,14 @@ export const MODEL_FIGURE_MAX = 1_000_000_000
 /** A price above this (USD per million tokens) is a mistake. */
 export const MODEL_PRICE_MAX = 1_000_000
 
+/** The bounds of an answer's `ttlMs`; the upper one is the default freshness. */
+export const MODELS_TTL_MIN_MS = 30_000
+export const MODELS_TTL_MAX_MS = 60 * 60 * 1000
+
 export type ParsedModelsAnswer = {
   models: ProviderModelInfo[]
+  /** How long the answer stays fresh, within the bounds; absent: not stated. */
+  ttlMs?: number
   /** Rows dropped as unusable (each reason is in `reasons`, once). */
   dropped: number
   reasons: string[]
@@ -92,6 +99,18 @@ export function parseModelsAnswer(
   answer: unknown,
   baseUrl: string | undefined,
 ): ParsedModelsAnswer {
+  let ttlMs: number | undefined
+  if (isRecord(answer)) {
+    const extra = Object.keys(answer).filter(key => key !== 'models' && key !== 'ttlMs')
+    if (extra.length > 0) throw new Error(`provider.models answered an object with ${extra.slice(0, 4).join(', ')}; it takes models and ttlMs`)
+    if (answer.ttlMs !== undefined) {
+      if (typeof answer.ttlMs !== 'number' || !Number.isFinite(answer.ttlMs) || answer.ttlMs <= 0) {
+        throw new Error('provider.models: ttlMs must be a positive number of milliseconds')
+      }
+      ttlMs = Math.min(MODELS_TTL_MAX_MS, Math.max(MODELS_TTL_MIN_MS, Math.floor(answer.ttlMs)))
+    }
+    answer = answer.models
+  }
   if (!Array.isArray(answer)) {
     throw new Error(`provider.models answered ${answer === null ? 'null' : typeof answer}, not a list of models`)
   }
@@ -183,5 +202,5 @@ export function parseModelsAnswer(
       { level: 'warn' },
     )
   }
-  return { models, dropped, reasons: [...reasons] }
+  return { models, ...(ttlMs !== undefined ? { ttlMs } : {}), dropped, reasons: [...reasons] }
 }

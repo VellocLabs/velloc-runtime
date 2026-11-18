@@ -553,7 +553,7 @@ const json = (value: unknown): RawResponse => ({ status: 200, body: JSON.stringi
 describe('providerDocuments — the provider-neutral fetch', () => {
   it('lists over a GET with the format auth and the spec headers, relative to the base URL', async () => {
     const { transport, opens } = scriptedHost({ [`GET ${OR}/models`]: json(OPENROUTER_LISTING) })
-    expect(await listProviderModels(transport, 'openrouter', { now: NOW })).toHaveLength(5)
+    expect((await listProviderModels(transport, 'openrouter', { now: NOW })).models).toHaveLength(5)
     expect(opens[0]).toMatchObject({
       providerId: 'openrouter',
       url: `${OR}/models`,

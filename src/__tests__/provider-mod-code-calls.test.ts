@@ -203,6 +203,18 @@ describe('provider.models — when it is called', () => {
     expect(fake.calls[0]!.options.signal).toBeInstanceOf(AbortSignal)
   })
 
+  it('an answer of { models, ttlMs } is a listing like the bare list', async () => {
+    runtimeHost()
+    setRuntimeProviderConfigs({ [ZEN]: KEYED })
+    const { fake } = await setup()
+    const answer = { models: [{ id: 'm', supportsTools: true }], ttlMs: 60_000 }
+    expect(PROVIDER_EVENTS['provider.models'].accepts(answer)).toBe(true)
+    expect(PROVIDER_EVENTS['provider.models'].accepts({ ttlMs: 60_000 })).toBe(false)
+    fake.on('provider.models', answerWith(answer))
+    const listing = await listRuntimeProviderModels(transport, ZEN, { force: true })
+    expect(listing).toMatchObject({ ok: true, models: [{ id: 'm' }] })
+  })
+
   it('before credentials the same call says connected: false', async () => {
     runtimeHost()
     setRuntimeProviderConfigs({ [ZEN]: { source: 'mod', modVersion: '1.4.0' } })
@@ -318,7 +330,7 @@ describe('provider.models — what a failure leaves standing', () => {
     runtimeHost({ [ZEN]: JSON.stringify(OLD_LISTING) })
     setRuntimeProviderConfigs({ [ZEN]: { ...KEYED, modelEntries: ENTRIES } })
     const { fake } = await setup()
-    fake.on('provider.models', answerWith({ models: [] }))
+    fake.on('provider.models', answerWith({ models: 'm' }))
     expect(await listRuntimeProviderModels(transport, ZEN, { force: true })).toMatchObject({
       ok: false,
       error: expect.stringContaining('not a list of models'),

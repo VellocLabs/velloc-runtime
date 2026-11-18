@@ -15,6 +15,7 @@ import { getProviderDefinition } from '../../config/nexusModelConfig/providers'
 import type {
   ProviderDocumentSource,
   ProviderModelInfo,
+  ProviderModelListing,
   ProviderVerifyResult,
 } from '../../config/nexusModelConfig/providerDefinition'
 import type { PlanUsageAmount, PlanUsageSnapshot } from '../usage/planUsage'
@@ -125,7 +126,7 @@ export async function listProviderModels(
   transport: BrowserBridgeTransport,
   providerId: string,
   options: { signal?: AbortSignal; now?: number } = {},
-): Promise<ProviderModelInfo[]> {
+): Promise<ProviderModelListing> {
   const definition = getProviderDefinition(providerId)
   // A provider mod's listing is its module's answer, not a document.
   if (definition?.codeListing) return definition.codeListing.list(transport, providerId, options)
@@ -137,7 +138,7 @@ export async function listProviderModels(
     ...options,
     anonymous: source.public === true,
   })
-  return source.parse(document, options.now ?? Date.now())
+  return { models: source.parse(document, options.now ?? Date.now()) }
 }
 
 /**

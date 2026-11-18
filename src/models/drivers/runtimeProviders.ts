@@ -95,6 +95,8 @@ export type ProvidersChangedListing = {
 type Listing = {
   models: ProviderModelInfo[]
   fetchedAt: number
+  /** The source's own freshness; absent: `MODEL_LISTING_TTL_MS`. */
+  ttlMs?: number
   /** What the last reconciliation removed: `ids` are display names for the
    *  settings notice, `entryIds` the entries themselves — the page and
    *  `setModelEntries` never write one of those back (a stale page copy). */
@@ -375,6 +377,7 @@ async function loadCachedListing(providerId: string): Promise<void> {
         (m): m is ProviderModelInfo => !!m && typeof m.id === 'string' && typeof m.supportsTools === 'boolean',
       ),
       fetchedAt: parsed.fetchedAt,
+      ...(typeof parsed.ttlMs === 'number' && parsed.ttlMs > 0 ? { ttlMs: Math.min(parsed.ttlMs, MODEL_LISTING_TTL_MS) } : {}),
       ...(parsed.removed ? { removed: parsed.removed } : {}),
     })
   } catch {
@@ -520,7 +523,7 @@ export async function refreshRuntimeProviderModels(
   await loadCachedListing(providerId)
   const cached = listings.get(providerId)
   const now = options.now ?? Date.now()
-  if (!options.force && cached && now - cached.fetchedAt < MODEL_LISTING_TTL_MS && !listingIsStale(providerId)) {
+  if (!options.force && cached && now - cached.fetchedAt < (cached.ttlMs ?? MODEL_LISTING_TTL_MS) && !listingIsStale(providerId)) {
     return { ok: true, models: cached.models, removed: [] }
   }
   const failed = failures.get(providerId)
@@ -545,7 +548,7 @@ export async function refreshRuntimeProviderModels(
   }
   const task = (async (): Promise<RefreshOutcome> => {
     try {
-      const models = await listProviderModels(transport, providerId, { now })
+      const { models, ttlMs } = await listProviderModels(transport, providerId, { now })
       // A listing asked with credentials replaced since is neither applied nor
       // remembered: the caller that waited on it lists again.
       if (listingAccess(configs[providerId]) !== access) {
@@ -571,6 +574,7 @@ export async function refreshRuntimeProviderModels(
       applyListing(providerId, {
         models,
         fetchedAt: now,
+        ...(ttlMs !== undefined ? { ttlMs } : {}),
         ...(removed.length > 0
           ? { removed: { ids: removed, entryIds: reconciled!.removedIds, at: now } }
           : cached?.removed ? { removed: cached.removed } : {}),

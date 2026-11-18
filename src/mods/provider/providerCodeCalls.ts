@@ -102,7 +102,8 @@ export function providerCodeCalls(deps: ProviderCodeCallDeps): ProviderCodeCalls
     if (!outcome.raised) {
       throw new Error('the provider module does not list models (it has no provider.models hook)')
     }
-    return parseModelsAnswer(providerId, outcome.value, deps.baseUrl(providerId)).models
+    const { models, ttlMs } = parseModelsAnswer(providerId, outcome.value, deps.baseUrl(providerId))
+    return { models, ...(ttlMs !== undefined ? { ttlMs } : {}) }
   }
 
   const verify: ProviderCodeCalls['verify'] = async (_transport, providerId, options) => {

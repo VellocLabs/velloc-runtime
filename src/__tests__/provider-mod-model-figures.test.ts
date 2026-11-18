@@ -70,7 +70,7 @@ async function provider(
       pluginVersion: '1.0.0',
       provider: resolved,
       isLoaded: () => true,
-      list: async () => models,
+      list: async () => ({ models }),
     }),
   )
   reapplyProviderCatalog()

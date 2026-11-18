@@ -15,6 +15,8 @@ import {
   MODEL_FIGURE_MAX,
   MODEL_ID_MAX_LENGTH,
   MODEL_NAME_MAX_LENGTH,
+  MODELS_TTL_MAX_MS,
+  MODELS_TTL_MIN_MS,
   parseModelsAnswer,
 } from '../mods/provider/providerModelsAnswer'
 
@@ -24,9 +26,26 @@ const parse = (answer: unknown) => parseModelsAnswer(P, answer, BASE)
 
 describe('provider.models — the answer', () => {
   it('a non-array answer is a failure, not an empty listing', () => {
-    for (const bad of [undefined, null, 'models', 3, {}, { models: [] }]) {
+    for (const bad of [undefined, null, 'models', 3, {}, { models: 'm' }]) {
       expect(() => parse(bad)).toThrow(/not a list of models/)
     }
+  })
+
+  it('{ models, ttlMs } stands for the list, with ttlMs held within its bounds', () => {
+    const rows = [{ id: 'a', supportsTools: true }]
+    expect(parse({ models: rows })).toEqual(parse(rows))
+    expect(parse({ models: rows, ttlMs: 120_000 }).ttlMs).toBe(120_000)
+    expect(parse({ models: rows, ttlMs: 1 }).ttlMs).toBe(MODELS_TTL_MIN_MS)
+    expect(parse({ models: rows, ttlMs: 10 * 60 * 60 * 1000 }).ttlMs).toBe(MODELS_TTL_MAX_MS)
+    expect(parse(rows)).not.toHaveProperty('ttlMs')
+  })
+
+  it.each([
+    ['a ttlMs that is not a positive number', { models: [], ttlMs: '60s' }, /ttlMs must be a positive number/],
+    ['a zero ttlMs', { models: [], ttlMs: 0 }, /ttlMs must be a positive number/],
+    ['an unknown key', { models: [], expires: 5 }, /it takes models and ttlMs/],
+  ])('refuses %s', (_label, answer, problem) => {
+    expect(() => parse(answer)).toThrow(problem)
   })
 
   it('an empty array is an empty listing (the caller keeps its cache)', () => {

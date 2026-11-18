@@ -63,7 +63,7 @@ function register() {
       plugin: 'acme',
       provider,
       isLoaded: () => true,
-      list: async () => listed,
+      list: async () => ({ models: listed }),
     }),
   )
   reapplyProviderCatalog()

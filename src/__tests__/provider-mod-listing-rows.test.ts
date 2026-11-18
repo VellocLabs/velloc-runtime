@@ -41,7 +41,7 @@ const STORED: Record<string, NexusProviderConfig> = {
     modelEntries: [{ family: 'vendor/wide-*-flash', version: 'latest', id: MODEL }],
   },
 }
-const list = vi.fn(async () => LISTED)
+const list = vi.fn(async () => ({ models: LISTED }))
 
 function register(): void {
   const { manifest, errors } = checkPluginDescriptor({
@@ -121,5 +121,40 @@ describe('a provider mod registered again while its listing is fresh', () => {
     await refreshConfiguredRuntimeProviderModels(transport)
     expect(list).not.toHaveBeenCalled()
     expect(figures()).toEqual([1_048_576, 128_000])
+  })
+})
+
+describe('a listing that states how long it stays fresh', () => {
+  const T = 1_800_000_000_000
+
+  it('is asked for again once its ttlMs has passed, not an hour later', async () => {
+    runtimeHost()
+    register()
+    setRuntimeProviderConfigs(STORED)
+    list.mockResolvedValueOnce({ models: LISTED, ttlMs: 60_000 } as never)
+    await refreshRuntimeProviderModels(transport, ID, { now: T })
+    await refreshRuntimeProviderModels(transport, ID, { now: T + 59_000 })
+    expect(list).toHaveBeenCalledTimes(1)
+    await refreshRuntimeProviderModels(transport, ID, { now: T + 61_000 })
+    expect(list).toHaveBeenCalledTimes(2)
+  })
+
+  it('without ttlMs it stays fresh for the hour, as before', async () => {
+    runtimeHost()
+    register()
+    setRuntimeProviderConfigs(STORED)
+    await refreshRuntimeProviderModels(transport, ID, { now: T })
+    await refreshRuntimeProviderModels(transport, ID, { now: T + 61_000 })
+    expect(list).toHaveBeenCalledTimes(1)
+  })
+
+  it('keeps its ttlMs through the cache', async () => {
+    runtimeHost(JSON.stringify({ models: LISTED, fetchedAt: T, ttlMs: 60_000 }))
+    register()
+    setRuntimeProviderConfigs(STORED)
+    await refreshRuntimeProviderModels(transport, ID, { now: T + 30_000 })
+    expect(list).not.toHaveBeenCalled()
+    await refreshRuntimeProviderModels(transport, ID, { now: T + 61_000 })
+    expect(list).toHaveBeenCalledTimes(1)
   })
 })

@@ -153,6 +153,13 @@ export type ProviderDocumentSource<T> = {
   parse(document: unknown, now: number): T
 }
 
+/** A listing and, when its source said so, how long it stays fresh. */
+export type ProviderModelListing = {
+  models: ProviderModelInfo[]
+  /** Freshness in ms, already within the platform's bounds; absent: the default. */
+  ttlMs?: number
+}
+
 /**
  * A model listing produced by running a provider mod's code (`provider.models`)
  * rather than by reading a document. The runtime never starts that code to
@@ -169,7 +176,7 @@ export type ProviderCodeListing = {
     transport: BrowserBridgeTransport,
     providerId: string,
     options: { signal?: AbortSignal; now?: number },
-  ): Promise<ProviderModelInfo[]>
+  ): Promise<ProviderModelListing>
   /**
    * The connection check, through the module's `provider.verify` hook. `core`
    * is what the runtime does with no hook (a GET of the models path with the

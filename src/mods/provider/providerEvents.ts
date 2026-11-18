@@ -55,7 +55,8 @@ export const PROVIDER_EVENTS: Readonly<Record<ProviderEventName, ProviderEventSp
     budgetMs: 30_000,
     failClosed: false,
     void: false,
-    accepts: Array.isArray,
+    // A list of rows, or `{ models, ttlMs }`.
+    accepts: answer => Array.isArray(answer) || (isRecord(answer) && Array.isArray(answer.models)),
   },
   'provider.verify': {
     budgetMs: 20_000,

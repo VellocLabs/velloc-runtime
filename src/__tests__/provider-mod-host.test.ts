@@ -712,7 +712,7 @@ describe('the catalog rows', () => {
 
 describe('a catalog read never starts a worker', () => {
   it('neither the catalog rows nor the background refresh reach the module while it is cold', async () => {
-    const list = vi.fn(async () => [])
+    const list = vi.fn(async () => ({ models: [] }))
     const { host, runtime, openWorker } = rig({ listModels: list })
     runtimeHost({ [ZEN]: JSON.stringify({ models: [{ id: 'm', supportsTools: true }], fetchedAt: 0 }) })
     // A stale cache and an entry picked: due for a refresh — but the module is cold.
@@ -727,7 +727,7 @@ describe('a catalog read never starts a worker', () => {
   })
 
   it('refreshes it in the background only once its module is loaded', async () => {
-    const list = vi.fn(async (_transport: unknown, _providerId: string) => [{ id: 'm', supportsTools: true }])
+    const list = vi.fn(async (_transport: unknown, _providerId: string) => ({ models: [{ id: 'm', supportsTools: true }] }))
     const { host, runtime } = rig({ listModels: list })
     runtimeHost({ [ZEN]: JSON.stringify({ models: [{ id: 'm', supportsTools: true }], fetchedAt: 0 }) })
     setRuntimeProviderConfigs({ [ZEN]: { source: 'mod', credentialMode: 'anonymous', modelEntries: [{ family: 'm', version: 'latest' }] } })
