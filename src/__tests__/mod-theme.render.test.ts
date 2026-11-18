@@ -9,7 +9,7 @@ import { createElement } from 'react'
 import { afterEach, describe, expect, it } from 'vitest'
 import { cleanup, render, screen, waitFor } from '@testing-library/react'
 import { EMPTY_MOD_UI, ModUiContext, type ModUiContextValue } from '../components/assistant-ui/mod-ui-context'
-import { ModAppLook, ModBackdrop, ModShellPaintsThemeContext, useModThemeLook, useThemeLookOf } from '../components/assistant-ui/mod-theme'
+import { ModAppLook, ModBackdrop, ModShellPaintsThemeContext, useModThemeLook, useThemeLookOf, useWindowColorScheme } from '../components/assistant-ui/mod-theme'
 import {
   contrastRatio,
   glassTokensOf,
@@ -20,6 +20,7 @@ import {
 } from '../components/assistant-ui/mod-theme-paint'
 import { holdModsUiView, type ModsUiView } from '../browser/webview/mods/modsUiView'
 import type { ModsUiTheme } from '../browser/runtimeProtocol'
+import { shownColorScheme, shownTokenSource } from '../lib/shownColorScheme'
 import type { RuntimeConnection } from '../browser/runtimeClient/RuntimeConnection'
 
 afterEach(() => {
@@ -185,6 +186,7 @@ describe('the palette', () => {
     expect(root.getAttribute('data-mod-scheme')).toBe('dark')
     expect(root.className).toBe('dark')
     expect(root.style.colorScheme).toBe('dark')
+    expect(root.style.color).toBe('var(--foreground)')
     unmount()
     document.documentElement.classList.add('dark')
     render(withUi({ theme: dark }, createElement(ThemedRoot)))
@@ -197,6 +199,27 @@ describe('the palette', () => {
     const light = screen.getByTestId('root')
     expect(light.className).toBe('light')
     expect(light.getAttribute('data-mod-theme-palette')).not.toBe('none')
+  })
+
+  it('the shell shows the mode on the whole window while the theme stands, and the terminal and diagrams read it', () => {
+    function Shell({ theme }: { theme: ModsUiTheme | undefined }) {
+      useWindowColorScheme(useThemeLookOf(theme))
+      return null
+    }
+    const dark: ModsUiTheme = { plugin: 'look', requestId: 'backdrop', backdrop: { scene: 'night', glass: false }, overrideColorScheme: 'dark' }
+    const { rerender, unmount } = render(createElement(Shell, { theme: dark }))
+    expect(document.body.getAttribute('data-mod-scheme')).toBe('dark')
+    expect(document.body.classList).toContain('dark')
+    expect(shownColorScheme(document)).toBe('dark')
+    expect(shownTokenSource(document)).toBe(document.body)
+    rerender(createElement(Shell, { theme: undefined }))
+    expect(document.body.getAttribute('data-mod-scheme')).toBeNull()
+    expect(document.body.classList).not.toContain('dark')
+    expect(shownColorScheme(document)).toBe('light')
+    expect(shownTokenSource(document)).toBe(document.documentElement)
+    document.documentElement.classList.add('dark')
+    expect(shownColorScheme(document)).toBe('dark')
+    unmount()
   })
 
   it('no theme: the root carries nothing', () => {

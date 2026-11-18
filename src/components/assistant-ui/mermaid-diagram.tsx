@@ -1,3 +1,4 @@
+import { SHOWN_SCHEME_ATTR, shownColorScheme } from "@/lib/shownColorScheme";
 import { useEffect, useId, useRef, useState, useSyncExternalStore } from "react";
 
 import { cn } from "@/lib/utils";
@@ -69,6 +70,9 @@ function subscribeDarkClass(listener: () => void): () => void {
       attributes: true,
       attributeFilter: ["class"],
     });
+    if (document.body) {
+      darkClassObserver.observe(document.body, { attributes: true, attributeFilter: [SHOWN_SCHEME_ATTR] });
+    }
   }
   return () => {
     darkClassListeners.delete(listener);
@@ -84,9 +88,7 @@ function subscribeDarkClass(listener: () => void): () => void {
 export function useIsDarkTheme(): boolean {
   return useSyncExternalStore(
     subscribeDarkClass,
-    () =>
-      typeof document !== "undefined" &&
-      document.documentElement.classList.contains("dark"),
+    () => typeof document !== "undefined" && shownColorScheme(document) === "dark",
     () => false,
   );
 }

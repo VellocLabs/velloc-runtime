@@ -73,7 +73,7 @@ import {
 } from './layout/modsPane'
 import { loadModPanesAsked } from './layout/layoutStorage'
 import { useModCellWidth } from '@/components/assistant-ui/mod-render'
-import { ModBackdrop, ModShellPaintsThemeContext, useThemeLookOf } from '@/components/assistant-ui/mod-theme'
+import { ModBackdrop, ModShellPaintsThemeContext, useThemeLookOf, useWindowColorScheme } from '@/components/assistant-ui/mod-theme'
 import { ModUiContext } from '@/components/assistant-ui/mod-ui-context'
 import type { ModUiSeatPlaces } from '@/components/assistant-ui/mod-ui-context'
 import { useSessionModUi } from './mods/useSessionModUi'
@@ -2095,6 +2095,7 @@ export function MultiSessionShell({
   })
   // The active session's theme paints the whole window: its tokens and backdrop sit on the shell.
   const shellThemeLook = useThemeLookOf(shellModUi.theme)
+  useWindowColorScheme(shellThemeLook)
   // The panes the person asked for and has not closed by hand, across
   // sessions: from `REMEMBERED_FLOOR_CELLS` a mod's own open of one is placed.
   const [modPanesAsked, setModPanesAsked] = useState<readonly string[]>(loadModPanesAsked)

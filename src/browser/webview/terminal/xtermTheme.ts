@@ -4,6 +4,7 @@
  * for the scrollbar, and a fixed ANSI palette per scheme. Pure given a token resolver; `resolveCssToken` is
  * the DOM-backed one.
  */
+import { SHOWN_SCHEME_ATTR, shownColorScheme, shownTokenSource } from '@/lib/shownColorScheme'
 
 /** The xterm `ITheme` fields this view sets. */
 export interface TerminalTheme {
@@ -126,9 +127,10 @@ export function buildTerminalTheme(
   }
 }
 
-/** The scheme the document shows: the `dark` class the host theme sets on `<html>`. */
+/** The scheme the document shows: the `dark` class the host theme sets on
+ *  `<html>`, or a mod theme's override of it. */
 export function documentScheme(doc: Document | undefined = globalThis.document): TerminalScheme {
-  return doc?.documentElement.classList.contains('dark') ? 'dark' : 'light'
+  return shownColorScheme(doc)
 }
 
 let probeCanvas: HTMLCanvasElement | null = null
@@ -140,7 +142,7 @@ let probeCanvas: HTMLCanvasElement | null = null
  */
 export function resolveCssToken(token: string, doc: Document | undefined = globalThis.document): string | null {
   if (!doc?.documentElement) return null
-  const value = getComputedStyle(doc.documentElement).getPropertyValue(token).trim()
+  const value = getComputedStyle(shownTokenSource(doc)).getPropertyValue(token).trim()
   if (!value) return null
   try {
     probeCanvas ??= doc.createElement('canvas')
@@ -190,5 +192,6 @@ export function watchDocumentTheme(
     }
   })
   observer.observe(doc.documentElement, { attributes: true, attributeFilter: ['class', 'style'] })
+  if (doc.body) observer.observe(doc.body, { attributes: true, attributeFilter: [SHOWN_SCHEME_ATTR] })
   return () => observer.disconnect()
 }

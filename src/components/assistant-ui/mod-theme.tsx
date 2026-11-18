@@ -7,6 +7,7 @@
 import * as React from "react";
 import type { ModsUiTheme } from "@/browser/runtimeProtocol";
 import { BACKDROP_REQUEST_ID } from "@/mods/modTheme";
+import { showColorScheme } from "@/lib/shownColorScheme";
 import { useModUi } from "./mod-ui-context";
 import { ModRenderTree, useCellViewport, useModRender } from "./mod-render";
 import {
@@ -119,6 +120,13 @@ export function useModThemeLook(): ModThemeLook {
   return useThemeLookOf(useModUi().theme);
 }
 
+/** Shows the theme's mode on the whole window, popovers and what reads the
+ *  shown mode included; the shell's to call, for the session on screen. */
+export function useWindowColorScheme(look: ModThemeLook): void {
+  const scheme = look.className === "dark" || look.className === "light" ? look.className : undefined;
+  React.useEffect(() => showColorScheme(scheme), [scheme]);
+}
+
 /** True where the app shell paints the theme's backdrop for the whole window,
  *  so a thread inside it draws none of its own. */
 export const ModShellPaintsThemeContext = React.createContext(false);
@@ -151,6 +159,8 @@ export function useThemeLookOf(theme: ModsUiTheme | undefined): ModThemeLook {
       attributes["data-mod-glass"] = "";
     }
     if (override) {
+      // Text inherits a resolved color, so the carrier states its own.
+      style.color = "var(--foreground)";
       style.colorScheme = override;
       attributes["data-mod-scheme"] = override;
     }
@@ -163,7 +173,10 @@ export function useThemeLookOf(theme: ModsUiTheme | undefined): ModThemeLook {
  *  scene, glass or ground shows through what a person must be able to trust. */
 export function ModAppLook({ children }: { children: React.ReactNode }) {
   const { theme } = useModUi();
-  const own = useOwnTokens(theme !== undefined);
+  const pageMode = usePageMode();
+  // The app's own look in the mode the window shows.
+  const shown = theme?.overrideColorScheme !== undefined && theme.overrideColorScheme !== pageMode ? theme.overrideColorScheme : undefined;
+  const own = useOwnTokens(theme !== undefined, shown);
   if (!theme) return <>{children}</>;
   return (
     <div
