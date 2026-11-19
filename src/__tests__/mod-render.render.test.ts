@@ -830,7 +830,8 @@ describe('ModPromptRows — the mod rows above the prompt', () => {
 
   it('draws the open panes, then the band, in a full thread', async () => {
     render(withUi({ ...band, panes: [pane], render: tree() }, createElement(ModPromptRows)))
-    const band$ = await waitFor(() => screen.getByTestId('mod-band'))
+    const band$ = screen.getByTestId('mod-band')
+    await waitFor(() => expect(band$.textContent).toBe('last turn: 3s'))
     const title = screen.getByTestId('mod-pane-title-p-clock')
     expect(title.compareDocumentPosition(band$) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
   })
