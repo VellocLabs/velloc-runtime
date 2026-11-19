@@ -59,7 +59,8 @@ export interface StreamRouting {
   resolve(signal: AbortSignal): Promise<{ leg: RouteLeg } | { stop: { message?: string } }>
   /** What follows a failed send; `none` leaves the failure as it is. */
   after(failure: FailureEvent, streamStarted: boolean, signal: AbortSignal): Promise<RouteDecision>
-  /** Told once, when the stream is over; a switch within it is not an end. */
+  /** Told once per stream id, when it is over, whatever the caller does next.
+   *  A new target taken under the same stream id is not an end. */
   ended?(ending: RoutedEnding): void
 }
 
