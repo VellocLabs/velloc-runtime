@@ -150,8 +150,8 @@ export type ProviderManifest = {
   providerApi: number
   /** Absent = `provider`. */
   kind?: ProviderKind
-  /** A router's boundary: any provider the person set up, or the listed
-   *  provider ids. Read on a router alone. */
+  /** A router's boundary: any provider the person set up, or every instance
+   *  of the listed provider definitions. Read on a router alone. */
   routesTo?: '*' | string[]
   displayName: LocalizedText
   /** Package-relative `.svg`, `./`-prefixed. */

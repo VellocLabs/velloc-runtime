@@ -139,7 +139,8 @@ export type BrowserLlmModProvider = {
   domains?: string[]
   /** `router`: it sends through other providers. Absent = `provider`. */
   kind?: 'provider' | 'router'
-  /** A router's boundary: any provider the person set up, or these ids. */
+  /** A router's boundary: any provider the person set up, or every instance
+   *  of these provider definitions. */
   routesTo?: '*' | string[]
   credentialMethods?: ProviderCredentialMethod[]
   /** Credentials beyond the API key. */

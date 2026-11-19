@@ -4,6 +4,8 @@
  * outline (`accepts`; a wrong kind is a failed hook).
  */
 
+import { ROUTE_BUDGET_MS } from '../../models/drivers/providerRouter'
+
 export const PROVIDER_ABI = 'Velloc provider ABI 1'
 
 export type ProviderEventName =
@@ -154,7 +156,7 @@ export const PROVIDER_EVENTS: Readonly<Record<ProviderEventName, ProviderEventSp
   // no answer fails the request depends on which of the two it is, so the
   // caller decides and the table does not fail it closed.
   'provider.route': {
-    budgetMs: 2_000,
+    budgetMs: ROUTE_BUDGET_MS,
     failClosed: false,
     void: false,
     accepts: answer => answer === undefined || answer === null || isRecord(answer),

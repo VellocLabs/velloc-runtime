@@ -536,7 +536,12 @@ describe('provider-kind admission', () => {
       hasCatch: false,
       streams,
     })
-    expect(refuseProviderRegistrations(Object.keys(PROVIDER_EVENTS).map(name => hook(name)))).toBeNull()
+    expect(
+      refuseProviderRegistrations(
+        Object.keys(PROVIDER_EVENTS).filter(name => name !== 'provider.route').map(name => hook(name)),
+      ),
+    ).toBeNull()
+    expect(refuseProviderRegistrations([hook('provider.route')])).toMatch(/does not raise: provider\.route/)
     expect(refuseProviderRegistrations([hook('provider.*')])).toBeNull()
     expect(refuseProviderRegistrations([hook('*')])).toMatch(/provider events alone/)
     expect(refuseProviderRegistrations([hook('tool.call')])).toMatch(/provider events alone/)

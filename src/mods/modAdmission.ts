@@ -13,6 +13,7 @@ import { ENGINE_NOUNS, type ModUses } from './modScan'
 import {
   PROVIDER_ABI,
   PROVIDER_EVENT_NAMES,
+  ROUTER_ONLY_EVENTS,
   isProviderPattern,
   refuseProviderModuleCall,
 } from './provider/providerEvents'
@@ -370,7 +371,11 @@ export function refuseProviderRegistrations(hooks: readonly HookRegistration[]):
       foreign.push(pattern)
       continue
     }
-    if (!(PROVIDER_EVENT_NAMES as readonly string[]).includes(pattern)) {
+    // No provider is a router yet, so nothing raises a router-only event.
+    if (
+      !(PROVIDER_EVENT_NAMES as readonly string[]).includes(pattern)
+      || (ROUTER_ONLY_EVENTS as readonly string[]).includes(pattern)
+    ) {
       unraised.push(pattern)
       continue
     }
