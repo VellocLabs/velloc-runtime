@@ -73,15 +73,12 @@ export function registerThemeCapability(registry: CapabilityRegistry, options: T
           const payload = request.payload as ThemeUseLookPayload
           const slot = slotInScope(request.conn, payload.sessionId)
           let listings: CatalogListing[] | null
-          let installed: Awaited<ReturnType<typeof loadInstalledPlugins>>['registry']['plugins'] = {}
+          let installed: Awaited<ReturnType<typeof loadInstalledPlugins>>['registry']['plugins']
           try {
             const fs = options.fs()
             const homeDir = await options.resolveHome()
             listings = await readCachedBuiltinListings(fs, homeDir, options.channel())
-            installed = await loadInstalledPlugins({ homeDir }, fs).then(
-              read => read.registry.plugins,
-              () => ({}),
-            )
+            installed = (await loadInstalledPlugins({ homeDir }, fs)).registry.plugins
           } catch {
             throw wireError('host_unavailable', 'theme: the host has no home folder yet')
           }

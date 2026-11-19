@@ -216,8 +216,9 @@ async function handleListMarketplacePlugins(
  * The entries one listing kind shows, with `installed` merged in. Only the
  * built-in marketplace has theme listings: `plugins` leaves them out and
  * `themes` is them alone, each preview an absolute address; a theme also
- * counts as installed when the same code is installed from elsewhere. Anywhere else a
- * `theme` block is not honoured and the listing is an ordinary plugin.
+ * counts as installed when the same code is installed from elsewhere.
+ * Anywhere else a `theme` block is not honoured and the listing is an
+ * ordinary plugin.
  */
 async function listedEntries(
   ctx: PluginsAdapterContext,
@@ -229,25 +230,25 @@ async function listedEntries(
   const builtin = isBuiltinMarketplace(marketplace)
   if (kind === 'themes' && !builtin) return []
   const { registry: installed } = await loadInstalledPlugins(pathCtx, ctx.fs)
-  const entryOf = (listing: CatalogListing): PluginAvailableUiEntry => ({
+  const entryOf = (
+    listing: CatalogListing,
+    refs: readonly string[] = [joinPluginRef(listing.name, marketplace)],
+  ): PluginAvailableUiEntry => ({
     ...listing,
-    installed: Object.hasOwn(installed.plugins, joinPluginRef(listing.name, marketplace)),
+    installed: refs.some(ref => Object.hasOwn(installed.plugins, ref)),
   })
   if (!builtin) return visible.map(({ theme: _notHonoured, ...listing }) => entryOf(listing))
-  if (kind === 'plugins') return visible.filter(listing => !listing.theme).map(entryOf)
+  if (kind === 'plugins') return visible.filter(listing => !listing.theme).map(listing => entryOf(listing))
   const { registry } = await loadKnownMarketplaces(pathCtx, ctx.fs, nowOf(ctx))
   const record = Object.entries(registry).find(([name]) => isBuiltinMarketplace(name))?.[1]
   const originDir = record ? builtinMarketplaceOriginDir(record.source) : null
   return visible.flatMap(listing =>
     listing.theme
       ? [
-          {
-            ...listing,
-            theme: resolveListingTheme(listing.theme, originDir),
-            installed: listingInstalls(installed.plugins, listing, marketplace).some(ref =>
-              Object.hasOwn(installed.plugins, ref),
-            ),
-          },
+          entryOf(
+            { ...listing, theme: resolveListingTheme(listing.theme, originDir) },
+            listingInstalls(installed.plugins, listing, marketplace),
+          ),
         ]
       : [],
   )

@@ -4,7 +4,7 @@
  * looks (packs under their own header, single themes as cards), and what
  * Add, Add & use, Use and the default look ask of the bridge and the runtime.
  */
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createElement } from 'react'
 import { act, cleanup, fireEvent, render, waitFor, within } from '@testing-library/react'
 
@@ -16,7 +16,10 @@ import type { ThemeTarget } from '../browser/webview/customize/useThemeCatalog'
 import { en as EN } from '../browser/webview/i18n/messages/en'
 import { SettingsBridgeContext, type NexusSettingsBridge } from '../browser/webview/nexusSettingsBridge'
 
-afterEach(cleanup)
+afterEach(() => {
+  vi.useRealTimers()
+  cleanup()
+})
 
 type Listing = Record<string, unknown> & { name: string; installed: boolean }
 
@@ -328,19 +331,21 @@ describe('Theme directory — Add and Use', () => {
     fireEvent.click(add)
     await waitFor(() => expect(within(card('snow', 'snow')).getByTestId('customize-theme-use')).toBeTruthy())
     expect(runtimeAsked).toEqual([])
+    vi.useFakeTimers({ shouldAdvanceTime: true, toFake: ['setTimeout', 'clearTimeout'] })
     fireEvent.click(within(card('snow', 'snow')).getByTestId('customize-theme-use'))
     await waitFor(() => expect(view.getByTestId('customize-theme-notice').getAttribute('data-kind')).toBe('failed'))
     expect(runtimeAsked).toEqual([`theme.useLook {"sessionId":"${target.sessionId}","plugin":"snow","lookId":"snow"}`])
     expect(view.getByTestId('customize-theme-notice').textContent).toContain(EN['customize.themes.reason.notLoaded'])
     // A failure is not taken away by the clock: it stays until dismissed.
-    await act(async () => {
-      await new Promise(resolve => setTimeout(resolve, INSTALL_TOAST_MS + 200))
+    act(() => {
+      vi.advanceTimersByTime(INSTALL_TOAST_MS + 1)
     })
+    vi.useRealTimers()
     expect(view.getByTestId('customize-theme-notice').getAttribute('data-kind')).toBe('failed')
     fireEvent.click(view.getByTestId('customize-theme-notice-dismiss'))
     expect(view.queryByTestId('customize-theme-notice')).toBeNull()
     expect(within(card('snow', 'snow')).queryByTestId('customize-theme-in-use')).toBeNull()
-    }, 15_000)
+  })
 
   it('a failed install says so on the card and keeps Add', async () => {
     const { view, open, card } = setup({ installFails: true })

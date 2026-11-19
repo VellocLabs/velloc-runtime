@@ -478,7 +478,7 @@ function InUseMark() {
   )
 }
 
-/** How the last Use ended; leaves after a few seconds or when dismissed. */
+/** How the last Use ended. Success leaves after a few seconds; a failure stays until dismissed or the next Use answers. */
 function NoticeLine({
   notice,
   onDismiss,
