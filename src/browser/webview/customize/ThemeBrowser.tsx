@@ -1,5 +1,5 @@
 import * as React from 'react'
-import { CheckIcon, CircleAlertIcon, CircleCheckIcon, Loader2Icon, XIcon } from 'lucide-react'
+import { CheckIcon, Loader2Icon } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
@@ -9,7 +9,7 @@ import { useT } from '../i18n'
 import type { MessageKey } from '../i18n/messages/en'
 import { INSTALL_TOAST_MS } from './InstallToasts'
 import { PAGE_COLUMN } from './MarketplaceBrowser'
-import { LookPreview, THEME_GRID as GRID } from './themeCardParts'
+import { LookPreview, THEME_GRID as GRID, ThemeNoticeShell } from './themeCardParts'
 import {
   lookInUse,
   lookKey,
@@ -413,31 +413,14 @@ function NoticeLine({
   onView: () => void
 }) {
   const t = useT()
-  const seq = notice?.seq
-  const failed = notice?.kind === 'failed'
-  React.useEffect(() => {
-    // A failure stays until it is dismissed or the next Use answers.
-    if (seq === undefined || failed) return
-    const timer = window.setTimeout(onDismiss, INSTALL_TOAST_MS)
-    return () => window.clearTimeout(timer)
-  }, [seq, failed, onDismiss])
   if (!notice) return null
+  const failed = notice.kind === 'failed'
   const title =
     notice.kind === 'applied'
       ? t('customize.themes.notice.applied', { name: notice.name, title: notice.session })
       : t('customize.themes.notice.failed', { name: notice.name })
   return (
-    <div
-      role={failed ? 'alert' : 'status'}
-      data-testid="customize-theme-notice"
-      data-kind={notice.kind}
-      className="sticky top-2 z-10 my-1 flex items-start gap-3 rounded-xl border bg-popover p-3 text-popover-foreground shadow-sm"
-    >
-      {failed ? (
-        <CircleAlertIcon aria-hidden className="mt-0.5 size-4 shrink-0 text-destructive" />
-      ) : (
-        <CircleCheckIcon aria-hidden className="mt-0.5 size-4 shrink-0 text-primary" />
-      )}
+    <ThemeNoticeShell testId="customize-theme-notice" kind={notice.kind} seq={notice.seq} failed={failed} onDismiss={onDismiss}>
       <div className="flex min-w-0 flex-1 flex-col gap-0.5">
         <p className="text-sm font-medium">{title}</p>
         {failed ? (
@@ -452,16 +435,6 @@ function NoticeLine({
           {t('customize.themes.notice.view')}
         </Button>
       )}
-      <button
-        type="button"
-        data-testid="customize-theme-notice-dismiss"
-        aria-label={t('customize.install.toast.dismiss')}
-        title={t('customize.install.toast.dismiss')}
-        onClick={onDismiss}
-        className="-m-1 shrink-0 rounded-md p-1 text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:focus-ring"
-      >
-        <XIcon aria-hidden className="size-3.5" />
-      </button>
-    </div>
+    </ThemeNoticeShell>
   )
 }

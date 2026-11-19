@@ -250,4 +250,12 @@ describe('theme mods', () => {
       { ...one, enabled: true },
     ])
   })
+
+  it('keeps every install of a theme plugin that shares its name with another', () => {
+    const own = { plugin: 'lagoon', id: 'lagoon@velloc', enabled: false }
+    const other = { plugin: 'lagoon', id: 'lagoon@mymarket', enabled: true }
+    const folder = { plugin: 'lagoon', id: 'lagoon@inline', root: '/home/u/.velloc/plugins/lagoon', enabled: false }
+    const state = readThemeModsState({ mods: [], plugins: [own, other, folder, { ...other }] })!
+    expect(state.plugins).toEqual([own, other, folder])
+  })
 })

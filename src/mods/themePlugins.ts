@@ -79,11 +79,6 @@ export async function themePluginRows(homeDir: string, fs: RuntimeFs): Promise<T
   return out
 }
 
-/** The theme plugins that are enabled now. */
-export async function enabledThemePlugins(homeDir: string, fs: RuntimeFs): Promise<ThemeModEntry[]> {
-  return (await themePluginRows(homeDir, fs)).filter(row => row.enabled).map(({ enabled: _on, ...mod }) => mod)
-}
-
 /**
  * Switches off every enabled theme plugin except those named `keep`, then
  * reloads the open sessions once, also when a later write fails after some

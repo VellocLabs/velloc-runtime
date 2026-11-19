@@ -53,6 +53,8 @@ function setup(
     target?: ThemeTarget | null
     deny?: string[]
     uninstallFails?: boolean
+    turnOffFails?: boolean
+    holdUse?: Promise<void>
   } = {},
 ) {
   let rows = (options.rows ?? [LAGOON, SCENES, MINE, BUILTIN]).map(row => ({ ...row }))
@@ -95,6 +97,7 @@ function setup(
         case 'plugins.uninstall':
           if (options.uninstallFails) throw new Error('locked')
           rows = rows.filter(row => row.id !== payload.identifier)
+          publish()
           return { ok: true }
         case 'plugins.listInstalled':
           return { plugins: [{ name: 'lagoon', marketplace: 'velloc', version: '1.0.0', enabled: true, scope: 'user' }] }
@@ -124,7 +127,9 @@ function setup(
         return { ok: true }
       }
       runtimeAsked.push(`${route} ${JSON.stringify(payload)}`)
+      if (route === 'theme.useLook' && options.holdUse) await options.holdUse
       if (route === 'themeMods.turnOffAll') {
+        if (options.turnOffFails) throw new Error('refused')
         let count = 0
         rows = rows.map(row => {
           if (!row.enabled || row.plugin === payload.keep) return row
@@ -267,6 +272,25 @@ describe('Customize → Yours — the theme cards', () => {
     expect(card('lagoon').getAttribute('data-enabled')).toBe('false')
   })
 
+  it('Enable whose turn-off of the others fails says so, and the plugin stays on', async () => {
+    const { view, open, card, openMenu } = setup({ turnOffFails: true })
+    await open()
+    fireEvent.click(within(openMenu('theme-examples')).getByTestId('customize-yours-enable'))
+    await waitFor(() =>
+      expect(view.getByTestId('customize-yours-notice').textContent).toBe(EN['customize.themes.notice.failedTurnOff']),
+    )
+    expect(card('theme-examples').getAttribute('data-enabled')).toBe('true')
+    expect(card('lagoon').getAttribute('data-enabled')).toBe('true')
+  })
+
+  it('two installs of one plugin each get a card', async () => {
+    const { view, open } = setup({ rows: [{ ...LAGOON, enabled: false }, { ...LAGOON, id: 'lagoon@mymarket' }] })
+    await open()
+    const cards = view.getAllByTestId('customize-yours-theme')
+    expect(cards).toHaveLength(2)
+    expect(cards.map(el => el.getAttribute('data-enabled')).sort()).toEqual(['false', 'true'])
+  })
+
   it('a folder plugin is switched through its folder; Disable turns only it off', async () => {
     const { view, open, openMenu, bridgeAsked, runtimeAsked } = setup()
     await open()
@@ -363,6 +387,27 @@ describe('Customize → Yours — the theme plugin options', () => {
     fireEvent.click(view.getByTestId('customize-market-themes'))
     await waitFor(() => expect(look()).toBeTruthy())
     expect(view.queryAllByTestId('customize-theme-in-use')).toHaveLength(0)
+  })
+
+  it('Turn off all waits while a look from the Theme directory is still being applied', async () => {
+    let release = () => {}
+    const holdUse = new Promise<void>(resolve => {
+      release = resolve
+    })
+    const { view, open } = setup({ holdUse })
+    fireEvent.click(view.getByTestId('customize-market-themes'))
+    const look = () =>
+      view.getAllByTestId('customize-theme-look').find(el => el.getAttribute('data-look') === 'b')!
+    await waitFor(() => expect(within(look()).getByTestId('customize-theme-use')).toBeTruthy())
+    fireEvent.click(within(look()).getByTestId('customize-theme-use'))
+    await open()
+    const button = view.getByTestId('customize-themes-turn-off') as HTMLButtonElement
+    expect(button.disabled).toBe(true)
+    await act(async () => {
+      release()
+      await holdUse
+    })
+    await waitFor(() => expect(button.disabled).toBe(false))
   })
 
   it('a connection without the grants gets no menu actions it may not ask, no switch change and no Turn off all', async () => {

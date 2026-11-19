@@ -1,8 +1,10 @@
 import * as React from 'react'
+import { CircleAlertIcon, CircleCheckIcon, XIcon } from 'lucide-react'
 
 import { cn } from '@/lib/utils'
 
 import { useT } from '../i18n'
+import { INSTALL_TOAST_MS } from './InstallToasts'
 import { AVATAR_TINT, avatarHue } from './ItemAvatar'
 
 /** The theme grid (F-35): three columns at full width, two and one by the section's own width. */
@@ -38,5 +40,59 @@ export function LookPreview({ name, url }: { name: string; url: string }) {
       className="aspect-[16/10] w-full bg-background object-cover"
       onError={() => setBroken(true)}
     />
+  )
+}
+
+/**
+ * The line above a theme grid saying how the last ask ended. Success leaves
+ * after a few seconds; a failure stays until dismissed or a new `seq` comes.
+ */
+export function ThemeNoticeShell({
+  testId,
+  kind,
+  seq,
+  failed,
+  onDismiss,
+  children,
+}: {
+  testId: string
+  kind: string
+  seq: number
+  failed: boolean
+  onDismiss: () => void
+  children: React.ReactNode
+}) {
+  const t = useT()
+  const dismiss = React.useRef(onDismiss)
+  dismiss.current = onDismiss
+  React.useEffect(() => {
+    if (failed) return
+    const timer = window.setTimeout(() => dismiss.current(), INSTALL_TOAST_MS)
+    return () => window.clearTimeout(timer)
+  }, [seq, failed])
+  return (
+    <div
+      role={failed ? 'alert' : 'status'}
+      data-testid={testId}
+      data-kind={kind}
+      className="sticky top-2 z-10 my-1 flex items-start gap-3 rounded-xl border bg-popover p-3 text-popover-foreground shadow-sm"
+    >
+      {failed ? (
+        <CircleAlertIcon aria-hidden className="mt-0.5 size-4 shrink-0 text-destructive" />
+      ) : (
+        <CircleCheckIcon aria-hidden className="mt-0.5 size-4 shrink-0 text-primary" />
+      )}
+      {children}
+      <button
+        type="button"
+        data-testid={`${testId}-dismiss`}
+        aria-label={t('customize.install.toast.dismiss')}
+        title={t('customize.install.toast.dismiss')}
+        onClick={onDismiss}
+        className="-m-1 shrink-0 rounded-md p-1 text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:focus-ring"
+      >
+        <XIcon aria-hidden className="size-3.5" />
+      </button>
+    </div>
   )
 }

@@ -125,7 +125,7 @@ export function CustomizeScreen({
   const turnOffThemes = themeMods.turnOffAll
   const forgetApplied = themes.forgetApplied
   const yourThemesActions = React.useMemo(() => {
-    const setEnabled = async (row: ThemePluginRow, enabled: boolean): Promise<number> => {
+    const setEnabled = async (row: ThemePluginRow, enabled: boolean): Promise<number | null> => {
       if (!bridge) throw new Error(row.plugin)
       if (row.id.endsWith('@inline')) {
         if (!row.root) throw new Error(row.plugin)
@@ -133,13 +133,15 @@ export function CustomizeScreen({
       } else {
         await pluginsSetEnabled(bridge, row.id, enabled)
       }
+      if (!enabled) return 0
       // Enabling here is always one theme at a time.
-      return enabled ? turnOffThemes(row.plugin) : 0
+      const count = await turnOffThemes(row.plugin).catch(() => null)
+      if (count) forgetApplied()
+      return count
     }
     const uninstall = async (row: ThemePluginRow): Promise<void> => {
       if (!bridge) throw new Error(row.plugin)
       await pluginsUninstall(bridge, row.id)
-      refreshThemeMods()
     }
     return {
       ...(canSetSingle ? { setSingle: themeMods.setSingle } : {}),
@@ -163,7 +165,6 @@ export function CustomizeScreen({
     canUninstall,
     themeMods.setSingle,
     turnOffThemes,
-    refreshThemeMods,
     forgetApplied,
   ])
   const revealSeq = React.useRef(0)
@@ -427,6 +428,7 @@ export function CustomizeScreen({
                 single: themeMods.state?.single ?? null,
                 listings: themes.plugins,
                 standing: themeTarget ? themeStanding : undefined,
+                applying: themes.applying !== null,
                 actions: yourThemesActions,
                 onBrowse: () => setSelection({ kind: 'themes' }),
                 onChooseLook: plugin => {

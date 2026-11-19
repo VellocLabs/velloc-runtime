@@ -1,5 +1,5 @@
 import * as React from 'react'
-import { CircleAlertIcon, CircleCheckIcon, EllipsisIcon, Loader2Icon, XIcon } from 'lucide-react'
+import { CircleCheckIcon, EllipsisIcon, Loader2Icon } from 'lucide-react'
 import { DropdownMenu as DropdownMenuPrimitive } from 'radix-ui'
 
 import { Button } from '@/components/ui/button'
@@ -16,9 +16,8 @@ import { cn } from '@/lib/utils'
 
 import type { ThemePluginRow } from '../../../mods/themeMods'
 import { useT } from '../i18n'
-import { INSTALL_TOAST_MS } from './InstallToasts'
 import { packTitle } from './ThemeBrowser'
-import { LookPreview, THEME_GRID } from './themeCardParts'
+import { LookPreview, THEME_GRID, ThemeNoticeShell } from './themeCardParts'
 import type { ThemePlugin, ThemeStanding } from './useThemeCatalog'
 
 const MENU_CONTENT = 'z-50 min-w-[12rem] overflow-hidden rounded-md border bg-popover p-1 text-popover-foreground shadow-md'
@@ -30,8 +29,11 @@ export type YourThemesActions = {
   setSingle?: (on: boolean) => Promise<void>
   /** Every theme plugin off; answers how many were on. */
   turnOffAll?: () => Promise<number>
-  /** On turns every other theme plugin off and answers how many; off answers 0. */
-  setEnabled?: (row: ThemePluginRow, enabled: boolean) => Promise<number>
+  /**
+   * On turns every other theme plugin off and answers how many, or null when
+   * the plugin is on but the others could not be turned off; off answers 0.
+   */
+  setEnabled?: (row: ThemePluginRow, enabled: boolean) => Promise<number | null>
   uninstall?: (row: ThemePluginRow) => Promise<void>
 }
 
@@ -43,6 +45,8 @@ export type YourThemesProps = {
   listings: readonly ThemePlugin[]
   /** The standing theme of the session Customize was opened from; undefined when there is none to read. */
   standing: ThemeStanding
+  /** A look is being applied from the Theme directory; Turn off all waits for it. */
+  applying: boolean
   actions: YourThemesActions
   onBrowse: () => void
   /** The Theme directory at this pack. */
@@ -66,7 +70,17 @@ const uninstallable = (row: ThemePluginRow) => !row.id.endsWith('@inline') && !r
  * effect carries a check; its menu enables (turning the others off),
  * disables or uninstalls it.
  */
-export function YourThemes({ rows, single, listings, standing, actions, onBrowse, onChooseLook, onManage }: YourThemesProps) {
+export function YourThemes({
+  rows,
+  single,
+  listings,
+  standing,
+  applying,
+  actions,
+  onBrowse,
+  onChooseLook,
+  onManage,
+}: YourThemesProps) {
   const t = useT()
   const [pending, setPending] = React.useState<string | null>(null)
   const [notice, setNotice] = React.useState<(Notice & { seq: number }) | null>(null)
@@ -76,6 +90,7 @@ export function YourThemes({ rows, single, listings, standing, actions, onBrowse
     seq.current += 1
     setNotice({ ...next, seq: seq.current })
   }, [])
+  const dismissNotice = React.useCallback(() => setNotice(null), [])
 
   const cards = React.useMemo(() => cardsOf(rows ?? [], listings, standing), [rows, listings, standing])
   const on = (rows ?? []).filter(row => row.enabled).length
@@ -111,6 +126,7 @@ export function YourThemes({ rows, single, listings, standing, actions, onBrowse
             onEnable={enabled =>
               run(card.row.id, async () => {
                 const count = await actions.setEnabled!(card.row, enabled)
+                if (count === null) return { kind: 'failed', name: null }
                 return enabled ? { kind: 'enabled', name: card.name, count } : { kind: 'disabled', name: card.name }
               })
             }
@@ -134,7 +150,7 @@ export function YourThemes({ rows, single, listings, standing, actions, onBrowse
             variant="outline"
             size="xs"
             data-testid="customize-themes-turn-off"
-            disabled={pending !== null || on === 0}
+            disabled={pending !== null || applying || on === 0}
             onClick={() =>
               run('*', async () => ({ kind: 'turnedOff', count: await actions.turnOffAll!() }))
             }
@@ -143,7 +159,7 @@ export function YourThemes({ rows, single, listings, standing, actions, onBrowse
           </Button>
         ) : null}
       </div>
-      <NoticeLine notice={notice} onDismiss={() => setNotice(null)} />
+      <NoticeLine notice={notice} onDismiss={dismissNotice} />
       {body}
       <UninstallDialog
         card={uninstalling}
@@ -368,15 +384,8 @@ function SingleSwitch({ single, setSingle }: { single: boolean | null; setSingle
 
 function NoticeLine({ notice, onDismiss }: { notice: (Notice & { seq: number }) | null; onDismiss: () => void }) {
   const t = useT()
-  const seq = notice?.seq
-  const failed = notice?.kind === 'failed'
-  React.useEffect(() => {
-    // A failure stays until it is dismissed or the next ask answers.
-    if (seq === undefined || failed) return
-    const timer = window.setTimeout(onDismiss, INSTALL_TOAST_MS)
-    return () => window.clearTimeout(timer)
-  }, [seq, failed, onDismiss])
   if (!notice) return null
+  const failed = notice.kind === 'failed'
   const text =
     notice.kind === 'enabled'
       ? t(notice.count > 0 ? 'customize.yours.notice.enabledOthersOff' : 'customize.yours.notice.enabled', { name: notice.name })
@@ -390,29 +399,9 @@ function NoticeLine({ notice, onDismiss }: { notice: (Notice & { seq: number }) 
               ? t('customize.yours.notice.failed', { name: notice.name })
               : t('customize.themes.notice.failedTurnOff')
   return (
-    <div
-      role={failed ? 'alert' : 'status'}
-      data-testid="customize-yours-notice"
-      data-kind={notice.kind}
-      className="sticky top-2 z-10 my-1 flex items-start gap-3 rounded-xl border bg-popover p-3 text-popover-foreground shadow-sm"
-    >
-      {failed ? (
-        <CircleAlertIcon aria-hidden className="mt-0.5 size-4 shrink-0 text-destructive" />
-      ) : (
-        <CircleCheckIcon aria-hidden className="mt-0.5 size-4 shrink-0 text-primary" />
-      )}
+    <ThemeNoticeShell testId="customize-yours-notice" kind={notice.kind} seq={notice.seq} failed={failed} onDismiss={onDismiss}>
       <p className="min-w-0 flex-1 text-sm font-medium">{text}</p>
-      <button
-        type="button"
-        data-testid="customize-yours-notice-dismiss"
-        aria-label={t('customize.install.toast.dismiss')}
-        title={t('customize.install.toast.dismiss')}
-        onClick={onDismiss}
-        className="-m-1 shrink-0 rounded-md p-1 text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:focus-ring"
-      >
-        <XIcon aria-hidden className="size-3.5" />
-      </button>
-    </div>
+    </ThemeNoticeShell>
   )
 }
 

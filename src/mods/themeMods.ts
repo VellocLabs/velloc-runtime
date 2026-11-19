@@ -105,17 +105,29 @@ export function readThemeMods(raw: unknown): ThemeModEntry[] {
   return out
 }
 
+/** The well-formed theme plugin rows of `raw`, one per install (several may share a name), at most the limit. */
+export function readThemePluginRows(raw: unknown): ThemePluginRow[] {
+  if (!Array.isArray(raw)) return []
+  const out: ThemePluginRow[] = []
+  const seen = new Set<string>()
+  for (const item of raw) {
+    if (out.length >= THEME_MODS_LIMIT) break
+    if (!isRecord(item) || !isText(item.plugin, TEXT_LIMIT) || !isText(item.id, TEXT_LIMIT)) continue
+    const root = isText(item.root, ROOT_LIMIT) ? item.root : undefined
+    const key = `${item.id}|${root ?? ''}`
+    if (seen.has(key)) continue
+    seen.add(key)
+    out.push({ plugin: item.plugin, id: item.id, ...(root ? { root } : {}), enabled: item.enabled === true })
+  }
+  return out
+}
+
 /** A payload from the topic as the state a page reads, or null. */
 export function readThemeModsState(value: unknown): ThemeModsState | null {
   if (!isRecord(value) || !Array.isArray(value.mods)) return null
-  const plugins: ThemePluginRow[] = []
-  for (const row of readThemeMods(value.plugins)) {
-    const raw = (value.plugins as unknown[]).find(item => isRecord(item) && item.plugin === row.plugin && item.id === row.id)
-    plugins.push({ ...row, enabled: isRecord(raw) && raw.enabled === true })
-  }
   return {
     mods: readThemeMods(value.mods),
-    plugins,
+    plugins: readThemePluginRows(value.plugins),
     backdropScope: isThemeBackdropScope(value.backdropScope) ? value.backdropScope : DEFAULT_THEME_BACKDROP_SCOPE,
     single: value.single === true,
     on: typeof value.on === 'number' && Number.isInteger(value.on) && value.on >= 0 ? value.on : 0,
