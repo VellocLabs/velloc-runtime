@@ -26,7 +26,7 @@ function rig() {
     },
   } as unknown as NexusSettingsBridge
   const view: ThemeModsView = {
-    state: { mods: [RAIN], backdropScope: 'window', single: false, on: 0 },
+    state: { mods: [RAIN], backdropScope: 'window', single: false, on: 0, plugins: [] },
     refresh: () => {},
     setBackdropScope: async () => {},
     setSingle: async () => {},
