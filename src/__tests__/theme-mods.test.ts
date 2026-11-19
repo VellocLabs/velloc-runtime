@@ -15,6 +15,7 @@ import {
   isThemeModsReadPayload,
   isThemeModsScopePayload,
   isThemeModsSinglePayload,
+  isThemeModsTurnOffPayload,
   readThemeMods,
   readThemeModsState,
   withThemeMod,
@@ -130,7 +131,7 @@ describe('theme mods', () => {
     expect(isThemeModsScopePayload({ scope: 'conversation' })).toBe(true)
     expect(isThemeModsScopePayload({ scope: 'sidebar' })).toBe(false)
     expect(isThemeModsScopePayload({ scope: 'window', mods: [] })).toBe(false)
-    expect(readThemeModsState({ mods: [AURORA] })).toEqual({ mods: [AURORA], backdropScope: 'window', single: false, on: 0 })
+    expect(readThemeModsState({ mods: [AURORA] })).toEqual({ mods: [AURORA], plugins: [], backdropScope: 'window', single: false, on: 0 })
     expect(readThemeModsState({ backdropScope: 'window', single: false })).toBeNull()
   })
 
@@ -138,11 +139,11 @@ describe('theme mods', () => {
     const r = rig({ version: 1, mods: { themeMods: [AURORA] } })
     r.subscribe()
     await expect.poll(() => r.events.length).toBe(1)
-    expect(r.events[0]).toEqual({ mods: [AURORA], backdropScope: 'window', single: false, on: 0 })
+    expect(r.events[0]).toEqual({ mods: [AURORA], plugins: [], backdropScope: 'window', single: false, on: 0 })
     // A session recorded another plugin since.
     r.replace({ version: 1, mods: { themeMods: [AURORA, LOCAL] } })
-    expect(await r.ask('read')).toEqual({ mods: [AURORA, LOCAL], backdropScope: 'window', single: false, on: 0 })
-    expect(r.events.at(-1)).toEqual({ mods: [AURORA, LOCAL], backdropScope: 'window', single: false, on: 0 })
+    expect(await r.ask('read')).toEqual({ mods: [AURORA, LOCAL], plugins: [{ ...LOCAL, enabled: false }], backdropScope: 'window', single: false, on: 0 })
+    expect(r.events.at(-1)).toEqual({ mods: [AURORA, LOCAL], plugins: [{ ...LOCAL, enabled: false }], backdropScope: 'window', single: false, on: 0 })
   })
 
   it('stores a reach other than the default, keeps the rest of the section, and publishes it', async () => {
@@ -151,6 +152,7 @@ describe('theme mods', () => {
     await expect.poll(() => r.events.length).toBe(1)
     expect(await r.ask('setBackdropScope', { scope: 'conversation' })).toEqual({
       mods: [AURORA],
+      plugins: [],
       backdropScope: 'conversation',
       single: false,
       on: 0,
@@ -166,7 +168,7 @@ describe('theme mods', () => {
     const r = rig({ version: 1, mods: { themeMods: [AURORA] } })
     expect(isThemeModsSinglePayload({ on: true })).toBe(true)
     expect(isThemeModsSinglePayload({ on: 'yes' })).toBe(false)
-    expect(await r.ask('setSingle', { on: true })).toEqual({ mods: [AURORA], backdropScope: 'window', single: true, on: 0 })
+    expect(await r.ask('setSingle', { on: true })).toEqual({ mods: [AURORA], plugins: [], backdropScope: 'window', single: true, on: 0 })
     expect(r.current().mods).toEqual({ themeMods: [AURORA], singleThemeMod: true })
     await r.ask('setSingle', { on: false })
     expect(r.current().mods).toEqual({ themeMods: [AURORA] })
@@ -203,7 +205,7 @@ describe('theme mods', () => {
     vi.resetModules()
     vi.doMock('../mods/themePlugins', async importOriginal => ({
       ...(await importOriginal<typeof import('../mods/themePlugins')>()),
-      enabledThemePlugins: async () => {
+      themePluginRows: async () => {
         throw new Error('disk gone')
       },
     }))
@@ -222,10 +224,30 @@ describe('theme mods', () => {
         .handle({ id: '1', route: { cap: 'themeMods', act: 'read' }, payload: {}, conn: conn() } as never, {} as never)) as ThemeModsState
       expect(state.on).toBe(0)
       expect(state.mods).toEqual([{ plugin: 'one', id: 'one@builtin' }])
-      expect(reports).toEqual(['the enabled theme plugins could not be counted: disk gone'])
+      expect(reports).toEqual(['the theme plugins could not be read: disk gone'])
     } finally {
       vi.doUnmock('../mods/themePlugins')
       vi.resetModules()
     }
+  })
+
+  it('lists every known theme plugin with its state, and turns the others off around a kept one', async () => {
+    const one = { plugin: 'one', id: 'one@builtin' }
+    const two = { plugin: 'two', id: 'two@builtin' }
+    const r = rig({ version: 1, mods: { themeMods: [one, two] }, enabledPlugins: { 'two@builtin': false } })
+    expect(((await r.ask('read')) as ThemeModsState).plugins).toEqual([
+      { ...one, enabled: true },
+      { ...two, enabled: false },
+    ])
+    expect(isThemeModsTurnOffPayload({ keep: 'two' })).toBe(true)
+    expect(isThemeModsTurnOffPayload({ keep: '' })).toBe(false)
+    expect(isThemeModsTurnOffPayload({ keep: 'two', other: 1 })).toBe(false)
+    expect(await r.ask('turnOffAll', { keep: 'one' })).toEqual({ ok: true, turnedOff: 0 })
+    r.replace({ version: 1, mods: { themeMods: [one, two] }, enabledPlugins: {} })
+    expect(await r.ask('turnOffAll', { keep: 'two' })).toEqual({ ok: true, turnedOff: 1 })
+    expect(r.current().enabledPlugins).toEqual({ 'one@builtin': false })
+    expect(readThemeModsState({ mods: [], plugins: [{ ...one, enabled: true }, { plugin: 'x' }] })!.plugins).toEqual([
+      { ...one, enabled: true },
+    ])
   })
 })

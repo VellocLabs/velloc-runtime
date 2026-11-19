@@ -1,5 +1,15 @@
 import * as React from 'react'
-import { ArrowLeftIcon, BlocksIcon, ChevronLeftIcon, HomeIcon, PaletteIcon, PlusIcon, StoreIcon, Trash2Icon } from 'lucide-react'
+import {
+  ArrowLeftIcon,
+  BlocksIcon,
+  ChevronLeftIcon,
+  HomeIcon,
+  LibraryIcon,
+  PaletteIcon,
+  PlusIcon,
+  StoreIcon,
+  Trash2Icon,
+} from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
@@ -18,7 +28,15 @@ import { WebviewArea } from '../WebviewArea'
 import { AddItemDialog } from './AddItemDialog'
 import { InstallToasts } from './InstallToasts'
 import { DirectoryItemStatus } from './DirectoryItemStatus'
-import { pluginsAddMarketplace, pluginsRemoveMarketplace } from '../settings/clients'
+import {
+  pluginsAddMarketplace,
+  pluginsRemoveMarketplace,
+  pluginsSetEnabled,
+  pluginsSetLocalEnabled,
+  pluginsUninstall,
+} from '../settings/clients'
+import type { ThemePluginRow } from '../../../mods/themeMods'
+import { YoursPane, type YoursTab } from './YoursPane'
 import { MarketplaceBrowser } from './MarketplaceBrowser'
 import { useThemeMods } from '../mods/themeModsView'
 import { useCan } from '../useCan'
@@ -54,7 +72,8 @@ export type CustomizeScreenProps = {
  */
 type Selection =
   | { kind: 'directory' }
-  | { kind: 'themes' }
+  | { kind: 'themes'; focus?: { plugin: string; nonce: number } }
+  | { kind: 'yours'; tab: YoursTab; reveal?: { plugin: string; seq: number } }
   | { kind: 'browse'; focus: { name: string; nonce: number; flash: boolean } | null }
 
 const DIRECTORY: Selection = { kind: 'directory' }
@@ -89,25 +108,65 @@ export function CustomizeScreen({
   const list = useMarketplaceList(bridge)
   const names = React.useMemo(() => (list.marketplaces ?? []).map(m => m.name), [list.marketplaces])
   const shelves = useMarketplaceShelves(bridge, names, tab.describeMarketplace)
-  const themes = useThemeCatalog(bridge, runtimeConnection, selection.kind === 'themes')
-  const themeMods = useThemeMods(selection.kind === 'themes' ? runtimeConnection : undefined)
-  const themesShown = selection.kind === 'themes'
+  const onYours = selection.kind === 'yours'
+  const themes = useThemeCatalog(bridge, runtimeConnection, selection.kind === 'themes' || onYours)
+  const themeMods = useThemeMods(onYours ? runtimeConnection : undefined)
   const refreshThemeMods = themeMods.refresh
   React.useEffect(() => {
     // A session may have recorded a theme plugin since the topic was last read.
-    if (themesShown) refreshThemeMods()
-  }, [themesShown, refreshThemeMods])
+    if (onYours) refreshThemeMods()
+  }, [onYours, refreshThemeMods])
   const canSetSingle = useCan('themeMods', 'setSingle')
   const canTurnOff = useCan('themeMods', 'turnOffAll')
-  const themeOptions = React.useMemo(
-    () => ({
-      single: themeMods.state?.single ?? null,
-      on: themeMods.state?.on ?? null,
+  const canSetPluginEnabled = useCan('plugins', 'setEnabled')
+  const canSetLocalEnabled = useCan('plugins', 'setLocalEnabled')
+  const canSetEnabled = canSetPluginEnabled && canSetLocalEnabled
+  const canUninstall = useCan('plugins', 'uninstall')
+  const turnOffThemes = themeMods.turnOffAll
+  const forgetApplied = themes.forgetApplied
+  const yourThemesActions = React.useMemo(() => {
+    const setEnabled = async (row: ThemePluginRow, enabled: boolean): Promise<number> => {
+      if (!bridge) throw new Error(row.plugin)
+      if (row.id.endsWith('@inline')) {
+        if (!row.root) throw new Error(row.plugin)
+        await pluginsSetLocalEnabled(bridge, row.root, enabled)
+      } else {
+        await pluginsSetEnabled(bridge, row.id, enabled)
+      }
+      // Enabling here is always one theme at a time.
+      return enabled ? turnOffThemes(row.plugin) : 0
+    }
+    const uninstall = async (row: ThemePluginRow): Promise<void> => {
+      if (!bridge) throw new Error(row.plugin)
+      await pluginsUninstall(bridge, row.id)
+      refreshThemeMods()
+    }
+    return {
       ...(canSetSingle ? { setSingle: themeMods.setSingle } : {}),
-      ...(canTurnOff ? { turnOffAll: themeMods.turnOffAll } : {}),
-    }),
-    [themeMods.state, themeMods.setSingle, themeMods.turnOffAll, canSetSingle, canTurnOff],
-  )
+      ...(canTurnOff
+        ? {
+            turnOffAll: async () => {
+              const count = await turnOffThemes()
+              forgetApplied()
+              return count
+            },
+          }
+        : {}),
+      ...(bridge && canSetEnabled && canTurnOff ? { setEnabled } : {}),
+      ...(bridge && canUninstall ? { uninstall } : {}),
+    }
+  }, [
+    bridge,
+    canSetSingle,
+    canTurnOff,
+    canSetEnabled,
+    canUninstall,
+    themeMods.setSingle,
+    turnOffThemes,
+    refreshThemeMods,
+    forgetApplied,
+  ])
+  const revealSeq = React.useRef(0)
   const notices = React.useMemo(() => [...shelves.notices, ...themes.installs], [shelves.notices, themes.installs])
   const dismissNotice = React.useCallback(
     (key: string) => {
@@ -204,7 +263,9 @@ export function CustomizeScreen({
                   ? 'customize.directory.title'
                   : selection.kind === 'themes'
                     ? 'customize.themes.title'
-                    : 'customize.browse.title',
+                    : onYours
+                      ? 'customize.yours.title'
+                      : 'customize.browse.title',
               )}
             </span>
           </Button>
@@ -335,6 +396,15 @@ export function CustomizeScreen({
               {t('customize.markets.loadFailed')}
             </p>
           ) : null}
+          <div aria-hidden className="mx-2 mt-3 mb-1 h-px bg-border" />
+          <MarketRow
+            testId="customize-market-yours"
+            selected={onYours}
+            icon={<LibraryIcon className="size-4" />}
+            name={t('customize.yours.title')}
+            detail={t('customize.yours.detail')}
+            onSelect={() => setSelection(current => (current.kind === 'yours' ? current : { kind: 'yours', tab: 'themes' }))}
+          />
         </nav>
 
         <div className="flex min-h-0 min-w-0 flex-1 flex-col">
@@ -344,7 +414,30 @@ export function CustomizeScreen({
               target={themeTarget}
               standing={themeStanding}
               onClose={onClose}
-              options={themeOptions}
+              focus={selection.focus}
+            />
+          ) : selection.kind === 'yours' ? (
+            <YoursPane
+              tab={selection.tab}
+              onTab={next => setSelection({ kind: 'yours', tab: next })}
+              runtimeConnection={runtimeConnection}
+              revealPluginRequest={selection.reveal ?? null}
+              themes={{
+                rows: themeMods.state?.plugins ?? null,
+                single: themeMods.state?.single ?? null,
+                listings: themes.plugins,
+                standing: themeTarget ? themeStanding : undefined,
+                actions: yourThemesActions,
+                onBrowse: () => setSelection({ kind: 'themes' }),
+                onChooseLook: plugin => {
+                  nonce.current += 1
+                  setSelection({ kind: 'themes', focus: { plugin, nonce: nonce.current } })
+                },
+                onManage: plugin => {
+                  revealSeq.current += 1
+                  setSelection({ kind: 'yours', tab: 'plugins', reveal: { plugin, seq: revealSeq.current } })
+                },
+              }}
             />
           ) : selection.kind === 'browse' ? (
             <MarketplaceBrowser

@@ -16,7 +16,7 @@ import { listingInstalls } from '../pluginHost/themeListing'
 import { readLayerFresh } from '../settings/settingsStore'
 import type { RuntimeFs } from '../utils/fs/runtimeFs'
 import { basenameRuntimePath, dirnameRuntimePath, normalizeRuntimePath } from '../utils/runtimePaths'
-import type { ThemeModEntry } from './themeMods'
+import type { ThemeModEntry, ThemePluginRow } from './themeMods'
 
 export type ThemePluginsDeps = {
   homeDir: string
@@ -68,15 +68,20 @@ async function localEnabled(root: string, fs: RuntimeFs): Promise<boolean> {
   return names?.includes(basenameRuntimePath(folder)) ?? false
 }
 
-/** The theme plugins that are enabled now. */
-export async function enabledThemePlugins(homeDir: string, fs: RuntimeFs): Promise<ThemeModEntry[]> {
+/** Every known theme plugin and whether it is enabled now. */
+export async function themePluginRows(homeDir: string, fs: RuntimeFs): Promise<ThemePluginRow[]> {
   const { known, enabled } = await readThemePlugins(homeDir, fs)
-  const out: ThemeModEntry[] = []
+  const out: ThemePluginRow[] = []
   for (const mod of known) {
     const on = mod.id.endsWith('@inline') ? !!mod.root && (await localEnabled(mod.root, fs)) : enabled[mod.id] !== false
-    if (on) out.push(mod)
+    out.push({ ...mod, enabled: on })
   }
   return out
+}
+
+/** The theme plugins that are enabled now. */
+export async function enabledThemePlugins(homeDir: string, fs: RuntimeFs): Promise<ThemeModEntry[]> {
+  return (await themePluginRows(homeDir, fs)).filter(row => row.enabled).map(({ enabled: _on, ...mod }) => mod)
 }
 
 /**

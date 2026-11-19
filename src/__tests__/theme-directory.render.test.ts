@@ -2,7 +2,7 @@
 /**
  * The Customize screen's theme directory (F-35): the left row, the grid of
  * looks (packs under their own header, single themes as cards), and what
- * Add, Add & use, Use and the theme plugin options ask of the bridge and the runtime.
+ * Add, Add & use and Use ask of the bridge and the runtime.
  */
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createElement } from 'react'
@@ -15,7 +15,6 @@ import { PACK_LIMIT, packTitle } from '../browser/webview/customize/ThemeBrowser
 import type { ThemeTarget } from '../browser/webview/customize/useThemeCatalog'
 import { en as EN } from '../browser/webview/i18n/messages/en'
 import { SettingsBridgeContext, type NexusSettingsBridge } from '../browser/webview/nexusSettingsBridge'
-import { RuntimeCapabilitiesContext } from '../browser/webview/useCan'
 
 afterEach(() => {
   vi.useRealTimers()
@@ -67,14 +66,6 @@ function setup(
     installFails?: boolean
     /** The session's published theme: a plugin's, or `null` for none. Left out: never published. */
     standing?: { plugin: string } | null
-    /** *Only one at a time* as the runtime publishes it. */
-    single?: boolean
-    /** How many theme plugins `themeMods.turnOffAll` finds on. */
-    turnedOff?: number
-    /** How many theme plugins the runtime publishes as enabled. */
-    on?: number
-    /** Runtime actions this connection may not ask. */
-    deny?: string[]
   } = {},
 ) {
   const TARGET: ThemeTarget = { sessionId: `s${++sessions}`, title: 'Fix the build', busy: false }
@@ -109,44 +100,21 @@ function setup(
       }
     },
   } as unknown as NexusSettingsBridge
-  let themesOn = options.on ?? 2
-  let themeReads = 0
-  let themesListener: ((event: { type: string; payload: unknown }) => void) | null = null
-  const publishThemes = () =>
-    themesListener?.({ type: 'state', payload: { mods: [], backdropScope: 'window', single: options.single === true, on: themesOn } })
   const connection = {
-    subscribe: (topic: string, listener: (event: { type: string; payload: unknown }) => void) => {
-      if (topic === 'mods/themes') {
-        themesListener = listener
-        publishThemes()
-      }
-      return () => {}
-    },
+    subscribe: () => () => {},
     can: () => true,
     request: async (route: string, payload: unknown) => {
       if (route === 'customizePage.show') return { tabId: 7, created: true }
       if (route === 'customizePage.describeMarketplace') return { plugins: {} }
-      if (route === 'themeMods.read') {
-        themeReads += 1
-        publishThemes()
-        return { ok: true }
-      }
       runtimeAsked.push(`${route} ${JSON.stringify(payload)}`)
       if (route === 'theme.useLook') {
         await options.useGate
         return options.useAnswers?.shift() ?? options.useAnswer ?? { ok: true, via: 'command' }
       }
-      if (route === 'themeMods.turnOffAll') {
-        themesOn = 0
-        publishThemes()
-        return { ok: true, turnedOff: options.turnedOff ?? 2 }
-      }
       return { ok: true }
     },
   } as unknown as RuntimeConnection
   let closed = 0
-  const deny = new Set(options.deny ?? [])
-  const grant = { can: (cap: string, act?: string) => !deny.has(`${cap}.${act}`) }
   const screen = createElement(CustomizeScreen, {
     runtimeConnection: async () => connection,
     shell: null,
@@ -157,13 +125,7 @@ function setup(
     themeTarget: options.target === undefined ? TARGET : options.target === 'busy' ? { ...TARGET, busy: true } : options.target,
     themeStanding: options.standing,
   })
-  const view = render(
-    createElement(
-      RuntimeCapabilitiesContext.Provider,
-      { value: grant },
-      createElement(SettingsBridgeContext.Provider, { value: bridge }, screen),
-    ),
-  )
+  const view = render(createElement(SettingsBridgeContext.Provider, { value: bridge }, screen))
   const open = async () => {
     fireEvent.click(view.getByTestId('customize-market-themes'))
     await waitFor(() => expect(view.queryByText(EN['customize.loading'])).toBeNull())
@@ -185,7 +147,6 @@ function setup(
     target: TARGET,
     bridgeAsked,
     runtimeAsked,
-    themeReads: () => themeReads,
     closed: () => closed,
     heal: () => {
       failing = false
@@ -322,7 +283,7 @@ describe('Theme directory — Add and Use', () => {
     expect(runtimeAsked).toHaveLength(1)
   })
 
-  it('while one look is applied every other Use and Turn off all are off', async () => {
+  it('while one look is applied every other Use is off', async () => {
     let release!: () => void
     const useGate = new Promise<void>(resolve => {
       release = resolve
@@ -333,7 +294,6 @@ describe('Theme directory — Add and Use', () => {
     await waitFor(() => expect(runtimeAsked).toHaveLength(1))
     const other = within(card('scenes', 'scene-1')).getByTestId('customize-theme-use') as HTMLButtonElement
     expect(other.disabled).toBe(true)
-    expect((view.getByTestId('customize-themes-turn-off') as HTMLButtonElement).disabled).toBe(true)
     await act(async () => {
       release()
     })
@@ -479,68 +439,5 @@ describe('Theme directory — what is in use', () => {
     await open()
     expect(view.queryByTestId('customize-themes-singles')).toBeNull()
     expect(view.queryByText(EN['customize.themes.singles'])).toBeNull()
-  })
-})
-
-describe('Theme directory: the theme plugin options', () => {
-  it('the one-at-a-time switch shows the stored flag and asks the runtime to change it', async () => {
-    const { view, open, runtimeAsked } = setup({ single: true })
-    await open()
-    const toggle = view.getByTestId('customize-themes-single')
-    await waitFor(() => expect(toggle.getAttribute('aria-checked')).toBe('true'))
-    expect(view.getByText(EN['customize.themes.single'])).toBeTruthy()
-    fireEvent.click(toggle)
-    await waitFor(() => expect(runtimeAsked).toContain('themeMods.setSingle {"on":false}'))
-  })
-
-  it('Turn off all asks the runtime and says the app look is back, or that none was on', async () => {
-    const on = setup()
-    await on.open()
-    fireEvent.click(on.view.getByTestId('customize-themes-turn-off'))
-    await waitFor(() => expect(on.view.getByTestId('customize-theme-notice').getAttribute('data-kind')).toBe('turnedOff'))
-    expect(on.runtimeAsked).toContain('themeMods.turnOffAll {}')
-    expect(on.view.getByTestId('customize-theme-notice').textContent).toContain(EN['customize.themes.notice.turnedOff'])
-    // All off now: the button waits until a theme plugin is on again.
-    await waitFor(() => expect((on.view.getByTestId('customize-themes-turn-off') as HTMLButtonElement).disabled).toBe(true))
-    on.view.unmount()
-
-    const none = setup({ turnedOff: 0, on: 1 })
-    await none.open()
-    fireEvent.click(none.view.getByTestId('customize-themes-turn-off'))
-    await waitFor(() =>
-      expect(none.view.getByTestId('customize-theme-notice').textContent).toContain(EN['customize.themes.notice.noneOn']),
-    )
-  })
-
-  it('after Turn off all, the look used before is no longer remembered when its pack stands again', async () => {
-    const installed = () => [{ ...pack(), installed: true }, single()]
-    const first = setup({ themes: installed() })
-    await first.open()
-    fireEvent.click(within(first.card('scenes', 'scene-1')).getByTestId('customize-theme-use'))
-    await waitFor(() => expect(within(first.card('scenes', 'scene-1')).getByTestId('customize-theme-in-use')).toBeTruthy())
-    fireEvent.click(first.view.getByTestId('customize-themes-turn-off'))
-    await waitFor(() => expect(first.view.queryAllByTestId('customize-theme-in-use')).toHaveLength(0))
-    first.view.unmount()
-
-    const again = setup({ themes: installed(), target: first.target, standing: { plugin: 'scenes' } })
-    await again.open()
-    await act(async () => {
-      await Promise.resolve()
-    })
-    expect(again.view.queryAllByTestId('customize-theme-in-use')).toHaveLength(0)
-  })
-
-  it('Turn off all is off while no theme plugin is on, and the directory reads the count as it opens', async () => {
-    const { view, open, themeReads } = setup({ on: 0 })
-    await open()
-    expect((view.getByTestId('customize-themes-turn-off') as HTMLButtonElement).disabled).toBe(true)
-    await waitFor(() => expect(themeReads()).toBeGreaterThan(0))
-  })
-
-  it('a connection that may not change them gets a disabled switch and no Turn off all', async () => {
-    const { view, open } = setup({ single: true, deny: ['themeMods.setSingle', 'themeMods.turnOffAll'] })
-    await open()
-    expect((view.getByTestId('customize-themes-single') as HTMLButtonElement).disabled).toBe(true)
-    expect(view.queryByTestId('customize-themes-turn-off')).toBeNull()
   })
 })

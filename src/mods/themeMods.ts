@@ -41,8 +41,23 @@ export const THEME_MODS_ACTION_SCOPES = {
 } as const satisfies Record<string, ScopeMode>
 export type ThemeModsAction = keyof typeof THEME_MODS_ACTION_SCOPES
 
-/** `single`: enabling one theme mod disables the others. `on`: how many theme plugins are enabled. */
-export type ThemeModsState = { mods: ThemeModEntry[]; backdropScope: ThemeBackdropScope; single: boolean; on: number }
+/** A known theme plugin (recorded, or an install of a built-in theme listing) and whether it is enabled. */
+export type ThemePluginRow = ThemeModEntry & { enabled: boolean }
+
+/**
+ * `mods`: the plugins that have set a theme. `plugins`: every known theme
+ * plugin. `single`: enabling one theme mod disables the others. `on`: how
+ * many theme plugins are enabled.
+ */
+export type ThemeModsState = {
+  mods: ThemeModEntry[]
+  plugins: ThemePluginRow[]
+  backdropScope: ThemeBackdropScope
+  single: boolean
+  on: number
+}
+/** `keep`: a plugin name left on. */
+export type ThemeModsTurnOffPayload = { keep?: string }
 export type ThemeModsScopePayload = { scope: ThemeBackdropScope }
 export type ThemeModsSinglePayload = { on: boolean }
 
@@ -66,6 +81,11 @@ export function isThemeModsScopePayload(value: unknown): value is ThemeModsScope
 
 export type ThemeModsTurnOffResult = { ok: true; turnedOff: number }
 
+export function isThemeModsTurnOffPayload(value: unknown): value is ThemeModsTurnOffPayload | undefined {
+  if (isThemeModsReadPayload(value)) return true
+  return isRecord(value) && Object.keys(value).every(key => key === 'keep') && isText(value.keep, TEXT_LIMIT)
+}
+
 export function isThemeModsSinglePayload(value: unknown): value is ThemeModsSinglePayload {
   return isRecord(value) && Object.keys(value).every(key => key === 'on') && typeof value.on === 'boolean'
 }
@@ -88,8 +108,14 @@ export function readThemeMods(raw: unknown): ThemeModEntry[] {
 /** A payload from the topic as the state a page reads, or null. */
 export function readThemeModsState(value: unknown): ThemeModsState | null {
   if (!isRecord(value) || !Array.isArray(value.mods)) return null
+  const plugins: ThemePluginRow[] = []
+  for (const row of readThemeMods(value.plugins)) {
+    const raw = (value.plugins as unknown[]).find(item => isRecord(item) && item.plugin === row.plugin && item.id === row.id)
+    plugins.push({ ...row, enabled: isRecord(raw) && raw.enabled === true })
+  }
   return {
     mods: readThemeMods(value.mods),
+    plugins,
     backdropScope: isThemeBackdropScope(value.backdropScope) ? value.backdropScope : DEFAULT_THEME_BACKDROP_SCOPE,
     single: value.single === true,
     on: typeof value.on === 'number' && Number.isInteger(value.on) && value.on >= 0 ? value.on : 0,

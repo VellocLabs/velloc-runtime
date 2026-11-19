@@ -2,17 +2,15 @@ import * as React from 'react'
 import { CheckIcon, CircleAlertIcon, CircleCheckIcon, Loader2Icon, XIcon } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
-import { Switch } from '@/components/ui/switch'
 import { cn } from '@/lib/utils'
 
 import type { ThemeLook } from '../../../pluginHost/registryFormats'
 import { useT } from '../i18n'
 import type { MessageKey } from '../i18n/messages/en'
 import { INSTALL_TOAST_MS } from './InstallToasts'
-import { AVATAR_TINT, avatarHue } from './ItemAvatar'
 import { PAGE_COLUMN } from './MarketplaceBrowser'
+import { LookPreview, THEME_GRID as GRID } from './themeCardParts'
 import {
-  TURNING_OFF,
   lookInUse,
   lookKey,
   type ThemeCatalogView,
@@ -44,8 +42,6 @@ const REASON: Record<ThemeFailure, MessageKey> = {
   request: 'customize.themes.reason.request',
 }
 
-const GRID = 'grid grid-cols-1 gap-3 @[36rem]:grid-cols-2 @[56rem]:grid-cols-3'
-
 export type ThemeBrowserProps = {
   view: ThemeCatalogView
   /** The session a look is applied to; null when the window shows none that takes one. */
@@ -54,19 +50,8 @@ export type ThemeBrowserProps = {
   standing?: ThemeStanding
   /** Back to the conversation, to see an applied look. */
   onClose: () => void
-  /** The theme plugin options; left out where this connection may not change them. */
-  options?: ThemePluginOptions
-}
-
-/** *Only one at a time* (settings `mods.singleThemeMod`) and switching every theme plugin off. */
-export type ThemePluginOptions = {
-  /** Null until the runtime has answered. */
-  single: boolean | null
-  /** How many theme plugins are enabled; null until the runtime has answered. */
-  on: number | null
-  setSingle?: (on: boolean) => Promise<void>
-  /** Answers how many theme plugins were on. */
-  turnOffAll?: () => Promise<number>
+  /** Scroll to this plugin's section; a new `nonce` scrolls again. */
+  focus?: { plugin: string; nonce: number }
 }
 
 /**
@@ -75,8 +60,15 @@ export type ThemePluginOptions = {
  * single theme is a card of its own. Add downloads the plugin; Use applies a
  * look to the session the screen was opened from.
  */
-export function ThemeBrowser({ view, target, standing, onClose, options }: ThemeBrowserProps) {
+export function ThemeBrowser({ view, target, standing, onClose, focus }: ThemeBrowserProps) {
   const t = useT()
+  const root = React.useRef<HTMLDivElement | null>(null)
+  const ready = view.status === 'ready'
+  React.useEffect(() => {
+    if (!focus || !ready) return
+    const section = root.current?.querySelector(`[data-name="${CSS.escape(focus.plugin)}"]`)
+    section?.scrollIntoView?.({ block: 'start' })
+  }, [focus, ready])
   const [filter, setFilter] = React.useState<Filter>('all')
   const shows = (look: ThemeLook) =>
     filter === 'all' || look.appearance === undefined || look.appearance === 'both' || look.appearance === filter
@@ -137,7 +129,7 @@ export function ThemeBrowser({ view, target, standing, onClose, options }: Theme
   }
 
   return (
-    <div data-testid="customize-themes" className="flex min-h-0 flex-1 flex-col overflow-y-auto">
+    <div ref={root} data-testid="customize-themes" className="flex min-h-0 flex-1 flex-col overflow-y-auto">
       <div className={PAGE_COLUMN}>
         <div className="flex flex-col gap-1 pt-6 pb-2">
           <div className="flex items-center gap-2">
@@ -177,7 +169,6 @@ export function ThemeBrowser({ view, target, standing, onClose, options }: Theme
               </button>
             ))}
           </div>
-          {options ? <PluginOptions options={options} busy={view.applying !== null} onTurnOff={view.turnOffAll} /> : null}
         </div>
         <NoticeLine notice={view.notice} onDismiss={view.dismissNotice} onView={onClose} />
         {body}
@@ -379,87 +370,6 @@ function LookCard({
   )
 }
 
-/** A look's picture, or the name's initial on its own tint when there is none to show. */
-function LookPreview({ name, url }: { name: string; url: string }) {
-  const t = useT()
-  const [broken, setBroken] = React.useState(false)
-  React.useEffect(() => setBroken(false), [url])
-  if (broken || !/^https?:\/\//.test(url)) {
-    return (
-      <div
-        aria-hidden
-        data-testid="customize-theme-preview-fallback"
-        style={{ '--avatar-hue': avatarHue(name) } as React.CSSProperties}
-        className={cn(
-          'flex aspect-[16/10] w-full items-center justify-center text-2xl font-semibold uppercase',
-          AVATAR_TINT,
-        )}
-      >
-        {name.trim().charAt(0) || '?'}
-      </div>
-    )
-  }
-  return (
-    <img
-      data-testid="customize-theme-preview"
-      src={url}
-      alt={t('customize.themes.previewAlt', { name })}
-      loading="lazy"
-      referrerPolicy="no-referrer"
-      className="aspect-[16/10] w-full bg-background object-cover"
-      onError={() => setBroken(true)}
-    />
-  )
-}
-
-/** The switch for one theme plugin at a time and the button that switches them all off. */
-function PluginOptions({
-  options,
-  busy,
-  onTurnOff,
-}: {
-  options: ThemePluginOptions
-  busy: boolean
-  onTurnOff: (run: () => Promise<number>) => void
-}) {
-  const t = useT()
-  const [saving, setSaving] = React.useState(false)
-  const { single, setSingle, turnOffAll } = options
-  const id = React.useId()
-  return (
-    <div className="ms-auto flex flex-wrap items-center gap-x-4 gap-y-2">
-      <label htmlFor={id} className="flex items-center gap-2 text-xs text-muted-foreground">
-        <Switch
-          id={id}
-          data-testid="customize-themes-single"
-          checked={single === true}
-          disabled={!setSingle || single === null || saving}
-          onCheckedChange={on => {
-            if (!setSingle) return
-            setSaving(true)
-            void setSingle(on)
-              .catch(() => undefined)
-              .finally(() => setSaving(false))
-          }}
-        />
-        {t('customize.themes.single')}
-      </label>
-      {turnOffAll ? (
-        <Button
-          type="button"
-          variant="outline"
-          size="xs"
-          data-testid="customize-themes-turn-off"
-          disabled={busy || !options.on}
-          onClick={() => onTurnOff(turnOffAll)}
-        >
-          {t('customize.themes.turnOffAll')}
-        </Button>
-      ) : null}
-    </div>
-  )
-}
-
 function OfficialBadge() {
   const t = useT()
   return (
@@ -515,11 +425,7 @@ function NoticeLine({
   const title =
     notice.kind === 'applied'
       ? t('customize.themes.notice.applied', { name: notice.name, title: notice.session })
-      : notice.kind === 'turnedOff'
-        ? t(notice.count > 0 ? 'customize.themes.notice.turnedOff' : 'customize.themes.notice.noneOn')
-        : notice.name
-          ? t('customize.themes.notice.failed', { name: notice.name })
-          : t('customize.themes.notice.failedTurnOff')
+      : t('customize.themes.notice.failed', { name: notice.name })
   return (
     <div
       role={failed ? 'alert' : 'status'}

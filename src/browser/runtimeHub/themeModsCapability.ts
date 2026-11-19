@@ -13,12 +13,14 @@ import {
   isThemeModsReadPayload,
   isThemeModsScopePayload,
   isThemeModsSinglePayload,
+  isThemeModsTurnOffPayload,
+  type ThemeModsTurnOffPayload,
   type ThemeModsScopePayload,
   type ThemeModsSinglePayload,
   type ThemeModsState,
   type ThemeModsTurnOffResult,
 } from '../../mods/themeMods'
-import { enabledThemePlugins, turnOffThemePlugins } from '../../mods/themePlugins'
+import { themePluginRows, turnOffThemePlugins } from '../../mods/themePlugins'
 import { readLayerFresh, updateSectionInSource } from '../../settings/settingsStore'
 import type { RuntimeFs } from '../../utils/fs/runtimeFs'
 import { scopeAllows, type CapabilityRegistry } from './CapabilityRegistry'
@@ -35,7 +37,7 @@ export type ThemeModsCapabilityOptions = {
   report?: (line: string) => void
 }
 
-const EMPTY: ThemeModsState = { mods: [], backdropScope: DEFAULT_THEME_BACKDROP_SCOPE, single: false, on: 0 }
+const EMPTY: ThemeModsState = { mods: [], plugins: [], backdropScope: DEFAULT_THEME_BACKDROP_SCOPE, single: false, on: 0 }
 
 export function registerThemeModsCapability(
   registry: CapabilityRegistry,
@@ -50,15 +52,14 @@ export function registerThemeModsCapability(
       if (!homeDir) return EMPTY
       const fs = options.context().fs
       const { settings } = await readLayerFresh('userSettings', { homeDir }, fs)
-      const on = await enabledThemePlugins(homeDir, fs).then(
-        list => list.length,
-        error => {
-          report(`the enabled theme plugins could not be counted: ${error instanceof Error ? error.message : String(error)}`)
-          return 0
-        },
-      )
+      const plugins = await themePluginRows(homeDir, fs).catch(error => {
+        report(`the theme plugins could not be read: ${error instanceof Error ? error.message : String(error)}`)
+        return []
+      })
+      const on = plugins.filter(row => row.enabled).length
       return {
         mods: settings.mods?.themeMods ?? [],
+        plugins,
         backdropScope: settings.mods?.backdropScope ?? DEFAULT_THEME_BACKDROP_SCOPE,
         single: settings.mods?.singleThemeMod === true,
         on,
@@ -89,7 +90,7 @@ export function registerThemeModsCapability(
       read: { scope: THEME_MODS_ACTION_SCOPES.read, guard: isThemeModsReadPayload },
       setBackdropScope: { scope: THEME_MODS_ACTION_SCOPES.setBackdropScope, guard: isThemeModsScopePayload },
       setSingle: { scope: THEME_MODS_ACTION_SCOPES.setSingle, guard: isThemeModsSinglePayload },
-      turnOffAll: { scope: THEME_MODS_ACTION_SCOPES.turnOffAll, guard: isThemeModsReadPayload },
+      turnOffAll: { scope: THEME_MODS_ACTION_SCOPES.turnOffAll, guard: isThemeModsTurnOffPayload },
     },
     handle: async request => {
       const act = request.route.act
@@ -110,7 +111,8 @@ export function registerThemeModsCapability(
         // Every theme plugin off: their themes go as they unload, and the app's own look stands.
         let turnedOff: number
         try {
-          turnedOff = await turnOffThemePlugins({ homeDir, fs: options.context().fs, reload: options.reload ?? (() => {}) })
+          const keep = (request.payload as ThemeModsTurnOffPayload | undefined)?.keep
+          turnedOff = await turnOffThemePlugins({ homeDir, fs: options.context().fs, reload: options.reload ?? (() => {}) }, keep)
         } catch (error) {
           throw wireError('conflict', error instanceof Error ? error.message : String(error))
         }
