@@ -112,7 +112,7 @@ type OpenMenu = { x: number; y: number; returnFocus: HTMLElement | null };
 export const ThemeModsMenu: FC<{ sessionId?: string; isForeground?: boolean }> = ({ sessionId, isForeground }) => {
   const t = useT();
   const themes = useThemeModsContext();
-  const { theme, plugins } = useModUi();
+  const { theme, plugins, isLoaded } = useModUi();
   const anchorRef = useRef<HTMLSpanElement>(null);
   const [menu, setMenu] = useState<OpenMenu | null>(null);
   // A press shows at once; the stored state then takes over.
@@ -177,7 +177,7 @@ export const ThemeModsMenu: FC<{ sessionId?: string; isForeground?: boolean }> =
   const lookTarget = themes.lookTarget?.sessionId === sessionId ? themes.lookTarget : null;
   const blocked = lookBlocked(lookTarget);
   const inUse = sessionId
-    ? lookInUse(appliedLooks()[sessionId], theme ? { plugin: theme.plugin } : null, themes.looks ?? [])
+    ? lookInUse(appliedLooks()[sessionId], !isLoaded ? undefined : theme ? { plugin: theme.plugin } : null, themes.looks ?? [])
     : null;
 
   const apply = (plugin: ThemePlugin, look: ThemeLook) => {
@@ -203,6 +203,7 @@ export const ThemeModsMenu: FC<{ sessionId?: string; isForeground?: boolean }> =
     setPressed((previous) => ({
       ...previous,
       ...Object.fromEntries(rows.filter((row) => row.enabled).map((row) => [row.plugin, false])),
+      ...Object.fromEntries(lookPlugins.map((listing) => [listing.name, false])),
     }));
     void turnOffAll()
       .catch((error: unknown) => {
@@ -395,7 +396,7 @@ export const ThemeModsMenu: FC<{ sessionId?: string; isForeground?: boolean }> =
                       <DropdownMenuPrimitive.Separator className={SEPARATOR_CLASS} />
                       <DropdownMenuPrimitive.Item
                         data-testid="theme-mods-menu-turn-off"
-                        disabled={on === 0 || turningOff}
+                        disabled={(on === 0 && lookPlugins.length === 0) || turningOff}
                         onSelect={(event) => {
                           event.preventDefault();
                           turnOff();

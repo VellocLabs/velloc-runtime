@@ -12,6 +12,7 @@ import type { PluginAvailableUiEntry } from '../../bridge/protocol/plugins'
 import type { RuntimeConnection } from '../../runtimeClient/RuntimeConnection'
 import type { RouteKey } from '../../runtimeProtocol'
 import type { MessageKey } from '../i18n/messages/en'
+import { installKey } from '../customize/useMarketplaceCatalog'
 import type { NexusSettingsBridge } from '../nexusSettingsBridge'
 import { pluginsListMarketplaceThemes } from '../settings/clients'
 
@@ -54,7 +55,7 @@ export function lookInUse(
   if (standing === undefined) return last ?? null
   if (standing === null) return null
   const owner = plugins.find(
-    p => standing.plugin === p.name || standing.plugin === `${p.name}@${BUILTIN_MARKETPLACE_KEY}`,
+    p => standing.plugin === p.name || standing.plugin === installKey(BUILTIN_MARKETPLACE_KEY, p.name),
   )
   if (!owner) return null
   if (last?.startsWith(`${owner.name}/`)) return last

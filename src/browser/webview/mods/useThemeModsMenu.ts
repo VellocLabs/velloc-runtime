@@ -9,6 +9,7 @@ import type { ThemeModsContextValue } from '../../../components/assistant-ui/the
 import type { ThemeModEntry } from '../../../mods/themeMods'
 import { BUILTIN_MARKETPLACE_KEY } from '../../../pluginHost/builtinMarketplace'
 import type { RuntimeConnection } from '../../runtimeClient/RuntimeConnection'
+import { installKey } from '../customize/useMarketplaceCatalog'
 import type { NexusSettingsBridge } from '../nexusSettingsBridge'
 import {
   pluginsListBuiltin,
@@ -80,7 +81,7 @@ export function enabledThemeListings(
   modsEnabled: Readonly<Record<string, boolean>>,
 ): ThemePlugin[] {
   return listings.filter(
-    listing => lists.byId.get(`${listing.name}@${BUILTIN_MARKETPLACE_KEY}`) === true || modsEnabled[listing.name] === true,
+    listing => lists.byId.get(installKey(BUILTIN_MARKETPLACE_KEY, listing.name)) === true || modsEnabled[listing.name] === true,
   )
 }
 
@@ -96,14 +97,22 @@ export function useThemeModsMenu(options: ThemeModsMenuOptions): ThemeModsContex
   const readLists = React.useCallback(async () => {
     if (!bridge) return
     const mine = ++round.current
-    const [next, themes] = await Promise.all([
-      readPluginEnablement(bridge).catch(() => null),
-      wantsLooks ? readThemePlugins(bridge).catch(() => null) : Promise.resolve(null),
-    ])
     // A later read has started: its answer is the one to show.
-    if (mine !== round.current) return
-    if (next) setLists(next)
-    if (themes) setListings(themes.plugins)
+    const current = () => mine === round.current
+    await Promise.all([
+      readPluginEnablement(bridge)
+        .catch(() => null)
+        .then(next => {
+          if (next && current()) setLists(next)
+        }),
+      wantsLooks
+        ? readThemePlugins(bridge)
+            .catch(() => null)
+            .then(themes => {
+              if (themes && current()) setListings(themes.plugins)
+            })
+        : undefined,
+    ])
   }, [bridge, wantsLooks])
 
   React.useEffect(() => {
