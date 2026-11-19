@@ -13,6 +13,8 @@ import { loadEnabledPlugins } from '../pluginHost/enabledStore'
 import { loadInstalledPlugins } from '../pluginHost/installedRegistry'
 import { setLocalPluginEnabled } from '../pluginHost/localPluginRemove'
 import { listingInstalls } from '../pluginHost/themeListing'
+import { pluginBlockReason } from '../pluginHost/blocklist'
+import type { CatalogListing } from '../pluginHost/registryFormats'
 import { readLayerFresh } from '../settings/settingsStore'
 import type { RuntimeFs } from '../utils/fs/runtimeFs'
 import { basenameRuntimePath, dirnameRuntimePath, normalizeRuntimePath } from '../utils/runtimePaths'
@@ -123,6 +125,41 @@ async function switchOff(
     if (written > 0) deps.reload()
   }
   return written
+}
+
+/**
+ * Switches a theme listing's plugin back on when it is installed and every
+ * install of it is off: the listing's own install when that is installed,
+ * else the first other one. The open sessions then reload once. Whether one
+ * was switched on; false too when none is installed, one is already on, or
+ * the settings cannot be written. Never rejects.
+ *
+ * Security: only an install of the listing's own plugin (`listingInstalls`)
+ * is switched on, and never one the block list names.
+ */
+export async function turnOnListedThemePlugin(
+  deps: ThemePluginsDeps,
+  listing: Pick<CatalogListing, 'name' | 'source'>,
+): Promise<boolean> {
+  try {
+    const { homeDir, fs } = deps
+    const [{ settings }, { registry }] = await Promise.all([
+      readLayerFresh('userSettings', { homeDir }, fs),
+      loadInstalledPlugins({ homeDir }, fs),
+    ])
+    const enabled = settings.enabledPlugins ?? {}
+    const installs = listingInstalls(registry.plugins, listing, BUILTIN_MARKETPLACE_KEY).filter(id =>
+      Object.hasOwn(registry.plugins, id),
+    )
+    if (installs.length === 0 || installs.some(id => enabled[id] !== false)) return false
+    const id = installs.find(candidate => pluginBlockReason(candidate) === null)
+    if (id === undefined) return false
+    await applyEnabledPluginsPatch({ homeDir }, fs, { [id]: true })
+    deps.reload()
+    return true
+  } catch {
+    return false
+  }
 }
 
 const sameFolder = (a: string, b: string) => normalizeRuntimePath(a).toLowerCase() === normalizeRuntimePath(b).toLowerCase()

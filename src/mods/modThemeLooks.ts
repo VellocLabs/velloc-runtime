@@ -157,6 +157,36 @@ export async function useThemeLook(
   return { ok: false, reason: 'notLoaded' }
 }
 
+/**
+ * `useThemeLook`, asked again while the plugin is still loading in the
+ * session (just switched on, its module not yet up): while the answer is
+ * `notLoaded` or `notOwnCommand`, every `timing.pause`, `timing.attempts`
+ * times at most. `target.slot` is read on each try. Never rejects.
+ */
+export async function useThemeLookOnceLoaded(
+  target: ThemeLookTarget,
+  ask: Pick<ThemeUseLookPayload, 'plugin' | 'lookId'>,
+  timing: ThemeOnEnableTiming = {},
+  signal?: AbortSignal,
+): Promise<ThemeUseLookResult> {
+  const pause = timing.pause ?? (() => new Promise<void>(resolve => setTimeout(resolve, 500)))
+  const attempts = Math.max(1, timing.attempts ?? 12)
+  // Named apart: spreading `target` would read its `slot` once more.
+  const { marketplace, listings, installsOf } = target
+  let result: ThemeUseLookResult = { ok: false, reason: 'notLoaded' }
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    await pause()
+    if (signal?.aborted) break
+    const slot = target.slot
+    // The plugins now loading have started before a command of theirs is looked for.
+    await slot?.settled?.().catch(() => undefined)
+    if (signal?.aborted) break
+    result = await useThemeLook({ marketplace, listings, ...(installsOf ? { installsOf } : {}), slot }, ask, signal)
+    if (result.ok || (result.reason !== 'notLoaded' && result.reason !== 'notOwnCommand')) return result
+  }
+  return result
+}
+
 /** Runs `run` in the session when the module that registered it is one of `installs`. */
 async function runOwnCommand(
   slot: ThemeLookSlot,

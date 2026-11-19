@@ -16,12 +16,14 @@ import {
   isThemeClearPayload,
   isThemeUseLookPayload,
   useThemeLook,
+  useThemeLookOnceLoaded,
   type ThemeLookSlot,
   type ThemeUseLookResult,
 } from '../mods/modThemeLooks'
 import { ModRuntime, type ModModuleRef, type ModWorkerHandle } from '../mods/ModRuntime'
 import { installModWorkerHost } from '../mods/ModWorkerHost'
 import { BUILTIN_MARKETPLACE_KEY } from '../pluginHost/builtinMarketplace'
+import { forgetRegistryFile, saveInstalledPlugins } from '../pluginHost/installedRegistry'
 import { getMarketplaceManifestPath } from '../pluginHost/pluginDirs'
 import type { CatalogListing } from '../pluginHost/registryFormats'
 import { listingInstalls } from '../pluginHost/themeListing'
@@ -332,6 +334,159 @@ describe('the theme capability', () => {
     await expect(ask('useLook', { sessionId: 's1', plugin: 'pack', lookId: 'lagoon' })).rejects.toMatchObject({
       code: 'host_unavailable',
     })
+  })
+})
+
+describe('theme.useLook on a plugin that is installed and switched off', () => {
+  const HOME = '/home/off'
+  const SETTINGS = `${HOME}/.velloc/settings.json`
+  const conn = { connectionId: 'c', clientId: 'c', kind: 'cli', scope: { mode: 'full', sessions: 'all' }, transport: 'message-port' } as ConnectionInfo
+  const code = { repo: 'github.com/someone/pack', path: '' }
+  const row = { scope: 'user' as const, installPath: '/x', version: '1.0.0', installedAt: '2026-01-01T00:00:00.000Z', codeSource: code }
+  type Enabled = Record<string, boolean>
+
+  afterEach(() => forgetRegistryFile(HOME))
+
+  async function rig(state: { installed: string[]; enabledPlugins?: Enabled }) {
+    const fs = makeMemFs()
+    await fs.writeFile(
+      getMarketplaceManifestPath({ homeDir: HOME }, MP),
+      JSON.stringify({
+        name: MP,
+        plugins: [
+          {
+            name: 'pack',
+            source: { source: 'github', repo: 'someone/pack', sha: 'a'.repeat(40) },
+            theme: { looks: [{ id: 'lagoon', preview: PREVIEW, use: { command: 'pick-look', args: 'lagoon' } }] },
+          },
+        ],
+      }),
+    )
+    await saveInstalledPlugins({ homeDir: HOME }, fs, {
+      version: 2,
+      plugins: Object.fromEntries(state.installed.map(id => [id, [row]])),
+    })
+    await fs.writeFile(SETTINGS, JSON.stringify({ version: 1, enabledPlugins: state.enabledPlugins ?? {} }))
+    const enabledNow = async () =>
+      (JSON.parse(String(await fs.readFile(SETTINGS, { encoding: 'utf-8' }))) as { enabledPlugins?: Enabled }).enabledPlugins ?? {}
+    // The session loads whichever install the settings have on, at each reload.
+    let loaded: string | undefined
+    let reloads = 0
+    const fake = fakeSlot({
+      hasLoaded: provenance => provenance === loaded,
+      commandOwner: name => (name === 'pick-look' && loaded ? { plugin: 'pack', provenance: loaded } : undefined),
+    })
+    const registry = new CapabilityRegistry()
+    registerThemeCapability(registry, {
+      fs: () => fs,
+      resolveHome: async () => HOME,
+      channel: () => 'stable',
+      slotOf: () => fake.slot,
+      onEnableTiming: { attempts: 3, pause: async () => {} },
+      reload: () => {
+        reloads += 1
+        void enabledNow().then(on => {
+          loaded = state.installed.find(id => on[id] !== false)
+        })
+      },
+    })
+    const useLagoon = () =>
+      registry
+        .resolve('theme', 'useLook')!
+        .handle(
+          { id: '1', route: { cap: 'theme', act: 'useLook' }, payload: { sessionId: 's1', plugin: 'pack', lookId: 'lagoon' }, conn } as never,
+          {} as never,
+        )
+    return { useLagoon, enabledNow, ran: fake.ran, reloads: () => reloads }
+  }
+
+  it('switches the plugin on, reloads the sessions once and applies the look once it has loaded', async () => {
+    const { useLagoon, enabledNow, ran, reloads } = await rig({
+      installed: [`pack@${MP}`],
+      enabledPlugins: { [`pack@${MP}`]: false },
+    })
+    expect(await useLagoon()).toEqual({ ok: true, via: 'command', text: 'picked lagoon' })
+    expect((await enabledNow())[`pack@${MP}`]).toBe(true)
+    expect(reloads()).toBe(1)
+    expect(ran).toEqual([{ command: 'pick-look', args: 'lagoon', origin: { kind: 'bridge' } }])
+  })
+
+  it('switches on the install the person has when the listing\'s own is not installed', async () => {
+    const { useLagoon, enabledNow, ran } = await rig({
+      installed: ['pack@their-own'],
+      enabledPlugins: { 'pack@their-own': false },
+    })
+    expect(await useLagoon()).toMatchObject({ ok: true, via: 'command' })
+    expect(await enabledNow()).toEqual({ 'pack@their-own': true })
+    expect(ran).toHaveLength(1)
+  })
+
+  it('leaves the settings alone when the plugin is not installed, or an install of it is already on', async () => {
+    const absent = await rig({ installed: [], enabledPlugins: { [`pack@${MP}`]: false } })
+    expect(await absent.useLagoon()).toEqual({ ok: false, reason: 'notLoaded' })
+    expect(await absent.enabledNow()).toEqual({ [`pack@${MP}`]: false })
+    expect(absent.reloads()).toBe(0)
+    forgetRegistryFile(HOME)
+
+    const on = await rig({ installed: [`pack@${MP}`, 'pack@their-own'], enabledPlugins: { [`pack@${MP}`]: false } })
+    expect(await on.useLagoon()).toEqual({ ok: false, reason: 'notLoaded' })
+    expect(await on.enabledNow()).toEqual({ [`pack@${MP}`]: false })
+    expect(on.reloads()).toBe(0)
+    expect(on.ran).toEqual([])
+  })
+})
+
+describe('useThemeLookOnceLoaded', () => {
+  const NO_WAIT = { attempts: 4, pause: async () => {} }
+
+  it('asks again while the plugin is loading, reading the session\'s runtime on each try', async () => {
+    const { slot, ran } = fakeSlot()
+    let lookups = 0
+    const target = {
+      marketplace: MP,
+      listings: LISTINGS,
+      get slot() {
+        lookups += 1
+        return lookups >= 3 ? slot : undefined
+      },
+    }
+    expect(await useThemeLookOnceLoaded(target, { plugin: 'pack', lookId: 'lagoon' }, NO_WAIT)).toEqual({
+      ok: true,
+      via: 'command',
+      text: 'picked lagoon',
+    })
+    expect(lookups).toBe(3)
+    expect(ran).toHaveLength(1)
+  })
+
+  it('gives the last answer when the plugin never loads, and stops at an answer that waiting will not change', async () => {
+    const never = fakeSlot({ hasLoaded: () => false })
+    const waiting = { marketplace: MP, listings: LISTINGS, slot: never.slot }
+    expect(await useThemeLookOnceLoaded(waiting, { plugin: 'pack', lookId: 'lagoon' }, NO_WAIT)).toEqual({
+      ok: false,
+      reason: 'notLoaded',
+    })
+    let asked = 0
+    const silent = fakeSlot({
+      commandRun: async () => {
+        asked += 1
+        return { settled: true, unanswered: true } as never
+      },
+    })
+    expect(
+      await useThemeLookOnceLoaded({ marketplace: MP, listings: LISTINGS, slot: silent.slot }, { plugin: 'pack', lookId: 'lagoon' }, NO_WAIT),
+    ).toEqual({ ok: false, reason: 'unanswered' })
+    expect(asked).toBe(1)
+  })
+
+  it('runs nothing once the request is cancelled', async () => {
+    const { slot, ran } = fakeSlot()
+    const controller = new AbortController()
+    controller.abort()
+    expect(
+      await useThemeLookOnceLoaded({ marketplace: MP, listings: LISTINGS, slot }, { plugin: 'pack', lookId: 'lagoon' }, NO_WAIT, controller.signal),
+    ).toEqual({ ok: false, reason: 'notLoaded' })
+    expect(ran).toEqual([])
   })
 })
 
