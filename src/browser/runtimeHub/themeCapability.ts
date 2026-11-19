@@ -112,10 +112,10 @@ export function registerThemeCapability(registry: CapabilityRegistry, options: T
             listing?.theme?.looks.some(look => look.id === payload.lookId) && !request.signal?.aborted
               ? await keepOnlyListedThemePlugin({ homeDir, fs, reload }, listing)
               : null
-          if (sole && (sole.switchedOn || sole.othersOff)) {
-            return useThemeLookOnceLoaded(loading, payload, options.onEnableTiming, request.signal, {
-              othersOff: sole.othersOff,
-            })
+          if (sole) {
+            return sole.switchedOn || sole.othersOff.length > 0
+              ? useThemeLookOnceLoaded(loading, payload, options.onEnableTiming, request.signal, { othersOff: sole.othersOff })
+              : useThemeLook({ ...target, slot }, payload)
           }
           let result = await useThemeLook({ ...target, slot }, payload)
           let switchedOn = false

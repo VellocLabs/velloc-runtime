@@ -22,6 +22,7 @@ import {
 } from '../mods/modThemeLooks'
 import { ModRuntime, type ModModuleRef, type ModWorkerHandle } from '../mods/ModRuntime'
 import { installModWorkerHost } from '../mods/ModWorkerHost'
+import { __setPluginBlocklistForTests } from '../pluginHost/blocklist'
 import { BUILTIN_MARKETPLACE_KEY } from '../pluginHost/builtinMarketplace'
 import { forgetRegistryFile, saveInstalledPlugins } from '../pluginHost/installedRegistry'
 import { getMarketplaceManifestPath } from '../pluginHost/pluginDirs'
@@ -672,6 +673,23 @@ describe('theme.useLook with one theme plugin at a time, two plugins serving one
     expect(ran).toEqual([{ by: PACK, args: 'lagoon' }])
   })
 
+  it('a look whose plugin cannot be switched on leaves the other theme plugin on', async () => {
+    const restore = __setPluginBlocklistForTests([PACK])
+    try {
+      const { useLagoon, enabledNow, ran, reloads } = await rig({
+        enabledPlugins: { [PACK]: false, [RIVAL]: true },
+        single: true,
+        servedBy: 'rival',
+      })
+      expect(await useLagoon()).toEqual({ ok: false, reason: 'notLoaded' })
+      expect(await enabledNow()).toEqual({ [PACK]: false, [RIVAL]: true })
+      expect(reloads()).toBe(0)
+      expect(ran).toEqual([])
+    } finally {
+      restore()
+    }
+  })
+
   it('with the setting off, nothing is switched: the other plugin\'s command is not run', async () => {
     const { useLagoon, enabledNow, ran, reloads } = await rig({
       enabledPlugins: { [PACK]: true, [RIVAL]: true },
@@ -767,10 +785,34 @@ describe('useThemeLookOnceLoaded', () => {
       { plugin: 'pack', lookId: 'lagoon' },
       { attempts: 5, pause: async () => {} },
       undefined,
-      { othersOff: true },
+      { othersOff: ['rival'] },
     )
     expect(result).toEqual({ ok: false, reason: 'notOwnCommand' })
     expect(reloaded).toEqual([`pack@${MP}`])
+  })
+
+  it('with others just switched off, does not wait on a plugin that was not one of them', async () => {
+    const reloaded: string[] = []
+    let tries = 0
+    const slot: ThemeLookSlot = {
+      hasLoaded: () => true,
+      commandOwner: () => ({ plugin: 'tools', provenance: `tools@${MP}` }),
+      commandRun: async () => ({ settled: true, unanswered: false, result: {} }),
+      reloadPlugin: async provenance => {
+        reloaded.push(provenance)
+        return 1
+      },
+    }
+    const result = await useThemeLookOnceLoaded(
+      { marketplace: MP, listings: LISTINGS, slot },
+      { plugin: 'pack', lookId: 'lagoon' },
+      { attempts: 5, pause: async () => void (tries += 1) },
+      undefined,
+      { othersOff: ['rival'] },
+    )
+    expect(result).toEqual({ ok: false, reason: 'notOwnCommand' })
+    expect(tries).toBe(0)
+    expect(reloaded).toEqual([])
   })
 
   it('runs nothing once the request is cancelled', async () => {

@@ -14,7 +14,7 @@ import { loadInstalledPlugins } from '../pluginHost/installedRegistry'
 import { setLocalPluginEnabled } from '../pluginHost/localPluginRemove'
 import { listingInstalls } from '../pluginHost/themeListing'
 import { pluginBlockReason } from '../pluginHost/blocklist'
-import type { CatalogListing } from '../pluginHost/registryFormats'
+import type { CatalogListing, InstalledPluginsFile } from '../pluginHost/registryFormats'
 import { readLayerFresh } from '../settings/settingsStore'
 import type { RuntimeFs } from '../utils/fs/runtimeFs'
 import { basenameRuntimePath, dirnameRuntimePath, normalizeRuntimePath } from '../utils/runtimePaths'
@@ -41,7 +41,12 @@ export async function knownThemePlugins(homeDir: string, fs: RuntimeFs): Promise
 async function readThemePlugins(
   homeDir: string,
   fs: RuntimeFs,
-): Promise<{ known: ThemeModEntry[]; enabled: Record<string, boolean> }> {
+): Promise<{
+  known: ThemeModEntry[]
+  enabled: Record<string, boolean>
+  single: boolean
+  installed: InstalledPluginsFile['plugins']
+}> {
   const [{ settings }, { registry }, manifest] = await Promise.all([
     readLayerFresh('userSettings', { homeDir }, fs),
     loadInstalledPlugins({ homeDir }, fs),
@@ -60,7 +65,12 @@ async function readThemePlugins(
       if (Object.hasOwn(installed, id) && !out.has(id)) out.set(id, { plugin: listing.name, id })
     }
   }
-  return { known: [...out.values()], enabled: settings.enabledPlugins ?? {} }
+  return {
+    known: [...out.values()],
+    enabled: settings.enabledPlugins ?? {},
+    single: settings.mods?.singleThemeMod === true,
+    installed,
+  }
 }
 
 async function localEnabled(root: string, fs: RuntimeFs): Promise<boolean> {
@@ -163,37 +173,35 @@ export async function turnOnListedThemePlugin(
 }
 
 /**
- * With *Only one at a time* on (settings `mods.singleThemeMod`): every other
- * theme plugin off and, when every install of the listing's is off, one on
- * (`turnOnListedThemePlugin`); the open sessions reload once. Null, touching
- * nothing, when the setting is off or the listing is not installed. Never rejects.
+ * With *Only one at a time* on (settings `mods.singleThemeMod`): the listing's
+ * plugin on (`turnOnListedThemePlugin`, when every install of it is off), then
+ * every other theme plugin off; the open sessions reload once. `othersOff`
+ * names the other theme plugins when any was switched off, else is empty.
+ * Null, touching nothing, when the setting is off or the listing's plugin is
+ * not installed or cannot be switched on. Never rejects.
  */
 export async function keepOnlyListedThemePlugin(
   deps: ThemePluginsDeps,
   listing: Pick<CatalogListing, 'name' | 'source'>,
-): Promise<{ switchedOn: boolean; othersOff: boolean } | null> {
+): Promise<{ switchedOn: boolean; othersOff: string[] } | null> {
   let reloadDue = false
+  let offDue = false
   const quiet: ThemePluginsDeps = { ...deps, reload: () => void (reloadDue = true) }
   try {
-    const { homeDir, fs } = deps
-    const [{ settings }, { registry }] = await Promise.all([
-      readLayerFresh('userSettings', { homeDir }, fs),
-      loadInstalledPlugins({ homeDir }, fs),
-    ])
-    if (settings.mods?.singleThemeMod !== true) return null
-    const installed = listingInstalls(registry.plugins, listing, BUILTIN_MARKETPLACE_KEY).some(id =>
-      Object.hasOwn(registry.plugins, id),
-    )
-    if (!installed) return null
-    const known = await knownThemePlugins(homeDir, fs)
+    const { known, enabled, single, installed } = await readThemePlugins(deps.homeDir, deps.fs)
+    if (!single) return null
+    const installs = listingInstalls(installed, listing, BUILTIN_MARKETPLACE_KEY).filter(id => Object.hasOwn(installed, id))
+    const alreadyOn = installs.some(id => enabled[id] !== false)
+    const switchedOn = !alreadyOn && (await turnOnListedThemePlugin(quiet, listing))
+    // The other theme plugins stay on when the listing's plugin cannot be on.
+    if (!alreadyOn && !switchedOn) return null
+    const others = known.filter(mod => mod.plugin !== listing.name)
     try {
-      await switchOff(quiet, known.filter(mod => mod.plugin !== listing.name), settings.enabledPlugins ?? {})
+      await switchOff({ ...quiet, reload: () => void (offDue = reloadDue = true) }, others, enabled)
     } catch {
       // The look is still asked for with what could be switched off.
     }
-    const othersOff = reloadDue
-    const switchedOn = await turnOnListedThemePlugin(quiet, listing)
-    return { switchedOn, othersOff }
+    return { switchedOn, othersOff: offDue ? [...new Set(others.map(mod => mod.plugin))] : [] }
   } catch {
     return null
   } finally {

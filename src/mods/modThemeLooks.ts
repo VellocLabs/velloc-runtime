@@ -161,16 +161,16 @@ export async function useThemeLook(
  * `useThemeLook`, asked again while the plugin is still loading: while the
  * answer is `notLoaded`, or `notOwnCommand` before it has started, `attempts`
  * times at most. A look applied by loading is not loaded again once its theme
- * stands; `target.slot` is read on each try. `othersOff`: a plugin just off may
- * still serve the command (waited out) or have taken the plugin's registration
- * with it (reloaded once). Never rejects. (F-25)
+ * stands; `target.slot` is read on each try. `othersOff`, the plugins just
+ * switched off: one of them may still serve the command (waited out) or have
+ * taken the plugin's registration with it (reloaded once). Never rejects. (F-25)
  */
 export async function useThemeLookOnceLoaded(
   target: ThemeLookTarget,
   ask: Pick<ThemeUseLookPayload, 'plugin' | 'lookId'>,
   timing: ThemeOnEnableTiming = {},
   signal?: AbortSignal,
-  after: { othersOff?: boolean } = {},
+  after: { othersOff?: readonly string[] } = {},
 ): Promise<ThemeUseLookResult> {
   const { pause, attempts } = loadingTiming(timing)
   // Named apart: spreading `target` would read its `slot` once more.
@@ -195,13 +195,14 @@ export async function useThemeLookOnceLoaded(
     if (started && appliedByLoading && slot!.themeOwner?.() === ask.plugin) return { ok: true, via: 'reload' }
     result = await useThemeLook({ marketplace, listings, ...(installsOf ? { installsOf } : {}), slot }, ask, signal)
     if (result.ok) return result
-    if (after.othersOff && run && started && result.reason === 'notOwnCommand') {
+    if (after.othersOff?.length && run && started && result.reason === 'notOwnCommand') {
       const owner = slot.commandOwner?.(run.command)
       // A plugin just switched off serves the command until the session reloads.
-      if (owner && owner.plugin !== ask.plugin) continue
+      if (owner && after.othersOff.includes(owner.plugin)) continue
       if (!owner && !registeredAgain && slot.reloadPlugin) {
         registeredAgain = true
         for (const install of installs) {
+          if (signal?.aborted) break
           if (slot.hasLoaded && !slot.hasLoaded(install)) continue
           await slot.reloadPlugin(install).catch(() => 0)
         }
