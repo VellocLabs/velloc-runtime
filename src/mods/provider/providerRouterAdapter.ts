@@ -6,26 +6,14 @@
  * `provider.outcome` and is never awaited.
  *
  * Security: on the first send of a call (attempt 1, no failure yet) a module
- * that cannot start, throws, overruns or names nothing rejects with an error
- * naming the hook, so the request is not sent: a router never lets a request
- * go out unrouted. After a failure the same cases are "no answer".
+ * that cannot start, throws or overruns rejects with the runtime's error, and
+ * an answer of nothing is `undefined`; the resolution step ends either one
+ * unsent, naming `provider.route`. After a failure the same cases are
+ * `undefined`, "no answer".
  */
 import type { ProviderRouter, RouteAnswer, RouteEvent, RouteOutcomeEvent } from '../../models/drivers/providerRouter'
 import type { ProviderSeamRuntime } from './providerSeamAdapter'
 import type { Peer, PeersTableFor } from './nouns/providerPeersTypes'
-
-/** The error a first send fails closed with. */
-export class ProviderRouteHookError extends Error {
-  constructor(
-    readonly providerId: string,
-    reason: string,
-  ) {
-    super(`The provider.route hook of the provider ${providerId} failed, so the request was not sent: ${reason}`)
-    this.name = 'ProviderRouteHookError'
-  }
-}
-
-const reasonOf = (error: unknown): string => (error instanceof Error ? error.message : String(error))
 
 /**
  * The router for `providerId`. `peersTableFor` is read once per call, on its
@@ -68,16 +56,9 @@ export function createModProviderRouter(
         { signal },
       )
       const answer = outcome.raised ? outcome.value : undefined
-      if (answer === undefined || answer === null) {
-        if (firstSend) throw new ProviderRouteHookError(providerId, 'it named no target')
-        return undefined
-      }
-      return answer
+      return answer === null ? undefined : answer
     } catch (error) {
-      if (signal.aborted) throw error
-      if (firstSend) {
-        throw error instanceof ProviderRouteHookError ? error : new ProviderRouteHookError(providerId, reasonOf(error))
-      }
+      if (signal.aborted || firstSend) throw error
       return undefined
     }
   }

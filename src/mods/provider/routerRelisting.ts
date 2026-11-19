@@ -2,14 +2,17 @@
  * Re-list a router provider when the providers it may route to change (F-27):
  * its `provider.models` reads `e.peers`, so a listing made over an older table
  * may name rows that no longer apply. One pass per burst of changes
- * (`debounceMs`, default 2 s); a router whose peers table is deep-equal to the
- * one its last listing saw is skipped.
+ * (`debounceMs`, default 2 s); a router whose peers are, apart from their
+ * health `state` and `usage`, deep-equal to those its last listing saw is
+ * skipped.
  */
 import type { Peer } from './nouns/providerPeersTypes'
 
 const listedPeers = new Map<string, string>()
 
-const fingerprint = (peers: readonly Peer[]): string => JSON.stringify(peers)
+// Health and usage move on their own clock; they are not what a listing is made of.
+const fingerprint = (peers: readonly Peer[]): string =>
+  JSON.stringify(peers.map(({ state: _state, usage: _usage, ...listed }) => listed))
 
 /** The listing of `routerId` was made over `peers`. */
 export function noteRouterListing(routerId: string, peers: readonly Peer[]): void {
@@ -33,6 +36,8 @@ export type RouterRelistingDeps = {
   onProvidersChanged: (listener: () => void) => () => void
   /** The registered router providers' ids. */
   routerIds: () => string[]
+  /** A router the person has not set up is not listed (nor polled). */
+  isSetUp: (routerId: string) => boolean
   peersOf: (routerId: string) => Peer[]
   /** List one router again. Never rejects. */
   relist: (routerId: string) => Promise<unknown>
@@ -59,6 +64,7 @@ export function startRouterRelisting(deps: RouterRelistingDeps): RouterRelisting
 
   const run = async (): Promise<void> => {
     for (const routerId of deps.routerIds()) {
+      if (!deps.isSetUp(routerId)) continue
       let peers: Peer[]
       try {
         peers = deps.peersOf(routerId)

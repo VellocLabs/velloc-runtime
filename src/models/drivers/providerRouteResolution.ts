@@ -43,6 +43,18 @@ import { isProviderSetUp, mergedModels, providerEntries } from './runtimeProvide
 
 const NO_REQUEST_CONTEXT: BridgeModelRequestContext = { purpose: 'other', querySource: '' }
 
+// One object per call: a router may key what it keeps about a call on it.
+const contextOfCall = new WeakMap<object, BridgeModelRequestContext>()
+function requestContextOf(call: object, payload: BridgeModelRequestPayload): BridgeModelRequestContext {
+  if (payload.requestContext) return payload.requestContext
+  let context = contextOfCall.get(call)
+  if (!context) {
+    context = { ...NO_REQUEST_CONTEXT }
+    contextOfCall.set(call, context)
+  }
+  return context
+}
+
 export type RouteResolutionDeps = {
   runtimeConfig?: RuntimeConfig
   providerFor(spec: ProviderSpec): ModelProvider
@@ -84,7 +96,7 @@ export function routeCall(
 
   const event = (): RouteEvent => ({
     model: rowModel,
-    requestContext: payload.requestContext ?? NO_REQUEST_CONTEXT,
+    requestContext: requestContextOf(call, payload),
     attempt: call.sends + 1,
     ...(call.lastFailure ? { lastFailure: call.lastFailure } : {}),
     ...(call.contextTokens !== undefined ? { usage: { contextTokens: call.contextTokens } } : {}),

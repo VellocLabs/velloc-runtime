@@ -269,6 +269,7 @@ export async function bootProviderMods(deps: ProviderModBootDeps): Promise<void>
   routerRelisting = startRouterRelisting({
     onProvidersChanged: onRuntimeProviderConfigsChanged,
     routerIds,
+    isSetUp: isProviderSetUp,
     peersOf: runtimePeersTable,
     relist: async providerId => {
       const transport = deps.transport?.()

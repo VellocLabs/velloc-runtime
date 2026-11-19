@@ -22,7 +22,7 @@ import type { BrowserBridgeTransport } from '../browser/bridge/browserBridgeProt
 import { installModWorkerHost } from '../mods/ModWorkerHost'
 import { type ModWorkerHandle } from '../mods/ModRuntime'
 import { ProviderModRuntime, type ProviderModuleRef } from '../mods/provider/ProviderModRuntime'
-import { createModProviderRouter, ProviderRouteHookError } from '../mods/provider/providerRouterAdapter'
+import { createModProviderRouter } from '../mods/provider/providerRouterAdapter'
 import { providerSeamListener } from '../mods/provider/providerSeamWiring'
 import type { ProviderRegistration } from '../mods/provider/providerModHost'
 import type { ProviderManifest } from '../mods/provider/providerManifest'
@@ -131,28 +131,58 @@ describe('createModProviderRouter over the provider mod runtime', () => {
     expect(await router.route(afterFailure(), signal())).toEqual({ provider: 'relay-b', model: 'm', seen: 2 })
   })
 
-  it('fails closed naming provider.route when the first send overruns the budget', async () => {
+  it('rejects naming provider.route when the first send overruns the budget', async () => {
     const SLOW = `export function register(on) { on('provider.route', async () => { await new Promise(r => setTimeout(r, 400)); return { provider: 'relay-a', model: 'm' } }) }`
     const router = createModProviderRouter(routerRuntime(SLOW, { budgetMs: 100 }), ROUTER, () => PEERS)
-    const refused = await router.route(first(), signal()).catch(error => error)
-    expect(refused).toBeInstanceOf(ProviderRouteHookError)
-    expect((refused as Error).message).toMatch(/provider\.route hook of the provider mod\.pool\.router/)
+    await expect(router.route(first(), signal())).rejects.toThrow(/provider\.route for mod\.pool\.router/)
   })
 
-  it('fails closed on a throw at the first send, and reads a throw after a failure as no answer', async () => {
+  it('rejects on a throw at the first send, and reads a throw after a failure as no answer', async () => {
     const THROWS = `export function register(on) { on('provider.route', () => { throw new Error('no route today') }) }`
     const router = createModProviderRouter(routerRuntime(THROWS), ROUTER, () => PEERS)
-    await expect(router.route(first(), signal())).rejects.toThrow(/provider\.route hook of the provider mod\.pool\.router failed, so the request was not sent/)
+    await expect(router.route(first(), signal())).rejects.toThrow(/provider\.route for mod\.pool\.router/)
     expect(await router.route(afterFailure(), signal())).toBeUndefined()
   })
 
-  it('fails closed when the first send gets no answer, or the module cannot start', async () => {
+  it('hands back no answer as undefined, and rejects when the module cannot start', async () => {
     const SILENT = `export function register(on) { on('provider.route', () => undefined) }`
     const router = createModProviderRouter(routerRuntime(SILENT), ROUTER, () => PEERS)
-    await expect(router.route(first(), signal())).rejects.toThrow(/provider\.route/)
+    expect(await router.route(first(), signal())).toBeUndefined()
     expect(await router.route(afterFailure(), signal())).toBeUndefined()
     const nobody = createModProviderRouter(routerRuntime(SILENT), 'mod.nobody.router', () => PEERS)
-    await expect(nobody.route(first(), signal())).rejects.toBeInstanceOf(ProviderRouteHookError)
+    await expect(nobody.route(first(), signal())).rejects.toThrow(/no provider module provides mod\.nobody\.router/)
+  })
+
+  it('ends a first send with no answer unsent, with one error naming provider.route', async () => {
+    const SILENT = `export function register(on) { on('provider.route', () => undefined) }`
+    registerProviderRouter(ROUTER, createModProviderRouter(routerRuntime(SILENT), ROUTER, () => PEERS), { routesTo: '*' })
+    const requests: string[] = []
+    const transport = {
+      async request(req: any) {
+        requests.push(req.route.action)
+        return { ok: false, error: { message: 'unexpected' } }
+      },
+    } as unknown as BrowserBridgeTransport
+    const wrapped = withModelProviders(transport, new DefaultRuntimeConfig({}))
+    const ask = (id: string, action: string, payload: unknown) =>
+      wrapped.request({ id, route: { capability: 'model', action }, payload } as never) as Promise<any>
+    const started = await ask('r-silent', 'streamStart', {
+      providerId: ROUTER,
+      model: 'row',
+      messages: [{ role: 'user', content: 'x' }],
+      maxOutputTokens: 10,
+      requestContext: CONTEXT,
+    })
+    const chunks: any[] = []
+    for (let i = 0; i < 20; i += 1) {
+      const read = await ask(`r-read-${i}`, 'streamRead', { streamId: started.result.streamId, waitMs: 2000 })
+      chunks.push(...(read.result.chunks ?? []))
+      if (read.result.done) break
+    }
+    const message = String(chunks.find(chunk => chunk.type === 'error')?.error?.message)
+    expect(message).toContain(`provider.route of ${ROUTER}: it named no target; the request was not sent`)
+    expect(message).not.toContain('the hook failed')
+    expect(requests).not.toContain('rawStreamOpen')
   })
 
   it('reads the peers table once per call and hands the same table to every ask of it', async () => {
@@ -167,6 +197,33 @@ describe('createModProviderRouter over the provider mod runtime', () => {
     expect(reads).toBe(1)
     await router.route(first({ ...CONTEXT } as RouteEvent['requestContext']), signal())
     expect(reads).toBe(2)
+  })
+
+  it('gives two calls without a request context a context each, so neither reads the other\'s peers', async () => {
+    const seen: object[] = []
+    registerProviderRouter(
+      ROUTER,
+      {
+        route: async e => {
+          seen.push(e.requestContext as object)
+          return undefined
+        },
+      },
+      { routesTo: '*' },
+    )
+    const transport = { request: async () => ({ ok: false, error: { message: 'unexpected' } }) } as unknown as BrowserBridgeTransport
+    const wrapped = withModelProviders(transport, new DefaultRuntimeConfig({}))
+    for (const id of ['c-1', 'c-2']) {
+      const started = (await wrapped.request({
+        id,
+        route: { capability: 'model', action: 'streamStart' },
+        payload: { providerId: ROUTER, model: 'row', messages: [{ role: 'user', content: 'x' }], maxOutputTokens: 10 },
+      } as never)) as any
+      await wrapped.request({ id: `${id}-read`, route: { capability: 'model', action: 'streamRead' }, payload: { streamId: started.result.streamId, waitMs: 2000 } } as never)
+    }
+    expect(seen).toHaveLength(2)
+    expect(seen[0]).not.toBe(seen[1])
+    expect(seen[0]).toMatchObject({ purpose: 'other', querySource: '' })
   })
 
   it('raises provider.outcome only in a module known to hook it, and never waits on it', async () => {
@@ -263,6 +320,7 @@ describe('a router listing re-run', () => {
         return () => {}
       },
       routerIds: () => [ROUTER],
+      isSetUp: () => true,
       peersOf: () => peers,
       relist: async id => {
         relisted.push(id)
@@ -297,6 +355,38 @@ describe('a router listing re-run', () => {
     clock.advance(2_000)
     await relisting.idle()
     expect(relisted).toEqual([ROUTER])
+
+    // A member's health or usage moving is not a change of what the listing saw.
+    peers = peers.map(peer => ({ ...peer, state: { status: 'cooling', until: 1_000 }, usage: { at: 5 } }) as unknown as Peer)
+    fire()
+    clock.advance(2_000)
+    await relisting.idle()
+    expect(relisted).toEqual([ROUTER])
+    relisting.dispose()
+  })
+
+  it('never lists a router the person has not set up', async () => {
+    let fire: () => void = () => {}
+    const relisted: string[] = []
+    const clock = manualTimers()
+    const relisting = startRouterRelisting({
+      onProvidersChanged: listener => {
+        fire = listener
+        return () => {}
+      },
+      routerIds: () => [ROUTER],
+      isSetUp: () => false,
+      peersOf: () => PEERS,
+      relist: async id => {
+        relisted.push(id)
+      },
+      report: () => {},
+      timers: clock.timers,
+    })
+    fire()
+    clock.advance(2_000)
+    await relisting.idle()
+    expect(relisted).toEqual([])
     relisting.dispose()
   })
 
