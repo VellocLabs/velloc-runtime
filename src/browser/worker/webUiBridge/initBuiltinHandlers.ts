@@ -51,6 +51,9 @@ import {
   type RuntimeProvidersHost,
 } from '../../../models/drivers/runtimeProviders'
 import { NEXUS_DIR_NAME } from '../../../settings/settingSources'
+import { clearProviderState, type ProviderHealthStore } from '../../../models/drivers/providerHealthLedger'
+
+export const PROVIDER_HEALTH_FILE_NAME = 'provider-health.json'
 import { providerModelFamilies } from '../../../models/drivers/modelFamilies'
 import { withConcreteDefaultModels } from '../../../models/drivers/modelEntryCatalog'
 import { getActiveSessionManager } from '../SharedWorkerSessionManager'
@@ -602,6 +605,7 @@ function providersAdapterContext(
     // …and never let a stale page copy write back an entry just delisted.
     staleEntryIds,
     dismissRemovedNotice,
+    clearPeerState: clearProviderState,
     // A provider mod's options reload every session's plugins, as the
     // Plugins page's option write does.
     reloadPluginsOnAllSessions: () => ctx.reloadPluginsOnAllSessions?.(),
@@ -709,6 +713,39 @@ export function createRuntimeProvidersHost(ctx: WebUiBridgeContext): RuntimeProv
         }
       }
       await ctx.fs.writeFile(joinPath(dir, `${providerId}.json`), text, { encoding: 'utf-8' })
+    },
+  }
+}
+
+/**
+ * Where the provider health ledger is kept between runs:
+ * `~/.velloc/cache/provider-health.json`, beside the listing cache.
+ */
+export function createProviderHealthStore(ctx: WebUiBridgeContext): ProviderHealthStore {
+  const cacheLevels = async (): Promise<string[]> => {
+    const root = await settingsRootForProviders(ctx)
+    return [joinPath(root, NEXUS_DIR_NAME), joinPath(root, NEXUS_DIR_NAME, 'cache')]
+  }
+  return {
+    async read() {
+      // No settings root yet rejects: the ledger reads again before it writes.
+      const dir = (await cacheLevels())[1]!
+      try {
+        return await ctx.fs.readFile(joinPath(dir, PROVIDER_HEALTH_FILE_NAME), { encoding: 'utf-8' })
+      } catch {
+        return undefined
+      }
+    },
+    async write(text) {
+      const levels = await cacheLevels()
+      for (const level of levels) {
+        try {
+          await ctx.fs.mkdir(level)
+        } catch {
+          // Exists already; writeFile reports a real failure.
+        }
+      }
+      await ctx.fs.writeFile(joinPath(levels[1]!, PROVIDER_HEALTH_FILE_NAME), text, { encoding: 'utf-8' })
     },
   }
 }

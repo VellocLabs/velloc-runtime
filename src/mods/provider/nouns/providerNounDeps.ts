@@ -27,6 +27,8 @@ import { createProviderFetch, type ProviderFetchTarget } from './providerFetchNo
 import { createProviderNouns, type ProviderNounDeps, type ProviderNouns } from './providerNounTable'
 import { egressMemberLookup, providerEgressPools } from '../providerEgressPools'
 import { createProviderSettings } from './providerSettingsNoun'
+import { createProviderPeersNoun, runtimePeersTable } from './providerPeersNoun'
+import type { PeersTableFor } from './providerPeersTypes'
 import {
   IndexedDbKeyRecords,
   RecordedKeyVault,
@@ -233,6 +235,8 @@ export type ProviderNounSetOptions = {
    * over the realm's `ProviderCredentials`.
    */
   extraNouns?: ProviderNounTable
+  /** What `peers()` answers from. Absent: the runtime's own table. */
+  peersTable?: PeersTableFor
 }
 
 export function createProviderNounDeps(options: ProviderNounSetOptions): ProviderNounDeps & { idMaps: IdMapStores } {
@@ -272,6 +276,10 @@ export function createProviderNounSet(options: ProviderNounSetOptions): Provider
     ...base.table,
     fetch: createProviderFetch({ transport: () => options.sources().transport?.() ?? null, targetOf }),
     settings: createProviderSettings({ registrationOf: options.registrationOf, readOptions: options.readOptions }),
+    ...createProviderPeersNoun({
+      table: options.peersTable ?? runtimePeersTable,
+      isRouter: providerId => options.registrationOf(providerId)?.manifest.kind === 'router',
+    }),
   })
   return Object.freeze({
     table,

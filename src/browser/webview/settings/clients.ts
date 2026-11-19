@@ -521,6 +521,19 @@ export function providersFreshModelIds(
   return bridge.request(createBridgeRoute('providers', 'freshModelIds'), { id })
 }
 
+/** Forget what was recorded about a provider instance from its failed
+ *  requests, or about one of its models alone. */
+export function providersClearPeerState(
+  bridge: NexusSettingsBridge,
+  provider: string,
+  model?: string,
+): Promise<BrowserBridgeResult<'providers', 'clearPeerState'>> {
+  return bridge.request(createBridgeRoute('providers', 'clearPeerState'), {
+    provider,
+    ...(model !== undefined ? { model } : {}),
+  })
+}
+
 /** Forget a runtime-only provider's "models removed" notice. */
 export function providersDismissRemoved(
   bridge: NexusSettingsBridge,

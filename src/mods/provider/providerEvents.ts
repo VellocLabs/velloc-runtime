@@ -218,8 +218,19 @@ const ONLY_METHODS: Readonly<Record<string, readonly string[]>> = Object.freeze(
   fs: Object.freeze(['read']),
 })
 
-/** Why a provider module may not call `$.<noun>.<method>`, or null. */
-export function refuseProviderModuleCall(noun: string, method: string): string | null {
+/** The `$.provider` methods a router provider's module alone may call. */
+const ROUTER_ONLY_METHODS: readonly string[] = Object.freeze(['provider.peers'])
+
+/**
+ * Why a provider module may not call `$.<noun>.<method>`, or null. `kind` is
+ * the kind of the module's provider: `router` when it owns a router. Left
+ * out, the module is held to what a `provider` kind may call.
+ */
+export function refuseProviderModuleCall(
+  noun: string,
+  method: string,
+  kind: 'provider' | 'router' = 'provider',
+): string | null {
   const call = `${noun}.${method}`
   if (!PROVIDER_MODULE_NOUNS.includes(noun)) {
     return (
@@ -231,6 +242,12 @@ export function refuseProviderModuleCall(noun: string, method: string): string |
     return (
       `$.${call} is not available to a provider module: its worker exits when idle, so a ` +
       `periodic timer would stop without notice — use $.clock.after inside a hook instead (${PROVIDER_ABI})`
+    )
+  }
+  if (kind !== 'router' && ROUTER_ONLY_METHODS.includes(call)) {
+    return (
+      `$.${call} is for the module of a provider of kind "router": this module's provider is of kind "${kind}" ` +
+      `(${PROVIDER_ABI})`
     )
   }
   const only = ONLY_METHODS[noun]

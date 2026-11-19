@@ -18,7 +18,9 @@ import {
 } from '../browser/worker/webUiBridge'
 import {
   __resetBuiltinWebUiBridgeHandlersForTests,
+  createProviderHealthStore,
   createRuntimeProvidersHost,
+  PROVIDER_HEALTH_FILE_NAME,
   initBuiltinWebUiBridgeHandlers,
 } from '../browser/worker/webUiBridge/initBuiltinHandlers'
 
@@ -246,6 +248,19 @@ describe('WebUI settings root', () => {
     expect(error).toBeInstanceOf(Error)
     expect((error as Error).message).toContain('user home unknown')
     expect(files.size).toBe(0)
+  })
+
+  it('the provider health store keeps its text under the cache directory, and rejects a read with no settings root', async () => {
+    const { fs, files } = makeMemoryFs()
+    const store = createProviderHealthStore(makeCtx(fs, null, '/home/from-env'))
+    expect(await store.read()).toBeUndefined()
+    await store.write('{"version":1,"instances":{}}')
+    expect([...files.keys()]).toEqual([`/home/from-env/.velloc/cache/${PROVIDER_HEALTH_FILE_NAME}`])
+    expect(await store.read()).toBe('{"version":1,"instances":{}}')
+
+    const unreachable = createProviderHealthStore(makeCtx(fs, null))
+    await expect(unreachable.read()).rejects.toThrow()
+    await expect(unreachable.write('x')).rejects.toThrow()
   })
 
   it('coalesces concurrent first-time callers into one lookup', async () => {

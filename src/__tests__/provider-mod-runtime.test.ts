@@ -470,6 +470,39 @@ describe('ProviderModRuntime — routing and answers', () => {
     })
   })
 
+  it('$.provider.peers answers a router module and is refused, naming the kind, for a provider module', async () => {
+    const PEERS = `
+      export function register(on) {
+        on('provider.usage', async ($) => {
+          try { return { peers: await $.provider.peers() } } catch (error) { return { refused: error.name + ': ' + error.message } }
+        })
+      }
+    `
+    const asked: string[][] = []
+    const { runtime } = world(
+      {
+        'pool/providers/router.js': { source: PEERS, providers: ['mod.pool.router'], kind: 'router' },
+        'acme/providers/zen.js': { source: PEERS, providers: ['mod.acme.zen'] },
+      },
+      {
+        providerNouns: {
+          peers: call => {
+            asked.push([...call.providers])
+            return [{ id: 'mod.acme.zen', definition: 'mod.acme.zen', kind: 'provider' }]
+          },
+        },
+      },
+    )
+    expect(await runtime.call('mod.pool.router', 'provider.usage', {})).toMatchObject({
+      raised: true,
+      value: { peers: [{ id: 'mod.acme.zen', definition: 'mod.acme.zen', kind: 'provider' }] },
+    })
+    const refused = (await runtime.call('mod.acme.zen', 'provider.usage', {})) as { value: { refused: string } }
+    expect(refused.value.refused).toMatch(/^NotAllowedError: .*kind "router".*of kind "provider"/)
+    // The provider module's call never reached the table.
+    expect(asked).toEqual([['mod.pool.router']])
+  })
+
   it('provider.job: the hook gets the job, writes $.store, and runs under the call budget when that is lower', async () => {
     const JOBS = `
       export function register(on) {
@@ -590,8 +623,8 @@ describe('provider-kind admission', () => {
 
   it('refuseProviderModuleUses: $.provider.peers is for a router alone (F-27)', () => {
     const uses = { events: [], calls: ['provider.peers'] }
-    expect(refuseProviderModuleUses(uses)).toMatch(/\$\.provider\.peers is a router's/)
-    expect(refuseProviderModuleUses(uses, 'provider')).toMatch(/\$\.provider\.peers is a router's/)
+    expect(refuseProviderModuleUses(uses)).toMatch(/\$\.provider\.peers is for the module of a provider of kind "router"/)
+    expect(refuseProviderModuleUses(uses, 'provider')).toMatch(/\$\.provider\.peers is for the module of a provider of kind "router"/)
     expect(refuseProviderModuleUses(uses, 'router')).toBeNull()
   })
 

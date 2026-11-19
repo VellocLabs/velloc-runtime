@@ -255,6 +255,9 @@ export type ProvidersAdapterContext = {
   staleEntryIds?: (id: string) => string[]
   /** Forget a runtime-only provider's "models removed" notice. */
   dismissRemovedNotice?: (id: string) => void
+  /** Forget what the health ledger holds about a provider instance, or about
+   *  one of its models. Absent = no ledger in this realm. */
+  clearPeerState?: (provider: string, model?: string) => void
   /** Any provider's model ids as it lists them now (`fetchFreshModelIds`). */
   freshModelIds?: (id: string) => Promise<{ ok: true; ids: string[] } | { ok: false; error: string }>
   /** Reload every session's plugins after a provider mod's options or its
@@ -856,6 +859,25 @@ export async function handleDismissRemoved(
 }
 
 /**
+ * `providers.clearPeerState` — forget what was recorded about a provider
+ * instance from its failed requests, or about one of its models alone. The
+ * instance id is opaque: an id nothing is recorded under is not an error.
+ */
+export async function handleClearPeerState(
+  payload: ProvidersBridgeActionMap['clearPeerState']['payload'],
+  ctx: ProvidersAdapterContext,
+): Promise<ProvidersBridgeActionMap['clearPeerState']['result']> {
+  if (typeof payload?.provider !== 'string' || payload.provider.length === 0) {
+    throw new Error('`provider` must be a non-empty string')
+  }
+  if (payload.model !== undefined && (typeof payload.model !== 'string' || payload.model.length === 0)) {
+    throw new Error('`model` must be a non-empty string when given')
+  }
+  ctx.clearPeerState?.(payload.provider, payload.model)
+  return { ok: true }
+}
+
+/**
  * `providers.freshModelIds` — a provider's model ids as it lists them now, for
  * the home page's availability count. Answers `ok: false` (never throws) when
  * the listing cannot be fetched: the page then keeps an unconfirmed count.
@@ -997,6 +1019,7 @@ export const providersHandlers = {
   setModelEntries: handleSetModelEntries,
   setUserModels: handleSetUserModels,
   dismissRemoved: handleDismissRemoved,
+  clearPeerState: handleClearPeerState,
   freshModelIds: handleFreshModelIds,
   modOptions: handleModOptions,
   setModOptions: handleSetModOptions,
@@ -1065,6 +1088,12 @@ export async function handleProvidersBridgeRequest(
       case 'dismissRemoved':
         result = await handleDismissRemoved(
           request.payload as ProvidersBridgeActionMap['dismissRemoved']['payload'],
+          ctx,
+        )
+        break
+      case 'clearPeerState':
+        result = await handleClearPeerState(
+          request.payload as ProvidersBridgeActionMap['clearPeerState']['payload'],
           ctx,
         )
         break

@@ -254,7 +254,7 @@ export function listedModelInfo(providerId: string, modelId: string): ProviderMo
 /** The cached listing plus the models the person added by hand (a provider
  *  mod's `userModels`; a listed id wins). Every reader of the listing reads
  *  this, so a hand-added model is a listed model from there on. */
-function mergedModels(providerId: string): ProviderModelInfo[] {
+export function mergedModels(providerId: string): ProviderModelInfo[] {
   return withProviderModelFacts(
     withHandAdded(providerId, listings.get(providerId)?.models ?? []),
     getProviderDefinition(providerId)?.modelFacts,

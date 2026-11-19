@@ -13,10 +13,16 @@ import {
   getWebUiBridgeHandler,
 } from '../worker/webUiBridge/registry'
 import {
+  createProviderHealthStore,
   createRuntimeProvidersHost,
   initBuiltinWebUiBridgeHandlers,
 } from '../worker/webUiBridge/initBuiltinHandlers'
-import { configureRuntimeProviders } from '../../models/drivers/runtimeProviders'
+import {
+  configureRuntimeProviders,
+  onRuntimeProviderConfigsChanged,
+  runtimeProviderConfigs,
+} from '../../models/drivers/runtimeProviders'
+import { configureProviderHealthLedger, noteProviderConfigs } from '../../models/drivers/providerHealthLedger'
 import { lendProviderHostSources } from '../../mods/provider/providerHostSources'
 import { createBrowserFsOperations } from '../../utils/BrowserFsOperations'
 import { processFs } from '../../utils/fs/runtimeFs'
@@ -257,6 +263,11 @@ export class RuntimeHub {
     // context is read per call, so a replaced transport is picked up.
     const providersHost = createRuntimeProvidersHost(webUiBridge)
     configureRuntimeProviders(providersHost)
+    // What the verdicts of failed requests said about each provider is kept
+    // on the same fs, and a changed config lifts what a new key or a payment
+    // may have fixed.
+    void configureProviderHealthLedger(createProviderHealthStore(webUiBridge))
+    onRuntimeProviderConfigsChanged(() => noteProviderConfigs(runtimeProviderConfigs()))
     // …and so does a provider module's `$.provider.setSecrets` (sealed host-side).
     lendProviderHostSources({ writeProviderConfig: (id, config) => providersHost.writeProviderConfig(id, config) })
     this.context = {

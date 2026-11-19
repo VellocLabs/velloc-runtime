@@ -130,6 +130,8 @@ export const LEGACY_WEBUI_CAPABILITIES = {
     list: 'manager', upsert: 'manager', remove: 'manager', setActive: 'manager', setOrder: 'manager',
     // `freshModelIds` makes the provider re-list (and a gateway reconcile).
     verify: 'manager', modelFamilies: 'manager', setModelEntries: 'manager', setUserModels: 'manager', dismissRemoved: 'manager', freshModelIds: 'manager',
+    // Lifts a cooldown the runtime recorded: the provider is tried again at once.
+    clearPeerState: 'manager',
     // A provider mod's plugin options: the read shows values (sensitive ones
     // never), the write reloads every session's plugins — as `mods.setOptions`.
     modOptions: 'manager', setModOptions: 'manager',

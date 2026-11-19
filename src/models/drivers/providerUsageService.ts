@@ -10,6 +10,7 @@ import type {
   ProviderUsageEntry,
   ProviderUsageState,
 } from '../usage/providerUsageState'
+import type { PlanUsageSnapshot } from '../usage/planUsage'
 import { traceLine } from '../../utils/debugLog'
 import { fetchProviderUsage, reportsUsage } from './providerDocuments'
 
@@ -27,6 +28,11 @@ export function setProviderUsagePublisher(next: ((state: ProviderUsageState) => 
 
 export function providerUsageState(): ProviderUsageState {
   return Object.fromEntries(entries)
+}
+
+/** The usage last read for `providerId`, if any. Reads the table; asks nothing. */
+export function cachedUsage(providerId: string): PlanUsageSnapshot | undefined {
+  return entries.get(providerId)?.usage
 }
 
 /**

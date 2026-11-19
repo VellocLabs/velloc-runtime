@@ -354,9 +354,6 @@ export function refuseRegistrations(
 
 // ── provider modules (Provider Mods) ──
 
-/** The `$.provider` method a router's module alone may call. */
-const ROUTER_ONLY_CALL = 'provider.peers'
-
 /**
  * Security: the reason a PROVIDER module hooks something it may not, or null. Only
  * provider events, by name or `provider.*`, and no generators: its one worker serves
@@ -428,10 +425,7 @@ export function refuseProviderModuleUses(uses: ModUses, kind: ProviderKind = 'pr
   const reasons: string[] = []
   for (const call of uses.calls) {
     const dot = call.indexOf('.')
-    const reason =
-      kind !== 'router' && call === ROUTER_ONLY_CALL
-        ? `$.${ROUTER_ONLY_CALL} is a router's: a provider module with its own endpoint cannot list the other providers (${PROVIDER_ABI})`
-        : refuseProviderModuleCall(dot === -1 ? call : call.slice(0, dot), dot === -1 ? '' : call.slice(dot + 1))
+    const reason = refuseProviderModuleCall(dot === -1 ? call : call.slice(0, dot), dot === -1 ? '' : call.slice(dot + 1), kind)
     if (reason && !reasons.includes(reason)) reasons.push(reason)
   }
   return reasons.length > 0 ? reasons.join('; ') : null

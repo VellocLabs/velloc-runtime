@@ -9,6 +9,7 @@
 import type { NexusProviderConfig } from '../../../settings/settingsTypes'
 import type { UserModelDef } from '../../../config/nexusModelConfig/userModels'
 import type { ProviderModelFamilies } from '../../../models/drivers/modelFamilies'
+import type { ClearPeerStatePayload, ClearPeerStateResult } from '../../../mods/provider/nouns/providerPeersTypes'
 
 /** Re-export for convenience — the WebUI protocol uses the same
  *  provider-config shape that settings.json persists. */
@@ -107,6 +108,15 @@ export type ProvidersBridgeActionMap = {
   dismissRemoved: {
     payload: { id: string }
     result: { ok: true }
+  }
+  /**
+   * Forget what the runtime recorded about a provider instance from its
+   * failed requests (a cooldown, a used-up allowance, a disabled key), or
+   * about one of its models alone: a router may use it again at once.
+   */
+  clearPeerState: {
+    payload: ClearPeerStatePayload
+    result: ClearPeerStateResult
   }
   freshModelIds: {
     payload: { id: string }
