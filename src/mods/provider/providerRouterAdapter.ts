@@ -13,28 +13,39 @@
  */
 import type { ProviderRouter, RouteAnswer, RouteEvent, RouteOutcomeEvent } from '../../models/drivers/providerRouter'
 import type { ProviderSeamRuntime } from './providerSeamAdapter'
-import type { Peer, PeersTableFor } from './nouns/providerPeersTypes'
+import { providerStateOf } from '../../models/drivers/providerHealthLedger'
+import type { Peer, PeersTableFor, ProviderState } from './nouns/providerPeersTypes'
+
+type CallPeers = { table: readonly Peer[]; failed: Set<string> }
 
 /**
  * The router for `providerId`. `peersTableFor` is read once per call, on its
- * first ask, and the same table is handed to every later ask of that call.
+ * first ask, and that table is handed to every later ask of the call, with
+ * the `state` of each member that failed earlier in the call read again from
+ * `stateOf`. Another call's table is never touched.
  */
 export function createModProviderRouter(
   runtime: ProviderSeamRuntime,
   providerId: string,
   peersTableFor: PeersTableFor,
+  stateOf: (instanceId: string, nowMs: number) => ProviderState = providerStateOf,
 ): ProviderRouter {
   // A call is one request context object: the resolution step hands the same
   // one to every ask of a call.
-  const peersOfCall = new WeakMap<object, readonly Peer[]>()
+  const peersOfCall = new WeakMap<object, CallPeers>()
 
   const peersFor = (event: RouteEvent): readonly Peer[] => {
     const key = event.requestContext as object
     const held = peersOfCall.get(key)
-    if (held && event.attempt > 1) return held
-    const peers = peersTableFor(providerId)
-    peersOfCall.set(key, peers)
-    return peers
+    if (!held || event.attempt === 1) {
+      const table = peersTableFor(providerId)
+      peersOfCall.set(key, { table, failed: new Set() })
+      return table
+    }
+    if (event.lastFailure) held.failed.add(event.lastFailure.provider)
+    if (held.failed.size === 0) return held.table
+    const nowMs = Date.now()
+    return held.table.map(peer => (held.failed.has(peer.id) ? { ...peer, state: stateOf(peer.id, nowMs) } : peer))
   }
 
   async function route(event: RouteEvent, signal: AbortSignal): Promise<RouteAnswer> {

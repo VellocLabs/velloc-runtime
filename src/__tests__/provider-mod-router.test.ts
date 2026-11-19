@@ -26,7 +26,7 @@ import { createModProviderRouter } from '../mods/provider/providerRouterAdapter'
 import { providerSeamListener } from '../mods/provider/providerSeamWiring'
 import type { ProviderRegistration } from '../mods/provider/providerModHost'
 import type { ProviderManifest } from '../mods/provider/providerManifest'
-import type { Peer } from '../mods/provider/nouns/providerPeersTypes'
+import type { Peer, ProviderState } from '../mods/provider/nouns/providerPeersTypes'
 import { runtimePeersTable } from '../mods/provider/nouns/providerPeersNoun'
 import { parseModelsAnswer } from '../mods/provider/providerModelsAnswer'
 import { noteRouterListing, resetRouterListings, startRouterRelisting } from '../mods/provider/routerRelisting'
@@ -197,6 +197,37 @@ describe('createModProviderRouter over the provider mod runtime', () => {
     expect(reads).toBe(1)
     await router.route(first({ ...CONTEXT } as RouteEvent['requestContext']), signal())
     expect(reads).toBe(2)
+  })
+
+  it('shows a member that failed earlier in the call in its current state, and only in that call', async () => {
+    const SEEN = `export function register(on) { on('provider.route', ($, e) => ({ provider: 'relay-b', model: 'm', states: e.peers.map(p => p.state.status) })) }`
+    let reads = 0
+    const states: Record<string, ProviderState> = {}
+    const router = createModProviderRouter(
+      routerRuntime(SEEN),
+      ROUTER,
+      () => {
+        reads += 1
+        return PEERS
+      },
+      id => states[id] ?? { status: 'ok' },
+    )
+    const call = { ...CONTEXT } as RouteEvent['requestContext']
+    const other = { ...CONTEXT } as RouteEvent['requestContext']
+    states['relay-a'] = { status: 'cooling', until: Date.now() + 60_000 }
+    // A first ask reads the table as it is, overlay or not.
+    expect(await router.route(first(call), signal())).toMatchObject({ states: ['ok', 'ok'] })
+    expect(await router.route(first(other), signal())).toMatchObject({ states: ['ok', 'ok'] })
+    expect(await router.route(afterFailure(call), signal())).toMatchObject({ states: ['cooling', 'ok'] })
+    expect(reads).toBe(2)
+    expect(PEERS[0]!.state.status).toBe('ok')
+    // A member that has not failed in this call keeps the table's state.
+    states['relay-b'] = { status: 'exhausted' }
+    expect(await router.route({ ...afterFailure(call), attempt: 3 }, signal())).toMatchObject({ states: ['cooling', 'ok'] })
+    // A new call starts from a fresh table and no overlay.
+    states['relay-a'] = { status: 'ok' }
+    expect(await router.route(first(call), signal())).toMatchObject({ states: ['ok', 'ok'] })
+    expect(reads).toBe(3)
   })
 
   it('gives two calls without a request context a context each, so neither reads the other\'s peers', async () => {
@@ -493,5 +524,56 @@ describe('a failed routed send', () => {
     const table = runtimePeersTable(ROUTER)
     expect(table.find(peer => peer.id === 'relay-a')?.state.status).toBe('cooling')
     expect(table.find(peer => peer.id === 'relay-b')?.state.status).toBe('ok')
+  })
+
+  it('lets a router that skips the failed member and reads state stop once both members failed, not bounce', async () => {
+    const sends: string[] = []
+    let n = 0
+    const transport: BrowserBridgeTransport = {
+      async request(req: any) {
+        const action = req.route.action
+        if (action === 'rawStreamOpen') {
+          sends.push(req.payload.providerId)
+          return { ok: true, result: { streamId: `raw-${++n}`, status: 429, statusText: 'S', finalUrl: req.payload.url, headers: {} } } as any
+        }
+        if (action === 'rawStreamCancel') return { ok: true, result: { ok: true } } as any
+        return { ok: true, result: { done: true, chunk: new TextEncoder().encode('slow down') } } as any
+      },
+    }
+    const SKIPS_FAILED = `
+      export function register(on) {
+        on('provider.route', ($, e) => {
+          const next = e.peers.find(p => p.connected && p.state.status === 'ok' && p.id !== e.lastFailure?.provider)
+          return next ? { provider: next.id, model: next.id === 'relay-a' ? 'm-a' : 'm-b' } : { stop: true, message: 'all members failed' }
+        })
+      }
+    `
+    registerProviderRouter(ROUTER, createModProviderRouter(routerRuntime(SKIPS_FAILED), ROUTER, runtimePeersTable), {
+      routesTo: '*',
+    })
+    const config = new DefaultRuntimeConfig({
+      providerDrivers: JSON.stringify({
+        'relay-a': { format: 'router-ledger-json', baseUrl: 'https://a.vendor.example' },
+        'relay-b': { format: 'router-ledger-json', baseUrl: 'https://b.vendor.example' },
+      }),
+    })
+    const wrapped = withModelProviders(transport, config)
+    const ask = (action: string, payload: unknown) =>
+      wrapped.request({ id: `r-${++n}`, route: { capability: 'model', action }, payload } as never) as Promise<any>
+    const started = await ask('streamStart', {
+      providerId: ROUTER,
+      model: 'row',
+      messages: [{ role: 'user', content: 'x' }],
+      maxOutputTokens: 100,
+      requestContext: { ...CONTEXT },
+    })
+    const chunks: any[] = []
+    for (let i = 0; i < 40; i += 1) {
+      const read = await ask('streamRead', { streamId: started.result.streamId, waitMs: 2000 })
+      chunks.push(...(read.result.chunks ?? []))
+      if (read.result.done) break
+    }
+    expect(sends).toEqual(['relay-a', 'relay-b'])
+    expect(chunks.find(chunk => chunk.type === 'error')?.error?.route).toMatchObject({ stop: true })
   })
 })
