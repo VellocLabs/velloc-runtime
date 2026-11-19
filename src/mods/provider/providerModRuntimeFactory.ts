@@ -33,6 +33,7 @@ import { providerHostSources } from './providerHostSources'
 import { getProviderModHost, onProviderModRegistered } from './providerModHost'
 import { createSessionEnder, setProviderSessionEnder } from './providerSessionEnd'
 import { providerSeamListener } from './providerSeamWiring'
+import { runtimePeersTable } from './nouns/providerPeersNoun'
 import { fileModBuildStore } from '../modBuildStore'
 import { pluginOwnFileReader } from './pluginOwnFiles'
 import { wireProviderStatus } from './providerStatusWiring'
@@ -99,7 +100,7 @@ export function createProviderModRuntime(deps: ProviderModRuntimeFactoryDeps): P
   // on every request it makes (and a provider whose hooks cannot be attached
   // fails closed), and - when it states id rules - its id mapper, which keeps
   // its maps with the session. Providers already registered are replayed.
-  onProviderModRegistered(providerSeamListener(report, nouns.ids))
+  onProviderModRegistered(providerSeamListener(report, nouns.ids, runtimePeersTable))
   wireProviderStatus((plugin, key) => fileModStore(modsDir, plugin, storeFs, { report }).get(key))
 
   // Read, compile and scan are the update service's admission too.

@@ -14,6 +14,8 @@ import { parseUsageAnswer, parseVerifyAnswer } from './providerAnswers'
 import { PROVIDER_EVENTS, type ProviderEventName } from './providerEvents'
 import { parseModelsAnswer } from './providerModelsAnswer'
 import type { ProviderModRuntime } from './ProviderModRuntime'
+import type { Peer } from './nouns/providerPeersTypes'
+import { noteRouterListing } from './routerRelisting'
 
 /** What a cold start (compile, spawn) may take on top of a hook's own budget
  *  before the whole call is abandoned. */
@@ -30,6 +32,8 @@ export type ProviderCodeCallDeps = {
   baseUrl: (providerId: string) => string | undefined
   report: (line: string) => void
   coldStartMs?: number
+  /** A router's peers table for `e.peers`; undefined for a provider that is not a router. */
+  peers?: (providerId: string) => Peer[] | undefined
 }
 
 /** What `ProviderModHostOptions` takes and the adapter definition carries. */
@@ -87,12 +91,18 @@ export function providerCodeCalls(deps: ProviderCodeCallDeps): ProviderCodeCalls
   const listModels: ProviderCodeCalls['listModels'] = async (_transport, providerId, options) => {
     const runtime = runtimeOf()
     const signal = bounded('provider.models', options.signal)
+    const peers = deps.peers?.(providerId)
     let outcome
     try {
       outcome = await runtime.call<unknown>(
         providerId,
         'provider.models',
-        { settings: await settingsOf(providerId), connected: deps.connected(providerId), ...baseUrlOf(providerId) },
+        {
+          settings: await settingsOf(providerId),
+          connected: deps.connected(providerId),
+          ...baseUrlOf(providerId),
+          ...(peers ? { peers } : {}),
+        },
         { signal },
       )
     } catch (error) {
@@ -102,7 +112,8 @@ export function providerCodeCalls(deps: ProviderCodeCallDeps): ProviderCodeCalls
     if (!outcome.raised) {
       throw new Error('the provider module does not list models (it has no provider.models hook)')
     }
-    const { models, ttlMs } = parseModelsAnswer(providerId, outcome.value, deps.baseUrl(providerId))
+    const { models, ttlMs } = parseModelsAnswer(providerId, outcome.value, deps.baseUrl(providerId), { router: peers !== undefined })
+    if (peers) noteRouterListing(providerId, peers)
     return { models, ...(ttlMs !== undefined ? { ttlMs } : {}) }
   }
 

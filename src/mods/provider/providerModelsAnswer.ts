@@ -88,14 +88,25 @@ function tierLabels(value: unknown, kept: readonly string[] | undefined): Partia
   return Object.keys(out).length > 0 ? out : undefined
 }
 
+const routerWireWarned = new Set<string>()
+
+/** A router has no wire of its own: a `wire` on its row is dropped, said once per router. */
+function warnRouterWireOnce(providerId: string): void {
+  if (routerWireWarned.has(providerId)) return
+  routerWireWarned.add(providerId)
+  traceLine(`[providers] ${providerId}: provider.models: a router's row carries no wire; the wire was dropped`, { level: 'warn' })
+}
+
 /**
  * The rows of `answer`. Throws when `answer` is not an array. `baseUrl` is
- * the provider's base URL, against which each row's `wire.baseUrl` is held.
+ * the provider's base URL, against which each row's `wire.baseUrl` is held;
+ * a router's rows carry no `wire`.
  */
 export function parseModelsAnswer(
   providerId: string,
   answer: unknown,
   baseUrl: string | undefined,
+  options: { router?: boolean } = {},
 ): ParsedModelsAnswer {
   let ttlMs: number | undefined
   if (isRecord(answer)) {
@@ -188,7 +199,9 @@ export function parseModelsAnswer(
     else if (taggedFree) row.free = true
     const cost = price(raw.price)
     if (cost) row.price = cost
-    if (raw.wire !== undefined) {
+    if (raw.wire !== undefined && options.router) {
+      warnRouterWireOnce(providerId)
+    } else if (raw.wire !== undefined) {
       const wire = sanitizeModelWire(providerId, raw.wire, baseUrl)
       if (wire) row.wire = wire
     }

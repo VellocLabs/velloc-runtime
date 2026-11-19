@@ -8,7 +8,10 @@ import {
   registerProviderRequestSeam,
   type ProviderRequestSeam,
 } from '../../models/drivers/providerRequestSeam'
+import { registerProviderRouter } from '../../models/drivers/providerRouter'
 import type { ProviderRegisteredListener, ProviderRegistration } from './providerModHost'
+import type { PeersTableFor } from './nouns/providerPeersTypes'
+import { createModProviderRouter } from './providerRouterAdapter'
 import { ProviderIdMapper } from './ids/idMapper'
 import type { ProviderIdDeps } from './nouns/providerNounDeps'
 import { createIdsHook, createProviderSeam } from './providerSeamAdapter'
@@ -63,10 +66,27 @@ export function seamForRegistration(
   }
 }
 
-/** The listener for `onProviderModRegistered`: plug the seam in, and take it
- *  out when the provider is replaced or removed. */
-export function providerSeamListener(report: (line: string) => void, ids?: ProviderIdDeps): ProviderRegisteredListener {
+/** The listener for `onProviderModRegistered`: plug the seam (a router's
+ *  router) in, and take it out when the provider is replaced or removed. */
+export function providerSeamListener(
+  report: (line: string) => void,
+  ids?: ProviderIdDeps,
+  peersTableFor?: PeersTableFor,
+): ProviderRegisteredListener {
   return registration => {
+    // A router has no wire, so no request seam: a router in its place, held to
+    // its `routesTo` and retried under its own declared policy.
+    if (registration.manifest.kind === 'router') {
+      const table = peersTableFor ?? ((): [] => [])
+      return registerProviderRouter(
+        registration.providerId,
+        createModProviderRouter(registration.runtime, registration.providerId, table),
+        {
+          routesTo: registration.manifest.routesTo ?? [],
+          ...(registration.manifest.policy?.retry ? { retry: registration.manifest.policy.retry } : {}),
+        },
+      )
+    }
     const unplug = registerProviderRequestSeam(registration.providerId, seamForRegistration(registration, report, ids))
     // A removed provider's pools go with it. A replaced one is attached again
     // in the same task, and keeps them: its new module may already have

@@ -106,9 +106,11 @@ export function modProviderDefinition(options: ModProviderDefinitionOptions): Pr
     // The person picks from the vendor's listing, as with a gateway.
     filterMode: 'passthrough',
     defaultBaseUrl: manifest.defaultBaseUrl,
-    wire: { format: manifest.format, ...manifest.wire },
     models: [],
   }
+  const router = manifest.kind === 'router'
+  // A router has no wire: each request goes out as its target's.
+  if (!router) config.wire = { format: manifest.format, ...manifest.wire }
   const tiers = manifest.modelsUi?.tierModels
   if (tiers?.best) config.bestModel = tiers.best
   if (tiers?.balanced) config.balancedModel = tiers.balanced
@@ -117,6 +119,7 @@ export function modProviderDefinition(options: ModProviderDefinitionOptions): Pr
   const definition: ProviderDefinition = {
     config,
     runtimeOnly: true,
+    ...(router ? { router: true as const } : {}),
     // The English name stands for the row's plain `label`; the page resolves
     // the person's language from `catalogMod.displayName`.
     label: resolveLocalizedText(manifest.displayName, 'en'),
@@ -146,6 +149,7 @@ export function modProviderDefinition(options: ModProviderDefinitionOptions): Pr
       prompts: manifest.credentials.prompts ?? [],
       ...(manifest.modelsUi ? { modelsUi: manifest.modelsUi } : {}),
       ...(manifest.credentials.readsSecrets ? { readsSecrets: true } : {}),
+      ...(router ? { kind: 'router' as const, routesTo: manifest.routesTo ?? [] } : {}),
     },
   }
   return definition

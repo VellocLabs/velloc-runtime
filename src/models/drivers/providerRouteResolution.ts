@@ -25,6 +25,7 @@ import { resolveProviderSpec } from './driverRegistry'
 import type { ProviderSpec } from './driverTypes'
 import { ProviderConfigError, type ModelProvider } from './modelProvider'
 import { verdictOfFailure, type FailureEvent } from './providerClassify'
+import { recordProviderVerdict } from './providerHealthLedger'
 import { OUTCOME_CALL_FIELD } from './providerOutcome'
 import { thinkingTierOf } from './providerRequestSeam'
 import { checkRouteAnswer, type CheckedRouteAnswer, type RouteAnswerFacts, type RouteTarget } from './providerRouteAnswer'
@@ -176,6 +177,7 @@ export function routeCall(
       // A failure nothing classifies is not put to the router.
       if (!failed) return { kind: 'none' }
       call.lastFailure = failed
+      recordProviderVerdict(failed.provider, failed.model, failed.verdict, Date.now())
       const answer = await ask(signal)
       if (answer.kind === 'stop') {
         call.decided = { stop: true, ...(answer.message !== undefined ? { message: answer.message } : {}) }

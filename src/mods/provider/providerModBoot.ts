@@ -22,6 +22,8 @@ import { traceLine } from '../../utils/debugLog'
 import type { RuntimeFs } from '../../utils/fs/runtimeFs'
 import type { ActivePlugin } from '../../pluginHost/pluginModel'
 import { providerCodeCalls } from './providerCodeCalls'
+import { runtimePeersTable } from './nouns/providerPeersNoun'
+import { startRouterRelisting, type RouterRelisting } from './routerRelisting'
 import { providerSettingValues } from './nouns/providerSettingsNoun'
 import type { ProviderManifest } from './providerManifest'
 import {
@@ -189,8 +191,12 @@ export function disposeProviderModBoot(): void {
   configureProviderModUpdates(null)
   stopGateWatch?.()
   stopGateWatch = undefined
+  routerRelisting?.dispose()
+  routerRelisting = undefined
   current = undefined
 }
+
+let routerRelisting: RouterRelisting | undefined
 
 /**
  * `e.settings` of `provider.models` / `.verify` / `.usage`: the same values
@@ -217,6 +223,8 @@ export async function providerEventSettings(
 export async function bootProviderMods(deps: ProviderModBootDeps): Promise<void> {
   current = deps
   const host = getProviderModHost()
+  const routerIds = (): string[] =>
+    host.registered().filter(entry => entry.manifest.kind === 'router').map(entry => entry.providerId)
   // `provider.models` / `.verify` / `.usage`: what the runtime's listing,
   // key check and usage paths call for a provider mod.
   const calls = providerCodeCalls({
@@ -226,6 +234,7 @@ export async function bootProviderMods(deps: ProviderModBootDeps): Promise<void>
     // The same values `$.provider.settings()` answers: the declared settings
     // over the plugin's stored options.
     settings: providerId => providerEventSettings(deps, host.registered().find(entry => entry.providerId === providerId)),
+    peers: providerId => (routerIds().includes(providerId) ? runtimePeersTable(providerId) : undefined),
     report,
   })
   host.configure({
@@ -253,6 +262,19 @@ export async function bootProviderMods(deps: ProviderModBootDeps): Promise<void>
       if (!transport || !isProviderSetUp(providerId)) return
       await refreshRuntimeProviderModels(transport, providerId, { pickDefaults: true })
     },
+  })
+  // A router lists its rows over its peers: a change to the set-up providers
+  // lists it again.
+  routerRelisting?.dispose()
+  routerRelisting = startRouterRelisting({
+    onProvidersChanged: onRuntimeProviderConfigsChanged,
+    routerIds,
+    peersOf: runtimePeersTable,
+    relist: async providerId => {
+      const transport = deps.transport?.()
+      if (transport) await refreshRuntimeProviderModels(transport, providerId, { force: true })
+    },
+    report,
   })
   configureContributions(deps)
   await reloadProviderMods()
