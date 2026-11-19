@@ -187,10 +187,7 @@ export function withRequestLog(
       const { capability, action } = request.route as { capability: string; action: string }
       if (capability !== 'model') return served.request(request)
       const startedMs = Date.now()
-      let response: Awaited<ReturnType<BrowserBridgeTransport['request']>>
-      try {
-        response = await served.request(request)
-      } catch (error) {
+      const response = await served.request(request).catch((error: unknown) => {
         try {
           const streamId = text(fields(request.payload).streamId)
           if (streamId && action !== 'streamStart') finish(streamId, { outcome: 'aborted' })
@@ -198,7 +195,7 @@ export function withRequestLog(
           // An observer: a request is never failed for its row.
         }
         throw error
-      }
+      })
       try {
         observe(String(action), fields(request.payload), fields(response), startedMs)
       } catch {
