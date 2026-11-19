@@ -1,0 +1,84 @@
+import { createContext, useContext } from 'react'
+import type { RoutedVia } from '../../models/drivers/providerRouter'
+import type { BrowserLlmCatalog, BrowserLlmProvider } from '../bridge/protocol/nexus_llm'
+import { displayModelLabel } from '../../config/nexusModelConfig/modelDisplay'
+import type { MessageKey } from './i18n/messages/en'
+import type { TranslateFn } from './i18n/translate'
+
+/** Thread-message `metadata.custom` key holding a routed reply's record (F-27). */
+export const ROUTED_VIA_KEY = 'routedVia'
+
+/** True for a router provider: decided by the catalog row's `kind`, never by its id. */
+export function isRouterProvider(provider: Pick<BrowserLlmProvider, 'mod'>): boolean {
+  return provider.mod?.kind === 'router'
+}
+
+function isTarget(value: unknown): value is { provider: string; model: string } {
+  const v = value as { provider?: unknown; model?: unknown } | null
+  return !!v && typeof v.provider === 'string' && typeof v.model === 'string'
+}
+
+/** The stored record of a reply row, when it is well formed; anything else reads as no route. */
+export function routedViaOfRow(row: unknown): RoutedVia | undefined {
+  const via = (row as { routedVia?: unknown } | null)?.routedVia
+  if (!isTarget(via)) return undefined
+  const out: RoutedVia = { provider: via.provider, model: via.model }
+  const from = (via as { switchedFrom?: unknown }).switchedFrom
+  if (isTarget(from)) {
+    const reason = (from as { reason?: unknown }).reason
+    out.switchedFrom = {
+      provider: from.provider,
+      model: from.model,
+      ...(typeof reason === 'string' ? { reason: reason as NonNullable<RoutedVia['switchedFrom']>['reason'] } : {}),
+    }
+  }
+  return out
+}
+
+/** Who served the session's most recent routed reply, read from its transcript rows. */
+export function latestRoutedVia(rows: readonly unknown[]): RoutedVia | undefined {
+  for (let i = rows.length - 1; i >= 0; i -= 1) {
+    const via = routedViaOfRow(rows[i])
+    if (via) return via
+  }
+  return undefined
+}
+
+/**
+ * A member's name: the provider's label and the model's display name. A
+ * provider id is opaque: an unknown provider falls back to its stored id
+ * whole, an unknown model to its raw id.
+ */
+export function routeMemberName(
+  t: TranslateFn,
+  catalog: Pick<BrowserLlmCatalog, 'providers'> | null | undefined,
+  target: { provider: string; model: string },
+): string {
+  const provider = catalog?.providers.find((p) => p.id === target.provider)
+  const model = provider?.models.find((m) => m.id === target.model)
+  const providerName = provider?.label || target.provider
+  const modelName = model ? displayModelLabel(provider!.id, model.label || model.id, model) : target.model
+  return t('routeMember.name', { model: modelName, source: providerName })
+}
+
+const NOTICE_KEYS: Record<string, MessageKey> = {
+  rate_limit: 'routeNotice.rate_limit',
+  quota: 'routeNotice.quota',
+  billing: 'routeNotice.billing',
+  credentials: 'routeNotice.credentials',
+  model_unavailable: 'routeNotice.model_unavailable',
+  service: 'routeNotice.service',
+  network: 'routeNotice.network',
+}
+
+/** The catalog sentence for a switch, by the failed send's verdict kind. */
+export function routeNoticeKey(reason: string | undefined): MessageKey {
+  return (reason && NOTICE_KEYS[reason]) || 'routeNotice.other'
+}
+
+/** The catalog the conversation names route members from; empty outside a thread. */
+export const RouteNamesContext = createContext<Pick<BrowserLlmCatalog, 'providers'> | null>(null)
+
+export function useRouteNames(): Pick<BrowserLlmCatalog, 'providers'> | null {
+  return useContext(RouteNamesContext)
+}

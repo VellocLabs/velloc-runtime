@@ -7,6 +7,7 @@ import {
   MoreHorizontalIcon,
   PencilIcon,
   PinIcon,
+  RouteIcon,
   SettingsIcon,
 } from "lucide-react";
 import { DropdownMenu as DropdownMenuPrimitive } from "radix-ui";
@@ -37,6 +38,7 @@ import {
 import { activeModelLabel, findActiveModel } from "./activeModel";
 import { useProviderUsage } from "./providerUsageStore";
 import { ProviderIcon } from "./ProviderIcon";
+import { isRouterProvider, routeMemberName } from "./routeDisplay";
 import { CUSTOM_PROVIDER_ID_PREFIX } from "../../config/customProviderRegistry";
 import type {
   BrowserLlmCatalog,
@@ -134,6 +136,9 @@ export type ModelQuickPickerProps = {
    * change never jumps. Ignored with `triggerClassName`/`triggerContent`.
    */
   steppedWidth?: boolean;
+  /** Who served this session's most recent routed reply: named on the
+   *  active row of a router provider (F-27). */
+  routeMember?: { provider: string; model: string };
 };
 
 /** Trigger widths (px) a stepped trigger snaps up to; the last is its cap. */
@@ -266,6 +271,7 @@ function ModelQuickPickerImpl({
   modelsHeading,
   providerMenu,
   steppedWidth,
+  routeMember,
 }: ModelQuickPickerProps) {
   const t = useT();
   const [open, setOpen] = React.useState(false);
@@ -622,7 +628,25 @@ function ModelQuickPickerImpl({
                             isActiveModel ? "opacity-100" : "opacity-0",
                           )}
                         />
-                        <span className="truncate">{displayModelLabel(provider.id, model.label, model)}</span>
+                        {isRouterProvider(provider) ? (
+                          <RouteIcon
+                            role="img"
+                            aria-label={t("modelPicker.routeIcon")}
+                            data-testid={`${testIdPrefix}-route-icon-${provider.id}-${model.id}`}
+                            className="size-3.5 shrink-0 text-muted-foreground"
+                          />
+                        ) : null}
+                        <span className="flex min-w-0 flex-col">
+                          <span className="truncate">{displayModelLabel(provider.id, model.label, model)}</span>
+                          {isRouterProvider(provider) && isActiveModel && routeMember ? (
+                            <span
+                              data-testid={`${testIdPrefix}-route-member-${provider.id}-${model.id}`}
+                              className="truncate text-muted-foreground text-xs"
+                            >
+                              {t("modelPicker.routeVia", { member: routeMemberName(t, catalog, routeMember) })}
+                            </span>
+                          ) : null}
+                        </span>
                         {model.free ? <FreeModelIcon /> : null}
                         <EntryMarks model={model} />
                       </button>

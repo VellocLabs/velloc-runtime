@@ -3490,6 +3490,19 @@ export const en = {
     'Log out of this desktop',
   'remote.fullscreen.enter': 'Enter full screen',
   'remote.fullscreen.exit': 'Exit full screen',
+  "routeNotice.rate_limit": "{from} hit its rate limit. Switched to {to}.",
+  "routeNotice.quota": "{from} is out of quota. Switched to {to}.",
+  "routeNotice.billing": "{from} has a billing problem. Switched to {to}.",
+  "routeNotice.credentials": "{from} rejected the credentials. Switched to {to}.",
+  "routeNotice.model_unavailable": "{from} cannot use this model. Switched to {to}.",
+  "routeNotice.service": "{from} had a server error. Switched to {to}.",
+  "routeNotice.network": "{from} could not be reached. Switched to {to}.",
+  "routeNotice.other": "Switched from {from} to {to}.",
+  "routeNotice.label": "Route change",
+  "modelPicker.routeVia": "via {member}",
+  "modelPicker.routeIcon": "Route",
+  "routeMember.name": "{model} · {source}",
+  "routeReply.servedBy": "Served by {member}",
 }
 
 /** Union of every valid message key (derived from the English catalog). */

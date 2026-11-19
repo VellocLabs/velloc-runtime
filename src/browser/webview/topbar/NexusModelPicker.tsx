@@ -49,6 +49,8 @@ export type NexusModelPickerProps = {
    *  here (a teammate's). `inertWhy` says why. */
   disabled?: boolean;
   inertWhy?: string;
+  /** Who served the session's most recent routed reply (F-27). */
+  routeMember?: { provider: string; model: string };
 };
 
 function NexusModelPickerImpl({

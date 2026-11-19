@@ -28,6 +28,7 @@ import {
   useMessageCustomString,
   userMessagePlainText,
 } from './message-row-shared';
+import { RouteMemberLabel, RouteSwitchNotice } from './route-lines';
 
 const MessageError: FC = () => {
   return (
@@ -89,6 +90,7 @@ export const ReplyRow: FC = () => {
       data-role="assistant"
     >
       <ChapterMarkBadge messageId={messageId} className="absolute -left-5 top-3.5" />
+      <RouteSwitchNotice />
       {/* `group` wraps ONLY the content (the footer is absolute, so the group's
           box = the message text). The action bar's visibility is driven by
           group-hover on THIS box, NOT the whole padded row — so when the cursor
@@ -157,6 +159,7 @@ const AssistantActionBar: FC = () => {
     >
       <MessageCopyButton />
       <RowClock />
+      <RouteMemberLabel />
     </ActionBarPrimitive.Root>
   );
 };

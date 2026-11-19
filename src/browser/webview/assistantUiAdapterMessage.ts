@@ -1,4 +1,5 @@
 import { reviewNoticeRunId } from '../../codeReview/review-protocol'
+import { ROUTED_VIA_KEY, routedViaOfRow } from './routeDisplay'
 import type { ThreadMessageLike } from '@assistant-ui/react'
 import type { ModelReplyRow, Message, UserRow } from '../../runtime/RuntimeTypes'
 import { SYSTEM_SUBTYPE_COMPACT_BOUNDARY } from '../../runtime/VercelModelConstants'
@@ -298,6 +299,7 @@ export function convertTranscriptMessage(
           custom: {
             model: assistantMessage.message.model,
             stopReason: assistantMessage.message.stop_reason,
+            ...routedViaCustom(assistantMessage),
             ...a2uiBlockKeysOf(assistantMessage.uuid, assistantMessage.message.content),
           },
         },
@@ -529,4 +531,10 @@ function commandOutputStampOf(message: unknown): { commandOutput?: { command: st
   return stamp && typeof stamp.name === 'string' && typeof stamp.args === 'string'
     ? { commandOutput: { command: stamp.name, args: stamp.args } }
     : {}
+}
+
+/** A routed reply's record, carried to the row so its member and switch notice draw (F-27). */
+function routedViaCustom(row: unknown): Record<string, unknown> {
+  const via = routedViaOfRow(row)
+  return via ? { [ROUTED_VIA_KEY]: via } : {}
 }

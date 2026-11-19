@@ -1,3 +1,4 @@
+import { RouteNamesContext } from './routeDisplay'
 import { ModUiContext } from '../../components/assistant-ui/mod-ui-context'
 import {
   AgentChangesContext,
@@ -1143,6 +1144,7 @@ function InteractiveAssistantUiThread({
   }, [state.snapshot?.lastTerminalReason, state.transcriptMessages, state.status])
 
   return (
+    <RouteNamesContext.Provider value={state.snapshot?.modelCatalog ?? null}>
     <ComposerDeliveryContext.Provider value={composerDelivery}>
     <AssistantRuntimeProvider runtime={runtime}>
       <HistoryContentWindowContext.Provider value={historyContentWindow}>
@@ -1430,6 +1432,7 @@ function InteractiveAssistantUiThread({
       </HistoryContentWindowContext.Provider>
     </AssistantRuntimeProvider>
     </ComposerDeliveryContext.Provider>
+    </RouteNamesContext.Provider>
   )
 }
 

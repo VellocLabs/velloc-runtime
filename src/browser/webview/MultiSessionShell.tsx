@@ -1,3 +1,4 @@
+import { latestRoutedVia } from './routeDisplay'
 import {
   Suspense,
   useEffect,
@@ -2487,6 +2488,7 @@ export function MultiSessionShell({
 
   const activeSelection = activeState.snapshot?.currentSelection
   const topbarSelection = topbarModelSelection(activeState, topbarShownSelectionRef.current)
+  const routeMember = useMemo(() => latestRoutedVia(activeState.transcriptMessages), [activeState.transcriptMessages])
   topbarShownSelectionRef.current = topbarSelection
   // Track the last DEFINED active selection for new-thread inheritance. Only
   // overwrite when defined: by the time createSessionInitPayload runs for a
@@ -3081,6 +3083,7 @@ export function MultiSessionShell({
         onSelectModel={handleTopbarSelectModel}
         sessionKindLabel={activeCliSession ? getTemplateTitle(activeCliSession.type) : undefined}
         modelPickerOpenToken={modelPickerOpenToken}
+        routeMember={routeMember}
         onOpenSettings={handleOpenNexusSettings}
         onOpenProviderSettings={handleOpenProviderSettings}
         onPressPluginItem={runtimeConnection ? handlePressPluginItem : undefined}

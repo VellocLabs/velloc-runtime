@@ -98,6 +98,8 @@ export type NexusTopBarProps = {
   /** Programmatic-open signal for the model picker popover (increment to
    *  open) — see NexusModelPickerProps.openToken. */
   modelPickerOpenToken?: number;
+  /** Who served the active session's most recent routed reply (F-27). */
+  routeMember?: { provider: string; model: string };
   /** Sidebar collapsed state + toggle: the control right after the model
    *  picker, global across sessions; omitted on hosts that don't render a
    *  sidebar (the button hides). */
@@ -233,6 +235,7 @@ export function NexusTopBar({
   onOpenSettings,
   onOpenProviderSettings,
   modelPickerOpenToken,
+  routeMember,
   sidebarCollapsed,
   onToggleSidebar,
   searchSlot,
@@ -396,6 +399,7 @@ export function NexusTopBar({
           onOpenSettings={handleOpenModelSettings}
           onOpenProviderSettings={onOpenProviderSettings}
           openToken={modelPickerOpenToken}
+          routeMember={routeMember}
           // A teammate keeps the model its lead spawned it on — read-only
           // here, and the page refuses the change anyway
           // (useMultiSessionClients.setModelSelection).
