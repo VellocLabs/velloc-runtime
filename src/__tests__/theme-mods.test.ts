@@ -129,7 +129,7 @@ describe('theme mods', () => {
     expect(isThemeModsScopePayload({ scope: 'conversation' })).toBe(true)
     expect(isThemeModsScopePayload({ scope: 'sidebar' })).toBe(false)
     expect(isThemeModsScopePayload({ scope: 'window', mods: [] })).toBe(false)
-    expect(readThemeModsState({ mods: [AURORA] })).toEqual({ mods: [AURORA], backdropScope: 'window', single: false })
+    expect(readThemeModsState({ mods: [AURORA] })).toEqual({ mods: [AURORA], backdropScope: 'window', single: false, on: 0 })
     expect(readThemeModsState({ backdropScope: 'window', single: false })).toBeNull()
   })
 
@@ -137,11 +137,11 @@ describe('theme mods', () => {
     const r = rig({ version: 1, mods: { themeMods: [AURORA] } })
     r.subscribe()
     await expect.poll(() => r.events.length).toBe(1)
-    expect(r.events[0]).toEqual({ mods: [AURORA], backdropScope: 'window', single: false })
+    expect(r.events[0]).toEqual({ mods: [AURORA], backdropScope: 'window', single: false, on: 0 })
     // A session recorded another plugin since.
     r.replace({ version: 1, mods: { themeMods: [AURORA, LOCAL] } })
-    expect(await r.ask('read')).toEqual({ mods: [AURORA, LOCAL], backdropScope: 'window', single: false })
-    expect(r.events.at(-1)).toEqual({ mods: [AURORA, LOCAL], backdropScope: 'window', single: false })
+    expect(await r.ask('read')).toEqual({ mods: [AURORA, LOCAL], backdropScope: 'window', single: false, on: 0 })
+    expect(r.events.at(-1)).toEqual({ mods: [AURORA, LOCAL], backdropScope: 'window', single: false, on: 0 })
   })
 
   it('stores a reach other than the default, keeps the rest of the section, and publishes it', async () => {
@@ -152,6 +152,7 @@ describe('theme mods', () => {
       mods: [AURORA],
       backdropScope: 'conversation',
       single: false,
+      on: 0,
     })
     expect(r.current().mods).toEqual({ headless: true, themeMods: [AURORA], backdropScope: 'conversation' })
     expect(r.events.at(-1)!.backdropScope).toBe('conversation')
@@ -164,7 +165,7 @@ describe('theme mods', () => {
     const r = rig({ version: 1, mods: { themeMods: [AURORA] } })
     expect(isThemeModsSinglePayload({ on: true })).toBe(true)
     expect(isThemeModsSinglePayload({ on: 'yes' })).toBe(false)
-    expect(await r.ask('setSingle', { on: true })).toEqual({ mods: [AURORA], backdropScope: 'window', single: true })
+    expect(await r.ask('setSingle', { on: true })).toEqual({ mods: [AURORA], backdropScope: 'window', single: true, on: 0 })
     expect(r.current().mods).toEqual({ themeMods: [AURORA], singleThemeMod: true })
     await r.ask('setSingle', { on: false })
     expect(r.current().mods).toEqual({ themeMods: [AURORA] })
@@ -175,7 +176,9 @@ describe('theme mods', () => {
     const two = { plugin: 'two', id: 'two@builtin' }
     const r = rig({ version: 1, mods: { themeMods: [one, two] }, enabledPlugins: { 'two@builtin': false, 'other@builtin': true } })
     expect(r.registry.resolve('themeMods', 'turnOffAll')!.spec.scope).toBe('manager')
+    expect(((await r.ask('read')) as { on: number }).on).toBe(1)
     expect(await r.ask('turnOffAll')).toEqual({ ok: true, turnedOff: 1 })
+    expect(((await r.ask('read')) as { on: number }).on).toBe(0)
     expect(r.current().enabledPlugins).toEqual({ 'one@builtin': false, 'two@builtin': false, 'other@builtin': true })
     expect(r.reloads()).toBe(1)
     expect(await r.ask('turnOffAll')).toEqual({ ok: true, turnedOff: 0 })

@@ -61,6 +61,20 @@ async function localEnabled(root: string, fs: RuntimeFs): Promise<boolean> {
   return names?.includes(basenameRuntimePath(folder)) ?? false
 }
 
+/** The theme plugins that are enabled now. */
+export async function enabledThemePlugins(homeDir: string, fs: RuntimeFs): Promise<ThemeModEntry[]> {
+  const known = await knownThemePlugins(homeDir, fs)
+  if (known.length === 0) return []
+  const { settings } = await readLayerFresh('userSettings', { homeDir }, fs)
+  const enabled = settings.enabledPlugins ?? {}
+  const out: ThemeModEntry[] = []
+  for (const mod of known) {
+    const on = mod.id.endsWith('@inline') ? !!mod.root && (await localEnabled(mod.root, fs)) : enabled[mod.id] !== false
+    if (on) out.push(mod)
+  }
+  return out
+}
+
 /**
  * Switches off every enabled theme plugin except those named `keep`, then
  * reloads the open sessions once, also when a later write fails after some

@@ -62,6 +62,8 @@ export type ThemeBrowserProps = {
 export type ThemePluginOptions = {
   /** Null until the runtime has answered. */
   single: boolean | null
+  /** How many theme plugins are enabled; null until the runtime has answered. */
+  on: number | null
   setSingle?: (on: boolean) => Promise<void>
   /** Answers how many theme plugins were on. */
   turnOffAll?: () => Promise<number>
@@ -446,7 +448,7 @@ function PluginOptions({
           variant="outline"
           size="xs"
           data-testid="customize-themes-turn-off"
-          disabled={busy}
+          disabled={busy || !options.on}
           onClick={() => onTurnOff(turnOffAll)}
         >
           {t('customize.themes.turnOffAll')}

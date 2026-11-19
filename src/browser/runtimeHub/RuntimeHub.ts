@@ -233,6 +233,7 @@ export class RuntimeHub {
   private _bootBuild: string | null = null
   /** The in-flight `host.resolveHomeDir`, shared by every request waiting on it. */
   private homeProbe: Promise<void> | null = null
+  private themeMods: { publish(): Promise<void> } | null = null
 
   constructor(private readonly host: RuntimeHubHost) {
     this.presence = new PresenceTable(change => host.onPresenceChanged?.(change))
@@ -381,7 +382,7 @@ export class RuntimeHub {
     // Theme mods (F-25): the plugins that have set a theme and the
     // backdrop's reach on `mods/themes`; `read` is `observe`,
     // `setBackdropScope` is `control`.
-    registerThemeModsCapability(this.registry, this.broker, {
+    this.themeMods = registerThemeModsCapability(this.registry, this.broker, {
       context: () => ({ fs: this.context.webUiBridge.fs }),
       resolveHome: () => resolveHostHome(this.context),
       reload: () => this.host.reloadPluginsOnAllSessions(),
@@ -478,6 +479,11 @@ export class RuntimeHub {
    * the onStatusChanged subscription); `false` disarms it so ZERO host calls
    * are made — the no-interface-version-bump rule.
    */
+  /** The installed or enabled plugins changed: topics derived from them are read again. */
+  pluginSetChanged(): void {
+    void this.themeMods?.publish().catch(() => undefined)
+  }
+
   setRemoteAccessSupported(supported: boolean): void {
     // Arming both is all this does. The sharing pairing is NOT ensured here:
     // the ensure needs `access().enabled` and the host's stored rows, and both

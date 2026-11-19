@@ -3136,6 +3136,7 @@ export class SharedWorkerSessionManager {
     void import('../../mods/provider/providerModBoot')
       .then(m => m.reloadProviderMods())
       .catch(err => console.warn('[SharedWorkerSessionManager] provider-mod reload failed:', err instanceof Error ? err.message : err))
+    this.runtimeHub.pluginSetChanged()
     for (const [sessionId, entry] of this.sessions) {
       void entry.worker
         .receiveFrame({ type: 'worker.reloadPlugins' })

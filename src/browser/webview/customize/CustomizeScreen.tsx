@@ -91,11 +91,18 @@ export function CustomizeScreen({
   const shelves = useMarketplaceShelves(bridge, names, tab.describeMarketplace)
   const themes = useThemeCatalog(bridge, runtimeConnection, selection.kind === 'themes')
   const themeMods = useThemeMods(selection.kind === 'themes' ? runtimeConnection : undefined)
+  const themesShown = selection.kind === 'themes'
+  const refreshThemeMods = themeMods.refresh
+  React.useEffect(() => {
+    // A session may have recorded a theme plugin since the topic was last read.
+    if (themesShown) refreshThemeMods()
+  }, [themesShown, refreshThemeMods])
   const canSetSingle = useCan('themeMods', 'setSingle')
   const canTurnOff = useCan('themeMods', 'turnOffAll')
   const themeOptions = React.useMemo(
     () => ({
       single: themeMods.state?.single ?? null,
+      on: themeMods.state?.on ?? null,
       ...(canSetSingle ? { setSingle: themeMods.setSingle } : {}),
       ...(canTurnOff ? { turnOffAll: themeMods.turnOffAll } : {}),
     }),

@@ -18,7 +18,7 @@ import {
   type ThemeModsState,
   type ThemeModsTurnOffResult,
 } from '../../mods/themeMods'
-import { turnOffThemePlugins } from '../../mods/themePlugins'
+import { enabledThemePlugins, turnOffThemePlugins } from '../../mods/themePlugins'
 import { readLayerFresh, updateSectionInSource } from '../../settings/settingsStore'
 import type { RuntimeFs } from '../../utils/fs/runtimeFs'
 import { scopeAllows, type CapabilityRegistry } from './CapabilityRegistry'
@@ -35,7 +35,7 @@ export type ThemeModsCapabilityOptions = {
   report?: (line: string) => void
 }
 
-const EMPTY: ThemeModsState = { mods: [], backdropScope: DEFAULT_THEME_BACKDROP_SCOPE, single: false }
+const EMPTY: ThemeModsState = { mods: [], backdropScope: DEFAULT_THEME_BACKDROP_SCOPE, single: false, on: 0 }
 
 export function registerThemeModsCapability(
   registry: CapabilityRegistry,
@@ -48,11 +48,17 @@ export function registerThemeModsCapability(
     try {
       const homeDir = await options.resolveHome().catch(() => '')
       if (!homeDir) return EMPTY
-      const { settings } = await readLayerFresh('userSettings', { homeDir }, options.context().fs)
+      const fs = options.context().fs
+      const { settings } = await readLayerFresh('userSettings', { homeDir }, fs)
+      const on = await enabledThemePlugins(homeDir, fs).then(
+        list => list.length,
+        () => 0,
+      )
       return {
         mods: settings.mods?.themeMods ?? [],
         backdropScope: settings.mods?.backdropScope ?? DEFAULT_THEME_BACKDROP_SCOPE,
         single: settings.mods?.singleThemeMod === true,
+        on,
       }
     } catch (error) {
       report(`the theme mods could not be read: ${error instanceof Error ? error.message : String(error)}`)

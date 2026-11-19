@@ -41,8 +41,8 @@ export const THEME_MODS_ACTION_SCOPES = {
 } as const satisfies Record<string, ScopeMode>
 export type ThemeModsAction = keyof typeof THEME_MODS_ACTION_SCOPES
 
-/** `single`: enabling one theme mod disables the others. */
-export type ThemeModsState = { mods: ThemeModEntry[]; backdropScope: ThemeBackdropScope; single: boolean }
+/** `single`: enabling one theme mod disables the others. `on`: how many theme plugins are enabled. */
+export type ThemeModsState = { mods: ThemeModEntry[]; backdropScope: ThemeBackdropScope; single: boolean; on: number }
 export type ThemeModsScopePayload = { scope: ThemeBackdropScope }
 export type ThemeModsSinglePayload = { on: boolean }
 
@@ -92,6 +92,7 @@ export function readThemeModsState(value: unknown): ThemeModsState | null {
     mods: readThemeMods(value.mods),
     backdropScope: isThemeBackdropScope(value.backdropScope) ? value.backdropScope : DEFAULT_THEME_BACKDROP_SCOPE,
     single: value.single === true,
+    on: typeof value.on === 'number' && Number.isInteger(value.on) && value.on >= 0 ? value.on : 0,
   }
 }
 

@@ -71,6 +71,8 @@ function setup(
     single?: boolean
     /** How many theme plugins `themeMods.turnOffAll` finds on. */
     turnedOff?: number
+    /** How many theme plugins the runtime publishes as enabled. */
+    on?: number
     /** Runtime actions this connection may not ask. */
     deny?: string[]
   } = {},
@@ -107,10 +109,15 @@ function setup(
       }
     },
   } as unknown as NexusSettingsBridge
+  let themesOn = options.on ?? 2
+  let themesListener: ((event: { type: string; payload: unknown }) => void) | null = null
+  const publishThemes = () =>
+    themesListener?.({ type: 'state', payload: { mods: [], backdropScope: 'window', single: options.single === true, on: themesOn } })
   const connection = {
     subscribe: (topic: string, listener: (event: { type: string; payload: unknown }) => void) => {
       if (topic === 'mods/themes') {
-        listener({ type: 'state', payload: { mods: [], backdropScope: 'window', single: options.single === true } })
+        themesListener = listener
+        publishThemes()
       }
       return () => {}
     },
@@ -118,12 +125,20 @@ function setup(
     request: async (route: string, payload: unknown) => {
       if (route === 'customizePage.show') return { tabId: 7, created: true }
       if (route === 'customizePage.describeMarketplace') return { plugins: {} }
+      if (route === 'themeMods.read') {
+        publishThemes()
+        return { ok: true }
+      }
       runtimeAsked.push(`${route} ${JSON.stringify(payload)}`)
       if (route === 'theme.useLook') {
         await options.useGate
         return options.useAnswers?.shift() ?? options.useAnswer ?? { ok: true, via: 'command' }
       }
-      if (route === 'themeMods.turnOffAll') return { ok: true, turnedOff: options.turnedOff ?? 2 }
+      if (route === 'themeMods.turnOffAll') {
+        themesOn = 0
+        publishThemes()
+        return { ok: true, turnedOff: options.turnedOff ?? 2 }
+      }
       return { ok: true }
     },
   } as unknown as RuntimeConnection
@@ -481,9 +496,11 @@ describe('Theme directory: the theme plugin options', () => {
     await waitFor(() => expect(on.view.getByTestId('customize-theme-notice').getAttribute('data-kind')).toBe('turnedOff'))
     expect(on.runtimeAsked).toContain('themeMods.turnOffAll {}')
     expect(on.view.getByTestId('customize-theme-notice').textContent).toContain(EN['customize.themes.notice.turnedOff'])
+    // All off now: the button waits until a theme plugin is on again.
+    await waitFor(() => expect((on.view.getByTestId('customize-themes-turn-off') as HTMLButtonElement).disabled).toBe(true))
     on.view.unmount()
 
-    const none = setup({ turnedOff: 0 })
+    const none = setup({ turnedOff: 0, on: 1 })
     await none.open()
     fireEvent.click(none.view.getByTestId('customize-themes-turn-off'))
     await waitFor(() =>
@@ -507,6 +524,12 @@ describe('Theme directory: the theme plugin options', () => {
       await Promise.resolve()
     })
     expect(again.view.queryAllByTestId('customize-theme-in-use')).toHaveLength(0)
+  })
+
+  it('Turn off all is off while no theme plugin is on, and the directory reads the count as it opens', async () => {
+    const { view, open } = setup({ on: 0 })
+    await open()
+    expect((view.getByTestId('customize-themes-turn-off') as HTMLButtonElement).disabled).toBe(true)
   })
 
   it('a connection that may not change them gets a disabled switch and no Turn off all', async () => {
