@@ -16,7 +16,9 @@ import {
   type ThemeModsScopePayload,
   type ThemeModsSinglePayload,
   type ThemeModsState,
+  type ThemeModsTurnOffResult,
 } from '../../mods/themeMods'
+import { turnOffThemePlugins } from '../../mods/themePlugins'
 import { readLayerFresh, updateSectionInSource } from '../../settings/settingsStore'
 import type { RuntimeFs } from '../../utils/fs/runtimeFs'
 import { scopeAllows, type CapabilityRegistry } from './CapabilityRegistry'
@@ -28,6 +30,8 @@ export type ThemeModsCapabilityOptions = {
   context: () => { fs: RuntimeFs }
   /** The host user's home; rejects while the host cannot say. */
   resolveHome: () => Promise<string>
+  /** Every open session loads its plugins again. */
+  reload?: () => void
   report?: (line: string) => void
 }
 
@@ -76,6 +80,7 @@ export function registerThemeModsCapability(
       read: { scope: THEME_MODS_ACTION_SCOPES.read, guard: isThemeModsReadPayload },
       setBackdropScope: { scope: THEME_MODS_ACTION_SCOPES.setBackdropScope, guard: isThemeModsScopePayload },
       setSingle: { scope: THEME_MODS_ACTION_SCOPES.setSingle, guard: isThemeModsSinglePayload },
+      turnOffAll: { scope: THEME_MODS_ACTION_SCOPES.turnOffAll, guard: isThemeModsReadPayload },
     },
     handle: async request => {
       const act = request.route.act
@@ -87,9 +92,22 @@ export function registerThemeModsCapability(
         }
         return next
       }
-      if (act !== 'setBackdropScope' && act !== 'setSingle') throw wireError('unknown_route', `themeMods has no action '${act}'`)
+      if (act !== 'setBackdropScope' && act !== 'setSingle' && act !== 'turnOffAll') {
+        throw wireError('unknown_route', `themeMods has no action '${act}'`)
+      }
       const homeDir = await options.resolveHome().catch(() => '')
       if (!homeDir) throw wireError('host_unavailable', 'themeMods: the host did not report a home folder')
+      if (act === 'turnOffAll') {
+        // Every theme plugin off: their themes go as they unload, and the app's own look stands.
+        let turnedOff: number
+        try {
+          turnedOff = await turnOffThemePlugins({ homeDir, fs: options.context().fs, reload: options.reload ?? (() => {}) })
+        } catch (error) {
+          throw wireError('conflict', error instanceof Error ? error.message : String(error))
+        }
+        await publish()
+        return { ok: true, turnedOff } satisfies ThemeModsTurnOffResult
+      }
       try {
         await updateSectionInSource('userSettings', { homeDir }, options.context().fs, 'mods', previous => {
           const next = { ...(previous ?? {}) }

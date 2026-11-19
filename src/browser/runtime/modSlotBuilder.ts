@@ -487,14 +487,31 @@ export async function buildSlotModRuntime(
 ${entry.root ?? ''}`
             if (notedThemeMods.get(entry.plugin) === noted) return
             notedThemeMods.set(entry.plugin, noted)
+            let first = false
             void updateSectionInSource('userSettings', { homeDir: settingsHomeDir }, slot.installedFs, 'mods', previous => {
               const before = previous?.themeMods ?? []
               const after = withThemeMod(before, entry)
+              first = !before.some(each => each.plugin === entry.plugin)
               return after === before ? previous : { ...(previous ?? {}), themeMods: [...after] }
-            }).catch(error => {
+            }).then(async () => {
+              // A plugin first seen setting a theme: with *Only one at a time* on, the others go off.
+              if (!first) return
+              const { keepOneThemePlugin } = await import('../../mods/themePlugins')
+              await keepOneThemePlugin(
+                {
+                  homeDir: settingsHomeDir,
+                  fs: slot.installedFs,
+                  reload: () =>
+                    slot.options.reloadPluginsOnAllSessions
+                      ? slot.options.reloadPluginsOnAllSessions()
+                      : slot.engineForMods?.refreshPluginSet(),
+                },
+                entry.plugin,
+              )
+            }, error => {
               notedThemeMods.delete(entry.plugin)
               reportMods(`the theme mod ${entry.plugin} could not be recorded: ${error instanceof Error ? error.message : String(error)}`)
-            })
+            }).catch(() => undefined)
           },
         }
       : {}),

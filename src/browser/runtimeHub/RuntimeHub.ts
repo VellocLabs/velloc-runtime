@@ -376,6 +376,7 @@ export class RuntimeHub {
       fs: () => this.context.webUiBridge.fs,
       resolveHome: () => resolveHostHome(this.context),
       channel: currentTemplateChannel,
+      reload: () => this.host.reloadPluginsOnAllSessions(),
     })
     // Theme mods (F-25): the plugins that have set a theme and the
     // backdrop's reach on `mods/themes`; `read` is `observe`,
@@ -383,6 +384,7 @@ export class RuntimeHub {
     registerThemeModsCapability(this.registry, this.broker, {
       context: () => ({ fs: this.context.webUiBridge.fs }),
       resolveHome: () => resolveHostHome(this.context),
+      reload: () => this.host.reloadPluginsOnAllSessions(),
     })
     // Model data (F-28): the catalog status on `catalog/status` and the
     // `catalog.refresh` action (`manager`); the service comes from the seam in

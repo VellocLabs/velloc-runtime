@@ -1,6 +1,6 @@
 import * as React from 'react'
 
-import type { ThemeClearResult, ThemeUseLookResult } from '../../../mods/modThemeLooks'
+import type { ThemeUseLookResult } from '../../../mods/modThemeLooks'
 import { THEME_CAPABILITY } from '../../../mods/modThemeLooks'
 import { BUILTIN_MARKETPLACE_KEY } from '../../../pluginHost/builtinMarketplace'
 import type { ThemeLook } from '../../../pluginHost/registryFormats'
@@ -25,6 +25,8 @@ export type ThemePlugin = PluginAvailableUiEntry & { theme: NonNullable<PluginAv
 /** `<plugin>/<look id>`; the app's own look is `DEFAULT_LOOK`. */
 export const lookKey = (plugin: string, lookId: string) => `${plugin}/${lookId}`
 export const DEFAULT_LOOK = ''
+/** `applying` while every theme plugin is being switched off. */
+export const TURNING_OFF = '*'
 
 /** The session's standing theme as its runtime publishes it: `null` when none stands, `undefined` while not read yet. */
 export type ThemeStanding = { plugin: string } | null | undefined
@@ -56,7 +58,8 @@ export type ThemeFailure = Extract<ThemeUseLookResult, { ok: false }>['reason'] 
 
 type ThemeOutcome =
   | { kind: 'applied'; name: string; session: string }
-  | { kind: 'cleared'; session: string }
+  /** Every theme plugin switched off; `count` of them were on. */
+  | { kind: 'turnedOff'; count: number }
   | { kind: 'failed'; name: string; reason: ThemeFailure; detail?: string }
 
 /** How the last Use ended, for the line above the grid; a new `seq` is a new outcome. */
@@ -70,7 +73,7 @@ export type ThemeCatalogView = {
   /** Plugin names whose install is running / whose last install failed. */
   installing: ReadonlySet<string>
   installFailed: ReadonlySet<string>
-  /** The look being applied now. */
+  /** The look being applied now, or `TURNING_OFF`. */
   applying: string | null
   /** The look last applied from this window, per session id; `lookInUse` weighs it against the standing theme. */
   inUse: Readonly<Record<string, string>>
@@ -83,8 +86,8 @@ export type ThemeCatalogView = {
   /** Installs the plugin; with `then`, applies that look once it is in place. */
   add: (plugin: string, then?: { look: ThemeLook; target: ThemeTarget }) => void
   use: (plugin: string, look: ThemeLook, target: ThemeTarget) => void
-  /** Removes the session's theme. */
-  clear: (target: ThemeTarget) => void
+  /** Switches every theme plugin off through `run` (`themeMods.turnOffAll`), which answers how many were on. */
+  turnOffAll: (run: () => Promise<number>) => void
 }
 
 const NONE: ReadonlySet<string> = new Set()
@@ -217,27 +220,19 @@ export function useThemeCatalog(
     [runtimeConnection, say],
   )
 
-  const clear = React.useCallback(
-    (target: ThemeTarget) => {
-      if (!runtimeConnection) return
-      setApplying(DEFAULT_LOOK)
-      runtimeConnection()
-        .then(conn => conn.request(`${THEME_CAPABILITY}.clear` as RouteKey, { sessionId: target.sessionId }))
+  const turnOffAll = React.useCallback(
+    (run: () => Promise<number>) => {
+      setApplying(TURNING_OFF)
+      run()
         .then(
-          answer => {
-            if (!(answer as ThemeClearResult).ok) return
-            applied.set(target.sessionId, DEFAULT_LOOK)
-            if (!live.current) return
-            setInUse(all => ({ ...all, [target.sessionId]: DEFAULT_LOOK }))
-            say({ kind: 'cleared', session: target.title })
-          },
+          count => say({ kind: 'turnedOff', count }),
           () => say({ kind: 'failed', name: '', reason: 'request' }),
         )
         .finally(() => {
-          if (live.current) setApplying(current => (current === DEFAULT_LOOK ? null : current))
+          if (live.current) setApplying(current => (current === TURNING_OFF ? null : current))
         })
     },
-    [runtimeConnection, say],
+    [say],
   )
 
   const add = React.useCallback(
@@ -292,6 +287,6 @@ export function useThemeCatalog(
     refresh,
     add,
     use,
-    clear,
+    turnOffAll,
   }
 }

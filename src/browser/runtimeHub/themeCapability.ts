@@ -21,6 +21,7 @@ import { BUILTIN_MARKETPLACE_KEY } from '../../pluginHost/builtinMarketplace'
 import { readCachedManifest } from '../../pluginHost/builtinMarketplaceSeed'
 import { loadInstalledPlugins } from '../../pluginHost/installedRegistry'
 import { listingInstalls } from '../../pluginHost/themeListing'
+import { keepOneThemePlugin } from '../../mods/themePlugins'
 import { listingsVisibleOn } from '../../pluginHost/marketplaces'
 import type { CatalogListing } from '../../pluginHost/registryFormats'
 import type { UpdateChannel } from '../../branding/updateChannels'
@@ -34,6 +35,8 @@ export type ThemeCapabilityOptions = {
   /** The host user's home; rejects while the host cannot say. */
   resolveHome: () => Promise<string>
   channel: () => UpdateChannel
+  /** Every open session loads its plugins again. */
+  reload?: () => void
   /** Default: the slot registry. */
   slotOf?: (sessionId: string) => ThemeLookSlot | undefined
 }
@@ -83,7 +86,15 @@ export function registerThemeCapability(registry: CapabilityRegistry, options: T
             throw wireError('host_unavailable', 'theme: the host has no home folder yet')
           }
           const installsOf = (listing: CatalogListing) => listingInstalls(installed, listing, BUILTIN_MARKETPLACE_KEY)
-          return useThemeLook({ marketplace: BUILTIN_MARKETPLACE_KEY, listings, installsOf, slot }, payload)
+          const result = await useThemeLook({ marketplace: BUILTIN_MARKETPLACE_KEY, listings, installsOf, slot }, payload)
+          // An applied look: with *Only one at a time* on, the other theme plugins go off.
+          if (result.ok) {
+            await keepOneThemePlugin(
+              { homeDir: await options.resolveHome(), fs: options.fs(), reload: options.reload ?? (() => {}) },
+              payload.plugin,
+            )
+          }
+          return result
         }
         case 'clear':
           return clearSessionTheme(slotInScope(request.conn, (request.payload as ThemeClearPayload).sessionId))

@@ -20,6 +20,8 @@ import { InstallToasts } from './InstallToasts'
 import { DirectoryItemStatus } from './DirectoryItemStatus'
 import { pluginsAddMarketplace, pluginsRemoveMarketplace } from '../settings/clients'
 import { MarketplaceBrowser } from './MarketplaceBrowser'
+import { useThemeMods } from '../mods/themeModsView'
+import { useCan } from '../useCan'
 import { ThemeBrowser } from './ThemeBrowser'
 import { AddMarketplaceDialog, RemoveMarketplaceDialog } from './MarketplaceDialogs'
 import { useCustomizeTab } from './useCustomizeTab'
@@ -88,6 +90,17 @@ export function CustomizeScreen({
   const names = React.useMemo(() => (list.marketplaces ?? []).map(m => m.name), [list.marketplaces])
   const shelves = useMarketplaceShelves(bridge, names, tab.describeMarketplace)
   const themes = useThemeCatalog(bridge, runtimeConnection, selection.kind === 'themes')
+  const themeMods = useThemeMods(selection.kind === 'themes' ? runtimeConnection : undefined)
+  const canSetSingle = useCan('themeMods', 'setSingle')
+  const canTurnOff = useCan('themeMods', 'turnOffAll')
+  const themeOptions = React.useMemo(
+    () => ({
+      single: themeMods.state?.single ?? null,
+      ...(canSetSingle ? { setSingle: themeMods.setSingle } : {}),
+      ...(canTurnOff ? { turnOffAll: themeMods.turnOffAll } : {}),
+    }),
+    [themeMods.state, themeMods.setSingle, themeMods.turnOffAll, canSetSingle, canTurnOff],
+  )
   const notices = React.useMemo(() => [...shelves.notices, ...themes.installs], [shelves.notices, themes.installs])
   const dismissNotice = React.useCallback(
     (key: string) => {
@@ -319,7 +332,13 @@ export function CustomizeScreen({
 
         <div className="flex min-h-0 min-w-0 flex-1 flex-col">
           {selection.kind === 'themes' ? (
-            <ThemeBrowser view={themes} target={themeTarget} standing={themeStanding} onClose={onClose} />
+            <ThemeBrowser
+              view={themes}
+              target={themeTarget}
+              standing={themeStanding}
+              onClose={onClose}
+              options={themeOptions}
+            />
           ) : selection.kind === 'browse' ? (
             <MarketplaceBrowser
               marketplaces={names}

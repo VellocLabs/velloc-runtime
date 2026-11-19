@@ -3,8 +3,9 @@
  * far a backdrop reaches; both live in settings.json `mods`.
  * Clients read topic `mods/themes` (`observe`) and ask through
  * `themeMods.read` (`observe`), `themeMods.setBackdropScope` and
- * `themeMods.setSingle` (`control`). The runtime alone writes the list; a
- * client changes only the scope, to one of two words, and the one-at-a-time flag.
+ * `themeMods.setSingle` (`control`), and `themeMods.turnOffAll` (`manager`,
+ * as switching a plugin is). The runtime alone writes the list; a client
+ * changes only the scope, to one of two words, and the one-at-a-time flag.
  */
 import type { ScopeMode } from '../browser/runtimeProtocol'
 
@@ -36,6 +37,7 @@ export const THEME_MODS_ACTION_SCOPES = {
   read: 'observe',
   setBackdropScope: 'control',
   setSingle: 'control',
+  turnOffAll: 'manager',
 } as const satisfies Record<string, ScopeMode>
 export type ThemeModsAction = keyof typeof THEME_MODS_ACTION_SCOPES
 
@@ -61,6 +63,8 @@ export function isThemeModsReadPayload(value: unknown): boolean {
 export function isThemeModsScopePayload(value: unknown): value is ThemeModsScopePayload {
   return isRecord(value) && Object.keys(value).every(key => key === 'scope') && isThemeBackdropScope(value.scope)
 }
+
+export type ThemeModsTurnOffResult = { ok: true; turnedOff: number }
 
 export function isThemeModsSinglePayload(value: unknown): value is ThemeModsSinglePayload {
   return isRecord(value) && Object.keys(value).every(key => key === 'on') && typeof value.on === 'boolean'

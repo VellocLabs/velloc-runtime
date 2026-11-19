@@ -13,6 +13,7 @@ import {
   readThemeModsState,
   type ThemeBackdropScope,
   type ThemeModsState,
+  type ThemeModsTurnOffResult,
 } from '../../../mods/themeMods'
 
 type Listener = (state: ThemeModsState) => void
@@ -55,6 +56,8 @@ export type ThemeModsView = {
   /** Rejects when the runtime refuses; the topic's last state stands. */
   setBackdropScope: (scope: ThemeBackdropScope) => Promise<void>
   setSingle: (on: boolean) => Promise<void>
+  /** Switches every theme plugin off; answers how many were on. */
+  turnOffAll: () => Promise<number>
 }
 
 export function useThemeMods(runtimeConnection: (() => Promise<RuntimeConnection>) | undefined): ThemeModsView {
@@ -95,5 +98,14 @@ export function useThemeMods(runtimeConnection: (() => Promise<RuntimeConnection
   }, [ask])
   const setBackdropScope = React.useCallback((scope: ThemeBackdropScope) => ask('setBackdropScope', { scope }), [ask])
   const setSingle = React.useCallback((on: boolean) => ask('setSingle', { on }), [ask])
-  return React.useMemo(() => ({ state, refresh, setBackdropScope, setSingle }), [state, refresh, setBackdropScope, setSingle])
+  const turnOffAll = React.useCallback(async (): Promise<number> => {
+    if (!runtimeConnection) throw new Error('no runtime connection')
+    const conn = await runtimeConnection()
+    const answer = (await conn.request(`${THEME_MODS_CAPABILITY}.turnOffAll` as RouteKey, {})) as Partial<ThemeModsTurnOffResult>
+    return typeof answer?.turnedOff === 'number' ? answer.turnedOff : 0
+  }, [runtimeConnection])
+  return React.useMemo(
+    () => ({ state, refresh, setBackdropScope, setSingle, turnOffAll }),
+    [state, refresh, setBackdropScope, setSingle, turnOffAll],
+  )
 }

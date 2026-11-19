@@ -58,9 +58,13 @@ function rig(initial: Record<string, unknown>) {
   const disk = memoryFs(initial)
   const registry = new CapabilityRegistry()
   const broker = new TopicBroker()
+  let reloads = 0
   registerThemeModsCapability(registry, broker, {
     context: () => ({ fs: disk.fs }),
     resolveHome: async () => HOME,
+    reload: () => {
+      reloads += 1
+    },
     report: () => {},
   })
   const events: ThemeModsState[] = []
@@ -69,11 +73,11 @@ function rig(initial: Record<string, unknown>) {
       { conn: conn(), send: evt => events.push((evt as unknown as { payload: ThemeModsState }).payload), bufferedBytes: () => 0 },
       THEME_MODS_TOPIC,
     )
-  const ask = (act: 'read' | 'setBackdropScope' | 'setSingle', payload: unknown = {}) =>
+  const ask = (act: 'read' | 'setBackdropScope' | 'setSingle' | 'turnOffAll', payload: unknown = {}) =>
     registry
       .resolve('themeMods', act)!
       .handle({ id: '1', route: { cap: 'themeMods', act }, payload, conn: conn() } as never, {} as never)
-  return { ...disk, registry, events, subscribe, ask }
+  return { ...disk, registry, events, subscribe, ask, reloads: () => reloads }
 }
 
 const AURORA = { plugin: 'aurora', id: 'aurora@market' }
@@ -114,7 +118,12 @@ describe('theme mods', () => {
   })
 
   it('declares an observe read and a control write, and guards both payloads', () => {
-    expect(THEME_MODS_ACTION_SCOPES).toEqual({ read: 'observe', setBackdropScope: 'control', setSingle: 'control' })
+    expect(THEME_MODS_ACTION_SCOPES).toEqual({
+      read: 'observe',
+      setBackdropScope: 'control',
+      setSingle: 'control',
+      turnOffAll: 'manager',
+    })
     expect(isThemeModsReadPayload(undefined)).toBe(true)
     expect(isThemeModsReadPayload({ mods: [] })).toBe(false)
     expect(isThemeModsScopePayload({ scope: 'conversation' })).toBe(true)
@@ -159,5 +168,17 @@ describe('theme mods', () => {
     expect(r.current().mods).toEqual({ themeMods: [AURORA], singleThemeMod: true })
     await r.ask('setSingle', { on: false })
     expect(r.current().mods).toEqual({ themeMods: [AURORA] })
+  })
+
+  it('turns every theme plugin off at once, as a manager, and reloads the sessions once', async () => {
+    const one = { plugin: 'one', id: 'one@builtin' }
+    const two = { plugin: 'two', id: 'two@builtin' }
+    const r = rig({ version: 1, mods: { themeMods: [one, two] }, enabledPlugins: { 'two@builtin': false, 'other@builtin': true } })
+    expect(r.registry.resolve('themeMods', 'turnOffAll')!.spec.scope).toBe('manager')
+    expect(await r.ask('turnOffAll')).toEqual({ ok: true, turnedOff: 1 })
+    expect(r.current().enabledPlugins).toEqual({ 'one@builtin': false, 'two@builtin': false, 'other@builtin': true })
+    expect(r.reloads()).toBe(1)
+    expect(await r.ask('turnOffAll')).toEqual({ ok: true, turnedOff: 0 })
+    expect(r.reloads()).toBe(1)
   })
 })

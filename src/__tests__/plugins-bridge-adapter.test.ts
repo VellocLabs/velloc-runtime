@@ -18,6 +18,7 @@ import {
   recordInstalledPlugin,
 } from '../pluginHost/installedRegistry'
 import {
+  getEnabledPluginsMap,
   setPluginEnabled,
 } from '../pluginHost/enabledPlugins'
 import { __setPluginBlocklistForTests } from '../pluginHost/blocklist'
@@ -27,6 +28,7 @@ import { rawHostFromTarballs } from './_helpers/rawHostFromTarballs'
 import { getMarketplaceContentDir, getMarketplaceManifestPath, MARKETPLACE_MANIFEST_FILE_NAME, PLUGIN_MANIFEST_DIR_NAME } from '../pluginHost/pluginDirs'
 import { loadDirectoryPlugins } from '../pluginHost/directoryListings'
 import { BUILTIN_MARKETPLACE_KEY } from '../pluginHost/builtinMarketplace'
+import { knownThemePlugins, turnOffThemePlugins } from '../mods/themePlugins'
 
 // --- shared fs + tar fixtures (parallel to other plugins-install tests) --
 
@@ -341,6 +343,75 @@ describe('pluginsHandlers.listMarketplacePlugins', () => {
       { marketplace: BUILTIN_MARKETPLACE_KEY, kind: 'themes' }, { ...ctx, channel: () => 'beta' as const },
     )
     expect(onBeta.manifest!.plugins.map(p => p.name)).toEqual(['pack', 'beta-theme'])
+  })
+
+  describe('theme plugins: which they are, and one at a time', () => {
+    const HOME_DIR = '/home/user'
+    const theme = { looks: [{ id: 'one', preview: 'previews/one.svg' }] }
+    const row = { scope: 'user' as const, installPath: '/x', version: '1.0.0', installedAt: NOW_ISO, lastUpdated: NOW_ISO }
+
+    async function world(mods: Record<string, unknown>) {
+      const { fs } = makeMemoryFs()
+      const home = { homeDir: HOME_DIR }
+      await fs.writeFile(
+        getMarketplaceManifestPath(home, BUILTIN_MARKETPLACE_KEY),
+        JSON.stringify({
+          name: BUILTIN_MARKETPLACE_KEY,
+          plugins: [
+            { name: 'lagoon', source: { source: 'github', repo: 'someone/lagoon', sha: 'c'.repeat(40) }, theme },
+            { name: 'tool', source: { source: 'github', repo: 'someone/tool', sha: 'd'.repeat(40) } },
+          ],
+        }),
+      )
+      await recordInstalledPlugin(home, fs, `lagoon@${BUILTIN_MARKETPLACE_KEY}`, row)
+      await recordInstalledPlugin(home, fs, `tool@${BUILTIN_MARKETPLACE_KEY}`, row)
+      await recordInstalledPlugin(home, fs, 'rain@their-own', row)
+      await fs.writeFile(
+        `${HOME_DIR}/.velloc/settings.json`,
+        JSON.stringify({
+          version: 1,
+          mods: { themeMods: [{ plugin: 'rain', id: 'rain@their-own' }, { plugin: 'gone', id: 'gone@their-own' }], ...mods },
+        }),
+      )
+      return { fs, ctx: makeCtx({ fs }) }
+    }
+
+    it('a theme plugin is a theme listing installed or a plugin that has set a theme and is still installed', async () => {
+      const { fs } = await world({})
+      expect((await knownThemePlugins(HOME_DIR, fs)).map(mod => mod.id).sort()).toEqual([
+        `lagoon@${BUILTIN_MARKETPLACE_KEY}`,
+        'rain@their-own',
+      ])
+    })
+
+    it('turning them off writes each enabled one off, keeps the one named, and reloads once', async () => {
+      const { fs } = await world({})
+      let reloads = 0
+      const deps = { homeDir: HOME_DIR, fs, reload: () => (reloads += 1) }
+      expect(await turnOffThemePlugins(deps, 'rain')).toBe(1)
+      expect(await getEnabledPluginsMap({ homeDir: HOME_DIR }, fs)).toEqual({ [`lagoon@${BUILTIN_MARKETPLACE_KEY}`]: false })
+      expect(await turnOffThemePlugins(deps)).toBe(1)
+      expect(await turnOffThemePlugins(deps)).toBe(0)
+      expect(reloads).toBe(2)
+    })
+
+    it('with one at a time on, switching a theme plugin on switches the other theme plugins off', async () => {
+      const { fs, ctx } = await world({ singleThemeMod: true })
+      await pluginsHandlers.setEnabled({ identifier: 'rain@their-own', enabled: true }, ctx)
+      expect(await getEnabledPluginsMap({ homeDir: HOME_DIR }, fs)).toEqual({
+        'rain@their-own': true,
+        [`lagoon@${BUILTIN_MARKETPLACE_KEY}`]: false,
+      })
+    })
+
+    it('an ordinary plugin switched on, or one at a time off, switches no theme off', async () => {
+      const single = await world({ singleThemeMod: true })
+      await pluginsHandlers.setEnabled({ identifier: `tool@${BUILTIN_MARKETPLACE_KEY}`, enabled: true }, single.ctx)
+      expect(await getEnabledPluginsMap({ homeDir: HOME_DIR }, single.fs)).toEqual({ [`tool@${BUILTIN_MARKETPLACE_KEY}`]: true })
+      const many = await world({})
+      await pluginsHandlers.setEnabled({ identifier: 'rain@their-own', enabled: true }, many.ctx)
+      expect(await getEnabledPluginsMap({ homeDir: HOME_DIR }, many.fs)).toEqual({ 'rain@their-own': true })
+    })
   })
 
   it('a theme counts as installed when the same code is installed from another marketplace', async () => {

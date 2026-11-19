@@ -64,6 +64,7 @@ import type {
   PluginSetupRecord,
 } from '../../../pluginHost/registryFormats'
 import { createBridgeBackedFetch } from '../../../pluginHost/bridgeBackedFetch'
+import { keepOneThemePlugin } from '../../../mods/themePlugins'
 import type { BrowserBridgeTransport } from '../protocol/core'
 
 export type PluginsAdapterContext = {
@@ -285,6 +286,7 @@ async function handleInstall(
     if (error instanceof PluginNotListedError) return { ok: false, reason: 'notListed' }
     throw error
   }
+  await keepOneTheme(ctx, parsed.name)
   const enabledMap = await getEnabledPluginsMap(
     { homeDir: ctx.homeDir }, ctx.fs,
   )
@@ -348,6 +350,12 @@ function forgetBuilds(ctx: PluginsAdapterContext, which: { plugin?: string; root
 }
 
 /** `<name>@<marketplace>` → `<name>`. */
+/** A theme plugin just switched on: with *Only one at a time* on, the others
+ *  go off. The caller's own reload loads the result. */
+function keepOneTheme(ctx: PluginsAdapterContext, plugin: string): Promise<number> {
+  return keepOneThemePlugin({ homeDir: ctx.homeDir, fs: ctx.fs, reload: () => {} }, plugin)
+}
+
 const pluginNameOf = (identifier: string) => identifier.slice(0, Math.max(0, identifier.lastIndexOf('@'))) || identifier
 
 async function handleUninstall(
@@ -431,6 +439,7 @@ async function handleSetLocalEnabled(
 ): Promise<PluginsBridgeActionMap['setLocalEnabled']['result']> {
   const { name } = await setLocalPluginEnabled(payload.path, payload.enabled === true, ctx.fs)
   await forgetBuilds(ctx, { root: payload.path })
+  if (payload.enabled === true) await keepOneTheme(ctx, name)
   ctx.reloadPluginsOnAllSessions?.()
   return { ok: true, name }
 }
@@ -453,6 +462,7 @@ async function handleSetEnabled(
     payload.identifier, payload.enabled,
   )
   await forgetBuilds(ctx, { plugin: pluginNameOf(payload.identifier) })
+  if (payload.enabled !== false) await keepOneTheme(ctx, pluginNameOf(payload.identifier))
   // Hot-reload every active session so the enable/disable applies live —
   // the same reload `/reload-plugins` runs, never a session restart. The reload re-reads this enabled map from disk, so the
   // change we just wrote takes effect on the next turn. MCP server changes

@@ -2,6 +2,7 @@ import * as React from 'react'
 import { CheckIcon, CircleAlertIcon, CircleCheckIcon, Loader2Icon, XIcon } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
+import { Switch } from '@/components/ui/switch'
 import { cn } from '@/lib/utils'
 
 import type { ThemeLook } from '../../../pluginHost/registryFormats'
@@ -11,7 +12,7 @@ import { INSTALL_TOAST_MS } from './InstallToasts'
 import { AVATAR_TINT, avatarHue } from './ItemAvatar'
 import { PAGE_COLUMN } from './MarketplaceBrowser'
 import {
-  DEFAULT_LOOK,
+  TURNING_OFF,
   lookInUse,
   lookKey,
   type ThemeCatalogView,
@@ -53,6 +54,17 @@ export type ThemeBrowserProps = {
   standing?: ThemeStanding
   /** Back to the conversation, to see an applied look. */
   onClose: () => void
+  /** The theme plugin options; left out where this connection may not change them. */
+  options?: ThemePluginOptions
+}
+
+/** *Only one at a time* (settings `mods.singleThemeMod`) and switching every theme plugin off. */
+export type ThemePluginOptions = {
+  /** Null until the runtime has answered. */
+  single: boolean | null
+  setSingle?: (on: boolean) => Promise<void>
+  /** Answers how many theme plugins were on. */
+  turnOffAll?: () => Promise<number>
 }
 
 /**
@@ -61,7 +73,7 @@ export type ThemeBrowserProps = {
  * single theme is a card of its own. Add downloads the plugin; Use applies a
  * look to the session the screen was opened from.
  */
-export function ThemeBrowser({ view, target, standing, onClose }: ThemeBrowserProps) {
+export function ThemeBrowser({ view, target, standing, onClose, options }: ThemeBrowserProps) {
   const t = useT()
   const [filter, setFilter] = React.useState<Filter>('all')
   const shows = (look: ThemeLook) =>
@@ -75,7 +87,6 @@ export function ThemeBrowser({ view, target, standing, onClose }: ThemeBrowserPr
       : null
   const inUse = target ? lookInUse(view.inUse[target.sessionId], standing, view.plugins) : null
   const shared = { view, target, blocked, inUse }
-  const defaultShown = filter === 'all'
 
   let body: React.ReactNode
   if (view.status === 'loading') {
@@ -105,17 +116,14 @@ export function ThemeBrowser({ view, target, standing, onClose }: ThemeBrowserPr
         {packs.map(plugin => (
           <PackSection key={plugin.name} plugin={plugin} looks={plugin.theme.looks.filter(shows)} {...shared} />
         ))}
-        {defaultShown || singles.length > 0 ? (
+        {singles.length > 0 ? (
           <section
             data-testid="customize-themes-singles"
-            aria-label={t(singles.length > 0 ? 'customize.themes.singles' : 'customize.themes.default.name')}
+            aria-label={t('customize.themes.singles')}
             className="@container flex flex-col gap-3 py-4"
           >
-            {singles.length > 0 ? (
-              <h3 className="text-[15px] leading-5 font-semibold text-foreground">{t('customize.themes.singles')}</h3>
-            ) : null}
+            <h3 className="text-[15px] leading-5 font-semibold text-foreground">{t('customize.themes.singles')}</h3>
             <ul className={GRID}>
-              {defaultShown ? <DefaultCard {...shared} /> : null}
               {singles.map(plugin => (
                 <LookCard key={plugin.name} plugin={plugin} look={plugin.theme.looks[0]!} single {...shared} />
               ))}
@@ -144,7 +152,7 @@ export function ThemeBrowser({ view, target, standing, onClose }: ThemeBrowserPr
             {blocked ? t(blocked) : t('customize.themes.appliesTo', { title: target!.title })}
           </p>
         </div>
-        <div className="flex items-center gap-3 py-2">
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2 py-2">
           <div
             role="group"
             aria-label={t('customize.themes.filter.aria')}
@@ -167,6 +175,7 @@ export function ThemeBrowser({ view, target, standing, onClose }: ThemeBrowserPr
               </button>
             ))}
           </div>
+          {options ? <PluginOptions options={options} busy={view.applying !== null} onTurnOff={view.turnOffAll} /> : null}
         </div>
         <NoticeLine notice={view.notice} onDismiss={view.dismissNotice} onView={onClose} />
         {body}
@@ -366,53 +375,6 @@ function LookCard({
   )
 }
 
-/** The app's own look: Use removes the session's theme. */
-function DefaultCard({ view, target, blocked, inUse }: Shared) {
-  const t = useT()
-  const usable = target !== null && blocked === null
-  const applying = view.applying === DEFAULT_LOOK
-  return (
-    <li
-      data-testid="customize-theme-default"
-      className="flex min-w-0 flex-col overflow-hidden rounded-xl border bg-muted"
-    >
-      <div aria-hidden className="flex aspect-[16/10] w-full items-center justify-center border-b bg-background">
-        <span className="flex gap-1.5">
-          <span className="size-4 rounded-full bg-primary" />
-          <span className="size-4 rounded-full bg-muted-foreground/40" />
-          <span className="size-4 rounded-full border bg-card" />
-        </span>
-      </div>
-      <div className="flex min-w-0 flex-1 flex-col gap-1 p-3">
-        <span className="truncate text-sm font-medium text-foreground">{t('customize.themes.default.name')}</span>
-        <p className="line-clamp-2 text-[13px] leading-[17px] text-muted-foreground">
-          {t('customize.themes.default.description')}
-        </p>
-        <span className="mt-auto flex pt-1">
-          <span className="ms-auto shrink-0">
-            {inUse === DEFAULT_LOOK ? (
-              <InUseMark />
-            ) : (
-              <Button
-                type="button"
-                size="xs"
-                variant="outline"
-                disabled={!usable || view.applying !== null}
-                title={blocked ? t(blocked) : undefined}
-                data-testid="customize-theme-default-use"
-                onClick={() => target && view.clear(target)}
-              >
-                {applying ? <Loader2Icon className="size-3.5 animate-spin" /> : null}
-                {t(applying ? 'customize.themes.applying' : 'customize.themes.use')}
-              </Button>
-            )}
-          </span>
-        </span>
-      </div>
-    </li>
-  )
-}
-
 /** A look's picture, or the name's initial on its own tint when there is none to show. */
 function LookPreview({ name, url }: { name: string; url: string }) {
   const t = useT()
@@ -443,6 +405,54 @@ function LookPreview({ name, url }: { name: string; url: string }) {
       className="aspect-[16/10] w-full bg-background object-cover"
       onError={() => setBroken(true)}
     />
+  )
+}
+
+/** The switch for one theme plugin at a time and the button that switches them all off. */
+function PluginOptions({
+  options,
+  busy,
+  onTurnOff,
+}: {
+  options: ThemePluginOptions
+  busy: boolean
+  onTurnOff: (run: () => Promise<number>) => void
+}) {
+  const t = useT()
+  const [saving, setSaving] = React.useState(false)
+  const { single, setSingle, turnOffAll } = options
+  const id = React.useId()
+  return (
+    <div className="ms-auto flex flex-wrap items-center gap-x-4 gap-y-2">
+      <label htmlFor={id} className="flex items-center gap-2 text-xs text-muted-foreground">
+        <Switch
+          id={id}
+          data-testid="customize-themes-single"
+          checked={single === true}
+          disabled={!setSingle || single === null || saving}
+          onCheckedChange={on => {
+            if (!setSingle) return
+            setSaving(true)
+            void setSingle(on)
+              .catch(() => undefined)
+              .finally(() => setSaving(false))
+          }}
+        />
+        {t('customize.themes.single')}
+      </label>
+      {turnOffAll ? (
+        <Button
+          type="button"
+          variant="outline"
+          size="xs"
+          data-testid="customize-themes-turn-off"
+          disabled={busy}
+          onClick={() => onTurnOff(turnOffAll)}
+        >
+          {t('customize.themes.turnOffAll')}
+        </Button>
+      ) : null}
+    </div>
   )
 }
 
@@ -501,11 +511,11 @@ function NoticeLine({
   const title =
     notice.kind === 'applied'
       ? t('customize.themes.notice.applied', { name: notice.name, title: notice.session })
-      : notice.kind === 'cleared'
-        ? t('customize.themes.notice.cleared', { title: notice.session })
+      : notice.kind === 'turnedOff'
+        ? t(notice.count > 0 ? 'customize.themes.notice.turnedOff' : 'customize.themes.notice.noneOn')
         : notice.name
           ? t('customize.themes.notice.failed', { name: notice.name })
-          : t('customize.themes.notice.failedClear')
+          : t('customize.themes.notice.failedTurnOff')
   return (
     <div
       role={failed ? 'alert' : 'status'}

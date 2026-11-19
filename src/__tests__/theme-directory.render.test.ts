@@ -2,7 +2,7 @@
 /**
  * The Customize screen's theme directory (F-35): the left row, the grid of
  * looks (packs under their own header, single themes as cards), and what
- * Add, Add & use, Use and the default look ask of the bridge and the runtime.
+ * Add, Add & use, Use and the theme plugin options ask of the bridge and the runtime.
  */
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createElement } from 'react'
@@ -15,6 +15,7 @@ import { PACK_LIMIT, packTitle } from '../browser/webview/customize/ThemeBrowser
 import type { ThemeTarget } from '../browser/webview/customize/useThemeCatalog'
 import { en as EN } from '../browser/webview/i18n/messages/en'
 import { SettingsBridgeContext, type NexusSettingsBridge } from '../browser/webview/nexusSettingsBridge'
+import { RuntimeCapabilitiesContext } from '../browser/webview/useCan'
 
 afterEach(() => {
   vi.useRealTimers()
@@ -66,6 +67,12 @@ function setup(
     installFails?: boolean
     /** The session's published theme: a plugin's, or `null` for none. Left out: never published. */
     standing?: { plugin: string } | null
+    /** *Only one at a time* as the runtime publishes it. */
+    single?: boolean
+    /** How many theme plugins `themeMods.turnOffAll` finds on. */
+    turnedOff?: number
+    /** Runtime actions this connection may not ask. */
+    deny?: string[]
   } = {},
 ) {
   const TARGET: ThemeTarget = { sessionId: `s${++sessions}`, title: 'Fix the build', busy: false }
@@ -101,7 +108,12 @@ function setup(
     },
   } as unknown as NexusSettingsBridge
   const connection = {
-    subscribe: () => () => {},
+    subscribe: (topic: string, listener: (event: { type: string; payload: unknown }) => void) => {
+      if (topic === 'mods/themes') {
+        listener({ type: 'state', payload: { mods: [], backdropScope: 'window', single: options.single === true } })
+      }
+      return () => {}
+    },
     can: () => true,
     request: async (route: string, payload: unknown) => {
       if (route === 'customizePage.show') return { tabId: 7, created: true }
@@ -111,25 +123,28 @@ function setup(
         await options.useGate
         return options.useAnswers?.shift() ?? options.useAnswer ?? { ok: true, via: 'command' }
       }
-      if (route === 'theme.clear') return { ok: true, cleared: true }
+      if (route === 'themeMods.turnOffAll') return { ok: true, turnedOff: options.turnedOff ?? 2 }
       return { ok: true }
     },
   } as unknown as RuntimeConnection
   let closed = 0
+  const deny = new Set(options.deny ?? [])
+  const grant = { can: (cap: string, act?: string) => !deny.has(`${cap}.${act}`) }
+  const screen = createElement(CustomizeScreen, {
+    runtimeConnection: async () => connection,
+    shell: null,
+    onClose: () => {
+      closed += 1
+    },
+    onOpenSettings: () => {},
+    themeTarget: options.target === undefined ? TARGET : options.target === 'busy' ? { ...TARGET, busy: true } : options.target,
+    themeStanding: options.standing,
+  })
   const view = render(
     createElement(
-      SettingsBridgeContext.Provider,
-      { value: bridge },
-      createElement(CustomizeScreen, {
-        runtimeConnection: async () => connection,
-        shell: null,
-        onClose: () => {
-          closed += 1
-        },
-        onOpenSettings: () => {},
-        themeTarget: options.target === undefined ? TARGET : options.target === 'busy' ? { ...TARGET, busy: true } : options.target,
-        themeStanding: options.standing,
-      }),
+      RuntimeCapabilitiesContext.Provider,
+      { value: grant },
+      createElement(SettingsBridgeContext.Provider, { value: bridge }, screen),
     ),
   )
   const open = async () => {
@@ -180,7 +195,7 @@ describe('Customize — the theme directory row', () => {
 })
 
 describe('Theme directory — the grid', () => {
-  it('a pack is a section of its looks; single themes follow the default look', async () => {
+  it('a pack is a section of its looks; single themes follow under their heading', async () => {
     const { view, open } = setup()
     await open()
     const section = view.getByTestId('customize-theme-pack')
@@ -200,25 +215,26 @@ describe('Theme directory — the grid', () => {
     ])
     const singles = view.getByTestId('customize-themes-singles')
     const items = within(singles).getAllByRole('listitem')
-    expect(items[0]!.getAttribute('data-testid')).toBe('customize-theme-default')
-    expect(items[1]!.getAttribute('data-plugin')).toBe('snow')
-    expect(items[1]!.textContent).toContain('Falling snow.')
+    expect(items).toHaveLength(1)
+    expect(within(singles).getByText(EN['customize.themes.singles'])).toBeTruthy()
+    expect(items[0]!.getAttribute('data-plugin')).toBe('snow')
+    expect(items[0]!.textContent).toContain('Falling snow.')
     expect(view.getByTestId('customize-themes-target').textContent).toBe(
       EN['customize.themes.appliesTo'].replace('{title}', 'Fix the build'),
     )
-    const picture = within(items[1]!).getByTestId('customize-theme-preview')
+    const picture = within(items[0]!).getByTestId('customize-theme-preview')
     expect(picture.getAttribute('src')).toBe('https://plugins.example/previews/snow.svg')
     expect(picture.getAttribute('referrerpolicy')).toBe('no-referrer')
     fireEvent.error(picture)
-    expect(within(items[1]!).getByTestId('customize-theme-preview-fallback').textContent).toBe('S')
+    expect(within(items[0]!).getByTestId('customize-theme-preview-fallback').textContent).toBe('S')
   })
 
-  it('the appearance filter keeps matching looks and drops the default look', async () => {
+  it('the appearance filter keeps matching looks, and a section left with none goes', async () => {
     const { view, open } = setup()
     await open()
     fireEvent.click(within(view.getByTestId('customize-themes-filter')).getByText(EN['customize.themes.filter.light']))
     expect(view.getAllByTestId('customize-theme-look').map(el => el.getAttribute('data-look'))).toEqual(['scene-0'])
-    expect(view.queryByTestId('customize-theme-default')).toBeNull()
+    expect(view.queryByTestId('customize-themes-singles')).toBeNull()
     fireEvent.click(within(view.getByTestId('customize-themes-filter')).getByText(EN['customize.themes.filter.dark']))
     expect(view.getAllByTestId('customize-theme-look').map(el => el.getAttribute('data-look'))).toEqual([
       'scene-1',
@@ -288,7 +304,7 @@ describe('Theme directory — Add and Use', () => {
     expect(runtimeAsked).toHaveLength(1)
   })
 
-  it('while one look is applied every other Use and the default look are off', async () => {
+  it('while one look is applied every other Use and Turn off all are off', async () => {
     let release!: () => void
     const useGate = new Promise<void>(resolve => {
       release = resolve
@@ -299,7 +315,7 @@ describe('Theme directory — Add and Use', () => {
     await waitFor(() => expect(runtimeAsked).toHaveLength(1))
     const other = within(card('scenes', 'scene-1')).getByTestId('customize-theme-use') as HTMLButtonElement
     expect(other.disabled).toBe(true)
-    expect((view.getByTestId('customize-theme-default-use') as HTMLButtonElement).disabled).toBe(true)
+    expect((view.getByTestId('customize-themes-turn-off') as HTMLButtonElement).disabled).toBe(true)
     await act(async () => {
       release()
     })
@@ -355,16 +371,6 @@ describe('Theme directory — Add and Use', () => {
     expect(within(card('snow', 'snow')).getByTestId('customize-theme-add')).toBeTruthy()
   })
 
-  it('the default look clears the session theme', async () => {
-    const { view, open, runtimeAsked, target } = setup()
-    await open()
-    fireEvent.click(view.getByTestId('customize-theme-default-use'))
-    await waitFor(() =>
-      expect(within(view.getByTestId('customize-theme-default')).getByTestId('customize-theme-in-use')).toBeTruthy(),
-    )
-    expect(runtimeAsked).toEqual([`theme.clear {"sessionId":"${target.sessionId}"}`])
-    expect(view.getByTestId('customize-theme-notice').getAttribute('data-kind')).toBe('cleared')
-  })
 
   it('with no session, or a turn running, Use is off with the reason and a pack look only adds', async () => {
     const installed = [{ ...pack(), installed: true }, single()]
@@ -378,7 +384,6 @@ describe('Theme directory — Add and Use', () => {
       const use = within(card('scenes', 'scene-0')).getByTestId('customize-theme-use') as HTMLButtonElement
       expect(use.disabled).toBe(true)
       expect(use.title).toBe(reason)
-      expect((view.getByTestId('customize-theme-default-use') as HTMLButtonElement).disabled).toBe(true)
       fireEvent.click(use)
       expect(runtimeAsked).toEqual([])
       cleanup()
@@ -403,7 +408,6 @@ describe('Theme directory — what is in use', () => {
     await again.open()
     await waitFor(() => expect(within(again.card('scenes', 'scene-1')).getByTestId('customize-theme-in-use')).toBeTruthy())
     expect(again.view.getAllByTestId('customize-theme-in-use')).toHaveLength(1)
-    expect(again.view.getByTestId('customize-theme-default-use')).toBeTruthy()
   })
 
   it('a look whose answer arrives after the screen closed is still marked when it opens again', async () => {
@@ -425,14 +429,11 @@ describe('Theme directory — what is in use', () => {
     expect(again.view.getAllByTestId('customize-theme-in-use')).toHaveLength(1)
   })
 
-  it('a session with no theme marks the default look; a standing single theme marks its card', async () => {
+  it('a session with no theme marks no card; a standing single theme marks its own', async () => {
     const installed = () => [{ ...pack(), installed: true }, { ...single(), installed: true }]
     const none = setup({ themes: installed(), standing: null })
     await none.open()
-    await waitFor(() =>
-      expect(within(none.view.getByTestId('customize-theme-default')).getByTestId('customize-theme-in-use')).toBeTruthy(),
-    )
-    expect(none.view.getAllByTestId('customize-theme-in-use')).toHaveLength(1)
+    expect(none.view.queryAllByTestId('customize-theme-in-use')).toHaveLength(0)
     none.view.unmount()
 
     const snow = setup({ themes: installed(), standing: { plugin: 'snow' } })
@@ -454,10 +455,46 @@ describe('Theme directory — what is in use', () => {
     }
   })
 
-  it('with no single theme listed, the default look stands without the single themes heading', async () => {
+  it('with no single theme listed there is no single themes section', async () => {
     const { view, open } = setup({ themes: [pack()] })
     await open()
-    expect(view.getByTestId('customize-theme-default')).toBeTruthy()
+    expect(view.queryByTestId('customize-themes-singles')).toBeNull()
     expect(view.queryByText(EN['customize.themes.singles'])).toBeNull()
+  })
+})
+
+describe('Theme directory: the theme plugin options', () => {
+  it('the one-at-a-time switch shows the stored flag and asks the runtime to change it', async () => {
+    const { view, open, runtimeAsked } = setup({ single: true })
+    await open()
+    const toggle = view.getByTestId('customize-themes-single')
+    await waitFor(() => expect(toggle.getAttribute('aria-checked')).toBe('true'))
+    expect(view.getByText(EN['customize.themes.single'])).toBeTruthy()
+    fireEvent.click(toggle)
+    await waitFor(() => expect(runtimeAsked).toContain('themeMods.setSingle {"on":false}'))
+  })
+
+  it('Turn off all asks the runtime and says the app look is back, or that none was on', async () => {
+    const on = setup()
+    await on.open()
+    fireEvent.click(on.view.getByTestId('customize-themes-turn-off'))
+    await waitFor(() => expect(on.view.getByTestId('customize-theme-notice').getAttribute('data-kind')).toBe('turnedOff'))
+    expect(on.runtimeAsked).toContain('themeMods.turnOffAll {}')
+    expect(on.view.getByTestId('customize-theme-notice').textContent).toContain(EN['customize.themes.notice.turnedOff'])
+    on.view.unmount()
+
+    const none = setup({ turnedOff: 0 })
+    await none.open()
+    fireEvent.click(none.view.getByTestId('customize-themes-turn-off'))
+    await waitFor(() =>
+      expect(none.view.getByTestId('customize-theme-notice').textContent).toContain(EN['customize.themes.notice.noneOn']),
+    )
+  })
+
+  it('a connection that may not change them gets a disabled switch and no Turn off all', async () => {
+    const { view, open } = setup({ single: true, deny: ['themeMods.setSingle', 'themeMods.turnOffAll'] })
+    await open()
+    expect((view.getByTestId('customize-themes-single') as HTMLButtonElement).disabled).toBe(true)
+    expect(view.queryByTestId('customize-themes-turn-off')).toBeNull()
   })
 })
