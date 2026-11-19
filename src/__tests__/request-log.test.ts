@@ -108,7 +108,8 @@ const viaRouter = {
   router: { provider: 'mod.pool.main', row: 'fast' },
 } satisfies Partial<RequestLogRow>
 
-afterEach(() => {
+afterEach(async () => {
+  await requestLogIdle()
   resetRequestLog()
   resetEntryResolutions()
 })
