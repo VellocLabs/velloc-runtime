@@ -11,7 +11,7 @@ import { runAppPress, type AppPressPort } from './appPress'
 import { getModContributions } from '../mods/modContributionsView'
 
 /** The app a provider's settings name, as the page publishes it. */
-export type ProviderSettingsApp = Pick<ContributedApp, 'appId' | 'type' | 'title'>
+export type ProviderSettingsApp = Pick<ContributedApp, 'appId' | 'type' | 'title' | 'plugin'>
 
 /** Opens a provider's settings app: Settings closes once the app is to open. */
 export type ProviderAppOpener = (app: ProviderSettingsApp) => void
@@ -20,12 +20,17 @@ export type ProviderAppOpener = (app: ProviderSettingsApp) => void
 export const ProviderAppOpenerContext = React.createContext<ProviderAppOpener | undefined>(undefined)
 
 /**
- * The published app with id `appId`. The apps list is served on the beta
- * channel alone, so on stable there is none, and neither entry exists.
+ * The published app with id `appId` of `plugin`: an app id another plugin
+ * holds is never the provider's. The apps list is served on the beta channel
+ * alone, so on stable there is none, and neither entry exists.
  */
-export function providerSettingsApp(appId: string | undefined, apps: readonly ContributedApp[] | undefined): ContributedApp | undefined {
-  if (appId === undefined || !apps) return undefined
-  return apps.find(app => app.appId === appId)
+export function providerSettingsApp(
+  appId: string | undefined,
+  plugin: string | undefined,
+  apps: readonly ContributedApp[] | undefined,
+): ContributedApp | undefined {
+  if (appId === undefined || plugin === undefined || !apps) return undefined
+  return apps.find(app => app.appId === appId && app.plugin === plugin)
 }
 
 /** True on the render a provider goes from not added to added: its settings app opens then. */
@@ -53,7 +58,7 @@ export function createProviderAppOpener(
   let seq = 0
   return app => {
     const mine = ++seq
-    const published = providerSettingsApp(app.appId, apps())
+    const published = providerSettingsApp(app.appId, app.plugin, apps())
     runAppPress(
       deps.port,
       app.appId,

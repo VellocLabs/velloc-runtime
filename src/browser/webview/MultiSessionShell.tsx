@@ -2359,9 +2359,19 @@ export function MultiSessionShell({
     () => createShellInterceptMarketplaceAdd(customizeShown, setMarketplaceAddRequest, handleOpenCustomize),
     [customizeShown, handleOpenCustomize],
   )
-  // A provider's settings app (F-27): opened from the Models page as a topbar press would open it.
-  const closeSettingsForApp = useMemo(
-    () => createShellCloseSettings(setProviderSettingsRequest, setPluginSettingsRequest, setMcpSettingsRequest, setSettingsSection),
+  // Every way out of Settings arms the adopt-default pass (see the effect by
+  // handleAdoptDefaultSelection): a session that came from the provider-missing
+  // flow must take the now-available default, or every send re-opens the dialog.
+  const adoptDefaultAfterSettingsRef = useRef(false)
+  const closeSettings = useMemo(
+    () =>
+      createShellCloseSettings(
+        setProviderSettingsRequest,
+        setPluginSettingsRequest,
+        setMcpSettingsRequest,
+        setSettingsSection,
+        adoptDefaultAfterSettingsRef,
+      ),
     [],
   )
   const providerAppPort = runtimeCapabilities.can('mods', 'appPress') ? appPressPort : undefined
@@ -2369,9 +2379,9 @@ export function MultiSessionShell({
   const providerAppOpener = useMemo(
     () =>
       runtimeConnection
-        ? createProviderAppOpener({ port: providerAppPort, openApp: handleOpenApp, signIn: providerAppSignIn, closeSettings: closeSettingsForApp })
+        ? createProviderAppOpener({ port: providerAppPort, openApp: handleOpenApp, signIn: providerAppSignIn, closeSettings })
         : undefined,
-    [runtimeConnection, providerAppPort, handleOpenApp, providerAppSignIn, closeSettingsForApp],
+    [runtimeConnection, providerAppPort, handleOpenApp, providerAppSignIn, closeSettings],
   )
   const handleOpenProviderSettings = useMemo(
     () => createShellHandleOpenProviderSettings(setProviderSettingsRequest, setSettingsSection),
@@ -2483,7 +2493,6 @@ export function MultiSessionShell({
   // stays armed across renders because the post-settings catalog broadcast
   // arrives asynchronously; it disarms on the first render where the
   // selection is valid (nothing to do) or a default exists (adopt it).
-  const adoptDefaultAfterSettingsRef = useRef(false)
   useEffect(() => {
     if (!adoptDefaultAfterSettingsRef.current) return
     const snapshot = activeState.snapshot
@@ -3213,18 +3222,7 @@ export function MultiSessionShell({
         <SettingsScreen
           section={settingsSection}
           onNavigate={handleSettingsNavigate}
-          onClose={() => {
-            // Arm the one-shot adopt-default pass (see the effect by
-            // handleAdoptDefaultSelection): if the user came here from the
-            // provider-missing flow, the session's stale pinned model must be
-            // replaced by the now-available default or every send re-opens
-            // the dialog.
-            adoptDefaultAfterSettingsRef.current = true
-            setProviderSettingsRequest(null)
-            setPluginSettingsRequest(null)
-            setMcpSettingsRequest(null)
-            setSettingsSection(null)
-          }}
+          onClose={closeSettings}
           catalog={orderedActiveCatalog}
           transport={hostBridgeTransport}
           openProviderRequest={providerSettingsRequest}

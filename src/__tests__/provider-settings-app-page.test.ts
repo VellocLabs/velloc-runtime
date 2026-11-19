@@ -11,6 +11,8 @@ import { createElement as h } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import type { BrowserLlmProvider } from '../browser/bridge/protocol/nexus_llm'
+import type { NexusProviderConfig } from '../settings/settingsTypes'
+import { createShellCloseSettings } from '../browser/webview/shellSettingsActions'
 import { EMPTY_MOD_CONTRIBUTIONS, type ModContributionsState } from '../browser/runtimeProtocol/modContributions'
 import type { AppPressPort } from '../browser/webview/apps/appPress'
 import { createProviderAppOpener, ProviderAppOpenerContext, type ProviderAppOpener } from '../browser/webview/apps/providerSettingsApp'
@@ -64,10 +66,16 @@ const row = (settingsApp: string | undefined): BrowserLlmProvider =>
     mod: { state: 'ready', plugin: 'switch', kind: 'router', ...(settingsApp ? { settingsApp } : {}) },
   }) as BrowserLlmProvider
 
-function renderEntry(provider: BrowserLlmProvider, added: boolean, open: ProviderAppOpener | undefined) {
-  const tree = (now: boolean) => wrap(h(ProviderAppOpenerContext.Provider, { value: open }, h(ProviderSettingsAppEntry, { provider, added: now })))
+const ADOPTED: NexusProviderConfig = { source: 'mod', modVersion: '1' }
+const KEYLESS: NexusProviderConfig = { source: 'mod', modVersion: '1', credentialMode: 'anonymous' }
+const savedOf = (added: boolean | NexusProviderConfig | undefined): NexusProviderConfig | undefined =>
+  added === true ? KEYLESS : added === false ? undefined : added
+
+function renderEntry(provider: BrowserLlmProvider, added: boolean | NexusProviderConfig | undefined, open: ProviderAppOpener | undefined) {
+  const tree = (now: boolean | NexusProviderConfig | undefined) =>
+    wrap(h(ProviderAppOpenerContext.Provider, { value: open }, h(ProviderSettingsAppEntry, { provider, saved: savedOf(now) })))
   const view = render(tree(added))
-  return { rerender: (now: boolean) => view.rerender(tree(now)) }
+  return { rerender: (now: boolean | NexusProviderConfig | undefined) => view.rerender(tree(now)) }
 }
 
 describe("the provider editor's entries", () => {
@@ -87,6 +95,16 @@ describe("the provider editor's entries", () => {
     expect(open).toHaveBeenCalledTimes(2)
   })
 
+  it('opens on the key-less switch, not when the host adopts the bare entry', () => {
+    act(() => setModContributions(BETA))
+    const open = vi.fn()
+    const { rerender } = renderEntry(row('switch-console'), undefined, open)
+    rerender(ADOPTED)
+    expect(open).not.toHaveBeenCalled()
+    rerender(KEYLESS)
+    expect(open).toHaveBeenCalledTimes(1)
+  })
+
   it('does not open a provider that was already added when the editor appeared', () => {
     act(() => setModContributions(BETA))
     const open = vi.fn()
@@ -103,6 +121,20 @@ describe("the provider editor's entries", () => {
     expect(screen.queryByTestId('mod-provider-settings-app-switch-console')).toBeNull()
   })
 
+  it("does not take another plugin's app that holds the same id", () => {
+    act(() =>
+      setModContributions({
+        ...EMPTY_MOD_CONTRIBUTIONS,
+        apps: [{ type: 'other:console', appId: 'switch-console', plugin: 'other', title: 'Other' }],
+      }),
+    )
+    const open = vi.fn()
+    const { rerender } = renderEntry(row('switch-console'), false, open)
+    rerender(true)
+    expect(open).not.toHaveBeenCalled()
+    expect(screen.queryByTestId('mod-provider-settings-app-switch-console')).toBeNull()
+  })
+
   it('draws nothing for a provider that names no app', () => {
     act(() => setModContributions(BETA))
     renderEntry(row(undefined), true, vi.fn())
@@ -111,7 +143,16 @@ describe("the provider editor's entries", () => {
 })
 
 describe('the opener', () => {
-  const app = { appId: 'switch-console', type: 'switch:console', title: 'Switchboard' }
+  const app = { appId: 'switch-console', type: 'switch:console', title: 'Switchboard', plugin: 'switch' }
+
+  it('closes Settings the way its close button does, arming the adopt-default pass', () => {
+    const calls: string[] = []
+    const set = (name: string) => (value: unknown) => void calls.push(`${name}=${String(value)}`)
+    const armed = { current: false }
+    createShellCloseSettings(set('provider') as never, set('plugin') as never, set('mcp') as never, set('section') as never, armed)()
+    expect(armed.current).toBe(true)
+    expect(calls).toEqual(['provider=null', 'plugin=null', 'mcp=null', 'section=null'])
+  })
 
   it('offers the open as a provider press, then closes Settings and opens through the topbar opener', async () => {
     const asked: unknown[] = []

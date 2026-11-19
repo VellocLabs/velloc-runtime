@@ -60,7 +60,7 @@ export function createAppBackgroundRuntime(
   }
   const reloads = createReloadFolder(providerId => reloadModProvider(providerId, deps.transport, report))
   return new AppBackgroundRuntime({
-    providerCalls: { reload: reloads.reload, peers: runtimeSettingsAppPeers },
+    providerCalls: { reload: reloads.reload, peers: runtimeSettingsAppPeers, dispose: reloads.dispose },
     readModule: loaders.readModule,
     ...(loaders.compile ? { compile: loaders.compile } : {}),
     ...(loaders.scan ? { scan: loaders.scan } : {}),

@@ -233,14 +233,20 @@ export function createShellSettingsHostActions(
     }))()
 }
 
-/** Closes Settings and drops the requests that opened it on a section, as its close button does. */
+/**
+ * Closes Settings, however it is left, and drops the requests that opened it
+ * on a section. `adoptDefaultAfterSettings` arms the one-shot pass that
+ * replaces a session's stale pinned model with the new default.
+ */
 export function createShellCloseSettings(
   setProviderSettingsRequest: Dispatch<SetStateAction<{ providerId: string; seq: number; } | null>>,
   setPluginSettingsRequest: Dispatch<SetStateAction<{ plugin: string; seq: number; } | null>>,
   setMcpSettingsRequest: Dispatch<SetStateAction<{ server: string; seq: number; } | null>>,
   setSettingsSection: Dispatch<SetStateAction<SettingsSectionId | null>>,
+  adoptDefaultAfterSettings: { current: boolean },
 ) {
   return (): void => {
+    adoptDefaultAfterSettings.current = true
     setProviderSettingsRequest(null)
     setPluginSettingsRequest(null)
     setMcpSettingsRequest(null)

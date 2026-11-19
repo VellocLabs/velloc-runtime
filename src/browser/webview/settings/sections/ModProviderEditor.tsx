@@ -656,7 +656,7 @@ function ReadyEditor({
         </DialogContent>
       </Dialog>
       <ProviderSignInDialog name={name} session={loginSession} />
-      <ProviderSettingsAppEntry provider={provider} added={saved !== undefined} />
+      <ProviderSettingsAppEntry provider={provider} saved={saved} />
     </div>
   );
 }

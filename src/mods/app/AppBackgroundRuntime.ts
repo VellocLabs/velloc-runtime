@@ -113,8 +113,8 @@ export type AppBackgroundRuntimeOptions = {
   onBadge?: (appId: string, count: number | null) => void
   /** `$.app.busy`: whether the app's icon shows the module at work; false too when the module stops, crashes or fails to load, and once a busy runs past its limit. */
   onBusy?: (appId: string, busy: boolean) => void
-  /** `$.provider` of a settings app's module. Absent: `peers` and `clearState` fail as unavailable, `reload` does nothing. */
-  providerCalls?: Partial<SettingsAppProviderDeps>
+  /** `$.provider` of a settings app's module. Absent: `peers` and `clearState` fail as unavailable, `reload` does nothing. `dispose` runs once, with the runtime's. */
+  providerCalls?: Partial<SettingsAppProviderDeps> & { dispose?: () => void }
   /** How long a busy lasts unless the module says it again. */
   busyMaxMs?: number
   /** `$.app.view`: the pages are asked to open the app or close its pane; `client` undefined is every page. */
@@ -415,6 +415,7 @@ export class AppBackgroundRuntime {
     if (this.disposed) return
     this.disposed = true
     this.stopMcpStatus?.()
+    this.options.providerCalls?.dispose?.()
     await Promise.all([...this.modules.values()].map(module => this.stop(module, 'the realm is ending')))
   }
 

@@ -237,6 +237,17 @@ describe('$.provider calls behind the seam', () => {
     expect(cleared).toHaveLength(1)
   })
 
+  it('clearState under routesTo "*" reaches listed peers alone, never another router or itself', async () => {
+    const { source, cleared } = fakeSource([peer('vendor-a')])
+    const deps = { peers: () => source, reload: async () => {} }
+    const any: SettingsAppBinding = { ...ROUTER_BINDING, routesTo: '*' }
+    for (const target of ['mod.other.router', 'mod.switch.route']) {
+      await expect(serveSettingsAppProviderCall(any, 'clearState', [{ provider: target }], deps)).rejects.toThrow(/is not one of mod\.switch\.route's peers/)
+    }
+    await expect(serveSettingsAppProviderCall(any, 'clearState', [{ provider: 'vendor-a' }], deps)).resolves.toEqual({ ok: true })
+    expect(cleared).toEqual([{ provider: 'vendor-a' }])
+  })
+
   it('peers and clearState fail as unavailable without the table, and are refused for a non-router', async () => {
     await expect(serveSettingsAppProviderCall(ROUTER_BINDING, 'peers', [], { reload: async () => {} })).rejects.toThrow(/not available in this build/)
     const { source } = fakeSource([peer('vendor-a')])
@@ -288,7 +299,7 @@ afterEach(async () => {
   resetAppStateBusForTests()
 })
 
-function world(source: string, settingsFor: SettingsAppBinding | undefined, peers: SettingsAppPeerSource) {
+function world(source: string, settingsFor: SettingsAppBinding | undefined, peers: SettingsAppPeerSource, dispose?: () => void) {
   const reloads: string[] = []
   const runtime = new AppBackgroundRuntime({
     readModule: async () => source,
@@ -301,7 +312,7 @@ function world(source: string, settingsFor: SettingsAppBinding | undefined, peer
       return { port: channel.port1, closed, close: () => settle({ reason: 'closed' }) }
     },
     window: { available: () => true, attached: async () => {} },
-    providerCalls: { peers: () => peers, reload: async id => void reloads.push(id) },
+    providerCalls: { peers: () => peers, reload: async id => void reloads.push(id), ...(dispose ? { dispose } : {}) },
     report: () => {},
   })
   runtimes.push(runtime)
@@ -338,6 +349,14 @@ describe('the three calls in a background module', () => {
     expect(value()).toEqual({ peers: ['vendor-a'], reload: 'ok', clear: { ok: true } })
     expect(reloads).toEqual(['mod.switch.route'])
     expect(cleared).toEqual([{ provider: 'vendor-a' }])
+  })
+
+  it('end their pending reloads with the runtime', async () => {
+    const dispose = vi.fn()
+    const { runtime } = world(CALLER, ROUTER_BINDING, fakeSource([]).source, dispose)
+    await runtime.dispose()
+    await runtime.dispose()
+    expect(dispose).toHaveBeenCalledTimes(1)
   })
 
   it('are refused at the call for any other app, with the cause', async () => {

@@ -3,22 +3,26 @@ import { AppWindowIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { resolveLocalizedText } from "../../../../config/localizedText";
 import type { BrowserLlmProvider } from "../../../bridge/protocol/nexus_llm";
+import type { NexusProviderConfig } from "../../../../settings/settingsTypes";
+import { isModProviderAdded } from "../modProviderForm";
 import { useLocale, useT } from "../../i18n";
 import { useModContributions } from "../../mods/modContributionsView";
 import { addedJustNow, ProviderAppOpenerContext, providerSettingsApp } from "../../apps/providerSettingsApp";
 
 /**
  * A provider's settings app in its editor (F-27, F-40): an "Open {title}"
- * button, and the app opened once when the provider is added. Nothing is drawn
+ * button, and the app opened once when the provider is added by its own rule
+ * (`isModProviderAdded`), not when the host adopts its entry. Nothing is drawn
  * when the provider names no app, the app is not published (stable), or the
  * page cannot open apps.
  */
-export function ProviderSettingsAppEntry({ provider, added }: { provider: BrowserLlmProvider; added: boolean }) {
+export function ProviderSettingsAppEntry({ provider, saved }: { provider: BrowserLlmProvider; saved: NexusProviderConfig | undefined }) {
+  const added = isModProviderAdded(saved);
   const t = useT();
   const locale = useLocale();
   const open = React.useContext(ProviderAppOpenerContext);
   const contributions = useModContributions();
-  const app = providerSettingsApp(provider.mod?.settingsApp, contributions.apps);
+  const app = providerSettingsApp(provider.mod?.settingsApp, provider.mod?.plugin, contributions.apps);
   const wasAdded = React.useRef<boolean | undefined>(undefined);
   React.useEffect(() => {
     const before = wasAdded.current;
