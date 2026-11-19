@@ -260,7 +260,7 @@ export const RunningIndicatorView: FC<{
     >
       {running ? (
         <>
-          <SessionStatusIcon status={status ?? "thinking"} className="size-5" decorative />
+          <SessionStatusIcon status={status ?? "thinking"} decorative />
           {/* Order: [status icon] [elapsed time] [status text]. */}
           <span className="flex min-w-0 items-center gap-1.5 text-[13px] leading-none text-muted-foreground">
             {/* Never shrinks or wraps: as a flex item its min-content width is
@@ -287,7 +287,7 @@ export const RunningIndicatorView: FC<{
         </>
       ) : (
         <>
-        <SessionStatusIcon status="paused" className="size-5" decorative />
+        <SessionStatusIcon status="paused" decorative />
         <span
           data-testid="status-bar-idle-notice"
           className="min-w-0 truncate text-[13px] leading-none text-muted-foreground"

@@ -283,3 +283,13 @@ describe('Use automatic title (F-34)', () => {
     expect(menuEntries(await openMenu('s0'))).not.toContain('sidebar-use-automatic-title')
   })
 })
+
+// The row's focus ring sits inside the row: the sidebar scroller clips anything drawn outside it.
+describe('session row focus ring', () => {
+  it('draws the keyboard focus ring inset', () => {
+    renderList()
+    const cls = screen.getByTestId('sidebar-row-newest').className.split(/\s+/)
+    expect(cls).toContain('focus-visible:focus-ring-inset')
+    expect(cls).not.toContain('focus-visible:focus-ring')
+  })
+})

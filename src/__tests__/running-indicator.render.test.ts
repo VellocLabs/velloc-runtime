@@ -560,3 +560,29 @@ describe('isRunStatusRowInView', () => {
     expect(isRunStatusRowInView({ top: 70, bottom: 96 }, band)).toBe(false)
   })
 })
+
+/** The status glyph matches the session list's size (F-17): no size class of its own. */
+describe('RunningIndicatorView status icon size', () => {
+  const iconClass = (html: string): string =>
+    /<svg[^>]*data-slot="session-status-icon"[^>]*class="([^"]*)"/.exec(html)?.[1]
+    ?? /<svg[^>]*class="([^"]*)"[^>]*data-slot="session-status-icon"/.exec(html)?.[1]
+    ?? ''
+
+  it('renders the running glyph at the session-list size', () => {
+    const html = renderToStaticMarkup(
+      createElement(RunningIndicatorView, { running: true, elapsed: '1s', statusText: 'Thinking' }),
+    )
+    const cls = iconClass(html).split(/\s+/)
+    expect(cls).toContain('size-3.5')
+    expect(cls).not.toContain('size-5')
+  })
+
+  it('renders the settled paused glyph at the session-list size', () => {
+    const html = renderToStaticMarkup(
+      createElement(RunningIndicatorView, { running: false, elapsed: '', statusText: '', idleNotice: 'Paused' }),
+    )
+    const cls = iconClass(html).split(/\s+/)
+    expect(cls).toContain('size-3.5')
+    expect(cls).not.toContain('size-5')
+  })
+})

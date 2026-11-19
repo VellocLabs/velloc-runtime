@@ -631,7 +631,7 @@ function SessionRow({
                 ? cn('pr-8', hasRowActions && 'group-hover:pr-14')
                 : hasRowActions && 'group-hover:pr-8'),
               indented && 'pl-7',
-              'focus-visible:focus-ring',
+              'focus-visible:focus-ring-inset',
             )}
             data-active={isActive || undefined}
             data-running={isRunning || undefined}
