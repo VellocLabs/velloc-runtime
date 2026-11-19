@@ -2,11 +2,11 @@
  * The window's share of a mod theme (F-25): the active session's theme on the
  * shell, the backdrop's reach, and the conversation's theme menu.
  */
-import { useCallback, useRef, type ReactNode } from 'react'
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 
 import type { ModsUiTheme } from '../runtimeProtocol'
 import type { RuntimeConnection } from '../runtimeClient/RuntimeConnection'
-import { ModBackdrop, ModShellPaintsThemeContext, useThemeLookOf, useWindowColorScheme, type ModThemeLook } from '@/components/assistant-ui/mod-theme'
+import { ModBackdrop, ModShellPaintsThemeContext, ModWindowThemeContext, useThemeLookOf, useWindowColorScheme, type ModThemeLook } from '@/components/assistant-ui/mod-theme'
 import { ModUiContext, type ModUiContextValue } from '@/components/assistant-ui/mod-ui-context'
 import { ThemeModsContext, type ThemeModsContextValue } from '@/components/assistant-ui/theme-mods-context'
 import { DEFAULT_THEME_BACKDROP_SCOPE } from '@/mods/themeMods'
@@ -22,6 +22,47 @@ export type ShellTheme = {
   /** The shell draws the backdrop behind the whole window; a thread inside draws none. */
   paintsBackdrop: boolean
   menu: ThemeModsContextValue | undefined
+}
+
+/** How long the window keeps the previous session's theme for a session that
+ *  never says whether it has one. */
+export const THEME_HOLD_MS = 10_000
+
+/**
+ * Contract: the mod UI the window paints its theme from (F-25). After a
+ * switch to another session it is the previous session's whole value, until
+ * the new one shows a theme, says its mods settled without one, or
+ * `THEME_HOLD_MS` passes. A theme that goes while its session stays shown
+ * goes at once. `holds` false (no session, or one whose mods this app does
+ * not run) never holds.
+ */
+export function useThemeAcrossSwitch(
+  sessionId: string | undefined,
+  modUi: ModUiContextValue,
+  holds: boolean,
+): ModUiContextValue {
+  const painted = useRef<ModUiContextValue | undefined>(undefined)
+  const shown = useRef<string | undefined>(undefined)
+  const waiting = useRef(false)
+  const [, expire] = useState(0)
+  if (shown.current !== sessionId) {
+    shown.current = sessionId
+    waiting.current = sessionId !== undefined && painted.current !== undefined
+  }
+  const isKnown = modUi.theme !== undefined || (modUi.isLoaded === true && modUi.modsSettled === true)
+  if (isKnown || !holds) waiting.current = false
+  const isHolding = waiting.current
+  useEffect(() => {
+    if (!isHolding) return
+    const timer = setTimeout(() => {
+      waiting.current = false
+      expire(count => count + 1)
+    }, THEME_HOLD_MS)
+    return () => clearTimeout(timer)
+  }, [isHolding, sessionId])
+  if (isHolding && painted.current) return painted.current
+  painted.current = modUi.theme ? modUi : undefined
+  return modUi
 }
 
 export function useShellTheme(options: {
@@ -72,7 +113,9 @@ export function useShellTheme(options: {
 export function ShellThemeProviders({ shellTheme, children }: { shellTheme: ShellTheme; children: ReactNode }) {
   return (
     <ThemeModsContext.Provider value={shellTheme.menu}>
-      <ModShellPaintsThemeContext.Provider value={shellTheme.paintsBackdrop}>{children}</ModShellPaintsThemeContext.Provider>
+      <ModWindowThemeContext.Provider value={shellTheme.look.theme}>
+        <ModShellPaintsThemeContext.Provider value={shellTheme.paintsBackdrop}>{children}</ModShellPaintsThemeContext.Provider>
+      </ModWindowThemeContext.Provider>
     </ThemeModsContext.Provider>
   )
 }

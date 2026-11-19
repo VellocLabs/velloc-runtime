@@ -140,6 +140,10 @@ function useShownOverride(theme: ModsUiTheme | undefined): ThemeMode | undefined
  *  so a thread inside it draws none of its own. */
 export const ModShellPaintsThemeContext = React.createContext(false);
 
+/** The theme the app shell carries for the whole window; undefined with none.
+ *  It may be another session's than the thread reading it. */
+export const ModWindowThemeContext = React.createContext<ModsUiTheme | undefined>(undefined);
+
 /** A theme as the element that carries it paints it: the thread root, or the
  *  shell around the whole window. `backdropBehind: false` is a carrier with no
  *  backdrop behind it: its surfaces are the theme's colours, opaque — a
@@ -185,9 +189,12 @@ const APP_CONTROL_FILLS: Record<string, string> = Object.fromEntries(CONTROL_TOK
 
 /** Keeps the app's own look for what it wraps (permission prompts), under
  *  any theme. Security: the wrap is opaque in the app's own background, so no
- *  scene, glass or ground shows through what a person must be able to trust. */
+ *  scene, glass or ground shows through what a person must be able to trust;
+ *  the window's theme counts where the thread has none of its own. */
 export function ModAppLook({ children }: { children: React.ReactNode }) {
-  const { theme } = useModUi();
+  const threadTheme = useModUi().theme;
+  const windowTheme = React.useContext(ModWindowThemeContext);
+  const theme = threadTheme ?? windowTheme;
   // The app's own look in the mode the window shows.
   const shown = useShownOverride(theme);
   const own = useOwnTokens(theme !== undefined, shown);

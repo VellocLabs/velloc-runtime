@@ -165,6 +165,9 @@ export type ModUiContextValue = {
   /** True once the runtime's first state for the session has arrived: before
    *  it, an empty `panes` means "not known yet", not "none open". */
   isLoaded?: boolean
+  /** True once the session's mods have loaded and settled: before it, no
+   *  `theme` means "not known yet", not "none". */
+  modsSettled?: boolean
   /** The open panes and the hooked sites. */
   panes: readonly ModUiPaneRow[]
   /** The rows plugins placed in the transcript, in placing order. */

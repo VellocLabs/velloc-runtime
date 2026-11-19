@@ -36,7 +36,7 @@ import type { RuntimeConnection } from '../../runtimeClient/RuntimeConnection'
 import type { ModUiContextValue, ModUiStaleSource, ModUiToastRow } from '../../../components/assistant-ui/mod-ui-context'
 import { EMPTY_MOD_UI, staleKeyOf } from '../../../components/assistant-ui/mod-ui-context'
 
-export type ModsUiView = Pick<ModUiContextValue, 'isLoaded' | 'status' | 'notices' | 'toasts' | 'panes' | 'placed' | 'theme' | 'hooked' | 'editHooked' | 'autocompleteHooked' | 'changeHooked' | 'stale' | 'turnNote' | 'asks' | 'view' | 'devModsAsk' | 'devModsOn' | 'devModFaults'>
+export type ModsUiView = Pick<ModUiContextValue, 'isLoaded' | 'modsSettled' | 'status' | 'notices' | 'toasts' | 'panes' | 'placed' | 'theme' | 'hooked' | 'editHooked' | 'autocompleteHooked' | 'changeHooked' | 'stale' | 'turnNote' | 'asks' | 'view' | 'devModsAsk' | 'devModsOn' | 'devModFaults'>
 
 type Listener = (view: ModsUiView) => void
 
@@ -198,6 +198,7 @@ export function holdModsUiView(
       store.view = {
         ...kept,
         isLoaded: true,
+        modsSettled: event.payload.modsSettled === true,
         status: event.payload.status,
         notices: event.payload.notices,
         panes: event.payload.panes ?? [],

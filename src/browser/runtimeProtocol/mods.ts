@@ -354,6 +354,10 @@ export type ModsUiTheme = {
  *  plugin), the notices under open tool-call dialogs (one per call), the
  *  open panes and the hooked sites (absent from an older runtime). */
 export type ModsUiState = {
+  /** The session's mods are loaded and their `session.start` has settled, so
+   *  a theme this state lacks is one the session does not have. Absent while
+   *  they load, with no runtime for the session, and from an older runtime. */
+  modsSettled?: true
   status: ModStatusLine[]
   notices: ModNoticeLine[]
   panes?: ModsUiPane[]
@@ -939,6 +943,7 @@ export function isModsUiState(value: unknown): value is ModsUiState {
     (value.editHooked === undefined || value.editHooked === true) &&
     (value.autocompleteHooked === undefined || value.autocompleteHooked === true) &&
     (value.changeHooked === undefined || value.changeHooked === true) &&
+    (value.modsSettled === undefined || value.modsSettled === true) &&
     (value.turnNote === undefined ||
       (isRecord(value.turnNote) &&
         typeof value.turnNote.turnId === 'string' &&

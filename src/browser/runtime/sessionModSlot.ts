@@ -17,11 +17,13 @@ import { traceLine } from '../../utils/debugLog'
 import {
   modRoster,
   openDevModsAsk,
+  openModsSettledMark,
   showDevModsNotice,
   type ModSlot,
   undoWhenScopeEnds,
   watchModRoster,
 } from '../../mods/modSlotRegistry'
+import { createModsSettledTracker } from '../../mods/modsSettled'
 import type { ModSlotHost } from './modSlotBuilder'
 
 export type SessionModSlotInput = Pick<
@@ -242,6 +244,14 @@ export async function openSessionModSlot(input: SessionModSlotInput) {
     const { buildSlotModRuntime } = await import('./modSlotBuilder')
     return buildSlotModRuntime(modSlotHost, modules)
   }
+  // What pages read to tell "no theme" from "not known yet" (F-25).
+  const settledMark = openModsSettledMark(resolvedSessionId)
+  undoWhenScopeEnds(() => settledMark.close(), options.runtimeScopeSignal)
+  const modsSettled = createModsSettledTracker({
+    mark: settledMark,
+    isUnloaded: () => modIdle?.isUnloaded() === true,
+    hasEnded: () => options.runtimeScopeSignal?.aborted === true,
+  })
   if (modModules.length > 0) mods = await buildModRuntime(modModules)
   /**
    * Reconcile the slot's mods after a plugin reload: unload removed modules, load added ones with
@@ -249,8 +259,10 @@ export async function openSessionModSlot(input: SessionModSlotInput) {
    */
   let reconcilingMods: Promise<void> = Promise.resolve()
   const reconcileMods = (plugins: typeof pluginContributions.plugins): Promise<void> => {
+    modsSettled.loadBegins()
     const run = reconcilingMods.then(() => reconcileModsNow(plugins))
     reconcilingMods = run.catch(() => undefined)
+    void reconcilingMods.then(() => modsSettled.loadOver(mods?.ready))
     return run
   }
   const reconcileModsNow = async (plugins: typeof pluginContributions.plugins): Promise<void> => {
@@ -295,6 +307,7 @@ export async function openSessionModSlot(input: SessionModSlotInput) {
       })
     : undefined
   if (modIdle) undoWhenScopeEnds(() => modIdle.dispose(), options.runtimeScopeSignal)
+  modsSettled.loadOver(mods?.ready)
 
   // The session's dev mods folder: `<home>/.velloc/dev-mods/<sessionId>/`,
   // scanned at each turn end and loaded into this session alone once the

@@ -64,6 +64,9 @@ export type ModSlotStatus = {
 
 /** A slot's mod-authored lines, for the `mods/ui/<sessionId>` topic. */
 export type ModSlotUiState = {
+  /** The session's mods are loaded and their `session.start` has settled:
+   *  what this state lacks, the session does not have. */
+  modsSettled?: true
   status: Array<{ plugin: string; text: string }>
   notices: Array<{ toolUseId: string; plugin: string; text: string }>
   panes?: ModUiPane[]
@@ -353,13 +356,51 @@ const devModsAsks = new Map<string, { ask: DevModsAsk; settle: (answer: DevModsA
 const devModsNotices = new Map<string, { notice: DevModsAsk; drop: () => void }>()
 let nextDevModsAsk = 0
 
+/** Per session: the latest runtime's say on whether its mods have settled.
+ *  Kept here, not in a slot: a session with no mod has no slot, and is
+ *  settled all the same. */
+const settledMarks = new Map<string, { settled: boolean }>()
+
+export type ModsSettledMark = {
+  /** Says whether the runtime's mods are settled now; pages hear a change. */
+  set(settled: boolean): void
+  /** The runtime ended: the session is no longer settled. */
+  close(): void
+}
+
+/**
+ * One runtime's say on whether `sessionId`'s mods have settled, unsettled
+ * until it says so. Opening it replaces the mark of an earlier runtime of
+ * the session, which can then no longer change the answer.
+ */
+export function openModsSettledMark(sessionId: string): ModsSettledMark {
+  const mark = { settled: false }
+  const publish = () => noteModUiEvent(sessionId, { kind: 'state', state: modSlotUiState(sessionId) })
+  const before = settledMarks.get(sessionId)
+  settledMarks.set(sessionId, mark)
+  if (before?.settled) publish()
+  return {
+    set(settled) {
+      if (settledMarks.get(sessionId) !== mark || mark.settled === settled) return
+      mark.settled = settled
+      publish()
+    },
+    close() {
+      if (settledMarks.get(sessionId) !== mark) return
+      settledMarks.delete(sessionId)
+      if (mark.settled) publish()
+    },
+  }
+}
+
 function withDevModsAsk(sessionId: string, state: ModSlotUiState): ModSlotUiState {
   const pending = devModsAsks.get(sessionId)
   const notice = devModsNotices.get(sessionId)?.notice
   const faults = devModFaults.get(sessionId)?.pending() ?? []
-  const { devModsAsk: _, devModsOn: __, devModFaults: ___, ...rest } = state
+  const { devModsAsk: _, devModsOn: __, devModFaults: ___, modsSettled: ____, ...rest } = state
   return {
     ...rest,
+    ...(settledMarks.get(sessionId)?.settled ? { modsSettled: true as const } : {}),
     ...(pending ? { devModsAsk: { ...pending.ask, plugins: [...pending.ask.plugins] } } : {}),
     ...(notice ? { devModsOn: { ...notice, plugins: [...notice.plugins] } } : {}),
     ...(faults.length > 0 ? { devModFaults: faults.map(publicFaultOf) } : {}),

@@ -74,7 +74,7 @@ import {
 } from './layout/modsPane'
 import { loadModPanesAsked } from './layout/layoutStorage'
 import { useModCellWidth } from '@/components/assistant-ui/mod-render'
-import { ShellBackdrop, ShellThemeProviders, useShellTheme } from './shellTheme'
+import { ShellBackdrop, ShellThemeProviders, useShellTheme, useThemeAcrossSwitch } from './shellTheme'
 import type { ModUiSeatPlaces } from '@/components/assistant-ui/mod-ui-context'
 import { useSessionModUi } from './mods/useSessionModUi'
 import { useModAgentView } from './mods/useModAgentView'
@@ -2326,9 +2326,16 @@ export function MultiSessionShell({
     && runtimeCapabilities.can('customizePage', 'show')
     && customizeOnThisChannel()
   // The active session's theme paints the whole window: its tokens and backdrop sit on the shell.
+  // Across a switch the previous one stays until the new session's is known.
+  // A session not listed yet (just created) holds too; only a CLI's never does.
+  const activeSessionIsCli = useMemo(
+    () => cliOfTemplateType(sessions.find(s => s.sessionId === activeSessionId)?.templateType) !== undefined,
+    [sessions, activeSessionId],
+  )
+  const themeModUi = useThemeAcrossSwitch(activeSessionId ?? undefined, shellModUi, !activeSessionIsCli)
   const shellTheme = useShellTheme({
     runtimeConnection,
-    theme: shellModUi.theme,
+    theme: themeModUi.theme,
     capabilities: runtimeCapabilities,
     isRemoteHost: remoteHost !== undefined,
     settingsBridge,
@@ -3049,7 +3056,7 @@ export function MultiSessionShell({
         position: 'relative',
       }}
     >
-      <ShellBackdrop shellTheme={shellTheme} modUi={shellModUi} sessionId={activeSessionId} />
+      <ShellBackdrop shellTheme={shellTheme} modUi={themeModUi} sessionId={activeSessionId} />
       <NexusTopBar
         // Settings takes the whole window: its header replaces the topbar as
         // the drag surface and caption reserve.
