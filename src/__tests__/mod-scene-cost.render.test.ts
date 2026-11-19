@@ -13,6 +13,9 @@ import { EMPTY_MOD_UI, ModUiContext, type ModUiContextValue } from '../component
 import { ModBackdrop } from '../components/assistant-ui/mod-theme'
 import { SVG_IMAGE_CACHE_SIZE, stillSvgOf, svgImageUrl } from '../components/assistant-ui/mod-svg-image'
 import type { ModsUiTheme } from '../browser/runtimeProtocol'
+import { ShellBackdrop, type ShellTheme } from '../browser/webview/shellTheme'
+import { SessionStatusChannelContext } from '../browser/webview/topbar/useNexusSessionStatus'
+import type { SessionStatusListener } from '../browser/runtimeClient/sessionStatusChannel'
 
 afterEach(() => {
   cleanup()
@@ -130,6 +133,30 @@ describe('a scene behind the conversation', () => {
   })
 })
 
+describe('a scene the shell paints behind the window', () => {
+  it('stands still while the session on screen runs a turn by its own status, and moves when it reports idle', async () => {
+    vi.spyOn(document, 'hasFocus').mockReturnValue(true)
+    const listeners = new Set<SessionStatusListener>()
+    const channel = { subscribe: (_id: string, listener: SessionStatusListener) => (listeners.add(listener), () => void listeners.delete(listener)) }
+    const shellTheme: ShellTheme = { look: { theme: THEME, style: {}, attributes: {}, className: '' }, paintsBackdrop: true, menu: undefined }
+    const modUi: ModUiContextValue = {
+      ...EMPTY_MOD_UI,
+      theme: THEME,
+      hooked: [{ plugin: 'tide', component: 'Backdrop' }],
+      render: async () => ({ kind: 'tree', plugin: 'tide', tree: { type: 'Svg', props: { source: MOVING, alt: 'a tide' }, children: [] } }),
+    }
+    render(createElement(SessionStatusChannelContext.Provider, { value: channel }, createElement(ShellBackdrop, { shellTheme, modUi, sessionId: 's1' })))
+    expect(await shownSource()).toBe(MOVING)
+    const send = (kind: 'idle' | 'running') => act(() => {
+      for (const listener of Array.from(listeners)) listener({ kind: 'delta', sessionId: 's1', sessionPhase: kind === 'idle' ? { kind } : { kind, sub: { type: 'streaming' } } })
+    })
+    send('running')
+    expect(await shownSource()).toBe(stillSvgOf(MOVING))
+    send('idle')
+    expect(await shownSource()).toBe(MOVING)
+  })
+})
+
 /** The selectors of each `globals.css` rule under `[data-mod-glass]` that sets
  *  `backdrop-filter` to `value`. */
 function glassSelectors(value: 'blur' | 'none'): string[] {
@@ -152,7 +179,10 @@ describe('a scene\'s glass', () => {
       '<div id="area" data-testid="nexus-session-area" class="bg-background">' +
       '<div id="thread" class="aui-thread-root bg-background">' +
       '<div id="card" class="bg-card"><div id="inner" class="bg-base-surface"></div></div>' +
-      '</div></div></main>'
+      '</div></div>' +
+      '<div class="aui-thread-root bg-background" data-mod-backdrop="scene">' +
+      '<div id="footer" class="aui-thread-viewport-footer bg-background"><div id="composer" class="bg-base-surface"><span id="pill" class="bg-card"></span></div></div>' +
+      '</div></main>'
     const frosts = glassSelectors('blur')
     const clears = glassSelectors('none')
     expect(frosts).toHaveLength(1)
@@ -165,5 +195,9 @@ describe('a scene\'s glass', () => {
     // The session area and the thread root frost nothing, so a card in them is outermost.
     expect(matchesAny('card', clears)).toBe(false)
     expect(matchesAny('inner', clears)).toBe(true)
+    // A scene thread's footer is clear, so the composer in it is outermost.
+    expect(matchesAny('composer', clears)).toBe(false)
+    expect(matchesAny('composer', frosts)).toBe(true)
+    expect(matchesAny('pill', clears)).toBe(true)
   })
 })

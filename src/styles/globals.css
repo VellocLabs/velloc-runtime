@@ -1074,12 +1074,14 @@
 }
 
 /* A panel inside a frosted panel adds its own tint and frosts nothing again:
- * what is behind it is frosted already. The session area and the thread root
- * frost nothing themselves, so the panels inside them still do. */
+ * what is behind it is frosted already. The session area, the thread root and
+ * the thread's footer (clear under a scene) are never the outer panel, so the
+ * panels inside them still frost. */
 [data-mod-glass]
   :is(.bg-background, .bg-card, .bg-toolbar, .bg-base-surface, .bg-sidebar):not(
     [data-testid='nexus-session-area'],
-    .aui-thread-root
+    .aui-thread-root,
+    .aui-thread-viewport-footer
   )
   :is(.bg-background, .bg-card, .bg-toolbar, .bg-base-surface, .bg-sidebar) {
   backdrop-filter: none;

@@ -236,9 +236,19 @@ function VectorGround({ vector }: { vector: GroundVector }) {
 
 const REDUCED_MOTION = "(prefers-reduced-motion: reduce)";
 
+let reducedMotion: { of: typeof window.matchMedia; query: MediaQueryList } | undefined;
+
+/** One query per `matchMedia`, read on every render as the store's snapshot. */
+function reducedMotionQuery(): MediaQueryList | undefined {
+  const matchMedia = window.matchMedia;
+  if (typeof matchMedia !== "function") return undefined;
+  if (reducedMotion?.of !== matchMedia) reducedMotion = { of: matchMedia, query: matchMedia.call(window, REDUCED_MOTION) };
+  return reducedMotion.query;
+}
+
 function subscribeWatched(listener: () => void): () => void {
   if (typeof window === "undefined" || typeof document === "undefined") return () => {};
-  const query = typeof window.matchMedia === "function" ? window.matchMedia(REDUCED_MOTION) : undefined;
+  const query = reducedMotionQuery();
   window.addEventListener("focus", listener);
   window.addEventListener("blur", listener);
   document.addEventListener("visibilitychange", listener);
@@ -254,7 +264,7 @@ function subscribeWatched(listener: () => void): () => void {
 function isUnwatchedNow(): boolean {
   if (typeof window === "undefined" || typeof document === "undefined") return false;
   if (document.visibilityState === "hidden" || !document.hasFocus()) return true;
-  return typeof window.matchMedia === "function" && window.matchMedia(REDUCED_MOTION).matches;
+  return reducedMotionQuery()?.matches ?? false;
 }
 
 /** Whether a scene stands still: while the session works, while the window is

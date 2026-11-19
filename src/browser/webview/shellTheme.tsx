@@ -13,6 +13,7 @@ import { DEFAULT_THEME_BACKDROP_SCOPE } from '@/mods/themeMods'
 import type { NexusSettingsBridge } from './nexusSettingsBridge'
 import { askThemeOnEnable, useThemeMods } from './mods/themeModsView'
 import { useThemeModsMenu } from './mods/useThemeModsMenu'
+import { useNexusSessionStatus, useSessionStatusChannel } from './topbar/useNexusSessionStatus'
 import type { CapabilityQuery } from './useCan'
 
 export type ShellTheme = {
@@ -76,14 +77,19 @@ export function ShellThemeProviders({ shellTheme, children }: { shellTheme: Shel
   )
 }
 
-/** The backdrop behind the whole window, where the shell paints it;
- *  `isWorking` while the session on screen runs a turn. */
-export function ShellBackdrop({ shellTheme, modUi, isWorking }: { shellTheme: ShellTheme; modUi: ModUiContextValue; isWorking: boolean }) {
+/** The backdrop behind the whole window, where the shell paints it. */
+export function ShellBackdrop({ shellTheme, modUi, sessionId }: { shellTheme: ShellTheme; modUi: ModUiContextValue; sessionId: string | null }) {
   if (!shellTheme.paintsBackdrop) return null
+  return <PaintedShellBackdrop modUi={modUi} sessionId={sessionId} />
+}
+
+/** Still while the session on screen runs a turn, by its own status feed. */
+function PaintedShellBackdrop({ modUi, sessionId }: { modUi: ModUiContextValue; sessionId: string | null }) {
+  const { sessionPhase } = useNexusSessionStatus(useSessionStatusChannel(), sessionId)
   return (
     <ModShellPaintsThemeContext.Provider value={false}>
       <ModUiContext.Provider value={modUi}>
-        <ModBackdrop isWorking={isWorking} />
+        <ModBackdrop isWorking={sessionPhase.kind !== 'idle'} />
       </ModUiContext.Provider>
     </ModShellPaintsThemeContext.Provider>
   )
