@@ -1144,7 +1144,7 @@ function InteractiveAssistantUiThread({
   }, [state.snapshot?.lastTerminalReason, state.transcriptMessages, state.status])
 
   return (
-    <RouteNamesContext.Provider value={state.snapshot?.modelCatalog ?? null}>
+    <RouteNamesContext.Provider value={configuredCatalog ?? null}>
     <ComposerDeliveryContext.Provider value={composerDelivery}>
     <AssistantRuntimeProvider runtime={runtime}>
       <HistoryContentWindowContext.Provider value={historyContentWindow}>

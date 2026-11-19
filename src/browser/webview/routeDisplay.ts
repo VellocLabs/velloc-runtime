@@ -1,7 +1,7 @@
 import { createContext, useContext } from 'react'
 import type { RoutedVia } from '../../models/drivers/providerRouter'
 import type { BrowserLlmCatalog, BrowserLlmProvider } from '../bridge/protocol/nexus_llm'
-import { displayModelLabel } from '../../config/nexusModelConfig/modelDisplay'
+import { activeModelLabel } from './activeModel'
 import type { MessageKey } from './i18n/messages/en'
 import type { TranslateFn } from './i18n/translate'
 
@@ -45,9 +45,10 @@ export function latestRoutedVia(rows: readonly unknown[]): RoutedVia | undefined
 }
 
 /**
- * A member's name: the provider's label and the model's display name. A
- * provider id is opaque: an unknown provider falls back to its stored id
- * whole, an unknown model to its raw id.
+ * A member's name: the provider's label and the model's display name, a
+ * Latest entry named by the model it runs today. A provider id is opaque: an
+ * unknown provider falls back to its stored id whole, an unknown model to its
+ * raw id.
  */
 export function routeMemberName(
   t: TranslateFn,
@@ -57,7 +58,8 @@ export function routeMemberName(
   const provider = catalog?.providers.find((p) => p.id === target.provider)
   const model = provider?.models.find((m) => m.id === target.model)
   const providerName = provider?.label || target.provider
-  const modelName = model ? displayModelLabel(provider!.id, model.label || model.id, model) : target.model
+  const modelName =
+    provider && model ? activeModelLabel({ provider, model: model.label ? model : { ...model, label: model.id } }) : target.model
   return t('routeMember.name', { model: modelName, source: providerName })
 }
 

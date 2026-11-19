@@ -3474,7 +3474,6 @@ export const fr: Messages = {
   "routeNotice.service": "{from} a rencontré une erreur serveur. Passage à {to}.",
   "routeNotice.network": "{from} est injoignable. Passage à {to}.",
   "routeNotice.other": "Passage de {from} à {to}.",
-  "routeNotice.label": "Changement de route",
   "modelPicker.routeVia": "via {member}",
   "modelPicker.routeIcon": "Route",
   "routeMember.name": "{model} · {source}",

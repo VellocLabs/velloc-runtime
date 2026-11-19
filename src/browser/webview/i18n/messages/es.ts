@@ -3449,7 +3449,6 @@ export const es: Messages = {
   "routeNotice.service": "{from} tuvo un error del servidor. Se cambió a {to}.",
   "routeNotice.network": "No se pudo contactar con {from}. Se cambió a {to}.",
   "routeNotice.other": "Se cambió de {from} a {to}.",
-  "routeNotice.label": "Cambio de ruta",
   "modelPicker.routeVia": "vía {member}",
   "modelPicker.routeIcon": "Ruta",
   "routeMember.name": "{model} · {source}",

@@ -3363,7 +3363,6 @@ export const ko: Messages = {
   "routeNotice.service": "{from}에서 서버 오류가 발생했습니다. {to}(으)로 전환했습니다.",
   "routeNotice.network": "{from}에 연결할 수 없습니다. {to}(으)로 전환했습니다.",
   "routeNotice.other": "{from}에서 {to}(으)로 전환했습니다.",
-  "routeNotice.label": "경로 변경",
   "modelPicker.routeVia": "{member} 경유",
   "modelPicker.routeIcon": "경로",
   "routeMember.name": "{model} · {source}",

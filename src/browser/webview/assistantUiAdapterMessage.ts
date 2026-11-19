@@ -534,7 +534,7 @@ function commandOutputStampOf(message: unknown): { commandOutput?: { command: st
 }
 
 /** A routed reply's record, carried to the row so its member and switch notice draw (F-27). */
-function routedViaCustom(row: unknown): Record<string, unknown> {
+export function routedViaCustom(row: unknown): Record<string, unknown> {
   const via = routedViaOfRow(row)
   return via ? { [ROUTED_VIA_KEY]: via } : {}
 }

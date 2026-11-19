@@ -17,7 +17,11 @@ import {
   routeMemberName,
   routeNoticeKey,
 } from '../browser/webview/routeDisplay'
-import { convertTranscriptToThreadMessages } from '../browser/webview/assistantUiAdapter'
+import {
+  convertBrowserRuntimeStateToThreadMessages,
+  convertTranscriptToThreadMessages,
+} from '../browser/webview/assistantUiAdapter'
+import type { BrowserRuntimeClientState } from '../browser/webview/BrowserRuntimeClient'
 import { prepareHistoryForModel } from '../messages/prepareModelHistory'
 import { createTranslate } from '../browser/webview/i18n/translate'
 import { en } from '../browser/webview/i18n/messages/en'
@@ -178,6 +182,33 @@ describe('a routed reply', () => {
   })
 })
 
+describe('a routed reply while it streams', () => {
+  it('carries its record on the live row, as on the stored row', () => {
+    const via = { provider: BETA.id, model: 'beta-small', switchedFrom: { provider: ALPHA.id, model: 'alpha-large', reason: 'quota' } }
+    const state = {
+      status: 'submitting',
+      snapshot: null,
+      transcriptMessages: [userRow('u-1')],
+      liveEvents: [reply(via, 'a-live')],
+      lastError: null,
+    } as unknown as BrowserRuntimeClientState
+    const live = convertBrowserRuntimeStateToThreadMessages(state).find((m) => m.role === 'assistant')!
+    expect((live.metadata?.custom as Record<string, unknown>).routedVia).toEqual(via)
+  })
+
+  it('carries nothing on a live row served by no router', () => {
+    const state = {
+      status: 'submitting',
+      snapshot: null,
+      transcriptMessages: [userRow('u-1')],
+      liveEvents: [reply(undefined, 'a-live')],
+      lastError: null,
+    } as unknown as BrowserRuntimeClientState
+    const live = convertBrowserRuntimeStateToThreadMessages(state).find((m) => m.role === 'assistant')!
+    expect(live.metadata?.custom).not.toHaveProperty('routedVia')
+  })
+})
+
 describe('the switch notice is not a message', () => {
   const rows = [
     userRow('u-1'),
@@ -204,6 +235,14 @@ describe('member names', () => {
     expect(routeMemberName(t, CATALOG, { provider: ALPHA.id, model: 'alpha-gone' })).toBe('alpha-gone · Alpha Cloud')
     expect(routeMemberName(t, CATALOG, { provider: 'inst-removed/x:1', model: 'm-9' })).toBe('m-9 · inst-removed/x:1')
     expect(routeMemberName(t, null, { provider: 'inst-a1', model: 'alpha-large' })).toBe('alpha-large · inst-a1')
+  })
+
+  it('names a Latest entry by the model it runs today', () => {
+    const latest = {
+      ...ALPHA,
+      models: [{ id: 'alpha-latest', label: 'Alpha', enabled: true, entry: { kind: 'latest', resolvedVersion: '4.5' } }],
+    } as unknown as BrowserLlmProvider
+    expect(routeMemberName(t, { providers: [latest] }, { provider: ALPHA.id, model: 'alpha-latest' })).toBe('Alpha 4.5 · Alpha Cloud')
   })
 
   it('reads the latest routed reply of a session', () => {

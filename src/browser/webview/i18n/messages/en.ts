@@ -3498,7 +3498,6 @@ export const en = {
   "routeNotice.service": "{from} had a server error. Switched to {to}.",
   "routeNotice.network": "{from} could not be reached. Switched to {to}.",
   "routeNotice.other": "Switched from {from} to {to}.",
-  "routeNotice.label": "Route change",
   "modelPicker.routeVia": "via {member}",
   "modelPicker.routeIcon": "Route",
   "routeMember.name": "{model} · {source}",

@@ -38,6 +38,7 @@ import { a2uiBlockKeysOf } from './a2ui/a2uiRowKeys'
 import {
   convertTranscriptMessage,
   markEndTurnReply,
+  routedViaCustom,
   withProviderApiErrorMetadata,
 } from './assistantUiAdapterMessage'
 
@@ -207,6 +208,7 @@ export function createLiveAssistantMessages(
             metadata: {
               custom: {
                 sourceType: 'live_events',
+                ...routedViaCustom(assistantMessage),
                 ...a2uiBlockKeysOf(assistantMessage.uuid, assistantMessage.message.content),
               },
             },

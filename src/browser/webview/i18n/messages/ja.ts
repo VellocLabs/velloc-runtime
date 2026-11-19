@@ -3375,7 +3375,6 @@ export const ja: Messages = {
   "routeNotice.service": "{from} でサーバーエラーが発生しました。{to} に切り替えました。",
   "routeNotice.network": "{from} に接続できませんでした。{to} に切り替えました。",
   "routeNotice.other": "{from} から {to} に切り替えました。",
-  "routeNotice.label": "ルートの変更",
   "modelPicker.routeVia": "{member} 経由",
   "modelPicker.routeIcon": "ルート",
   "routeMember.name": "{model} · {source}",

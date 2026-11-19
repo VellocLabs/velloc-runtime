@@ -3314,7 +3314,6 @@ export const zh: Messages = {
   "routeNotice.service": "{from} 出现服务器错误。已切换到 {to}。",
   "routeNotice.network": "无法连接到 {from}。已切换到 {to}。",
   "routeNotice.other": "已从 {from} 切换到 {to}。",
-  "routeNotice.label": "路由变更",
   "modelPicker.routeVia": "经由 {member}",
   "modelPicker.routeIcon": "路由",
   "routeMember.name": "{model} · {source}",
