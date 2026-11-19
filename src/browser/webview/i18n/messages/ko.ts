@@ -2484,7 +2484,6 @@ export const ko: Messages = {
   'themeMenu.showing': '표시 중',
   'themeMenu.empty': '아직 테마를 설정한 Mod가 없습니다',
   'themeMenu.more': '더 많은 테마',
-  'themeMenu.single': '한 번에 하나만',
   'themeMenu.backdrop': '배경 범위',
   'themeMenu.backdropConversation': '대화만',
   'themeMenu.backdropWindow': '창 전체',

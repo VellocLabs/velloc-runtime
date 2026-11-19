@@ -2521,7 +2521,6 @@ export const de: Messages = {
   'themeMenu.showing': 'Wird angezeigt',
   'themeMenu.empty': 'Noch kein Mod hat ein Design festgelegt',
   'themeMenu.more': 'Weitere Designs',
-  'themeMenu.single': 'Nur eines gleichzeitig',
   'themeMenu.backdrop': 'Hintergrund reicht über',
   'themeMenu.backdropConversation': 'Nur die Unterhaltung',
   'themeMenu.backdropWindow': 'Das ganze Fenster',

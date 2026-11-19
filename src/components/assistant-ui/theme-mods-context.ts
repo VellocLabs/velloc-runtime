@@ -15,7 +15,6 @@ export type ThemeModsContextValue = {
   setBackdropScope?: (scope: ThemeBackdropScope) => Promise<void>
   /** Enabling one mod disables the others. */
   single: boolean
-  setSingle?: (on: boolean) => Promise<void>
   /** Enable or disable the plugin itself; rejects with the reason. */
   setEnabled?: (mod: ThemeModEntry, enabled: boolean) => Promise<void>
   /** Open the place themes are installed from. */

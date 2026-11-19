@@ -254,22 +254,6 @@ export const ThemeModsMenu: FC<{ sessionId?: string; isForeground?: boolean }> =
                       {failure}
                     </div>
                   )}
-                  <DropdownMenuPrimitive.Separator className={SEPARATOR_CLASS} />
-                  <DropdownMenuPrimitive.CheckboxItem
-                    data-testid="theme-mods-menu-single"
-                    checked={themes.single}
-                    disabled={!themes.setSingle}
-                    onCheckedChange={(value) => void themes.setSingle?.(value === true).catch(() => undefined)}
-                    onSelect={(event) => event.preventDefault()}
-                    className={ITEM_CLASS}
-                  >
-                    <span className="flex size-4 items-center justify-center">
-                      <DropdownMenuPrimitive.ItemIndicator>
-                        <CheckIcon aria-hidden className="size-4 text-primary" />
-                      </DropdownMenuPrimitive.ItemIndicator>
-                    </span>
-                    <span className="flex-1">{t("themeMenu.single")}</span>
-                  </DropdownMenuPrimitive.CheckboxItem>
                   {openThemeStore && (
                     <>
                       <DropdownMenuPrimitive.Separator className={SEPARATOR_CLASS} />

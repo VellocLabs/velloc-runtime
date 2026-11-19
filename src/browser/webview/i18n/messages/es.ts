@@ -2524,7 +2524,6 @@ export const es: Messages = {
   'themeMenu.showing': 'En pantalla',
   'themeMenu.empty': 'Ningún mod ha establecido un tema todavía',
   'themeMenu.more': 'Más temas',
-  'themeMenu.single': 'Solo uno a la vez',
   'themeMenu.backdrop': 'El fondo cubre',
   'themeMenu.backdropConversation': 'Solo la conversación',
   'themeMenu.backdropWindow': 'Toda la ventana',

@@ -110,7 +110,7 @@ describe('theme mods menu', () => {
     fireEvent.click(await screen.findByTestId('theme-mod:aurora'))
     await waitFor(() => expect(calls).toHaveLength(3))
     expect(calls).toEqual([['aurora', true], ['bubblegum', false], ['looks', false]])
-    expect(screen.getByTestId('theme-mods-menu-single').getAttribute('aria-checked')).toBe('true')
+    expect(screen.queryByTestId('theme-mods-menu-single')).toBeNull()
   })
 
   it('leaves a mod no plugin list knows unpressable, and one at a time passes it by', async () => {
