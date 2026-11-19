@@ -59,6 +59,11 @@
   --color-sidebar: var(--sidebar);
   --color-sidebar-row-hover: var(--sidebar-row-hover);
   --color-sidebar-row-selected: var(--sidebar-row-selected);
+  /* A ghost control's hover and pressed fills. `--control-hover` and
+   * `--control-pressed` are set only where a mod theme paints its palette
+   * (F-25); without them the fill is the accent surface, at the mode's share. */
+  --color-control-hover: var(--control-hover, color-mix(in oklab, var(--accent) var(--control-hover-share, 100%), transparent));
+  --color-control-pressed: var(--control-pressed, var(--accent));
   --color-chart-5: var(--chart-5);
   --color-chart-4: var(--chart-4);
   --color-chart-3: var(--chart-3);
@@ -255,6 +260,7 @@
    * selected row always reads darker than a hovered one. */
   --sidebar-row-hover: color-mix(in srgb, var(--foreground) 5%, transparent);
   --sidebar-row-selected: color-mix(in srgb, var(--foreground) 10%, transparent);
+  --control-hover-share: 100%;
 
   /* Semantic status colours: every success / warning / info surface uses these,
    * never a raw Tailwind hue. `--<name>` is the hue, `--<name>-emphasis` strong
@@ -295,6 +301,7 @@
    * secondary neutral-80, outlines neutral-variant-60 at reduced alpha. */
   --background: oklch(0.239 0 0);
   --toolbar: oklch(0.356 0 0); /* neutral toolbar #3c3c3c */
+  --control-hover-share: 50%;
   --base: oklch(0.239 0 0); /* = surface */
   --foreground: oklch(0.916 0 0);
   --card: oklch(0.277 0 0);

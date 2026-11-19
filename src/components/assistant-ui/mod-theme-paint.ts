@@ -36,6 +36,14 @@ const GRAY_SLOTS: Record<ThemeMode, Record<string, string>> = {
 const ROLE_TEXT_STOP: Record<ThemeMode, string> = { light: '600', dark: '250' }
 const ROLE_EMPHASIS_STOP: Record<ThemeMode, string> = { light: '700', dark: '100' }
 
+/** A ghost control's hover and pressed fills under a palette: the palette's
+ *  text color at these shares, so the fill tints whatever surface the control
+ *  sits on. A palette's surfaces keep no fixed order of lightness, so a
+ *  surface is no fill. Unset, the app paints its own accent fill. */
+export const CONTROL_TOKENS: readonly string[] = ['--control-hover', '--control-pressed']
+export const CONTROL_HOVER_SHARE = 0.05
+export const CONTROL_PRESSED_SHARE = 0.1
+
 type Source = { key: (mode: ThemeMode) => string; alpha?: number }
 
 const gray = (slot: string): Source => ({ key: mode => GRAY_SLOTS[mode][slot]! })
@@ -61,6 +69,8 @@ const TOKEN_SOURCES: ReadonlyArray<[string, Source]> = [
   ['--secondary', gray('surface2')],
   ['--accent', gray('surface2')],
   ['--sidebar-accent', gray('surface2')],
+  ['--control-hover', faded(gray('textPrimary'), CONTROL_HOVER_SHARE)],
+  ['--control-pressed', faded(gray('textPrimary'), CONTROL_PRESSED_SHARE)],
   ['--foreground', gray('textPrimary')],
   ['--card-foreground', gray('textPrimary')],
   ['--popover-foreground', gray('textPrimary')],

@@ -11,6 +11,7 @@ import { showColorScheme } from "@/lib/shownColorScheme";
 import { useModUi } from "./mod-ui-context";
 import { ModRenderTree, useCellViewport, useModRender } from "./mod-render";
 import {
+  CONTROL_TOKENS,
   THEME_TOKENS,
   glassTokensOf,
   groundStyleOf,
@@ -178,6 +179,9 @@ export function useThemeLookOf(theme: ModsUiTheme | undefined, backdropBehind = 
   }, [theme, mode, override, glass?.blur, glass?.tint, glass?.opacity, own, backdropBehind]); // eslint-disable-line react-hooks/exhaustive-deps
 }
 
+/** The control fill tokens unset, so the app's own accent fill stands. */
+const APP_CONTROL_FILLS: Record<string, string> = Object.fromEntries(CONTROL_TOKENS.map(token => [token, "initial"]));
+
 /** Keeps the app's own look for what it wraps (permission prompts), under
  *  any theme. Security: the wrap is opaque in the app's own background, so no
  *  scene, glass or ground shows through what a person must be able to trust. */
@@ -191,7 +195,7 @@ export function ModAppLook({ children }: { children: React.ReactNode }) {
     <div
       data-slot="mod-app-look"
       className="w-full rounded-lg empty:hidden"
-      style={{ ...own, backgroundColor: own["--background"] ?? "Canvas", color: own["--foreground"] ?? "CanvasText" } as React.CSSProperties}
+      style={{ ...APP_CONTROL_FILLS, ...own, backgroundColor: own["--background"] ?? "Canvas", color: own["--foreground"] ?? "CanvasText" } as React.CSSProperties}
     >
       {children}
     </div>

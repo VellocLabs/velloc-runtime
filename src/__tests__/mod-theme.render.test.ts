@@ -140,6 +140,18 @@ describe('the palette', () => {
     expect(dark.kind === 'painted' && dark.tokens['--syntax-keyword']).toBe('#93b7d9')
   })
 
+  it("a ghost control's hover and pressed fills are the palette's text at a small share, never one of its surfaces", () => {
+    const light = paletteTokensOf(PAPER, 'light', OWN_LIGHT)
+    const tokens = light.kind === 'painted' ? light.tokens : {}
+    expect(tokens['--control-hover']).toBe('color-mix(in srgb, #2a241d 5%, transparent)')
+    expect(tokens['--control-pressed']).toBe('color-mix(in srgb, #2a241d 10%, transparent)')
+    const dark = paletteTokensOf(PAPER, 'dark', OWN_DARK)
+    expect(dark.kind === 'painted' && dark.tokens['--control-hover']).toBe('color-mix(in srgb, #f0e7d7 5%, transparent)')
+    // No text color in the palette: the app's own fill stands.
+    const surfaces = paletteTokensOf({ v: 1, inputs: { light: { 'gray-0': '#fafafa' } } }, 'light', OWN_LIGHT)
+    expect(surfaces.kind === 'painted' && '--control-hover' in surfaces.tokens).toBe(false)
+  })
+
   it('a palette for one mode paints nothing in the other; too little text contrast refuses it whole', () => {
     expect(paletteTokensOf({ ...PAPER, inputs: { dark: PAPER.inputs.dark } }, 'light')).toEqual({ kind: 'none' })
     expect(paletteTokensOf({ v: 2, inputs: PAPER.inputs }, 'light')).toEqual({ kind: 'none' })
@@ -404,6 +416,9 @@ describe('the app\'s own look', () => {
     render(withUi({ theme: { plugin: 'look', requestId: 'theme', colors: PAPER } }, createElement(ModAppLook, null, child)))
     const wrap = document.querySelector('[data-slot="mod-app-look"]') as HTMLElement
     expect(wrap.style.getPropertyValue('--background')).toBe('#ffffff')
+    // The theme's control fills stop at the wrap: the app's own accent fill stands inside.
+    expect(wrap.style.getPropertyValue('--control-hover')).toBe('initial')
+    expect(wrap.style.getPropertyValue('--control-pressed')).toBe('initial')
     expect(wrap.style.backgroundColor).toBeTruthy()
     expect(wrap.classList).not.toContain('contents')
     // No ask showing: the wrap takes no room in the footer.
