@@ -158,18 +158,19 @@ export async function useThemeLook(
 }
 
 /**
- * `useThemeLook`, asked again while the plugin is still loading in the
- * session (just switched on, its module not yet up): while the answer is
- * `notLoaded`, or `notOwnCommand` before the plugin has started, every
- * `timing.pause`, `timing.attempts` times at most. A look applied by loading
- * the plugin is not loaded again once its theme stands. `target.slot` is read
- * on each try. Never rejects.
+ * `useThemeLook`, asked again while the plugin is still loading: while the
+ * answer is `notLoaded`, or `notOwnCommand` before it has started, `attempts`
+ * times at most. A look applied by loading is not loaded again once its theme
+ * stands; `target.slot` is read on each try. `othersOff`: a plugin just off may
+ * still serve the command (waited out) or have taken the plugin's registration
+ * with it (reloaded once). Never rejects. (F-25)
  */
 export async function useThemeLookOnceLoaded(
   target: ThemeLookTarget,
   ask: Pick<ThemeUseLookPayload, 'plugin' | 'lookId'>,
   timing: ThemeOnEnableTiming = {},
   signal?: AbortSignal,
+  after: { othersOff?: boolean } = {},
 ): Promise<ThemeUseLookResult> {
   const { pause, attempts } = loadingTiming(timing)
   // Named apart: spreading `target` would read its `slot` once more.
@@ -178,7 +179,9 @@ export async function useThemeLookOnceLoaded(
   const look = listing?.theme?.looks.find(candidate => candidate.id === ask.lookId)
   if (!listing || !look) return { ok: false, reason: 'unknownLook' }
   const installs = installsOf?.(listing) ?? [`${ask.plugin}@${marketplace}`]
-  const appliedByLoading = !look.use && !listing.theme!.onEnable
+  const run = look.use ?? listing.theme!.onEnable
+  const appliedByLoading = !run
+  let registeredAgain = false
   let result: ThemeUseLookResult = { ok: false, reason: 'notLoaded' }
   for (let attempt = 0; attempt < attempts; attempt += 1) {
     if (attempt > 0) await pause()
@@ -192,6 +195,19 @@ export async function useThemeLookOnceLoaded(
     if (started && appliedByLoading && slot!.themeOwner?.() === ask.plugin) return { ok: true, via: 'reload' }
     result = await useThemeLook({ marketplace, listings, ...(installsOf ? { installsOf } : {}), slot }, ask, signal)
     if (result.ok) return result
+    if (after.othersOff && run && started && result.reason === 'notOwnCommand') {
+      const owner = slot.commandOwner?.(run.command)
+      // A plugin just switched off serves the command until the session reloads.
+      if (owner && owner.plugin !== ask.plugin) continue
+      if (!owner && !registeredAgain && slot.reloadPlugin) {
+        registeredAgain = true
+        for (const install of installs) {
+          if (slot.hasLoaded && !slot.hasLoaded(install)) continue
+          await slot.reloadPlugin(install).catch(() => 0)
+        }
+        continue
+      }
+    }
     // Once the plugin has started, a command it did not register will not appear.
     const loading = result.reason === 'notLoaded' || (result.reason === 'notOwnCommand' && !started)
     if (!loading) return result

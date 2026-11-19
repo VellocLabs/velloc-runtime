@@ -162,6 +162,45 @@ export async function turnOnListedThemePlugin(
   }
 }
 
+/**
+ * With *Only one at a time* on (settings `mods.singleThemeMod`): every other
+ * theme plugin off and, when every install of the listing's is off, one on
+ * (`turnOnListedThemePlugin`); the open sessions reload once. Null, touching
+ * nothing, when the setting is off or the listing is not installed. Never rejects.
+ */
+export async function keepOnlyListedThemePlugin(
+  deps: ThemePluginsDeps,
+  listing: Pick<CatalogListing, 'name' | 'source'>,
+): Promise<{ switchedOn: boolean; othersOff: boolean } | null> {
+  let reloadDue = false
+  const quiet: ThemePluginsDeps = { ...deps, reload: () => void (reloadDue = true) }
+  try {
+    const { homeDir, fs } = deps
+    const [{ settings }, { registry }] = await Promise.all([
+      readLayerFresh('userSettings', { homeDir }, fs),
+      loadInstalledPlugins({ homeDir }, fs),
+    ])
+    if (settings.mods?.singleThemeMod !== true) return null
+    const installed = listingInstalls(registry.plugins, listing, BUILTIN_MARKETPLACE_KEY).some(id =>
+      Object.hasOwn(registry.plugins, id),
+    )
+    if (!installed) return null
+    const known = await knownThemePlugins(homeDir, fs)
+    try {
+      await switchOff(quiet, known.filter(mod => mod.plugin !== listing.name), settings.enabledPlugins ?? {})
+    } catch {
+      // The look is still asked for with what could be switched off.
+    }
+    const othersOff = reloadDue
+    const switchedOn = await turnOnListedThemePlugin(quiet, listing)
+    return { switchedOn, othersOff }
+  } catch {
+    return null
+  } finally {
+    if (reloadDue) deps.reload()
+  }
+}
+
 const sameFolder = (a: string, b: string) => normalizeRuntimePath(a).toLowerCase() === normalizeRuntimePath(b).toLowerCase()
 
 /**

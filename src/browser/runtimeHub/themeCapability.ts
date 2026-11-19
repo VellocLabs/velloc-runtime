@@ -27,7 +27,7 @@ import { BUILTIN_MARKETPLACE_KEY } from '../../pluginHost/builtinMarketplace'
 import { readCachedManifest } from '../../pluginHost/builtinMarketplaceSeed'
 import { loadInstalledPlugins } from '../../pluginHost/installedRegistry'
 import { listingInstalls } from '../../pluginHost/themeListing'
-import { keepOneThemePlugin, turnOnListedThemePlugin } from '../../mods/themePlugins'
+import { keepOneThemePlugin, keepOnlyListedThemePlugin, turnOnListedThemePlugin } from '../../mods/themePlugins'
 import { listingsVisibleOn } from '../../pluginHost/marketplaces'
 import type { CatalogListing } from '../../pluginHost/registryFormats'
 import type { UpdateChannel } from '../../branding/updateChannels'
@@ -98,28 +98,39 @@ export function registerThemeCapability(registry: CapabilityRegistry, options: T
           const payload = request.payload as ThemeUseLookPayload
           const slot = slotInScope(request.conn, payload.sessionId)
           const { homeDir, fs, ...target } = await readTarget()
+          const reload = options.reload ?? (() => {})
+          const listing = target.listings?.find(candidate => candidate.name === payload.plugin)
+          const loading: ThemeLookTarget = {
+            ...target,
+            get slot() {
+              return slotOf(payload.sessionId)
+            },
+          }
+          // With *Only one at a time* on, the look's plugin is made the one theme
+          // plugin on first, so the command run is that plugin's and no other's.
+          const sole =
+            listing?.theme?.looks.some(look => look.id === payload.lookId) && !request.signal?.aborted
+              ? await keepOnlyListedThemePlugin({ homeDir, fs, reload }, listing)
+              : null
+          if (sole && (sole.switchedOn || sole.othersOff)) {
+            return useThemeLookOnceLoaded(loading, payload, options.onEnableTiming, request.signal, {
+              othersOff: sole.othersOff,
+            })
+          }
           let result = await useThemeLook({ ...target, slot }, payload)
           let switchedOn = false
           // Installed but switched off: the plugin goes on, and the look is asked
           // for again while the session loads it.
           if (!result.ok && result.reason === 'notLoaded') {
-            const listing = target.listings?.find(candidate => candidate.name === payload.plugin)
-            const reload = options.reload ?? (() => {})
             if (listing && !request.signal?.aborted && (await turnOnListedThemePlugin({ homeDir, fs, reload }, listing))) {
               switchedOn = true
-              const loading: ThemeLookTarget = {
-                ...target,
-                get slot() {
-                  return slotOf(payload.sessionId)
-                },
-              }
               result = await useThemeLookOnceLoaded(loading, payload, options.onEnableTiming, request.signal)
             }
           }
           // An applied look, or a plugin switched on here whatever its look answered:
           // with *Only one at a time* on, the other theme plugins go off.
           if (result.ok || switchedOn) {
-            await keepOneThemePlugin({ homeDir, fs, reload: options.reload ?? (() => {}) }, { plugin: payload.plugin })
+            await keepOneThemePlugin({ homeDir, fs, reload }, { plugin: payload.plugin })
           }
           return result
         }

@@ -468,7 +468,8 @@ describe('theme.useLook on a plugin that is installed and switched off', () => {
     })
     expect(await failed.useLagoon()).toEqual({ ok: false, reason: 'notLoaded' })
     expect(await failed.enabledNow()).toEqual({ [`pack@${MP}`]: true, [`other@${MP}`]: false })
-    expect(failed.reloads()).toBe(2)
+    // Both switches land before the one reload.
+    expect(failed.reloads()).toBe(1)
     expect(failed.ran).toEqual([])
   })
 
@@ -498,6 +499,189 @@ describe('theme.useLook on a plugin that is installed and switched off', () => {
     expect(await cancelled.useLagoon(controller.signal)).toEqual({ ok: false, reason: 'notLoaded' })
     expect(await cancelled.enabledNow()).toEqual({ [`pack@${MP}`]: false })
     expect(cancelled.reloads()).toBe(0)
+  })
+})
+
+describe('theme.useLook with one theme plugin at a time, two plugins serving one command', () => {
+  const HOME = '/home/two'
+  const SETTINGS = `${HOME}/.velloc/settings.json`
+  const conn = { connectionId: 'c', clientId: 'c', kind: 'cli', scope: { mode: 'full', sessions: 'all' }, transport: 'message-port' } as ConnectionInfo
+  const row = { scope: 'user' as const, installPath: '/x', version: '1.0.0', installedAt: '2026-01-01T00:00:00.000Z' }
+  type Enabled = Record<string, boolean>
+  const PACK = `pack@${MP}`
+  const RIVAL = `rival@${MP}`
+
+  afterEach(() => forgetRegistryFile(HOME))
+
+  /**
+   * `pack` and `rival` both register `/pick-look`; the one registered last
+   * serves it, and a module that goes takes its registration with it.
+   * `reloadLands` holds the session's reload back until it resolves.
+   */
+  async function rig(state: {
+    enabledPlugins: Enabled
+    single: boolean
+    servedBy: 'pack' | 'rival'
+    reloadLands?: Promise<void>
+    onPause?: () => void
+  }) {
+    const fs = makeMemFs()
+    await fs.writeFile(
+      getMarketplaceManifestPath({ homeDir: HOME }, MP),
+      JSON.stringify({
+        name: MP,
+        plugins: [
+          {
+            name: 'pack',
+            source: { source: 'github', repo: 'someone/pack', sha: 'a'.repeat(40) },
+            theme: { looks: [{ id: 'lagoon', preview: PREVIEW, use: { command: 'pick-look', args: 'lagoon' } }] },
+          },
+          {
+            name: 'rival',
+            source: { source: 'github', repo: 'someone/rival', sha: 'c'.repeat(40) },
+            theme: { looks: [{ id: 'dune', preview: PREVIEW, use: { command: 'pick-look', args: 'dune' } }] },
+          },
+        ],
+      }),
+    )
+    await saveInstalledPlugins({ homeDir: HOME }, fs, { version: 2, plugins: { [PACK]: [row], [RIVAL]: [row] } })
+    await fs.writeFile(
+      SETTINGS,
+      JSON.stringify({ version: 1, enabledPlugins: state.enabledPlugins, ...(state.single ? { mods: { singleThemeMod: true } } : {}) }),
+    )
+    const enabledNow = async () =>
+      (JSON.parse(String(await fs.readFile(SETTINGS, { encoding: 'utf-8' }))) as { enabledPlugins?: Enabled }).enabledPlugins ?? {}
+    const loaded = new Set<string>(Object.entries(state.enabledPlugins).filter(([, on]) => on).map(([id]) => id))
+    let servedBy: string | undefined = loaded.has(`${state.servedBy}@${MP}`) ? `${state.servedBy}@${MP}` : undefined
+    const ran: { by: string; args: string }[] = []
+    const registeredAgain: string[] = []
+    let reloads = 0
+    const slot: ThemeLookSlot = {
+      hasLoaded: provenance => loaded.has(provenance),
+      commandOwner: name =>
+        name === 'pick-look' && servedBy ? { plugin: servedBy.split('@')[0]!, provenance: servedBy } : undefined,
+      commandRun: async input => {
+        ran.push({ by: servedBy!, args: input.args })
+        return { settled: true, unanswered: false, result: {} }
+      },
+      reloadPlugin: async provenance => {
+        if (!loaded.has(provenance)) return 0
+        registeredAgain.push(provenance)
+        servedBy = provenance
+        return 1
+      },
+    }
+    const registry = new CapabilityRegistry()
+    registerThemeCapability(registry, {
+      fs: () => fs,
+      resolveHome: async () => HOME,
+      channel: () => 'stable',
+      slotOf: () => slot,
+      onEnableTiming: {
+        attempts: 5,
+        pause: async () => {
+          state.onPause?.()
+          await new Promise(resolve => setTimeout(resolve, 0))
+        },
+      },
+      reload: () => {
+        reloads += 1
+        void (async () => {
+          await state.reloadLands
+          const on = await enabledNow()
+          for (const id of [PACK, RIVAL]) {
+            if (on[id] === false) {
+              loaded.delete(id)
+              if (servedBy === id) servedBy = undefined
+            } else if (!loaded.has(id)) {
+              loaded.add(id)
+              servedBy = id
+            }
+          }
+        })()
+      },
+    })
+    const useLagoon = () =>
+      registry
+        .resolve('theme', 'useLook')!
+        .handle(
+          { id: '1', route: { cap: 'theme', act: 'useLook' }, payload: { sessionId: 's1', plugin: 'pack', lookId: 'lagoon' }, conn } as never,
+          {} as never,
+        )
+    return { useLagoon, enabledNow, ran, registeredAgain, reloads: () => reloads }
+  }
+
+  it('switches the other theme plugin off first, registers the look\'s plugin again, and runs the command as its own', async () => {
+    const { useLagoon, enabledNow, ran, registeredAgain, reloads } = await rig({
+      enabledPlugins: { [PACK]: true, [RIVAL]: true },
+      single: true,
+      servedBy: 'rival',
+    })
+    expect(await useLagoon()).toEqual({ ok: true, via: 'command' })
+    expect(await enabledNow()).toEqual({ [PACK]: true, [RIVAL]: false })
+    expect(reloads()).toBe(1)
+    expect(registeredAgain).toEqual([PACK])
+    expect(ran).toEqual([{ by: PACK, args: 'lagoon' }])
+  })
+
+  it('waits while the plugin switched off still serves the command, and never runs it there', async () => {
+    let land!: () => void
+    const reloadLands = new Promise<void>(resolve => (land = resolve))
+    let pauses = 0
+    let ranBeforeReload: unknown
+    const rigged = await rig({
+      enabledPlugins: { [PACK]: true, [RIVAL]: true },
+      single: true,
+      servedBy: 'rival',
+      reloadLands,
+      // The session reloads only after two tries found the command still served by the other.
+      onPause: () => {
+        pauses += 1
+        if (pauses !== 2) return
+        ranBeforeReload = [...rigged.ran]
+        land()
+      },
+    })
+    expect(await rigged.useLagoon()).toEqual({ ok: true, via: 'command' })
+    expect(ranBeforeReload).toEqual([])
+    expect(rigged.ran).toEqual([{ by: PACK, args: 'lagoon' }])
+  })
+
+  it('a look of a plugin switched off switches it on and the other off in one reload', async () => {
+    const { useLagoon, enabledNow, ran, reloads } = await rig({
+      enabledPlugins: { [PACK]: false, [RIVAL]: true },
+      single: true,
+      servedBy: 'rival',
+    })
+    expect(await useLagoon()).toEqual({ ok: true, via: 'command' })
+    expect(await enabledNow()).toEqual({ [PACK]: true, [RIVAL]: false })
+    expect(reloads()).toBe(1)
+    expect(ran).toEqual([{ by: PACK, args: 'lagoon' }])
+  })
+
+  it('already the one theme plugin on: nothing is switched or reloaded', async () => {
+    const { useLagoon, enabledNow, ran, registeredAgain, reloads } = await rig({
+      enabledPlugins: { [PACK]: true, [RIVAL]: false },
+      single: true,
+      servedBy: 'pack',
+    })
+    expect(await useLagoon()).toEqual({ ok: true, via: 'command' })
+    expect(await enabledNow()).toEqual({ [PACK]: true, [RIVAL]: false })
+    expect(reloads()).toBe(0)
+    expect(registeredAgain).toEqual([])
+    expect(ran).toEqual([{ by: PACK, args: 'lagoon' }])
+  })
+
+  it('with the setting off, nothing is switched: the other plugin\'s command is not run', async () => {
+    const { useLagoon, enabledNow, ran, reloads } = await rig({
+      enabledPlugins: { [PACK]: true, [RIVAL]: true },
+      single: false,
+      servedBy: 'rival',
+    })
+    expect(await useLagoon()).toEqual({ ok: false, reason: 'notOwnCommand' })
+    expect(await enabledNow()).toEqual({ [PACK]: true, [RIVAL]: true })
+    expect(reloads()).toBe(0)
+    expect(ran).toEqual([])
   })
 })
 
@@ -565,6 +749,28 @@ describe('useThemeLookOnceLoaded', () => {
       via: 'reload',
     })
     expect(reloaded).toEqual([])
+  })
+
+  it('with others just switched off, loads the plugin again once when nobody serves its command, then stops', async () => {
+    const reloaded: string[] = []
+    const slot: ThemeLookSlot = {
+      hasLoaded: () => true,
+      commandOwner: () => undefined,
+      commandRun: async () => ({ settled: true, unanswered: false, result: {} }),
+      reloadPlugin: async provenance => {
+        reloaded.push(provenance)
+        return 1
+      },
+    }
+    const result = await useThemeLookOnceLoaded(
+      { marketplace: MP, listings: LISTINGS, slot },
+      { plugin: 'pack', lookId: 'lagoon' },
+      { attempts: 5, pause: async () => {} },
+      undefined,
+      { othersOff: true },
+    )
+    expect(result).toEqual({ ok: false, reason: 'notOwnCommand' })
+    expect(reloaded).toEqual([`pack@${MP}`])
   })
 
   it('runs nothing once the request is cancelled', async () => {
