@@ -19,6 +19,7 @@ import {
   groundVectorOf,
   paletteTokensOf,
   sceneGlassOf,
+  THEME_TOKENS,
 } from '../components/assistant-ui/mod-theme-paint'
 import { holdModsUiView, type ModsUiView } from '../browser/webview/mods/modsUiView'
 import type { ModsUiTheme } from '../browser/runtimeProtocol'
@@ -147,9 +148,18 @@ describe('the palette', () => {
     expect(tokens['--control-pressed']).toBe('color-mix(in srgb, #2a241d 10%, transparent)')
     const dark = paletteTokensOf(PAPER, 'dark', OWN_DARK)
     expect(dark.kind === 'painted' && dark.tokens['--control-hover']).toBe('color-mix(in srgb, #f0e7d7 5%, transparent)')
-    // No text color in the palette: the app's own fill stands.
-    const surfaces = paletteTokensOf({ v: 1, inputs: { light: { 'gray-0': '#fafafa' } } }, 'light', OWN_LIGHT)
-    expect(surfaces.kind === 'painted' && '--control-hover' in surfaces.tokens).toBe(false)
+    // Surfaces but no text color: the fills are the app's own text, not the palette's accent surface.
+    const ownTexts = Object.fromEntries(THEME_TOKENS.map(token => [token, OWN_LIGHT[token] ?? OWN_LIGHT['--foreground']!]))
+    const surfaces = paletteTokensOf({ v: 1, inputs: { light: { 'gray-0': '#fafafa' } } }, 'light', ownTexts)
+    expect(surfaces.kind).toBe('painted')
+    const surfaceTokens = surfaces.kind === 'painted' ? surfaces.tokens : {}
+    expect(surfaceTokens['--accent']).toBe('#fafafa')
+    expect(surfaceTokens['--control-hover']).toBe(`color-mix(in srgb, ${OWN_LIGHT['--foreground']} 5%, transparent)`)
+    expect(surfaceTokens['--control-pressed']).toBe(`color-mix(in srgb, ${OWN_LIGHT['--foreground']} 10%, transparent)`)
+    // A palette that leaves the surfaces alone leaves the app's own fill too.
+    const roles = paletteTokensOf({ v: 1, inputs: { light: { 'role-info-600': '#1d4f91' } } }, 'light', ownTexts)
+    expect(roles.kind).toBe('painted')
+    expect(roles.kind === 'painted' ? Object.keys(roles.tokens).filter(token => token.startsWith('--control-')) : null).toEqual([])
   })
 
   it('a palette for one mode paints nothing in the other; too little text contrast refuses it whole', () => {

@@ -39,10 +39,10 @@ const ROLE_EMPHASIS_STOP: Record<ThemeMode, string> = { light: '700', dark: '100
 /** A ghost control's hover and pressed fills under a palette: the palette's
  *  text color at these shares, so the fill tints whatever surface the control
  *  sits on. A palette's surfaces keep no fixed order of lightness, so a
- *  surface is no fill. Unset, the app paints its own accent fill. */
-export const CONTROL_TOKENS: readonly string[] = ['--control-hover', '--control-pressed']
-export const CONTROL_HOVER_SHARE = 0.05
-export const CONTROL_PRESSED_SHARE = 0.1
+ *  surface is no fill. A palette that paints `--accent` but no text color
+ *  takes the app's own text. Unset, the app paints its own accent fill. */
+const CONTROL_HOVER_SHARE = 0.05
+const CONTROL_PRESSED_SHARE = 0.1
 
 type Source = { key: (mode: ThemeMode) => string; alpha?: number }
 
@@ -113,6 +113,9 @@ const TOKEN_SOURCES: ReadonlyArray<[string, Source]> = [
 /** Every token a theme may set, so the page can copy the app's own values
  *  back where the app's look must stand. */
 export const THEME_TOKENS: readonly string[] = [...new Set(TOKEN_SOURCES.map(([token]) => token))]
+
+/** The ghost control fill tokens a palette paints. */
+export const CONTROL_TOKENS: readonly string[] = THEME_TOKENS.filter(token => token.startsWith('--control-'))
 
 /** The surface tokens a scene's glass frosts. */
 export const GLASS_TOKENS: readonly string[] = ['--background', '--base', '--toolbar', '--card', '--sidebar']
@@ -261,6 +264,11 @@ export function paletteTokensOf(colors: unknown, mode: ThemeMode, own: Record<st
     if (!value) continue
     tokens[token] =
       source.alpha === undefined ? value : `color-mix(in srgb, ${value} ${Math.round(source.alpha * 100)}%, transparent)`
+  }
+  const ownText = own['--foreground']
+  if (tokens['--accent'] !== undefined && tokens['--control-hover'] === undefined && ownText) {
+    tokens['--control-hover'] = `color-mix(in srgb, ${ownText} ${Math.round(CONTROL_HOVER_SHARE * 100)}%, transparent)`
+    tokens['--control-pressed'] = `color-mix(in srgb, ${ownText} ${Math.round(CONTROL_PRESSED_SHARE * 100)}%, transparent)`
   }
   for (const [text, surface] of CONTRAST_PAIRS) {
     if (tokens[text] === undefined && tokens[surface] === undefined) continue
