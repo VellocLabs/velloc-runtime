@@ -14,6 +14,7 @@ import type {
 import type { RuntimeConfig } from '../../runtime/interfaces/RuntimeConfig.js'
 import { createBridgeRoute } from '../../browser/bridge/browserBridgeProtocol.js'
 import { withModelProviders } from '../../models/drivers/driverTransport.js'
+import { withRequestLog } from '../../models/usage/requestLogTransport.js'
 import {
   buildRequestContext,
   COMPACTION_QUERY_SOURCE,
@@ -237,7 +238,7 @@ async function callBridgeModelStreaming(
 ): Promise<string> {
   // Through the model-provider wrapper, like the main loop: a provider served
   // in the runtime has no host provider to answer a summarizer request.
-  const transport = withModelProviders(bridgeTransport, runtimeConfig)
+  const transport = withRequestLog(withModelProviders(bridgeTransport, runtimeConfig), bridgeTransport, runtimeConfig)
   const startResponse = await transport.request({
     id: runtimeConfig.createUUID(),
     route: createBridgeRoute('model', 'streamStart'),

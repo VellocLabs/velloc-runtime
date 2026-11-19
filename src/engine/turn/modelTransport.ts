@@ -21,6 +21,7 @@ import type {
 import { createBridgeRoute } from '../../browser/bridge/browserBridgeProtocol'
 import { resolveCustomProviderRequest } from '../../config/customProviderRegistry'
 import { withModelProviders } from '../../models/drivers/driverTransport'
+import { withRequestLog } from '../../models/usage/requestLogTransport'
 import { providerRequestSeamFor } from '../../models/drivers/providerRequestSeam'
 import { buildRequestContext } from '../../models/drivers/requestContext'
 import { getSupportsImageInputForModel } from '../contextWindow'
@@ -560,7 +561,8 @@ export function bridgeModelTransport(
   runtimeConfig?: RuntimeConfig,
   traceLogger?: ModelTransportOptions['traceLogger'],
 ): QueryRuntimeDeps['callModel'] {
-  const send = createBridgeSend(withModelProviders(bridgeTransport, runtimeConfig), runtimeConfig)
+  const served = withRequestLog(withModelProviders(bridgeTransport, runtimeConfig), bridgeTransport, runtimeConfig)
+  const send = createBridgeSend(served, runtimeConfig)
   return async function* callModel(params) {
     const sessionTag = `sid=${params.callContext.options.sessionId ?? '?'}`
     const callId = logCallStart(params, sessionTag)
