@@ -280,9 +280,10 @@ export class ModRuntime extends ModPluginNouns implements TurnExtensions {
             if (seat) options.onThemeSet?.(seat.ref)
             return result
           },
-          clear: () => {
-            const result = themeClearCore(this.theme)
-            this.forgetBackdrop()
+          clear: (plugin: string) => {
+            const before = this.theme.current()
+            const result = themeClearCore(this.theme, plugin)
+            if (this.theme.current() !== before) this.forgetBackdrop()
             return result
           },
         },
@@ -648,7 +649,7 @@ export class ModRuntime extends ModPluginNouns implements TurnExtensions {
     )
   }
 
-  /** Clears the session's theme, whoever set it. Whether one stood. */
+  /** Clears the session's theme, whoever set it, and every theme behind it. Whether one stood. */
   clearTheme(): boolean {
     const stood = this.theme.clear()
     this.forgetBackdrop()

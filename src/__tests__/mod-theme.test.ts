@@ -188,7 +188,7 @@ describe('$.theme', () => {
     expect(reports.filter(line => line.includes('replaced the theme'))).toEqual(['second: $.theme.set replaced the theme first had set'])
   })
 
-  it("a hook's rewrite of the attributes is what stands; a clear removes another plugin's theme", async () => {
+  it("a hook's rewrite of the attributes is what stands; a plugin's clear removes its own theme and leaves another plugin's", async () => {
     const REWRITER = `
       export function register(on) {
         on('theme.set', ($, e, next) => next({ ...e, overrideColorScheme: 'light' }));
@@ -198,6 +198,19 @@ describe('$.theme', () => {
       export function register(on) {
         on('command.run', async ($, e, next) => next(e));
         on('session.start', async ($, e, next) => {
+          await $.clock.sleep(30);
+          const cleared = await $.theme.clear();
+          await $.ui.log(JSON.stringify({ cleared }));
+          return next(e);
+        });
+      }
+    `
+    const OWN_CLEARER = `
+      export function register(on) {
+        on('session.start', async ($, e, next) => {
+          await $.clock.sleep(20);
+          await $.theme.set({ overrideColorScheme: 'dark' });
+          await $.ui.log(JSON.stringify({ standing: 'own' }));
           await $.clock.sleep(30);
           const cleared = await $.theme.clear();
           await $.ui.log(JSON.stringify({ cleared }));
@@ -225,7 +238,20 @@ describe('$.theme', () => {
     await cleared.runtime.ready
     await new Promise(resolve => setTimeout(resolve, 80))
     expect(cleared.logs('clearer')[0]!.cleared).toEqual({ isDrawn: false, reason: 'the theme was cleared' })
-    expect(cleared.runtime.uiSnapshot().theme).toBeUndefined()
+    expect(cleared.runtime.uiSnapshot().theme?.plugin).toBe('sets')
+
+    const own = world({ sets: SETS, own: OWN_CLEARER }, true)
+    await own.runtime.ready
+    await new Promise(resolve => setTimeout(resolve, 120))
+    expect(own.reports.filter(line => line.startsWith('own: {'))).toEqual([
+      'own: {"standing":"own"}',
+      'own: {"cleared":{"isDrawn":false,"reason":"the theme was cleared"}}',
+    ])
+    expect(own.runtime.uiSnapshot().theme?.plugin).toBe('sets')
+    // The host's clear takes the standing theme and every theme behind it.
+    expect(own.runtime.clearTheme()).toBe(true)
+    expect(own.runtime.uiSnapshot().theme).toBeUndefined()
+    expect(own.runtime.clearTheme()).toBe(false)
   })
 
   it('a scene that goes drops its drawing\'s handles: on a clear, and on a set that replaces it', async () => {
@@ -410,7 +436,7 @@ describe('theme args and state', () => {
     expect(() => themeSetArgsOf({ colors: { big: 'x'.repeat(300_000) } })).toThrow(/longer than/)
   })
 
-  it('holds one theme; a clear clears any plugin\'s; an unload clears its own alone', () => {
+  it('holds one theme; a plugin\'s clear and its unload clear its own alone; the host clear clears all', () => {
     let changes = 0
     const state = new ModThemeState(() => void (changes += 1))
     expect(themeSetCore(state, 'a', { colors: {} }, true)).toEqual({ isDrawn: true, requestId: 'theme' })
@@ -419,14 +445,22 @@ describe('theme args and state', () => {
     expect(state.clearPlugin('a')).toBe(false)
     expect(state.clearPlugin('b')).toBe(true)
     themeSetCore(state, 'a', { colors: {} }, true)
-    expect(themeClearCore(state)).toEqual({ isDrawn: false, reason: 'the theme was cleared' })
+    expect(themeClearCore(state, 'b')).toEqual({ isDrawn: false, reason: 'the theme was cleared' })
+    expect(state.current()?.plugin).toBe('a')
+    expect(changes).toBe(4)
+    expect(themeClearCore(state, 'a')).toEqual({ isDrawn: false, reason: 'the theme was cleared' })
     expect(state.current()).toBeUndefined()
     expect(changes).toBe(5)
+    themeSetCore(state, 'a', { colors: {} }, true)
+    themeSetCore(state, 'b', { colors: {} }, true)
+    expect(state.clear()).toBe(true)
+    expect(state.current()).toBeUndefined()
+    expect(state.clearPlugin('b')).toBe(false)
     expect(isThemeResult({ isDrawn: false, reason: 'x' })).toBe(true)
     expect(isThemeResult({ isDrawn: true })).toBe(false)
   })
 
-  it('when the standing theme\'s plugin unloads, the latest theme another loaded plugin set stands again; a clear leaves none behind', () => {
+  it('when the standing theme\'s plugin unloads or clears its own, the latest theme another plugin set stands again; the host clear leaves none behind', () => {
     const state = new ModThemeState(() => {})
     themeSetCore(state, 'a', { overrideColorScheme: 'dark' }, true)
     themeSetCore(state, 'b', { overrideColorScheme: 'light' }, true)
@@ -445,8 +479,11 @@ describe('theme args and state', () => {
     expect(state.clearPlugin('a')).toBe(true)
     expect(state.current()?.plugin).toBe('b')
     themeSetCore(state, 'a', { overrideColorScheme: 'dark' }, true)
-    themeClearCore(state)
-    expect(state.clearPlugin('a')).toBe(false)
+    themeClearCore(state, 'a')
+    expect(state.current()?.plugin).toBe('b')
+    themeSetCore(state, 'a', { overrideColorScheme: 'dark' }, true)
+    state.clear()
+    expect(state.clearPlugin('b')).toBe(false)
     expect(state.current()).toBeUndefined()
   })
 })

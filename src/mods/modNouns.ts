@@ -221,8 +221,8 @@ export type ModNounHost = {
    *  `ModRuntime`. Absent: the noun is refused by name. */
   places?: { place(plugin: string, id: string): UiPlaceResult }
   /** `$.theme.set` / `.clear` — the session's one theme (`modTheme.ts`),
-   *  supplied by `ModRuntime`. Absent: the nouns are refused by name. */
-  theme?: { set(plugin: string, args: ThemeSetArgs): ThemeResult; clear(): ThemeResult }
+   *  supplied by `ModRuntime`; a clear takes the calling plugin's theme alone. Absent: the nouns are refused by name. */
+  theme?: { set(plugin: string, args: ThemeSetArgs): ThemeResult; clear(plugin: string): ThemeResult }
   /** `$.ui.copy` / `.focus` / `.scroll` — the clipboards, the focus ring and
    *  the windows of the page drawing the session (`modPage.ts`), supplied by
    *  `ModRuntime`. Absent: the nouns are refused by name. */

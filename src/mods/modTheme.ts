@@ -1,6 +1,6 @@
 /**
  * `$.theme.set` / `$.theme.clear` (F-25): the session's one theme, the latest
- * set by any plugin; a set replaces it whole, a clear removes any plugin's.
+ * set by any plugin; a set replaces it whole, a plugin's clear removes its own.
  * Op events: a hook above may rewrite, deny or answer them. Display only, and
  * gone with the plugin that set it.
  * Security: shape and size are checked here alone; `colors` is held as bounded
@@ -398,7 +398,7 @@ export class ModThemeState {
     return true
   }
 
-  /** `plugin` unloaded: its theme goes, and the latest theme behind it stands. Whether the standing theme changed. */
+  /** `plugin` unloaded or cleared its own: its theme goes, and the latest theme behind it stands. Whether the standing theme changed. */
   clearPlugin(plugin: string): boolean {
     this.behind = this.behind.filter(each => each.plugin !== plugin)
     if (this.standing?.plugin !== plugin) return false
@@ -418,8 +418,9 @@ export function themeSetCore(state: ModThemeState, plugin: string, args: ThemeSe
   return drawn ? { isDrawn: true, requestId } : { isDrawn: false, requestId, reason: THEME_UNDRAWN_REASON }
 }
 
-/** Core of `theme.clear`. */
-export function themeClearCore(state: ModThemeState): ThemeResult {
-  state.clear()
+/** Core of `theme.clear`: `plugin`'s own theme goes, as on its unload; another
+ *  plugin's standing theme stays. */
+export function themeClearCore(state: ModThemeState, plugin: string): ThemeResult {
+  state.clearPlugin(plugin)
   return { isDrawn: false, reason: THEME_CLEARED_REASON }
 }
