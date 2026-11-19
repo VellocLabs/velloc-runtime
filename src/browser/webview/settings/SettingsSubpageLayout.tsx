@@ -6,6 +6,9 @@ import { cn } from "@/lib/utils";
  *  magic number — Appearance and Language both use this. */
 export const SETTINGS_SELECT_WIDTH = "w-56";
 
+/** The horizontal box of a settings page body; pages hosted elsewhere reuse it to line up. */
+export const settingsPageColumn = "w-full max-w-[880px] pr-6 pl-10 lg:pl-12";
+
 /**
  * THE settings type scale — the one place a settings page's headings, helper
  * text and group labels get their font. Pages use
@@ -59,7 +62,8 @@ export function SettingsSubpageLayout({
           keeps every width — 1440, 2K, 4K — looking the same. */}
       <div
         className={cn(
-          "w-full max-w-[880px] pt-10 pr-6 pb-16 pl-10 lg:pl-12",
+          settingsPageColumn,
+          "pt-10 pb-16",
           className,
         )}
       >

@@ -228,22 +228,10 @@ function ThemeCard({
       data-plugin={row.plugin}
       data-enabled={row.enabled}
       data-in-effect={inEffect}
-      className="relative flex min-w-0 flex-col overflow-hidden rounded-xl border bg-muted"
+      className="flex min-w-0 flex-col overflow-hidden rounded-xl border bg-muted"
     >
-      <div className={cn(!row.enabled && 'opacity-60 grayscale')}>
-        <LookPreview name={name} url={looks[0]?.preview ?? ''} />
-      </div>
-      {inEffect ? (
-        <span
-          data-testid="customize-yours-in-effect"
-          title={t('customize.yours.inEffect')}
-          className="absolute end-2 top-2 flex items-center gap-1 rounded-full bg-background/90 px-2 py-0.5 text-xs font-medium text-primary shadow-sm"
-        >
-          <CircleCheckIcon aria-hidden className="size-3.5" />
-          {t('customize.yours.inEffect')}
-        </span>
-      ) : null}
-      <div className={cn('flex min-w-0 flex-1 flex-col gap-1 p-3', !row.enabled && 'opacity-60')}>
+      <LookPreview name={name} url={looks[0]?.preview ?? ''} />
+      <div className="flex min-w-0 flex-1 flex-col gap-1 p-3">
         <span className="flex min-w-0 items-center gap-2">
           <span className="truncate text-sm font-medium text-foreground">{name}</span>
           {looks.length > 1 ? (
@@ -261,7 +249,17 @@ function ThemeCard({
               {state}
             </span>
           ) : null}
-          <span className="ms-auto shrink-0">
+          <span className="ms-auto flex shrink-0 items-center gap-1.5">
+            {inEffect ? (
+              <span
+                data-testid="customize-yours-in-effect"
+                title={t('customize.yours.inEffect')}
+                className="flex items-center gap-1 rounded-full bg-primary px-2 py-0.5 text-xs font-medium text-primary-foreground shadow-sm"
+              >
+                <CircleCheckIcon aria-hidden className="size-3.5" />
+                {t('customize.yours.inEffect')}
+              </span>
+            ) : null}
             {pending ? (
               <span data-testid="customize-yours-pending" className="flex size-7 items-center justify-center">
                 <Loader2Icon className="size-4 animate-spin text-muted-foreground" />

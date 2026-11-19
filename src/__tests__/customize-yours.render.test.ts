@@ -200,6 +200,17 @@ describe('Customize → Yours — the row and the tabs', () => {
     fireEvent.click(view.getByTestId('customize-yours-tab-themes'))
     expect(view.getByTestId('customize-yours-themes')).toBeTruthy()
   })
+
+  it('keeps the heading and tabs out of the scrolling content on both tabs', async () => {
+    const { view, open } = setup()
+    await open()
+    for (const tab of ['themes', 'plugins'] as const) {
+      fireEvent.click(view.getByTestId(`customize-yours-tab-${tab}`))
+      const scroller = view.getByTestId('customize-yours-scroller')
+      expect(scroller.contains(view.getByTestId('customize-yours-tabs'))).toBe(false)
+      expect(scroller.contains(view.getByRole('tabpanel'))).toBe(true)
+    }
+  })
 })
 
 describe('Customize → Yours — the theme cards', () => {

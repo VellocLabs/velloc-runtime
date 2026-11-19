@@ -5,6 +5,7 @@ import { cn } from '@/lib/utils'
 import type { RuntimeConnection } from '../../runtimeClient/RuntimeConnection'
 import { useT } from '../i18n'
 import { PluginsSection } from '../settings/sections/PluginsSection'
+import { settingsPageColumn } from '../settings/SettingsSubpageLayout'
 import { PAGE_COLUMN } from './MarketplaceBrowser'
 import { YourThemes, type YourThemesProps } from './YourThemes'
 
@@ -21,13 +22,16 @@ export type YoursPaneProps = {
   onOpenModels?: () => void
 }
 
-/** Customize → Yours (F-35): the person's theme plugins, and their plugins as Settings shows them. */
+/**
+ * Customize → Yours (F-35): the person's theme plugins, and their plugins as Settings shows them.
+ * The heading and tabs stay outside the scroller and paint no background, so a theme's page surface shows through.
+ */
 export function YoursPane({ tab, onTab, themes, runtimeConnection, revealPluginRequest, onOpenModels }: YoursPaneProps) {
   const t = useT()
   return (
-    <div data-testid="customize-yours" className="flex min-h-0 flex-1 flex-col overflow-y-auto">
+    <div data-testid="customize-yours" className="flex min-h-0 flex-1 flex-col">
       <div className={PAGE_COLUMN}>
-        <div className="sticky top-0 z-20 flex flex-col gap-3 bg-background pt-6 pb-2">
+        <div className="flex flex-col gap-3 pt-6 pb-2">
           <h2 className="text-xl font-semibold text-foreground">{t('customize.yours.title')}</h2>
           <div
             role="tablist"
@@ -54,18 +58,24 @@ export function YoursPane({ tab, onTab, themes, runtimeConnection, revealPluginR
             ))}
           </div>
         </div>
-        <div role="tabpanel" className="pb-6">
-          {tab === 'themes' ? (
-            <YourThemes {...themes} />
-          ) : (
-            <div data-testid="customize-yours-plugins" className="pt-2">
-              <PluginsSection
-                runtimeConnection={runtimeConnection}
-                revealPluginRequest={revealPluginRequest}
-                onOpenModels={onOpenModels}
-              />
-            </div>
-          )}
+      </div>
+      <div data-testid="customize-yours-scroller" className="min-h-0 flex-1 overflow-y-auto">
+        <div className={PAGE_COLUMN}>
+          <div role="tabpanel" className="pb-6">
+            {tab === 'themes' ? (
+              <div className={settingsPageColumn}>
+                <YourThemes {...themes} />
+              </div>
+            ) : (
+              <div data-testid="customize-yours-plugins" className="pt-2">
+                <PluginsSection
+                  runtimeConnection={runtimeConnection}
+                  revealPluginRequest={revealPluginRequest}
+                  onOpenModels={onOpenModels}
+                />
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </div>
