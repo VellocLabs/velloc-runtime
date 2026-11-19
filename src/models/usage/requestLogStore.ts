@@ -20,9 +20,11 @@ import type {
 } from '../../browser/bridge/browserBridgeProtocol'
 import { createBridgeRoute } from '../../browser/bridge/browserBridgeProtocol'
 import type { SqlValue } from '../../browser/bridge/protocol/sqlite'
+import { isContendedSqliteError } from '../../browser/storage/SqliteSessionMetaStore'
 import { dirnameRuntimePath } from '../../utils/runtimePaths'
 import {
   ADD_HOURLY_SQL,
+  CREATE_META_SQL,
   CREATE_STATEMENTS,
   DAY_MS,
   HOUR_MS,
@@ -138,12 +140,7 @@ const LOCK_BACKOFF_MS = 25
 
 /** Another writer holds the file, or its open was contended. */
 function isContended(error: { code: string; message: string }): boolean {
-  return (
-    error.code === 'SQLITE_BUSY' ||
-    error.code === 'SQLITE_LOCKED' ||
-    error.code === 'SQLITE_CANTOPEN' ||
-    /database is locked|database table is locked|failed to commit transaction/i.test(error.message)
-  )
+  return isContendedSqliteError(new Error(`${error.code}: ${error.message}`))
 }
 
 function count(value: number | undefined): number {
@@ -267,11 +264,13 @@ export class RequestLogStore {
   private async bringUp(): Promise<void> {
     // `rwc` creates the file, not its directory.
     await this.request(createBridgeRoute('fs', 'mkdir'), { path: dirnameRuntimePath(this.dbPath) })
-    await this.write([...CREATE_STATEMENTS.map(sql => ({ sql }))], 'rwc')
-    const stored = readNumber((await this.read(READ_VERSION_SQL)).rows[0]?.[0])
-    if (stored > REQUEST_LOG_SCHEMA_VERSION) {
-      throw new Error(`the request log was written by a newer build (version ${stored})`)
+    await this.write([{ sql: CREATE_META_SQL }], 'rwc')
+    const found = readNumber((await this.read(READ_VERSION_SQL)).rows[0]?.[0])
+    if (found > REQUEST_LOG_SCHEMA_VERSION) {
+      throw new Error(`the request log was written by a newer build (version ${found})`)
     }
+    await this.write(CREATE_STATEMENTS.map(sql => ({ sql })))
+    const stored = readNumber((await this.read(READ_VERSION_SQL)).rows[0]?.[0])
     for (let version = stored; version < REQUEST_LOG_SCHEMA_VERSION; version += 1) {
       await this.write([
         ...(SCHEMA_STEPS[version] ?? []).map(sql => ({ sql })),

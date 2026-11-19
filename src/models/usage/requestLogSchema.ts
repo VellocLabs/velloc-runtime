@@ -69,8 +69,11 @@ export const HOURLY_COLUMNS = [
 export const HOUR_MS = 3_600_000
 export const DAY_MS = 86_400_000
 
+/** Created first, alone, so a newer build's file is refused before anything else is written to it. */
+export const CREATE_META_SQL = 'CREATE TABLE IF NOT EXISTS log_meta (key TEXT PRIMARY KEY, value INTEGER NOT NULL)'
+
 export const CREATE_STATEMENTS: readonly string[] = [
-  'CREATE TABLE IF NOT EXISTS log_meta (key TEXT PRIMARY KEY, value INTEGER NOT NULL)',
+  CREATE_META_SQL,
   'CREATE TABLE IF NOT EXISTS names (id INTEGER PRIMARY KEY, text TEXT NOT NULL UNIQUE)',
   `CREATE TABLE IF NOT EXISTS sends (
     id INTEGER PRIMARY KEY,

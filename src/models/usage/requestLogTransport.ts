@@ -12,8 +12,10 @@
  * targets are chosen.
  */
 import type { BrowserBridgeTransport } from '../../browser/bridge/browserBridgeProtocol'
+import { resolveModelId } from '../../config/nexusModelConfig/modelEntryResolution'
 import type { RuntimeConfig } from '../../runtime/interfaces/RuntimeConfig'
 import { classifyProviderConnectivityIssue, ProviderApiError } from '../../utils/providerConnectivity'
+import type { DeclaredVerdict } from '../../utils/providerVerdict'
 import { providerRouterFor } from '../drivers/providerRouter'
 import type { RequestLogRow, RequestLogUsage } from './requestLogStore'
 import { attachRequestLogBridge, recordRequest } from './requestLogWriter'
@@ -57,9 +59,18 @@ function foldUsage(into: RequestLogUsage, reported: unknown): void {
 
 function failure(error: Fields): Pick<RequestLogRow, 'outcome' | 'failureKind' | 'httpStatus'> {
   const status = typeof error.httpStatus === 'number' ? error.httpStatus : undefined
+  const retryAfter = typeof error.retryAfterSeconds === 'number' && error.retryAfterSeconds >= 0
+    ? error.retryAfterSeconds
+    : undefined
+  const declared = error.verdict && typeof error.verdict === 'object' ? (error.verdict as DeclaredVerdict) : undefined
   const prefix = text(error.type) ? `${String(error.type)}: ` : ''
+  // The same reading the turn gives the failure: the provider's declared verdict over the platform's.
   const verdict = classifyProviderConnectivityIssue(
-    new ProviderApiError(`${prefix}${text(error.message) ?? ''}`, status !== undefined ? { httpStatus: status } : {}),
+    new ProviderApiError(`${prefix}${text(error.message) ?? ''}`, {
+      ...(status !== undefined ? { httpStatus: status } : {}),
+      ...(retryAfter !== undefined ? { retryAfterMs: retryAfter * 1000 } : {}),
+      ...(declared ? { declared } : {}),
+    }),
   )
   const httpStatus = status ?? verdict?.status
   return {
@@ -83,10 +94,7 @@ export function withRequestLog(
   attachRequestLogBridge(base, runtimeConfig)
   const open = new Map<string, Open>()
 
-  const finish = (streamId: string, ending: Pick<RequestLogRow, 'outcome' | 'failureKind' | 'httpStatus'>): void => {
-    const stream = open.get(streamId)
-    if (!stream) return
-    open.delete(streamId)
+  const write = (stream: Open, ending: Pick<RequestLogRow, 'outcome' | 'failureKind' | 'httpStatus'>): void => {
     recordRequest(
       {
         startedMs: stream.startedMs,
@@ -101,10 +109,19 @@ export function withRequestLog(
     )
   }
 
+  const finish = (streamId: string, ending: Pick<RequestLogRow, 'outcome' | 'failureKind' | 'httpStatus'>): void => {
+    const stream = open.get(streamId)
+    if (!stream) return
+    open.delete(streamId)
+    write(stream, ending)
+  }
+
   const started = (payload: Fields, startedMs: number): Open | undefined => {
     const provider = text(payload.providerId)
-    const model = text(payload.model)
-    if (!provider || !model || providerRouterFor(provider)) return undefined
+    const requested = text(payload.model)
+    if (!provider || !requested || providerRouterFor(provider)) return undefined
+    // The concrete id the request was sent for, so a send that never reports its model is counted with the rest.
+    const model = resolveModelId(provider, requested)
     const sessionId = text(fields(payload.requestContext).sessionId)
     return { startedMs, provider, model, ...(sessionId ? { sessionId } : {}), usage: {} }
   }
@@ -128,9 +145,8 @@ export function withRequestLog(
       const message = fields(result.message)
       foldUsage(stream.usage, message.usage)
       stream.model = text(message.model) ?? stream.model
-      open.set('call', stream)
-      finish(
-        'call',
+      write(
+        stream,
         response.ok !== true
           ? failure(error)
           : result.status === 'timeout'
@@ -146,7 +162,11 @@ export function withRequestLog(
       finish(streamId, { outcome: 'aborted' })
       return
     }
-    if (response.ok !== true) return
+    // A read the bridge refused ends the stream for its reader.
+    if (response.ok !== true) {
+      finish(streamId, failure(fields(response.error)))
+      return
+    }
     let failed: Fields | undefined
     for (const chunk of Array.isArray(result.chunks) ? result.chunks : []) {
       const part = fields(chunk)
@@ -167,7 +187,18 @@ export function withRequestLog(
       const { capability, action } = request.route as { capability: string; action: string }
       if (capability !== 'model') return served.request(request)
       const startedMs = Date.now()
-      const response = await served.request(request)
+      let response: Awaited<ReturnType<BrowserBridgeTransport['request']>>
+      try {
+        response = await served.request(request)
+      } catch (error) {
+        try {
+          const streamId = text(fields(request.payload).streamId)
+          if (streamId && action !== 'streamStart') finish(streamId, { outcome: 'aborted' })
+        } catch {
+          // An observer: a request is never failed for its row.
+        }
+        throw error
+      }
       try {
         observe(String(action), fields(request.payload), fields(response), startedMs)
       } catch {

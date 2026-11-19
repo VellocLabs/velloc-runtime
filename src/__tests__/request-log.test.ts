@@ -1,6 +1,8 @@
 import { DatabaseSync } from 'node:sqlite'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { BrowserBridgeTransport } from '../browser/bridge/browserBridgeProtocol'
+import { recordEntryResolution, resetEntryResolutions } from '../config/nexusModelConfig/modelEntryResolution'
+import type { RuntimeConfig } from '../runtime/interfaces/RuntimeConfig'
 import {
   HOURLY_COLUMNS,
   HOUR_MS,
@@ -106,7 +108,10 @@ const viaRouter = {
   router: { provider: 'mod.pool.main', row: 'fast' },
 } satisfies Partial<RequestLogRow>
 
-afterEach(() => resetRequestLog())
+afterEach(() => {
+  resetRequestLog()
+  resetEntryResolutions()
+})
 
 describe('request log schema', () => {
   it('creates the tables and stamps the version', async () => {
@@ -126,9 +131,12 @@ describe('request log schema', () => {
     expect(await reopened.schemaVersion()).toBe(REQUEST_LOG_SCHEMA_VERSION)
 
     older.db.exec(`UPDATE log_meta SET value = ${REQUEST_LOG_SCHEMA_VERSION + 1} WHERE key = 'schema_version'`)
+    older.db.exec('DROP TABLE hourly')
     const newer = new RequestLogStore({ transport: () => older.transport, dbPath: older.store.dbPath })
     await expect(newer.record(row())).rejects.toThrow(/newer build/)
     expect(older.all('SELECT COUNT(*) FROM sends')[0]![0]).toBe(0)
+    // Nothing of this version's is written into a newer file.
+    expect(older.all("SELECT COUNT(*) FROM sqlite_master WHERE name = 'hourly'")[0]![0]).toBe(0)
   })
 
   it('holds exactly these columns', async () => {
@@ -428,6 +436,24 @@ describe('request log writer', () => {
   })
 })
 
+describe('request log writer and a closed bridge', () => {
+  it('drops a row whose bridge was closed and keeps writing through the next one', async () => {
+    const closed = {
+      request: vi.fn(async () => { throw new DOMException('Runtime scope was disposed.', 'AbortError') }),
+    } as unknown as BrowserBridgeTransport
+    const config = { getEnv: (name: string) => (name === 'HOME' ? '/home/tester' : undefined) } as unknown as RuntimeConfig
+    attachRequestLogBridge(closed, config)
+    recordRequest(row({ durationMs: 1 }))
+    await requestLogIdle()
+    expect(requestLogQueueLength()).toBe(0)
+    const bridge = makeBridge()
+    attachRequestLogBridge(bridge.transport)
+    recordRequest(row({ durationMs: 2 }))
+    await requestLogIdle()
+    expect(bridge.all('SELECT duration_ms FROM sends').map(r => r[0])).toEqual([2])
+  })
+})
+
 describe('request log transport', () => {
   type ModelRequest = { id: string; route: { capability: string; action: string }; payload: Record<string, unknown> }
 
@@ -520,6 +546,45 @@ describe('request log transport', () => {
     expect(await send('streamRead', { streamId: 's1' })).toBe(reply)
     expect(await send('catalog', {})).toBe(reply)
     expect(served.request).toHaveBeenCalledTimes(3)
+  })
+
+  it('counts a send under the concrete model its entry resolved to, whether or not the model was reported', async () => {
+    recordEntryResolution('acme', 'acme@latest', { id: 'acme-large', versionLabel: '2', preview: false })
+    const replies: unknown[] = [
+      { ok: true, result: { message: { role: 'assistant', content: [], model: 'acme-large' } } },
+      { ok: true, result: { status: 'timeout', message: { role: 'assistant', content: [] } } },
+    ]
+    const { send, sends } = serving(() => replies.shift())
+    await send('call', start)
+    await send('call', start)
+    expect((await sends()).map(r => [r[1], r[8]])).toEqual([['acme-large', 0], ['acme-large', 1]])
+  })
+
+  it('stores the failure kind the provider declared, as the turn reads it', async () => {
+    const { send, sends } = serving(request => request.route.action === 'streamStart'
+      ? { ok: true, result: { streamId: 's1' } }
+      : { ok: true, result: { done: true, status: 'done', chunks: [
+          { type: 'error', error: { message: 'HTTP 403 forbidden', httpStatus: 403, verdict: { kind: 'quota' } } },
+        ] } })
+    await send('streamStart', { providerId: 'plain', model: 'plain-1' })
+    await send('streamRead', { streamId: 's1' })
+    expect((await sends()).map(r => [r[9], r[10]])).toEqual([['quota', 403]])
+  })
+
+  it('ends a stream whose read was refused or rejected', async () => {
+    let next = 0
+    const { send, sends } = serving(request => {
+      if (request.route.action === 'streamStart') return { ok: true, result: { streamId: `s${next += 1}` } }
+      if ((request.payload as { streamId?: string }).streamId === 's1') {
+        return { ok: false, error: { code: 'STREAM_NOT_FOUND', message: 'no such stream' } }
+      }
+      throw new DOMException('Runtime scope was disposed.', 'AbortError')
+    })
+    await send('streamStart', { providerId: 'plain', model: 'plain-1' })
+    await send('streamRead', { streamId: 's1' })
+    await send('streamStart', { providerId: 'plain', model: 'plain-1' })
+    await expect(send('streamRead', { streamId: 's2' })).rejects.toThrow(/disposed/)
+    expect((await sends()).map(r => r[8])).toEqual([1, 2])
   })
 
   it('leaves a transport that scripts the model routes as it is', () => {

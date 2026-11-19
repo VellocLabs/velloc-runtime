@@ -53,6 +53,10 @@ export function attachRequestLogBridge(transport: BrowserBridgeTransport, runtim
   if (queue.length > 0) drain()
 }
 
+function isAborted(error: unknown): boolean {
+  return (error as { name?: unknown } | undefined)?.name === 'AbortError'
+}
+
 async function homeDir(transport: BrowserBridgeTransport): Promise<string | undefined> {
   // The runtime's own environment names the home when it has one; the host's
   // answer otherwise.
@@ -99,6 +103,13 @@ async function writeWaiting(): Promise<void> {
       opened = await openStore(transport)
     } catch (error) {
       current = undefined
+      if (isAborted(error)) {
+        // The bridge the row came on was closed with its client; the file is not at fault.
+        queue.shift()
+        warn('a row was dropped, its bridge is closed')
+        if (attached === transport) attached = undefined
+        continue
+      }
       closedUntil = Date.now() + REOPEN_AFTER_MS
       warn(`the file could not be opened, ${queue.length} row(s) dropped`, error)
       queue = []
