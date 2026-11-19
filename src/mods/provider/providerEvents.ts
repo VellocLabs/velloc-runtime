@@ -21,6 +21,7 @@ export type ProviderEventName =
   | 'provider.job'
   | 'provider.classify'
   | 'provider.outcome'
+  | 'provider.route'
 
 export type ProviderEventSpec = {
   /** The hook's OWN time per call (paused while its `$` calls are in
@@ -148,7 +149,32 @@ export const PROVIDER_EVENTS: Readonly<Record<ProviderEventName, ProviderEventSp
     void: true,
     accepts: anything,
   },
+  // A router provider's choice of target: asked before the first send of a
+  // request and after each failed send. A target, a stop, or nothing. Whether
+  // no answer fails the request depends on which of the two it is, so the
+  // caller decides and the table does not fail it closed.
+  'provider.route': {
+    budgetMs: 2_000,
+    failClosed: false,
+    void: false,
+    accepts: answer => answer === undefined || answer === null || isRecord(answer),
+  },
 })
+
+/** Events a router provider's module alone may hook. */
+export const ROUTER_ONLY_EVENTS: readonly ProviderEventName[] = Object.freeze(['provider.route'])
+
+/** Events that shape or sign a provider's own requests or sign it in: a
+ *  router provider has no endpoint and no sign-in, so its module may hook none. */
+export const WIRE_ONLY_EVENTS: readonly ProviderEventName[] = Object.freeze([
+  'provider.request',
+  'provider.sign',
+  'provider.retry',
+  'provider.ids',
+  'provider.login',
+  'provider.refresh',
+  'provider.logout',
+])
 
 export const PROVIDER_EVENT_NAMES: readonly ProviderEventName[] = Object.freeze(
   Object.keys(PROVIDER_EVENTS) as ProviderEventName[],

@@ -142,8 +142,17 @@ const CHAIN_FIELD_LIST: readonly string[] = CHAIN_FIELDS
 /** The shape of an id rule; the id mapper (ids/idMapper.ts) runs it. */
 export type ProviderIdRule = IdRuleShape
 
+/** `provider` sends to its own endpoint; `router` owns none and sends each
+ *  request through another provider the person has set up. */
+export type ProviderKind = 'provider' | 'router'
+
 export type ProviderManifest = {
   providerApi: number
+  /** Absent = `provider`. */
+  kind?: ProviderKind
+  /** A router's boundary: any provider the person set up, or the listed
+   *  provider ids. Read on a router alone. */
+  routesTo?: '*' | string[]
   displayName: LocalizedText
   /** Package-relative `.svg`, `./`-prefixed. */
   icon?: string

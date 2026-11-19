@@ -11,6 +11,7 @@ import type { HookTableByEvent } from '../lifecycleHooks/hookTypes'
 import type { SettingsModeId } from '../permissions/sessionModes'
 import type { MemoryMaintenanceMode } from '../memory/memoryPaths'
 import type { NexusDocumentInputMode } from '../config/nexusModelConfig/types'
+import type { RouteRecipe } from '../config/nexusModelConfig/routeRecipes'
 import type { UserModelDef } from '../config/nexusModelConfig/userModels'
 import type { ThemeBackdropScope, ThemeModEntry } from '../mods/themeMods'
 
@@ -244,6 +245,9 @@ export type NexusProviderConfig = {
   /** Models the person added by hand on a provider mod's aggregated page
    *  (`providers.setUserModels`); merged into the provider's listing. */
   userModels?: UserModelDef[]
+  /** The routes a person composed on a router provider (`providers.setRoutes`):
+   *  each is one of its model rows. */
+  routes?: RouteRecipe[]
   /** `'anonymous'`: the person chose the provider's keyless mode (a mod
    *  provider whose credential methods include `anonymous`). The provider
    *  counts as added with no key stored. Absent: a key (or a sign-in) is how

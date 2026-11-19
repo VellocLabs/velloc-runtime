@@ -222,6 +222,9 @@ export type ProviderDefinition = {
    *  its sign-in without reaching into the registry (published on the
    *  catalog row). */
   catalogMod?: BrowserLlmModProvider
+  /** A router provider: it has no wire of its own, and each request is
+   *  served by the provider its router chooses. */
+  router?: true
   /** The listing comes from a mod's code, not a document (`models`). */
   codeListing?: ProviderCodeListing
   /** A provider mod's own facts per model, read beneath each listed row. */

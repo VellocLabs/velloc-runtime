@@ -12,6 +12,7 @@
  * that ends after its call was closed says nothing, since the caller already
  * told the hook.
  */
+import type { RouteRecipe } from '../../config/nexusModelConfig/routeRecipes'
 import type { ProviderConnectivityIssue } from '../../utils/providerConnectivity'
 import { traceLine } from '../../utils/debugLog'
 import type { RequestFinishReason, RequestUsage } from './providerClassify'
@@ -23,6 +24,8 @@ export type ProviderOutcomeEvent = {
   model: string
   /** Who served the request: for a wire provider, itself. */
   target: { provider: string; model: string }
+  /** The route the request's row was composed as, on a router's request. */
+  recipe?: RouteRecipe
   context?: ProviderRequestContext
   /** The pool member the last send left through; absent: the host's own route. */
   route?: ProviderRoute

@@ -137,6 +137,10 @@ export type BrowserLlmModProvider = {
   defaultBaseUrl?: string
   /** The manifest's declared domains: the provider's boundary. */
   domains?: string[]
+  /** `router`: it sends through other providers. Absent = `provider`. */
+  kind?: 'provider' | 'router'
+  /** A router's boundary: any provider the person set up, or these ids. */
+  routesTo?: '*' | string[]
   credentialMethods?: ProviderCredentialMethod[]
   /** Credentials beyond the API key. */
   secrets?: ProviderSecretDecl[]
