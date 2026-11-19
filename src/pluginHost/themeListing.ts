@@ -7,8 +7,7 @@
  * only with a plain id, a preview that can be nothing but a picture at a
  * pinned or own-origin https address, and a `use` that names one command
  * word and one short lowercase argument; `onEnable` is held to the same
- * shape. Whether that command is the
- * plugin's own is checked where it runs.
+ * shape. Whether that command is the plugin's own is checked where it runs.
  */
 
 import { codeSourceOf, sameCode, type PluginCodeSource } from './codeSource'

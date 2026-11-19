@@ -128,6 +128,30 @@ describe('runThemeOnEnable', () => {
     expect(ran).toEqual([])
   })
 
+  it('answers notOwnCommand at once when the plugin has started without registering the command', async () => {
+    let pauses = 0
+    const { slot } = fakeSlot()
+    const timing = { attempts: 5, pause: async () => void (pauses += 1) }
+    expect(await runThemeOnEnable(target(slot), 'borrow', timing)).toEqual({ ok: false, reason: 'notOwnCommand' })
+    expect(pauses).toBe(0)
+  })
+
+  it('stops asking once the request is cancelled', async () => {
+    const controller = new AbortController()
+    let pauses = 0
+    const { slot, ran } = fakeSlot({ hasLoaded: () => false })
+    const timing = {
+      attempts: 12,
+      pause: async () => {
+        pauses += 1
+        controller.abort()
+      },
+    }
+    expect(await runThemeOnEnable(target(slot), 'rain', timing, controller.signal)).toEqual({ ok: false, reason: 'notLoaded' })
+    expect(pauses).toBe(1)
+    expect(ran).toEqual([])
+  })
+
   it('answers none, and runs nothing, for a plugin with no onEnable or no listing', async () => {
     const { slot, ran } = fakeSlot()
     for (const plugin of ['plain', 'unknown']) {
@@ -220,10 +244,10 @@ describe('the theme capability: onEnable', () => {
       },
       onEnableTiming: { attempts: 4, pause: async () => {} },
     })
-    const ask = (payload: unknown, c = conn()) => {
+    const ask = (payload: unknown, c = conn(), signal = new AbortController().signal) => {
       const entry = registry.resolve('theme', 'onEnable')!
       expect(entry.spec.guard?.(payload, c, {} as never) ?? true).toBe(true)
-      return entry.handle({ id: '1', route: { cap: 'theme', act: 'onEnable' }, payload, conn: c } as never, {} as never)
+      return entry.handle({ id: '1', route: { cap: 'theme', act: 'onEnable' }, payload, conn: c, signal } as never, {} as never)
     }
     return { ask, ran: fake.ran }
   }
@@ -232,6 +256,14 @@ describe('the theme capability: onEnable', () => {
     const { ask, ran } = await rig()
     expect(await ask({ sessionId: 's1', plugin: 'rain' })).toEqual({ ok: true, via: 'command', text: 'done' })
     expect(ran).toEqual(['/rain on'])
+  })
+
+  it('runs nothing once the request is cancelled or its connection goes away', async () => {
+    const { ask, ran } = await rig()
+    const controller = new AbortController()
+    controller.abort()
+    expect(await ask({ sessionId: 's1', plugin: 'rain' }, conn(), controller.signal)).toEqual({ ok: false, reason: 'notLoaded' })
+    expect(ran).toEqual([])
   })
 
   it('refuses a session outside the connection scope', async () => {

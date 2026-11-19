@@ -371,8 +371,8 @@ export class RuntimeHub {
         },
       },
     })
-    // Theme looks (F-35): `theme.useLook` and `theme.clear`, both `full`; the
-    // look is read from the built-in marketplace's cached listing.
+    // Theme looks (F-35): `theme.useLook`, `theme.onEnable` and `theme.clear`,
+    // all `full`; the command is read from the built-in marketplace's cached listing.
     registerThemeCapability(this.registry, {
       fs: () => this.context.webUiBridge.fs,
       resolveHome: () => resolveHostHome(this.context),

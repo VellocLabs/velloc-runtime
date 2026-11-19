@@ -1,7 +1,7 @@
 /**
  * `theme` on the runtime protocol (F-25, F-35): `theme.useLook`,
- * `theme.onEnable` and `theme.clear`; shapes, scopes and the rule for what may run in
- * `mods/modThemeLooks.ts`. The runtime reads the built-in marketplace's cached
+ * `theme.onEnable` and `theme.clear`; shapes, scopes and the rule for what
+ * may run in `mods/modThemeLooks.ts`. The runtime reads the built-in marketplace's cached
  * listing itself; a connection bound to a list of sessions reaches those alone.
  */
 import { wireError } from '../runtimeProtocol'
@@ -115,7 +115,7 @@ export function registerThemeCapability(registry: CapabilityRegistry, options: T
               return slotOf(payload.sessionId)
             },
           }
-          return runThemeOnEnable(target, payload.plugin, options.onEnableTiming)
+          return runThemeOnEnable(target, payload.plugin, options.onEnableTiming, request.signal)
         }
         case 'clear':
           return clearSessionTheme(slotInScope(request.conn, (request.payload as ThemeClearPayload).sessionId))

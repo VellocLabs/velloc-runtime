@@ -2,20 +2,20 @@
  * Theme looks on the runtime protocol (F-25, F-35): `theme.useLook` applies a
  * look the built-in marketplace lists to one session, `theme.onEnable` runs
  * the listing's `onEnable` command in a session after the plugin is turned
- * on, `theme.clear` takes the session's theme away. All are `full`. What stands afterwards is read from
- * the session's published theme, not from the reply.
+ * on, `theme.clear` takes the session's theme away. All are `full`. What
+ * stands afterwards is read from the session's published theme, not from the
+ * reply.
  *
  * Security: a client names a session, a plugin and a look, never a command.
- * The runtime reads the look or `onEnable` from its own cached catalogue, and runs the
- * command it names only when the module that registered that command was
- * loaded from an install of that very listing's plugin: its own, or the same
- * repository and folder installed from another marketplace. Another plugin's command, a
- * built-in and free text cannot be reached.
+ * The runtime reads the look or `onEnable` from its own cached catalogue, and
+ * runs the command it names only when the module that registered that command
+ * was loaded from an install of that very listing's plugin: its own, or the
+ * same repository and folder installed from another marketplace. Another
+ * plugin's command, a built-in and free text cannot be reached.
  */
 import type { CommandRunSettlement } from '../engine/extensionSeam'
-import type { CatalogListing } from '../pluginHost/registryFormats'
+import type { CatalogListing, ThemeLookUse } from '../pluginHost/registryFormats'
 import { isLookId } from '../pluginHost/themeListing'
-import type { ThemeLookUse } from '../pluginHost/registryFormats'
 import type { ModCommandOrigin } from './modCommands'
 
 export const THEME_CAPABILITY = 'theme'
@@ -217,12 +217,17 @@ export async function runThemeOnEnable(
     if (attempt > 0) await pause()
     if (signal?.aborted) break
     const slot = target.slot
-    if (slot && (!slot.hasLoaded || installs.some(install => slot.hasLoaded!(install)))) {
+    const started = slot !== undefined && (!slot.hasLoaded || installs.some(install => slot.hasLoaded!(install)))
+    if (started) {
       await slot.settled?.().catch(() => undefined)
+      if (signal?.aborted) break
       if (slot.themeOwner?.() === plugin) return { ok: true, via: 'self' }
     }
     if (slot) result = await runOwnCommand(slot, plugin, installs, run, signal)
-    if (result.ok || (result.reason !== 'notLoaded' && result.reason !== 'notOwnCommand')) return result
+    if (result.ok) return result
+    // Once the plugin has started, a command it did not register will not appear.
+    const loading = result.reason === 'notLoaded' || (result.reason === 'notOwnCommand' && !started)
+    if (!loading) return result
   }
   return result
 }
