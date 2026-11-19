@@ -8,11 +8,11 @@
 import type { ThemeUseLookResult } from '../../../mods/modThemeLooks'
 import { THEME_CAPABILITY } from '../../../mods/modThemeLooks'
 import { BUILTIN_MARKETPLACE_KEY } from '../../../pluginHost/builtinMarketplace'
+import { joinPluginRef } from '../../../pluginHost/pluginRef'
 import type { PluginAvailableUiEntry } from '../../bridge/protocol/plugins'
 import type { RuntimeConnection } from '../../runtimeClient/RuntimeConnection'
 import type { RouteKey } from '../../runtimeProtocol'
 import type { MessageKey } from '../i18n/messages/en'
-import { installKey } from '../customize/useMarketplaceCatalog'
 import type { NexusSettingsBridge } from '../nexusSettingsBridge'
 import { pluginsListMarketplaceThemes } from '../settings/clients'
 
@@ -42,6 +42,16 @@ export const lookKey = (plugin: string, lookId: string) => `${plugin}/${lookId}`
 /** The session's standing theme as its runtime publishes it: `null` when none stands, `undefined` while not read yet. */
 export type ThemeStanding = { plugin: string } | null | undefined
 
+/** A session's standing theme from its mod UI: unknown until the session has loaded and its mods have settled. */
+export function themeStandingOf(modUi: {
+  theme?: { plugin: string } | null
+  isLoaded?: boolean
+  modsSettled?: boolean
+}): ThemeStanding {
+  if (modUi.theme) return { plugin: modUi.theme.plugin }
+  return modUi.isLoaded === true && modUi.modsSettled === true ? null : undefined
+}
+
 /**
  * The look to mark In use: the one `last` applied while its plugin's theme
  * still stands, a standing single theme's only look, and none when no theme
@@ -55,7 +65,7 @@ export function lookInUse(
   if (standing === undefined) return last ?? null
   if (standing === null) return null
   const owner = plugins.find(
-    p => standing.plugin === p.name || standing.plugin === installKey(BUILTIN_MARKETPLACE_KEY, p.name),
+    p => standing.plugin === p.name || standing.plugin === joinPluginRef(p.name, BUILTIN_MARKETPLACE_KEY),
   )
   if (!owner) return null
   if (last?.startsWith(`${owner.name}/`)) return last

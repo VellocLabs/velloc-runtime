@@ -8,8 +8,8 @@ import * as React from 'react'
 import type { ThemeModsContextValue } from '../../../components/assistant-ui/theme-mods-context'
 import type { ThemeModEntry } from '../../../mods/themeMods'
 import { BUILTIN_MARKETPLACE_KEY } from '../../../pluginHost/builtinMarketplace'
+import { joinPluginRef } from '../../../pluginHost/pluginRef'
 import type { RuntimeConnection } from '../../runtimeClient/RuntimeConnection'
-import { installKey } from '../customize/useMarketplaceCatalog'
 import type { NexusSettingsBridge } from '../nexusSettingsBridge'
 import {
   pluginsListBuiltin,
@@ -81,7 +81,7 @@ export function enabledThemeListings(
   modsEnabled: Readonly<Record<string, boolean>>,
 ): ThemePlugin[] {
   return listings.filter(
-    listing => lists.byId.get(installKey(BUILTIN_MARKETPLACE_KEY, listing.name)) === true || modsEnabled[listing.name] === true,
+    listing => lists.byId.get(joinPluginRef(listing.name, BUILTIN_MARKETPLACE_KEY)) === true || modsEnabled[listing.name] === true,
   )
 }
 
@@ -166,6 +166,7 @@ export function useThemeModsMenu(options: ThemeModsMenuOptions): ThemeModsContex
       mods: state.mods,
       backdropScope: state.backdropScope,
       single: state.single,
+      pluginsOn: state.on,
       ...(enabled ? { enabled } : {}),
       refresh,
       ...(canSetBackdropScope ? { setBackdropScope } : {}),

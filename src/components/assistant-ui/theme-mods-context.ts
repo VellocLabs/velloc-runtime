@@ -21,6 +21,8 @@ export type ThemeModsContextValue = {
   setEnabled?: (mod: ThemeModEntry, enabled: boolean) => Promise<void>
   /** Open the place themes are installed from. */
   openThemeStore?: () => void
+  /** How many theme plugins the runtime counts as enabled, whether or not they have set a theme. */
+  pluginsOn?: number
   /** Switch every theme plugin off; answers how many were on. */
   turnOffAll?: () => Promise<number>
   /** The built-in marketplace's theme listings whose plugin is enabled, as stored. */

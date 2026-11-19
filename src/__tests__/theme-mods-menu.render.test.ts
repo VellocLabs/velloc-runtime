@@ -227,9 +227,9 @@ describe('theme mods menu — Turn off all', () => {
     expect(order[off + 2]).toBe('theme-mods-menu-more')
   })
 
-  it('is offered while a listed theme plugin is on, even one that has set no theme yet', async () => {
+  it('is offered while the runtime counts a theme plugin on, even one that has set no theme yet', async () => {
     const turnOffAll = vi.fn(async () => 1)
-    mount({ ...base({ looks: false, aurora: false, bubblegum: false }, turnOffAll), looks: [SCENES] })
+    mount({ ...base({ looks: false, aurora: false, bubblegum: false }, turnOffAll), pluginsOn: 1 })
     await openSub('theme-mods-menu-mods')
     const item = await screen.findByTestId('theme-mods-menu-turn-off')
     expect(item.getAttribute('data-disabled')).toBeNull()
@@ -303,20 +303,20 @@ describe('theme mods menu — Themes', () => {
   it('marks the look in use once its plugin stands', async () => {
     const { rememberAppliedLook } = await import('../browser/webview/mods/themeLooks')
     rememberAppliedLook('s', 'theme-examples/night-reef')
-    mount(withLooks(async () => ({ ok: true, via: 'command' })), {
-      theme: { plugin: 'theme-examples' } as never,
-      isLoaded: true,
-    })
+    mount(withLooks(async () => ({ ok: true, via: 'command' })), { theme: { plugin: 'theme-examples' } as never })
     await openSub('theme-mods-menu-looks')
     const reef = await screen.findByTestId('theme-look:theme-examples/night-reef')
     expect(reef.getAttribute('data-in-use')).toBe('')
     expect(screen.getByTestId('theme-look:theme-examples/honu-lagoon').getAttribute('data-in-use')).toBeNull()
   })
 
-  it('keeps the applied look marked while the session has not reported its theme yet', async () => {
+  it.each([
+    ['not loaded', {}],
+    ['loaded, mods still settling', { isLoaded: true, modsSettled: false }],
+  ])('keeps the applied look marked while the session has not reported its theme yet (%s)', async (_label, ui) => {
     const { rememberAppliedLook } = await import('../browser/webview/mods/themeLooks')
     rememberAppliedLook('s', 'theme-examples/night-reef')
-    mount(withLooks(async () => ({ ok: true, via: 'command' })))
+    mount(withLooks(async () => ({ ok: true, via: 'command' })), ui)
     await openSub('theme-mods-menu-looks')
     const reef = await screen.findByTestId('theme-look:theme-examples/night-reef')
     expect(reef.getAttribute('data-in-use')).toBe('')
@@ -325,7 +325,7 @@ describe('theme mods menu — Themes', () => {
   it('marks no look once the session reports that no theme stands', async () => {
     const { rememberAppliedLook } = await import('../browser/webview/mods/themeLooks')
     rememberAppliedLook('s', 'theme-examples/night-reef')
-    mount(withLooks(async () => ({ ok: true, via: 'command' })), { isLoaded: true })
+    mount(withLooks(async () => ({ ok: true, via: 'command' })), { isLoaded: true, modsSettled: true })
     await openSub('theme-mods-menu-looks')
     const reef = await screen.findByTestId('theme-look:theme-examples/night-reef')
     expect(reef.getAttribute('data-in-use')).toBeNull()
