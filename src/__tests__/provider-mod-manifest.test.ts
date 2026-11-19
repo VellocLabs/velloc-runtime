@@ -401,6 +401,7 @@ describe('manifest providers — a router (F-27)', () => {
     ['requestNeeds', ['system']],
     ['signNeeds', 'digest'],
     ['ids', {}],
+    ['wire', { toolAliases: {} }],
   ])('refuses %s, naming it', (field, value) => {
     const { manifest: parsed, errors } = router({ [field]: value })
     expect(parsed?.providers).toBeUndefined()
@@ -475,4 +476,27 @@ describe('manifest providers — a router (F-27)', () => {
     expect(Object.keys(parsed?.providers ?? {})).toEqual(['wire'])
     expect(errors.join('\n')).toMatch(/providers\.pick\.module: .* a router and a provider cannot share a module/)
   })
+
+  it.each([['././providers/shared.js'], ['./providers//shared.js'], ['./providers/./shared.js']])(
+    'refuses a router and a provider naming one module as %s',
+    alias => {
+      const { manifest: parsed, errors } = checkPluginDescriptor({
+        name: 'relay',
+        version: '1.0.0',
+        providers: {
+          wire: { ...manifest().providers.zen, module: './providers/shared.js' },
+          pick: {
+            providerApi: 1,
+            kind: 'router',
+            displayName: { en: 'Relay' },
+            credentials: { methods: ['anonymous'] },
+            routesTo: '*',
+            module: alias,
+          },
+        },
+      })
+      expect(Object.keys(parsed?.providers ?? {})).toEqual(['wire'])
+      expect(errors.join('\n')).toMatch(/providers\.pick\.module: .* a router and a provider cannot share a module/)
+    },
+  )
 })

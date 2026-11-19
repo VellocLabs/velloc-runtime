@@ -907,7 +907,7 @@ export class ProviderModRuntime {
   /** Serve a `$` call of a provider module: its nouns alone. Counted as
    *  pending while it runs — a module doing something is not idle. */
   private async serveCall(module: Module, call: ModCall): Promise<unknown> {
-    const refused = refuseProviderModuleCall(call.noun, call.method)
+    const refused = refuseProviderModuleUses({ events: [], calls: [`${call.noun}.${call.method}`] }, module.ref.kind)
     if (refused) {
       const error = new Error(refused)
       error.name = 'NotAllowedError'

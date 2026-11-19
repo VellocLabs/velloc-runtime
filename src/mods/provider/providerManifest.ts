@@ -154,11 +154,11 @@ export type ProviderManifest = {
   /** A router's boundary: any provider the person set up, or every instance
    *  of the listed provider definitions. Read on a router alone. */
   routesTo?: '*' | string[]
-  /** The wire fields. A router has no wire: it carries an empty
-   *  `defaultBaseUrl`, no `domains` and a `format` nothing reads. */
   displayName: LocalizedText
   /** Package-relative `.svg`, `./`-prefixed. */
   icon?: string
+  /** The wire fields. A router has no wire: it carries an empty
+   *  `defaultBaseUrl`, no `domains` and a `format` nothing reads. */
   defaultBaseUrl: string
   /** Every host the provider's requests reach (lower case). */
   domains: string[]
@@ -815,7 +815,7 @@ function checkUpdates(value: unknown, bad: Problems): ProviderManifest['updates'
 
 /** The fields that describe a provider's own endpoint, its requests and its
  *  ids. A router has none of them. */
-const WIRE_FIELDS = ['defaultBaseUrl', 'domains', 'format', 'requestNeeds', 'signNeeds', 'ids'] as const
+const WIRE_FIELDS = ['defaultBaseUrl', 'domains', 'format', 'requestNeeds', 'signNeeds', 'ids', 'wire'] as const
 export const ROUTES_TO_MAX = 64
 
 function checkKind(value: unknown, bad: Problems): ProviderKind | undefined {
@@ -1028,12 +1028,14 @@ export function checkProviderManifests(
     const checked = checkProvider(key, id, raw, errors)
     if (checked) out[key] = checked
   }
-  // One module serves one kind: what it may hook is decided per module.
+  // One module serves one kind: what it may hook is decided per module, so
+  // two spellings of one file are one module.
   const kindOfModule = new Map<string, ProviderKind>()
   for (const [key, provider] of Object.entries(out)) {
     const kind = provider.kind ?? 'provider'
-    const first = kindOfModule.get(provider.module)
-    if (first === undefined) kindOfModule.set(provider.module, kind)
+    const module = insidePackage('/', provider.module)
+    const first = kindOfModule.get(module)
+    if (first === undefined) kindOfModule.set(module, kind)
     else if (first !== kind) {
       errors.push(`providers.${key}.module: ${provider.module} already serves a ${first}; a router and a provider cannot share a module`)
       delete out[key]
@@ -1042,13 +1044,18 @@ export function checkProviderManifests(
   return Object.keys(out).length > 0 ? out : undefined
 }
 
+/** A `./`-prefixed package path under `root`, empty and `.` segments dropped. */
+function insidePackage(root: string, relative: string): string {
+  return joinRuntimePath(root, ...relative.replace(/^\.\//, '').split('/'))
+}
+
 /** A plugin's validated providers with their ids and absolute module paths. */
 export function resolveProviders(
   pluginName: string,
   pluginPath: string,
   providers: Readonly<Record<string, ProviderManifest>>,
 ): ResolvedProvider[] {
-  const inside = (relative: string): string => joinRuntimePath(pluginPath, ...relative.replace(/^\.\//, '').split('/'))
+  const inside = (relative: string): string => insidePackage(pluginPath, relative)
   return Object.entries(providers).map(([key, manifest]) => ({
     key,
     id: modProviderId(pluginName, key),

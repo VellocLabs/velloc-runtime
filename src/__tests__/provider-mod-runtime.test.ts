@@ -38,7 +38,7 @@ afterEach(() => {
 type Worker = ModWorkerHandle & { crash(message?: string): void; id: number }
 
 function world(
-  modules: Record<string, { source: string; providers: string[] }>,
+  modules: Record<string, { source: string; providers: string[]; kind?: ProviderModuleRef['kind'] }>,
   options: Partial<ProviderModRuntimeOptions> & {
     /** How long a closed worker takes to be reported gone. */
     closeDelayMs?: number
@@ -52,6 +52,7 @@ function world(
     plugin: path.split('/')[0]!,
     path,
     providers: entry.providers,
+    ...(entry.kind ? { kind: entry.kind } : {}),
   }))
   const runtime = new ProviderModRuntime({
     readModule: async path => `${modules[path]!.source}\n// load ${++uniqueLoad}`,
@@ -443,6 +444,30 @@ describe('ProviderModRuntime — routing and answers', () => {
     const refused = (answer as { value: { refused: string[] } }).value.refused
     expect(refused.slice(0, 2)).toEqual(['NotAllowedError', 'NotAllowedError'])
     expect(reports).toContain('acme [info]: hello')
+  })
+
+  it('refuses $.provider.peers at the call for a provider module, however it is spelled; serves it to a router', async () => {
+    const PEERS = `
+      export function register(on) {
+        on('provider.usage', async ($) => {
+          try { return { peers: await $.provider['pe' + 'ers']() } } catch (error) { return { refused: error.name } }
+        })
+      }
+    `
+    const providerNouns = { peers: async () => ['relay-a'] }
+    const asProvider = world({ 'acme/providers/zen.js': { source: PEERS, providers: ['mod.acme.zen'] } }, { providerNouns })
+    expect(await asProvider.runtime.call('mod.acme.zen', 'provider.usage', {})).toMatchObject({
+      raised: true,
+      value: { refused: 'NotAllowedError' },
+    })
+    const asRouter = world(
+      { 'acme/providers/pick.js': { source: PEERS, providers: ['mod.acme.pick'], kind: 'router' } },
+      { providerNouns },
+    )
+    expect(await asRouter.runtime.call('mod.acme.pick', 'provider.usage', {})).toMatchObject({
+      raised: true,
+      value: { peers: ['relay-a'] },
+    })
   })
 
   it('provider.job: the hook gets the job, writes $.store, and runs under the call budget when that is lower', async () => {
