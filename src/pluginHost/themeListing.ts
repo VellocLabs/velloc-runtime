@@ -6,7 +6,8 @@
  * Security: the block is catalogue data, read as untrusted. A look survives
  * only with a plain id, a preview that can be nothing but a picture at a
  * pinned or own-origin https address, and a `use` that names one command
- * word and one short lowercase argument. Whether that command is the
+ * word and one short lowercase argument; `onEnable` is held to the same
+ * shape. Whether that command is the
  * plugin's own is checked where it runs.
  */
 
@@ -119,6 +120,8 @@ export function normalizeListingTheme(raw: unknown): ListingTheme | undefined {
   const theme: ListingTheme = { looks: [] }
   if (!isRecord(raw)) return theme
   if (raw.official === true) theme.official = true
+  const onEnable = raw.onEnable === undefined ? null : lookUseOf(raw.onEnable)
+  if (onEnable) theme.onEnable = onEnable
   if (!Array.isArray(raw.looks)) return theme
   const seen = new Set<string>()
   for (const rawLook of raw.looks) {

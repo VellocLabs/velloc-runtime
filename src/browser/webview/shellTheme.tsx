@@ -2,7 +2,7 @@
  * The window's share of a mod theme (F-25): the active session's theme on the
  * shell, the backdrop's reach, and the conversation's theme menu.
  */
-import type { ReactNode } from 'react'
+import { useCallback, useRef, type ReactNode } from 'react'
 
 import type { ModsUiTheme } from '../runtimeProtocol'
 import type { RuntimeConnection } from '../runtimeClient/RuntimeConnection'
@@ -11,7 +11,7 @@ import { ModUiContext, type ModUiContextValue } from '@/components/assistant-ui/
 import { ThemeModsContext, type ThemeModsContextValue } from '@/components/assistant-ui/theme-mods-context'
 import { DEFAULT_THEME_BACKDROP_SCOPE } from '@/mods/themeMods'
 import type { NexusSettingsBridge } from './nexusSettingsBridge'
-import { useThemeMods } from './mods/themeModsView'
+import { askThemeOnEnable, useThemeMods } from './mods/themeModsView'
 import { useThemeModsMenu } from './mods/useThemeModsMenu'
 import type { CapabilityQuery } from './useCan'
 
@@ -31,8 +31,22 @@ export function useShellTheme(options: {
   isRemoteHost: boolean
   settingsBridge: NexusSettingsBridge | null | undefined
   openCustomize: () => void
+  /** The session the window shows, unless a CLI runs it; a theme plugin turned on is started there. */
+  themeTarget?: { sessionId: string; busy: boolean } | null
 }): ShellTheme {
   const { runtimeConnection, theme, capabilities, isRemoteHost, settingsBridge, openCustomize } = options
+  const target = useRef(options.themeTarget)
+  target.current = options.themeTarget
+  const canOnEnable = capabilities.can('theme', 'onEnable')
+  const afterEnable = useCallback(
+    (plugin: string) => {
+      const shown = target.current
+      // A running turn is left alone: the plugin's own command would land in it.
+      if (!runtimeConnection || !canOnEnable || !shown || shown.busy) return
+      askThemeOnEnable(runtimeConnection, shown.sessionId, plugin)
+    },
+    [runtimeConnection, canOnEnable],
+  )
   // Under the `conversation` reach the window shows the theme's colours and
   // mode on opaque surfaces, and each conversation draws the backdrop itself.
   const themeMods = useThemeMods(runtimeConnection)
@@ -48,6 +62,7 @@ export function useShellTheme(options: {
     canSetEnabled: capabilities.can('plugins', 'setEnabled') && capabilities.can('plugins', 'setLocalEnabled'),
     canSetBackdropScope: capabilities.can('themeMods', 'setBackdropScope'),
     ...(themeStoreShown ? { openThemeStore: openCustomize } : {}),
+    afterEnable,
   })
   return { look, paintsBackdrop: backdropScope === 'window' && theme?.backdrop !== undefined, menu }
 }

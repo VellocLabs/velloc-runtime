@@ -1,6 +1,6 @@
 /**
- * `theme` on the runtime protocol (F-25, F-35): `theme.useLook` and
- * `theme.clear`; shapes, scopes and the rule for what may run in
+ * `theme` on the runtime protocol (F-25, F-35): `theme.useLook`,
+ * `theme.onEnable` and `theme.clear`; shapes, scopes and the rule for what may run in
  * `mods/modThemeLooks.ts`. The runtime reads the built-in marketplace's cached
  * listing itself; a connection bound to a list of sessions reaches those alone.
  */
@@ -10,10 +10,15 @@ import {
   THEME_CAPABILITY,
   clearSessionTheme,
   isThemeClearPayload,
+  isThemeOnEnablePayload,
   isThemeUseLookPayload,
+  runThemeOnEnable,
   useThemeLook,
   type ThemeClearPayload,
   type ThemeLookSlot,
+  type ThemeLookTarget,
+  type ThemeOnEnablePayload,
+  type ThemeOnEnableTiming,
   type ThemeUseLookPayload,
 } from '../../mods/modThemeLooks'
 import { modSlotFor } from '../../mods/modSlotRegistry'
@@ -39,6 +44,8 @@ export type ThemeCapabilityOptions = {
   reload?: () => void
   /** Default: the slot registry. */
   slotOf?: (sessionId: string) => ThemeLookSlot | undefined
+  /** How `theme.onEnable` waits for a plugin that is still loading. */
+  onEnableTiming?: ThemeOnEnableTiming
 }
 
 /** The built-in marketplace's cached listings for `channel`; null when none is cached or readable. */
@@ -63,11 +70,25 @@ export function registerThemeCapability(registry: CapabilityRegistry, options: T
     }
     return slotOf(sessionId)
   }
+  /** The cached listings and how each maps to installs, read fresh. */
+  const readTarget = async (): Promise<{ homeDir: string; fs: RuntimeFs } & Omit<ThemeLookTarget, 'slot'>> => {
+    const fs = options.fs()
+    try {
+      const homeDir = await options.resolveHome()
+      const listings = await readCachedBuiltinListings(fs, homeDir, options.channel())
+      const installed = (await loadInstalledPlugins({ homeDir }, fs)).registry.plugins
+      const installsOf = (listing: CatalogListing) => listingInstalls(installed, listing, BUILTIN_MARKETPLACE_KEY)
+      return { homeDir, fs, marketplace: BUILTIN_MARKETPLACE_KEY, listings, installsOf }
+    } catch {
+      throw wireError('host_unavailable', 'theme: the host has no home folder yet')
+    }
+  }
 
   registry.registerCapability({
     cap: THEME_CAPABILITY,
     actions: {
       useLook: { scope: THEME_ACTION_SCOPES.useLook, guard: isThemeUseLookPayload },
+      onEnable: { scope: THEME_ACTION_SCOPES.onEnable, guard: isThemeOnEnablePayload },
       clear: { scope: THEME_ACTION_SCOPES.clear, guard: isThemeClearPayload },
     },
     handle: async request => {
@@ -75,24 +96,26 @@ export function registerThemeCapability(registry: CapabilityRegistry, options: T
         case 'useLook': {
           const payload = request.payload as ThemeUseLookPayload
           const slot = slotInScope(request.conn, payload.sessionId)
-          let listings: CatalogListing[] | null
-          let installed: Awaited<ReturnType<typeof loadInstalledPlugins>>['registry']['plugins']
-          const fs = options.fs()
-          let homeDir: string
-          try {
-            homeDir = await options.resolveHome()
-            listings = await readCachedBuiltinListings(fs, homeDir, options.channel())
-            installed = (await loadInstalledPlugins({ homeDir }, fs)).registry.plugins
-          } catch {
-            throw wireError('host_unavailable', 'theme: the host has no home folder yet')
-          }
-          const installsOf = (listing: CatalogListing) => listingInstalls(installed, listing, BUILTIN_MARKETPLACE_KEY)
-          const result = await useThemeLook({ marketplace: BUILTIN_MARKETPLACE_KEY, listings, installsOf, slot }, payload)
+          const { homeDir, fs, ...target } = await readTarget()
+          const result = await useThemeLook({ ...target, slot }, payload)
           // An applied look: with *Only one at a time* on, the other theme plugins go off.
           if (result.ok) {
             await keepOneThemePlugin({ homeDir, fs, reload: options.reload ?? (() => {}) }, { plugin: payload.plugin })
           }
           return result
+        }
+        case 'onEnable': {
+          const payload = request.payload as ThemeOnEnablePayload
+          slotInScope(request.conn, payload.sessionId)
+          const { homeDir: _home, fs: _fs, ...listed } = await readTarget()
+          // The session's runtime is looked up on every try: the plugin may still be loading.
+          const target: ThemeLookTarget = {
+            ...listed,
+            get slot() {
+              return slotOf(payload.sessionId)
+            },
+          }
+          return runThemeOnEnable(target, payload.plugin, options.onEnableTiming)
         }
         case 'clear':
           return clearSessionTheme(slotInScope(request.conn, (request.payload as ThemeClearPayload).sessionId))

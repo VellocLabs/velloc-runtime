@@ -269,10 +269,10 @@ describe('the theme capability', () => {
     return { registry, ask, asked, ...fake }
   }
 
-  it('declares both actions at full, with their guards', async () => {
+  it('declares every action at full, with its guard', async () => {
     const { registry } = await rig()
-    expect(THEME_ACTION_SCOPES).toEqual({ useLook: 'full', clear: 'full' })
-    for (const act of ['useLook', 'clear'] as const) {
+    expect(THEME_ACTION_SCOPES).toEqual({ useLook: 'full', onEnable: 'full', clear: 'full' })
+    for (const act of ['useLook', 'onEnable', 'clear'] as const) {
       const entry = registry.resolve('theme', act)!
       expect(entry.spec.scope).toBe('full')
       expect(entry.spec.guard?.({ sessionId: 's1', command: 'x' }, conn(), {} as never)).toBe(false)

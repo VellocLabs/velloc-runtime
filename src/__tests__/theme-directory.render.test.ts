@@ -357,18 +357,19 @@ describe('Theme directory — Add and Use', () => {
     expect(runtimeAsked).toEqual([])
   })
 
-  it('a single theme is added on its own; Use then asks the runtime, and a refusal says why', async () => {
+  it('a single theme is added on its own and started in the session; Use then asks the runtime, and a refusal says why', async () => {
     const { view, open, card, runtimeAsked, target } = setup({ useAnswer: { ok: false, reason: 'notLoaded' } })
     await open()
     const add = within(card('snow', 'snow')).getByTestId('customize-theme-add')
     expect(add.textContent).toBe(EN['customize.item.add'])
     fireEvent.click(add)
     await waitFor(() => expect(within(card('snow', 'snow')).getByTestId('customize-theme-use')).toBeTruthy())
-    expect(runtimeAsked).toEqual([])
+    const started = `theme.onEnable {"sessionId":"${target.sessionId}","plugin":"snow"}`
+    await waitFor(() => expect(runtimeAsked).toEqual([started]))
     vi.useFakeTimers({ shouldAdvanceTime: true, toFake: ['setTimeout', 'clearTimeout'] })
     fireEvent.click(within(card('snow', 'snow')).getByTestId('customize-theme-use'))
     await waitFor(() => expect(view.getByTestId('customize-theme-notice').getAttribute('data-kind')).toBe('failed'))
-    expect(runtimeAsked).toEqual([`theme.useLook {"sessionId":"${target.sessionId}","plugin":"snow","lookId":"snow"}`])
+    expect(runtimeAsked).toEqual([started, `theme.useLook {"sessionId":"${target.sessionId}","plugin":"snow","lookId":"snow"}`])
     expect(view.getByTestId('customize-theme-notice').textContent).toContain(EN['customize.themes.reason.notLoaded'])
     // A failure is not taken away by the clock: it stays until dismissed.
     act(() => {

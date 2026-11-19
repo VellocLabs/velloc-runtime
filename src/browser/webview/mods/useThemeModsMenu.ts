@@ -60,11 +60,13 @@ export type ThemeModsMenuOptions = {
   canSetBackdropScope: boolean
   /** Absent where there is nowhere to install a theme from. */
   openThemeStore?: () => void
+  /** Called once a press has turned `plugin` on. */
+  afterEnable?: (plugin: string) => void
 }
 
 /** Undefined until the runtime has answered the theme mods. */
 export function useThemeModsMenu(options: ThemeModsMenuOptions): ThemeModsContextValue | undefined {
-  const { view, bridge, canSetEnabled, canSetBackdropScope, openThemeStore } = options
+  const { view, bridge, canSetEnabled, canSetBackdropScope, openThemeStore, afterEnable } = options
   const [lists, setLists] = React.useState<PluginEnablement | null>(null)
   const round = React.useRef(0)
 
@@ -93,12 +95,13 @@ export function useThemeModsMenu(options: ThemeModsMenuOptions): ThemeModsContex
         if (!mod.id.endsWith('@inline')) await pluginsSetEnabled(bridge, mod.id, enabled)
         else if (mod.root) await pluginsSetLocalEnabled(bridge, mod.root, enabled)
         else throw new Error(mod.plugin)
+        if (enabled) afterEnable?.(mod.plugin)
       } finally {
         // Whatever the ask did, the rows show what is stored now.
         await readLists()
       }
     },
-    [bridge, readLists],
+    [bridge, readLists, afterEnable],
   )
 
   const state = view.state

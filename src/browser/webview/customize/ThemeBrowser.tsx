@@ -308,7 +308,9 @@ function LookCard({
         type="button"
         size="xs"
         data-testid="customize-theme-add"
-        onClick={() => view.add(plugin.name, andUse ? { look, target: target! } : undefined)}
+        onClick={() =>
+          view.add(plugin.name, andUse ? { look, target: target! } : single && usable ? { target: target! } : undefined)
+        }
       >
         {t(andUse ? 'customize.themes.addAndUse' : 'customize.item.add')}
       </Button>

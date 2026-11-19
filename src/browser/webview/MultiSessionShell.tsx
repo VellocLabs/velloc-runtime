@@ -2333,6 +2333,7 @@ export function MultiSessionShell({
     isRemoteHost: remoteHost !== undefined,
     settingsBridge,
     openCustomize: handleOpenCustomize,
+    themeTarget,
   })
   const interceptComposerText = useMemo(
     () => createShellInterceptMarketplaceAdd(customizeShown, setMarketplaceAddRequest, handleOpenCustomize),

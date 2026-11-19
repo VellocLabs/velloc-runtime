@@ -9,6 +9,7 @@ import type { RuntimeConnection } from '../../runtimeClient/RuntimeConnection'
 import type { RouteKey } from '../../runtimeProtocol'
 import type { NexusSettingsBridge } from '../nexusSettingsBridge'
 import { pluginsInstall, pluginsListMarketplaceThemes, pluginsRefreshMarketplace } from '../settings/clients'
+import { askThemeOnEnable } from '../mods/themeModsView'
 import { installKey, type InstallNotice } from './useMarketplaceCatalog'
 
 /** The session a look is applied to, as the shell names it. */
@@ -83,7 +84,8 @@ export type ThemeCatalogView = {
   /** Fetches the list from its source and reads it again. */
   refresh: () => void
   /** Installs the plugin; with `then`, applies that look once it is in place. */
-  add: (plugin: string, then?: { look: ThemeLook; target: ThemeTarget }) => void
+  /** `then`: a look to apply once installed, or only the session to start the plugin in (`theme.onEnable`). */
+  add: (plugin: string, then?: { look?: ThemeLook; target: ThemeTarget }) => void
   use: (plugin: string, look: ThemeLook, target: ThemeTarget) => void
   /** Switches every theme plugin off through `run` (`themeMods.turnOffAll`), which answers how many were on. */
   turnOffAll: (run: () => Promise<number>) => void
@@ -239,7 +241,7 @@ export function useThemeCatalog(
   )
 
   const add = React.useCallback(
-    (plugin: string, then?: { look: ThemeLook; target: ThemeTarget }) => {
+    (plugin: string, then?: { look?: ThemeLook; target: ThemeTarget }) => {
       if (!bridge) return
       const id = installKey(BUILTIN_MARKETPLACE_KEY, plugin)
       const without = (set: ReadonlySet<string>) => new Set([...set].filter(k => k !== plugin))
@@ -256,7 +258,9 @@ export function useThemeCatalog(
           async result => {
             await read()
             announce(result.ok ? 'installed' : 'notListed')
-            if (result.ok && then) use(plugin, then.look, then.target, AFTER_INSTALL_TRIES)
+            if (!result.ok || !then) return
+            if (then.look) use(plugin, then.look, then.target, AFTER_INSTALL_TRIES)
+            else if (runtimeConnection) askThemeOnEnable(runtimeConnection, then.target.sessionId, plugin)
           },
           () => {
             if (live.current) setInstallFailed(set => new Set(set).add(plugin))
@@ -267,7 +271,7 @@ export function useThemeCatalog(
           if (live.current) setInstalling(without)
         })
     },
-    [bridge, read, use],
+    [bridge, read, use, runtimeConnection],
   )
 
   const dismissInstall = React.useCallback((key: string) => {

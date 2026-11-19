@@ -644,6 +644,17 @@ export class ModRuntime extends ModPluginNouns implements TurnExtensions {
     )
   }
 
+  /** The plugin whose theme stands now, if any. */
+  themeOwner(): string | undefined {
+    return this.theme.current()?.plugin
+  }
+
+  /** Settles once the change of plugins now in flight, its `session.start`
+   *  calls included, is done. Never rejects. */
+  settled(): Promise<void> {
+    return this.reconciling.then(() => undefined)
+  }
+
   /** Clears the session's theme, whoever set it, and every theme behind it. Whether one stood. */
   clearTheme(): boolean {
     const stood = this.theme.clear()

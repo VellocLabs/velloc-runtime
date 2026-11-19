@@ -109,3 +109,18 @@ export function useThemeMods(runtimeConnection: (() => Promise<RuntimeConnection
     [state, refresh, setBackdropScope, setSingle, turnOffAll],
   )
 }
+
+/**
+ * After a person turns `plugin` on: asks the runtime to run the command the
+ * catalogue names for it (`theme.onEnable`) in `sessionId`. What shows after
+ * is read from the session's published theme; a refusal changes nothing.
+ */
+export function askThemeOnEnable(
+  runtimeConnection: () => Promise<RuntimeConnection>,
+  sessionId: string,
+  plugin: string,
+): void {
+  void runtimeConnection()
+    .then(conn => conn.request('theme.onEnable' as RouteKey, { sessionId, plugin }))
+    .catch(() => undefined)
+}

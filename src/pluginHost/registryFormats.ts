@@ -26,8 +26,12 @@ export type ThemeLook = {
   use?: ThemeLookUse
 }
 
-/** A listing's `theme` block: the plugin is a theme, with these looks. */
-export type ListingTheme = { official?: boolean; looks: ThemeLook[] }
+/**
+ * A listing's `theme` block: the plugin is a theme, with these looks.
+ * `onEnable` is the plugin's own command Velloc runs in the session after a
+ * person turns the plugin on.
+ */
+export type ListingTheme = { official?: boolean; looks: ThemeLook[]; onEnable?: ThemeLookUse }
 
 export type CatalogListing = {
   name: string
