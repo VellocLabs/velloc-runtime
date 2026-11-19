@@ -68,7 +68,7 @@ function setup(
         mods: [],
         plugins: rows,
         backdropScope: 'window',
-        single: options.single === true,
+        single: options.single !== false,
         on: rows.filter(row => row.enabled).length,
       },
     })
@@ -362,12 +362,21 @@ describe('Customize → Yours — the theme cards', () => {
 
 describe('Customize → Yours — the theme plugin options', () => {
   it('the one-at-a-time switch shows the stored flag and asks the runtime to change it', async () => {
-    const { view, open, runtimeAsked } = setup({ single: true })
+    const { view, open, runtimeAsked } = setup()
     await open()
     const toggle = view.getByTestId('customize-themes-single')
     await waitFor(() => expect(toggle.getAttribute('aria-checked')).toBe('true'))
     fireEvent.click(toggle)
     await waitFor(() => expect(runtimeAsked).toContain('themeMods.setSingle {"on":false}'))
+  })
+
+  it('the one-at-a-time switch shows off when the runtime says off and asks to turn it back on', async () => {
+    const { view, open, runtimeAsked } = setup({ single: false })
+    await open()
+    const toggle = view.getByTestId('customize-themes-single')
+    await waitFor(() => expect(toggle.getAttribute('aria-checked')).toBe('false'))
+    fireEvent.click(toggle)
+    await waitFor(() => expect(runtimeAsked).toContain('themeMods.setSingle {"on":true}'))
   })
 
   it('Turn off all turns every card off and then waits until one is on again', async () => {

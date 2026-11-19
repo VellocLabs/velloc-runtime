@@ -222,14 +222,13 @@ export async function keepOneThemePlugin(
   which: { plugin: string } | { root: string },
 ): Promise<number> {
   try {
-    const { settings } = await readLayerFresh('userSettings', { homeDir: deps.homeDir }, deps.fs)
-    if (settings.mods?.singleThemeMod === false) return 0
-    const known = await knownThemePlugins(deps.homeDir, deps.fs)
+    const { known, enabled, single } = await readThemePlugins(deps.homeDir, deps.fs)
+    if (!single) return 0
     const self = known.find(mod =>
       'root' in which ? mod.id.endsWith('@inline') && !!mod.root && sameFolder(mod.root, which.root) : mod.plugin === which.plugin,
     )
     if (!self) return 0
-    return await switchOff(deps, known.filter(mod => mod.plugin !== self.plugin), settings.enabledPlugins ?? {})
+    return await switchOff(deps, known.filter(mod => mod.plugin !== self.plugin), enabled)
   } catch {
     return 0
   }
