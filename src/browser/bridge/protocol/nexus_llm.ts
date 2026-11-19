@@ -360,6 +360,9 @@ export type BridgeModelStreamChunk = {
     /** What a rule of the provider's manifest said about the failure. Set
      *  only by the in-runtime stream host. */
     verdict?: DeclaredVerdict
+    /** What a router provider decided about the failure: the call goes to
+     *  another target, or ends. Set only by the in-runtime stream host. */
+    route?: { switch: { provider: string; model: string; effort?: string } } | { stop: true; message?: string }
   }
   [key: string]: unknown
 }

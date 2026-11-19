@@ -11,7 +11,8 @@
  */
 import type { BridgeModelRequestContext } from '../../browser/bridge/browserBridgeProtocol'
 import type { RouteRecipe } from '../../config/nexusModelConfig/routeRecipes'
-import type { ProviderConnectivityIssue } from '../../utils/providerConnectivity'
+import { getProviderErrorFields, type ProviderConnectivityIssue, type ProviderErrorFields } from '../../utils/providerConnectivity'
+import type { ProviderPolicy } from './providerPolicy'
 import type { ProviderOutcomeEvent } from './providerOutcome'
 
 /** The most targets one call may be sent to, the first included. */
@@ -72,12 +73,13 @@ export interface ProviderRouter {
 /**
  * Who served a routed reply, recorded on the reply. `switchedFrom` is present
  * when the call moved off another target, or the target differs from the one
- * that served the session's previous reply.
+ * that served the session's previous reply. `reason` is the verdict of the
+ * failed send the call moved off; absent when no send of the call failed.
  */
 export type RoutedVia = {
   provider: string
   model: string
-  switchedFrom?: { provider: string; model: string; reason: ProviderConnectivityIssue['kind'] }
+  switchedFrom?: { provider: string; model: string; reason?: ProviderConnectivityIssue['kind'] }
 }
 
 /** A started stream failed and the router chose another target: the call is
@@ -94,15 +96,48 @@ export class RouteSwitchError extends Error {
   }
 }
 
-/** The router ended the call: nothing is sent again. */
+/**
+ * The router ended the call: nothing is sent again. Without a message of the
+ * router's own it reads as its cause does, status and declared verdict
+ * included.
+ */
 export class RouteStopError extends Error {
   override readonly cause: unknown
+  readonly httpStatus?: number
+  readonly retryAfterMs?: number
+  readonly declared?: ProviderErrorFields['declared']
 
   constructor(cause: unknown, message?: string) {
     super(message ?? (cause instanceof Error ? cause.message : String(cause)))
     this.name = 'RouteStopError'
     this.cause = cause
+    if (message !== undefined) return
+    const fields = getProviderErrorFields(cause)
+    if (fields.httpStatus !== undefined) this.httpStatus = fields.httpStatus
+    if (fields.retryAfterMs !== undefined) this.retryAfterMs = fields.retryAfterMs
+    if (fields.declared !== undefined) this.declared = fields.declared
   }
+}
+
+/**
+ * A router's decision about a failed stream, as the stream's terminal error
+ * chunk carries it to the reader.
+ */
+export type RouteErrorMark =
+  | { switch: { provider: string; model: string; effort?: string } }
+  | { stop: true; message?: string }
+
+/** The error a marked error chunk stands for; undefined for an unmarked one. */
+export function routeErrorOf(mark: unknown, cause: Error): RouteSwitchError | RouteStopError | undefined {
+  if (typeof mark !== 'object' || mark === null) return undefined
+  const m = mark as { switch?: unknown; stop?: unknown; message?: unknown }
+  if (m.stop === true) return new RouteStopError(cause, typeof m.message === 'string' ? m.message : undefined)
+  const target = m.switch as { provider?: unknown; model?: unknown; effort?: unknown } | undefined
+  if (!target || typeof target.provider !== 'string' || typeof target.model !== 'string') return undefined
+  return new RouteSwitchError(
+    { provider: target.provider, model: target.model, ...(typeof target.effort === 'string' ? { effort: target.effort } : {}) },
+    cause,
+  )
 }
 
 /**
@@ -116,7 +151,12 @@ export function insideRoutesTo(routesTo: RoutesTo, peer: { readonly definition: 
 
 // ── registry ────────────────────────────────────────────────────────────────
 
-export type ProviderRouterBounds = { readonly routesTo: RoutesTo }
+export type ProviderRouterBounds = {
+  readonly routesTo: RoutesTo
+  /** The router's declared retry policy: a request that goes through the
+   *  router is retried under it, whichever target serves it. */
+  readonly retry?: ProviderPolicy['retry']
+}
 
 type Registered = { router: ProviderRouter; bounds: ProviderRouterBounds }
 

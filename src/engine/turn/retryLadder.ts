@@ -16,6 +16,8 @@ import {
   type ProviderConnectivityIssueKind,
   type RetryBackoff,
 } from '../../utils/providerConnectivity'
+import { overlayDeclaredVerdict } from '../../utils/providerVerdict'
+import { RouteStopError, RouteSwitchError } from '../../models/drivers/providerRouter'
 
 /**
  * Callers whose answer nobody is waiting on (titles, memory upkeep, page
@@ -62,6 +64,8 @@ export type ModelFailure =
       message: string
       issue: ProviderConnectivityIssue
       retryAfterMs?: number
+      /** A router provider chose another target: sent again at once. */
+      routeSwitch?: true
     }
   /** Nothing the classifier recognises. Never retried. */
   | { kind: 'other'; error: unknown; message: string }
@@ -73,6 +77,20 @@ function errorText(error: unknown): string {
 /** Sort a thrown attempt error into the classes the ladder acts on. */
 export function classifyModelFailure(error: unknown): ModelFailure {
   if (isAbortLikeError(error)) return { kind: 'aborted', error }
+  // A router provider's decision about a failed stream (F-27) stands before
+  // anything the failure's text says: end the call, or send it again now.
+  if (error instanceof RouteStopError) return { kind: 'other', error, message: errorText(error) }
+  if (error instanceof RouteSwitchError) {
+    const text = errorText(error)
+    return {
+      kind: 'connectivity',
+      error,
+      message: text,
+      issue: overlayDeclaredVerdict(null, { kind: 'service', retryable: true }, { detail: text, retryAfterMs: 0 }),
+      retryAfterMs: 0,
+      routeSwitch: true,
+    }
+  }
   if (isPromptTooLongError(error)) return { kind: 'prompt_too_long', error }
   const message = errorText(error)
   const issue = classifyProviderConnectivityIssue(error)
@@ -165,6 +183,13 @@ export function decideRetry(input: RetryInput): RetryDecision {
     return { retry: false }
   }
   const { policy } = input
+  // A route switch waits for nothing and is no kind a policy lists; only the
+  // attempt bound and a cancellation end it.
+  if (failure.kind === 'connectivity' && failure.routeSwitch) {
+    return attempt >= input.maxAttempts || input.cancelled
+      ? { retry: false }
+      : { retry: true, delayMs: 0, notify: false }
+  }
   if (!shouldRetryProviderConnectivityIssue(failure.issue)) return { retry: false }
   if (policy && !kindIsRetried(policy, failure.issue.kind)) return { retry: false }
   if (failure.kind === 'rate_limit' && isBackgroundCaller(input.caller)) {

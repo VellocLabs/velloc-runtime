@@ -13,11 +13,14 @@ import type { RuntimeConfig } from '../../runtime/interfaces/RuntimeConfig'
 // driver-backed provider goes through this module.
 import './builtinDrivers'
 import { resolveModelId } from '../../config/nexusModelConfig/modelEntryResolution'
-import { runBlockingCall } from './blockingCall'
+import { readBlockingStream, runBlockingCall } from './blockingCall'
 import { DriverStreamHost } from './driverStreamHost'
 import { createModelProvider, ProviderConfigError, type ModelProvider } from './modelProvider'
 import { resolveDriverBaseUrl, resolveProviderSpec } from './driverRegistry'
 import type { ProviderSpec } from './driverTypes'
+import { providerRouterBoundsFor, providerRouterFor } from './providerRouter'
+import { shareRouteCall } from './providerRouteCall'
+import { routeCall } from './providerRouteResolution'
 
 
 type Envelope = { id: string; route: unknown; ok: boolean; result?: unknown; error?: unknown }
@@ -46,7 +49,10 @@ function withConcreteModel<T extends { route: { capability: string; action: stri
   if (!payload || typeof payload.model !== 'string') return request
   const providerId = typeof payload.providerId === 'string' ? payload.providerId : undefined
   const model = resolveModelId(providerId, payload.model)
-  return model === payload.model ? request : { ...request, payload: { ...payload, model } }
+  if (model === payload.model) return request
+  const concrete = { ...payload, model }
+  shareRouteCall(concrete, payload)
+  return { ...request, payload: concrete }
 }
 
 /** The routes this wrapper owns; every other `model.*` action is the host's. */
@@ -96,6 +102,16 @@ export function withModelProviders(
     if (!MODEL_REQUEST_ACTIONS.has(action)) return undefined
     if (action === 'streamStart' || action === 'call') {
       const request = payload as unknown as BridgeModelRequestPayload & { deadlineMs?: number }
+      // A router provider (F-27) has no wire: its router names the provider
+      // that serves this request, under one stream whichever targets it tries.
+      const router = request.providerId ? providerRouterFor(request.providerId) : undefined
+      const bounds = request.providerId ? providerRouterBoundsFor(request.providerId) : undefined
+      if (router && bounds && request.providerId) {
+        const opened = host.startRouted(routeCall(request.providerId, router, bounds, request, { runtimeConfig, providerFor }))
+        return action === 'call'
+          ? { result: await readBlockingStream(host, opened.streamId, request) }
+          : { result: opened }
+      }
       const spec = resolveProviderSpec(request.providerId, runtimeConfig, request.model)
       if (!spec) {
         throw new ProviderConfigError(`no runtime driver serves the provider ${request.providerId ?? '(none)'}`)

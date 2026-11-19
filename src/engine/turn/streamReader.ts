@@ -15,6 +15,7 @@ import type {
 import { createBridgeRoute } from '../../browser/bridge/browserBridgeProtocol'
 import { NEXUS_MODEL_CONFIG } from '../../config/nexusModelConfig'
 import { ProviderApiError } from '../../utils/providerConnectivity'
+import { routeErrorOf } from '../../models/drivers/providerRouter'
 import { readDeclaredVerdict } from '../../utils/providerVerdict'
 import { traceLine } from '../../utils/debugLog'
 import {
@@ -173,7 +174,7 @@ export type ChunkOutcome = {
   /** A diagnostic record for the call log. */
   note?: { event: string; data: Record<string, unknown> }
   /** The provider reported an error mid-stream. */
-  error?: ProviderApiError
+  error?: Error
   /** The repeated-call guard ended the response with this chunk. */
   cut?: RepeatedToolCallCut
 }
@@ -322,24 +323,24 @@ function foldErrorChunk(chunk: StreamChunk): ChunkOutcome {
   // current hosts, the HTTP status and Retry-After as typed fields so the
   // retry ladder can read structure before falling back to text.
   const error = (chunk as {
-    error?: { type?: string; message?: string; httpStatus?: unknown; retryAfterSeconds?: unknown; verdict?: unknown }
+    error?: { type?: string; message?: string; httpStatus?: unknown; retryAfterSeconds?: unknown; verdict?: unknown; route?: unknown }
   }).error
   const prefix = error?.type ? `${error.type}: ` : ''
   const status = error?.httpStatus
   const retryAfterS = error?.retryAfterSeconds
   const declared = readDeclaredVerdict(error?.verdict)
-  return {
-    error: new ProviderApiError(
-      `${prefix}${error?.message ?? 'Unknown model streaming error'}`,
-      {
-        ...(typeof status === 'number' ? { httpStatus: status } : {}),
-        ...(typeof retryAfterS === 'number' && retryAfterS >= 0
-          ? { retryAfterMs: retryAfterS * 1000 }
-          : {}),
-        ...(declared ? { declared } : {}),
-      },
-    ),
-  }
+  const failure = new ProviderApiError(
+    `${prefix}${error?.message ?? 'Unknown model streaming error'}`,
+    {
+      ...(typeof status === 'number' ? { httpStatus: status } : {}),
+      ...(typeof retryAfterS === 'number' && retryAfterS >= 0
+        ? { retryAfterMs: retryAfterS * 1000 }
+        : {}),
+      ...(declared ? { declared } : {}),
+    },
+  )
+  // A router provider's decision about the failure rides the chunk (F-27).
+  return { error: routeErrorOf(error?.route, failure) ?? failure }
 }
 
 /** Fold one wire chunk into the accumulator. */
@@ -587,7 +588,7 @@ function chunkContext(call: ModelCall, watch: ReadWatch): ChunkContext {
   }
 }
 
-type FoldedBatch = { emits: Message[]; error?: ProviderApiError; cut: boolean }
+type FoldedBatch = { emits: Message[]; error?: Error; cut: boolean }
 
 /**
  * Fold a batch of chunks. Stops at a provider error, or at a repeated-call

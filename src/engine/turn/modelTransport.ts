@@ -81,6 +81,10 @@ import {
 import { raisesTurnRequest, requestThroughTurnRequest } from './requestThroughMods'
 import { raisesTurnRecover, recoverThroughMods } from './recoverThroughMods'
 import { observeProviderCall, type CallEnding } from './providerOutcomeCall'
+import { providerRouterBoundsFor, RouteSwitchError, type RoutedVia } from '../../models/drivers/providerRouter'
+import { routeCallOf, routedViaOf, shareRouteCall } from '../../models/drivers/providerRouteCall'
+import { sessionUsageOf } from '../../mods/sessionNouns'
+import type { StoredRow } from '../../mods/sessionAppendEvent'
 
 /**
  * Whole-response budget for the blocking fallback. A blocking call streams
@@ -244,10 +248,10 @@ async function* blockingFallback(
   }
   let result: BrowserBridgeResult<'model', 'call'>
   try {
-    result = await call.send(createBridgeRoute('model', 'call'), {
-      ...call.payload,
-      deadlineMs: Date.now() + BLOCKING_CALL_TIMEOUT_MS,
-    } as never)
+    const payload = { ...call.payload, deadlineMs: Date.now() + BLOCKING_CALL_TIMEOUT_MS }
+    // Still the same call to a router provider's router (F-27).
+    shareRouteCall(payload, call.payload)
+    result = await call.send(createBridgeRoute('model', 'call'), payload as never)
   } catch (fallbackError) {
     if (isPromptTooLongError(fallbackError)) {
       yield makePromptTooLongAssistant(runtimeConfig, model)
@@ -343,7 +347,8 @@ export async function* performRequest(call: ModelCall): AsyncGenerator<Message, 
       cancelStream(call.send, attempt.streamId)
     }
     if (isAbortLikeError(streamError)) throw streamError
-    if (isPromptTooLongError(streamError)) {
+    // A router's switch sends the call to another target, whatever the failed one said.
+    if (isPromptTooLongError(streamError) && !(streamError instanceof RouteSwitchError)) {
       yield makePromptTooLongAssistant(call.runtimeConfig, call.facts.effectiveModel)
       return
     }
@@ -512,6 +517,35 @@ function afterFailedAttempt(
 }
 
 /**
+ * Starts the record of a call to a router provider: the session's context in
+ * tokens, counted as its usage meter counts it (absent for a request of no
+ * session). Returns who served the session's previous routed reply.
+ */
+function openRouteCall(payload: object, params: QueryModelCallParams): RoutedVia | undefined {
+  const rows = params.messages as unknown as readonly StoredRow[]
+  if (params.callContext.options.sessionId) {
+    routeCallOf(payload).contextTokens =
+      sessionUsageOf({ rows, window: 0, fallbackStartedAt: 0 }).context.tokens ?? 0
+  }
+  for (let i = rows.length - 1; i >= 0; i -= 1) {
+    const row = rows[i]!
+    if (row.type !== MSG_TYPE_ASSISTANT) continue
+    const via = row.routedVia as RoutedVia | undefined
+    return via && typeof via.provider === 'string' && typeof via.model === 'string' ? via : undefined
+  }
+  return undefined
+}
+
+/** One attempt of a routed call: each reply row records who served it. */
+async function* routedReplies(call: ModelCall, previous: RoutedVia | undefined): AsyncGenerator<Message, void, unknown> {
+  for await (const message of performRequest(call)) {
+    const via = message.type === MSG_TYPE_ASSISTANT ? routedViaOf(call.payload, previous) : undefined
+    if (via) (message as { routedVia?: RoutedVia }).routedVia = via
+    yield message
+  }
+}
+
+/**
  * The bridge-backed `callModel`. Providers served by in-runtime drivers are
  * layered over the transport here, so retries, idle handling, cancellation
  * and error messages behave the same whichever side speaks the wire format.
@@ -540,7 +574,13 @@ export function bridgeModelTransport(
     const signal = params.callContext.cancelSource.signal
     // The selected provider's declared retry policy; a provider without one
     // gets the platform's ladder.
-    const policy = params.providerId ? providerRequestSeamFor(params.providerId)?.policy?.retry : undefined
+    // A request to a router provider (F-27) follows the router's declared
+    // policy, never that of the target that happens to serve it.
+    const routed = params.providerId ? providerRouterBoundsFor(params.providerId) : undefined
+    const policy = routed
+      ? routed.retry
+      : params.providerId ? providerRequestSeamFor(params.providerId)?.policy?.retry : undefined
+    const previousRoute = routed ? openRouteCall(call.payload, params) : undefined
     const retryOverride = runtimeConfig?.getEnv('e2eProviderMaxRetries')
     const platformMaxRetries = getProviderConnectivityMaxRetries(retryOverride)
     const maxRetries = retriesAllowed(
@@ -557,7 +597,7 @@ export function bridgeModelTransport(
         const startedAt = Date.now()
         attempts = attempt
         try {
-          yield* performRequest(call)
+          yield* (routed ? routedReplies(call, previousRoute) : performRequest(call))
           ending = { ok: true, attempts }
           return
         } catch (error) {

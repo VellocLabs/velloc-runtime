@@ -73,6 +73,7 @@ import { traceLine } from '../../utils/debugLog'
 import { modelMasking, withMaskedUserAgent, withMaskedValues, type MaskingStream } from '../masking/maskingHolder'
 import { MaskingResidualError, MaskingUnavailableError, MaskingUndecodableError } from '../masking/egressGuard'
 import { storedKeyProblemFromReason, withStoredKeyMarker } from '../../utils/storedKeyProblem'
+import { RoutedStream, type LegRouteHook, type StreamReadResult, type StreamRouting } from './routedStream'
 
 // A non-2xx body is read whole for the error message; cap it.
 const MAX_ERROR_BODY_BYTES = 64 * 1024
@@ -87,11 +88,7 @@ const MAX_ERROR_BODY_BYTES = 64 * 1024
  */
 export const UNHELD_READ_POLL_MS = 250
 
-type StreamReadResult = {
-  chunks: BridgeModelStreamChunk[]
-  done: boolean
-  status: 'ok' | 'timeout' | 'done' | 'queued'
-}
+export type { StreamReadResult }
 
 /**
  * A provider's concurrency pool: at most `limit` requests open, the rest started
@@ -193,8 +190,15 @@ class DriverStream {
     private readonly provider: ModelProvider,
     private payload: BridgeModelRequestPayload,
     private readonly model: string,
+    /** Set for a target a router chose (F-27): asked before the target's own
+     *  recovery of a refused response. */
+    private readonly route?: LegRouteHook,
   ) {
     this.outcomeCall = outcomeCallKeyOf(payload)
+  }
+
+  failed(): FailureEvent | undefined {
+    return this.failure
   }
 
   start(): void {
@@ -261,6 +265,8 @@ class DriverStream {
     if (this.emitter.terminalEmitted || events.length === 0) return
     if (this.tally) {
       this.tally.note(events)
+      this.failure = events.find((event): event is FailureEvent => event.type === 'error') ?? this.failure
+    } else if (this.route) {
       this.failure = events.find((event): event is FailureEvent => event.type === 'error') ?? this.failure
     }
     this.queue.push(...this.emitter.emit(events.map(withHostFinishUsage)))
@@ -612,6 +618,7 @@ class DriverStream {
         const bodyText = await readText(raw.body, MAX_ERROR_BODY_BYTES)
         guard.watchdog?.stop()
         const response = { status: raw.status, headers: raw.headers, bodyText }
+        if (seamed && this.route) return await this.settleRefused(raw, bodyText, seamed, classifies, this.route)
         if (seamed) {
           // At most one re-send in all: after a refresh (a 401 of a signed-in
           // provider), the replay `classify` asked for, or the `retry` the
@@ -698,6 +705,49 @@ class DriverStream {
         bodyText,
       })
     }
+  }
+
+  /**
+   * A refused response of a target a router chose. In order: the target's
+   * own verdict (its declared rules, then `classify`), the router, and only
+   * when the router leaves the failure alone the target's own re-send.
+   */
+  private async settleRefused(
+    raw: RawProviderStream,
+    bodyText: string,
+    seamed: SeamedSend,
+    classifies: boolean,
+    route: LegRouteHook,
+  ): Promise<SeamedSend | undefined> {
+    const refused = this.provider.errorFromResponse({ status: raw.status, statusText: raw.statusText, headers: raw.headers, bodyText })
+    const masking = this.masking
+    const declared = declaredFailure(this.errorRules, [refused], { response: raw, bodyText, model: this.model })
+    const judged = masking ? masking.restoreEvents(declared) : declared
+    let failure = judged.find((event): event is FailureEvent => event.type === 'error')
+    let replay: SeamedSend | undefined
+    if (failure && classifies) {
+      const refined = await this.classified(failure, { stage: 'response', seamed, response: raw, bodyText })
+      if (refined === 'aborted') return this.ended()
+      failure = refined.failure
+      replay = refined.again
+    }
+    if (failure && (await route.taken(failure))) {
+      this.push([failure])
+      return this.ended()
+    }
+    if (this.abort.signal.aborted) return this.ended()
+    let again = replay
+    if (!again) {
+      const resend = await seamed.flow.recoverAfter({ status: raw.status, headers: raw.headers, bodyText }, seamed.prepared)
+      if (this.abort.signal.aborted) return this.ended()
+      if (resend) again = { flow: seamed.flow, prepared: resend }
+    }
+    if (again) {
+      await raw.cancel()
+      return again
+    }
+    this.push(failure ? [failure] : judged)
+    return this.ended()
   }
 
   /** The stream has its end; nothing is sent again. */
@@ -970,7 +1020,7 @@ let nextStreamId = 0
 
 /** The runtime-side stream table for one bridge transport. */
 export class DriverStreamHost {
-  private readonly streams = new Map<string, DriverStream>()
+  private readonly streams = new Map<string, DriverStream | RoutedStream>()
 
   constructor(private readonly transport: BrowserBridgeTransport) {}
 
@@ -982,6 +1032,21 @@ export class DriverStreamHost {
     nextStreamId += 1
     const streamId = `driver-${provider.format}-${Date.now().toString(36)}-${nextStreamId}`
     const stream = new DriverStream(this.transport, provider, payload, model)
+    this.streams.set(streamId, stream)
+    stream.start()
+    return { streamId }
+  }
+
+  /** A request to a router provider (F-27): one stream id, whichever
+   *  targets serve it. */
+  startRouted(routing: StreamRouting): { streamId: string } {
+    nextStreamId += 1
+    const streamId = `driver-routed-${Date.now().toString(36)}-${nextStreamId}`
+    const stream = new RoutedStream(
+      routing,
+      (leg, hook) => new DriverStream(this.transport, leg.provider, leg.payload, leg.model, hook),
+      UNHELD_READ_POLL_MS,
+    )
     this.streams.set(streamId, stream)
     stream.start()
     return { streamId }

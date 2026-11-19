@@ -98,7 +98,16 @@ export async function runBlockingCall(
   model: string,
   now: () => number = Date.now,
 ): Promise<BridgeModelCallResult> {
-  const { streamId } = host.start(provider, payload, model)
+  return readBlockingStream(host, host.start(provider, payload, model).streamId, payload, now)
+}
+
+/** Reads an open stream of `host` to its end as one blocking call. */
+export async function readBlockingStream(
+  host: DriverStreamHost,
+  streamId: string,
+  payload: { deadlineMs?: number },
+  now: () => number = Date.now,
+): Promise<BridgeModelCallResult> {
   const assembler = new BlockingMessageAssembler()
   const deadline = typeof payload.deadlineMs === 'number' ? payload.deadlineMs : undefined
   for (;;) {

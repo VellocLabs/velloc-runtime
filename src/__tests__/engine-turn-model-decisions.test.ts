@@ -18,6 +18,8 @@ import {
   type StreamChunk,
 } from '../engine/turn/streamReader'
 import { REPEATED_TOOL_CALL_LIMIT } from '../engine/turn/repeatedToolCallGuard'
+import { RouteStopError, RouteSwitchError } from '../models/drivers/providerRouter'
+import { makeProviderApiErrorAssistant } from '../engine/turn/modelErrorMessages'
 import {
   NoopPlatformCapabilities,
   createEmptyAppState,
@@ -145,6 +147,34 @@ describe('classifyModelFailure', () => {
   it('leaves an unrecognised error as other', () => {
     expect(classifyModelFailure(new Error('something odd')).kind).toBe('other')
   })
+
+  it('places a switch by a router as a service failure to send again at once', () => {
+    const cause = new ProviderApiError('provider_error: prompt is too long: 9 tokens > 8 maximum', { httpStatus: 400 })
+    const failure = classifyModelFailure(new RouteSwitchError({ provider: 'p', model: 'm' }, cause))
+    expect(failure).toMatchObject({
+      kind: 'connectivity',
+      routeSwitch: true,
+      retryAfterMs: 0,
+      issue: { kind: 'service', retryable: true, retryAfterMs: 0 },
+    })
+  })
+
+  it('places a stop by a router as terminal, whatever its cause says', () => {
+    const cause = new ProviderApiError('rate_limit_error: slow down', { httpStatus: 429, retryAfterMs: 1000 })
+    const stopped = new RouteStopError(cause)
+    expect(classifyModelFailure(stopped)).toMatchObject({ kind: 'other', message: 'rate_limit_error: slow down' })
+    // The error card still reads the cause: its text and its status.
+    expect(stopped).toMatchObject({ httpStatus: 429 })
+    expect(makeProviderApiErrorAssistant(undefined, 'm', stopped, 0)).toMatchObject({
+      error: 'rate_limit',
+      errorRetryCount: 0,
+    })
+    // With a message of the router's own, that message is what is shown.
+    const worded = new RouteStopError(cause, 'every member is used up')
+    expect(worded.message).toBe('every member is used up')
+    expect(worded.httpStatus).toBeUndefined()
+    expect(classifyModelFailure(worded).kind).toBe('other')
+  })
 })
 
 // ── decideRetry ────────────────────────────────────────────────────────────
@@ -168,6 +198,16 @@ describe('decideRetry', () => {
     attemptDurationMs: 100,
     cancelled: false,
   }
+
+  it('sends a switch by a router again with no wait, under any declared policy, within the attempt bound', () => {
+    const failure = classifyModelFailure(new RouteSwitchError({ provider: 'p', model: 'm' }, new Error('cut')))
+    expect(decideRetry({ ...base, failure })).toEqual({ retry: true, delayMs: 0, notify: false })
+    expect(decideRetry({ ...base, failure, policy: { on: [] }, waitedMs: 0 })).toEqual({ retry: true, delayMs: 0, notify: false })
+    expect(decideRetry({ ...base, failure, caller: 'rename_generate_name' }).retry).toBe(true)
+    expect(decideRetry({ ...base, attempt: 5, failure })).toEqual({ retry: false })
+    expect(decideRetry({ ...base, cancelled: true, failure })).toEqual({ retry: false })
+    expect(decideRetry({ ...base, failure: classifyModelFailure(new RouteStopError(new Error('cut'))) })).toEqual({ retry: false })
+  })
 
   it('retries a retryable verdict with a growing, quiet backoff', () => {
     vi.spyOn(Math, 'random').mockReturnValue(0)
@@ -318,6 +358,24 @@ describe('assembleChunk', () => {
     expect(out.error).toBeInstanceOf(ProviderApiError)
     expect(out.error?.message).toBe('provider_error: boom')
     expect(out.error).toMatchObject({ httpStatus: 503, retryAfterMs: 2000 })
+  })
+
+  it('turns an error chunk a router marked into the decision of that router', () => {
+    const marked = (route: unknown) => assembleChunk(
+      openStreamAccumulator(isReadOnly),
+      chunk({ type: 'error', error: { type: 'provider_error', message: 'boom', httpStatus: 503, route } }),
+      ctx(),
+    ).error
+    const switched = marked({ switch: { provider: 'p', model: 'm', effort: 'high' } })
+    expect(switched).toBeInstanceOf(RouteSwitchError)
+    expect(switched).toMatchObject({ message: 'provider_error: boom', target: { provider: 'p', model: 'm', effort: 'high' } })
+    expect((switched as RouteSwitchError).cause).toBeInstanceOf(ProviderApiError)
+    const stopped = marked({ stop: true })
+    expect(stopped).toBeInstanceOf(RouteStopError)
+    expect(stopped).toMatchObject({ message: 'provider_error: boom', httpStatus: 503 })
+    expect(marked({ stop: true, message: 'no member left' })?.message).toBe('no member left')
+    // A mark of no known shape is no mark.
+    expect(marked({ switch: { provider: 7 } })).toBeInstanceOf(ProviderApiError)
   })
 
   it('drops a second announcement of the same tool call', () => {
