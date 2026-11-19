@@ -47,7 +47,7 @@ export type PeerModel = {
 }
 
 export type Peer = {
-  /** The instance id: what a route's candidate and a router's answer name. */
+  /** The instance id: what a router's answer names. */
   id: string
   /** The provider definition the instance belongs to. Equal to `id` while a
    *  definition has one instance. */
