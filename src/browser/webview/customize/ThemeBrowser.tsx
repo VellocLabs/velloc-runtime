@@ -321,7 +321,7 @@ function LookCard({
       data-testid="customize-theme-look"
       data-plugin={plugin.name}
       data-look={look.id}
-      className="flex min-w-0 flex-col overflow-hidden rounded-xl bg-muted/60 transition-colors hover:bg-muted"
+      className="flex min-w-0 flex-col overflow-hidden rounded-xl border bg-muted"
     >
       <LookPreview name={name} url={look.preview} />
       <div className="flex min-w-0 flex-1 flex-col gap-1 p-3">
@@ -368,7 +368,7 @@ function DefaultCard({ view, target, blocked, inUse }: Shared) {
   return (
     <li
       data-testid="customize-theme-default"
-      className="flex min-w-0 flex-col overflow-hidden rounded-xl bg-muted/60 transition-colors hover:bg-muted"
+      className="flex min-w-0 flex-col overflow-hidden rounded-xl border bg-muted"
     >
       <div aria-hidden className="flex aspect-[16/10] w-full items-center justify-center border-b bg-background">
         <span className="flex gap-1.5">
@@ -484,13 +484,14 @@ function NoticeLine({
 }) {
   const t = useT()
   const seq = notice?.seq
+  const failed = notice?.kind === 'failed'
   React.useEffect(() => {
-    if (seq === undefined) return
+    // A failure stays until it is dismissed or the next Use answers.
+    if (seq === undefined || failed) return
     const timer = window.setTimeout(onDismiss, INSTALL_TOAST_MS)
     return () => window.clearTimeout(timer)
-  }, [seq, onDismiss])
+  }, [seq, failed, onDismiss])
   if (!notice) return null
-  const failed = notice.kind === 'failed'
   const title =
     notice.kind === 'applied'
       ? t('customize.themes.notice.applied', { name: notice.name, title: notice.session })

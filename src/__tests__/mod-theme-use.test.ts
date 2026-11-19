@@ -24,6 +24,7 @@ import { installModWorkerHost } from '../mods/ModWorkerHost'
 import { BUILTIN_MARKETPLACE_KEY } from '../pluginHost/builtinMarketplace'
 import { getMarketplaceManifestPath } from '../pluginHost/pluginDirs'
 import type { CatalogListing } from '../pluginHost/registryFormats'
+import { listingInstalls } from '../pluginHost/themeListing'
 import { makeMemFs } from './_helpers/memFs'
 
 const MP = BUILTIN_MARKETPLACE_KEY
@@ -73,6 +74,65 @@ function fakeSlot(over: Partial<ThemeLookSlot> = {}) {
 
 const use = (slot: ThemeLookSlot | undefined, plugin: string, lookId: string, listings: CatalogListing[] | null = LISTINGS) =>
   useThemeLook({ marketplace: MP, listings, slot }, { plugin, lookId })
+
+describe('listingInstalls', () => {
+  const pack = LISTINGS[0]!
+  const code = { repo: 'github.com/someone/pack', path: '' }
+
+  it('is the own install of the listing, then the same code installed under that name from elsewhere', () => {
+    expect(listingInstalls({}, pack, MP)).toEqual([`pack@${MP}`])
+    const installed = {
+      'pack@their-own': [{ codeSource: code }],
+      [`pack@${MP}`]: [{ codeSource: code }],
+      'pack@a-fork': [{ codeSource: { repo: 'github.com/other/pack', path: '' } }],
+      'pack@a-folder': [{ codeSource: { repo: 'github.com/someone/pack', path: 'sub' } }],
+      'pack@unrecorded': [{}],
+      'other@their-own': [{ codeSource: code }],
+    }
+    expect(listingInstalls(installed, pack, MP)).toEqual([`pack@${MP}`, 'pack@their-own'])
+  })
+
+  it('a listing kept inside its marketplace has its own install alone', () => {
+    const tool = LISTINGS[2]!
+    expect(listingInstalls({ 'tool@their-own': [{ codeSource: code }] }, tool, MP)).toEqual([`tool@${MP}`])
+  })
+})
+
+describe('useThemeLook — the same plugin installed from its own marketplace', () => {
+  const installsOf = (listing: CatalogListing) => [`${listing.name}@${MP}`, `${listing.name}@their-own`]
+  const useWith = (slot: ThemeLookSlot, plugin: string, lookId: string) =>
+    useThemeLook({ marketplace: MP, listings: LISTINGS, installsOf, slot }, { plugin, lookId })
+
+  it('runs the command that install registered', async () => {
+    const { slot, ran } = fakeSlot({
+      hasLoaded: provenance => provenance === 'pack@their-own',
+      commandOwner: () => ({ plugin: 'pack', provenance: 'pack@their-own' }),
+    })
+    expect(await useWith(slot, 'pack', 'lagoon')).toEqual({ ok: true, via: 'command', text: 'picked lagoon' })
+    expect(ran).toEqual([{ command: 'pick-look', args: 'lagoon', origin: { kind: 'bridge' } }])
+  })
+
+  it('still refuses an install that is not the plugin of the listing', async () => {
+    const { slot, ran } = fakeSlot({
+      hasLoaded: () => true,
+      commandOwner: () => ({ plugin: 'pack', provenance: 'pack@a-fork' }),
+    })
+    expect(await useWith(slot, 'pack', 'lagoon')).toEqual({ ok: false, reason: 'notOwnCommand' })
+    expect(ran).toEqual([])
+  })
+
+  it('a single theme is loaded again from whichever install is running', async () => {
+    const reloaded: string[] = []
+    const { slot } = fakeSlot({
+      reloadPlugin: async provenance => {
+        reloaded.push(provenance)
+        return provenance === 'single@their-own' ? 1 : 0
+      },
+    })
+    expect(await useWith(slot, 'single', 'single')).toEqual({ ok: true, via: 'reload' })
+    expect(reloaded).toEqual([`single@${MP}`, 'single@their-own'])
+  })
+})
 
 describe('useThemeLook', () => {
   it('runs the command the catalogue names, with its argument, when the plugin itself registered it', async () => {

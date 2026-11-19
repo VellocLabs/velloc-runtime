@@ -19,6 +19,8 @@ import {
 import { modSlotFor } from '../../mods/modSlotRegistry'
 import { BUILTIN_MARKETPLACE_KEY } from '../../pluginHost/builtinMarketplace'
 import { readCachedManifest } from '../../pluginHost/builtinMarketplaceSeed'
+import { loadInstalledPlugins } from '../../pluginHost/installedRegistry'
+import { listingInstalls } from '../../pluginHost/themeListing'
 import { listingsVisibleOn } from '../../pluginHost/marketplaces'
 import type { CatalogListing } from '../../pluginHost/registryFormats'
 import type { UpdateChannel } from '../../branding/updateChannels'
@@ -71,12 +73,20 @@ export function registerThemeCapability(registry: CapabilityRegistry, options: T
           const payload = request.payload as ThemeUseLookPayload
           const slot = slotInScope(request.conn, payload.sessionId)
           let listings: CatalogListing[] | null
+          let installed: Awaited<ReturnType<typeof loadInstalledPlugins>>['registry']['plugins'] = {}
           try {
-            listings = await readCachedBuiltinListings(options.fs(), await options.resolveHome(), options.channel())
+            const fs = options.fs()
+            const homeDir = await options.resolveHome()
+            listings = await readCachedBuiltinListings(fs, homeDir, options.channel())
+            installed = await loadInstalledPlugins({ homeDir }, fs).then(
+              read => read.registry.plugins,
+              () => ({}),
+            )
           } catch {
             throw wireError('host_unavailable', 'theme: the host has no home folder yet')
           }
-          return useThemeLook({ marketplace: BUILTIN_MARKETPLACE_KEY, listings, slot }, payload)
+          const installsOf = (listing: CatalogListing) => listingInstalls(installed, listing, BUILTIN_MARKETPLACE_KEY)
+          return useThemeLook({ marketplace: BUILTIN_MARKETPLACE_KEY, listings, installsOf, slot }, payload)
         }
         case 'clear':
           return clearSessionTheme(slotInScope(request.conn, (request.payload as ThemeClearPayload).sessionId))

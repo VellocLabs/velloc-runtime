@@ -1,5 +1,5 @@
 import * as React from 'react'
-import { ArrowLeftIcon, ChevronLeftIcon, GlobeIcon, HomeIcon, PaletteIcon, PlusIcon, StoreIcon, Trash2Icon } from 'lucide-react'
+import { ArrowLeftIcon, BlocksIcon, ChevronLeftIcon, HomeIcon, PaletteIcon, PlusIcon, StoreIcon, Trash2Icon } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
@@ -259,7 +259,7 @@ export function CustomizeScreen({
           <MarketRow
             testId="customize-market-directory"
             selected={onDirectory}
-            icon={<GlobeIcon className="size-4" />}
+            icon={<BlocksIcon className="size-4" />}
             name={t('customize.directory.title')}
             detail={t('customize.markets.directoryDetail')}
             onSelect={() => setSelection(DIRECTORY)}

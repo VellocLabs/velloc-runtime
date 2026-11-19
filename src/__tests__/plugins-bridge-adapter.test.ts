@@ -343,6 +343,29 @@ describe('pluginsHandlers.listMarketplacePlugins', () => {
     expect(onBeta.manifest!.plugins.map(p => p.name)).toEqual(['pack', 'beta-theme'])
   })
 
+  it('a theme counts as installed when the same code is installed from another marketplace', async () => {
+    const { fs } = makeMemoryFs()
+    const home = { homeDir: '/home/user' }
+    const theme = { looks: [{ id: 'one', preview: 'previews/one.svg' }] }
+    await fs.writeFile(
+      getMarketplaceManifestPath(home, BUILTIN_MARKETPLACE_KEY),
+      JSON.stringify({
+        name: BUILTIN_MARKETPLACE_KEY,
+        plugins: [
+          { name: 'same', source: { source: 'git-subdir', url: 'https://github.com/Someone/Themes', path: 'themes/same', sha: 'c'.repeat(40) }, theme },
+          { name: 'fork', source: { source: 'github', repo: 'someone/fork', sha: 'd'.repeat(40) }, theme },
+          { name: 'absent', source: { source: 'github', repo: 'someone/absent', sha: 'e'.repeat(40) }, theme },
+        ],
+      }),
+    )
+    const row = { scope: 'user' as const, installPath: '/x', version: '1.0.0', installedAt: NOW_ISO, lastUpdated: NOW_ISO }
+    await recordInstalledPlugin(home, fs, 'same@their-own', { ...row, codeSource: { repo: 'github.com/someone/themes', path: 'themes/same' } })
+    await recordInstalledPlugin(home, fs, 'fork@their-own', { ...row, codeSource: { repo: 'github.com/another/fork', path: '' } })
+    const ctx = { ...makeCtx({ fs }), channel: () => 'stable' as const }
+    const themes = await pluginsHandlers.listMarketplacePlugins({ marketplace: BUILTIN_MARKETPLACE_KEY, kind: 'themes' }, ctx)
+    expect(themes.manifest!.plugins.map(p => [p.name, p.installed])).toEqual([['same', true], ['fork', false], ['absent', false]])
+  })
+
   it('does not honour a theme block outside the built-in marketplace', async () => {
     const { fs } = makeMemoryFs()
     const home = { homeDir: '/home/user' }

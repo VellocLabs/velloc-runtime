@@ -10,7 +10,33 @@
  * plugin's own is checked where it runs.
  */
 
-import type { ListingTheme, ThemeLook, ThemeLookUse } from './registryFormats'
+import { codeSourceOf, sameCode, type PluginCodeSource } from './codeSource'
+import { joinPluginRef } from './pluginRef'
+import type { CatalogListing, ListingTheme, ThemeLook, ThemeLookUse } from './registryFormats'
+
+/**
+ * The installs that are `listing`'s plugin: `<name>@<marketplace>`, then every
+ * install of that name whose code is the listing's repository and folder,
+ * whichever marketplace it came from. Names only; none need be installed.
+ *
+ * Security: an install under another marketplace counts only by its recorded
+ * code source, never by its name alone.
+ */
+export function listingInstalls(
+  installed: Readonly<Record<string, readonly { codeSource?: PluginCodeSource }[]>>,
+  listing: Pick<CatalogListing, 'name' | 'source'>,
+  marketplace: string,
+): string[] {
+  const own = joinPluginRef(listing.name, marketplace)
+  const code = typeof listing.source === 'object' ? codeSourceOf(listing.source) : null
+  if (!code) return [own]
+  const others = Object.entries(installed).flatMap(([ref, rows]) =>
+    ref !== own && ref.startsWith(`${listing.name}@`) && rows.some(row => row.codeSource && sameCode(row.codeSource, code))
+      ? [ref]
+      : [],
+  )
+  return [own, ...others]
+}
 
 /** A look id as the catalogue keeps it, and as `theme.useLook` accepts it. */
 export function isLookId(value: unknown): value is string {

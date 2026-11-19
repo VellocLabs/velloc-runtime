@@ -7,7 +7,8 @@
  * Security: a client names a session, a plugin and a look, never a command.
  * The runtime reads the look from its own cached catalogue, and runs the
  * command it names only when the module that registered that command was
- * loaded from that very listing's install. Another plugin's command, a
+ * loaded from an install of that very listing's plugin: its own, or the same
+ * repository and folder installed from another marketplace. Another plugin's command, a
  * built-in and free text cannot be reached.
  */
 import type { CommandRunSettlement } from '../engine/extensionSeam'
@@ -98,6 +99,8 @@ export type ThemeLookTarget = {
   marketplace: string
   /** Its cached listings as this channel shows them; null when none is cached. */
   listings: readonly CatalogListing[] | null
+  /** The installs that are a listing's plugin, own install first. Default: `<name>@<marketplace>` alone. */
+  installsOf?: (listing: CatalogListing) => readonly string[]
   /** The session's mod runtime, when it has one. */
   slot: ThemeLookSlot | undefined
 }
@@ -112,15 +115,23 @@ export async function useThemeLook(
   const look = listing?.theme?.looks.find(candidate => candidate.id === ask.lookId)
   if (!look) return { ok: false, reason: 'unknownLook' }
   const { slot } = target
-  const installed = `${ask.plugin}@${target.marketplace}`
+  const installs = target.installsOf?.(listing!) ?? [`${ask.plugin}@${target.marketplace}`]
   if (!slot) return { ok: false, reason: 'notLoaded' }
   if (!look.use) {
-    const reloaded = (await slot.reloadPlugin?.(installed).catch(() => 0)) ?? 0
-    return reloaded > 0 ? { ok: true, via: 'reload' } : { ok: false, reason: 'notLoaded' }
+    for (const install of installs) {
+      const reloaded = (await slot.reloadPlugin?.(install).catch(() => 0)) ?? 0
+      if (reloaded > 0) return { ok: true, via: 'reload' }
+    }
+    return { ok: false, reason: 'notLoaded' }
   }
-  if (slot.hasLoaded && !slot.hasLoaded(installed)) return { ok: false, reason: 'notLoaded' }
+  if (slot.hasLoaded && !installs.some(install => slot.hasLoaded!(install))) return { ok: false, reason: 'notLoaded' }
   const owner = slot.commandOwner?.(look.use.command)
-  if (!slot.commandRun || owner?.plugin !== ask.plugin || owner.provenance !== installed) {
+  if (
+    !slot.commandRun ||
+    owner?.plugin !== ask.plugin ||
+    owner.provenance === undefined ||
+    !installs.includes(owner.provenance)
+  ) {
     return { ok: false, reason: 'notOwnCommand' }
   }
   const settlement = await slot

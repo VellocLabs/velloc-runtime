@@ -43,7 +43,7 @@ import { githubRepoOf, parseMarketplaceSource, registerMarketplaceSource } from 
 import { directoryFallbackName, installFromDirectory } from '../../../pluginHost/directoryInstall'
 import { DIRECTORY_CATALOG_KEY } from '../../../pluginHost/directoryListings'
 import { builtinMarketplaceOriginDir, isBuiltinMarketplace } from '../../../pluginHost/builtinMarketplace'
-import { resolveListingTheme } from '../../../pluginHost/themeListing'
+import { listingInstalls, resolveListingTheme } from '../../../pluginHost/themeListing'
 import type { CatalogListing } from '../../../pluginHost/registryFormats'
 import { currentTemplateChannel, type UpdateChannel } from '../../../branding/updateChannels'
 import { pluginBlockReason } from '../../../pluginHost/blocklist'
@@ -215,7 +215,8 @@ async function handleListMarketplacePlugins(
 /**
  * The entries one listing kind shows, with `installed` merged in. Only the
  * built-in marketplace has theme listings: `plugins` leaves them out and
- * `themes` is them alone, each preview an absolute address. Anywhere else a
+ * `themes` is them alone, each preview an absolute address; a theme also
+ * counts as installed when the same code is installed from elsewhere. Anywhere else a
  * `theme` block is not honoured and the listing is an ordinary plugin.
  */
 async function listedEntries(
@@ -238,7 +239,17 @@ async function listedEntries(
   const record = Object.entries(registry).find(([name]) => isBuiltinMarketplace(name))?.[1]
   const originDir = record ? builtinMarketplaceOriginDir(record.source) : null
   return visible.flatMap(listing =>
-    listing.theme ? [entryOf({ ...listing, theme: resolveListingTheme(listing.theme, originDir) })] : [],
+    listing.theme
+      ? [
+          {
+            ...listing,
+            theme: resolveListingTheme(listing.theme, originDir),
+            installed: listingInstalls(installed.plugins, listing, marketplace).some(ref =>
+              Object.hasOwn(installed.plugins, ref),
+            ),
+          },
+        ]
+      : [],
   )
 }
 

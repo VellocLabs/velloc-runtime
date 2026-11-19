@@ -10,6 +10,7 @@ import { act, cleanup, fireEvent, render, waitFor, within } from '@testing-libra
 
 import type { RuntimeConnection } from '../browser/runtimeClient/RuntimeConnection'
 import { CustomizeScreen } from '../browser/webview/customize/CustomizeScreen'
+import { INSTALL_TOAST_MS } from '../browser/webview/customize/InstallToasts'
 import { PACK_LIMIT } from '../browser/webview/customize/ThemeBrowser'
 import type { ThemeTarget } from '../browser/webview/customize/useThemeCatalog'
 import { en as EN } from '../browser/webview/i18n/messages/en'
@@ -324,8 +325,15 @@ describe('Theme directory — Add and Use', () => {
     await waitFor(() => expect(view.getByTestId('customize-theme-notice').getAttribute('data-kind')).toBe('failed'))
     expect(runtimeAsked).toEqual([`theme.useLook {"sessionId":"${target.sessionId}","plugin":"snow","lookId":"snow"}`])
     expect(view.getByTestId('customize-theme-notice').textContent).toContain(EN['customize.themes.reason.notLoaded'])
+    // A failure is not taken away by the clock: it stays until dismissed.
+    await act(async () => {
+      await new Promise(resolve => setTimeout(resolve, INSTALL_TOAST_MS + 200))
+    })
+    expect(view.getByTestId('customize-theme-notice').getAttribute('data-kind')).toBe('failed')
+    fireEvent.click(view.getByTestId('customize-theme-notice-dismiss'))
+    expect(view.queryByTestId('customize-theme-notice')).toBeNull()
     expect(within(card('snow', 'snow')).queryByTestId('customize-theme-in-use')).toBeNull()
-  })
+    }, 15_000)
 
   it('a failed install says so on the card and keeps Add', async () => {
     const { view, open, card } = setup({ installFails: true })
