@@ -45,6 +45,7 @@ import {
   readStrictPluginRef,
 } from '../pluginHost/pluginRef'
 import { pluginBlockReason } from '../pluginHost/blocklist'
+import { keepOneThemePlugin } from '../mods/themePlugins'
 import type { MessageKey } from '../browser/webview/i18n/messages/en'
 import {
   BLOCK,
@@ -73,6 +74,8 @@ export type SlashCommandText = SystemMessagePart[]
 export type PluginCommandContext = {
   runtimeConfig: RuntimeConfig
   fs: RuntimeFs
+  /** A directory plugin switched off by this command, by its folder's name. */
+  onFolderOff?: (folder: string) => void
   /** Bridge-resolved user home (`~`) for `~/.velloc/...` path resolution.
    *  REQUIRED in production: the SharedWorker env (`HOME`/`USERPROFILE`) is
    *  empty there, so the env-based `resolveSettingsHomeDir` fallback throws
@@ -311,6 +314,12 @@ async function runPluginEnable(
     id,
     enabled,
   )
+  if (enabled) {
+    await keepOneThemePlugin(
+      { homeDir: pathCtx.homeDir, fs: ctx.fs, reload: () => {}, onFolderOff: ctx.onFolderOff },
+      { plugin: parsed.value.name },
+    )
+  }
   return [
     key(enabled ? 'slash.out.plugin.enabledConfirm' : 'slash.out.plugin.disabledConfirm', { id }),
     text('\n'),

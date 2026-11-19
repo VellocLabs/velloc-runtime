@@ -491,6 +491,24 @@ describe('Theme directory: the theme plugin options', () => {
     )
   })
 
+  it('after Turn off all, the look used before is no longer remembered when its pack stands again', async () => {
+    const installed = () => [{ ...pack(), installed: true }, single()]
+    const first = setup({ themes: installed() })
+    await first.open()
+    fireEvent.click(within(first.card('scenes', 'scene-1')).getByTestId('customize-theme-use'))
+    await waitFor(() => expect(within(first.card('scenes', 'scene-1')).getByTestId('customize-theme-in-use')).toBeTruthy())
+    fireEvent.click(first.view.getByTestId('customize-themes-turn-off'))
+    await waitFor(() => expect(first.view.queryAllByTestId('customize-theme-in-use')).toHaveLength(0))
+    first.view.unmount()
+
+    const again = setup({ themes: installed(), target: first.target, standing: { plugin: 'scenes' } })
+    await again.open()
+    await act(async () => {
+      await Promise.resolve()
+    })
+    expect(again.view.queryAllByTestId('customize-theme-in-use')).toHaveLength(0)
+  })
+
   it('a connection that may not change them gets a disabled switch and no Turn off all', async () => {
     const { view, open } = setup({ single: true, deny: ['themeMods.setSingle', 'themeMods.turnOffAll'] })
     await open()

@@ -77,9 +77,10 @@ export function registerThemeCapability(registry: CapabilityRegistry, options: T
           const slot = slotInScope(request.conn, payload.sessionId)
           let listings: CatalogListing[] | null
           let installed: Awaited<ReturnType<typeof loadInstalledPlugins>>['registry']['plugins']
+          const fs = options.fs()
+          let homeDir: string
           try {
-            const fs = options.fs()
-            const homeDir = await options.resolveHome()
+            homeDir = await options.resolveHome()
             listings = await readCachedBuiltinListings(fs, homeDir, options.channel())
             installed = (await loadInstalledPlugins({ homeDir }, fs)).registry.plugins
           } catch {
@@ -89,10 +90,7 @@ export function registerThemeCapability(registry: CapabilityRegistry, options: T
           const result = await useThemeLook({ marketplace: BUILTIN_MARKETPLACE_KEY, listings, installsOf, slot }, payload)
           // An applied look: with *Only one at a time* on, the other theme plugins go off.
           if (result.ok) {
-            await keepOneThemePlugin(
-              { homeDir: await options.resolveHome(), fs: options.fs(), reload: options.reload ?? (() => {}) },
-              payload.plugin,
-            )
+            await keepOneThemePlugin({ homeDir, fs, reload: options.reload ?? (() => {}) }, { plugin: payload.plugin })
           }
           return result
         }

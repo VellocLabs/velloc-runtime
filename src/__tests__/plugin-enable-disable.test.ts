@@ -506,4 +506,44 @@ describe('processUserInput — /plugins enable|disable routing + patch', () => {
     )
     expect(listed.action).toBeUndefined()
   })
+
+  it('with one theme plugin at a time on, enabling a theme plugin by command switches the other off', async () => {
+    wipeSettingsMemos()
+    const fs = makeWritableFs()
+    installProcessFs(fs)
+    await fs.writeFile(
+      '/home/user/.velloc/settings.json',
+      JSON.stringify({
+        version: 1,
+        mods: { singleThemeMod: true, themeMods: [{ plugin: 'rain', id: 'rain@mkt' }, { plugin: 'snow', id: 'snow@mkt' }] },
+      }),
+    )
+    const row = { scope: 'user', installPath: '/x', version: '1', installedAt: 'now', lastUpdated: 'now' }
+    await fs.writeFile(
+      '/home/user/.velloc/plugins/installed_plugins.json',
+      JSON.stringify({ version: 2, plugins: { 'rain@mkt': [row], 'snow@mkt': [row] } }),
+    )
+    const base = {
+      hostBridge: stubHostBridge(),
+      runtimeConfig: runtimeConfig2,
+      supportedSlashCommands: ['plugin', 'plugins'],
+      settingsHomeDir: '/home/user',
+    }
+    await processUserInput({ input: '/plugin enable rain@mkt', context: makeContext() }, base)
+    const read = async () => JSON.parse(String(await fs.readFile('/home/user/.velloc/settings.json', { encoding: 'utf8' }))).enabledPlugins
+    expect(await read()).toEqual({ 'rain@mkt': true, 'snow@mkt': false })
+
+    await processUserInput(
+      { input: '/plugins enable snow', context: makeContext() },
+      {
+        ...base,
+        pluginLoadResult: {
+          enabled: [marketplacePlugin('rain', 'rain@mkt', true)],
+          disabled: [marketplacePlugin('snow', 'snow@mkt', false)],
+          errors: [],
+        },
+      },
+    )
+    expect(await read()).toEqual({ 'rain@mkt': false, 'snow@mkt': true })
+  })
 })

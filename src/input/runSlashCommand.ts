@@ -41,6 +41,7 @@ import {
   patchUserEnabledPlugin,
 } from '../pluginHost/enabledStore'
 import { allowlistNameOf, allowlistOf } from '../pluginHost/loadPlugins'
+import { keepOneThemePlugin } from '../mods/themePlugins'
 import { setPluginEnabled } from '../pluginHost/enabledPlugins'
 import {
   handleMarketplaceSlashCommand,
@@ -634,6 +635,19 @@ export async function dispatchCommandInput(
         const message = error instanceof Error ? error.message : String(error)
         return sys(`Failed to persist plugin change: ${message}`)
       }
+      if (wantEnable && options.settingsHomeDir) {
+        const off: string[] = []
+        await keepOneThemePlugin(
+          {
+            homeDir: options.settingsHomeDir,
+            fs: fsForContext(params.context),
+            reload: () => {},
+            onFolderOff: each => off.push(each),
+          },
+          matched.installIdentifier ? { plugin: matched.name } : { root: matched.path },
+        )
+        reloadAllowlist = reloadAllowlist.filter(each => !off.includes(each))
+      }
 
       return {
         messages: [
@@ -656,11 +670,13 @@ export async function dispatchCommandInput(
       // keeps the legacy project-scoped git-clone flow. Routes every
       // subcommand into `pluginMarketplaceCommands.handlePluginSlashCommand`
       // and wraps the returned parts in a localized system message.
+      const foldersOff: string[] = []
       const pluginParts = await handlePluginSlashCommand(args, {
         runtimeConfig: options.runtimeConfig,
         fs: fsForContext(params.context),
         homeDir: options.settingsHomeDir,
         fetchImpl: options.marketplaceFetch,
+        onFolderOff: each => foldersOff.push(each),
       })
       // install / enable / disable / uninstall mutate plugin state on
       // disk (settings `enabledPlugins` map + install registry). Emit the
@@ -680,7 +696,7 @@ export async function dispatchCommandInput(
           messages: [createLocalizedSystemMessage(options.runtimeConfig, pluginParts)],
           shouldQuery: false,
           action: 'reload-plugins',
-          enabledPlugins: allowlistOf(options.pluginLoadResult?.enabled ?? []),
+          enabledPlugins: allowlistOf(options.pluginLoadResult?.enabled ?? []).filter(each => !foldersOff.includes(each)),
           resultText: rawInput,
         }
       }

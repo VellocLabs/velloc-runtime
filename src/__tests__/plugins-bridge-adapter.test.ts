@@ -412,6 +412,41 @@ describe('pluginsHandlers.listMarketplacePlugins', () => {
       await pluginsHandlers.setEnabled({ identifier: 'rain@their-own', enabled: true }, many.ctx)
       expect(await getEnabledPluginsMap({ homeDir: HOME_DIR }, many.fs)).toEqual({ 'rain@their-own': true })
     })
+
+    async function withAurora(fs: RuntimeFs) {
+      const root = `${HOME_DIR}/.velloc/plugins/my-aurora`
+      const settingsPath = `${HOME_DIR}/.velloc/settings.json`
+      const doc = JSON.parse(String(await fs.readFile(settingsPath, { encoding: 'utf8' })))
+      doc.mods.themeMods.push({ plugin: 'aurora', id: 'aurora@inline', root })
+      await fs.writeFile(settingsPath, JSON.stringify(doc))
+      return root
+    }
+
+    it('a directory theme plugin whose folder is named otherwise is known by its folder', async () => {
+      const { fs, ctx } = await world({ singleThemeMod: true })
+      const root = await withAurora(fs)
+      await pluginsHandlers.setLocalEnabled({ path: root, enabled: true }, ctx)
+      expect(await getEnabledPluginsMap({ homeDir: HOME_DIR }, fs)).toEqual({
+        [`lagoon@${BUILTIN_MARKETPLACE_KEY}`]: false,
+        'rain@their-own': false,
+      })
+    })
+
+    it('a settings write that fails after a folder went off still reloads the sessions', async () => {
+      const { fs } = await world({})
+      const root = await withAurora(fs)
+      await pluginsHandlers.setLocalEnabled({ path: root, enabled: true }, makeCtx({ fs }))
+      const failing = {
+        ...fs,
+        writeFile: async (path: string, data: string | Uint8Array) => {
+          if (path.endsWith('settings.json')) throw new Error('disk full')
+          return fs.writeFile(path, data)
+        },
+      } as RuntimeFs
+      let reloads = 0
+      await expect(turnOffThemePlugins({ homeDir: HOME_DIR, fs: failing, reload: () => (reloads += 1) })).rejects.toThrow()
+      expect(reloads).toBe(1)
+    })
   })
 
   it('a theme counts as installed when the same code is installed from another marketplace', async () => {

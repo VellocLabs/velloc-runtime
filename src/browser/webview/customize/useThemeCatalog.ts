@@ -22,9 +22,8 @@ export type ThemeTarget = {
 /** A theme plugin of the directory: a listing that carries looks. */
 export type ThemePlugin = PluginAvailableUiEntry & { theme: NonNullable<PluginAvailableUiEntry['theme']> }
 
-/** `<plugin>/<look id>`; the app's own look is `DEFAULT_LOOK`. */
+/** `<plugin>/<look id>`. */
 export const lookKey = (plugin: string, lookId: string) => `${plugin}/${lookId}`
-export const DEFAULT_LOOK = ''
 /** `applying` while every theme plugin is being switched off. */
 export const TURNING_OFF = '*'
 
@@ -36,8 +35,8 @@ const applied = new Map<string, string>()
 
 /**
  * The look to mark In use: the one `last` applied while its plugin's theme
- * still stands, a standing single theme's only look, the app's own look when
- * no theme stands, and none when another source set the theme.
+ * still stands, a standing single theme's only look, and none when no theme
+ * stands or another source set it.
  */
 export function lookInUse(
   last: string | undefined,
@@ -45,7 +44,7 @@ export function lookInUse(
   plugins: readonly ThemePlugin[],
 ): string | null {
   if (standing === undefined) return last ?? null
-  if (standing === null) return DEFAULT_LOOK
+  if (standing === null) return null
   const owner = plugins.find(
     p => standing.plugin === p.name || standing.plugin === installKey(BUILTIN_MARKETPLACE_KEY, p.name),
   )
@@ -225,7 +224,11 @@ export function useThemeCatalog(
       setApplying(TURNING_OFF)
       run()
         .then(
-          count => say({ kind: 'turnedOff', count }),
+          count => {
+            applied.clear()
+            if (live.current) setInUse({})
+            say({ kind: 'turnedOff', count })
+          },
           () => say({ kind: 'failed', name: '', reason: 'request' }),
         )
         .finally(() => {

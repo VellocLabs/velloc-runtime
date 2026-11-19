@@ -506,7 +506,7 @@ ${entry.root ?? ''}`
                       ? slot.options.reloadPluginsOnAllSessions()
                       : slot.engineForMods?.refreshPluginSet(),
                 },
-                entry.plugin,
+                entry.root ? { root: entry.root } : { plugin: entry.plugin },
               )
             }, error => {
               notedThemeMods.delete(entry.plugin)
