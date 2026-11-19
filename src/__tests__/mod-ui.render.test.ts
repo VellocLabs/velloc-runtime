@@ -147,10 +147,6 @@ describe('where the mods\' rows sit in the composer footer', () => {
   // background-tasks line, a permission ask, a plan approval) seated between
   // them and the composer split a plugin's row from the box it belongs to.
   it('the panes, band and asks come after every engine bar, right before <Composer />', () => {
-    const rows = readFileSync(join(__dirname, '..', 'components', 'assistant-ui', 'mod-render.tsx'), 'utf8')
-    const body = rows.slice(rows.indexOf('export function ModPromptRows'))
-    expect(body.indexOf('<ModPanes />')).toBeGreaterThan(-1)
-    expect(body.indexOf('<ModPanes />')).toBeLessThan(body.indexOf('<ModAbovePrompt />'))
     const thread = readFileSync(join(__dirname, '..', 'components', 'assistant-ui', 'thread.tsx'), 'utf8')
     // A JSX element opens a line of its own; a mention in a comment does not.
     const at = (tag: string) => {
