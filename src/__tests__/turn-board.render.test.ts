@@ -1,14 +1,17 @@
 // @vitest-environment happy-dom
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createElement } from 'react'
-import { cleanup, fireEvent, render } from '@testing-library/react'
+import { cleanup, fireEvent, render, renderHook } from '@testing-library/react'
 
 import {
   TurnClosingBoxView,
   TurnPlanCardView,
   countRunningSince,
+  runningBaseline,
   runningTasksAnchor,
+  useStepRunningTaskCount,
 } from '../components/assistant-ui/turn-board'
+import type { NexusTaskSummaryRow } from '../browser/bridge/protocol/ui'
 import type { TurnStep } from '../sessions/turnBoard'
 
 // The step list and the closing box (F-41): which rows and marks show, where
@@ -126,14 +129,49 @@ describe('TurnClosingBoxView', () => {
   })
 })
 
-describe('countRunningSince', () => {
-  it('counts only running tasks started after the step began', () => {
-    const rows = [
-      { sessionId: 'old', status: 'running' as const },
-      { sessionId: 'new', status: 'running' as const },
-      { sessionId: 'done', status: 'success' as const },
-    ]
-    expect(countRunningSince(rows, new Set(['old']))).toBe(1)
-    expect(countRunningSince(rows, new Set())).toBe(2)
+describe('step running-task count', () => {
+  const row = (sessionId: string, status: NexusTaskSummaryRow['status'], startedAt = 1) =>
+    ({ sessionId, spawnerSessionId: 'parent', description: sessionId, status, startedAt }) as NexusTaskSummaryRow
+  const at = (inProgress: number): TurnStep[] =>
+    steps.map((step, i) => ({ ...step, status: i < inProgress ? 'completed' : i === inProgress ? 'in_progress' : 'pending' }))
+
+  it('counts a running task only when its run is not in the baseline', () => {
+    const baseline = runningBaseline([row('old', 'running', 1), row('gone', 'success', 1)])
+    expect(countRunningSince([row('old', 'running', 1), row('new', 'running', 2), row('done', 'success', 2)], baseline)).toBe(1)
+    expect(countRunningSince([row('old', 'running', 5)], baseline)).toBe(1)
+  })
+
+  it('leaves out tasks already running when the step began and counts the ones started during it', () => {
+    const { result, rerender } = renderHook(({ s, rows }) => useStepRunningTaskCount(s, rows), {
+      initialProps: { s: at(1), rows: [row('a', 'running')] },
+    })
+    expect(result.current).toBe(0)
+    rerender({ s: at(1), rows: [row('a', 'running'), row('b', 'running', 2)] })
+    expect(result.current).toBe(1)
+    rerender({ s: at(2), rows: [row('a', 'running'), row('b', 'running', 2)] })
+    expect(result.current).toBe(0)
+    rerender({ s: at(2), rows: [row('a', 'success'), row('b', 'running', 2), row('c', 'running', 3)] })
+    expect(result.current).toBe(1)
+  })
+
+  it('counts a task resumed during the step', () => {
+    const { result, rerender } = renderHook(({ rows }) => useStepRunningTaskCount(at(1), rows), {
+      initialProps: { rows: [row('a', 'running', 1)] },
+    })
+    rerender({ rows: [row('a', 'success', 1)] })
+    rerender({ rows: [row('a', 'running', 9)] })
+    expect(result.current).toBe(1)
+  })
+
+  it('re-baselines when the step in progress is replaced by one with other text', () => {
+    const rows = [row('a', 'running'), row('b', 'running', 2)]
+    const { result, rerender } = renderHook(({ s, r }) => useStepRunningTaskCount(s, r), {
+      initialProps: { s: at(1), r: rows.slice(0, 1) },
+    })
+    rerender({ s: at(1), r: rows })
+    expect(result.current).toBe(1)
+    const replaced = at(1).map((step, i) => (i === 1 ? { ...step, text: 'Fix the other bug' } : step))
+    rerender({ s: replaced, r: rows })
+    expect(result.current).toBe(0)
   })
 })
