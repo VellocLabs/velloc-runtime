@@ -68,7 +68,7 @@ async function readThemePlugins(
   return {
     known: [...out.values()],
     enabled: settings.enabledPlugins ?? {},
-    single: settings.mods?.singleThemeMod === true,
+    single: settings.mods?.singleThemeMod !== false,
     installed,
   }
 }
@@ -223,7 +223,7 @@ export async function keepOneThemePlugin(
 ): Promise<number> {
   try {
     const { settings } = await readLayerFresh('userSettings', { homeDir: deps.homeDir }, deps.fs)
-    if (settings.mods?.singleThemeMod !== true) return 0
+    if (settings.mods?.singleThemeMod === false) return 0
     const known = await knownThemePlugins(deps.homeDir, deps.fs)
     const self = known.find(mod =>
       'root' in which ? mod.id.endsWith('@inline') && !!mod.root && sameFolder(mod.root, which.root) : mod.plugin === which.plugin,

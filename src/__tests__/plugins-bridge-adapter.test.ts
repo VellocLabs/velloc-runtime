@@ -404,11 +404,20 @@ describe('pluginsHandlers.listMarketplacePlugins', () => {
       })
     })
 
+    it('one at a time is on when the settings do not say', async () => {
+      const { fs, ctx } = await world({})
+      await pluginsHandlers.setEnabled({ identifier: 'rain@their-own', enabled: true }, ctx)
+      expect(await getEnabledPluginsMap({ homeDir: HOME_DIR }, fs)).toEqual({
+        'rain@their-own': true,
+        [`lagoon@${BUILTIN_MARKETPLACE_KEY}`]: false,
+      })
+    })
+
     it('an ordinary plugin switched on, or one at a time off, switches no theme off', async () => {
       const single = await world({ singleThemeMod: true })
       await pluginsHandlers.setEnabled({ identifier: `tool@${BUILTIN_MARKETPLACE_KEY}`, enabled: true }, single.ctx)
       expect(await getEnabledPluginsMap({ homeDir: HOME_DIR }, single.fs)).toEqual({ [`tool@${BUILTIN_MARKETPLACE_KEY}`]: true })
-      const many = await world({})
+      const many = await world({ singleThemeMod: false })
       await pluginsHandlers.setEnabled({ identifier: 'rain@their-own', enabled: true }, many.ctx)
       expect(await getEnabledPluginsMap({ homeDir: HOME_DIR }, many.fs)).toEqual({ 'rain@their-own': true })
     })
@@ -433,7 +442,7 @@ describe('pluginsHandlers.listMarketplacePlugins', () => {
     })
 
     it('a settings write that fails after a folder went off still reloads the sessions', async () => {
-      const { fs } = await world({})
+      const { fs } = await world({ singleThemeMod: false })
       const root = await withAurora(fs)
       await pluginsHandlers.setLocalEnabled({ path: root, enabled: true }, makeCtx({ fs }))
       const failing = {

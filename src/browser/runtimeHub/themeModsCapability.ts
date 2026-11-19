@@ -37,7 +37,7 @@ export type ThemeModsCapabilityOptions = {
   report?: (line: string) => void
 }
 
-const EMPTY: ThemeModsState = { mods: [], plugins: [], backdropScope: DEFAULT_THEME_BACKDROP_SCOPE, single: false, on: 0 }
+const EMPTY: ThemeModsState = { mods: [], plugins: [], backdropScope: DEFAULT_THEME_BACKDROP_SCOPE, single: true, on: 0 }
 
 export function registerThemeModsCapability(
   registry: CapabilityRegistry,
@@ -61,7 +61,7 @@ export function registerThemeModsCapability(
         mods: settings.mods?.themeMods ?? [],
         plugins,
         backdropScope: settings.mods?.backdropScope ?? DEFAULT_THEME_BACKDROP_SCOPE,
-        single: settings.mods?.singleThemeMod === true,
+        single: settings.mods?.singleThemeMod !== false,
         on,
       }
     } catch (error) {
@@ -123,8 +123,8 @@ export function registerThemeModsCapability(
         await updateSectionInSource('userSettings', { homeDir }, options.context().fs, 'mods', previous => {
           const next = { ...(previous ?? {}) }
           if (act === 'setSingle') {
-            if ((request.payload as ThemeModsSinglePayload).on) next.singleThemeMod = true
-            else delete next.singleThemeMod
+            if ((request.payload as ThemeModsSinglePayload).on) delete next.singleThemeMod
+            else next.singleThemeMod = false
           } else {
             const { scope } = request.payload as ThemeModsScopePayload
             if (scope === DEFAULT_THEME_BACKDROP_SCOPE) delete next.backdropScope

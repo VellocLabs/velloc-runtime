@@ -435,7 +435,7 @@ export function normalizeSettings(
     const themes = readThemeMods(themeMods)
     if (themes.length > 0) mods.themeMods = themes
     if (isThemeBackdropScope(backdropScope)) mods.backdropScope = backdropScope
-    if (singleThemeMod === true) mods.singleThemeMod = true
+    if (singleThemeMod === false) mods.singleThemeMod = false
     if (Object.keys(mods).length > 0) out.mods = mods
   }
 

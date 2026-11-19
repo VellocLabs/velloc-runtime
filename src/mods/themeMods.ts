@@ -129,7 +129,7 @@ export function readThemeModsState(value: unknown): ThemeModsState | null {
     mods: readThemeMods(value.mods),
     plugins: readThemePluginRows(value.plugins),
     backdropScope: isThemeBackdropScope(value.backdropScope) ? value.backdropScope : DEFAULT_THEME_BACKDROP_SCOPE,
-    single: value.single === true,
+    single: value.single !== false,
     on: typeof value.on === 'number' && Number.isInteger(value.on) && value.on >= 0 ? value.on : 0,
   }
 }

@@ -370,7 +370,7 @@ describe('theme.useLook on a plugin that is installed and switched off', () => {
     })
     await fs.writeFile(
       SETTINGS,
-      JSON.stringify({ version: 1, enabledPlugins: state.enabledPlugins ?? {}, ...(state.single ? { mods: { singleThemeMod: true } } : {}) }),
+      JSON.stringify({ version: 1, enabledPlugins: state.enabledPlugins ?? {}, ...(state.single ? {} : { mods: { singleThemeMod: false } }) }),
     )
     const enabledNow = async () =>
       (JSON.parse(String(await fs.readFile(SETTINGS, { encoding: 'utf-8' }))) as { enabledPlugins?: Enabled }).enabledPlugins ?? {}
@@ -548,7 +548,7 @@ describe('theme.useLook with one theme plugin at a time, two plugins serving one
     await saveInstalledPlugins({ homeDir: HOME }, fs, { version: 2, plugins: { [PACK]: [row], [RIVAL]: [row] } })
     await fs.writeFile(
       SETTINGS,
-      JSON.stringify({ version: 1, enabledPlugins: state.enabledPlugins, ...(state.single ? { mods: { singleThemeMod: true } } : {}) }),
+      JSON.stringify({ version: 1, enabledPlugins: state.enabledPlugins, ...(state.single ? {} : { mods: { singleThemeMod: false } }) }),
     )
     const enabledNow = async () =>
       (JSON.parse(String(await fs.readFile(SETTINGS, { encoding: 'utf-8' }))) as { enabledPlugins?: Enabled }).enabledPlugins ?? {}
