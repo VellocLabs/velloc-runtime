@@ -1,16 +1,30 @@
 import * as React from 'react'
 
 import type { ThemeUseLookResult } from '../../../mods/modThemeLooks'
-import { THEME_CAPABILITY } from '../../../mods/modThemeLooks'
 import { BUILTIN_MARKETPLACE_KEY } from '../../../pluginHost/builtinMarketplace'
 import type { ThemeLook } from '../../../pluginHost/registryFormats'
-import type { PluginAvailableUiEntry } from '../../bridge/protocol/plugins'
 import type { RuntimeConnection } from '../../runtimeClient/RuntimeConnection'
-import type { RouteKey } from '../../runtimeProtocol'
 import type { NexusSettingsBridge } from '../nexusSettingsBridge'
-import { pluginsInstall, pluginsListMarketplaceThemes, pluginsRefreshMarketplace } from '../settings/clients'
+import { pluginsInstall, pluginsRefreshMarketplace } from '../settings/clients'
+import {
+  appliedLooks,
+  askUseLook,
+  forgetAppliedLooks,
+  lookKey,
+  readThemePlugins,
+  type ThemeFailure,
+  type ThemePlugin,
+} from '../mods/themeLooks'
 import { askThemeOnEnable } from '../mods/themeModsView'
 import { installKey, type InstallNotice } from './useMarketplaceCatalog'
+
+export {
+  lookInUse,
+  lookKey,
+  type ThemeFailure,
+  type ThemePlugin,
+  type ThemeStanding,
+} from '../mods/themeLooks'
 
 /** The session a look is applied to, as the shell names it. */
 export type ThemeTarget = {
@@ -19,40 +33,6 @@ export type ThemeTarget = {
   /** A turn is running: a look waits for it to end. */
   busy: boolean
 }
-
-/** A theme plugin of the directory: a listing that carries looks. */
-export type ThemePlugin = PluginAvailableUiEntry & { theme: NonNullable<PluginAvailableUiEntry['theme']> }
-
-/** `<plugin>/<look id>`. */
-export const lookKey = (plugin: string, lookId: string) => `${plugin}/${lookId}`
-
-/** The session's standing theme as its runtime publishes it: `null` when none stands, `undefined` while not read yet. */
-export type ThemeStanding = { plugin: string } | null | undefined
-
-/** The look last applied from this window, per session id; outlives the screen. */
-const applied = new Map<string, string>()
-
-/**
- * The look to mark In use: the one `last` applied while its plugin's theme
- * still stands, a standing single theme's only look, and none when no theme
- * stands or another source set it.
- */
-export function lookInUse(
-  last: string | undefined,
-  standing: ThemeStanding,
-  plugins: readonly ThemePlugin[],
-): string | null {
-  if (standing === undefined) return last ?? null
-  if (standing === null) return null
-  const owner = plugins.find(
-    p => standing.plugin === p.name || standing.plugin === installKey(BUILTIN_MARKETPLACE_KEY, p.name),
-  )
-  if (!owner) return null
-  if (last?.startsWith(`${owner.name}/`)) return last
-  return owner.theme.looks.length === 1 ? lookKey(owner.name, owner.theme.looks[0]!.id) : null
-}
-
-export type ThemeFailure = Extract<ThemeUseLookResult, { ok: false }>['reason'] | 'request'
 
 type ThemeOutcome =
   | { kind: 'applied'; name: string; session: string }
@@ -95,9 +75,6 @@ const AFTER_INSTALL_WAIT_MS = 500
 const loadingYet = (result: ThemeUseLookResult) =>
   !result.ok && (result.reason === 'notLoaded' || result.reason === 'notOwnCommand')
 
-const isThemePlugin = (entry: PluginAvailableUiEntry): entry is ThemePlugin =>
-  Array.isArray(entry.theme?.looks) && entry.theme.looks.length > 0
-
 /**
  * The theme directory (F-35): the built-in marketplace's theme listings,
  * read from the local copy at once and again after a fetch from its source.
@@ -116,7 +93,7 @@ export function useThemeCatalog(
   const [installing, setInstalling] = React.useState<ReadonlySet<string>>(NONE)
   const [installFailed, setInstallFailed] = React.useState<ReadonlySet<string>>(NONE)
   const [applying, setApplying] = React.useState<string | null>(null)
-  const [inUse, setInUse] = React.useState<Readonly<Record<string, string>>>(() => Object.fromEntries(applied))
+  const [inUse, setInUse] = React.useState<Readonly<Record<string, string>>>(appliedLooks)
   const [installs, setInstalls] = React.useState<readonly InstallNotice[]>([])
   const [notice, setNotice] = React.useState<ThemeNotice | null>(null)
   const seq = React.useRef(0)
@@ -130,11 +107,11 @@ export function useThemeCatalog(
 
   const read = React.useCallback((): Promise<void> => {
     if (!bridge) return Promise.resolve()
-    return pluginsListMarketplaceThemes(bridge, BUILTIN_MARKETPLACE_KEY).then(
+    return readThemePlugins(bridge).then(
       result => {
         if (!live.current) return
-        setPlugins((result.manifest?.plugins ?? []).filter(isThemePlugin))
-        setStatus(result.manifest ? 'ready' : 'notFetched')
+        setPlugins(result.plugins)
+        setStatus(result.fetched ? 'ready' : 'notFetched')
       },
       () => {
         if (live.current) setStatus('failed')
@@ -185,12 +162,7 @@ export function useThemeCatalog(
       const name = look.name ?? look.id
       setApplying(key)
       const ask = async (left: number): Promise<ThemeUseLookResult> => {
-        const conn = await runtimeConnection()
-        const result = (await conn.request(`${THEME_CAPABILITY}.useLook` as RouteKey, {
-          sessionId: target.sessionId,
-          plugin,
-          lookId: look.id,
-        })) as ThemeUseLookResult
+        const result = await askUseLook(runtimeConnection, target.sessionId, plugin, look.id)
         if (left <= 1 || !loadingYet(result) || !live.current) return result
         await new Promise(resolve => setTimeout(resolve, AFTER_INSTALL_WAIT_MS))
         return ask(left - 1)
@@ -198,7 +170,6 @@ export function useThemeCatalog(
       ask(tries)
         .then(
           result => {
-            if (result.ok) applied.set(target.sessionId, key)
             if (!live.current) return
             if (result.ok) {
               setInUse(all => ({ ...all, [target.sessionId]: key }))
@@ -218,7 +189,7 @@ export function useThemeCatalog(
   )
 
   const forgetApplied = React.useCallback(() => {
-    applied.clear()
+    forgetAppliedLooks()
     if (live.current) setInUse({})
   }, [])
 

@@ -104,6 +104,10 @@ export function useShellTheme(options: {
     bridge: settingsBridge,
     canSetEnabled: capabilities.can('plugins', 'setEnabled') && capabilities.can('plugins', 'setLocalEnabled'),
     canSetBackdropScope: capabilities.can('themeMods', 'setBackdropScope'),
+    canTurnOffAll: capabilities.can('themeMods', 'turnOffAll'),
+    runtimeConnection,
+    canUseLook: capabilities.can('theme', 'useLook'),
+    lookTarget: options.themeTarget ?? null,
     ...(themeStoreShown ? { openThemeStore } : {}),
     afterEnable,
   })

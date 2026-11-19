@@ -1,5 +1,7 @@
 import { createContext, useContext } from 'react'
 
+import type { ThemePlugin } from '@/browser/webview/mods/themeLooks'
+import type { ThemeUseLookResult } from '@/mods/modThemeLooks'
 import type { ThemeBackdropScope, ThemeModEntry } from '@/mods/themeMods'
 
 /** What the window offers a conversation's theme menu (F-25). An absent
@@ -19,6 +21,14 @@ export type ThemeModsContextValue = {
   setEnabled?: (mod: ThemeModEntry, enabled: boolean) => Promise<void>
   /** Open the place themes are installed from. */
   openThemeStore?: () => void
+  /** Switch every theme plugin off; answers how many were on. */
+  turnOffAll?: () => Promise<number>
+  /** The built-in marketplace's theme listings whose plugin is enabled, as stored. */
+  looks?: readonly ThemePlugin[]
+  /** The session a look applies to, as the window shows it; null when it shows none that takes one. */
+  lookTarget?: { sessionId: string; busy: boolean } | null
+  /** Apply a listed look in a session; the runtime decides what runs. */
+  applyLook?: (sessionId: string, plugin: string, lookId: string) => Promise<ThemeUseLookResult>
 }
 
 /** Undefined outside a window that manages themes: no menu. */

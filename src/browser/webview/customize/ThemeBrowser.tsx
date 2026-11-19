@@ -7,6 +7,7 @@ import { cn } from '@/lib/utils'
 import type { ThemeLook } from '../../../pluginHost/registryFormats'
 import { useT } from '../i18n'
 import type { MessageKey } from '../i18n/messages/en'
+import { lookBlocked, packTitle, THEME_FAILURE_MESSAGE } from '../mods/themeLooks'
 import { INSTALL_TOAST_MS } from './InstallToasts'
 import { PAGE_COLUMN } from './MarketplaceBrowser'
 import { LookPreview, THEME_GRID as GRID, ThemeNoticeShell } from './themeCardParts'
@@ -24,23 +25,12 @@ import {
 /** Looks a pack's section shows before "Show all": two rows of three. */
 export const PACK_LIMIT = 6
 
-/** A plugin's listing name as a heading: `theme-examples` reads "Theme examples". */
-export function packTitle(name: string): string {
-  const words = name.replace(/[-_]+/g, ' ').trim()
-  return words === '' ? name : words.charAt(0).toUpperCase() + words.slice(1)
-}
+export { packTitle }
 
 type Filter = 'all' | 'light' | 'dark'
 const FILTERS: readonly Filter[] = ['all', 'light', 'dark']
 
-const REASON: Record<ThemeFailure, MessageKey> = {
-  unknownLook: 'customize.themes.reason.unknownLook',
-  notLoaded: 'customize.themes.reason.notLoaded',
-  notOwnCommand: 'customize.themes.reason.notOwnCommand',
-  unanswered: 'customize.themes.reason.unanswered',
-  commandFailed: 'customize.themes.reason.commandFailed',
-  request: 'customize.themes.reason.request',
-}
+const REASON = THEME_FAILURE_MESSAGE
 
 export type ThemeBrowserProps = {
   view: ThemeCatalogView
@@ -74,11 +64,7 @@ export function ThemeBrowser({ view, target, standing, onClose, focus }: ThemeBr
     filter === 'all' || look.appearance === undefined || look.appearance === 'both' || look.appearance === filter
   const packs = view.plugins.filter(p => p.theme.looks.length > 1)
   const singles = view.plugins.filter(p => p.theme.looks.length === 1 && shows(p.theme.looks[0]!))
-  const blocked: MessageKey | null = !target
-    ? 'customize.themes.noSession'
-    : target.busy
-      ? 'customize.themes.busy'
-      : null
+  const blocked: MessageKey | null = lookBlocked(target)
   const inUse = target ? lookInUse(view.inUse[target.sessionId], standing, view.plugins) : null
   const shared = { view, target, blocked, inUse }
 

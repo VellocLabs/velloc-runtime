@@ -1,8 +1,19 @@
-import { CheckIcon, ChevronRightIcon, PlusIcon } from "lucide-react";
+import { CheckIcon, ChevronRightIcon, Loader2Icon, PaletteIcon, PlusIcon, PowerOffIcon } from "lucide-react";
 import { DropdownMenu as DropdownMenuPrimitive } from "radix-ui";
 import { useEffect, useMemo, useRef, useState, type FC } from "react";
 
 import { useT } from "@/browser/webview/i18n";
+import type { MessageKey } from "@/browser/webview/i18n/messages/en";
+import {
+  appliedLooks,
+  lookBlocked,
+  lookInUse,
+  lookKey,
+  packTitle,
+  THEME_FAILURE_MESSAGE,
+  type ThemePlugin,
+} from "@/browser/webview/mods/themeLooks";
+import type { ThemeLook } from "@/pluginHost/registryFormats";
 import type { ThemeBackdropScope, ThemeModEntry } from "@/mods/themeMods";
 import { isThemeBackdropScope } from "@/mods/themeMods";
 import { cn } from "@/lib/utils";
@@ -11,9 +22,10 @@ import { useThemeModsContext } from "./theme-mods-context";
 
 /**
  * The conversation's theme menu (F-25): a right-click on its empty space lists
- * the mods that have set a theme — a check on each enabled one, a mark on the
- * one whose theme shows — and chooses how far the backdrop reaches. A press on
- * a mod enables or disables the plugin itself.
+ * the looks the directory lists for the enabled theme plugins (a press applies
+ * one), the mods that have set a theme — a check on each enabled one, a mark on
+ * the one whose theme shows — and chooses how far the backdrop reaches. A press
+ * on a mod enables or disables the plugin itself.
  */
 
 /** What a right-click keeps its own menu on: text, controls, media, a message, the composer's footer. */
@@ -53,6 +65,13 @@ const ITEM_CLASS =
 const CONTENT_CLASS =
   "z-50 min-w-56 rounded-md border bg-popover p-1 text-sm text-popover-foreground shadow-md";
 const SEPARATOR_CLASS = "-mx-1 my-1 h-px bg-border";
+const LABEL_CLASS = "px-2 pt-1.5 pb-0.5 text-xs text-muted-foreground";
+
+const APPEARANCE: Record<NonNullable<ThemeLook["appearance"]>, MessageKey> = {
+  light: "customize.themes.appearance.light",
+  dark: "customize.themes.appearance.dark",
+  both: "customize.themes.appearance.both",
+};
 
 /** Two stacked windows with a scene in the one behind. */
 const ThemeModsGlyph: FC = () => (
@@ -99,6 +118,10 @@ export const ThemeModsMenu: FC<{ sessionId?: string; isForeground?: boolean }> =
   // A press shows at once; the stored state then takes over.
   const [pressed, setPressed] = useState<Readonly<Record<string, boolean>>>({});
   const [failure, setFailure] = useState<string | null>(null);
+  const [turningOff, setTurningOff] = useState(false);
+  // The look being applied, and why the last one was not.
+  const [applying, setApplying] = useState<string | null>(null);
+  const [lookFailure, setLookFailure] = useState<string | null>(null);
 
   const available = themes !== undefined;
   const refreshRef = useRef(themes?.refresh);
@@ -114,6 +137,7 @@ export const ThemeModsMenu: FC<{ sessionId?: string; isForeground?: boolean }> =
       pointer.preventDefault();
       refreshRef.current?.();
       setFailure(null);
+      setLookFailure(null);
       const active = root.ownerDocument.activeElement;
       setMenu({ x: pointer.clientX, y: pointer.clientY, returnFocus: active instanceof HTMLElement ? active : null });
     };
@@ -145,8 +169,49 @@ export const ThemeModsMenu: FC<{ sessionId?: string; isForeground?: boolean }> =
   );
 
   if (!themes) return null;
-  const { setEnabled, setBackdropScope, openThemeStore } = themes;
+  const { setEnabled, setBackdropScope, openThemeStore, turnOffAll, applyLook } = themes;
   const on = rows.filter((row) => row.enabled).length;
+  // A listing whose mod a press has just turned off leaves with it.
+  const lookPlugins = (themes.looks ?? []).filter((listing) => pressed[listing.name] !== false);
+  // Looks apply to the session the window shows: this menu's, unless another shows.
+  const lookTarget = themes.lookTarget?.sessionId === sessionId ? themes.lookTarget : null;
+  const blocked = lookBlocked(lookTarget);
+  const inUse = sessionId
+    ? lookInUse(appliedLooks()[sessionId], theme ? { plugin: theme.plugin } : null, themes.looks ?? [])
+    : null;
+
+  const apply = (plugin: ThemePlugin, look: ThemeLook) => {
+    if (!applyLook || !lookTarget || blocked || applying) return;
+    const key = lookKey(plugin.name, look.id);
+    setApplying(key);
+    setLookFailure(null);
+    void applyLook(lookTarget.sessionId, plugin.name, look.id)
+      .then(
+        (result) => {
+          if (result.ok) setMenu(null);
+          else setLookFailure(t(THEME_FAILURE_MESSAGE[result.reason]));
+        },
+        () => setLookFailure(t(THEME_FAILURE_MESSAGE.request)),
+      )
+      .finally(() => setApplying(null));
+  };
+
+  const turnOff = () => {
+    if (!turnOffAll || turningOff) return;
+    setFailure(null);
+    setTurningOff(true);
+    setPressed((previous) => ({
+      ...previous,
+      ...Object.fromEntries(rows.filter((row) => row.enabled).map((row) => [row.plugin, false])),
+    }));
+    void turnOffAll()
+      .catch((error: unknown) => {
+        setPressed({});
+        const reason = error instanceof Error ? error.message : String(error);
+        setFailure(t("settings.plugins.disableFailed", { error: reason }));
+      })
+      .finally(() => setTurningOff(false));
+  };
   // A mod no plugin list knows (a dev folder's, an uninstalled one) has no stored state a press could change.
   const canToggle = (row: ThemeModRow) => setEnabled !== undefined && (stored === undefined || row.plugin in stored);
 
@@ -202,11 +267,82 @@ export const ThemeModsMenu: FC<{ sessionId?: string; isForeground?: boolean }> =
             }}
             className={CONTENT_CLASS}
           >
+            {applyLook && lookPlugins.length > 0 && (
+              <DropdownMenuPrimitive.Sub>
+                <DropdownMenuPrimitive.SubTrigger data-testid="theme-mods-menu-looks" className={ITEM_CLASS}>
+                  <PaletteIcon aria-hidden className="size-4 shrink-0 text-muted-foreground" />
+                  <span className="flex-1">{t("themeMenu.looks")}</span>
+                  <ChevronRightIcon aria-hidden className="size-4 text-muted-foreground rtl:rotate-180" />
+                </DropdownMenuPrimitive.SubTrigger>
+                <DropdownMenuPrimitive.Portal>
+                  <DropdownMenuPrimitive.SubContent
+                    data-testid="theme-mods-menu-looks-list"
+                    sideOffset={6}
+                    collisionPadding={8}
+                    className={cn(
+                      CONTENT_CLASS,
+                      "w-80 max-h-[var(--radix-dropdown-menu-content-available-height)] overflow-y-auto",
+                    )}
+                  >
+                    {blocked && (
+                      <div role="status" className="px-2 py-1.5 text-xs text-muted-foreground">
+                        {t(blocked)}
+                      </div>
+                    )}
+                    {lookPlugins.map((plugin, index) => (
+                      <DropdownMenuPrimitive.Group key={plugin.name}>
+                        {index > 0 && <DropdownMenuPrimitive.Separator className={SEPARATOR_CLASS} />}
+                        <DropdownMenuPrimitive.Label className={LABEL_CLASS}>{packTitle(plugin.name)}</DropdownMenuPrimitive.Label>
+                        {plugin.theme.looks.map((look) => {
+                          const key = lookKey(plugin.name, look.id);
+                          return (
+                            <DropdownMenuPrimitive.Item
+                              key={key}
+                              data-testid={`theme-look:${key}`}
+                              data-in-use={inUse === key ? "" : undefined}
+                              disabled={blocked !== null || (applying !== null && applying !== key)}
+                              onSelect={(event) => {
+                                event.preventDefault();
+                                apply(plugin, look);
+                              }}
+                              className={cn(ITEM_CLASS, "items-start")}
+                            >
+                              <span className="flex size-4 shrink-0 items-center justify-center pt-0.5">
+                                {applying === key ? (
+                                  <Loader2Icon aria-hidden className="size-4 animate-spin text-muted-foreground" />
+                                ) : inUse === key ? (
+                                  <CheckIcon aria-hidden className="size-4 text-primary" />
+                                ) : null}
+                              </span>
+                              <span className="flex min-w-0 flex-1 flex-col">
+                                <span className="truncate">{look.name ?? look.id}</span>
+                                {look.description && (
+                                  <span className="line-clamp-2 text-xs text-muted-foreground">{look.description}</span>
+                                )}
+                              </span>
+                              {look.appearance && (
+                                <span className="shrink-0 pt-0.5 text-xs text-muted-foreground">
+                                  {t(APPEARANCE[look.appearance])}
+                                </span>
+                              )}
+                            </DropdownMenuPrimitive.Item>
+                          );
+                        })}
+                      </DropdownMenuPrimitive.Group>
+                    ))}
+                    {lookFailure && (
+                      <div role="status" className="px-2 py-1.5 text-xs text-destructive">
+                        {lookFailure}
+                      </div>
+                    )}
+                  </DropdownMenuPrimitive.SubContent>
+                </DropdownMenuPrimitive.Portal>
+              </DropdownMenuPrimitive.Sub>
+            )}
             <DropdownMenuPrimitive.Sub>
               <DropdownMenuPrimitive.SubTrigger data-testid="theme-mods-menu-mods" className={ITEM_CLASS}>
                 <ThemeModsGlyph />
                 <span className="flex-1">{t("themeMenu.mods")}</span>
-                <span className="text-xs text-muted-foreground">{t("themeMenu.modsOn", { n: on })}</span>
                 <ChevronRightIcon aria-hidden className="size-4 text-muted-foreground rtl:rotate-180" />
               </DropdownMenuPrimitive.SubTrigger>
               <DropdownMenuPrimitive.Portal>
@@ -254,6 +390,23 @@ export const ThemeModsMenu: FC<{ sessionId?: string; isForeground?: boolean }> =
                       {failure}
                     </div>
                   )}
+                  {turnOffAll && (
+                    <>
+                      <DropdownMenuPrimitive.Separator className={SEPARATOR_CLASS} />
+                      <DropdownMenuPrimitive.Item
+                        data-testid="theme-mods-menu-turn-off"
+                        disabled={on === 0 || turningOff}
+                        onSelect={(event) => {
+                          event.preventDefault();
+                          turnOff();
+                        }}
+                        className={ITEM_CLASS}
+                      >
+                        <PowerOffIcon aria-hidden className="size-4 text-muted-foreground" />
+                        <span className="flex-1">{t("themeMenu.turnOffAll")}</span>
+                      </DropdownMenuPrimitive.Item>
+                    </>
+                  )}
                   {openThemeStore && (
                     <>
                       <DropdownMenuPrimitive.Separator className={SEPARATOR_CLASS} />
@@ -271,36 +424,49 @@ export const ThemeModsMenu: FC<{ sessionId?: string; isForeground?: boolean }> =
               </DropdownMenuPrimitive.Portal>
             </DropdownMenuPrimitive.Sub>
             <DropdownMenuPrimitive.Separator className={SEPARATOR_CLASS} />
-            <DropdownMenuPrimitive.Label className="px-2 pt-1.5 pb-0.5 text-xs text-muted-foreground">
-              {t("themeMenu.backdrop")}
-            </DropdownMenuPrimitive.Label>
-            <DropdownMenuPrimitive.RadioGroup
-              value={themes.backdropScope}
-              onValueChange={(value) => {
-                if (isThemeBackdropScope(value)) void setBackdropScope?.(value).catch(() => undefined);
-              }}
-            >
-              {(["conversation", "window"] as const).map((scope) => (
-                <DropdownMenuPrimitive.RadioItem
-                  key={scope}
-                  value={scope}
-                  data-testid={`theme-backdrop-scope:${scope}`}
-                  disabled={!setBackdropScope}
-                  onSelect={(event) => event.preventDefault()}
-                  className={ITEM_CLASS}
+            <DropdownMenuPrimitive.Sub>
+              <DropdownMenuPrimitive.SubTrigger data-testid="theme-mods-menu-backdrop" className={ITEM_CLASS}>
+                <ScopeThumb scope={themes.backdropScope} />
+                <span className="flex-1">{t("themeMenu.backdrop")}</span>
+                <ChevronRightIcon aria-hidden className="size-4 text-muted-foreground rtl:rotate-180" />
+              </DropdownMenuPrimitive.SubTrigger>
+              <DropdownMenuPrimitive.Portal>
+                <DropdownMenuPrimitive.SubContent
+                  data-testid="theme-mods-menu-backdrop-list"
+                  sideOffset={6}
+                  collisionPadding={8}
+                  className={CONTENT_CLASS}
                 >
-                  <ScopeThumb scope={scope} />
-                  <span className="flex-1">
-                    {t(scope === "window" ? "themeMenu.backdropWindow" : "themeMenu.backdropConversation")}
-                  </span>
-                  <span className="flex size-4 items-center justify-center">
-                    <DropdownMenuPrimitive.ItemIndicator>
-                      <CheckIcon aria-hidden className="size-4 text-primary" />
-                    </DropdownMenuPrimitive.ItemIndicator>
-                  </span>
-                </DropdownMenuPrimitive.RadioItem>
-              ))}
-            </DropdownMenuPrimitive.RadioGroup>
+                  <DropdownMenuPrimitive.RadioGroup
+                    value={themes.backdropScope}
+                    onValueChange={(value) => {
+                      if (isThemeBackdropScope(value)) void setBackdropScope?.(value).catch(() => undefined);
+                    }}
+                  >
+                    {(["conversation", "window"] as const).map((scope) => (
+                      <DropdownMenuPrimitive.RadioItem
+                        key={scope}
+                        value={scope}
+                        data-testid={`theme-backdrop-scope:${scope}`}
+                        disabled={!setBackdropScope}
+                        onSelect={(event) => event.preventDefault()}
+                        className={ITEM_CLASS}
+                      >
+                        <ScopeThumb scope={scope} />
+                        <span className="flex-1">
+                          {t(scope === "window" ? "themeMenu.backdropWindow" : "themeMenu.backdropConversation")}
+                        </span>
+                        <span className="flex size-4 items-center justify-center">
+                          <DropdownMenuPrimitive.ItemIndicator>
+                            <CheckIcon aria-hidden className="size-4 text-primary" />
+                          </DropdownMenuPrimitive.ItemIndicator>
+                        </span>
+                      </DropdownMenuPrimitive.RadioItem>
+                    ))}
+                  </DropdownMenuPrimitive.RadioGroup>
+                </DropdownMenuPrimitive.SubContent>
+              </DropdownMenuPrimitive.Portal>
+            </DropdownMenuPrimitive.Sub>
           </DropdownMenuPrimitive.Content>
         )}
       </DropdownMenuPrimitive.Portal>

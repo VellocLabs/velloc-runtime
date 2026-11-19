@@ -38,6 +38,7 @@ import {
 import type { ThemePluginRow } from '../../../mods/themeMods'
 import { YoursPane, type YoursTab } from './YoursPane'
 import { MarketplaceBrowser } from './MarketplaceBrowser'
+import { turnOffThemePlugins } from '../mods/themeLooks'
 import { useThemeMods } from '../mods/themeModsView'
 import { useCan } from '../useCan'
 import { ThemeBrowser } from './ThemeBrowser'
@@ -144,7 +145,7 @@ export function CustomizeScreen({
       }
       if (!enabled) return 0
       // Enabling here is always one theme at a time.
-      const count = await turnOffThemes(row.plugin).catch(() => null)
+      const count = await turnOffThemePlugins(turnOffThemes, row.plugin).catch(() => null)
       if (count) forgetApplied()
       return count
     }
@@ -157,7 +158,7 @@ export function CustomizeScreen({
       ...(canTurnOff
         ? {
             turnOffAll: async () => {
-              const count = await turnOffThemes()
+              const count = await turnOffThemePlugins(turnOffThemes)
               forgetApplied()
               return count
             },

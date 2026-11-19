@@ -148,9 +148,161 @@ describe('theme mods menu', () => {
     const setBackdropScope = vi.fn(async () => {})
     mount({ mods: MODS, backdropScope: 'window', single: false, refresh: () => {}, setBackdropScope })
     fireEvent.contextMenu(screen.getByTestId('blank'))
+    // The reach is chosen in the Backdrop covers submenu, not on the menu itself.
+    const trigger = await screen.findByTestId('theme-mods-menu-backdrop')
+    expect(screen.queryByTestId('theme-backdrop-scope:window')).toBeNull()
+    fireEvent.keyDown(trigger, { key: 'ArrowRight' })
     const standing = await screen.findByTestId('theme-backdrop-scope:window')
     expect(standing.getAttribute('aria-checked')).toBe('true')
     fireEvent.click(screen.getByTestId('theme-backdrop-scope:conversation'))
     expect(setBackdropScope).toHaveBeenCalledWith('conversation')
+  })
+})
+
+const SCENES_MOD = { plugin: 'theme-examples', id: 'theme-examples@velloc' }
+const sceneLook = (id: string, name: string, description: string, appearance: 'light' | 'dark') => ({
+  id,
+  name,
+  description,
+  appearance,
+  preview: `https://plugins.example/${id}.svg`,
+  use: { command: 'custom-theme', args: id },
+})
+const SCENES = {
+  name: 'theme-examples',
+  installed: true,
+  theme: {
+    looks: [
+      sceneLook('honu-lagoon', 'Honu Lagoon', 'A live ASCII lagoon from above', 'light'),
+      sceneLook('night-reef', 'Night Reef', 'The lagoon after dark', 'dark'),
+    ],
+  },
+} as unknown as NonNullable<ThemeModsContextValue['looks']>[number]
+
+const openSub = async (trigger: string) => {
+  fireEvent.contextMenu(screen.getByTestId('blank'))
+  fireEvent.keyDown(await screen.findByTestId(trigger), { key: 'ArrowRight' })
+}
+
+describe('theme mods menu — Turn off all', () => {
+  const base = (enabled: Record<string, boolean>, turnOffAll?: () => Promise<number>) => ({
+    mods: MODS,
+    backdropScope: 'window' as const,
+    single: false,
+    refresh: () => {},
+    enabled,
+    ...(turnOffAll ? { turnOffAll } : {}),
+  })
+
+  it('is greyed while no theme mod is on', async () => {
+    mount(base({ looks: false, aurora: false, bubblegum: false }, async () => 0))
+    await openSub('theme-mods-menu-mods')
+    const item = await screen.findByTestId('theme-mods-menu-turn-off')
+    expect(item.getAttribute('data-disabled')).not.toBeNull()
+  })
+
+  it('turns every theme plugin off at one press, and the rows follow', async () => {
+    const turnOffAll = vi.fn(async () => 2)
+    mount(base({ looks: true, aurora: false, bubblegum: true }, turnOffAll))
+    await openSub('theme-mods-menu-mods')
+    const item = await screen.findByTestId('theme-mods-menu-turn-off')
+    expect(item.getAttribute('data-disabled')).toBeNull()
+    fireEvent.click(item)
+    expect(turnOffAll).toHaveBeenCalledTimes(1)
+    await waitFor(() => expect(screen.getByTestId('theme-mod:looks').getAttribute('aria-checked')).toBe('false'))
+    expect(screen.getByTestId('theme-mod:bubblegum').getAttribute('aria-checked')).toBe('false')
+    await waitFor(() => expect(screen.getByTestId('theme-mods-menu-turn-off').getAttribute('data-disabled')).not.toBeNull())
+  })
+
+  it('sits in its own section between the mods and More themes', async () => {
+    mount({ ...base({ looks: true }, async () => 1), openThemeStore: () => {} })
+    await openSub('theme-mods-menu-mods')
+    const list = await screen.findByTestId('theme-mods-menu-list')
+    const order = Array.from(list.children).map(el =>
+      el.getAttribute('role') === 'separator' ? '|' : el.getAttribute('data-testid') ?? '',
+    )
+    const off = order.indexOf('theme-mods-menu-turn-off')
+    expect(order[off - 1]).toBe('|')
+    expect(order[off + 1]).toBe('|')
+    expect(order[off + 2]).toBe('theme-mods-menu-more')
+  })
+
+  it('is absent where the connection may not turn theme plugins off', async () => {
+    mount(base({ looks: true }))
+    await openSub('theme-mods-menu-mods')
+    await screen.findByTestId('theme-mods-menu-list')
+    expect(screen.queryByTestId('theme-mods-menu-turn-off')).toBeNull()
+  })
+})
+
+describe('theme mods menu — Themes', () => {
+  const withLooks = (
+    applyLook: ThemeModsContextValue['applyLook'],
+    lookTarget: ThemeModsContextValue['lookTarget'] = { sessionId: 's', busy: false },
+  ): ThemeModsContextValue => ({
+    mods: [SCENES_MOD],
+    backdropScope: 'window',
+    single: false,
+    refresh: () => {},
+    enabled: { 'theme-examples': true },
+    looks: [SCENES],
+    lookTarget,
+    applyLook,
+  })
+
+  it('lists, at the top, each look of an enabled theme plugin the directory knows, with its description', async () => {
+    mount(withLooks(async () => ({ ok: true, via: 'command' })))
+    fireEvent.contextMenu(screen.getByTestId('blank'))
+    const menu = await screen.findByTestId('theme-mods-menu')
+    expect(menu.querySelector('[role="menuitem"]')?.getAttribute('data-testid')).toBe('theme-mods-menu-looks')
+    await openSub('theme-mods-menu-looks')
+    const honu = await screen.findByTestId('theme-look:theme-examples/honu-lagoon')
+    expect(honu.textContent).toContain('Honu Lagoon')
+    expect(honu.textContent).toContain('A live ASCII lagoon from above')
+    expect(screen.getByTestId('theme-look:theme-examples/night-reef')).toBeTruthy()
+  })
+
+  it('a press applies that look in the menu session and closes the menu', async () => {
+    const applyLook = vi.fn(async () => ({ ok: true as const, via: 'command' as const }))
+    mount(withLooks(applyLook))
+    await openSub('theme-mods-menu-looks')
+    fireEvent.click(await screen.findByTestId('theme-look:theme-examples/honu-lagoon'))
+    expect(applyLook).toHaveBeenCalledWith('s', 'theme-examples', 'honu-lagoon')
+    await waitFor(() => expect(screen.queryByTestId('theme-mods-menu')).toBeNull())
+  })
+
+  it('a look that does not apply says why and keeps the list open', async () => {
+    mount(withLooks(async () => ({ ok: false, reason: 'notLoaded' })))
+    await openSub('theme-mods-menu-looks')
+    fireEvent.click(await screen.findByTestId('theme-look:theme-examples/night-reef'))
+    const list = await screen.findByTestId('theme-mods-menu-looks-list')
+    await waitFor(() => expect(list.querySelector('[role="status"]')).not.toBeNull())
+  })
+
+  it('waits for a running turn: looks are greyed and nothing is asked', async () => {
+    const applyLook = vi.fn(async () => ({ ok: true as const, via: 'command' as const }))
+    mount(withLooks(applyLook, { sessionId: 's', busy: true }))
+    await openSub('theme-mods-menu-looks')
+    const honu = await screen.findByTestId('theme-look:theme-examples/honu-lagoon')
+    expect(honu.getAttribute('data-disabled')).not.toBeNull()
+    fireEvent.click(honu)
+    expect(applyLook).not.toHaveBeenCalled()
+  })
+
+  it('marks the look in use once its plugin stands', async () => {
+    const { rememberAppliedLook } = await import('../browser/webview/mods/themeLooks')
+    rememberAppliedLook('s', 'theme-examples/night-reef')
+    mount(withLooks(async () => ({ ok: true, via: 'command' })), { theme: { plugin: 'theme-examples' } as never })
+    await openSub('theme-mods-menu-looks')
+    const reef = await screen.findByTestId('theme-look:theme-examples/night-reef')
+    expect(reef.getAttribute('data-in-use')).toBe('')
+    expect(screen.getByTestId('theme-look:theme-examples/honu-lagoon').getAttribute('data-in-use')).toBeNull()
+  })
+
+  it('has no Themes row without looks to offer or the right to apply one', async () => {
+    mount({ ...withLooks(undefined), looks: [] })
+    fireEvent.contextMenu(screen.getByTestId('blank'))
+    await screen.findByTestId('theme-mods-menu')
+    expect(screen.queryByTestId('theme-mods-menu-looks')).toBeNull()
   })
 })

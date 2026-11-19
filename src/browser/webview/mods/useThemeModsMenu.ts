@@ -7,6 +7,8 @@ import * as React from 'react'
 
 import type { ThemeModsContextValue } from '../../../components/assistant-ui/theme-mods-context'
 import type { ThemeModEntry } from '../../../mods/themeMods'
+import { BUILTIN_MARKETPLACE_KEY } from '../../../pluginHost/builtinMarketplace'
+import type { RuntimeConnection } from '../../runtimeClient/RuntimeConnection'
 import type { NexusSettingsBridge } from '../nexusSettingsBridge'
 import {
   pluginsListBuiltin,
@@ -15,6 +17,7 @@ import {
   pluginsSetEnabled,
   pluginsSetLocalEnabled,
 } from '../settings/clients'
+import { askUseLook, readThemePlugins, turnOffThemePlugins, type ThemePlugin } from './themeLooks'
 import type { ThemeModsView } from './themeModsView'
 
 const folderKey = (path: string) => path.replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase()
@@ -62,21 +65,46 @@ export type ThemeModsMenuOptions = {
   openThemeStore?: () => void
   /** Called once a press has turned `plugin` on. */
   afterEnable?: (plugin: string) => void
+  canTurnOffAll?: boolean
+  /** Looks are applied through it; absent, the menu lists none. */
+  runtimeConnection?: () => Promise<RuntimeConnection>
+  canUseLook?: boolean
+  /** The session the window shows, unless a CLI runs it. */
+  lookTarget?: { sessionId: string; busy: boolean } | null
+}
+
+/** The listings whose plugin the lists say is on: its built-in install, or a theme mod of that name. */
+export function enabledThemeListings(
+  listings: readonly ThemePlugin[],
+  lists: PluginEnablement,
+  modsEnabled: Readonly<Record<string, boolean>>,
+): ThemePlugin[] {
+  return listings.filter(
+    listing => lists.byId.get(`${listing.name}@${BUILTIN_MARKETPLACE_KEY}`) === true || modsEnabled[listing.name] === true,
+  )
 }
 
 /** Undefined until the runtime has answered the theme mods. */
 export function useThemeModsMenu(options: ThemeModsMenuOptions): ThemeModsContextValue | undefined {
   const { view, bridge, canSetEnabled, canSetBackdropScope, openThemeStore, afterEnable } = options
+  const { canTurnOffAll = false, runtimeConnection, canUseLook = false, lookTarget = null } = options
   const [lists, setLists] = React.useState<PluginEnablement | null>(null)
+  const [listings, setListings] = React.useState<readonly ThemePlugin[]>([])
   const round = React.useRef(0)
+  const wantsLooks = canUseLook && runtimeConnection !== undefined
 
   const readLists = React.useCallback(async () => {
     if (!bridge) return
     const mine = ++round.current
-    const next = await readPluginEnablement(bridge).catch(() => null)
+    const [next, themes] = await Promise.all([
+      readPluginEnablement(bridge).catch(() => null),
+      wantsLooks ? readThemePlugins(bridge).catch(() => null) : Promise.resolve(null),
+    ])
     // A later read has started: its answer is the one to show.
-    if (next && mine === round.current) setLists(next)
-  }, [bridge])
+    if (mine !== round.current) return
+    if (next) setLists(next)
+    if (themes) setListings(themes.plugins)
+  }, [bridge, wantsLooks])
 
   React.useEffect(() => {
     void readLists()
@@ -104,19 +132,61 @@ export function useThemeModsMenu(options: ThemeModsMenuOptions): ThemeModsContex
     [bridge, readLists, afterEnable],
   )
 
+  const viewTurnOffAll = view.turnOffAll
+  const turnOffAll = React.useCallback(async (): Promise<number> => {
+    try {
+      return await turnOffThemePlugins(viewTurnOffAll)
+    } finally {
+      await readLists()
+    }
+  }, [viewTurnOffAll, readLists])
+
+  const applyLook = React.useCallback(
+    (sessionId: string, plugin: string, lookId: string) => askUseLook(runtimeConnection!, sessionId, plugin, lookId),
+    [runtimeConnection],
+  )
+
   const state = view.state
   const setBackdropScope = view.setBackdropScope
+  const targetId = lookTarget?.sessionId
+  const targetBusy = lookTarget?.busy ?? false
   return React.useMemo(() => {
     if (!state) return undefined
+    const enabled = lists ? themeModEnablement(state.mods, lists) : undefined
     return {
       mods: state.mods,
       backdropScope: state.backdropScope,
       single: state.single,
-      ...(lists ? { enabled: themeModEnablement(state.mods, lists) } : {}),
+      ...(enabled ? { enabled } : {}),
       refresh,
       ...(canSetBackdropScope ? { setBackdropScope } : {}),
       ...(bridge && canSetEnabled ? { setEnabled } : {}),
       ...(openThemeStore ? { openThemeStore } : {}),
+      ...(canTurnOffAll ? { turnOffAll } : {}),
+      ...(wantsLooks && lists && enabled
+        ? {
+            looks: enabledThemeListings(listings, lists, enabled),
+            lookTarget: targetId === undefined ? null : { sessionId: targetId, busy: targetBusy },
+            applyLook,
+          }
+        : {}),
     }
-  }, [state, lists, refresh, setBackdropScope, setEnabled, bridge, canSetEnabled, canSetBackdropScope, openThemeStore])
+  }, [
+    state,
+    lists,
+    listings,
+    refresh,
+    setBackdropScope,
+    setEnabled,
+    bridge,
+    canSetEnabled,
+    canSetBackdropScope,
+    openThemeStore,
+    canTurnOffAll,
+    turnOffAll,
+    wantsLooks,
+    targetId,
+    targetBusy,
+    applyLook,
+  ])
 }
