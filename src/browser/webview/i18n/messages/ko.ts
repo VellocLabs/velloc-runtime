@@ -2290,6 +2290,10 @@ export const ko: Messages = {
   'settings.plugins.providers.consent.provider': '제공업체: {provider}',
   'settings.plugins.providers.consent.domains': '접속할 수 있는 곳: {domains}',
   'settings.plugins.providers.consent.noDomains': '접속할 도메인을 선언하지 않았습니다.',
+  'settings.plugins.providers.routes.any': '설정해 둔 다른 제공업체를 거쳐 해당 제공업체의 자격 증명으로 요청을 보냅니다: 모든 제공업체.',
+  'settings.plugins.providers.routes.list': '설정해 둔 다른 제공업체를 거쳐 해당 제공업체의 자격 증명으로 요청을 보냅니다: {providers}',
+  'settings.plugins.providers.routes.widened': '{id}이(가) 이제 설정해 둔 다른 제공업체를 거쳐 해당 제공업체의 자격 증명으로 요청을 보냅니다: {providers}',
+  'settings.plugins.providers.routes.widenedAny': '{id}이(가) 이제 설정해 둔 다른 모든 제공업체를 거쳐 해당 제공업체의 자격 증명으로 요청을 보냅니다.',
   'settings.plugins.providers.consent.proxyPools':
     '요청을 사용자의 프록시 설정 대신 이 공급자의 코드가 선택하는 프록시 서버를 통해 보냅니다. 해당 주소는 여기에 표시되지 않습니다.',
   'settings.plugins.providers.consent.secrets': '저장하는 비밀 이름: {secrets}',

@@ -2336,6 +2336,10 @@ export const fr: Messages = {
   'settings.plugins.providers.consent.provider': 'Fournisseur : {provider}',
   'settings.plugins.providers.consent.domains': 'Peut contacter : {domains}',
   'settings.plugins.providers.consent.noDomains': 'Ne déclare aucun domaine à contacter.',
+  'settings.plugins.providers.routes.any': 'Envoie vos requêtes via d’autres fournisseurs que vous avez configurés, avec leurs identifiants : n’importe quel fournisseur.',
+  'settings.plugins.providers.routes.list': 'Envoie vos requêtes via d’autres fournisseurs que vous avez configurés, avec leurs identifiants : {providers}',
+  'settings.plugins.providers.routes.widened': '{id} envoie désormais vos requêtes via d’autres fournisseurs que vous avez configurés, avec leurs identifiants : {providers}',
+  'settings.plugins.providers.routes.widenedAny': '{id} envoie désormais vos requêtes via n’importe quel autre fournisseur que vous avez configuré, avec ses identifiants.',
   'settings.plugins.providers.consent.proxyPools':
     'Envoie vos requêtes via des serveurs proxy choisis par son code, au lieu de votre propre paramètre de proxy. Leurs adresses ne sont pas affichées ici.',
   'settings.plugins.providers.consent.secrets': 'Stocke des secrets nommés : {secrets}',

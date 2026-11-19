@@ -2330,6 +2330,10 @@ export const es: Messages = {
   'settings.plugins.providers.consent.provider': 'Proveedor: {provider}',
   'settings.plugins.providers.consent.domains': 'Puede conectarse a: {domains}',
   'settings.plugins.providers.consent.noDomains': 'No declara dominios a los que conectarse.',
+  'settings.plugins.providers.routes.any': 'Envía sus solicitudes a través de otros proveedores que haya configurado, con las credenciales de estos: cualquier proveedor.',
+  'settings.plugins.providers.routes.list': 'Envía sus solicitudes a través de otros proveedores que haya configurado, con las credenciales de estos: {providers}',
+  'settings.plugins.providers.routes.widened': '{id} ahora envía sus solicitudes a través de otros proveedores que haya configurado, con las credenciales de estos: {providers}',
+  'settings.plugins.providers.routes.widenedAny': '{id} ahora envía sus solicitudes a través de cualquier otro proveedor que haya configurado, con las credenciales de este.',
   'settings.plugins.providers.consent.proxyPools':
     'Envía tus solicitudes a través de servidores proxy que elige su código, en lugar de tu propia configuración de proxy. Sus direcciones no se muestran aquí.',
   'settings.plugins.providers.consent.secrets': 'Guarda secretos llamados: {secrets}',

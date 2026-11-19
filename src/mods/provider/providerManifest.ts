@@ -27,6 +27,7 @@ import {
 import { checkModelFacts, type ProviderModelFacts } from './providerModelFacts'
 import { checkProviderWire, type ProviderWireManifest } from './providerToolAliasesManifest'
 import { withSettingBinds, type SettingBinding } from './providerSettingBinds'
+import { insideRoutesTo } from '../../models/drivers/providerRouter'
 
 /** The `providerApi` values this Velloc serves. A manifest naming another is
  *  refused with a message that names it. */
@@ -153,6 +154,8 @@ export type ProviderManifest = {
   /** A router's boundary: any provider the person set up, or every instance
    *  of the listed provider definitions. Read on a router alone. */
   routesTo?: '*' | string[]
+  /** The wire fields. A router has no wire: it carries an empty
+   *  `defaultBaseUrl`, no `domains` and a `format` nothing reads. */
   displayName: LocalizedText
   /** Package-relative `.svg`, `./`-prefixed. */
   icon?: string
@@ -810,9 +813,77 @@ function checkUpdates(value: unknown, bad: Problems): ProviderManifest['updates'
   return out
 }
 
+/** The fields that describe a provider's own endpoint, its requests and its
+ *  ids. A router has none of them. */
+const WIRE_FIELDS = ['defaultBaseUrl', 'domains', 'format', 'requestNeeds', 'signNeeds', 'ids'] as const
+export const ROUTES_TO_MAX = 64
+
+function checkKind(value: unknown, bad: Problems): ProviderKind | undefined {
+  if (value === undefined) return 'provider'
+  if (value === 'provider' || value === 'router') return value
+  bad(`kind: "${String(value)}" is not known to this Velloc (it knows provider / router), so the provider is not loaded`)
+  return undefined
+}
+
+/**
+ * Security: a router's boundary. `"*"`, or 1 to 64 provider ids with no
+ * duplicates; the router's own id is never inside its own list.
+ */
+function checkRoutesTo(value: unknown, ownId: string, bad: Problems): '*' | string[] | undefined {
+  if (value === undefined) {
+    bad('routesTo: required on a router; "*" for any provider the person set up, or a list of provider ids')
+    return undefined
+  }
+  if (value === '*') return '*'
+  if (!isStringList(value) || value.length === 0 || value.length > ROUTES_TO_MAX) {
+    bad(`routesTo: expected "*" or a list of 1 to ${ROUTES_TO_MAX} provider ids`)
+    return undefined
+  }
+  for (const id of value) {
+    if (!ID_CHARS.test(id) || id.length > PROVIDER_ID_MAX_LENGTH) {
+      bad(`routesTo: "${id}" is not a provider id (a built-in id, or mod.<plugin>.<key>)`)
+      return undefined
+    }
+  }
+  const twice = value.find((id, index) => value.indexOf(id) !== index)
+  if (twice !== undefined) {
+    bad(`routesTo: "${twice}" is listed twice`)
+    return undefined
+  }
+  if (insideRoutesTo(value, { definition: ownId })) {
+    bad(`routesTo: "${ownId}" is this router itself; a router sends through other providers`)
+    return undefined
+  }
+  return [...value]
+}
+
+/**
+ * What a router may not carry, each problem naming its field.
+ * Contract: a router's `policy.retry` is the retry schedule of every request
+ * sent through it; one that declares none gets the platform's default
+ * schedule. The schedule of the provider a request was sent to is never used.
+ */
+function refuseRouterFields(raw: Record<string, unknown>, bad: Problems): void {
+  for (const field of WIRE_FIELDS) {
+    if (raw[field] !== undefined) {
+      bad(`${field}: a router has no endpoint of its own, so it declares no ${field}`)
+    }
+  }
+  const methods = isRecord(raw.credentials) ? raw.credentials.methods : undefined
+  if (Array.isArray(methods) && !(methods.length === 1 && methods[0] === 'anonymous')) {
+    bad('credentials.methods: a router has no key and no sign-in; its methods are ["anonymous"] and nothing else')
+  }
+  if (isRecord(raw.policy) && raw.policy.errors !== undefined) {
+    bad(
+      'policy.errors: a router has no replies of its own to judge; it may declare policy.retry, ' +
+        'the retry schedule of every request sent through it',
+    )
+  }
+}
+
 /** The provider-level fields; anything not listed is ignored, as a newer
  *  manifest may carry fields an older Velloc does not know. */
-function checkProvider(key: string, raw: unknown, errors: string[]): ProviderManifest | undefined {
+function checkProvider(key: string, id: string, raw: unknown, errors: string[]): ProviderManifest | undefined {
   const label = `providers.${key}`
   let failed = false
   const bad: Problems = message => {
@@ -834,10 +905,21 @@ function checkProvider(key: string, raw: unknown, errors: string[]): ProviderMan
     return undefined
   }
 
+  const kind = checkKind(raw.kind, bad)
+  if (kind === undefined) return undefined
+  const router = kind === 'router'
+  let routesTo: '*' | string[] | undefined
+  if (router) {
+    routesTo = checkRoutesTo(raw.routesTo, id, bad)
+    refuseRouterFields(raw, bad)
+  } else if (raw.routesTo !== undefined) {
+    bad('routesTo: only a router ("kind": "router") declares routesTo')
+  }
+
   const displayName = localized(raw.displayName, 'displayName', bad)
-  const domains = checkDomains(raw.domains, bad)
-  const defaultBaseUrl = checkBaseUrl(raw.defaultBaseUrl, domains, bad)
-  const format = checkFormat(raw.format, bad)
+  const domains = router ? [] : checkDomains(raw.domains, bad)
+  const defaultBaseUrl = router ? '' : checkBaseUrl(raw.defaultBaseUrl, domains, bad)
+  const format = router ? WIRE_FORMATS[0] : checkFormat(raw.format, bad)
   const credentials = checkCredentials(raw.credentials, bad)
 
   let icon: string | undefined
@@ -890,6 +972,7 @@ function checkProvider(key: string, raw: unknown, errors: string[]): ProviderMan
   }
   return {
     providerApi: api,
+    ...(router ? { kind, routesTo } : {}),
     displayName,
     ...(icon !== undefined ? { icon } : {}),
     defaultBaseUrl,
@@ -942,8 +1025,19 @@ export function checkProviderManifests(
       errors.push(`providers.${key}: the provider id "${id}" is ${id.length} characters; the most is ${PROVIDER_ID_MAX_LENGTH}`)
       continue
     }
-    const checked = checkProvider(key, raw, errors)
+    const checked = checkProvider(key, id, raw, errors)
     if (checked) out[key] = checked
+  }
+  // One module serves one kind: what it may hook is decided per module.
+  const kindOfModule = new Map<string, ProviderKind>()
+  for (const [key, provider] of Object.entries(out)) {
+    const kind = provider.kind ?? 'provider'
+    const first = kindOfModule.get(provider.module)
+    if (first === undefined) kindOfModule.set(provider.module, kind)
+    else if (first !== kind) {
+      errors.push(`providers.${key}.module: ${provider.module} already serves a ${first}; a router and a provider cannot share a module`)
+      delete out[key]
+    }
   }
   return Object.keys(out).length > 0 ? out : undefined
 }

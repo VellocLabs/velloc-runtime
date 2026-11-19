@@ -242,3 +242,74 @@ describe('the session detail an app page asks for (F-42)', () => {
     expect(widened(grantOf({}, undefined, false, true), grantOf({})).widened).toBe(false)
   })
 })
+
+describe('a router in the grant (F-27)', () => {
+  const ROUTER = {
+    kind: 'router',
+    defaultBaseUrl: undefined,
+    domains: undefined,
+    format: undefined,
+    credentials: { methods: ['anonymous'] },
+  }
+  const routing = (routesTo: unknown): Grant => grant({ ...ROUTER, routesTo })
+
+  it('reads the kind and the boundary, sorted; a provider with its own endpoint carries neither', () => {
+    expect(routing(['zeta', 'mod.acme.other', 'alpha']).providers.main).toEqual({
+      kind: 'router',
+      routesTo: ['alpha', 'mod.acme.other', 'zeta'],
+      domains: [],
+      secrets: [],
+      readsSecrets: false,
+      requestNeeds: [],
+    })
+    expect(routing('*').providers.main).toMatchObject({ kind: 'router', routesTo: '*' })
+    expect(grant(BASE).providers.main).not.toHaveProperty('kind')
+    expect(grant(BASE).providers.main).not.toHaveProperty('routesTo')
+  })
+
+  it('reads a manifest as written, before it was checked', () => {
+    const raw = { providers: { main: { kind: 'router', routesTo: ['alpha'], credentials: { methods: ['anonymous'] } } } }
+    expect(pluginGrantOf(raw).providers.main).toMatchObject({ kind: 'router', routesTo: ['alpha'], domains: [] })
+    const unreadable = { providers: { main: { kind: 'router', credentials: { methods: ['anonymous'] } } } }
+    expect(pluginGrantOf(unreadable).providers.main).toMatchObject({ kind: 'router', routesTo: [] })
+  })
+
+  it('a provider that turns into a router widens, naming what it routes to', () => {
+    const delta = widened(grant(BASE), routing(['alpha']))
+    expect(delta.widened).toBe(true)
+    expect(delta.added.perProvider.main).toMatchObject({ routes: ['alpha'] })
+    expect(widened(grant(BASE), routing('*')).added.perProvider.main).toMatchObject({ routes: '*' })
+  })
+
+  it('routesTo gaining an id widens, naming the gained id alone', () => {
+    const delta = widened(routing(['alpha']), routing(['alpha', 'beta']))
+    expect(delta.widened).toBe(true)
+    expect(delta.added.perProvider.main).toEqual({ domains: [], secrets: [], readsSecrets: false, requestNeeds: [], routes: ['beta'] })
+  })
+
+  it('a list turning to "*" widens', () => {
+    const delta = widened(routing(['alpha', 'beta']), routing('*'))
+    expect(delta.widened).toBe(true)
+    expect(delta.added.perProvider.main).toMatchObject({ routes: '*' })
+  })
+
+  it('narrowing is silent: a dropped id, "*" turning to a list, the same list reordered', () => {
+    expect(widened(routing(['alpha', 'beta']), routing(['alpha'])).widened).toBe(false)
+    expect(widened(routing('*'), routing(['alpha'])).widened).toBe(false)
+    expect(widened(routing('*'), routing('*')).widened).toBe(false)
+    expect(widened(routing(['alpha', 'beta']), routing(['beta', 'alpha'])).widened).toBe(false)
+  })
+
+  it('a new router is a provider nobody consented to, with its boundary in the delta', () => {
+    const delta = widened(grantOf({}), routing('*'))
+    expect(delta.added.providers).toEqual(['main'])
+    expect(delta.added.perProvider.main).toMatchObject({ routes: '*' })
+  })
+
+  it('a router that turns into a provider with an endpoint widens by its domains', () => {
+    const delta = widened(routing('*'), grant(BASE))
+    expect(delta.widened).toBe(true)
+    expect(delta.added.perProvider.main?.domains).toEqual(['api.acme.test'])
+    expect(delta.added.perProvider.main).not.toHaveProperty('routes')
+  })
+})

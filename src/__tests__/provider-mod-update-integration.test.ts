@@ -56,6 +56,16 @@ beforeEach(() => {
   wipeSettingsMemos()
 })
 
+/** The provider fields that make `main` a router through one built-in provider. */
+const ROUTER = {
+  kind: 'router',
+  routesTo: ['relay-a'],
+  defaultBaseUrl: undefined,
+  domains: undefined,
+  format: undefined,
+  credentials: { methods: ['anonymous'] },
+}
+
 /** A provider module that answers `provider.models` with `tag` after `waitMs`. */
 const moduleText = (tag: string, waitMs: number, extra = ''): string => `
   export function register(on) {
@@ -195,6 +205,26 @@ describe('provider mod updates, through the protocol', () => {
     expect(back.status).toMatchObject({ activeVersion: '1.0.0' })
     expect(await w.runtime.call(PROVIDER_ID, 'provider.models', {})).toEqual({ raised: true, value: ['v1'] })
     await until(() => w.deltas.at(-1)?.plugins[0]?.activeVersion === '1.0.0')
+  })
+
+  it('a version that turns the provider into a router is parked, naming what it routes to (F-27)', async () => {
+    const w = await build()
+    await w.ask('baseline', { pluginId: ID })
+    await w.publish('2.0.0', ROUTER, moduleText('v2', 1))
+    const checked = await w.ask('check', { pluginId: ID })
+    expect(checked.plugins[0]).toMatchObject({ state: 'needs-consent', activeVersion: '1.0.0', pending: { version: '2.0.0' } })
+    expect(checked.plugins[0].pending.delta.added.perProvider.main.routes).toEqual(['relay-a'])
+    expect(await w.runtime.call(PROVIDER_ID, 'provider.models', {})).toEqual({ raised: true, value: ['v1'] })
+  })
+
+  it('a router version whose module hooks a wire event is refused at update time (F-27)', async () => {
+    const w = await build()
+    await w.ask('baseline', { pluginId: ID })
+    await w.publish('2.0.0', ROUTER, moduleText('v2', 1, `on('provider.request', () => undefined)`))
+    const checked = await w.ask('check', { pluginId: ID })
+    expect(checked.plugins[0].state).not.toBe('needs-consent')
+    expect(JSON.stringify(checked.plugins[0])).toMatch(/a router module hooks provider\.request/)
+    expect(await w.runtime.call(PROVIDER_ID, 'provider.models', {})).toEqual({ raised: true, value: ['v1'] })
   })
 
   it('declining a parked version drops it, and the old one keeps serving', async () => {

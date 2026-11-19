@@ -7,6 +7,7 @@
  * one past `MOD_VALIDATE_LIMITS`, is not read and is reported. Nothing is written.
  */
 
+import type { ProviderKind } from './provider/providerManifest'
 import type * as TS from 'typescript'
 import type { RuntimeFs } from '../utils/fs/runtimeFs'
 import { basenameRuntimePath, joinRuntimePath, normalizeRuntimePath } from '../utils/runtimePaths'
@@ -231,6 +232,9 @@ export async function validateModFolder(folder: string, deps: ModValidateDeps): 
     ...hookModules.map(path => [path, 'hooks'] as const),
     ...providerModules.map(path => [path, 'provider'] as const),
   ]
+  const routerModules = new Set(
+    (plugin.providers ?? []).filter(provider => provider.manifest.kind === 'router').map(provider => provider.modulePath),
+  )
   if (listed.length > MOD_VALIDATE_LIMITS.modules) {
     findings.push({
       level: 'error',
@@ -240,7 +244,7 @@ export async function validateModFolder(folder: string, deps: ModValidateDeps): 
     })
   }
   for (const [path, kind] of listed.slice(0, MOD_VALIDATE_LIMITS.modules)) {
-    const checked = await validateModule(path, kind, root, plugin.name, fs, loadTs, findings)
+    const checked = await validateModule(path, kind, root, plugin.name, fs, loadTs, findings, routerModules.has(path) ? 'router' : 'provider')
     if (!checked) continue
     modules.push(checked.module)
     for (const step of checked.module.engineCreate) for (const noun of step.adds) ownNouns.add(noun)
@@ -266,6 +270,7 @@ async function validateModule(
   fs: RuntimeFs,
   loadTs: () => Promise<typeof TS>,
   findings: ModValidateFinding[],
+  providerKind: ProviderKind = 'provider',
 ): Promise<{ module: ModValidateModule; uses: ModUses } | null> {
   const refuse = (text: Said, code: string, where: { file?: string; line?: number } = { file: path }): null => {
     findings.push({ level: 'refused', code, ...text, ...where })
@@ -340,7 +345,7 @@ async function validateModule(
   }
   const registrations = asHookRegistrations(statics.hooks)
   if (kind === 'provider') {
-    const reason = refuseProviderRegistrations(registrations) ?? refuseProviderModuleUses(uses)
+    const reason = refuseProviderRegistrations(registrations, providerKind) ?? refuseProviderModuleUses(uses, providerKind)
     if (reason) refuse({ message: reason }, 'admission')
     return { module, uses }
   }

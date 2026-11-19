@@ -1,22 +1,31 @@
 /**
  * Plugins: the GRANT a person consents to — each provider's `domains`,
- * `secrets`, `readsSecrets`, `requestNeeds`, `signNeeds`, the reach of its proxy pools, the folders an
+ * `secrets`, `readsSecrets`, `requestNeeds`, `signNeeds`, the reach of its proxy pools, a router's
+ * `routesTo` (provider definitions, so an added instance of a listed one asks for nothing new), the folders an
  * app's background module may reach, whether it may run the agent (F-40), and
  * whether its app pages may read each session's detail (F-42). Consent binds to the grant, not
- * the bytes: an update no wider than the consented grant needs no new consent.
- * Pure.
+ * the bytes: an update no wider than the consented grant needs no new consent. Pure.
  */
 
 import { manifestAsksAgent } from '../mods/app/appAgentRun'
 import { manifestAsksSessionDetail } from '../mods/app/appPageTopics'
 import { addedFolderScopes, folderScopesOf, type FolderScopes } from '../mods/app/appFolderScopes'
+import { insideRoutesTo } from '../models/drivers/providerRouter'
 import type {
   ProviderManifest,
   ProviderRequestNeed,
   ProviderSignNeed,
 } from '../mods/provider/providerManifest'
 
+/** A router's boundary as consented: any set-up provider, or the listed
+ *  provider definitions (sorted, unique). */
+export type GrantRoutes = '*' | string[]
+
 export type ProviderGrant = {
+  /** Absent: a provider with its own endpoint. */
+  kind?: 'router'
+  /** On a router alone: the providers its requests may go through. */
+  routesTo?: GrantRoutes
   /** Lower case, sorted, unique. */
   domains: string[]
   /** Sorted, unique. */
@@ -52,6 +61,9 @@ export type ProviderGrantAddition = {
   signNeeds?: ProviderSignNeed
   /** It newly has proxy pools. */
   proxyPools?: true
+  /** It newly sends through other providers: `"*"` for any, or the provider
+   *  definitions that were not inside the consented boundary. */
+  routes?: GrantRoutes
 }
 
 export type GrantDelta = {
@@ -77,13 +89,33 @@ const REQUEST_NEED_ORDER: readonly ProviderRequestNeed[] = ['system', 'tools', '
 const SIGN_RANK: Readonly<Record<ProviderSignNeed, number>> = { digest: 1, body: 2 }
 
 const sortedUnique = (values: readonly string[]): string[] => [...new Set(values)].sort()
+const listOf = (value: unknown): string[] =>
+  Array.isArray(value) ? value.filter((entry): entry is string => typeof entry === 'string') : []
+
+/**
+ * The part of a router's boundary that the consented grant does not cover:
+ * `"*"` over a list or over no router at all, or the listed definitions that
+ * are outside the consented boundary. Undefined: nothing new.
+ */
+function addedRoutes(consented: ProviderGrant | undefined, next: ProviderGrant): GrantRoutes | undefined {
+  if (next.kind !== 'router' || next.routesTo === undefined) return undefined
+  const before: GrantRoutes = consented?.kind === 'router' ? (consented.routesTo ?? []) : []
+  if (next.routesTo === '*') return before === '*' ? undefined : '*'
+  const gained = next.routesTo.filter(definition => !insideRoutesTo(before, { definition }))
+  // A provider that turns into a router widens even when it lists nothing.
+  return gained.length > 0 || consented?.kind !== 'router' ? gained : undefined
+}
 
 /** The grant of one provider manifest. */
 export function providerGrantOf(manifest: ProviderManifest): ProviderGrant {
   const needs = new Set(manifest.requestNeeds ?? [])
   const proxyPools = Object.keys(manifest.egressPools ?? {}).length > 0
+  // A router whose boundary cannot be read is granted no provider at all.
+  const routesTo: GrantRoutes | undefined =
+    manifest.kind !== 'router' ? undefined : manifest.routesTo === '*' ? '*' : sortedUnique(listOf(manifest.routesTo))
   return {
-    domains: sortedUnique(manifest.domains.map(domain => domain.trim().toLowerCase())),
+    ...(routesTo !== undefined ? { kind: 'router' as const, routesTo } : {}),
+    domains: sortedUnique(listOf(manifest.domains).map(domain => domain.trim().toLowerCase())),
     secrets: sortedUnique((manifest.credentials.secrets ?? []).map(secret => secret.name)),
     readsSecrets: manifest.credentials.readsSecrets === true,
     requestNeeds: REQUEST_NEED_ORDER.filter(need => needs.has(need)),
@@ -129,7 +161,8 @@ function additionOf(consented: ProviderGrant | undefined, next: ProviderGrant): 
   const wider =
     next.signNeeds !== undefined && SIGN_RANK[next.signNeeds] > (consented?.signNeeds ? SIGN_RANK[consented.signNeeds] : 0)
   const widerPools = next.proxyPools === true && consented?.proxyPools !== true
-  if (domains.length === 0 && secrets.length === 0 && !readsSecrets && requestNeeds.length === 0 && !wider && !widerPools) {
+  const routes = addedRoutes(consented, next)
+  if (domains.length === 0 && secrets.length === 0 && !readsSecrets && requestNeeds.length === 0 && !wider && !widerPools && routes === undefined) {
     return undefined
   }
   return {
@@ -139,17 +172,17 @@ function additionOf(consented: ProviderGrant | undefined, next: ProviderGrant): 
     requestNeeds,
     ...(wider ? { signNeeds: next.signNeeds } : {}),
     ...(widerPools ? { proxyPools: next.proxyPools } : {}),
+    ...(routes !== undefined ? { routes } : {}),
   }
 }
 
 /**
- * Whether `next` asks for more than `consented`. A new provider key, a new
- * domain, a new secret name, `readsSecrets` turned on, a new `requestNeeds`
- * value, a first proxy pool, or a larger `signNeeds`
- * (none < digest < body) is wider, as is a
- * folder not consented to, a read-only one asked for writing, or agent runs
- * or session detail not consented to. Dropping or
- * reducing any of them, or dropping a provider, is not.
+ * Whether `next` asks for more than `consented`. A new provider key, domain or secret name,
+ * `readsSecrets` turned on, a new `requestNeeds` value, a first proxy pool, or a larger `signNeeds`
+ * (none < digest < body) is wider, as is a provider turning into a router, a router's `routesTo`
+ * gaining a provider or turning to `"*"`, a folder not consented to, a read-only one asked for
+ * writing, or agent runs or session detail not consented to. Dropping or reducing any of them,
+ * or dropping a provider, is not.
  */
 export function widened(consented: Grant, next: Grant): GrantDelta {
   const folders = addedFolderScopes(consented.folders, next.folders)

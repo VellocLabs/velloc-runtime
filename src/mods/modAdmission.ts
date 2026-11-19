@@ -14,9 +14,11 @@ import {
   PROVIDER_ABI,
   PROVIDER_EVENT_NAMES,
   ROUTER_ONLY_EVENTS,
+  WIRE_ONLY_EVENTS,
   isProviderPattern,
   refuseProviderModuleCall,
 } from './provider/providerEvents'
+import type { ProviderKind } from './provider/providerManifest'
 import { PROPOSED_SESSION_FAMILY_EVENTS } from './sessionFamilyEvents'
 
 /** The compatibility level a refusal names. */
@@ -352,12 +354,20 @@ export function refuseRegistrations(
 
 // ── provider modules (Provider Mods) ──
 
+/** The `$.provider` method a router's module alone may call. */
+const ROUTER_ONLY_CALL = 'provider.peers'
+
 /**
  * Security: the reason a PROVIDER module hooks something it may not, or null. Only
  * provider events, by name or `provider.*`, and no generators: its one worker serves
- * every session and belongs to none.
+ * every session and belongs to none. A router's module hooks none of the events
+ * that shape, sign or sign in a provider's own requests; a provider's module
+ * hooks none of a router's. `provider.*` is open to both: an event of the other
+ * kind is never raised for the module.
  */
-export function refuseProviderRegistrations(hooks: readonly HookRegistration[]): string | null {
+export function refuseProviderRegistrations(hooks: readonly HookRegistration[], kind: ProviderKind = 'provider'): string | null {
+  const otherKinds: readonly string[] = kind === 'router' ? WIRE_ONLY_EVENTS : ROUTER_ONLY_EVENTS
+  const wrongKind: string[] = []
   const foreign: string[] = []
   const unraised: string[] = []
   const generators: string[] = []
@@ -371,17 +381,26 @@ export function refuseProviderRegistrations(hooks: readonly HookRegistration[]):
       foreign.push(pattern)
       continue
     }
-    // No provider is a router yet, so nothing raises a router-only event.
-    if (
-      !(PROVIDER_EVENT_NAMES as readonly string[]).includes(pattern)
-      || (ROUTER_ONLY_EVENTS as readonly string[]).includes(pattern)
-    ) {
+    if (!(PROVIDER_EVENT_NAMES as readonly string[]).includes(pattern)) {
       unraised.push(pattern)
+      continue
+    }
+    if (otherKinds.includes(pattern)) {
+      wrongKind.push(pattern)
       continue
     }
     if (hook.streams === true) generators.push(pattern)
   }
   const reasons: string[] = []
+  if (wrongKind.length > 0) {
+    reasons.push(
+      kind === 'router'
+        ? `a router module hooks ${[...new Set(wrongKind)].join(', ')}, which only a provider with its own endpoint can hook ` +
+            `— a router has no request to shape and no sign-in (${PROVIDER_ABI})`
+        : `a provider module hooks ${[...new Set(wrongKind)].join(', ')}, which only a router can hook ` +
+            `— declare "kind": "router" in the manifest to choose among other providers (${PROVIDER_ABI})`,
+    )
+  }
   if (foreign.length > 0) {
     reasons.push(
       `a provider module hooks the provider events alone, and it hooks ${[...new Set(foreign)].join(', ')} ` +
@@ -401,13 +420,18 @@ export function refuseProviderRegistrations(hooks: readonly HookRegistration[]):
  * Whether what a PROVIDER module calls (as scanned before it runs) is what it
  * may call: `$.provider`, `$.store`, `$.http.fetch`, `$.log`, `$.clock` but
  * `every`. Returns the reason it is not, or null. A call the scan cannot see
- * is refused at the call, with the same words.
+ * is refused at the call, with the same words. `$.provider.peers` is a
+ * router's: the other providers a person set up are no business of a provider
+ * with its own endpoint.
  */
-export function refuseProviderModuleUses(uses: ModUses): string | null {
+export function refuseProviderModuleUses(uses: ModUses, kind: ProviderKind = 'provider'): string | null {
   const reasons: string[] = []
   for (const call of uses.calls) {
     const dot = call.indexOf('.')
-    const reason = refuseProviderModuleCall(dot === -1 ? call : call.slice(0, dot), dot === -1 ? '' : call.slice(dot + 1))
+    const reason =
+      kind !== 'router' && call === ROUTER_ONLY_CALL
+        ? `$.${ROUTER_ONLY_CALL} is a router's: a provider module with its own endpoint cannot list the other providers (${PROVIDER_ABI})`
+        : refuseProviderModuleCall(dot === -1 ? call : call.slice(0, dot), dot === -1 ? '' : call.slice(dot + 1))
     if (reason && !reasons.includes(reason)) reasons.push(reason)
   }
   return reasons.length > 0 ? reasons.join('; ') : null

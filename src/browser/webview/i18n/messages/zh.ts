@@ -2264,6 +2264,10 @@ export const zh: Messages = {
   'settings.plugins.providers.consent.provider': '服务商：{provider}',
   'settings.plugins.providers.consent.domains': '可以访问：{domains}',
   'settings.plugins.providers.consent.noDomains': '未声明可访问的域名。',
+  'settings.plugins.providers.routes.any': '通过你已设置的其他服务商发送你的请求，并使用它们的凭据：任意服务商。',
+  'settings.plugins.providers.routes.list': '通过你已设置的其他服务商发送你的请求，并使用它们的凭据：{providers}',
+  'settings.plugins.providers.routes.widened': '{id} 现在通过你已设置的其他服务商发送你的请求，并使用它们的凭据：{providers}',
+  'settings.plugins.providers.routes.widenedAny': '{id} 现在可以通过你已设置的任意其他服务商发送你的请求，并使用其凭据。',
   'settings.plugins.providers.consent.proxyPools':
     '通过它的代码自行选择的代理服务器发送你的请求，而不使用你自己的代理设置。这些代理的地址不会在这里列出。',
   'settings.plugins.providers.consent.secrets': '存储的密钥名称：{secrets}',

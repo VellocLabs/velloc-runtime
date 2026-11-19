@@ -2373,6 +2373,10 @@ export const en = {
   'settings.plugins.providers.consent.provider': 'Provider: {provider}',
   'settings.plugins.providers.consent.domains': 'May contact: {domains}',
   'settings.plugins.providers.consent.noDomains': 'Declares no domains to contact.',
+  'settings.plugins.providers.routes.any': 'Sends your requests through other providers you have set up, with their credentials: any provider.',
+  'settings.plugins.providers.routes.list': 'Sends your requests through other providers you have set up, with their credentials: {providers}',
+  'settings.plugins.providers.routes.widened': '{id} now sends your requests through other providers you have set up, with their credentials: {providers}',
+  'settings.plugins.providers.routes.widenedAny': '{id} now sends your requests through any other provider you have set up, with its credentials.',
   'settings.plugins.providers.consent.proxyPools':
     'Sends your requests through proxy servers its code chooses, instead of your own proxy setting. Their addresses are not shown here.',
   'settings.plugins.providers.consent.secrets': 'Stores secrets named: {secrets}',

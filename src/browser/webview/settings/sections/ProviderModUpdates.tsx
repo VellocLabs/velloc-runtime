@@ -96,11 +96,19 @@ function ProviderGrantBlock({ provider, grant, t }: { provider: string; grant: P
     <div className="rounded-lg border border-border/70 bg-muted/30 p-3" data-testid={`consent-provider-${provider}`}>
       <div className="font-medium text-sm">{t("settings.plugins.providers.consent.provider", { provider })}</div>
       <ul className="mt-1.5 list-disc space-y-1 pl-5 text-sm">
-        <li data-testid={`consent-domains-${provider}`}>
-          {grant.domains.length > 0
-            ? t("settings.plugins.providers.consent.domains", { domains: grant.domains.join(", ") })
-            : t("settings.plugins.providers.consent.noDomains")}
-        </li>
+        {grant.kind === "router" ? (
+          <li data-testid={`consent-routes-${provider}`}>
+            {grant.routesTo === "*"
+              ? t("settings.plugins.providers.routes.any")
+              : t("settings.plugins.providers.routes.list", { providers: (grant.routesTo ?? []).join(", ") })}
+          </li>
+        ) : (
+          <li data-testid={`consent-domains-${provider}`}>
+            {grant.domains.length > 0
+              ? t("settings.plugins.providers.consent.domains", { domains: grant.domains.join(", ") })
+              : t("settings.plugins.providers.consent.noDomains")}
+          </li>
+        )}
         {grant.proxyPools ? (
           <li data-testid={`consent-proxy-pools-${provider}`}>
             {t("settings.plugins.providers.consent.proxyPools")}
@@ -246,6 +254,13 @@ export function grantDeltaLines(status: ProviderModUpdateStatus, t: TranslateFn)
     lines.push(t("settings.plugins.providers.updates.addedProvider", { provider }));
   }
   for (const [provider, added] of Object.entries(delta.added.perProvider)) {
+    if (added.routes !== undefined) {
+      lines.push(
+        added.routes === "*"
+          ? t("settings.plugins.providers.routes.widenedAny", { id: provider })
+          : t("settings.plugins.providers.routes.widened", { id: provider, providers: added.routes.join(", ") }),
+      );
+    }
     if (added.domains.length > 0) {
       lines.push(t("settings.plugins.providers.updates.addedDomains", { id: provider, domains: added.domains.join(", ") }));
     }

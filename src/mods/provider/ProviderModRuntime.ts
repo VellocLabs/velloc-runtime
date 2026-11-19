@@ -8,6 +8,7 @@
  * module; budgets count from the hook's invocation, not the cold start.
  */
 
+import type { ProviderKind } from './providerManifest'
 import { errorMessage } from '../chainRules'
 import { ModDispatcher, type HookFailureReport } from '../ModDispatcher'
 import { ModInstance, type ModCall } from '../ModInstance'
@@ -67,6 +68,8 @@ export function longestProviderEventMs(): number {
  *  provider ids it owns, as the manifest registered them. */
 export type ProviderModuleRef = ModModuleRef & {
   readonly providers: readonly string[]
+  /** What its providers are. Absent: providers with their own endpoint. */
+  readonly kind?: ProviderKind
 }
 
 /** Where workers are spawned from: some window's control port. */
@@ -285,7 +288,7 @@ export type ProviderModulePrepareDeps = Pick<ProviderModRuntimeOptions, 'readMod
 
 /** Read, admit, compile and scan one provider module: what a load does before it spawns a worker. */
 function prepareProviderModule(ref: ProviderModuleRef, deps: ProviderModulePrepareDeps): Promise<{ source: string; uses?: ModUses }> {
-  return prepareModule(ref, deps, refuseProviderModuleUses)
+  return prepareModule(ref, deps, uses => refuseProviderModuleUses(uses, ref.kind))
 }
 
 /**
@@ -297,7 +300,7 @@ function prepareProviderModule(ref: ProviderModuleRef, deps: ProviderModulePrepa
 export async function admitProviderModule(ref: ProviderModuleRef, deps: ProviderModulePrepareDeps): Promise<void> {
   const { uses } = await prepareProviderModule(ref, deps)
   if (!uses) return
-  const refused = refuseProviderRegistrations(uses.events.map(pattern => ({ pattern }) as HookRegistration))
+  const refused = refuseProviderRegistrations(uses.events.map(pattern => ({ pattern }) as HookRegistration), ref.kind)
   if (refused) throw new ModuleRefused('refused', refused)
 }
 
@@ -722,7 +725,7 @@ export class ProviderModRuntime {
     })
     try {
       const hooks = await Promise.race([instance.load(source, ref.options ?? {}), goneWhileLoading])
-      const refused = refuseProviderRegistrations(hooks)
+      const refused = refuseProviderRegistrations(hooks, ref.kind)
       if (refused) throw new ModuleRefused('refused', refused)
       if (module.gone.signal.aborted) {
         throw new ProviderModUnavailableError(`${ref.plugin}: the provider module was unregistered`)

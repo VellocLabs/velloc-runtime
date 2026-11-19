@@ -15,7 +15,7 @@ import {
   type ProviderModuleRef,
   type ProviderModWindow,
 } from '../mods/provider/ProviderModRuntime'
-import { PROVIDER_EVENTS, refuseProviderModuleCall } from '../mods/provider/providerEvents'
+import { PROVIDER_EVENTS, ROUTER_ONLY_EVENTS, WIRE_ONLY_EVENTS, refuseProviderModuleCall } from '../mods/provider/providerEvents'
 
 const sleep = (ms: number): Promise<void> => new Promise(resolve => setTimeout(resolve, ms))
 
@@ -536,17 +536,38 @@ describe('provider-kind admission', () => {
       hasCatch: false,
       streams,
     })
-    expect(
-      refuseProviderRegistrations(
-        Object.keys(PROVIDER_EVENTS).filter(name => name !== 'provider.route').map(name => hook(name)),
-      ),
-    ).toBeNull()
-    expect(refuseProviderRegistrations([hook('provider.route')])).toMatch(/does not raise: provider\.route/)
+    const wireEvents = Object.keys(PROVIDER_EVENTS).filter(name => !(ROUTER_ONLY_EVENTS as readonly string[]).includes(name))
+    expect(refuseProviderRegistrations(wireEvents.map(name => hook(name)))).toBeNull()
+    expect(refuseProviderRegistrations([hook('provider.route')])).toMatch(/a provider module hooks provider\.route, which only a router can hook/)
     expect(refuseProviderRegistrations([hook('provider.*')])).toBeNull()
     expect(refuseProviderRegistrations([hook('*')])).toMatch(/provider events alone/)
     expect(refuseProviderRegistrations([hook('tool.call')])).toMatch(/provider events alone/)
     expect(refuseProviderRegistrations([hook('provider.stream')])).toMatch(/does not raise: provider\.stream/)
     expect(refuseProviderRegistrations([hook('provider.request', true)])).toMatch(/async generator/)
+  })
+
+  it('refuseProviderRegistrations: a router hooks no wire event, a provider no router event (F-27)', () => {
+    const hook = (pattern: string) => ({ hookId: '1', pattern, hasCatch: false, streams: false })
+    for (const event of WIRE_ONLY_EVENTS) {
+      const reason = refuseProviderRegistrations([hook(event)], 'router')
+      expect(reason).toContain(`a router module hooks ${event}`)
+      expect(refuseProviderRegistrations([hook(event)], 'provider')).toBeNull()
+    }
+    for (const event of ROUTER_ONLY_EVENTS) {
+      const reason = refuseProviderRegistrations([hook(event)])
+      expect(reason).toContain(`a provider module hooks ${event}, which only a router can hook`)
+      expect(refuseProviderRegistrations([hook(event)], 'router')).toBeNull()
+    }
+    const shared = ['provider.models', 'provider.outcome', 'provider.usage', 'provider.verify', 'provider.sessionEnd', 'provider.*']
+    expect(refuseProviderRegistrations(shared.map(hook), 'router')).toBeNull()
+    expect(refuseProviderRegistrations(shared.map(hook), 'provider')).toBeNull()
+  })
+
+  it('refuseProviderModuleUses: $.provider.peers is for a router alone (F-27)', () => {
+    const uses = { events: [], calls: ['provider.peers'] }
+    expect(refuseProviderModuleUses(uses)).toMatch(/\$\.provider\.peers is a router's/)
+    expect(refuseProviderModuleUses(uses, 'provider')).toMatch(/\$\.provider\.peers is a router's/)
+    expect(refuseProviderModuleUses(uses, 'router')).toBeNull()
   })
 
   it('a session module hooking a provider event is refused', () => {

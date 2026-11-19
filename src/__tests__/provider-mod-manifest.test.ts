@@ -359,3 +359,120 @@ describe('safeIconSvg', () => {
     expect(safeIconSvg(inside)).toBe(inside)
   })
 })
+
+describe('manifest providers — a router (F-27)', () => {
+  /** A plugin whose one provider is a router, `over` merged into it. */
+  function router(over: Record<string, unknown> = {}) {
+    return checkPluginDescriptor({
+      name: 'relay',
+      version: '1.0.0',
+      providers: {
+        pick: {
+          providerApi: 1,
+          kind: 'router',
+          displayName: { en: 'Relay' },
+          credentials: { methods: ['anonymous'] },
+          routesTo: '*',
+          modelsUi: { intro: { en: 'Models across the providers you set up.' } },
+          module: './providers/pick.js',
+          ...over,
+        },
+      },
+    })
+  }
+
+  it('loads with any provider as its boundary, and carries no endpoint', () => {
+    const { manifest: parsed, errors } = router()
+    expect(errors).toEqual([])
+    expect(parsed?.providers?.pick).toMatchObject({ kind: 'router', routesTo: '*', defaultBaseUrl: '', domains: [] })
+    expect(parsed?.providers?.pick?.credentials.methods).toEqual(['anonymous'])
+  })
+
+  it('loads with a list of built-in and mod provider ids', () => {
+    const { manifest: parsed, errors } = router({ routesTo: ['relay-a', 'mod.acme.main'] })
+    expect(errors).toEqual([])
+    expect(parsed?.providers?.pick?.routesTo).toEqual(['relay-a', 'mod.acme.main'])
+  })
+
+  it.each([
+    ['defaultBaseUrl', 'https://api.relay.test/v1'],
+    ['domains', ['api.relay.test']],
+    ['format', 'some-format'],
+    ['requestNeeds', ['system']],
+    ['signNeeds', 'digest'],
+    ['ids', {}],
+  ])('refuses %s, naming it', (field, value) => {
+    const { manifest: parsed, errors } = router({ [field]: value })
+    expect(parsed?.providers).toBeUndefined()
+    expect(errors.some(e => e.startsWith(`providers.pick.${field}: a router has no endpoint of its own`))).toBe(true)
+  })
+
+  it.each([[['apiKey']], [['login']], [['anonymous', 'apiKey']]])('refuses the methods %j: anonymous alone', methods => {
+    const { manifest: parsed, errors } = router({ credentials: { methods } })
+    expect(parsed?.providers).toBeUndefined()
+    expect(errors.join('\n')).toMatch(/providers\.pick\.credentials\.methods: a router has no key and no sign-in/)
+  })
+
+  it('requires routesTo, and refuses an empty list, a 65th id, a duplicate, a malformed id and itself', () => {
+    const refused = (routesTo: unknown): string => {
+      const { manifest: parsed, errors } = router({ routesTo })
+      expect(parsed?.providers).toBeUndefined()
+      return errors.join('\n')
+    }
+    expect(refused(undefined)).toMatch(/providers\.pick\.routesTo: required on a router/)
+    expect(refused([])).toMatch(/routesTo: expected "\*" or a list of 1 to 64 provider ids/)
+    expect(refused(Array.from({ length: 65 }, (_, i) => `p${i}`))).toMatch(/a list of 1 to 64 provider ids/)
+    expect(refused('relay-a')).toMatch(/a list of 1 to 64 provider ids/)
+    expect(refused(['relay-a', 'relay-a'])).toMatch(/routesTo: "relay-a" is listed twice/)
+    expect(refused(['open ai'])).toMatch(/routesTo: "open ai" is not a provider id/)
+    expect(refused(['relay-a', 'mod.relay.pick'])).toMatch(/routesTo: "mod\.relay\.pick" is this router itself/)
+    expect(router({ routesTo: Array.from({ length: 64 }, (_, i) => `p${i}`) }).errors).toEqual([])
+  })
+
+  it('may declare policy.retry, carries none when it declares none, and is refused policy.errors', () => {
+    const kept = router({ policy: { retry: { maxRetries: 2 } } })
+    expect(kept.errors).toEqual([])
+    expect(kept.manifest?.providers?.pick?.policy?.retry).toMatchObject({ maxRetries: 2 })
+    // No declared schedule: nothing is filled in, so the platform's default applies.
+    expect(router().manifest?.providers?.pick?.policy).toBeUndefined()
+    const { manifest: parsed, errors } = router({ policy: { errors: [] } })
+    expect(parsed?.providers).toBeUndefined()
+    expect(errors.join('\n')).toMatch(/providers\.pick\.policy\.errors: a router has no replies of its own to judge/)
+  })
+
+  it('refuses a kind it does not know', () => {
+    const { manifest: parsed, errors } = router({ kind: 'gateway' })
+    expect(parsed?.providers).toBeUndefined()
+    expect(errors.join('\n')).toMatch(/providers\.pick\.kind: "gateway" is not known to this Velloc/)
+  })
+
+  it('a provider kind is validated as before, and is refused routesTo', () => {
+    const plain = check({ kind: 'provider' })
+    expect(plain.errors).toEqual([])
+    expect(plain.providers?.zen).toEqual(check().providers?.zen)
+    expect(plain.providers?.zen?.kind).toBeUndefined()
+    const { providers, errors } = check({ routesTo: '*' })
+    expect(providers).toBeUndefined()
+    expect(errors.join('\n')).toMatch(/providers\.zen\.routesTo: only a router/)
+  })
+
+  it('refuses a router and a provider that share one module', () => {
+    const { manifest: parsed, errors } = checkPluginDescriptor({
+      name: 'relay',
+      version: '1.0.0',
+      providers: {
+        wire: { ...manifest().providers.zen, module: './providers/shared.js' },
+        pick: {
+          providerApi: 1,
+          kind: 'router',
+          displayName: { en: 'Relay' },
+          credentials: { methods: ['anonymous'] },
+          routesTo: '*',
+          module: './providers/shared.js',
+        },
+      },
+    })
+    expect(Object.keys(parsed?.providers ?? {})).toEqual(['wire'])
+    expect(errors.join('\n')).toMatch(/providers\.pick\.module: .* a router and a provider cannot share a module/)
+  })
+})

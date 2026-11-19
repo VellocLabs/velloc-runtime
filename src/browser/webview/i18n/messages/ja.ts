@@ -2296,6 +2296,10 @@ export const ja: Messages = {
   'settings.plugins.providers.consent.provider': 'プロバイダ: {provider}',
   'settings.plugins.providers.consent.domains': '接続できる先: {domains}',
   'settings.plugins.providers.consent.noDomains': '接続先のドメインは宣言されていません。',
+  'settings.plugins.providers.routes.any': '設定済みのほかのプロバイダを経由して、その認証情報でリクエストを送信します: すべてのプロバイダ。',
+  'settings.plugins.providers.routes.list': '設定済みのほかのプロバイダを経由して、その認証情報でリクエストを送信します: {providers}',
+  'settings.plugins.providers.routes.widened': '{id} は、設定済みのほかのプロバイダを経由して、その認証情報でリクエストを送信するようになります: {providers}',
+  'settings.plugins.providers.routes.widenedAny': '{id} は、設定済みのほかのすべてのプロバイダを経由して、その認証情報でリクエストを送信するようになります。',
   'settings.plugins.providers.consent.proxyPools':
     'リクエストを、ユーザー自身のプロキシ設定ではなく、このプロバイダーのコードが選ぶプロキシサーバー経由で送信します。それらのアドレスはここには表示されません。',
   'settings.plugins.providers.consent.secrets': '保存するシークレット名: {secrets}',

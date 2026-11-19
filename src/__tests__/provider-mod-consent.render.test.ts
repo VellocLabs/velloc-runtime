@@ -217,6 +217,73 @@ describe('ProviderConsentDialog', () => {
   })
 })
 
+describe('ProviderConsentDialog — a router (F-27)', () => {
+  const routerStatus = (routesTo: '*' | string[]) =>
+    status({
+      grant: { providers: { pick: { kind: 'router', routesTo, domains: [], secrets: [], readsSecrets: false, requestNeeds: [] } } },
+    })
+  const open = (s: ProviderModUpdateStatus) =>
+    render(
+      createElement(ProviderConsentDialog, {
+        target: { name: 'relay', status: s },
+        busy: false,
+        error: null,
+        onEnable: () => {},
+        onCancel: () => {},
+        t,
+      }),
+    )
+
+  it('any provider: the routes line stands where the domains line would, and the standing statement stays', () => {
+    open(routerStatus('*'))
+    expect(screen.getByTestId('consent-routes-pick').textContent).toBe(
+      'Sends your requests through other providers you have set up, with their credentials: any provider.',
+    )
+    expect(screen.queryByTestId('consent-domains-pick')).toBeNull()
+    expect(screen.getByTestId('consent-standing')).toBeTruthy()
+  })
+
+  it('a list: names the providers', () => {
+    open(routerStatus(['mod.acme.main', 'relay-a']))
+    expect(screen.getByTestId('consent-routes-pick').textContent).toBe(
+      'Sends your requests through other providers you have set up, with their credentials: mod.acme.main, relay-a',
+    )
+    expect(screen.queryByTestId('consent-domains-pick')).toBeNull()
+  })
+
+  it('a provider with its own endpoint has no routes line', () => {
+    open(status())
+    expect(screen.queryByTestId('consent-routes-zen')).toBeNull()
+    expect(screen.getByTestId('consent-domains-zen')).toBeTruthy()
+  })
+})
+
+describe('grantDeltaLines — a routes widening (F-27)', () => {
+  const parked = (routes: '*' | string[]) =>
+    status({
+      state: 'needs-consent',
+      pending: {
+        version: '2.0.0',
+        stagedAt: new Date().toISOString(),
+        grant: GRANT,
+        delta: {
+          widened: true,
+          added: { providers: [], perProvider: { pick: { domains: [], secrets: [], readsSecrets: false, requestNeeds: [], routes } } },
+          removed: [],
+        },
+      },
+    })
+
+  it('names the providers gained, or any provider', () => {
+    expect(grantDeltaLines(parked(['relay-a', 'mod.acme.main']), t)).toEqual([
+      'pick now sends your requests through other providers you have set up, with their credentials: relay-a, mod.acme.main',
+    ])
+    expect(grantDeltaLines(parked('*'), t)).toEqual([
+      'pick now sends your requests through any other provider you have set up, with its credentials.',
+    ])
+  })
+})
+
 describe('ProviderUpdatePanel', () => {
   function panel(s: ProviderModUpdateStatus, over: Partial<Parameters<typeof ProviderUpdatePanel>[0]> = {}) {
     const calls: string[] = []

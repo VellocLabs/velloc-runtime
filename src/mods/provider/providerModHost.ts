@@ -54,6 +54,8 @@ export function providerModuleRefs(plugin: ProviderPluginFacts): ProviderModuleR
     ...(description !== undefined ? { description } : {}),
     provenance: pluginConfigId(plugin),
     providers: providers.map(provider => provider.id),
+    // One module's providers are all of one kind: the manifest check refuses a mix.
+    ...(providers.some(provider => provider.manifest.kind === 'router') ? { kind: 'router' as const } : {}),
   }))
 }
 

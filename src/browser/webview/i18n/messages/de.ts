@@ -2327,6 +2327,10 @@ export const de: Messages = {
   'settings.plugins.providers.consent.provider': 'Anbieter: {provider}',
   'settings.plugins.providers.consent.domains': 'Darf Verbindungen aufbauen zu: {domains}',
   'settings.plugins.providers.consent.noDomains': 'Gibt keine Domains an, zu denen es Verbindungen aufbaut.',
+  'settings.plugins.providers.routes.any': 'Sendet deine Anfragen über andere Anbieter, die du eingerichtet hast, mit deren Zugangsdaten: jeden Anbieter.',
+  'settings.plugins.providers.routes.list': 'Sendet deine Anfragen über andere Anbieter, die du eingerichtet hast, mit deren Zugangsdaten: {providers}',
+  'settings.plugins.providers.routes.widened': '{id} sendet deine Anfragen jetzt über andere Anbieter, die du eingerichtet hast, mit deren Zugangsdaten: {providers}',
+  'settings.plugins.providers.routes.widenedAny': '{id} sendet deine Anfragen jetzt über jeden anderen Anbieter, den du eingerichtet hast, mit dessen Zugangsdaten.',
   'settings.plugins.providers.consent.proxyPools':
     'Sendet deine Anfragen über Proxyserver, die sein Code auswählt, statt über deine eigene Proxy-Einstellung. Ihre Adressen werden hier nicht angezeigt.',
   'settings.plugins.providers.consent.secrets': 'Speichert Geheimnisse mit den Namen: {secrets}',
