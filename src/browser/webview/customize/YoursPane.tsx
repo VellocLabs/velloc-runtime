@@ -31,7 +31,7 @@ export function YoursPane({ tab, onTab, themes, runtimeConnection, revealPluginR
   return (
     <div data-testid="customize-yours" className="flex min-h-0 flex-1 flex-col">
       <div className={PAGE_COLUMN}>
-        <div className="flex flex-col gap-3 pt-6 pb-2">
+        <div className={cn(settingsPageColumn, 'flex flex-col gap-3 pt-6 pb-2')}>
           <h2 className="text-xl font-semibold text-foreground">{t('customize.yours.title')}</h2>
           <div
             role="tablist"
