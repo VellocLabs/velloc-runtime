@@ -347,7 +347,7 @@ describe('theme.useLook on a plugin that is installed and switched off', () => {
 
   afterEach(() => forgetRegistryFile(HOME))
 
-  async function rig(state: { installed: string[]; enabledPlugins?: Enabled }) {
+  async function rig(state: { installed: string[]; enabledPlugins?: Enabled; single?: boolean; neverLoads?: boolean; onReload?: () => void }) {
     const fs = makeMemFs()
     await fs.writeFile(
       getMarketplaceManifestPath({ homeDir: HOME }, MP),
@@ -359,6 +359,7 @@ describe('theme.useLook on a plugin that is installed and switched off', () => {
             source: { source: 'github', repo: 'someone/pack', sha: 'a'.repeat(40) },
             theme: { looks: [{ id: 'lagoon', preview: PREVIEW, use: { command: 'pick-look', args: 'lagoon' } }] },
           },
+          { name: 'other', source: { source: 'github', repo: 'someone/other', sha: 'c'.repeat(40) }, theme: { looks: [{ id: 'other', preview: PREVIEW }] } },
         ],
       }),
     )
@@ -366,7 +367,10 @@ describe('theme.useLook on a plugin that is installed and switched off', () => {
       version: 2,
       plugins: Object.fromEntries(state.installed.map(id => [id, [row]])),
     })
-    await fs.writeFile(SETTINGS, JSON.stringify({ version: 1, enabledPlugins: state.enabledPlugins ?? {} }))
+    await fs.writeFile(
+      SETTINGS,
+      JSON.stringify({ version: 1, enabledPlugins: state.enabledPlugins ?? {}, ...(state.single ? { mods: { singleThemeMod: true } } : {}) }),
+    )
     const enabledNow = async () =>
       (JSON.parse(String(await fs.readFile(SETTINGS, { encoding: 'utf-8' }))) as { enabledPlugins?: Enabled }).enabledPlugins ?? {}
     // The session loads whichever install the settings have on, at each reload.
@@ -385,8 +389,10 @@ describe('theme.useLook on a plugin that is installed and switched off', () => {
       onEnableTiming: { attempts: 3, pause: async () => {} },
       reload: () => {
         reloads += 1
+        state.onReload?.()
+        if (state.neverLoads) return
         void enabledNow().then(on => {
-          loaded = state.installed.find(id => on[id] !== false)
+          loaded = state.installed.find(id => id.startsWith('pack@') && on[id] !== false)
         })
       },
     })
@@ -442,6 +448,56 @@ describe('theme.useLook on a plugin that is installed and switched off', () => {
     expect(await on.enabledNow()).toEqual({ [`pack@${MP}`]: false })
     expect(on.reloads()).toBe(0)
     expect(on.ran).toEqual([])
+  })
+
+  it('with one theme plugin at a time, a plugin switched on is the one kept, also when its look then fails', async () => {
+    const applied = await rig({
+      installed: [`pack@${MP}`, `other@${MP}`],
+      enabledPlugins: { [`pack@${MP}`]: false },
+      single: true,
+    })
+    expect(await applied.useLagoon()).toMatchObject({ ok: true })
+    expect(await applied.enabledNow()).toEqual({ [`pack@${MP}`]: true, [`other@${MP}`]: false })
+    forgetRegistryFile(HOME)
+
+    const failed = await rig({
+      installed: [`pack@${MP}`, `other@${MP}`],
+      enabledPlugins: { [`pack@${MP}`]: false },
+      single: true,
+      neverLoads: true,
+    })
+    expect(await failed.useLagoon()).toEqual({ ok: false, reason: 'notLoaded' })
+    expect(await failed.enabledNow()).toEqual({ [`pack@${MP}`]: true, [`other@${MP}`]: false })
+    expect(failed.reloads()).toBe(2)
+    expect(failed.ran).toEqual([])
+  })
+
+  it('with one theme plugin at a time, a request cancelled while it waits still keeps the plugin it switched on', async () => {
+    const controller = new AbortController()
+    const { useLagoon, enabledNow } = await rig({
+      installed: [`pack@${MP}`, `other@${MP}`],
+      enabledPlugins: { [`pack@${MP}`]: false },
+      single: true,
+      neverLoads: true,
+      onReload: () => controller.abort(),
+    })
+    expect(await useLagoon(controller.signal)).toMatchObject({ ok: false })
+    expect(await enabledNow()).toEqual({ [`pack@${MP}`]: true, [`other@${MP}`]: false })
+  })
+
+  it('with one theme plugin at a time, nothing is switched off when no plugin was switched on', async () => {
+    const absent = await rig({ installed: [`other@${MP}`], single: true })
+    expect(await absent.useLagoon()).toEqual({ ok: false, reason: 'notLoaded' })
+    expect(await absent.enabledNow()).toEqual({})
+    expect(absent.reloads()).toBe(0)
+    forgetRegistryFile(HOME)
+
+    const cancelled = await rig({ installed: [`pack@${MP}`, `other@${MP}`], enabledPlugins: { [`pack@${MP}`]: false }, single: true })
+    const controller = new AbortController()
+    controller.abort()
+    expect(await cancelled.useLagoon(controller.signal)).toEqual({ ok: false, reason: 'notLoaded' })
+    expect(await cancelled.enabledNow()).toEqual({ [`pack@${MP}`]: false })
+    expect(cancelled.reloads()).toBe(0)
   })
 })
 

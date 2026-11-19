@@ -99,12 +99,14 @@ export function registerThemeCapability(registry: CapabilityRegistry, options: T
           const slot = slotInScope(request.conn, payload.sessionId)
           const { homeDir, fs, ...target } = await readTarget()
           let result = await useThemeLook({ ...target, slot }, payload)
+          let switchedOn = false
           // Installed but switched off: the plugin goes on, and the look is asked
           // for again while the session loads it.
           if (!result.ok && result.reason === 'notLoaded') {
             const listing = target.listings?.find(candidate => candidate.name === payload.plugin)
             const reload = options.reload ?? (() => {})
             if (listing && !request.signal?.aborted && (await turnOnListedThemePlugin({ homeDir, fs, reload }, listing))) {
+              switchedOn = true
               const loading: ThemeLookTarget = {
                 ...target,
                 get slot() {
@@ -114,8 +116,9 @@ export function registerThemeCapability(registry: CapabilityRegistry, options: T
               result = await useThemeLookOnceLoaded(loading, payload, options.onEnableTiming, request.signal)
             }
           }
-          // An applied look: with *Only one at a time* on, the other theme plugins go off.
-          if (result.ok) {
+          // An applied look, or a plugin switched on here whatever its look answered:
+          // with *Only one at a time* on, the other theme plugins go off.
+          if (result.ok || switchedOn) {
             await keepOneThemePlugin({ homeDir, fs, reload: options.reload ?? (() => {}) }, { plugin: payload.plugin })
           }
           return result
