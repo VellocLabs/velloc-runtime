@@ -311,6 +311,7 @@ import {
   createShellHandleSettingsNavigate,
   createShellHandleOpenNexusSettings,
   createShellHandleOpenCustomize,
+  createShellHandleOpenThemeStore,
   createShellHandleCloseCustomize,
   createShellInterceptMarketplaceAdd,
   createShellHandleOpenProviderSettings,
@@ -2309,8 +2310,16 @@ export function MultiSessionShell({
   // `/plugin marketplace add <repo>` typed in a composer opens Customize's
   // Add a marketplace dialog on that repo instead of reaching the session.
   const [marketplaceAddRequest, setMarketplaceAddRequest] = useState<{ source: string; seq: number } | null>(null)
+  // The theme menu's More themes opens Customize on its theme directory.
+  const [customizeThemesRequest, setCustomizeThemesRequest] = useState<{ seq: number } | null>(null)
+  const handleOpenThemeStore = useMemo(
+    () => createShellHandleOpenThemeStore(setCustomizeThemesRequest, handleOpenCustomize),
+    [handleOpenCustomize],
+  )
   useEffect(() => {
-    if (!customizeOpen) setMarketplaceAddRequest(null)
+    if (customizeOpen) return
+    setMarketplaceAddRequest(null)
+    setCustomizeThemesRequest(null)
   }, [customizeOpen])
   // The session a theme look is applied to: the one the window shows, unless a CLI runs it.
   const shownSession = useMemo(
@@ -2340,7 +2349,7 @@ export function MultiSessionShell({
     capabilities: runtimeCapabilities,
     isRemoteHost: remoteHost !== undefined,
     settingsBridge,
-    openCustomize: handleOpenCustomize,
+    openThemeStore: handleOpenThemeStore,
     themeTarget,
   })
   const interceptComposerText = useMemo(
@@ -3171,6 +3180,7 @@ export function MultiSessionShell({
             onOpenMcpServerSettings={handleOpenMcpServerSettings}
             onDragRegionsChange={handleDragRegionsChange}
             marketplaceAddRequest={marketplaceAddRequest}
+            themesRequest={customizeThemesRequest}
             themeTarget={themeTarget}
             themeStanding={themeStanding}
           />

@@ -279,7 +279,7 @@ export const ThemeModsMenu: FC<{ sessionId?: string; isForeground?: boolean }> =
                         className={ITEM_CLASS}
                       >
                         <PlusIcon aria-hidden className="size-4 text-muted-foreground" />
-                        <span className="flex-1">{t("themeMenu.getMore")}</span>
+                        <span className="flex-1">{t("themeMenu.more")}</span>
                       </DropdownMenuPrimitive.Item>
                     </>
                   )}

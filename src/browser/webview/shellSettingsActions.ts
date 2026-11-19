@@ -123,6 +123,16 @@ export function createShellHandleOpenCustomize(
     setCustomizeOpen(true)
   }
 }
+/** Opens Customize on its theme directory. */
+export function createShellHandleOpenThemeStore(
+  setThemesRequest: Dispatch<SetStateAction<{ seq: number } | null>>,
+  openCustomize: () => void,
+) {
+  return () => {
+    setThemesRequest(prev => ({ seq: (prev?.seq ?? 0) + 1 }))
+    openCustomize()
+  }
+}
 export function createShellHandleCloseCustomize(
   setCustomizeOpen: Dispatch<SetStateAction<boolean>>,
 ) {

@@ -10,6 +10,7 @@ import { act, cleanup, fireEvent, render, waitFor, within } from '@testing-libra
 
 import type { RuntimeConnection } from '../browser/runtimeClient/RuntimeConnection'
 import { CustomizeScreen } from '../browser/webview/customize/CustomizeScreen'
+import { createShellHandleOpenThemeStore } from '../browser/webview/shellSettingsActions'
 import { INSTALL_TOAST_MS } from '../browser/webview/customize/InstallToasts'
 import { PACK_LIMIT, packTitle } from '../browser/webview/customize/ThemeBrowser'
 import type { ThemeTarget } from '../browser/webview/customize/useThemeCatalog'
@@ -66,6 +67,8 @@ function setup(
     installFails?: boolean
     /** The session's published theme: a plugin's, or `null` for none. Left out: never published. */
     standing?: { plugin: string } | null
+    /** The screen mounts with this request to show the theme directory. */
+    themesRequest?: { seq: number } | null
   } = {},
 ) {
   const TARGET: ThemeTarget = { sessionId: `s${++sessions}`, title: 'Fix the build', busy: false }
@@ -115,7 +118,7 @@ function setup(
     },
   } as unknown as RuntimeConnection
   let closed = 0
-  const screen = createElement(CustomizeScreen, {
+  const screenWith = (themesRequest: { seq: number } | null) => createElement(CustomizeScreen, {
     runtimeConnection: async () => connection,
     shell: null,
     onClose: () => {
@@ -124,8 +127,11 @@ function setup(
     onOpenSettings: () => {},
     themeTarget: options.target === undefined ? TARGET : options.target === 'busy' ? { ...TARGET, busy: true } : options.target,
     themeStanding: options.standing,
+    themesRequest,
   })
-  const view = render(createElement(SettingsBridgeContext.Provider, { value: bridge }, screen))
+  const wrap = (themesRequest: { seq: number } | null) =>
+    createElement(SettingsBridgeContext.Provider, { value: bridge }, screenWith(themesRequest))
+  const view = render(wrap(options.themesRequest ?? null))
   const open = async () => {
     fireEvent.click(view.getByTestId('customize-market-themes'))
     await waitFor(() => expect(view.queryByText(EN['customize.loading'])).toBeNull())
@@ -148,6 +154,7 @@ function setup(
     bridgeAsked,
     runtimeAsked,
     closed: () => closed,
+    requestThemes: (seq: number) => view.rerender(wrap({ seq })),
     heal: () => {
       failing = false
     },
@@ -170,6 +177,48 @@ describe('Customize — the theme directory row', () => {
     expect(view.getByTestId('customize-market-themes').getAttribute('aria-current')).toBe('page')
     expect(bridgeAsked).toContain('plugins.listMarketplacePlugins {"marketplace":"velloc","kind":"themes"}')
     expect(bridgeAsked).toContain('plugins.refreshMarketplace {"name":"velloc"}')
+  })
+})
+
+describe('Customize — opened for more themes', () => {
+  it('the menu opener opens Customize with a new themes request each time', () => {
+    let request: { seq: number } | null = null
+    let opened = 0
+    const open = createShellHandleOpenThemeStore(
+      next => {
+        request = typeof next === 'function' ? next(request) : next
+      },
+      () => {
+        opened += 1
+      },
+    )
+    open()
+    expect(request).toEqual({ seq: 1 })
+    open()
+    expect(request).toEqual({ seq: 2 })
+    expect(opened).toBe(2)
+  })
+
+  it('mounts on the theme directory, never on the plugin directory', async () => {
+    const { view } = setup({ themesRequest: { seq: 1 } })
+    expect(view.getByTestId('customize-market-themes').getAttribute('aria-current')).toBe('page')
+    expect(view.getByTestId('customize-market-directory').getAttribute('aria-current')).toBeNull()
+    expect(view.getByTestId('customize-title').textContent).toBe(EN['customize.themes.title'])
+    expect(view.queryByTestId('webview-area')).toBeNull()
+    await waitFor(() => expect(view.queryByText(EN['customize.loading'])).toBeNull())
+  })
+
+  it('a new request selects the theme directory again; the same one does not', async () => {
+    const { view, requestThemes } = setup({ themesRequest: { seq: 1 } })
+    await waitFor(() => expect(view.queryByText(EN['customize.loading'])).toBeNull())
+    fireEvent.click(view.getByTestId('customize-market-directory'))
+    expect(view.getByTestId('customize-market-directory').getAttribute('aria-current')).toBe('page')
+    requestThemes(1)
+    expect(view.getByTestId('customize-market-directory').getAttribute('aria-current')).toBe('page')
+    requestThemes(2)
+    await waitFor(() =>
+      expect(view.getByTestId('customize-market-themes').getAttribute('aria-current')).toBe('page'),
+    )
   })
 })
 

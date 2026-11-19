@@ -2489,7 +2489,7 @@ export const ja: Messages = {
   'themeMenu.modsOn': '{n} 個が有効',
   'themeMenu.showing': '表示中',
   'themeMenu.empty': 'テーマを設定した Mod はまだありません',
-  'themeMenu.getMore': 'テーマをさらに入手',
+  'themeMenu.more': 'その他のテーマ',
   'themeMenu.single': '一度に 1 つだけ',
   'themeMenu.backdrop': '背景の範囲',
   'themeMenu.backdropConversation': '会話のみ',

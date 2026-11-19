@@ -72,11 +72,12 @@ export function useShellTheme(options: {
   capabilities: CapabilityQuery
   isRemoteHost: boolean
   settingsBridge: NexusSettingsBridge | null | undefined
-  openCustomize: () => void
+  /** Opens Customize on its theme directory. */
+  openThemeStore: () => void
   /** The session the window shows, unless a CLI runs it; a theme plugin turned on is started there. */
   themeTarget?: { sessionId: string; busy: boolean } | null
 }): ShellTheme {
-  const { runtimeConnection, theme, capabilities, isRemoteHost, settingsBridge, openCustomize } = options
+  const { runtimeConnection, theme, capabilities, isRemoteHost, settingsBridge, openThemeStore } = options
   const target = useRef(options.themeTarget)
   target.current = options.themeTarget
   const canOnEnable = capabilities.can('theme', 'onEnable')
@@ -103,7 +104,7 @@ export function useShellTheme(options: {
     bridge: settingsBridge,
     canSetEnabled: capabilities.can('plugins', 'setEnabled') && capabilities.can('plugins', 'setLocalEnabled'),
     canSetBackdropScope: capabilities.can('themeMods', 'setBackdropScope'),
-    ...(themeStoreShown ? { openThemeStore: openCustomize } : {}),
+    ...(themeStoreShown ? { openThemeStore } : {}),
     afterEnable,
   })
   return { look, paintsBackdrop: backdropScope === 'window' && theme?.backdrop !== undefined, menu }

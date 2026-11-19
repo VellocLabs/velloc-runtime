@@ -59,6 +59,8 @@ export type CustomizeScreenProps = {
   onDragRegionsChange?: (regions: WindowDragRect[]) => void
   /** A `/plugin marketplace add` typed in a composer: the Add a marketplace dialog opens on it and adds it. */
   marketplaceAddRequest?: { source: string; seq: number } | null
+  /** Selects the theme directory; held at mount, and each new `seq` selects it again. */
+  themesRequest?: { seq: number } | null
   /** The session a theme look is applied to; null when the window shows none that takes one. */
   themeTarget?: ThemeTarget | null
   /** The target session's published theme; `undefined` while not read yet. */
@@ -95,13 +97,20 @@ export function CustomizeScreen({
   onOpenMcpServerSettings,
   onDragRegionsChange,
   marketplaceAddRequest = null,
+  themesRequest = null,
   themeTarget = null,
   themeStanding,
 }: CustomizeScreenProps) {
   const t = useT()
   const headerRef = React.useRef<HTMLElement | null>(null)
   useWindowDragRegions(headerRef, onDragRegionsChange)
-  const [selection, setSelection] = React.useState<Selection>(DIRECTORY)
+  const [selection, setSelection] = React.useState<Selection>(() => (themesRequest ? { kind: 'themes' } : DIRECTORY))
+  const takenThemesSeq = React.useRef(themesRequest?.seq ?? null)
+  React.useEffect(() => {
+    if (!themesRequest || takenThemesSeq.current === themesRequest.seq) return
+    takenThemesSeq.current = themesRequest.seq
+    setSelection({ kind: 'themes' })
+  }, [themesRequest])
   const onDirectory = selection.kind === 'directory'
   const tab = useCustomizeTab(runtimeConnection, onDirectory)
   const bridge = useSettingsBridge()

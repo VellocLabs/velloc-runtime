@@ -2566,7 +2566,7 @@ export const en = {
   'themeMenu.modsOn': '{n} on',
   'themeMenu.showing': 'Showing',
   'themeMenu.empty': 'No mod has set a theme yet',
-  'themeMenu.getMore': 'Get more themes',
+  'themeMenu.more': 'More themes',
   'themeMenu.single': 'Only one at a time',
   'themeMenu.backdrop': 'Backdrop covers',
   'themeMenu.backdropConversation': 'Conversation only',
