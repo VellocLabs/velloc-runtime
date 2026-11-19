@@ -1224,7 +1224,6 @@ export function ModPlacedSite({ plugin, id, requestId }: { plugin: string; id: s
   );
 }
 
-/** The band above the prompt, when some loaded hook draws it. */
 /** The mod rows seated right above the prompt: inline panes, then the band.
  *  A compact (phone) thread draws neither. */
 export function ModPromptRows() {
@@ -1238,6 +1237,7 @@ export function ModPromptRows() {
   );
 }
 
+/** The band above the prompt, when some loaded hook draws it. */
 export function ModAbovePrompt() {
   const { hooked } = useModUi();
   if (!isSiteHooked(hooked, "AbovePrompt", "band")) return null;

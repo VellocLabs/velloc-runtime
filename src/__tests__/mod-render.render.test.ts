@@ -820,6 +820,7 @@ describe('ModDockedPane — a pane docked in the Right Panel', () => {
 
 describe('ModPromptRows — the mod rows above the prompt', () => {
   const band = { hooked: [{ plugin: 'band', component: 'AbovePrompt' as const }] }
+  const pane = { plugin: 'p', id: 'clock', title: 'Clock', isShown: true, isFocused: false, closeOnEscape: false }
   const tree = () => vi.fn(async () => ({ kind: 'tree' as const, tree: { type: 'Text', children: ['last turn: 3s'] }, plugin: 'band' }))
 
   it('draws the band in a full thread', async () => {
@@ -827,10 +828,22 @@ describe('ModPromptRows — the mod rows above the prompt', () => {
     await waitFor(() => expect(screen.getByTestId('mod-band').textContent).toBe('last turn: 3s'))
   })
 
+  it('draws the open panes in a full thread', () => {
+    render(withUi({ panes: [pane] }, createElement(ModPromptRows)))
+    expect(screen.getByTestId('mod-pane-title-p-clock')).toBeTruthy()
+  })
+
   it('draws nothing in a compact (phone) thread and asks no mod to render', async () => {
     const render$ = tree()
     const { container } = render(
-      createElement(CompactThreadChromeContext.Provider, { value: true }, withUi({ ...band, render: render$ }, createElement(ModPromptRows))),
+      createElement(
+        CompactThreadChromeContext.Provider,
+        { value: true },
+        withUi(
+          { ...band, panes: [pane], hooked: [...band.hooked, { plugin: 'p', component: 'Pane' as const, requestId: 'clock' }], render: render$ },
+          createElement(ModPromptRows),
+        ),
+      ),
     )
     await act(async () => {})
     expect(container.innerHTML).toBe('')
