@@ -10,6 +10,7 @@ import { BACKDROP_REQUEST_ID } from "@/mods/modTheme";
 import { showColorScheme } from "@/lib/shownColorScheme";
 import { useModUi } from "./mod-ui-context";
 import { ModRenderTree, useCellViewport, useModRender } from "./mod-render";
+import { ModSvgStillContext } from "./mod-svg-image";
 import {
   CONTROL_TOKENS,
   THEME_TOKENS,
@@ -233,7 +234,39 @@ function VectorGround({ vector }: { vector: GroundVector }) {
   );
 }
 
-function SceneBackdrop({ theme }: { theme: ModsUiTheme }) {
+const REDUCED_MOTION = "(prefers-reduced-motion: reduce)";
+
+function subscribeWatched(listener: () => void): () => void {
+  if (typeof window === "undefined" || typeof document === "undefined") return () => {};
+  const query = typeof window.matchMedia === "function" ? window.matchMedia(REDUCED_MOTION) : undefined;
+  window.addEventListener("focus", listener);
+  window.addEventListener("blur", listener);
+  document.addEventListener("visibilitychange", listener);
+  query?.addEventListener("change", listener);
+  return () => {
+    window.removeEventListener("focus", listener);
+    window.removeEventListener("blur", listener);
+    document.removeEventListener("visibilitychange", listener);
+    query?.removeEventListener("change", listener);
+  };
+}
+
+function isUnwatchedNow(): boolean {
+  if (typeof window === "undefined" || typeof document === "undefined") return false;
+  if (document.visibilityState === "hidden" || !document.hasFocus()) return true;
+  return typeof window.matchMedia === "function" && window.matchMedia(REDUCED_MOTION).matches;
+}
+
+/** Whether a scene stands still: while the session works, while the window is
+ *  hidden or another has the focus, and for a person who asks for less
+ *  motion. It moves again when none of these holds. */
+export function useSceneStill(isWorking: boolean): boolean {
+  const isUnwatched = React.useSyncExternalStore(subscribeWatched, isUnwatchedNow, () => false);
+  return isWorking || isUnwatched;
+}
+
+function SceneBackdrop({ theme, isWorking }: { theme: ModsUiTheme; isWorking: boolean }) {
+  const isStill = useSceneStill(isWorking);
   const ref = React.useRef<HTMLDivElement | null>(null);
   const viewport = useCellViewport(ref, "node");
   const backdrop = theme.backdrop ?? {};
@@ -254,12 +287,15 @@ function SceneBackdrop({ theme }: { theme: ModsUiTheme }) {
       data-testid="mod-backdrop"
       data-mod-backdrop-kind="scene"
       data-mod-drawn={drawn?.kind ?? "pending"}
+      data-mod-still={isStill ? "" : undefined}
       className="pointer-events-none absolute inset-0 -z-10 overflow-hidden [&_[data-mod-tree]]:h-full [&_[data-mod-tree]]:w-full [&_img]:h-full [&_img]:w-full [&_img]:object-cover"
       aria-hidden="true"
       inert
     >
       {drawn?.kind === "tree" ? (
-        <ModRenderTree tree={drawn.tree} site={{ component: "Backdrop", requestId: BACKDROP_REQUEST_ID, plugin: drawn.plugin ?? theme.plugin }} />
+        <ModSvgStillContext.Provider value={isStill}>
+          <ModRenderTree tree={drawn.tree} site={{ component: "Backdrop", requestId: BACKDROP_REQUEST_ID, plugin: drawn.plugin ?? theme.plugin }} />
+        </ModSvgStillContext.Provider>
       ) : null}
     </div>
   );
@@ -267,13 +303,14 @@ function SceneBackdrop({ theme }: { theme: ModsUiTheme }) {
 
 /** What stands behind the conversation: the theme's scene, drawn by the
  *  `ui.render` hooks on `Backdrop`, or its still ground. An image ground is
- *  not drawn: the app keeps its own. */
-export function ModBackdrop() {
+ *  not drawn: the app keeps its own. A scene stands still while `isWorking`,
+ *  the session's turn running. */
+export function ModBackdrop({ isWorking = false }: { isWorking?: boolean }) {
   const { theme } = useModUi();
   const paintedByShell = React.useContext(ModShellPaintsThemeContext);
   const backdrop = theme?.backdrop;
   if (!theme || !backdrop || paintedByShell) return null;
-  if (typeof backdrop.scene === "string") return <SceneBackdrop theme={theme} />;
+  if (typeof backdrop.scene === "string") return <SceneBackdrop theme={theme} isWorking={isWorking} />;
   const style = groundStyleOf(backdrop);
   const vector = style ? undefined : groundVectorOf(backdrop);
   if (!style && !vector) return null;

@@ -543,7 +543,7 @@ export const Thread: FC<{
     >
       {/* The session's mod theme (F-25 `$.theme.set`): its scene or still
           ground, behind the conversation; presses pass through. */}
-      <ModBackdrop />
+      <ModBackdrop isWorking={sessionPhase.kind !== "idle"} />
       {/* The transcript's top right corner: the session card stack (F-9; the
           mods' docked panes are its last cards, F-25), then the mods' toasts
           (`$.ui.toast`) beneath it. While the stack shows, the column keeps

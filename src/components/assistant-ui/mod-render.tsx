@@ -14,6 +14,7 @@ import { ACTION_WORDS } from "@/mods/modEngineActions";
 import { drawsContent } from "@/mods/modRender";
 import { FOOTER_BAR_FRAME } from "./footer-bar-frame";
 import { ICON_SLOT_PX, ModPluginFrame } from "./mod-ui";
+import { ModSvgStillContext, stillSvgOf, svgImageUrl } from "./mod-svg-image";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { StaticMarkdown } from "./static-markdown";
 import {
@@ -256,6 +257,17 @@ function ModButtonLabel({ label, action }: { label: string; action: unknown }) {
   return <>{key ? t(key) : action}</>;
 }
 
+/** An `Svg` node. Drawn as an image: the markup never reaches the page, no
+ *  script runs. A still copy where the site asks for none that moves. */
+function ModSvg({ props }: { props: Record<string, unknown> }) {
+  const isStill = React.useContext(ModSvgStillContext);
+  const source = String(props.source ?? "");
+  const style: React.CSSProperties = {};
+  if (typeof props.width === "number") style.width = props.width;
+  if (typeof props.height === "number") style.height = props.height;
+  return <img alt={String(props.alt ?? "")} style={style} src={svgImageUrl(isStill ? stillSvgOf(source) : source)} />;
+}
+
 function ModNode({ node, site }: { node: Node; site: SiteRef }): React.ReactElement | null {
   if (typeof node === "string") return <span style={{ whiteSpace: "pre-wrap" }}>{node}</span>;
   const { uiInput } = useModUi();
@@ -383,14 +395,8 @@ function ModNode({ node, site }: { node: Node; site: SiteRef }): React.ReactElem
           <StaticMarkdown content={String(props.text ?? "")} />
         </div>
       );
-    case "Svg": {
-      const source = String(props.source ?? "");
-      const style: React.CSSProperties = {};
-      if (typeof props.width === "number") style.width = props.width;
-      if (typeof props.height === "number") style.height = props.height;
-      // Drawn as an image: the markup never reaches the page, no script runs.
-      return <img alt={String(props.alt ?? "")} style={style} src={`data:image/svg+xml;charset=utf-8,${encodeURIComponent(source)}`} />;
-    }
+    case "Svg":
+      return <ModSvg props={props} />;
     case "Progress":
       return <ModProgress props={props} />;
     case "engine":

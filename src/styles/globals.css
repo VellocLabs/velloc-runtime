@@ -1073,6 +1073,18 @@
   backdrop-filter: blur(var(--mod-glass-blur, 16px));
 }
 
+/* A panel inside a frosted panel adds its own tint and frosts nothing again:
+ * what is behind it is frosted already. The session area and the thread root
+ * frost nothing themselves, so the panels inside them still do. */
+[data-mod-glass]
+  :is(.bg-background, .bg-card, .bg-toolbar, .bg-base-surface, .bg-sidebar):not(
+    [data-testid='nexus-session-area'],
+    .aui-thread-root
+  )
+  :is(.bg-background, .bg-card, .bg-toolbar, .bg-base-surface, .bg-sidebar) {
+  backdrop-filter: none;
+}
+
 /* A backdrop behind the window (the shell paints it): the session area and the
  * thread stand clear of it, so what is behind shows through the conversation. */
 [data-mod-shell][data-mod-backdrop] :is([data-testid='nexus-session-area'], .aui-thread-root) {

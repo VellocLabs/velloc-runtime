@@ -3049,7 +3049,7 @@ export function MultiSessionShell({
         position: 'relative',
       }}
     >
-      <ShellBackdrop shellTheme={shellTheme} modUi={shellModUi} />
+      <ShellBackdrop shellTheme={shellTheme} modUi={shellModUi} isWorking={runningSessionIds.has(activeSessionId)} />
       <NexusTopBar
         // Settings takes the whole window: its header replaces the topbar as
         // the drag surface and caption reserve.

@@ -76,13 +76,14 @@ export function ShellThemeProviders({ shellTheme, children }: { shellTheme: Shel
   )
 }
 
-/** The backdrop behind the whole window, where the shell paints it. */
-export function ShellBackdrop({ shellTheme, modUi }: { shellTheme: ShellTheme; modUi: ModUiContextValue }) {
+/** The backdrop behind the whole window, where the shell paints it;
+ *  `isWorking` while the session on screen runs a turn. */
+export function ShellBackdrop({ shellTheme, modUi, isWorking }: { shellTheme: ShellTheme; modUi: ModUiContextValue; isWorking: boolean }) {
   if (!shellTheme.paintsBackdrop) return null
   return (
     <ModShellPaintsThemeContext.Provider value={false}>
       <ModUiContext.Provider value={modUi}>
-        <ModBackdrop />
+        <ModBackdrop isWorking={isWorking} />
       </ModUiContext.Provider>
     </ModShellPaintsThemeContext.Provider>
   )
