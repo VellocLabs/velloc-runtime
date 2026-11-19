@@ -53,6 +53,15 @@ const instances = new Map<string, Instance>()
 const served = new Map<string, { day: number; count: number }>()
 /** Each instance's config as last seen, to tell a change from a re-read. */
 let seenConfigs: Map<string, string> | undefined
+/** The configs as the stored ledger saw them, until this run's first are known. */
+let storedConfigs: Map<string, string> | undefined
+/**
+ * What was forgotten before the store's records were taken: those records
+ * are not taken. No `model`: the instance and all its models; `reasons`: only
+ * records of those reasons, and no rate-limit series.
+ */
+type Forgotten = { instanceId: string; model?: string; reasons?: readonly string[] }
+const forgotten: Forgotten[] = []
 let store: ProviderHealthStore | undefined
 /** The store's records are in memory: only then may it be written. */
 let adopted = false
@@ -221,40 +230,71 @@ export function providerStateOf(instanceId: string, nowMs: number): ProviderStat
 
 /** Forget what is recorded about `instanceId`, or about `model` of it alone. */
 export function clearProviderState(instanceId: string, model?: string): void {
+  const pending = store !== undefined && !adopted
+  if (pending) forgotten.push({ instanceId, ...(model !== undefined ? { model } : {}) })
   const instance = instances.get(instanceId)
-  if (!instance) return
-  if (model === undefined) instances.delete(instanceId)
-  else {
-    if (!instance.models.delete(model)) return
+  let changed = false
+  if (instance && model === undefined) {
+    instances.delete(instanceId)
+    changed = true
+  } else if (instance && instance.models.delete(model!)) {
     if (instance.models.size === 0 && !instance.record && !instance.rate) instances.delete(instanceId)
+    changed = true
   }
-  persist()
+  if (changed || pending) persist()
+}
+
+/** Security: a config's fingerprint, so no config (sealed secrets included) is written to the cache. */
+function fingerprint(config: unknown): string {
+  const text = JSON.stringify(config) ?? ''
+  let hash = 0x811c9dc5
+  for (let i = 0; i < text.length; i++) hash = Math.imul(hash ^ text.charCodeAt(i), 0x01000193)
+  return `${text.length.toString(36)}-${(hash >>> 0).toString(36)}`
+}
+
+const LIFTED_BY_CONFIG: readonly string[] = ['billing', 'credentials']
+
+/** Lift what a config change may have fixed for `instanceId`. True when something was lifted. */
+function liftForConfigChange(instanceId: string): boolean {
+  if (store !== undefined && !adopted) forgotten.push({ instanceId, reasons: LIFTED_BY_CONFIG })
+  const instance = instances.get(instanceId)
+  if (!instance) return false
+  let changed = false
+  for (const slot of [instance, ...instance.models.values()]) {
+    if (slot.record && LIFTED_BY_CONFIG.includes(slot.record.reason)) {
+      delete slot.record
+      changed = true
+    }
+  }
+  return changed
+}
+
+/** Instances whose config differs between two sightings. */
+function changedBetween(before: Map<string, string>, after: Map<string, string>): string[] {
+  return [...new Set([...before.keys(), ...after.keys()])].filter(id => before.get(id) !== after.get(id))
 }
 
 /**
  * The provider configs as they are now. An instance whose config differs
  * from the one last seen loses its `billing` and `credentials` records: the
- * person may have paid or replaced the key. The first call only takes note.
+ * person may have paid or replaced the key. The configs last seen are kept
+ * with the ledger, so a change made while no run was watching counts too.
  */
 export function noteProviderConfigs(configs: Readonly<Record<string, unknown>>): void {
   const next = new Map<string, string>()
-  for (const [instanceId, config] of Object.entries(configs)) next.set(instanceId, JSON.stringify(config) ?? '')
-  const before = seenConfigs
+  for (const [instanceId, config] of Object.entries(configs)) next.set(instanceId, fingerprint(config))
+  const before = seenConfigs ?? storedConfigs
   seenConfigs = next
-  if (!before) return
+  storedConfigs = undefined
+  const differ = before ? changedBetween(before, next) : [...next.keys()]
   let changed = false
-  for (const instanceId of new Set([...before.keys(), ...next.keys()])) {
-    if (before.get(instanceId) === next.get(instanceId)) continue
-    const instance = instances.get(instanceId)
-    if (!instance) continue
-    for (const slot of [instance, ...instance.models.values()]) {
-      if (slot.record?.reason === 'billing' || slot.record?.reason === 'credentials') {
-        delete slot.record
-        changed = true
-      }
+  if (before) {
+    for (const instanceId of differ) {
+      if (liftForConfigChange(instanceId)) changed = true
     }
   }
-  if (changed) persist()
+  // The configs are kept with the ledger, so a change made between runs is seen.
+  if (changed || (adopted && differ.length > 0)) persist()
 }
 
 // ── kept between runs ───────────────────────────────────────────────────────
@@ -263,6 +303,8 @@ type StoredSlot = { record?: HealthRecord; rate?: RateSeries }
 type StoredLedger = {
   version: 1
   instances: Record<string, StoredSlot & { models?: Record<string, StoredSlot> }>
+  /** Each instance's config fingerprint when the ledger was written. */
+  configs?: Record<string, string>
 }
 
 const STATUSES: readonly string[] = ['cooling', 'exhausted', 'disabled']
@@ -314,6 +356,8 @@ function serialize(): string {
     for (const [model, slot] of instance.models) models[model] = writeSlot(slot)
     out.instances[instanceId] = { ...writeSlot(instance), ...(instance.models.size > 0 ? { models } : {}) }
   }
+  const configs = seenConfigs ?? storedConfigs
+  if (configs) out.configs = Object.fromEntries(configs)
   return JSON.stringify(out)
 }
 
@@ -327,18 +371,39 @@ function adopt(text: string | undefined): void {
     return
   }
   if (!isRecord(parsed) || parsed.version !== 1 || !isRecord(parsed.instances)) return
-  const fill = (slot: Slot, stored: Slot): void => {
-    if (!slot.record && stored.record) slot.record = stored.record
-    if (!slot.rate && stored.rate) slot.rate = stored.rate
+  const stored = new Map<string, string>()
+  if (isRecord(parsed.configs)) {
+    for (const [instanceId, print] of Object.entries(parsed.configs)) {
+      if (typeof print === 'string') stored.set(instanceId, print)
+    }
+  }
+  // Configs that changed while no run was watching lift what they may have fixed.
+  const changedSince = new Set(seenConfigs && isRecord(parsed.configs) ? changedBetween(stored, seenConfigs) : [])
+  const isForgotten = (instanceId: string, model: string | undefined, reason: string | undefined): boolean =>
+    (reason !== undefined && changedSince.has(instanceId) && LIFTED_BY_CONFIG.includes(reason)) ||
+    forgotten.some(
+      f =>
+        f.instanceId === instanceId &&
+        (f.model === undefined || f.model === model) &&
+        (f.reasons === undefined || (reason !== undefined && f.reasons.includes(reason))),
+    )
+  const fill = (instanceId: string, model: string | undefined, slot: Slot, from: Slot): void => {
+    if (!slot.record && from.record && !isForgotten(instanceId, model, from.record.reason)) slot.record = from.record
+    if (!slot.rate && from.rate && !isForgotten(instanceId, model, undefined)) slot.rate = from.rate
   }
   for (const [instanceId, value] of Object.entries(parsed.instances)) {
     if (!isRecord(value)) continue
     const instance = instanceOf(instanceId)
-    fill(instance, readSlot(value))
+    fill(instanceId, undefined, instance, readSlot(value))
     if (isRecord(value.models)) {
-      for (const [model, stored] of Object.entries(value.models)) fill(slotOf(instance, model), readSlot(stored))
+      for (const [model, from] of Object.entries(value.models)) fill(instanceId, model, slotOf(instance, model), readSlot(from))
     }
+    for (const [model, slot] of instance.models) {
+      if (!slot.record && !slot.rate) instance.models.delete(model)
+    }
+    if (instance.models.size === 0 && !instance.record && !instance.rate) instances.delete(instanceId)
   }
+  if (!seenConfigs && stored.size > 0) storedConfigs = stored
 }
 
 /** Take what `target` holds, once. A read that failed is tried again later. */
@@ -349,6 +414,8 @@ async function load(target: ProviderHealthStore): Promise<void> {
     if (store !== target || adopted) return
     adopt(text)
     adopted = true
+    forgotten.length = 0
+    if (seenConfigs) persist()
   } catch {
     // Not readable now: the ledger works in memory until it is.
   }
@@ -379,7 +446,19 @@ function persist(): void {
 export function configureProviderHealthLedger(next: ProviderHealthStore | undefined): Promise<void> {
   store = next
   adopted = false
+  forgotten.length = 0
   loaded = next ? load(next) : Promise.resolve()
+  return loaded
+}
+
+/**
+ * The store may be reachable now (a home or a host bridge arrived): take
+ * what it holds if that has not happened yet. Never rejects.
+ */
+export function retryProviderHealthLedgerLoad(): Promise<void> {
+  const target = store
+  if (!target || adopted) return loaded
+  loaded = loaded.then(() => load(target))
   return loaded
 }
 
@@ -394,6 +473,8 @@ export function resetProviderHealthLedger(): void {
   instances.clear()
   served.clear()
   seenConfigs = undefined
+  storedConfigs = undefined
+  forgotten.length = 0
   store = undefined
   adopted = false
   writing = Promise.resolve()

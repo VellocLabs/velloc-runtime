@@ -19,6 +19,7 @@ import {
   recordProviderServed,
   recordProviderVerdict,
   resetProviderHealthLedger,
+  retryProviderHealthLedgerLoad,
   TRANSIENT_COOL_MS,
   type ProviderHealthStore,
 } from '../models/drivers/providerHealthLedger'
@@ -395,6 +396,75 @@ describe('kept between runs', () => {
     expect(store.writes).toBe(1)
     expect(providerStateOf('stored', NOON).status).toBe('disabled')
     expect(Object.keys(JSON.parse(store.text!).instances).sort()).toEqual(['fresh', 'stored'])
+  })
+
+  it('a store that becomes readable later is taken when asked again, with no change needed', async () => {
+    const earlier = memoryStore()
+    await configureProviderHealthLedger(earlier)
+    recordProviderVerdict('stored', 'm1', verdict('credentials'), NOON)
+    await providerHealthLedgerSettled()
+
+    resetProviderHealthLedger()
+    let reachable = false
+    await configureProviderHealthLedger({
+      read: async () => {
+        if (!reachable) throw new Error('no settings root yet')
+        return earlier.text
+      },
+      write: earlier.write,
+    })
+    expect(providerStateOf('stored', NOON)).toEqual({ status: 'ok' })
+    reachable = true
+    await retryProviderHealthLedgerLoad()
+    expect(providerStateOf('stored', NOON).status).toBe('disabled')
+  })
+
+  it('a clear made before the stored ledger was taken is not undone by it, and is written', async () => {
+    const earlier = memoryStore()
+    await configureProviderHealthLedger(earlier)
+    recordProviderVerdict('acme', 'm1', verdict('credentials'), NOON)
+    recordProviderVerdict('acme', 'm2', verdict('quota', { scope: 'model', resetsAt: NOON + MIN }), NOON)
+    recordProviderVerdict('other', 'm1', verdict('billing'), NOON)
+    await providerHealthLedgerSettled()
+
+    resetProviderHealthLedger()
+    let reachable = false
+    await configureProviderHealthLedger({
+      read: async () => {
+        if (!reachable) throw new Error('no settings root yet')
+        return earlier.text
+      },
+      write: earlier.write,
+    })
+    clearProviderState('acme')
+    reachable = true
+    await retryProviderHealthLedgerLoad()
+    await providerHealthLedgerSettled()
+    expect(providerStateOf('acme', NOON)).toEqual({ status: 'ok' })
+    expect(providerStateOf('other', NOON).reason).toBe('billing')
+    expect(Object.keys(JSON.parse(earlier.text!).instances)).toEqual(['other'])
+  })
+
+  it('a config changed while no run was watching lifts billing and credentials when the next run starts', async () => {
+    const store = memoryStore()
+    await configureProviderHealthLedger(store)
+    noteProviderConfigs({ a: { hasApiKey: true }, b: { hasApiKey: true } })
+    recordProviderVerdict('a', 'm1', verdict('credentials'), NOON)
+    recordProviderVerdict('b', 'm1', verdict('credentials'), NOON)
+    await providerHealthLedgerSettled()
+    expect(store.text).not.toContain('hasApiKey')
+
+    resetProviderHealthLedger()
+    await configureProviderHealthLedger(store)
+    noteProviderConfigs({ a: { hasApiKey: true, apiKey: 'replaced' }, b: { hasApiKey: true } })
+    expect(providerStateOf('a', NOON)).toEqual({ status: 'ok' })
+    expect(providerStateOf('b', NOON).status).toBe('disabled')
+
+    resetProviderHealthLedger()
+    noteProviderConfigs({ a: { hasApiKey: true, apiKey: 'again' }, b: { hasApiKey: true } })
+    await configureProviderHealthLedger(store)
+    expect(providerStateOf('a', NOON)).toEqual({ status: 'ok' })
+    expect(providerStateOf('b', NOON).status).toBe('disabled')
   })
 
   it('a verdict that records nothing writes nothing', async () => {

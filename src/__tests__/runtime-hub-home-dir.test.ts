@@ -12,6 +12,7 @@ import { wipeSettingsMemos } from '../settings/settingsStore'
 import { registerModProviderDefinition, resetModProviderDefinitions } from '../config/nexusModelConfig/providers'
 import type { ProviderDefinition } from '../config/nexusModelConfig/providerDefinition'
 import { forgetRegistryFile } from '../pluginHost/installedRegistry'
+import { providerHealthLedgerSettled, providerStateOf, resetProviderHealthLedger } from '../models/drivers/providerHealthLedger'
 
 const ENC = new TextEncoder()
 const DEC = new TextDecoder()
@@ -110,6 +111,29 @@ describe('runtime hub home directory', () => {
     expect(bridge.json(SETTINGS)?.pluginConfigs).toEqual({ 'nebius@inline': { options: { region: 'eu' } } })
     expect(bridge.writes.every(path => path.startsWith(`${HOME}/`))).toBe(true)
     expect(reloads).toHaveBeenCalledTimes(1)
+  })
+
+  it('reads the stored provider health ledger once the host bridge arrives after the hub was built', async () => {
+    resetProviderHealthLedger()
+    const stored = { version: 1, instances: { acme: { record: { status: 'disabled', reason: 'credentials' } } } }
+    const bridge = hostBridge({ [`${HOME}/.velloc/cache/provider-health.json`]: JSON.stringify(stored) })
+    let transport: DirectPortBridgeTransport | null = null
+    let n = 0
+    const hub = new RuntimeHub({
+      getDirectBridgeTransport: () => transport,
+      createBridgeRequestId: () => `r-${++n}`,
+      applyAgentSettingsToAllSessions: () => {},
+      reloadPluginsOnAllSessions: () => {},
+      runtimeVersion: 'test',
+      resolveHomeDir: async () => HOME,
+    })
+    hubs.push(hub)
+    await providerHealthLedgerSettled()
+    expect(providerStateOf('acme', Date.now())).toEqual({ status: 'ok' })
+    transport = bridge.transport
+    hub.handleDirectTransportChanged(bridge.transport)
+    await vi.waitFor(() => expect(providerStateOf('acme', Date.now()).status).toBe('disabled'))
+    resetProviderHealthLedger()
   })
 
   it('writes under the host home for a remote-only client', async () => {

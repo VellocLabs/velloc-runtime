@@ -22,7 +22,11 @@ import {
   onRuntimeProviderConfigsChanged,
   runtimeProviderConfigs,
 } from '../../models/drivers/runtimeProviders'
-import { configureProviderHealthLedger, noteProviderConfigs } from '../../models/drivers/providerHealthLedger'
+import {
+  configureProviderHealthLedger,
+  noteProviderConfigs,
+  retryProviderHealthLedgerLoad,
+} from '../../models/drivers/providerHealthLedger'
 import { lendProviderHostSources } from '../../mods/provider/providerHostSources'
 import { createBrowserFsOperations } from '../../utils/BrowserFsOperations'
 import { processFs } from '../../utils/fs/runtimeFs'
@@ -237,6 +241,7 @@ export class RuntimeHub {
   private readonly pluginUpdates: { dispose(): void }
   private readonly renderCache: { dispose(): void }
   private readonly review: { dispose(): void }
+  private readonly stopNotingProviderConfigs: () => void
   /** The ISO build stamp of the page that started this runtime (first-writer-wins). */
   private _bootBuild: string | null = null
   /** The in-flight `host.resolveHomeDir`, shared by every request waiting on it. */
@@ -267,7 +272,7 @@ export class RuntimeHub {
     // on the same fs, and a changed config lifts what a new key or a payment
     // may have fixed.
     void configureProviderHealthLedger(createProviderHealthStore(webUiBridge))
-    onRuntimeProviderConfigsChanged(() => noteProviderConfigs(runtimeProviderConfigs()))
+    this.stopNotingProviderConfigs = onRuntimeProviderConfigsChanged(() => noteProviderConfigs(runtimeProviderConfigs()))
     // …and so does a provider module's `$.provider.setSecrets` (sealed host-side).
     lendProviderHostSources({ writeProviderConfig: (id, config) => providersHost.writeProviderConfig(id, config) })
     this.context = {
@@ -598,7 +603,10 @@ export class RuntimeHub {
     // A new bridge is the one moment the host's identity can be asked for
     // (and the only moment it can change: a different binary).
     this.refreshHostIdentity()
-    if (transport) void this.ensureHomeDir()
+    if (transport) {
+      void retryProviderHealthLedgerLoad()
+      void this.ensureHomeDir()
+    }
   }
 
   /**
@@ -626,6 +634,8 @@ export class RuntimeHub {
   private setHomeDir(homeDir: string): void {
     this.context.homeDir = homeDir
     this.context.webUiBridge.homeDir = homeDir
+    // The ledger's store lives under the home: it may be readable only now.
+    void retryProviderHealthLedgerLoad()
   }
 
   /**
@@ -704,6 +714,7 @@ export class RuntimeHub {
     this.pluginUpdates.dispose()
     this.renderCache.dispose()
     this.review.dispose()
+    this.stopNotingProviderConfigs()
     this.connections.dispose(code)
   }
 

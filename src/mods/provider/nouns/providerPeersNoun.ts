@@ -105,19 +105,7 @@ export function peersTableFor(routerId: string, deps: PeersTableDeps): Peer[] {
 // ── the runtime's own source ────────────────────────────────────────────────
 
 function listedModel(info: ProviderModelInfo, picked: ReadonlySet<string>): PeerModel {
-  return {
-    id: info.id,
-    ...(info.name !== undefined ? { name: info.name } : {}),
-    picked: picked.has(info.id),
-    ...(info.free !== undefined ? { free: info.free } : {}),
-    ...(info.contextWindow !== undefined ? { contextWindow: info.contextWindow } : {}),
-    ...(info.maxOutputTokens !== undefined ? { maxOutputTokens: info.maxOutputTokens } : {}),
-    supportsTools: info.supportsTools,
-    ...(info.supportsImageInput !== undefined ? { supportsImageInput: info.supportsImageInput } : {}),
-    ...(info.supportsPdfInput !== undefined ? { supportsPdfInput: info.supportsPdfInput } : {}),
-    ...(info.thinkingTiers !== undefined ? { thinkingTiers: [...info.thinkingTiers] } : {}),
-    ...(info.deprecated !== undefined ? { deprecated: info.deprecated } : {}),
-  }
+  return copyModel({ ...info, picked: picked.has(info.id) })
 }
 
 function customModel(model: CustomModelDef): PeerModel {
