@@ -12,6 +12,7 @@ import {
   ModCommandOutputSite,
   ModDockedPane,
   ModPanes,
+  ModPromptRows,
   ModPromptHintSite,
   ModRenderTree,
   ModToolResultSite,
@@ -23,6 +24,7 @@ import {
 } from '../components/assistant-ui/mod-render'
 import { FOOTER_BAR_FRAME } from '../components/assistant-ui/footer-bar-frame'
 import { TooltipProvider } from '../components/ui/tooltip'
+import { CompactThreadChromeContext } from '../components/assistant-ui/compactThreadChrome'
 import {
   EMPTY_MOD_UI,
   ModUiContext,
@@ -813,5 +815,25 @@ describe('ModDockedPane — a pane docked in the Right Panel', () => {
   it('with the panes docked, the strip above the prompt steps aside', () => {
     const { container } = render(withUi({ panes: [pane], panesDocked: true }, createElement(ModPanes)))
     expect(container.innerHTML).toBe('')
+  })
+})
+
+describe('ModPromptRows — the mod rows above the prompt', () => {
+  const band = { hooked: [{ plugin: 'band', component: 'AbovePrompt' as const }] }
+  const tree = () => vi.fn(async () => ({ kind: 'tree' as const, tree: { type: 'Text', children: ['last turn: 3s'] }, plugin: 'band' }))
+
+  it('draws the band in a full thread', async () => {
+    render(withUi({ ...band, render: tree() }, createElement(ModPromptRows)))
+    await waitFor(() => expect(screen.getByTestId('mod-band').textContent).toBe('last turn: 3s'))
+  })
+
+  it('draws nothing in a compact (phone) thread and asks no mod to render', async () => {
+    const render$ = tree()
+    const { container } = render(
+      createElement(CompactThreadChromeContext.Provider, { value: true }, withUi({ ...band, render: render$ }, createElement(ModPromptRows))),
+    )
+    await act(async () => {})
+    expect(container.innerHTML).toBe('')
+    expect(render$).not.toHaveBeenCalled()
   })
 })

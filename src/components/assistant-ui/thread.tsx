@@ -39,7 +39,7 @@ import {
   ModToasts,
   ModTurnNote,
 } from "./mod-ui";
-import { ModAbovePrompt, ModPanes } from "./mod-render";
+import { ModPromptRows } from "./mod-render";
 import { ModPlacedProvider } from "./mod-placed";
 import { ModAppLook, ModBackdrop, useModThemeLook } from "./mod-theme";
 import { ThemeModsMenu } from "./theme-mods-menu";
@@ -662,8 +662,7 @@ export const Thread: FC<{
               tasks) stack above, never between a plugin's rows and the
               prompt they sit on. Their status lines (`$.ui.status`) are not
               here: they are the prompt box's top row (`ModComposerStatus`). */}
-          <ModPanes />
-          <ModAbovePrompt />
+          <ModPromptRows />
           {/* A mod's questions (F-25 `$.ui.ask`), one card each until the
               person answers or dismisses it. */}
           <ModAsks />

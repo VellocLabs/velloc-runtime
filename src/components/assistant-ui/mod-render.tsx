@@ -17,6 +17,7 @@ import { ICON_SLOT_PX, ModPluginFrame } from "./mod-ui";
 import { ModSvgStillContext, stillSvgOf, svgImageUrl } from "./mod-svg-image";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { StaticMarkdown } from "./static-markdown";
+import { useCompactThreadChrome } from "./compactThreadChrome";
 import {
   isSiteHooked,
   ModToolUseRewriteContext,
@@ -1224,6 +1225,19 @@ export function ModPlacedSite({ plugin, id, requestId }: { plugin: string; id: s
 }
 
 /** The band above the prompt, when some loaded hook draws it. */
+/** The mod rows seated right above the prompt: inline panes, then the band.
+ *  A compact (phone) thread draws neither. */
+export function ModPromptRows() {
+  const compact = useCompactThreadChrome();
+  if (compact) return null;
+  return (
+    <>
+      <ModPanes />
+      <ModAbovePrompt />
+    </>
+  );
+}
+
 export function ModAbovePrompt() {
   const { hooked } = useModUi();
   if (!isSiteHooked(hooked, "AbovePrompt", "band")) return null;

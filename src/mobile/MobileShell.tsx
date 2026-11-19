@@ -72,6 +72,7 @@ import { useMultiSessionClients } from '../browser/webview/useMultiSessionClient
 import { useSessionManager } from '../browser/webview/useSessionManager'
 import { randomUuid } from '../utils/randomUuid'
 import { snapshotNeedsAnswer } from '../utils/sessionNeedsAnswer'
+import { CompactThreadChromeContext } from '../components/assistant-ui/compactThreadChrome'
 import { MobileDrawer } from './MobileDrawer'
 import { namedTitle, nextLiveSessionId } from './mobileSessionGroups'
 import { MobileRenameSheet, MobileSessionMenu, type MobileMenuTarget } from './MobileSessionMenu'
@@ -534,7 +535,9 @@ export function MobileShell(props: MobileShellProps): ReactNode {
                 paddingRight: 'env(safe-area-inset-right)',
               }}
             >
-              {renderShellSessionThread(threadInputs, activeSessionId, false)}
+              <CompactThreadChromeContext.Provider value={true}>
+                {renderShellSessionThread(threadInputs, activeSessionId, false)}
+              </CompactThreadChromeContext.Provider>
             </div>
             <MobileDrawer
               open={drawerOpen}
