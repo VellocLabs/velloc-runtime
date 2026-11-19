@@ -419,8 +419,8 @@ export function themeSetCore(state: ModThemeState, plugin: string, args: ThemeSe
 }
 
 /** Core of `theme.clear`: `plugin`'s own theme goes, as on its unload; another
- *  plugin's standing theme stays. */
-export function themeClearCore(state: ModThemeState, plugin: string): ThemeResult {
-  state.clearPlugin(plugin)
+ *  plugin's standing theme stays. `onStandingChanged` runs when the standing theme changed. */
+export function themeClearCore(state: ModThemeState, plugin: string, onStandingChanged?: () => void): ThemeResult {
+  if (state.clearPlugin(plugin)) onStandingChanged?.()
   return { isDrawn: false, reason: THEME_CLEARED_REASON }
 }

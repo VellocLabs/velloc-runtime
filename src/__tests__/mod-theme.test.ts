@@ -479,8 +479,12 @@ describe('theme args and state', () => {
     expect(state.clearPlugin('a')).toBe(true)
     expect(state.current()?.plugin).toBe('b')
     themeSetCore(state, 'a', { overrideColorScheme: 'dark' }, true)
-    themeClearCore(state, 'a')
+    let standingChanged = 0
+    themeClearCore(state, 'a', () => void (standingChanged += 1))
     expect(state.current()?.plugin).toBe('b')
+    expect(standingChanged).toBe(1)
+    themeClearCore(state, 'a', () => void (standingChanged += 1))
+    expect(standingChanged).toBe(1)
     themeSetCore(state, 'a', { overrideColorScheme: 'dark' }, true)
     state.clear()
     expect(state.clearPlugin('b')).toBe(false)

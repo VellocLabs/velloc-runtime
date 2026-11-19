@@ -280,12 +280,7 @@ export class ModRuntime extends ModPluginNouns implements TurnExtensions {
             if (seat) options.onThemeSet?.(seat.ref)
             return result
           },
-          clear: (plugin: string) => {
-            const before = this.theme.current()
-            const result = themeClearCore(this.theme, plugin)
-            if (this.theme.current() !== before) this.forgetBackdrop()
-            return result
-          },
+          clear: (plugin: string) => themeClearCore(this.theme, plugin, () => this.forgetBackdrop()),
         },
         commands: options.session.commands ?? {
           register: (spec: ModCommandSpec, plugin: string, calling?: string): string => {
