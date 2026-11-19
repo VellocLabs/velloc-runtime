@@ -2313,11 +2313,16 @@ export function MultiSessionShell({
     if (!customizeOpen) setMarketplaceAddRequest(null)
   }, [customizeOpen])
   // The session a theme look is applied to: the one the window shows, unless a CLI runs it.
+  const shownSession = useMemo(
+    () => sessions.find(s => s.sessionId === activeSessionId),
+    [sessions, activeSessionId],
+  )
+  const shownIsCli = cliOfTemplateType(shownSession?.templateType) !== undefined
   const themeTarget = useMemo(() => {
-    const shown = sessions.find(s => s.sessionId === activeSessionId)
-    if (!shown || cliOfTemplateType(shown.templateType)) return null
+    const shown = shownSession
+    if (!shown || shownIsCli) return null
     return { sessionId: shown.sessionId, title: sessionDisplayTitle(shown, t), busy: runningSessionIds.has(shown.sessionId) }
-  }, [sessions, activeSessionId, runningSessionIds, t])
+  }, [shownSession, shownIsCli, runningSessionIds, t])
   const themeStanding = useMemo(
     () => (!shellModUi.isLoaded ? undefined : shellModUi.theme ? { plugin: shellModUi.theme.plugin } : null),
     [shellModUi.isLoaded, shellModUi.theme],
@@ -2328,11 +2333,7 @@ export function MultiSessionShell({
   // The active session's theme paints the whole window: its tokens and backdrop sit on the shell.
   // Across a switch the previous one stays until the new session's is known.
   // A session not listed yet (just created) holds too; only a CLI's never does.
-  const activeSessionIsCli = useMemo(
-    () => cliOfTemplateType(sessions.find(s => s.sessionId === activeSessionId)?.templateType) !== undefined,
-    [sessions, activeSessionId],
-  )
-  const themeModUi = useThemeAcrossSwitch(activeSessionId ?? undefined, shellModUi, !activeSessionIsCli)
+  const themeModUi = useThemeAcrossSwitch(activeSessionId ?? undefined, shellModUi, !shownIsCli)
   const shellTheme = useShellTheme({
     runtimeConnection,
     theme: themeModUi.theme,
