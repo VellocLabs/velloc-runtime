@@ -36,15 +36,19 @@ export type SettingsAppPeerSource = {
   clearPeerState: (payload: ClearPeerStatePayload) => Promise<ClearPeerStateResult> | ClearPeerStateResult
 }
 
-let peerSource: SettingsAppPeerSource | undefined
-
-/** Plugs in the platform's peers table and ledger clear; undefined unplugs them. */
-export function setSettingsAppPeerSource(next: SettingsAppPeerSource | undefined): void {
-  peerSource = next
-}
-
-export function settingsAppPeerSource(): SettingsAppPeerSource | undefined {
-  return peerSource
+/** The runtime's peers table and health ledger as a settings app reads them; the module is loaded only with the background runtime. */
+export async function runtimeSettingsAppPeers(): Promise<SettingsAppPeerSource> {
+  const [{ runtimePeersTable }, { clearProviderState }] = await Promise.all([
+    import('../provider/nouns/providerPeersNoun'),
+    import('../../models/drivers/providerHealthLedger'),
+  ])
+  return {
+    peersFor: runtimePeersTable,
+    clearPeerState: ({ provider, model }) => {
+      clearProviderState(provider, model)
+      return { ok: true }
+    },
+  }
 }
 
 /** Why the background module may not call `$.provider.<method>`, or null. `binding` absent: the app is no provider's settings app. */
@@ -80,7 +84,7 @@ function readClearTarget(value: unknown): ClearPeerStatePayload {
 
 export type SettingsAppProviderDeps = {
   /** The peers table and ledger clear; absent: `peers` and `clearState` fail as unavailable. */
-  peers?: () => SettingsAppPeerSource | undefined
+  peers?: () => SettingsAppPeerSource | undefined | Promise<SettingsAppPeerSource | undefined>
   /** Folded per provider (`createReloadFolder`). */
   reload: (providerId: string) => Promise<void>
 }
@@ -98,7 +102,7 @@ export async function serveSettingsAppProviderCall(
     await deps.reload(binding.providerId)
     return undefined
   }
-  const source = deps.peers?.()
+  const source = await deps.peers?.()
   if (!source) throw named('NotSupportedError', `$.provider.${method}: the peers table is not available in this build`)
   const routesTo = binding.routesTo ?? []
   if (method === 'peers') {

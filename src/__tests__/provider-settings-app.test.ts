@@ -22,6 +22,9 @@ import {
 } from '../mods/app/appProviderCalls'
 import { resetAppStateBusForTests } from '../mods/app/appStateBus'
 import type { Peer } from '../mods/provider/nouns/providerPeersTypes'
+import { peersTableFor, type PeerInstance } from '../mods/provider/nouns/providerPeersNoun'
+import { clearProviderState, providerStateOf, recordProviderVerdict, resetProviderHealthLedger } from '../models/drivers/providerHealthLedger'
+import type { ProviderConnectivityIssue } from '../utils/providerConnectivity'
 import { PROVIDER_WIRE_FORMATS } from '../mods/provider/providerManifest'
 import { checkTemplateDecls } from '../mods/ui/uiManifest'
 import { ModUiContributionsHost, type ContributingPlugin } from '../mods/ui/contributionsHost'
@@ -345,5 +348,63 @@ describe('the three calls in a background module', () => {
     for (const key of ['peers', 'reload', 'clear']) expect(value()?.[key]).toMatch(/^NotAllowedError: .*no provider names this app as its settingsApp/)
     expect(reloads).toEqual([])
     expect(cleared).toEqual([])
+  })
+})
+
+describe('the calls over the real peers table and health ledger', () => {
+  afterEach(() => resetProviderHealthLedger())
+  const instance = (id: string): PeerInstance => ({
+    id,
+    definition: id,
+    label: id,
+    router: false,
+    source: 'builtin',
+    connected: true,
+    models: [],
+  })
+  const NOW = Date.UTC(2026, 2, 10, 12)
+  const source: SettingsAppPeerSource = {
+    peersFor: routerId =>
+      peersTableFor(routerId, {
+        instances: () => [instance('vendor-a'), instance('vendor-z'), { ...instance('mod.switch.route'), router: true }],
+        routesToOf: id => (id === 'mod.switch.route' ? ['vendor-a'] : undefined),
+        stateOf: providerStateOf,
+        now: () => NOW,
+      }),
+    clearPeerState: ({ provider, model }) => {
+      clearProviderState(provider, model)
+      return { ok: true }
+    },
+  }
+  const deps = { peers: () => source, reload: async () => {} }
+  const rateLimited: ProviderConnectivityIssue = {
+    kind: 'rate_limit',
+    error: 'unknown',
+    titleKey: 'x' as ProviderConnectivityIssue['titleKey'],
+    summaryKey: 'x' as ProviderConnectivityIssue['summaryKey'],
+    retryable: true,
+    settingsRecommended: false,
+    detail: '',
+    scope: 'provider',
+  }
+
+  it('shows a member cooling after a recorded verdict, and ok again once clearState forgets it', async () => {
+    recordProviderVerdict('vendor-a', 'm-1', rateLimited, NOW)
+    const before = (await serveSettingsAppProviderCall(ROUTER_BINDING, 'peers', [], deps)) as Peer[]
+    expect(before.map(p => [p.id, p.state.status])).toEqual([['vendor-a', 'cooling']])
+    await serveSettingsAppProviderCall(ROUTER_BINDING, 'clearState', [{ provider: 'vendor-a' }], deps)
+    const after = (await serveSettingsAppProviderCall(ROUTER_BINDING, 'peers', [], deps)) as Peer[]
+    expect(after[0]!.state.status).toBe('ok')
+  })
+
+  it('still refuses a target outside routesTo and leaves its record alone', async () => {
+    recordProviderVerdict('vendor-z', 'm-1', rateLimited, NOW)
+    await expect(serveSettingsAppProviderCall(ROUTER_BINDING, 'clearState', [{ provider: 'vendor-z' }], deps)).rejects.toThrow(/outside/)
+    expect(providerStateOf('vendor-z', NOW).status).toBe('cooling')
+  })
+
+  it('carries no secret, base URL or account name in a peer', async () => {
+    const rows = (await serveSettingsAppProviderCall(ROUTER_BINDING, 'peers', [], deps)) as Peer[]
+    expect(JSON.stringify(rows)).not.toMatch(/apiKey|baseUrl|account|secret/i)
   })
 })
