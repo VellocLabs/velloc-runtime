@@ -25,6 +25,12 @@ import {
 /** Looks a pack's section shows before "Show all": two rows of three. */
 export const PACK_LIMIT = 6
 
+/** A plugin's listing name as a heading: `theme-examples` reads "Theme examples". */
+export function packTitle(name: string): string {
+  const words = name.replace(/[-_]+/g, ' ').trim()
+  return words === '' ? name : words.charAt(0).toUpperCase() + words.slice(1)
+}
+
 type Filter = 'all' | 'light' | 'dark'
 const FILTERS: readonly Filter[] = ['all', 'light', 'dark']
 
@@ -187,11 +193,11 @@ function PackSection({ plugin, looks, view, target, blocked, inUse }: Shared & {
     <section
       data-testid="customize-theme-pack"
       data-name={plugin.name}
-      aria-label={plugin.name}
+      aria-label={packTitle(plugin.name)}
       className="@container flex flex-col gap-3 py-4"
     >
       <div className="flex min-h-7 items-center gap-2">
-        <h3 className="truncate text-[15px] leading-5 font-semibold text-foreground">{plugin.name}</h3>
+        <h3 className="truncate text-[15px] leading-5 font-semibold text-foreground">{packTitle(plugin.name)}</h3>
         <span
           data-testid="customize-theme-pack-count"
           title={t('customize.themes.looksCount', { count })}

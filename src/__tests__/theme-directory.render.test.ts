@@ -11,7 +11,7 @@ import { act, cleanup, fireEvent, render, waitFor, within } from '@testing-libra
 import type { RuntimeConnection } from '../browser/runtimeClient/RuntimeConnection'
 import { CustomizeScreen } from '../browser/webview/customize/CustomizeScreen'
 import { INSTALL_TOAST_MS } from '../browser/webview/customize/InstallToasts'
-import { PACK_LIMIT } from '../browser/webview/customize/ThemeBrowser'
+import { PACK_LIMIT, packTitle } from '../browser/webview/customize/ThemeBrowser'
 import type { ThemeTarget } from '../browser/webview/customize/useThemeCatalog'
 import { en as EN } from '../browser/webview/i18n/messages/en'
 import { SettingsBridgeContext, type NexusSettingsBridge } from '../browser/webview/nexusSettingsBridge'
@@ -182,6 +182,13 @@ describe('Theme directory — the grid', () => {
     await open()
     const section = view.getByTestId('customize-theme-pack')
     expect(section.getAttribute('data-name')).toBe('scenes')
+    expect(within(section).getByRole('heading').textContent).toBe('Scenes')
+    expect([packTitle('theme-examples'), packTitle('looks'), packTitle('my_theme--pack'), packTitle('-')]).toEqual([
+      'Theme examples',
+      'Looks',
+      'My theme pack',
+      '-',
+    ])
     expect(within(section).getByTestId('customize-theme-pack-count').textContent).toContain('2')
     expect(within(section).getByTestId('customize-theme-official')).toBeTruthy()
     expect(within(section).getAllByTestId('customize-theme-look').map(el => el.getAttribute('data-look'))).toEqual([
