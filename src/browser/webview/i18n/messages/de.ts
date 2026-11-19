@@ -2022,6 +2022,7 @@ export const de: Messages = {
   'settings.models.mod.router.list': 'Nur diese Anbieter:',
   'settings.models.mod.router.targetNotSetUp': '{name} (nicht eingerichtet)',
   'settings.models.mod.router.unknown': '{count} weitere aufgeführt, nicht installiert.',
+  'settings.models.mod.router.unknownOne': '{count} weiterer aufgeführt, nicht installiert.',
   'settings.models.mod.router.needsProviders': '{name} wählt für jede Anfrage einen deiner anderen Anbieter und wechselt zum nächsten, wenn einer ausfällt oder sein Kontingent aufgebraucht ist. Derzeit erreicht er {count}; richte mindestens zwei ein, damit er wählen kann.',
   'settings.models.mod.router.connectProvider': 'Weiteren Anbieter einrichten',
   'settings.models.mod.pluginProviders': 'Plugin-Anbieter',

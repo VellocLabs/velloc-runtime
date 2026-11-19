@@ -1979,6 +1979,7 @@ export const zh: Messages = {
   'settings.models.mod.router.list': '仅限以下服务商：',
   'settings.models.mod.router.targetNotSetUp': '{name}（未设置）',
   'settings.models.mod.router.unknown': '另有 {count} 个已列出但未安装。',
+  'settings.models.mod.router.unknownOne': '另有 {count} 个已列出但未安装。',
   'settings.models.mod.router.needsProviders': '{name} 为每个请求选一个你的其他服务商，某个失败或用完时换下一个。它现在能用的有 {count} 个；至少设置两个，它才有得选。',
   'settings.models.mod.router.connectProvider': '设置另一个服务商',
   'settings.models.mod.pluginProviders': '插件服务商',

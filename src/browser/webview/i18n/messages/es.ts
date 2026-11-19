@@ -2026,6 +2026,7 @@ export const es: Messages = {
   'settings.models.mod.router.list': 'Solo estos proveedores:',
   'settings.models.mod.router.targetNotSetUp': '{name} (sin configurar)',
   'settings.models.mod.router.unknown': '{count} más en la lista, sin instalar.',
+  'settings.models.mod.router.unknownOne': '{count} más en la lista, sin instalar.',
   'settings.models.mod.router.needsProviders': '{name} elige uno de sus otros proveedores para cada solicitud y pasa al siguiente cuando uno falla o se agota. Ahora puede usar {count}; configure al menos dos para que pueda elegir.',
   'settings.models.mod.router.connectProvider': 'Configurar otro proveedor',
   'settings.models.mod.pluginProviders': 'Proveedores de complementos',

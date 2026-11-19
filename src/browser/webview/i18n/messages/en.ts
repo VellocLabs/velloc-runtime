@@ -2075,6 +2075,7 @@ export const en = {
   'settings.models.mod.router.list': 'Only these providers:',
   'settings.models.mod.router.targetNotSetUp': '{name} (not set up)',
   'settings.models.mod.router.unknown': '{count} more listed, not installed.',
+  'settings.models.mod.router.unknownOne': '{count} more listed, not installed.',
   'settings.models.mod.router.needsProviders': '{name} picks one of your other providers for each request, and moves to the next when one fails or runs out. It can reach {count} now; set up at least two for it to choose between.',
   'settings.models.mod.router.connectProvider': 'Set up another provider',
   'settings.models.mod.pluginProviders': 'Plugin providers',

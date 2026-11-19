@@ -114,7 +114,9 @@ export function ModRouterPanel({
         ) : null}
         {view.unknown > 0 ? (
           <span className="text-muted-foreground text-xs" data-testid="mod-router-unknown">
-            {t("settings.models.mod.router.unknown", { count: view.unknown })}
+            {view.unknown === 1
+              ? t("settings.models.mod.router.unknownOne", { count: view.unknown })
+              : t("settings.models.mod.router.unknown", { count: view.unknown })}
           </span>
         ) : null}
         {view.needsProviders ? (

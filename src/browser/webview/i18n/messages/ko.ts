@@ -1996,6 +1996,7 @@ export const ko: Messages = {
   'settings.models.mod.router.list': '다음 제공업체만:',
   'settings.models.mod.router.targetNotSetUp': '{name}(설정 안 됨)',
   'settings.models.mod.router.unknown': '{count}개가 더 지정되어 있지만 설치되지 않았습니다.',
+  'settings.models.mod.router.unknownOne': '{count}개가 더 지정되어 있지만 설치되지 않았습니다.',
   'settings.models.mod.router.needsProviders': '{name}은(는) 요청마다 다른 제공업체 하나를 고르고, 실패하거나 한도에 도달하면 다음으로 넘어갑니다. 지금 사용할 수 있는 것은 {count}개입니다. 고를 수 있도록 두 개 이상 설정하세요.',
   'settings.models.mod.router.connectProvider': '다른 제공업체 설정',
   'settings.models.mod.pluginProviders': '플러그인 제공업체',

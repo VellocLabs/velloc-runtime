@@ -62,7 +62,7 @@ export function sendsThroughView(
   const targets: SendsThroughView['targets'] = []
   let unknown = 0
   for (const definition of boundary) {
-    // Every instance of a listed definition is inside the boundary.
+    // A row's id is its definition while a definition has one instance.
     const inside = rows.filter(row => insideRoutesTo([definition], { definition: row.id }))
     if (inside.length === 0) unknown += 1
     for (const row of inside) {

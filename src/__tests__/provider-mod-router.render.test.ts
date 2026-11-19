@@ -201,6 +201,12 @@ describe('the router editor', () => {
     expect(screen.queryByTestId('mod-router-needs-providers')).toBeNull()
   })
 
+  it('one uninstalled provider reads in the singular', async () => {
+    mount(harness({ [ROUTER]: ANON, [ALPHA]: ANON }, [modRow(ALPHA, 'Alpha'), routerRow([ALPHA, 'mod.gone.main'])]), 'fr')
+    await openEditor(ROUTER)
+    expect(screen.getByTestId('mod-router-unknown').textContent).toBe('1 autre listé, non installé.')
+  })
+
   it('fewer than two to send through: says what a router is for and opens the add menu', async () => {
     mount(harness({ [ROUTER]: ANON, [ALPHA]: ANON }, [modRow(ALPHA, 'Alpha'), modRow(BETA, 'Beta'), routerRow('*')]))
     await openEditor(ROUTER)
