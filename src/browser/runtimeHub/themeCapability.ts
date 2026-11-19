@@ -104,7 +104,7 @@ export function registerThemeCapability(registry: CapabilityRegistry, options: T
           if (!result.ok && result.reason === 'notLoaded') {
             const listing = target.listings?.find(candidate => candidate.name === payload.plugin)
             const reload = options.reload ?? (() => {})
-            if (listing && (await turnOnListedThemePlugin({ homeDir, fs, reload }, listing))) {
+            if (listing && !request.signal?.aborted && (await turnOnListedThemePlugin({ homeDir, fs, reload }, listing))) {
               const loading: ThemeLookTarget = {
                 ...target,
                 get slot() {

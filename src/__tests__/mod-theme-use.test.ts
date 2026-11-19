@@ -390,11 +390,11 @@ describe('theme.useLook on a plugin that is installed and switched off', () => {
         })
       },
     })
-    const useLagoon = () =>
+    const useLagoon = (signal?: AbortSignal) =>
       registry
         .resolve('theme', 'useLook')!
         .handle(
-          { id: '1', route: { cap: 'theme', act: 'useLook' }, payload: { sessionId: 's1', plugin: 'pack', lookId: 'lagoon' }, conn } as never,
+          { id: '1', route: { cap: 'theme', act: 'useLook' }, payload: { sessionId: 's1', plugin: 'pack', lookId: 'lagoon' }, conn, signal } as never,
           {} as never,
         )
     return { useLagoon, enabledNow, ran: fake.ran, reloads: () => reloads }
@@ -419,6 +419,15 @@ describe('theme.useLook on a plugin that is installed and switched off', () => {
     expect(await useLagoon()).toMatchObject({ ok: true, via: 'command' })
     expect(await enabledNow()).toEqual({ 'pack@their-own': true })
     expect(ran).toHaveLength(1)
+  })
+
+  it('a cancelled request switches nothing on', async () => {
+    const { useLagoon, enabledNow, reloads } = await rig({ installed: [`pack@${MP}`], enabledPlugins: { [`pack@${MP}`]: false } })
+    const controller = new AbortController()
+    controller.abort()
+    expect(await useLagoon(controller.signal)).toEqual({ ok: false, reason: 'notLoaded' })
+    expect(await enabledNow()).toEqual({ [`pack@${MP}`]: false })
+    expect(reloads()).toBe(0)
   })
 
   it('leaves the settings alone when the plugin is not installed, or an install of it is already on', async () => {
@@ -477,6 +486,29 @@ describe('useThemeLookOnceLoaded', () => {
       await useThemeLookOnceLoaded({ marketplace: MP, listings: LISTINGS, slot: silent.slot }, { plugin: 'pack', lookId: 'lagoon' }, NO_WAIT),
     ).toEqual({ ok: false, reason: 'unanswered' })
     expect(asked).toBe(1)
+  })
+
+  it('asks at once, and stops at notOwnCommand once the plugin has started', async () => {
+    let pauses = 0
+    const counted = { attempts: 4, pause: async () => void (pauses += 1) }
+    const { slot, ran } = fakeSlot()
+    expect(await useThemeLookOnceLoaded({ marketplace: MP, listings: LISTINGS, slot }, { plugin: 'pack', lookId: 'lagoon' }, counted)).toMatchObject({ ok: true })
+    expect(pauses).toBe(0)
+    const started = fakeSlot({ hasLoaded: provenance => provenance === `pack@${MP}`, commandOwner: () => undefined })
+    expect(
+      await useThemeLookOnceLoaded({ marketplace: MP, listings: LISTINGS, slot: started.slot }, { plugin: 'pack', lookId: 'lagoon' }, counted),
+    ).toEqual({ ok: false, reason: 'notOwnCommand' })
+    expect(pauses).toBe(0)
+    expect(ran).toHaveLength(1)
+  })
+
+  it('a look applied by loading the plugin is not loaded again once the session has loaded it', async () => {
+    const { slot, reloaded } = fakeSlot({ hasLoaded: () => true, themeOwner: () => 'single' })
+    expect(await useThemeLookOnceLoaded({ marketplace: MP, listings: LISTINGS, slot }, { plugin: 'single', lookId: 'single' }, NO_WAIT)).toEqual({
+      ok: true,
+      via: 'reload',
+    })
+    expect(reloaded).toEqual([])
   })
 
   it('runs nothing once the request is cancelled', async () => {

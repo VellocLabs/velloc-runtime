@@ -160,8 +160,10 @@ export async function useThemeLook(
 /**
  * `useThemeLook`, asked again while the plugin is still loading in the
  * session (just switched on, its module not yet up): while the answer is
- * `notLoaded` or `notOwnCommand`, every `timing.pause`, `timing.attempts`
- * times at most. `target.slot` is read on each try. Never rejects.
+ * `notLoaded`, or `notOwnCommand` before the plugin has started, every
+ * `timing.pause`, `timing.attempts` times at most. A look applied by loading
+ * the plugin is not loaded again once its theme stands. `target.slot` is read
+ * on each try. Never rejects.
  */
 export async function useThemeLookOnceLoaded(
   target: ThemeLookTarget,
@@ -169,22 +171,45 @@ export async function useThemeLookOnceLoaded(
   timing: ThemeOnEnableTiming = {},
   signal?: AbortSignal,
 ): Promise<ThemeUseLookResult> {
-  const pause = timing.pause ?? (() => new Promise<void>(resolve => setTimeout(resolve, 500)))
-  const attempts = Math.max(1, timing.attempts ?? 12)
+  const { pause, attempts } = loadingTiming(timing)
   // Named apart: spreading `target` would read its `slot` once more.
   const { marketplace, listings, installsOf } = target
+  const listing = listings?.find(candidate => candidate.name === ask.plugin)
+  const look = listing?.theme?.looks.find(candidate => candidate.id === ask.lookId)
+  if (!listing || !look) return { ok: false, reason: 'unknownLook' }
+  const installs = installsOf?.(listing) ?? [`${ask.plugin}@${marketplace}`]
+  const appliedByLoading = !look.use && !listing.theme!.onEnable
   let result: ThemeUseLookResult = { ok: false, reason: 'notLoaded' }
   for (let attempt = 0; attempt < attempts; attempt += 1) {
-    await pause()
+    if (attempt > 0) await pause()
     if (signal?.aborted) break
     const slot = target.slot
     // The plugins now loading have started before a command of theirs is looked for.
     await slot?.settled?.().catch(() => undefined)
     if (signal?.aborted) break
+    const started = hasStarted(slot, installs)
+    // A look applied by loading the plugin already stands once the session has loaded it.
+    if (started && appliedByLoading && slot!.themeOwner?.() === ask.plugin) return { ok: true, via: 'reload' }
     result = await useThemeLook({ marketplace, listings, ...(installsOf ? { installsOf } : {}), slot }, ask, signal)
-    if (result.ok || (result.reason !== 'notLoaded' && result.reason !== 'notOwnCommand')) return result
+    if (result.ok) return result
+    // Once the plugin has started, a command it did not register will not appear.
+    const loading = result.reason === 'notLoaded' || (result.reason === 'notOwnCommand' && !started)
+    if (!loading) return result
   }
   return result
+}
+
+/** The pause between tries and how many there are, defaults filled in. */
+function loadingTiming(timing: ThemeOnEnableTiming): { pause: () => Promise<void>; attempts: number } {
+  return {
+    pause: timing.pause ?? (() => new Promise<void>(resolve => setTimeout(resolve, 500))),
+    attempts: Math.max(1, timing.attempts ?? 12),
+  }
+}
+
+/** Whether one of `installs` has loaded in the session behind `slot` (true when the slot cannot tell). */
+function hasStarted(slot: ThemeLookSlot | undefined, installs: readonly string[]): slot is ThemeLookSlot {
+  return slot !== undefined && (!slot.hasLoaded || installs.some(install => slot.hasLoaded!(install)))
 }
 
 /** Runs `run` in the session when the module that registered it is one of `installs`. */
@@ -240,14 +265,13 @@ export async function runThemeOnEnable(
   const run = listing?.theme?.onEnable
   if (!listing || !run) return { ok: false, reason: 'none' }
   const installs = target.installsOf?.(listing) ?? [`${plugin}@${target.marketplace}`]
-  const pause = timing.pause ?? (() => new Promise<void>(resolve => setTimeout(resolve, 500)))
-  const attempts = Math.max(1, timing.attempts ?? 12)
+  const { pause, attempts } = loadingTiming(timing)
   let result: OwnCommandResult = { ok: false, reason: 'notLoaded' }
   for (let attempt = 0; attempt < attempts; attempt += 1) {
     if (attempt > 0) await pause()
     if (signal?.aborted) break
     const slot = target.slot
-    const started = slot !== undefined && (!slot.hasLoaded || installs.some(install => slot.hasLoaded!(install)))
+    const started = hasStarted(slot, installs)
     if (started) {
       await slot.settled?.().catch(() => undefined)
       if (signal?.aborted) break
