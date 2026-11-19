@@ -195,34 +195,6 @@ describe('providersHandlers.upsert', () => {
     ).rejects.toThrow(/enabledModels.*array of strings/)
   })
 
-  it('rejects routes that are not a list of well-formed routes, and stores nothing', async () => {
-    const { fs, files } = makeMemoryFs()
-    const route = {
-      id: 'pool',
-      name: 'Pool',
-      goal: 'ordered',
-      candidates: [{ provider: 'openrouter', model: 'm', limits: { tokensPerDay: -5 } }],
-      order: 'manual',
-      switchOn: { limits: true, serverErrors: true, afterReplyStarted: false },
-      freeFirst: false,
-      stickPerTurn: false,
-    }
-    await expect(
-      providersHandlers.upsert({ id: 'router', config: { routes: 'all' as never } }, { homeDir: HOME, fs }),
-    ).rejects.toThrow(/`routes` must be an array/)
-    await expect(
-      providersHandlers.upsert({ id: 'router', config: { routes: [route] as never } }, { homeDir: HOME, fs }),
-    ).rejects.toThrow(/`routes` holds a malformed route \(limits\)/)
-    expect(files.has(SETTINGS_PATH)).toBe(false)
-
-    const wellFormed = { ...route, candidates: [{ provider: 'openrouter', model: 'm' }] }
-    const result = await providersHandlers.upsert(
-      { id: 'router', config: { routes: [wellFormed] as never } },
-      { homeDir: HOME, fs },
-    )
-    expect(result.ok).toBe(true)
-  })
-
   it('rejects a trust value outside the two-value enum', async () => {
     const { fs } = makeMemoryFs()
     await expect(

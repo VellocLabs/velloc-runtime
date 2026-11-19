@@ -10,7 +10,6 @@
  * `routesTo`; the check is the resolution step's, not the router's.
  */
 import type { BridgeModelRequestContext } from '../../browser/bridge/browserBridgeProtocol'
-import type { RouteRecipe } from '../../config/nexusModelConfig/routeRecipes'
 import { getProviderErrorFields, type ProviderConnectivityIssue, type ProviderErrorFields } from '../../utils/providerConnectivity'
 import type { ProviderPolicy } from './providerPolicy'
 import type { ProviderOutcomeEvent } from './providerOutcome'
@@ -51,8 +50,6 @@ export type RouteEvent = {
   /** The session's context in tokens, as its usage meter counts it. Absent
    *  for a request that belongs to no session. */
   usage?: { contextTokens: number }
-  /** The route the row was composed as, when the router's rows are routes. */
-  recipe?: RouteRecipe
 }
 
 /** Send to this target; end the call now; or nothing, the platform's own path. */

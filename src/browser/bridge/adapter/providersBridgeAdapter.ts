@@ -23,7 +23,6 @@ import { normaliseProviderOrder } from '../../../settings/settingsNormalize'
 // Resident-tiny import (no heavy deps) — see services/endpoints/endpointTrust.
 import { publishProviderBaseUrlsFromConfigs } from '../../../models/endpoints/endpointTrust'
 import { isSealedSecret } from '../../../settings/secretValue'
-import { checkRouteRecipe } from '../../../config/nexusModelConfig/routeRecipes'
 import { getPluginConfigsMap, setPluginOptions } from '../../../pluginHost/pluginConfigs'
 import { isKnownProvider } from '../../../settings/providerTrust'
 import { traceLine } from '../../../utils/debugLog'
@@ -387,13 +386,6 @@ function validateConfig(config: unknown): string | null {
   }
   if (c.userModels !== undefined && !Array.isArray(c.userModels)) {
     return '`userModels` must be an array'
-  }
-  if (c.routes !== undefined) {
-    if (!Array.isArray(c.routes)) return '`routes` must be an array'
-    for (const route of c.routes) {
-      const fault = checkRouteRecipe(route)
-      if (fault !== null) return `\`routes\` holds a malformed route (${fault})`
-    }
   }
   if (c.modelEntries !== undefined) {
     if (

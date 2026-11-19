@@ -1,17 +1,8 @@
 /**
  * The router-provider contract (F-27): the `provider.route` row of the event
- * table, the router registry, the boundary check, and the stored routes.
+ * table, the router registry, and the boundary check.
  */
 import { afterEach, describe, expect, it } from 'vitest'
-import {
-  checkRouteRecipe,
-  readRouteRecipe,
-  ROUTE_CANDIDATES_MAX,
-  ROUTE_LIMIT_MAX,
-  ROUTES_MAX,
-  sanitizeRouteRecipes,
-  type RouteRecipe,
-} from '../config/nexusModelConfig/routeRecipes'
 import {
   insideRoutesTo,
   providerRouterBoundsFor,
@@ -34,23 +25,6 @@ import {
 } from '../mods/provider/providerEvents'
 import type { Peer } from '../mods/provider/nouns/providerPeersTypes'
 import { normalizeSettings } from '../settings/settingsNormalize'
-
-function recipe(over: Partial<Record<keyof RouteRecipe, unknown>> = {}): Record<string, unknown> {
-  return {
-    id: 'free-pool',
-    name: 'Free pool',
-    goal: 'ordered',
-    candidates: [
-      { provider: 'openrouter', model: 'coder-small:free', limits: { requestsPerMinute: 10, requestsPerDay: 200 } },
-      { provider: 'mod.acme.gateway', model: 'coder-large' },
-    ],
-    order: 'manual',
-    switchOn: { limits: true, serverErrors: true, afterReplyStarted: false },
-    freeFirst: false,
-    stickPerTurn: false,
-    ...over,
-  }
-}
 
 describe('provider.route in the event table', () => {
   it('is a known event with its own budget and is not failed closed by the table', () => {
@@ -157,112 +131,18 @@ describe('insideRoutesTo', () => {
   })
 })
 
-describe('route recipes', () => {
-  it('reads a well-formed route into a fresh object of the known fields alone', () => {
-    const raw = { ...recipe(), extra: 'dropped' }
-    const read = readRouteRecipe(raw)
-    expect(read).toEqual(recipe())
-    expect(read).not.toBe(raw)
-    expect(checkRouteRecipe(raw)).toBeNull()
-  })
-
-  it('keeps the candidates in the order given, limits on the ones that have them', () => {
-    const read = readRouteRecipe(recipe()) as RouteRecipe
-    expect(read.candidates.map(c => c.model)).toEqual(['coder-small:free', 'coder-large'])
-    expect(read.candidates[0].limits).toEqual({ requestsPerMinute: 10, requestsPerDay: 200 })
-    expect('limits' in read.candidates[1]).toBe(false)
-  })
-
-  it('treats the same model under two providers as two members, and a repeated pair as a fault', () => {
-    const twoProviders = recipe({
-      candidates: [
-        { provider: 'openrouter', model: 'coder-large' },
-        { provider: 'openrouter~2', model: 'coder-large' },
-      ],
-    })
-    expect(checkRouteRecipe(twoProviders)).toBeNull()
-    const repeated = recipe({
-      candidates: [
-        { provider: 'openrouter', model: 'coder-large' },
-        { provider: 'openrouter', model: 'coder-large', limits: { requestsPerDay: 5 } },
-      ],
-    })
-    expect(checkRouteRecipe(repeated)).toBe('duplicate-candidate')
-  })
-
-  it.each([
-    ['zero', { requestsPerMinute: 0 }],
-    ['negative', { requestsPerDay: -1 }],
-    ['fraction', { tokensPerDay: 1.5 }],
-    ['text', { requestsPerDay: '200' }],
-    ['past the ceiling', { tokensPerDay: ROUTE_LIMIT_MAX + 1 }],
-    ['unknown key', { requestsPerHour: 10 }],
-    ['not an object', 5],
-  ])('a limit that is %s faults the whole route', (_label, limits) => {
-    const raw = recipe({ candidates: [{ provider: 'openrouter', model: 'm', limits }] })
-    expect(checkRouteRecipe(raw)).toBe('limits')
-  })
-
-  it('an empty limits object is no limits', () => {
-    const read = readRouteRecipe(recipe({ candidates: [{ provider: 'openrouter', model: 'm', limits: {} }] })) as RouteRecipe
-    expect(read.candidates[0]).toEqual({ provider: 'openrouter', model: 'm' })
-  })
-
-  it.each([
-    ['shape', 'not a route'],
-    ['id', recipe({ id: '' })],
-    ['id', recipe({ id: 'has space' })],
-    ['id', recipe({ id: 'x'.repeat(65) })],
-    ['name', recipe({ name: '   ' })],
-    ['goal', recipe({ goal: 'cheapest' })],
-    ['candidates', recipe({ candidates: [] })],
-    ['candidates', recipe({ candidates: Array.from({ length: ROUTE_CANDIDATES_MAX + 1 }, (_, i) => ({ provider: 'p', model: `m${i}` })) })],
-    ['candidate', recipe({ candidates: [{ provider: '', model: 'm' }] })],
-    ['candidate', recipe({ candidates: [{ provider: 'p', model: ' m' }] })],
-    ['candidate', recipe({ candidates: ['p/m'] })],
-    ['order', recipe({ order: 'random' })],
-    ['switchOn', recipe({ switchOn: { limits: true, serverErrors: true } })],
-    ['flags', recipe({ stickPerTurn: 'no' })],
-    ['spend', recipe({ spend: { usdPerDay: 0, whenReached: 'stop' } })],
-    ['spend', recipe({ spend: { usdPerDay: 5, whenReached: 'warn' } })],
-  ])('names the faulty part: %s', (fault, raw) => {
-    expect(checkRouteRecipe(raw)).toBe(fault)
-  })
-
-  it('accepts every goal and a spend cap', () => {
-    for (const goal of ['same-model', 'free-rotation', 'ordered', 'spread']) {
-      expect(checkRouteRecipe(recipe({ goal }))).toBeNull()
-    }
-    const read = readRouteRecipe(recipe({ spend: { usdPerDay: 2.5, whenReached: 'free-only' } })) as RouteRecipe
-    expect(read.spend).toEqual({ usdPerDay: 2.5, whenReached: 'free-only' })
-  })
-
-  it('sanitizing drops a faulty route whole, a repeated id, and anything past the cap', () => {
-    const good = recipe()
-    const uncapped = recipe({ id: 'paid', candidates: [{ provider: 'p', model: 'm', limits: { tokensPerDay: -5 } }] })
-    const again = recipe({ name: 'Second with the same id' })
-    expect(sanitizeRouteRecipes([good, uncapped, again, null])).toEqual([good])
-    expect(sanitizeRouteRecipes('routes')).toEqual([])
-    const many = Array.from({ length: ROUTES_MAX + 3 }, (_, i) => recipe({ id: `r${i}` }))
-    expect(sanitizeRouteRecipes(many)).toHaveLength(ROUTES_MAX)
-  })
-})
-
-describe('routes in settings', () => {
-  const settings = (routes: unknown) =>
-    normalizeSettings({
+describe('a stored routes list', () => {
+  it('is not a provider config field: a normalize drops it', () => {
+    const kept = normalizeSettings({
       version: 1,
-      providers: { configs: { 'mod.superrouter.router': { source: 'mod', credentialMode: 'anonymous', routes } } },
+      providers: {
+        configs: {
+          'mod.superrouter.router': { source: 'mod', credentialMode: 'anonymous', routes: [{ id: 'pool' }] },
+        },
+      },
     } as never)
-
-  it('survive a normalize, well-formed ones alone', () => {
-    const kept = settings([recipe(), recipe({ id: 'bad', goal: 'cheapest' })])
-    expect(kept.providers?.configs['mod.superrouter.router'].routes).toEqual([recipe()])
-  })
-
-  it('leave no key behind when none is well formed', () => {
-    const config = settings([{ id: 'bad' }]).providers?.configs['mod.superrouter.router']
-    expect(config).toBeDefined()
+    const config = kept.providers?.configs['mod.superrouter.router']
+    expect(config).toMatchObject({ source: 'mod', credentialMode: 'anonymous' })
     expect(config && 'routes' in config).toBe(false)
   })
 })

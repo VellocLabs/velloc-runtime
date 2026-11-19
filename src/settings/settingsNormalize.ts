@@ -19,7 +19,6 @@ import {
 import { normalizeModelTiers, normalizeSessionModelPolicy } from './sessionModelSettings'
 import { isAutoCompactWindow, normalizeModelSettings } from './modelSettings'
 import { SETTINGS_MODE_IDS } from '../permissions/sessionModes'
-import { sanitizeRouteRecipes } from '../config/nexusModelConfig/routeRecipes'
 import { sanitizeUserModels } from '../config/nexusModelConfig/userModels'
 
 /**
@@ -339,10 +338,6 @@ export function normalizeSettings(
         if (Array.isArray(r.userModels)) {
           const models = sanitizeUserModels(r.userModels)
           if (models.length > 0) config.userModels = models
-        }
-        if (Array.isArray(r.routes)) {
-          const routes = sanitizeRouteRecipes(r.routes)
-          if (routes.length > 0) config.routes = routes
         }
         if (r.credentialMode === 'anonymous') config.credentialMode = 'anonymous'
         if (typeof r.modVersion === 'string' && r.modVersion.length > 0) {
