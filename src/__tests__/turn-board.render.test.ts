@@ -6,6 +6,7 @@ import { cleanup, fireEvent, render } from '@testing-library/react'
 import {
   TurnClosingBoxView,
   TurnPlanCardView,
+  countRunningSince,
   runningTasksAnchor,
 } from '../components/assistant-ui/turn-board'
 import type { TurnStep } from '../sessions/turnBoard'
@@ -122,5 +123,17 @@ describe('TurnClosingBoxView', () => {
     const { getByTestId, queryAllByTestId } = render(createElement(TurnClosingBoxView, { closing }))
     expect(getByTestId('turn-closing-box').textContent).toContain('Commit the fix?')
     expect(queryAllByTestId('turn-closing-reply')).toHaveLength(0)
+  })
+})
+
+describe('countRunningSince', () => {
+  it('counts only running tasks started after the step began', () => {
+    const rows = [
+      { sessionId: 'old', status: 'running' as const },
+      { sessionId: 'new', status: 'running' as const },
+      { sessionId: 'done', status: 'success' as const },
+    ]
+    expect(countRunningSince(rows, new Set(['old']))).toBe(1)
+    expect(countRunningSince(rows, new Set())).toBe(2)
   })
 })
