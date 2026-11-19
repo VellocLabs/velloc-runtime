@@ -1,4 +1,4 @@
-import { CheckIcon, ChevronRightIcon, Loader2Icon, PaletteIcon, PlusIcon, PowerOffIcon } from "lucide-react";
+import { CheckIcon, ChevronRightIcon, ClockIcon, Loader2Icon, PaletteIcon, PlusIcon, PowerOffIcon } from "lucide-react";
 import { DropdownMenu as DropdownMenuPrimitive } from "radix-ui";
 import { useEffect, useMemo, useRef, useState, type FC } from "react";
 
@@ -12,6 +12,7 @@ import {
   lookKey,
   packTitle,
   THEME_FAILURE_MESSAGE,
+  useWaitingLooks,
   type ThemePlugin,
 } from "@/browser/webview/mods/themeLooks";
 import type { ThemeLook } from "@/pluginHost/registryFormats";
@@ -68,6 +69,15 @@ const CONTENT_CLASS =
 const SEPARATOR_CLASS = "-mx-1 my-1 h-px bg-border";
 const LABEL_CLASS = "px-2 pt-1.5 pb-0.5 text-xs text-muted-foreground";
 
+/** The name of the look `key` names among `plugins`, or undefined. */
+function lookNamed(plugins: readonly ThemePlugin[], key: string): string | undefined {
+  for (const plugin of plugins) {
+    const look = plugin.theme.looks.find((each) => lookKey(plugin.name, each.id) === key);
+    if (look) return look.name ?? look.id;
+  }
+  return undefined;
+}
+
 const APPEARANCE: Record<NonNullable<ThemeLook["appearance"]>, MessageKey> = {
   light: "customize.themes.appearance.light",
   dark: "customize.themes.appearance.dark",
@@ -123,6 +133,8 @@ export const ThemeModsMenu: FC<{ sessionId?: string; isForeground?: boolean }> =
   // The look being applied, and why the last one was not.
   const [applying, setApplying] = useState<string | null>(null);
   const [lookFailure, setLookFailure] = useState<string | null>(null);
+  // The look picked during a turn, waiting for it to end (shared with the theme directory).
+  const waiting = useWaitingLooks();
 
   const available = themes !== undefined;
   const refreshRef = useRef(themes?.refresh);
@@ -177,6 +189,8 @@ export const ThemeModsMenu: FC<{ sessionId?: string; isForeground?: boolean }> =
   // Looks apply to the session the window shows: this menu's, unless another shows.
   const lookTarget = themes.lookTarget?.sessionId === sessionId ? themes.lookTarget : null;
   const blocked = lookBlocked(lookTarget);
+  const waitingKey = lookTarget ? waiting[lookTarget.sessionId] : undefined;
+  const waitingLook = waitingKey === undefined ? undefined : lookNamed(lookPlugins, waitingKey);
   const inUse = sessionId
     ? lookInUse(appliedLooks()[sessionId], themeStandingOf({ theme, isLoaded, modsSettled }), themes.looks ?? [])
     : null;
@@ -184,17 +198,22 @@ export const ThemeModsMenu: FC<{ sessionId?: string; isForeground?: boolean }> =
   const apply = (plugin: ThemePlugin, look: ThemeLook) => {
     if (!applyLook || !lookTarget || blocked || applying) return;
     const key = lookKey(plugin.name, look.id);
-    setApplying(key);
+    // During a turn the look waits for it to end; the list says so and stays open.
+    const waitForTurn = lookTarget.busy;
+    if (!waitForTurn) setApplying(key);
     setLookFailure(null);
-    void applyLook(lookTarget.sessionId, plugin.name, look.id)
+    void applyLook(lookTarget.sessionId, plugin.name, look.id, { waitForTurn })
       .then(
         (result) => {
+          if (result === null) return;
           if (result.ok) setMenu(null);
           else setLookFailure(t(THEME_FAILURE_MESSAGE[result.reason]));
         },
         () => setLookFailure(t(THEME_FAILURE_MESSAGE.request)),
       )
-      .finally(() => setApplying(null));
+      .finally(() => {
+        if (!waitForTurn) setApplying(null);
+      });
   };
 
   const turnOff = () => {
@@ -286,9 +305,17 @@ export const ThemeModsMenu: FC<{ sessionId?: string; isForeground?: boolean }> =
                       "w-80 max-h-[var(--radix-dropdown-menu-content-available-height)] overflow-y-auto",
                     )}
                   >
-                    {blocked && (
-                      <div role="status" className="px-2 py-1.5 text-xs text-muted-foreground">
-                        {t(blocked)}
+                    {(blocked || lookTarget?.busy || waitingLook) && (
+                      <div
+                        role="status"
+                        data-testid="theme-mods-menu-looks-note"
+                        className="px-2 py-1.5 text-xs text-muted-foreground"
+                      >
+                        {blocked
+                          ? t(blocked)
+                          : waitingLook
+                            ? t("themeMenu.lookWaiting", { name: waitingLook })
+                            : t("customize.themes.busy")}
                       </div>
                     )}
                     {lookPlugins.map((plugin, index) => (
@@ -302,6 +329,7 @@ export const ThemeModsMenu: FC<{ sessionId?: string; isForeground?: boolean }> =
                               key={key}
                               data-testid={`theme-look:${key}`}
                               data-in-use={inUse === key ? "" : undefined}
+                              data-waiting={waitingKey === key ? "" : undefined}
                               disabled={blocked !== null || (applying !== null && applying !== key)}
                               onSelect={(event) => {
                                 event.preventDefault();
@@ -312,6 +340,8 @@ export const ThemeModsMenu: FC<{ sessionId?: string; isForeground?: boolean }> =
                               <span className="flex size-4 shrink-0 items-center justify-center pt-0.5">
                                 {applying === key ? (
                                   <Loader2Icon aria-hidden className="size-4 animate-spin text-muted-foreground" />
+                                ) : waitingKey === key ? (
+                                  <ClockIcon aria-hidden className="size-4 text-muted-foreground" />
                                 ) : inUse === key ? (
                                   <CheckIcon aria-hidden className="size-4 text-primary" />
                                 ) : null}

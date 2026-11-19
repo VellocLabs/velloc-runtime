@@ -151,7 +151,8 @@ export function useThemeModsMenu(options: ThemeModsMenuOptions): ThemeModsContex
   }, [viewTurnOffAll, readLists])
 
   const applyLook = React.useCallback(
-    (sessionId: string, plugin: string, lookId: string) => askUseLook(runtimeConnection!, sessionId, plugin, lookId),
+    (sessionId: string, plugin: string, lookId: string, options?: { waitForTurn?: boolean }) =>
+      askUseLook(runtimeConnection!, sessionId, plugin, lookId, options),
     [runtimeConnection],
   )
 

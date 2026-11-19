@@ -212,6 +212,7 @@ import {
   isTeammateSessionId,
 } from './taskProjection'
 import { currentRenderCachePolicy } from '../../renderCache/runtimeRenderCache'
+import { SessionIdleWaiters } from './sessionIdleWaiters'
 
 const TOOL_DETAIL_CACHE_MAX = 64
 
@@ -297,6 +298,8 @@ export class SharedWorkerSessionManager {
   private readonly initOrchestrator: SessionInitOrchestrator
   private readonly taskControl: TaskControlSurface
   private readonly sessions = new Map<string, SessionEntry>()
+  /** Requests waiting for a session's turn to end (`theme.useLook`). */
+  private readonly idleWaiters = new SessionIdleWaiters(sessionId => this.sessions.get(sessionId)?.worker.isBusy() ?? false)
   private readonly worktreeSettles = new Map<string, Promise<void>>()
   /** Which panel opened each session — where its boot progress is published. */
   private readonly panelOfSession = new Map<string, string>()
@@ -339,6 +342,7 @@ export class SharedWorkerSessionManager {
       this.applyAgentSettingsToAllSessions(config),
     reloadPluginsOnAllSessions: () => this.reloadPluginsOnAllSessions(),
     reloadModsOnAllSessions: () => this.reloadModsOnAllSessions(),
+    whenSessionIdle: (sessionId, signal) => this.idleWaiters.wait(sessionId, signal),
     submitToSession: (sessionId, payload) => {
       if (!this.sessions.has(sessionId) || !this.runtimeSessionSurface) return false
       this.runtimeSessionSurface.submit(sessionId, payload)
@@ -538,6 +542,7 @@ export class SharedWorkerSessionManager {
     refreshSessionStatus: sessionId => {
       this.feed.emitStatus(sessionId)
       currentRenderCachePolicy()?.noteBusyChanged()
+      this.idleWaiters.check(sessionId)
     },
     interceptHeadlessEmit: (sessionId, message) =>
       this.routines.interceptEmit(sessionId, message),

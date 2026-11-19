@@ -1,5 +1,5 @@
 import * as React from 'react'
-import { CheckIcon, Loader2Icon } from 'lucide-react'
+import { CheckIcon, ClockIcon, Loader2Icon } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
@@ -131,6 +131,11 @@ export function ThemeBrowser({ view, target, standing, onClose, focus }: ThemeBr
           <p data-testid="customize-themes-target" className="text-sm text-muted-foreground">
             {blocked ? t(blocked) : t('customize.themes.appliesTo', { title: target!.title })}
           </p>
+          {!blocked && target?.busy ? (
+            <p data-testid="customize-themes-busy" className="text-sm text-muted-foreground">
+              {t('customize.themes.busy')}
+            </p>
+          ) : null}
         </div>
         <div className="flex flex-wrap items-center gap-x-4 gap-y-2 py-2">
           <div
@@ -156,7 +161,7 @@ export function ThemeBrowser({ view, target, standing, onClose, focus }: ThemeBr
             ))}
           </div>
         </div>
-        <NoticeLine notice={view.notice} onDismiss={view.dismissNotice} onView={onClose} />
+        <NoticeLine notice={view.notice} waiting={view.waiting} onDismiss={view.dismissNotice} onView={onClose} />
         {body}
       </div>
     </div>
@@ -294,6 +299,13 @@ function LookCard({
     )
   } else if (inUse === key) {
     action = <InUseMark />
+  } else if (target && view.waiting[target.sessionId] === key) {
+    action = (
+      <Button type="button" size="xs" variant="outline" disabled data-testid="customize-theme-waiting">
+        <ClockIcon className="size-3.5" />
+        {t('customize.themes.waiting')}
+      </Button>
+    )
   } else {
     const applying = view.applying === key
     action = (
@@ -302,7 +314,7 @@ function LookCard({
         size="xs"
         variant="outline"
         disabled={!usable || view.applying !== null}
-        title={blocked ? t(blocked) : undefined}
+        title={blocked ? t(blocked) : target?.busy ? t('customize.themes.busy') : undefined}
         data-testid="customize-theme-use"
         onClick={() => target && view.use(plugin.name, look, target)}
       >
@@ -391,22 +403,35 @@ function InUseMark() {
 /** How the last Use ended. Success leaves after a few seconds; a failure stays until dismissed or the next Use answers. */
 function NoticeLine({
   notice,
+  waiting,
   onDismiss,
   onView,
 }: {
   notice: ThemeNotice | null
+  /** The looks still waiting for a turn, per session id: a waiting notice whose look no longer waits is gone. */
+  waiting: Readonly<Record<string, string>>
   onDismiss: () => void
   onView: () => void
 }) {
   const t = useT()
   if (!notice) return null
+  if (notice.kind === 'waiting' && waiting[notice.sessionId] === undefined) return null
   const failed = notice.kind === 'failed'
   const title =
     notice.kind === 'applied'
       ? t('customize.themes.notice.applied', { name: notice.name, title: notice.session })
-      : t('customize.themes.notice.failed', { name: notice.name })
+      : notice.kind === 'waiting'
+        ? t('customize.themes.notice.waiting', { name: notice.name, title: notice.session })
+        : t('customize.themes.notice.failed', { name: notice.name })
   return (
-    <ThemeNoticeShell testId="customize-theme-notice" kind={notice.kind} seq={notice.seq} failed={failed} onDismiss={onDismiss}>
+    <ThemeNoticeShell
+      testId="customize-theme-notice"
+      kind={notice.kind}
+      seq={notice.seq}
+      failed={failed}
+      persist={notice.kind === 'waiting'}
+      onDismiss={onDismiss}
+    >
       <div className="flex min-w-0 flex-1 flex-col gap-0.5">
         <p className="text-sm font-medium">{title}</p>
         {failed ? (
@@ -416,7 +441,7 @@ function NoticeLine({
           </p>
         ) : null}
       </div>
-      {failed ? null : (
+      {notice.kind !== 'applied' ? null : (
         <Button type="button" variant="outline" size="xs" data-testid="customize-theme-notice-view" onClick={onView}>
           {t('customize.themes.notice.view')}
         </Button>

@@ -29,8 +29,17 @@ export type ThemeModsContextValue = {
   looks?: readonly ThemePlugin[]
   /** The session a look applies to, as the window shows it; null when it shows none that takes one. */
   lookTarget?: { sessionId: string; busy: boolean } | null
-  /** Apply a listed look in a session; the runtime decides what runs. */
-  applyLook?: (sessionId: string, plugin: string, lookId: string) => Promise<ThemeUseLookResult>
+  /**
+   * Apply a listed look in a session; the runtime decides what runs. With
+   * `waitForTurn` it applies once the session's turn ends; null when a later
+   * pick replaced it or it was cancelled.
+   */
+  applyLook?: (
+    sessionId: string,
+    plugin: string,
+    lookId: string,
+    options?: { waitForTurn?: boolean },
+  ) => Promise<ThemeUseLookResult | null>
 }
 
 /** Undefined outside a window that manages themes: no menu. */

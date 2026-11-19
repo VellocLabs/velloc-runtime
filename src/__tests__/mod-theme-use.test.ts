@@ -6,7 +6,7 @@
  * The slot tests load real module text through `ModWorkerHost` on a
  * MessageChannel; the capability tests use a memory file system.
  */
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { CapabilityRegistry } from '../browser/runtimeHub/CapabilityRegistry'
 import { registerThemeCapability } from '../browser/runtimeHub/themeCapability'
 import type { ConnectionInfo } from '../browser/runtimeHub/types'
@@ -228,7 +228,13 @@ describe('the theme capability', () => {
   const conn = (sessions: 'all' | string[] = 'all') =>
     ({ connectionId: 'c', clientId: 'c', kind: 'cli', scope: { mode: 'full', sessions }, transport: 'message-port' }) as ConnectionInfo
 
-  async function rig(options: { cached?: boolean; home?: () => Promise<string> } = {}) {
+  async function rig(
+    options: {
+      cached?: boolean
+      home?: () => Promise<string>
+      whenIdle?: (sessionId: string, signal?: AbortSignal) => Promise<void>
+    } = {},
+  ) {
     const fs = makeMemFs()
     if (options.cached !== false) {
       await fs.writeFile(
@@ -263,11 +269,12 @@ describe('the theme capability', () => {
         asked.push(sessionId)
         return sessionId === 's1' ? fake.slot : undefined
       },
+      ...(options.whenIdle ? { whenIdle: options.whenIdle } : {}),
     })
-    const ask = (act: 'useLook' | 'clear', payload: unknown, c = conn()) => {
+    const ask = (act: 'useLook' | 'clear', payload: unknown, c = conn(), signal?: AbortSignal) => {
       const entry = registry.resolve('theme', act)!
       expect(entry.spec.guard?.(payload, c, {} as never) ?? true).toBe(true)
-      return entry.handle({ id: '1', route: { cap: 'theme', act }, payload, conn: c } as never, {} as never)
+      return entry.handle({ id: '1', route: { cap: 'theme', act }, payload, conn: c, signal } as never, {} as never)
     }
     return { registry, ask, asked, ...fake }
   }
@@ -292,6 +299,45 @@ describe('the theme capability', () => {
     expect(ran).toEqual([{ command: 'pick-look', args: 'lagoon', origin: { kind: 'bridge' } }])
     expect(await ask('clear', { sessionId: 's1' })).toEqual({ ok: true, cleared: true })
     expect(await ask('clear', { sessionId: 's2' })).toEqual({ ok: true, cleared: false })
+  })
+
+  it('a look asked for during a turn runs nothing until the turn ends, then applies', async () => {
+    let turnEnds!: () => void
+    const waitedFor: string[] = []
+    const { ask, ran } = await rig({
+      whenIdle: sessionId => {
+        waitedFor.push(sessionId)
+        return new Promise(resolve => (turnEnds = resolve))
+      },
+    })
+    const answer = ask('useLook', { sessionId: 's1', plugin: 'pack', lookId: 'lagoon' })
+    await new Promise(resolve => setTimeout(resolve, 0))
+    expect(waitedFor).toEqual(['s1'])
+    expect(ran).toEqual([])
+    turnEnds()
+    expect(await answer).toMatchObject({ ok: true, via: 'command' })
+    expect(ran).toHaveLength(1)
+  })
+
+  it('a look cancelled while it waits for the turn runs nothing', async () => {
+    const controller = new AbortController()
+    const { ask, ran } = await rig({
+      whenIdle: (_sessionId, signal) =>
+        new Promise((_resolve, reject) => signal?.addEventListener('abort', () => reject(new Error('cancelled')))),
+    })
+    const answer = ask('useLook', { sessionId: 's1', plugin: 'pack', lookId: 'lagoon' }, conn(), controller.signal)
+    controller.abort()
+    expect(await answer).toEqual({ ok: false, reason: 'notLoaded' })
+    expect(ran).toEqual([])
+  })
+
+  it('a look for a session outside the scope is refused before it waits', async () => {
+    const whenIdle = vi.fn(async () => {})
+    const { ask } = await rig({ whenIdle })
+    await expect(ask('useLook', { sessionId: 's1', plugin: 'pack', lookId: 'lagoon' }, conn(['s2']))).rejects.toMatchObject({
+      code: 'forbidden_scope',
+    })
+    expect(whenIdle).not.toHaveBeenCalled()
   })
 
   it('a look whose command or argument is not plain never reaches a session', async () => {

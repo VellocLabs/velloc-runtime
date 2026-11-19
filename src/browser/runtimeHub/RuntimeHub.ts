@@ -108,6 +108,8 @@ export type RuntimeHubHost = {
   reloadPluginsOnAllSessions(): void
   /** Reload every session's mods whose module text changed (F-25). */
   reloadModsOnAllSessions?(): void
+  /** Settles once `sessionId` runs no turn (at once when it runs none); rejects when `signal` aborts. */
+  whenSessionIdle?(sessionId: string, signal?: AbortSignal): Promise<void>
   /** Submit to a session the runtime holds; false when it holds none. */
   submitToSession?(sessionId: string, payload: Record<string, unknown>): boolean
   /** What `welcome.server.runtimeVersion` reports. */
@@ -378,6 +380,7 @@ export class RuntimeHub {
       resolveHome: () => resolveHostHome(this.context),
       channel: currentTemplateChannel,
       reload: () => this.host.reloadPluginsOnAllSessions(),
+      ...(this.host.whenSessionIdle ? { whenIdle: this.host.whenSessionIdle.bind(this.host) } : {}),
     })
     // Theme mods (F-25): the plugins that have set a theme and the
     // backdrop's reach on `mods/themes`; `read` is `observe`,

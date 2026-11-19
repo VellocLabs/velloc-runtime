@@ -21,6 +21,7 @@ import {
   type ThemeOnEnablePayload,
   type ThemeOnEnableTiming,
   type ThemeUseLookPayload,
+  type ThemeUseLookResult,
 } from '../../mods/modThemeLooks'
 import { modSlotFor } from '../../mods/modSlotRegistry'
 import { BUILTIN_MARKETPLACE_KEY } from '../../pluginHost/builtinMarketplace'
@@ -47,6 +48,8 @@ export type ThemeCapabilityOptions = {
   slotOf?: (sessionId: string) => ThemeLookSlot | undefined
   /** How `theme.onEnable`, and a look whose plugin was just switched on, wait for a plugin that is still loading. */
   onEnableTiming?: ThemeOnEnableTiming
+  /** Settles once the session runs no turn; rejects when `signal` aborts. Absent: a look never waits. */
+  whenIdle?: (sessionId: string, signal?: AbortSignal) => Promise<void>
 }
 
 /** The built-in marketplace's cached listings for `channel`; null when none is cached or readable. */
@@ -96,7 +99,17 @@ export function registerThemeCapability(registry: CapabilityRegistry, options: T
       switch (request.route.act) {
         case 'useLook': {
           const payload = request.payload as ThemeUseLookPayload
-          const slot = slotInScope(request.conn, payload.sessionId)
+          slotInScope(request.conn, payload.sessionId)
+          // A look picked while the session runs a turn applies once it ends:
+          // its plugins reload only between turns.
+          if (options.whenIdle) {
+            try {
+              await options.whenIdle(payload.sessionId, request.signal)
+            } catch {
+              return { ok: false, reason: 'notLoaded' } satisfies ThemeUseLookResult
+            }
+          }
+          const slot = slotOf(payload.sessionId)
           const { homeDir, fs, ...target } = await readTarget()
           const reload = options.reload ?? (() => {})
           const listing = target.listings?.find(candidate => candidate.name === payload.plugin)

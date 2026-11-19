@@ -52,6 +52,7 @@ export function ThemeNoticeShell({
   kind,
   seq,
   failed,
+  persist = false,
   onDismiss,
   children,
 }: {
@@ -59,6 +60,8 @@ export function ThemeNoticeShell({
   kind: string
   seq: number
   failed: boolean
+  /** Stays until replaced or dismissed, like a failure, without reading as one. */
+  persist?: boolean
   onDismiss: () => void
   children: React.ReactNode
 }) {
@@ -66,10 +69,10 @@ export function ThemeNoticeShell({
   const dismiss = React.useRef(onDismiss)
   dismiss.current = onDismiss
   React.useEffect(() => {
-    if (failed) return
+    if (failed || persist) return
     const timer = window.setTimeout(() => dismiss.current(), INSTALL_TOAST_MS)
     return () => window.clearTimeout(timer)
-  }, [seq, failed])
+  }, [seq, failed, persist])
   return (
     <div
       role={failed ? 'alert' : 'status'}

@@ -12,6 +12,7 @@ import {
   forgetAppliedLooks,
   lookKey,
   readThemePlugins,
+  useWaitingLooks,
   type ThemeFailure,
   type ThemePlugin,
 } from '../mods/themeLooks'
@@ -37,6 +38,8 @@ export type ThemeTarget = {
 type ThemeOutcome =
   | { kind: 'applied'; name: string; session: string }
   | { kind: 'failed'; name: string; reason: ThemeFailure; detail?: string }
+  /** Picked while the session runs a turn: it applies when the turn ends. */
+  | { kind: 'waiting'; name: string; session: string; sessionId: string }
 
 /** How the last Use ended, for the line above the grid; a new `seq` is a new outcome. */
 export type ThemeNotice = ThemeOutcome & { seq: number }
@@ -51,6 +54,8 @@ export type ThemeCatalogView = {
   installFailed: ReadonlySet<string>
   /** The look being applied now. */
   applying: string | null
+  /** The look waiting for a turn to end, per session id (`waitingLooks`). */
+  waiting: Readonly<Record<string, string>>
   /** The look last applied from this window, per session id; `lookInUse` weighs it against the standing theme. */
   inUse: Readonly<Record<string, string>>
   installs: readonly InstallNotice[]
@@ -93,6 +98,7 @@ export function useThemeCatalog(
   const [installing, setInstalling] = React.useState<ReadonlySet<string>>(NONE)
   const [installFailed, setInstallFailed] = React.useState<ReadonlySet<string>>(NONE)
   const [applying, setApplying] = React.useState<string | null>(null)
+  const waiting = useWaitingLooks()
   const [inUse, setInUse] = React.useState<Readonly<Record<string, string>>>(appliedLooks)
   const [installs, setInstalls] = React.useState<readonly InstallNotice[]>([])
   const [notice, setNotice] = React.useState<ThemeNotice | null>(null)
@@ -160,17 +166,22 @@ export function useThemeCatalog(
       if (!runtimeConnection) return
       const key = lookKey(plugin, look.id)
       const name = look.name ?? look.id
-      setApplying(key)
-      const ask = async (left: number): Promise<ThemeUseLookResult> => {
-        const result = await askUseLook(runtimeConnection, target.sessionId, plugin, look.id)
-        if (left <= 1 || !loadingYet(result) || !live.current) return result
+      // A turn is running: the look waits for it, and other looks stay pickable meanwhile.
+      const waitForTurn = target.busy
+      if (waitForTurn) say({ kind: 'waiting', name, session: target.title, sessionId: target.sessionId })
+      else setApplying(key)
+      const ask = async (left: number, first: boolean): Promise<ThemeUseLookResult | null> => {
+        const result = await askUseLook(runtimeConnection, target.sessionId, plugin, look.id, {
+          waitForTurn: first && waitForTurn,
+        })
+        if (result === null || left <= 1 || !loadingYet(result) || !live.current) return result
         await new Promise(resolve => setTimeout(resolve, AFTER_INSTALL_WAIT_MS))
-        return ask(left - 1)
+        return ask(left - 1, false)
       }
-      ask(tries)
+      ask(tries, true)
         .then(
           result => {
-            if (!live.current) return
+            if (!live.current || result === null) return
             if (result.ok) {
               setInUse(all => ({ ...all, [target.sessionId]: key }))
               say({ kind: 'applied', name, session: target.title })
@@ -239,6 +250,7 @@ export function useThemeCatalog(
     installing,
     installFailed,
     applying,
+    waiting,
     inUse,
     installs,
     dismissInstall,

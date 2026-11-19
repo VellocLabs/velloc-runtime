@@ -5,7 +5,8 @@
  */
 import { createElement } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { en as EN } from '../browser/webview/i18n/messages/en'
 import { EMPTY_MOD_UI, ModUiContext, type ModUiContextValue } from '../components/assistant-ui/mod-ui-context'
 import { ThemeModsContext, type ThemeModsContextValue } from '../components/assistant-ui/theme-mods-context'
 import { ThemeModsMenu, isBlankThreadTarget, orderThemeMods } from '../components/assistant-ui/theme-mods-menu'
@@ -278,7 +279,7 @@ describe('theme mods menu — Themes', () => {
     mount(withLooks(applyLook))
     await openSub('theme-mods-menu-looks')
     fireEvent.click(await screen.findByTestId('theme-look:theme-examples/honu-lagoon'))
-    expect(applyLook).toHaveBeenCalledWith('s', 'theme-examples', 'honu-lagoon')
+    expect(applyLook).toHaveBeenCalledWith('s', 'theme-examples', 'honu-lagoon', { waitForTurn: false })
     await waitFor(() => expect(screen.queryByTestId('theme-mods-menu')).toBeNull())
   })
 
@@ -290,14 +291,29 @@ describe('theme mods menu — Themes', () => {
     await waitFor(() => expect(list.querySelector('[role="status"]')).not.toBeNull())
   })
 
-  it('waits for a running turn: looks are greyed and nothing is asked', async () => {
-    const applyLook = vi.fn(async () => ({ ok: true as const, via: 'command' as const }))
+  it('during a turn a pick waits for it: the list says so, the look shows it waits, and it applies when the turn ends', async () => {
+    const { askUseLook } = await import('../browser/webview/mods/themeLooks')
+    let answer!: (result: unknown) => void
+    const request = vi.fn(() => new Promise(resolve => (answer = resolve)))
+    const connection = async () => ({ request }) as never
+    const applyLook = vi.fn((sessionId: string, plugin: string, lookId: string, options?: { waitForTurn?: boolean }) =>
+      askUseLook(connection, sessionId, plugin, lookId, options),
+    )
     mount(withLooks(applyLook, { sessionId: 's', busy: true }))
     await openSub('theme-mods-menu-looks')
+    expect(screen.getByTestId('theme-mods-menu-looks-note').textContent).toBe(EN['customize.themes.busy'])
     const honu = await screen.findByTestId('theme-look:theme-examples/honu-lagoon')
-    expect(honu.getAttribute('data-disabled')).not.toBeNull()
+    expect(honu.getAttribute('data-disabled')).toBeNull()
     fireEvent.click(honu)
-    expect(applyLook).not.toHaveBeenCalled()
+    expect(applyLook).toHaveBeenCalledWith('s', 'theme-examples', 'honu-lagoon', { waitForTurn: true })
+    await waitFor(() => expect(honu.getAttribute('data-waiting')).toBe(''))
+    expect(screen.getByTestId('theme-mods-menu-looks-note').textContent).toBe(
+      EN['themeMenu.lookWaiting'].replace('{name}', 'Honu Lagoon'),
+    )
+    // The list stays open while the look waits.
+    expect(screen.getByTestId('theme-mods-menu-looks-list')).toBeTruthy()
+    await act(async () => answer({ ok: true, via: 'command' }))
+    await waitFor(() => expect(screen.queryByTestId('theme-mods-menu')).toBeNull())
   })
 
   it('marks the look in use once its plugin stands', async () => {

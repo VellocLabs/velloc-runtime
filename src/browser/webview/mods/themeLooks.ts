@@ -5,6 +5,8 @@
  * A client names a session, a plugin and a look id; the runtime alone decides
  * what runs (`theme.useLook`).
  */
+import * as React from 'react'
+
 import type { ThemeUseLookResult } from '../../../mods/modThemeLooks'
 import { THEME_CAPABILITY } from '../../../mods/modThemeLooks'
 import { BUILTIN_MARKETPLACE_KEY } from '../../../pluginHost/builtinMarketplace'
@@ -88,15 +90,54 @@ export async function turnOffThemePlugins(
   turnOffAll: (keep?: string) => Promise<number>,
   keep?: string,
 ): Promise<number> {
+  // A look still waiting for a turn would switch a theme plugin back on.
+  cancelWaitingLooks()
   const count = await turnOffAll(keep)
   if (count > 0 || keep === undefined) forgetAppliedLooks()
   return count
 }
 
-/** Why a look cannot be applied to `target` now, or null when it can. */
+/** Why a look cannot be applied to `target`, or null when it can. A running turn does not block: the look waits for it. */
 export function lookBlocked(target: { busy: boolean } | null | undefined): MessageKey | null {
-  if (!target) return 'customize.themes.noSession'
-  return target.busy ? 'customize.themes.busy' : null
+  return target ? null : 'customize.themes.noSession'
+}
+
+/** The look waiting for a session's turn to end, per session id; one each, the latest pick. */
+const waiting = new Map<string, { key: string; controller: AbortController }>()
+const waitingWatchers = new Set<() => void>()
+let waitingView: Readonly<Record<string, string>> = {}
+
+function waitingChanged(): void {
+  waitingView = Object.fromEntries([...waiting].map(([sessionId, entry]) => [sessionId, entry.key]))
+  for (const watcher of [...waitingWatchers]) watcher()
+}
+
+/** The looks waiting for a turn to end, by session id; the same object until one changes. */
+export const waitingLooks = (): Readonly<Record<string, string>> => waitingView
+
+/** `waitingLooks`, kept current in a component. */
+export function useWaitingLooks(): Readonly<Record<string, string>> {
+  return React.useSyncExternalStore(onWaitingLooksChanged, waitingLooks, waitingLooks)
+}
+
+/** Hear a look start or stop waiting; returns the undo. */
+export function onWaitingLooksChanged(watcher: () => void): () => void {
+  waitingWatchers.add(watcher)
+  return () => void waitingWatchers.delete(watcher)
+}
+
+/** Drops the look waiting in `sessionId`, or in every session; the runtime stops waiting too. */
+export function cancelWaitingLooks(sessionId?: string): void {
+  const ids = sessionId === undefined ? [...waiting.keys()] : [sessionId]
+  let changed = false
+  for (const id of ids) {
+    const entry = waiting.get(id)
+    if (!entry) continue
+    waiting.delete(id)
+    entry.controller.abort()
+    changed = true
+  }
+  if (changed) waitingChanged()
 }
 
 export type ThemeFailure = Extract<ThemeUseLookResult, { ok: false }>['reason'] | 'request'
@@ -110,19 +151,44 @@ export const THEME_FAILURE_MESSAGE: Record<ThemeFailure, MessageKey> = {
   request: 'customize.themes.reason.request',
 }
 
-/** Asks the runtime to apply `plugin`'s look `lookId` in `sessionId`; a success is remembered for the window. */
+/**
+ * Asks the runtime to apply `plugin`'s look `lookId` in `sessionId`; a
+ * success is remembered for the window. A newer ask for the session replaces
+ * a look still waiting there. `waitForTurn`: the session runs a turn, so the
+ * runtime applies the look once it ends — the look waits (`waitingLooks`),
+ * with no deadline, and null is the answer when it was replaced or cancelled.
+ */
 export async function askUseLook(
   runtimeConnection: () => Promise<RuntimeConnection>,
   sessionId: string,
   plugin: string,
   lookId: string,
-): Promise<ThemeUseLookResult> {
-  const conn = await runtimeConnection()
-  const result = (await conn.request(`${THEME_CAPABILITY}.useLook` as RouteKey, {
-    sessionId,
-    plugin,
-    lookId,
-  })) as ThemeUseLookResult
-  if (result.ok) rememberAppliedLook(sessionId, lookKey(plugin, lookId))
-  return result
+  options: { waitForTurn?: boolean } = {},
+): Promise<ThemeUseLookResult | null> {
+  cancelWaitingLooks(sessionId)
+  const key = lookKey(plugin, lookId)
+  const controller = new AbortController()
+  if (options.waitForTurn) {
+    waiting.set(sessionId, { key, controller })
+    waitingChanged()
+  }
+  try {
+    const conn = await runtimeConnection()
+    const result = (await conn.request(
+      `${THEME_CAPABILITY}.useLook` as RouteKey,
+      { sessionId, plugin, lookId },
+      options.waitForTurn ? { timeoutMs: 0, signal: controller.signal } : {},
+    )) as ThemeUseLookResult
+    if (controller.signal.aborted) return null
+    if (result.ok) rememberAppliedLook(sessionId, key)
+    return result
+  } catch (error) {
+    if (controller.signal.aborted) return null
+    throw error
+  } finally {
+    if (waiting.get(sessionId)?.controller === controller) {
+      waiting.delete(sessionId)
+      waitingChanged()
+    }
+  }
 }

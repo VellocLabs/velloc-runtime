@@ -75,6 +75,8 @@ function setup(
   const themes = options.themes ?? [pack(), single()]
   const bridgeAsked: string[] = []
   const runtimeAsked: string[] = []
+  /** The options each `theme.useLook` request was sent with. */
+  const useOptions: unknown[] = []
   let failing = themes === 'fail'
   const bridge = {
     request: async (route: { capability: string; action: string }, payload: Record<string, unknown>) => {
@@ -106,11 +108,12 @@ function setup(
   const connection = {
     subscribe: () => () => {},
     can: () => true,
-    request: async (route: string, payload: unknown) => {
+    request: async (route: string, payload: unknown, requestOptions?: unknown) => {
       if (route === 'customizePage.show') return { tabId: 7, created: true }
       if (route === 'customizePage.describeMarketplace') return { plugins: {} }
       runtimeAsked.push(`${route} ${JSON.stringify(payload)}`)
       if (route === 'theme.useLook') {
+        useOptions.push(requestOptions)
         await options.useGate
         return options.useAnswers?.shift() ?? options.useAnswer ?? { ok: true, via: 'command' }
       }
@@ -153,6 +156,7 @@ function setup(
     target: TARGET,
     bridgeAsked,
     runtimeAsked,
+    useOptions,
     closed: () => closed,
     requestThemes: (seq: number) => view.rerender(wrap({ seq })),
     heal: () => {
@@ -400,18 +404,15 @@ describe('Theme directory — Add and Use', () => {
   })
 
 
-  it('with no session, or a turn running, Use is off with the reason and a pack look only adds', async () => {
+  it('with no session, Use is off with the reason and a pack look only adds', async () => {
     const installed = [{ ...pack(), installed: true }, single()]
-    for (const [target, reason] of [
-      [null, EN['customize.themes.noSession']],
-      ['busy', EN['customize.themes.busy']],
-    ] as const) {
-      const { view, open, card, runtimeAsked } = setup({ themes: installed.map(x => ({ ...x })), target })
+    {
+      const { view, open, card, runtimeAsked } = setup({ themes: installed.map(x => ({ ...x })), target: null })
       await open()
-      expect(view.getByTestId('customize-themes-target').textContent).toBe(reason)
+      expect(view.getByTestId('customize-themes-target').textContent).toBe(EN['customize.themes.noSession'])
       const use = within(card('scenes', 'scene-0')).getByTestId('customize-theme-use') as HTMLButtonElement
       expect(use.disabled).toBe(true)
-      expect(use.title).toBe(reason)
+      expect(use.title).toBe(EN['customize.themes.noSession'])
       fireEvent.click(use)
       expect(runtimeAsked).toEqual([])
       cleanup()
@@ -420,6 +421,44 @@ describe('Theme directory — Add and Use', () => {
     await open()
     expect(within(card('scenes', 'scene-0')).getByTestId('customize-theme-add').textContent).toBe(EN['customize.item.add'])
     expect(view.getByTestId('customize-themes-target').textContent).toBe(EN['customize.themes.noSession'])
+  })
+})
+
+describe('Theme directory — a look picked during a turn', () => {
+  it('waits for the turn: the head and a lasting notice say so, the card waits, and the answer replaces the notice', async () => {
+    let release!: () => void
+    const useGate = new Promise<void>(resolve => (release = resolve))
+    const { view, open, card, runtimeAsked, useOptions, target } = setup({
+      themes: [{ ...pack(), installed: true }, single()],
+      target: 'busy',
+      useGate,
+    })
+    await open()
+    expect(view.getByTestId('customize-themes-target').textContent).toBe(
+      EN['customize.themes.appliesTo'].replace('{title}', target.title),
+    )
+    expect(view.getByTestId('customize-themes-busy').textContent).toBe(EN['customize.themes.busy'])
+    const use = within(card('scenes', 'scene-1')).getByTestId('customize-theme-use') as HTMLButtonElement
+    expect(use.disabled).toBe(false)
+    fireEvent.click(use)
+    await waitFor(() => expect(runtimeAsked.filter(line => line.startsWith('theme.useLook'))).toHaveLength(1))
+    // No deadline: the runtime answers once the turn ends.
+    expect(useOptions[0]).toMatchObject({ timeoutMs: 0 })
+    await waitFor(() => expect(within(card('scenes', 'scene-1')).getByTestId('customize-theme-waiting')).toBeTruthy())
+    const notice = view.getByTestId('customize-theme-notice')
+    expect(notice.getAttribute('data-kind')).toBe('waiting')
+    expect(notice.textContent).toContain(
+      EN['customize.themes.notice.waiting'].replace('{name}', 'SCENE-1').replace('{title}', target.title),
+    )
+    expect(within(notice).queryByTestId('customize-theme-notice-view')).toBeNull()
+    // Another look stays pickable while one waits.
+    expect((within(card('scenes', 'scene-0')).getByTestId('customize-theme-use') as HTMLButtonElement).disabled).toBe(false)
+    await act(async () => {
+      release()
+      await useGate
+    })
+    await waitFor(() => expect(view.getByTestId('customize-theme-notice').getAttribute('data-kind')).toBe('applied'))
+    expect(within(card('scenes', 'scene-1')).getByTestId('customize-theme-in-use')).toBeTruthy()
   })
 })
 
