@@ -14,6 +14,7 @@ import {
 
 import type { BrowserLlmProvider } from "../../../../bridge/protocol/nexus_llm";
 import { modProviderName } from "../ModProviderEditor";
+import { isRouterMod } from "../../modRouterView";
 import { OPENCODE_ZEN_ENABLED } from "../../../../../config/opencodeZen";
 import type { Dispatch, SetStateAction } from "react";
 import type { Locale, TranslateFn } from "../../../i18n/translate";
@@ -104,6 +105,14 @@ export function renderAddProviderMenu(
                     <span className="flex items-center gap-2">
                       <ProviderIcon svg={p.iconSvg} />
                       {p.mod ? modProviderName(p, locale) : p.label}
+                      {isRouterMod(p.mod) ? (
+                        <span
+                          className="text-muted-foreground text-xs"
+                          data-testid={`models-provider-router-mark-${p.id}`}
+                        >
+                          {t("settings.models.mod.kindRouter")}
+                        </span>
+                      ) : null}
                     </span>
                   </SelectItem>
                 ))}

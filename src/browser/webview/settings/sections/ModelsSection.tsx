@@ -40,6 +40,7 @@ import {
 import { getProviderUsageStore } from "../../providerUsageStore";
 import { ModProviderEditor, modProviderName } from "./ModProviderEditor";
 import { isModProviderAdded, isModProviderConnected } from "../modProviderForm";
+import { isRouterMod, type RouterPeerRow } from "../modRouterView";
 import { orderByProviderIds } from "../../modelCatalog";
 import { mergeProviderConfigForSave } from "../providerConfigMerge";
 import type { ProviderTrust } from "../../../../settings/providerTrust";
@@ -390,7 +391,11 @@ export function ModelsSection({
           connected: p.mod
             ? isModProviderConnected(configs[p.id])
             : isBuiltInProviderConnected(configs[p.id], registry[p.id]),
-          kind: p.mod ? ("plugin" as const) : providerConnectionKind(registry[p.id], false),
+          kind: isRouterMod(p.mod)
+            ? ("router" as const)
+            : p.mod
+              ? ("plugin" as const)
+              : providerConnectionKind(registry[p.id], false),
         })),
       ...customRecords.map((record) => ({
         id: record.id,
@@ -1339,6 +1344,28 @@ export function ModelsSection({
       },
     );
 
+  // A router's possible targets: every provider on the page, by its shown name.
+  const addedIds = new Set(addedRows.map((row) => row.id));
+  const routerPeers: RouterPeerRow[] = [
+    ...builtInProviders.map((p) => ({
+      id: p.id,
+      label: p.mod ? modProviderName(p, locale) : p.label,
+      setUp: addedIds.has(p.id) && p.mod?.state !== "plugin-missing",
+      router: isRouterMod(p.mod),
+    })),
+    ...customRecords.map((record) => ({
+      id: record.id,
+      label: record.displayName,
+      setUp: true,
+      router: false,
+    })),
+  ];
+  /** Back to the list with the Add provider menu open: the one way to set up a provider. */
+  const connectAnotherProvider = () => {
+    goHome();
+    setAddMenuOpen(true);
+  };
+
   const renderModelCount = (row: AddedProviderRow) =>
     renderProviderModelCount(
       {
@@ -1396,6 +1423,8 @@ export function ModelsSection({
       saved={saved}
       bridge={bridge}
       onChanged={reload}
+      peers={routerPeers}
+      onConnectProvider={connectAnotherProvider}
     />
   );
 

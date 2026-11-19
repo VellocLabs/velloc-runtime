@@ -33,6 +33,7 @@ export const CONNECTION_KIND_KEY = {
   subscription: "settings.models.kindSubscription",
   apiKey: "settings.models.kindApiKey",
   plugin: "settings.models.mod.kindPlugin",
+  router: "settings.models.mod.kindRouter",
   local: "settings.models.kindLocal",
   custom: "settings.models.kindCustom",
 } as const satisfies Record<ProviderConnectionKind, string>;

@@ -107,7 +107,7 @@ export function isBuiltInProviderConnected(
  * "ChatGPT Plus/Pro" (a subscription sign-in) apart from "OpenAI" (an API
  * key) when both carry the same logo.
  */
-export type ProviderConnectionKind = "subscription" | "apiKey" | "plugin" | "local" | "custom";
+export type ProviderConnectionKind = "subscription" | "apiKey" | "plugin" | "router" | "local" | "custom";
 
 export function providerConnectionKind(
   info: ProviderAuthProviderInfo | undefined,

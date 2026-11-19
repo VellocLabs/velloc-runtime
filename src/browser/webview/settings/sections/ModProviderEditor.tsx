@@ -62,6 +62,8 @@ import { ModProviderStatusCard } from "./ModProviderStatusCard";
 import { ProviderModelEntries } from "./ProviderModelEntries";
 import { ProviderSignInDialog } from "./ProviderSignInDialog";
 import { holdsModSignIn } from "../../../../settings/providerSignIn";
+import { isRouterMod, type RouterPeerRow } from "../modRouterView";
+import { ModRouterPanel } from "./ModRouterPanel";
 
 /** The name a provider mod's row shows: the vendor's, in the person's language. */
 export function modProviderName(row: BrowserLlmProvider, locale: string | undefined): string {
@@ -93,6 +95,8 @@ export function ModProviderEditor({
   saved,
   bridge,
   onChanged,
+  peers = [],
+  onConnectProvider,
 }: {
   provider: BrowserLlmProvider;
   /** The stored entry as the page sees it (a key as `hasApiKey`). */
@@ -100,6 +104,10 @@ export function ModProviderEditor({
   bridge: NexusSettingsBridge;
   /** Re-read the stored configs after a write. */
   onChanged: () => Promise<void>;
+  /** A router's possible targets: every provider the page knows. */
+  peers?: readonly RouterPeerRow[];
+  /** A router with too few targets offers the page's way to set one up. */
+  onConnectProvider?: () => void;
 }) {
   const t = useT();
   const locale = useLocale();
@@ -119,6 +127,8 @@ export function ModProviderEditor({
       name={name}
       t={t}
       locale={locale}
+      peers={peers}
+      onConnectProvider={onConnectProvider}
     />
   );
 }
@@ -181,6 +191,8 @@ function ReadyEditor({
   name,
   t,
   locale,
+  peers,
+  onConnectProvider,
 }: {
   provider: BrowserLlmProvider;
   saved: NexusProviderConfig | undefined;
@@ -189,8 +201,12 @@ function ReadyEditor({
   name: string;
   t: ReturnType<typeof useT>;
   locale: string;
+  peers: readonly RouterPeerRow[];
+  onConnectProvider: (() => void) | undefined;
 }) {
   const mod = provider.mod!;
+  // A router owns no endpoint: no key, sign-in or base URL, nothing to verify.
+  const router = isRouterMod(mod);
   // The entry to write against: the stored one, or - for a provider just
   // picked from the add menu, before the host has adopted it - its marker.
   const stored: NexusProviderConfig | undefined =
@@ -392,7 +408,20 @@ function ReadyEditor({
       data-testid="mod-provider-editor"
       data-provider={providerId}
     >
-      {methods.length > 1 ? (
+      {router ? (
+        <ModRouterPanel
+          providerId={providerId}
+          name={name}
+          routesTo={mod.routesTo}
+          peers={peers}
+          added={saved?.credentialMode === "anonymous"}
+          onAdd={chooseAnonymous}
+          onConnectProvider={onConnectProvider}
+          t={t}
+        />
+      ) : null}
+
+      {!router && methods.length > 1 ? (
         <div
           role="radiogroup"
           aria-label={t("settings.models.mod.methodTitle")}
@@ -417,7 +446,7 @@ function ReadyEditor({
         </div>
       ) : null}
 
-      {method === "anonymous" ? (
+      {!router && method === "anonymous" ? (
         <div className="flex flex-col gap-2" data-testid="mod-anonymous-panel">
           <span className="text-muted-foreground text-xs">{t("settings.models.mod.anonymousHint")}</span>
           {saved?.credentialMode === "anonymous" ? (
@@ -442,7 +471,7 @@ function ReadyEditor({
         </div>
       ) : null}
 
-      {method === "login" ? (
+      {!router && method === "login" ? (
         <div className="flex flex-col gap-2" data-testid="mod-login-panel">
           {saved?.account && !signInEnded ? (
             <>
@@ -491,8 +520,8 @@ function ReadyEditor({
 
       <ModProviderForm
         key={`${providerId}:${customPrompts ? "prompts" : "key"}:${formGeneration}`}
-        prompts={method === "apiKey" ? prompts : null}
-        keyOnly={keyOnly}
+        prompts={!router && method === "apiKey" ? prompts : null}
+        keyOnly={!router && keyOnly}
         saved={saved}
         options={options}
         settingsConfig={settingsConfig && Object.keys(settingsConfig.fields).length > 0 ? settingsConfig : null}
@@ -511,7 +540,7 @@ function ReadyEditor({
         verifyKey={verifyKey}
         t={t}
       />
-      {baseUrlField && mod.defaultBaseUrl ? (
+      {!router && baseUrlField && mod.defaultBaseUrl ? (
         <ModBaseUrlField
           providerId={providerId}
           providerName={name}

@@ -30,7 +30,7 @@ export type AddedProviderRow = {
   custom: boolean;
   /** Built-ins only — custom providers carry no live verification state. */
   connected: boolean;
-  /** The line under the name: subscription, API key, local or custom. */
+  /** The line under the name: subscription, API key, plugin, router, local or custom. */
   kind: ProviderConnectionKind;
 };
 
