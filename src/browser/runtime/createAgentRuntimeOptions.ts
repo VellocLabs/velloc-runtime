@@ -108,6 +108,11 @@ export type CreateBrowserRuntimeOptions = BrowserRuntimeOptions & {
    */
   reloadPluginsOnAllSessions?: () => void
   /**
+   * A plugin was recorded as a theme plugin (settings `mods.themeMods`)
+   * without a plugin reload: readers of the theme mods are told again.
+   */
+  themeModRecorded?: () => void
+  /**
    * The session draws a prompt box on a page (F-25): `$.prompt.read` /
    * `.fill` / `.suggest` ask it over `mods/ui/<sessionId>`. Unset (a headless
    * or sub-agent build) → answered as headless: the empty box, `no_composer`.

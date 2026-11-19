@@ -110,6 +110,7 @@ function setup(
     },
   } as unknown as NexusSettingsBridge
   let themesOn = options.on ?? 2
+  let themeReads = 0
   let themesListener: ((event: { type: string; payload: unknown }) => void) | null = null
   const publishThemes = () =>
     themesListener?.({ type: 'state', payload: { mods: [], backdropScope: 'window', single: options.single === true, on: themesOn } })
@@ -126,6 +127,7 @@ function setup(
       if (route === 'customizePage.show') return { tabId: 7, created: true }
       if (route === 'customizePage.describeMarketplace') return { plugins: {} }
       if (route === 'themeMods.read') {
+        themeReads += 1
         publishThemes()
         return { ok: true }
       }
@@ -183,6 +185,7 @@ function setup(
     target: TARGET,
     bridgeAsked,
     runtimeAsked,
+    themeReads: () => themeReads,
     closed: () => closed,
     heal: () => {
       failing = false
@@ -527,9 +530,10 @@ describe('Theme directory: the theme plugin options', () => {
   })
 
   it('Turn off all is off while no theme plugin is on, and the directory reads the count as it opens', async () => {
-    const { view, open } = setup({ on: 0 })
+    const { view, open, themeReads } = setup({ on: 0 })
     await open()
     expect((view.getByTestId('customize-themes-turn-off') as HTMLButtonElement).disabled).toBe(true)
+    await waitFor(() => expect(themeReads()).toBeGreaterThan(0))
   })
 
   it('a connection that may not change them gets a disabled switch and no Turn off all', async () => {

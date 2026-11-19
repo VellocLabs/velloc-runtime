@@ -22,4 +22,18 @@ describe('reloadPluginsOnAllSessions', () => {
     manager.reloadPluginsOnAllSessions()
     await vi.waitFor(() => expect(reloadProviderMods).toHaveBeenCalledTimes(1))
   })
+
+  it('tells the hub the plugin set changed on a reload and when a session records a theme plugin', () => {
+    const manager = new SharedWorkerSessionManager({
+      createWorker: () => {
+        throw new Error('no session is created by a plugin reload')
+      },
+    } as never)
+    const hub = (manager as unknown as { runtimeHub: { pluginSetChanged(): void } }).runtimeHub
+    const changed = vi.spyOn(hub, 'pluginSetChanged')
+    manager.reloadPluginsOnAllSessions()
+    expect(changed).toHaveBeenCalledTimes(1)
+    manager.themeModRecorded()
+    expect(changed).toHaveBeenCalledTimes(2)
+  })
 })

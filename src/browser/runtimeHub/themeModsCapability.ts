@@ -52,7 +52,10 @@ export function registerThemeModsCapability(
       const { settings } = await readLayerFresh('userSettings', { homeDir }, fs)
       const on = await enabledThemePlugins(homeDir, fs).then(
         list => list.length,
-        () => 0,
+        error => {
+          report(`the enabled theme plugins could not be counted: ${error instanceof Error ? error.message : String(error)}`)
+          return 0
+        },
       )
       return {
         mods: settings.mods?.themeMods ?? [],

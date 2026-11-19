@@ -125,6 +125,8 @@ export interface AgentRuntimeWorkerHost {
    *  `userConfig` value changed (`$.config.set`). Optional: without it only
    *  this session's engine reloads. */
   reloadPluginsOnAllSessions?(): void
+  /** A session recorded a theme plugin without reloading plugins. Optional. */
+  themeModRecorded?(): void
 }
 
 export type AgentRuntimeWorkerOptions = {

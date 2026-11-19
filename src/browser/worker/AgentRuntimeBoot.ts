@@ -412,6 +412,9 @@ export class AgentRuntimeBoot {
         ...(this.worker.host?.reloadPluginsOnAllSessions
           ? { reloadPluginsOnAllSessions: () => this.worker.host!.reloadPluginsOnAllSessions!() }
           : {}),
+        ...(this.worker.host?.themeModRecorded
+          ? { themeModRecorded: () => this.worker.host!.themeModRecorded!() }
+          : {}),
         enqueuePluginTurn: isPrimarySessionBuild
           ? turn => {
               if (!this.worker.isCurrentScope(scope)) return

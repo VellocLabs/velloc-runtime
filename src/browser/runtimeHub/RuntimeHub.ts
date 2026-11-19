@@ -473,17 +473,17 @@ export class RuntimeHub {
     if (transport) void this.ensureHomeDir()
   }
 
+  /** The installed or enabled plugins changed: topics derived from them are read again. */
+  pluginSetChanged(): void {
+    void this.themeMods?.publish().catch(() => undefined)
+  }
+
   /**
    * The manifest gate for `remoteAccess`: the Manager calls this once
    * it has the host manifest. `true` arms the driver (ONE initial getStatus +
    * the onStatusChanged subscription); `false` disarms it so ZERO host calls
    * are made — the no-interface-version-bump rule.
    */
-  /** The installed or enabled plugins changed: topics derived from them are read again. */
-  pluginSetChanged(): void {
-    void this.themeMods?.publish().catch(() => undefined)
-  }
-
   setRemoteAccessSupported(supported: boolean): void {
     // Arming both is all this does. The sharing pairing is NOT ensured here:
     // the ensure needs `access().enabled` and the host's stored rows, and both

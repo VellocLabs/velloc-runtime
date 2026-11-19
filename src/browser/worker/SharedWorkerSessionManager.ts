@@ -3129,6 +3129,11 @@ export class SharedWorkerSessionManager {
     }
   }
 
+  /** Worker host: a session recorded a theme plugin; the theme mods topic is read again. */
+  themeModRecorded(): void {
+    this.runtimeHub.pluginSetChanged()
+  }
+
   /** Also the worker host's (`AgentRuntimeWorkerHost`): `$.config.set`. */
   reloadPluginsOnAllSessions(): void {
     // Provider mods are global, not any session's: rescan them here too, so a

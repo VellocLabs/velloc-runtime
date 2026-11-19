@@ -33,6 +33,13 @@ export type ThemePluginsDeps = {
  * marketplace install that is no longer installed is left out.
  */
 export async function knownThemePlugins(homeDir: string, fs: RuntimeFs): Promise<ThemeModEntry[]> {
+  return (await readThemePlugins(homeDir, fs)).known
+}
+
+async function readThemePlugins(
+  homeDir: string,
+  fs: RuntimeFs,
+): Promise<{ known: ThemeModEntry[]; enabled: Record<string, boolean> }> {
   const [{ settings }, { registry }, manifest] = await Promise.all([
     readLayerFresh('userSettings', { homeDir }, fs),
     loadInstalledPlugins({ homeDir }, fs),
@@ -51,7 +58,7 @@ export async function knownThemePlugins(homeDir: string, fs: RuntimeFs): Promise
       if (Object.hasOwn(installed, id) && !out.has(id)) out.set(id, { plugin: listing.name, id })
     }
   }
-  return [...out.values()]
+  return { known: [...out.values()], enabled: settings.enabledPlugins ?? {} }
 }
 
 async function localEnabled(root: string, fs: RuntimeFs): Promise<boolean> {
@@ -63,10 +70,7 @@ async function localEnabled(root: string, fs: RuntimeFs): Promise<boolean> {
 
 /** The theme plugins that are enabled now. */
 export async function enabledThemePlugins(homeDir: string, fs: RuntimeFs): Promise<ThemeModEntry[]> {
-  const known = await knownThemePlugins(homeDir, fs)
-  if (known.length === 0) return []
-  const { settings } = await readLayerFresh('userSettings', { homeDir }, fs)
-  const enabled = settings.enabledPlugins ?? {}
+  const { known, enabled } = await readThemePlugins(homeDir, fs)
   const out: ThemeModEntry[] = []
   for (const mod of known) {
     const on = mod.id.endsWith('@inline') ? !!mod.root && (await localEnabled(mod.root, fs)) : enabled[mod.id] !== false

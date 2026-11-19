@@ -497,7 +497,7 @@ ${entry.root ?? ''}`
               // A plugin first seen setting a theme: with *Only one at a time* on, the others go off.
               if (!first) return
               const { keepOneThemePlugin } = await import('../../mods/themePlugins')
-              await keepOneThemePlugin(
+              const turnedOff = await keepOneThemePlugin(
                 {
                   homeDir: settingsHomeDir,
                   fs: slot.installedFs,
@@ -508,6 +508,8 @@ ${entry.root ?? ''}`
                 },
                 entry.root ? { root: entry.root } : { plugin: entry.plugin },
               )
+              // A reload republishes the count; without one it is told here.
+              if (turnedOff === 0) slot.options.themeModRecorded?.()
             }, error => {
               notedThemeMods.delete(entry.plugin)
               reportMods(`the theme mod ${entry.plugin} could not be recorded: ${error instanceof Error ? error.message : String(error)}`)

@@ -3,7 +3,7 @@
  * backdrop's reach — their shapes, their place in settings.json, and the
  * `themeMods` capability over them.
  */
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { CapabilityRegistry } from '../browser/runtimeHub/CapabilityRegistry'
 import { TopicBroker } from '../browser/runtimeHub/TopicBroker'
 import { registerThemeModsCapability } from '../browser/runtimeHub/themeModsCapability'
@@ -59,13 +59,14 @@ function rig(initial: Record<string, unknown>) {
   const registry = new CapabilityRegistry()
   const broker = new TopicBroker()
   let reloads = 0
-  registerThemeModsCapability(registry, broker, {
+  const reports: string[] = []
+  const handle = registerThemeModsCapability(registry, broker, {
     context: () => ({ fs: disk.fs }),
     resolveHome: async () => HOME,
     reload: () => {
       reloads += 1
     },
-    report: () => {},
+    report: line => reports.push(line),
   })
   const events: ThemeModsState[] = []
   const subscribe = () =>
@@ -77,7 +78,7 @@ function rig(initial: Record<string, unknown>) {
     registry
       .resolve('themeMods', act)!
       .handle({ id: '1', route: { cap: 'themeMods', act }, payload, conn: conn() } as never, {} as never)
-  return { ...disk, registry, events, subscribe, ask, reloads: () => reloads }
+  return { ...disk, registry, events, subscribe, ask, reloads: () => reloads, publish: handle.publish, reports }
 }
 
 const AURORA = { plugin: 'aurora', id: 'aurora@market' }
@@ -183,5 +184,48 @@ describe('theme mods', () => {
     expect(r.reloads()).toBe(1)
     expect(await r.ask('turnOffAll')).toEqual({ ok: true, turnedOff: 0 })
     expect(r.reloads()).toBe(1)
+  })
+
+  it('publishes the count again when asked, once the topic has a reader', async () => {
+    const one = { plugin: 'one', id: 'one@builtin' }
+    const r = rig({ version: 1, mods: { themeMods: [one] }, enabledPlugins: { 'one@builtin': false } })
+    await r.publish()
+    expect(r.events).toEqual([])
+    r.subscribe()
+    await expect.poll(() => r.events.length).toBe(1)
+    expect(r.events[0]!.on).toBe(0)
+    r.replace({ version: 1, mods: { themeMods: [one] } })
+    await r.publish()
+    expect(r.events.at(-1)!.on).toBe(1)
+  })
+
+  it('a count that cannot be read is reported and published as none on', async () => {
+    vi.resetModules()
+    vi.doMock('../mods/themePlugins', async importOriginal => ({
+      ...(await importOriginal<typeof import('../mods/themePlugins')>()),
+      enabledThemePlugins: async () => {
+        throw new Error('disk gone')
+      },
+    }))
+    try {
+      const { registerThemeModsCapability: register } = await import('../browser/runtimeHub/themeModsCapability')
+      const disk = memoryFs({ version: 1, mods: { themeMods: [{ plugin: 'one', id: 'one@builtin' }] } })
+      const registry = new CapabilityRegistry()
+      const reports: string[] = []
+      register(registry, new TopicBroker(), {
+        context: () => ({ fs: disk.fs }),
+        resolveHome: async () => HOME,
+        report: line => reports.push(line),
+      })
+      const state = (await registry
+        .resolve('themeMods', 'read')!
+        .handle({ id: '1', route: { cap: 'themeMods', act: 'read' }, payload: {}, conn: conn() } as never, {} as never)) as ThemeModsState
+      expect(state.on).toBe(0)
+      expect(state.mods).toEqual([{ plugin: 'one', id: 'one@builtin' }])
+      expect(reports).toEqual(['the enabled theme plugins could not be counted: disk gone'])
+    } finally {
+      vi.doUnmock('../mods/themePlugins')
+      vi.resetModules()
+    }
   })
 })
