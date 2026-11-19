@@ -62,6 +62,8 @@ export type PluginAppDecl = {
   backgroundAgent?: true
   /** The pane is this one page in a sandboxed frame instead of surfaces built from `entry` (F-42). */
   page?: AppPageDecl
+  /** `false`: no topbar icon and no overflow-menu entry; the app opens from elsewhere (a provider's settings, F-27). */
+  topbar?: false
 }
 
 /** A plugin page drawn in a sandboxed frame that reads the runtime through a capped port. */
@@ -248,6 +250,11 @@ function readApp(value: unknown, label: string, appId: string, bad: Bad): Plugin
     if (fileOk && topicsOk) page = { file: file as string, topics: [...new Set(topics as string[])] }
     else bad(`${label}.page: expected { file: "./<path>.html", topics: [at most ${PAGE_TOPICS_MAX} topic names or ${SESSION_DETAIL_TOPICS.map(t => `"${t}"`).join(', ')}] }`)
   }
+  let topbar = true
+  if (value.topbar !== undefined) {
+    if (typeof value.topbar === 'boolean') topbar = value.topbar
+    else bad(`${label}.topbar: expected true or false`)
+  }
   if (!seed || !entry || data === null) return null
   return {
     seed,
@@ -259,6 +266,7 @@ function readApp(value: unknown, label: string, appId: string, bad: Bad): Plugin
     ...(background && backgroundFs ? { backgroundFs } : {}),
     ...(background && backgroundAgent ? { backgroundAgent: true as const } : {}),
     ...(page ? { page } : {}),
+    ...(topbar ? {} : { topbar: false as const }),
   }
 }
 

@@ -60,6 +60,7 @@ import { normalizeMcpServerUrl } from '../../mcp/oauth/oauthKeys'
 import { APP_PRESS_TIMEOUT_MS, readAppPressAnswer } from './appPress'
 import { AppStateDocument, type AppStateDocumentFs } from './appStateDocument'
 import { AppViews, type AppViewEvent, type AppViewLayout } from './appViews'
+import { serveSettingsAppProviderCall, type SettingsAppBinding, type SettingsAppProviderDeps } from './appProviderCalls'
 
 /** One app's background module: a hooks-module ref plus the app it serves. */
 export type AppBackgroundRef = ModModuleRef & {
@@ -76,6 +77,8 @@ export type AppBackgroundRef = ModModuleRef & {
   readonly folders?: { read: readonly string[]; write: readonly string[] }
   /** The app's template type, present when the module may run the agent (declared and approved). */
   readonly agentType?: string
+  /** The provider that names this app as its settings app: `$.provider` acts on it alone. Absent: `$.provider` is refused. */
+  readonly settingsFor?: SettingsAppBinding
 }
 
 /** Where workers are spawned from: some window's control port. */
@@ -110,6 +113,8 @@ export type AppBackgroundRuntimeOptions = {
   onBadge?: (appId: string, count: number | null) => void
   /** `$.app.busy`: whether the app's icon shows the module at work; false too when the module stops, crashes or fails to load, and once a busy runs past its limit. */
   onBusy?: (appId: string, busy: boolean) => void
+  /** `$.provider` of a settings app's module. Absent: `peers` and `clearState` fail as unavailable, `reload` does nothing. */
+  providerCalls?: Partial<SettingsAppProviderDeps>
   /** How long a busy lasts unless the module says it again. */
   busyMaxMs?: number
   /** `$.app.view`: the pages are asked to open the app or close its pane; `client` undefined is every page. */
@@ -211,6 +216,7 @@ const sameRef = (a: AppBackgroundRef, b: AppBackgroundRef): boolean =>
   a.plugin === b.plugin &&
   sameMcpOwner(a.mcpOwner, b.mcpOwner) &&
   a.agentType === b.agentType &&
+  JSON.stringify(a.settingsFor ?? null) === JSON.stringify(b.settingsFor ?? null) &&
   JSON.stringify(a.folders ?? null) === JSON.stringify(b.folders ?? null)
 
 /** Security: beyond the app's folder the module reads its plugin's language files, and the folders the person approved. */
@@ -547,7 +553,7 @@ export class AppBackgroundRuntime {
 
   /** Read, admit, compile and scan the module; unchanged files come from the build store. */
   private async prepare(module: Module): Promise<string> {
-    return (await prepareModule(module.ref, this.options, refuseAppBackgroundUses)).source
+    return (await prepareModule(module.ref, this.options, uses => refuseAppBackgroundUses(uses, module.ref.settingsFor))).source
   }
 
   private async raiseStart(module: Module): Promise<void> {
@@ -778,10 +784,17 @@ export class AppBackgroundRuntime {
 
   /** Serve a `$` call of a background module: its nouns alone. */
   private async serveCall(module: Module, call: ModCall): Promise<unknown> {
-    const refused = refuseAppBackgroundCall(call.noun, call.method)
+    const refused = refuseAppBackgroundCall(call.noun, call.method, module.ref.settingsFor)
     if (refused) throw named('NotAllowedError', refused)
     if (call.noun !== 'log' && call.signal?.aborted) {
       throw named('AbortError', `$.${call.noun}.${call.method}: the calling hook was abandoned`)
+    }
+    if (call.noun === 'provider' && module.ref.settingsFor) {
+      const calls = this.options.providerCalls
+      return await serveSettingsAppProviderCall(module.ref.settingsFor, call.method, call.args, {
+        reload: calls?.reload ?? (() => Promise.resolve()),
+        ...(calls?.peers ? { peers: calls.peers } : {}),
+      })
     }
     if (call.noun === 'app') {
       if (call.method === 'state') return { value: module.document.value, version: module.document.version }

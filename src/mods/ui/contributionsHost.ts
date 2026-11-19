@@ -29,6 +29,8 @@ import {
 import { parseWelcome } from '../../prompting/templateParsing'
 import { appBackgroundMcpOwner, type AppBackgroundMcpOwner } from '../app/appBackgroundMcp'
 import { safeIconSvg } from '../provider/modProviderDefinition'
+import { modProviderId, type ProviderManifest } from '../provider/providerManifest'
+import type { SettingsAppBinding } from '../app/appProviderCalls'
 import { publishModContributions, setModContributionsSyncGate, setTopbarResolver } from './contributionsState'
 import { appIdOf, modUiId, type ModUiIconDecl, type PluginAppDecl } from './uiManifest'
 
@@ -81,9 +83,32 @@ export type AppBackgroundTemplate = {
   mcp: AppBackgroundMcpOwner
   /** The plugin's id in the consent file (`<name>@<catalog>`); absent for a hand-placed plugin, which needs no consent. */
   consentId?: string
+  /** The provider that names this app as its settings app (F-27). */
+  settingsFor?: SettingsAppBinding
 }
 
 const MARKETPLACE_SOURCE = 'marketplace:'
+
+/** The provider of `plugin` whose `settingsApp` is the template of `type`; the manifest check lets one provider at most name it. */
+function settingsBindingOf(
+  plugin: string,
+  providers: Readonly<Record<string, ProviderManifest>> | undefined,
+  type: string,
+): { settingsFor?: SettingsAppBinding } {
+  const key = type.slice(type.indexOf(':') + 1)
+  for (const [providerKey, provider] of Object.entries(providers ?? {})) {
+    if (provider.settingsApp !== key) continue
+    const router = provider.kind === 'router'
+    return {
+      settingsFor: {
+        providerId: modProviderId(plugin, providerKey),
+        router,
+        ...(router && provider.routesTo !== undefined ? { routesTo: provider.routesTo } : {}),
+      },
+    }
+  }
+  return {}
+}
 
 /** What a topbar press runs, as the runtime resolved it. */
 export type TopbarTarget = { plugin: string; command: string; args?: string }
@@ -319,6 +344,7 @@ export class ModUiContributionsHost {
         owner: pluginOwnerId(owner),
         decl,
         mcp: appBackgroundMcpOwner(owner),
+        ...settingsBindingOf(owner.name, owner.manifest.providers, app.type),
         ...(owner.source.startsWith(MARKETPLACE_SOURCE) ? { consentId: owner.source.slice(MARKETPLACE_SOURCE.length) } : {}),
       })
     }
@@ -478,6 +504,7 @@ export class ModUiContributionsHost {
             ...(signInUrls.length > 0 ? { signInUrls } : {}),
             ...(icon ? { icon } : {}),
             ...(template.decl.app.page ? { page: true as const } : {}),
+            ...(template.decl.app.topbar === false ? { topbar: false as const } : {}),
           })
         }
         const welcome = this.assets.get(plugin.name)?.welcome.get(template.key)

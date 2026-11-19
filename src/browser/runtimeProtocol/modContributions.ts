@@ -79,6 +79,8 @@ export type ContributedApp = {
   icon?: ContributionIcon
   /** Its pane is one sandboxed page (`mods.appPage`) instead of surfaces (F-42); absent for a surface app. */
   page?: true
+  /** No topbar icon and no overflow-menu entry: the app opens from its provider's settings (F-27); absent for an ordinary app. */
+  topbar?: false
 }
 
 /** A plugin the person switched on whose `requires` is not met. */

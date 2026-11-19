@@ -75,7 +75,8 @@ export type ModsAppPagePayload = { appId: string }
 export type ModsAppPageResult = { ok: true; html: string; topics: string[] } | { ok: false; message: string }
 
 /** How the person pressed an app's topbar icon: the icon, its context menu, or an item of a menu the module answered with. */
-export const APP_PRESS_TRIGGERS = ['primary', 'context', 'menu'] as const
+/** `provider`: the app opened as a provider's settings app (F-27), from the Models page. */
+export const APP_PRESS_TRIGGERS = ['primary', 'context', 'menu', 'provider'] as const
 export type AppPressTrigger = (typeof APP_PRESS_TRIGGERS)[number]
 
 /** `mods.appPress`: a press on an app's topbar icon, offered to the app's background module. `item` names the menu item of a `menu` press. */

@@ -1,0 +1,151 @@
+// @vitest-environment happy-dom
+/**
+ * A provider's settings app, page side (F-27, F-40): an app with
+ * `topbar: false` has no topbar icon and no overflow entry, and the provider's
+ * editor opens it once when the provider is added and from its "Open" button,
+ * through the topbar's opener, offered as a `provider` press. On stable, where
+ * no apps are published, neither entry exists.
+ */
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { createElement as h } from 'react'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+
+import type { BrowserLlmProvider } from '../browser/bridge/protocol/nexus_llm'
+import { EMPTY_MOD_CONTRIBUTIONS, type ModContributionsState } from '../browser/runtimeProtocol/modContributions'
+import type { AppPressPort } from '../browser/webview/apps/appPress'
+import { createProviderAppOpener, ProviderAppOpenerContext, type ProviderAppOpener } from '../browser/webview/apps/providerSettingsApp'
+import { I18nProvider } from '../browser/webview/i18n'
+import { setModContributions } from '../browser/webview/mods/modContributionsView'
+import { ProviderSettingsAppEntry } from '../browser/webview/settings/sections/ProviderSettingsAppEntry'
+import { PluginTopbarItems, usePluginTopbarItems } from '../browser/webview/topbar/PluginTopbarItems'
+import { RuntimeCapabilitiesContext } from '../browser/webview/useCan'
+import { TooltipProvider } from '../components/ui/tooltip'
+
+const BETA: ModContributionsState = {
+  ...EMPTY_MOD_CONTRIBUTIONS,
+  apps: [
+    { type: 'switch:console', appId: 'switch-console', plugin: 'switch', title: 'Switchboard', topbar: false },
+    { type: 'pay:board', appId: 'pay-board', plugin: 'pay', title: 'Payments' },
+  ],
+}
+
+afterEach(() => {
+  cleanup()
+  act(() => setModContributions(EMPTY_MOD_CONTRIBUTIONS))
+})
+
+const settle = () => act(async () => void (await new Promise(resolve => setTimeout(resolve, 0))))
+
+const wrap = (child: ReturnType<typeof h>) =>
+  h(I18nProvider, { locale: 'en' } as never, h(RuntimeCapabilitiesContext.Provider, { value: { can: () => true } }, h(TooltipProvider, null, child)))
+
+describe('an app with topbar false', () => {
+  function Bar(props: { folded: Set<string> }) {
+    const state = usePluginTopbarItems(undefined, undefined, () => {})
+    return h('div', null, h('span', { 'data-testid': 'ids' }, (state?.items ?? []).map(item => item.id).join(',')), h(PluginTopbarItems, { state, folded: props.folded }))
+  }
+
+  it('has no topbar icon and no overflow entry, while an ordinary app is unchanged', () => {
+    act(() => setModContributions(BETA))
+    render(wrap(h(Bar, { folded: new Set<string>() })))
+    expect(screen.getByTestId('ids').textContent).toBe('app:pay:board')
+    expect(screen.queryByTestId('topbar-app-switch-console')).toBeNull()
+    expect(screen.getByTestId('topbar-app-pay-board')).toBeTruthy()
+  })
+})
+
+const row = (settingsApp: string | undefined): BrowserLlmProvider =>
+  ({
+    id: 'mod.switch.route',
+    label: 'Switchboard',
+    iconSvg: '',
+    enabled: true,
+    models: [],
+    mod: { state: 'ready', plugin: 'switch', kind: 'router', ...(settingsApp ? { settingsApp } : {}) },
+  }) as BrowserLlmProvider
+
+function renderEntry(provider: BrowserLlmProvider, added: boolean, open: ProviderAppOpener | undefined) {
+  const tree = (now: boolean) => wrap(h(ProviderAppOpenerContext.Provider, { value: open }, h(ProviderSettingsAppEntry, { provider, added: now })))
+  const view = render(tree(added))
+  return { rerender: (now: boolean) => view.rerender(tree(now)) }
+}
+
+describe("the provider editor's entries", () => {
+  it('opens the app once when the provider is added, and again from its button', () => {
+    act(() => setModContributions(BETA))
+    const open = vi.fn()
+    const { rerender } = renderEntry(row('switch-console'), false, open)
+    expect(open).not.toHaveBeenCalled()
+    rerender(true)
+    expect(open).toHaveBeenCalledTimes(1)
+    expect(open.mock.calls[0]![0]).toMatchObject({ appId: 'switch-console', type: 'switch:console' })
+    rerender(true)
+    expect(open).toHaveBeenCalledTimes(1)
+    const button = screen.getByTestId('mod-provider-settings-app-switch-console')
+    expect(button.textContent).toBe('Open Switchboard')
+    fireEvent.click(button)
+    expect(open).toHaveBeenCalledTimes(2)
+  })
+
+  it('does not open a provider that was already added when the editor appeared', () => {
+    act(() => setModContributions(BETA))
+    const open = vi.fn()
+    renderEntry(row('switch-console'), true, open)
+    expect(open).not.toHaveBeenCalled()
+  })
+
+  it('draws nothing and opens nothing on stable, where no apps are published', () => {
+    act(() => setModContributions({ ...EMPTY_MOD_CONTRIBUTIONS }))
+    const open = vi.fn()
+    const { rerender } = renderEntry(row('switch-console'), false, open)
+    rerender(true)
+    expect(open).not.toHaveBeenCalled()
+    expect(screen.queryByTestId('mod-provider-settings-app-switch-console')).toBeNull()
+  })
+
+  it('draws nothing for a provider that names no app', () => {
+    act(() => setModContributions(BETA))
+    renderEntry(row(undefined), true, vi.fn())
+    expect(screen.queryByTestId(/^mod-provider-settings-app-/)).toBeNull()
+  })
+})
+
+describe('the opener', () => {
+  const app = { appId: 'switch-console', type: 'switch:console', title: 'Switchboard' }
+
+  it('offers the open as a provider press, then closes Settings and opens through the topbar opener', async () => {
+    const asked: unknown[] = []
+    const port: AppPressPort = {
+      ask: async (...args) => {
+        asked.push(args.filter(arg => arg !== undefined))
+        return null
+      },
+      signIn: () => {},
+      signOut: () => {},
+    }
+    const calls: string[] = []
+    const opener = createProviderAppOpener(
+      { port, signIn: undefined, openApp: type => calls.push(`open ${type}`), closeSettings: () => calls.push('close') },
+      () => BETA.apps,
+    )
+    opener(app)
+    expect(calls).toEqual([])
+    await settle()
+    expect(asked).toEqual([['switch-console', 'provider']])
+    expect(calls).toEqual(['close', 'open switch:console'])
+  })
+
+  it('leaves Settings open when the module answers that it handled the open', async () => {
+    const port: AppPressPort = { ask: async () => ({ kind: 'handled' }), signIn: () => {}, signOut: () => {} }
+    const calls: string[] = []
+    createProviderAppOpener({ port, signIn: undefined, openApp: () => calls.push('open'), closeSettings: () => calls.push('close') }, () => BETA.apps)(app)
+    await settle()
+    expect(calls).toEqual([])
+  })
+
+  it('opens at once without a port', () => {
+    const calls: string[] = []
+    createProviderAppOpener({ port: undefined, signIn: undefined, openApp: type => calls.push(type), closeSettings: () => calls.push('close') }, () => BETA.apps)(app)
+    expect(calls).toEqual(['close', 'switch:console'])
+  })
+})

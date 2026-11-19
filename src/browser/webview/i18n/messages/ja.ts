@@ -2002,6 +2002,7 @@ export const ja: Messages = {
   'settings.models.mod.router.unknownOne': 'ほかに {count} 件が指定されていますが、インストールされていません。',
   'settings.models.mod.router.needsProviders': '{name} はリクエストごとにほかのプロバイダを 1 つ選び、失敗したり上限に達したりすると次に切り替えます。現在使えるのは {count} 件です。選べるように 2 つ以上設定してください。',
   'settings.models.mod.router.connectProvider': 'ほかのプロバイダを設定',
+  'settings.models.mod.openSettingsApp': '{title} を開く',
   'settings.models.mod.pluginProviders': 'プラグインのプロバイダ',
   'settings.models.mod.providedBy': 'プラグイン {plugin} から',
   'settings.models.mod.providedByVersion': 'プラグイン {plugin}（バージョン {version}）から',

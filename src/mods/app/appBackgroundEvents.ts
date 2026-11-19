@@ -8,6 +8,7 @@
 import type { HookRegistration } from '../modTypes'
 import type { ModUses } from '../modScan'
 import { isValidPattern } from '../eventPattern'
+import { refuseSettingsAppProviderCall, type SettingsAppBinding } from './appProviderCalls'
 
 export const APP_BACKGROUND_ABI = 'Velloc app background ABI 0.1'
 
@@ -49,8 +50,9 @@ export function refuseAppBackgroundRegistrations(hooks: readonly HookRegistratio
   return reasons.length > 0 ? reasons.join('; ') : null
 }
 
-/** Why a background module may not call `$.<noun>.<method>`, or null. */
-export function refuseAppBackgroundCall(noun: string, method: string): string | null {
+/** Why a background module may not call `$.<noun>.<method>`, or null. `binding`: the provider whose settings app this is. */
+export function refuseAppBackgroundCall(noun: string, method: string, binding?: SettingsAppBinding): string | null {
+  if (noun === 'provider') return refuseSettingsAppProviderCall(method, binding)
   if (!APP_BACKGROUND_NOUNS.includes(noun)) {
     return (
       `$.${noun} is a session noun, which an app's background module cannot use — it may use ` +
@@ -65,11 +67,11 @@ export function refuseAppBackgroundCall(noun: string, method: string): string | 
 }
 
 /** Why what the module calls (as scanned before it runs) is not what it may call, or null. */
-export function refuseAppBackgroundUses(uses: ModUses): string | null {
+export function refuseAppBackgroundUses(uses: ModUses, binding?: SettingsAppBinding): string | null {
   const reasons: string[] = []
   for (const call of uses.calls) {
     const dot = call.indexOf('.')
-    const reason = refuseAppBackgroundCall(dot === -1 ? call : call.slice(0, dot), dot === -1 ? '' : call.slice(dot + 1))
+    const reason = refuseAppBackgroundCall(dot === -1 ? call : call.slice(0, dot), dot === -1 ? '' : call.slice(dot + 1), binding)
     if (reason && !reasons.includes(reason)) reasons.push(reason)
   }
   return reasons.length > 0 ? reasons.join('; ') : null

@@ -32,7 +32,7 @@ export type AppPressTarget = {
 }
 
 const unanswered = (target: AppPressTarget, trigger: AppPressTrigger): void => {
-  if (trigger !== 'primary') return
+  if (trigger !== 'primary' && trigger !== 'provider') return
   target.open()
   target.defaultSignIn()
 }

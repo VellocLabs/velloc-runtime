@@ -14,6 +14,7 @@ import { parseModelVersion } from '../../config/nexusModelConfig/providers/share
 import type { ModelVersionInfo } from '../../config/nexusModelConfig/providers/shared/modelVersions'
 import { listedModelInfo } from '../../models/drivers/runtimeProviders'
 import type { ResolvedProvider } from './providerManifest'
+import { settingsAppIdOf } from './providerSettingsApp'
 
 /** A vendor's mark is drawn into the page; anything bigger is not a mark. */
 export const MOD_ICON_MAX_BYTES = 64 * 1024
@@ -150,6 +151,7 @@ export function modProviderDefinition(options: ModProviderDefinitionOptions): Pr
       ...(manifest.modelsUi ? { modelsUi: manifest.modelsUi } : {}),
       ...(manifest.credentials.readsSecrets ? { readsSecrets: true } : {}),
       ...(router ? { kind: 'router' as const, routesTo: manifest.routesTo ?? [] } : {}),
+      ...(manifest.settingsApp !== undefined ? { settingsApp: settingsAppIdOf(options.plugin, manifest) } : {}),
     },
   }
   return definition

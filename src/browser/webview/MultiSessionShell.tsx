@@ -225,6 +225,7 @@ import {
   useAttachModContributions,
   useContributionsSnapshot,
 } from './mods/modContributionsView'
+import { createProviderAppOpener, ProviderAppOpenerContext } from './apps/providerSettingsApp'
 import type { TurnFileChange } from '../../utils/turnDiffs'
 import {
   getBootDiagnosticTraceId,
@@ -323,6 +324,7 @@ import {
   createShellHandleOpenSettings,
   createShellHandleLoadProviderMissingPrompt,
   createShellSettingsHostActions,
+  createShellCloseSettings,
 } from './shellSettingsActions'
 import {
   createShellHandleArchiveSessions,
@@ -2357,6 +2359,20 @@ export function MultiSessionShell({
     () => createShellInterceptMarketplaceAdd(customizeShown, setMarketplaceAddRequest, handleOpenCustomize),
     [customizeShown, handleOpenCustomize],
   )
+  // A provider's settings app (F-27): opened from the Models page as a topbar press would open it.
+  const closeSettingsForApp = useMemo(
+    () => createShellCloseSettings(setProviderSettingsRequest, setPluginSettingsRequest, setMcpSettingsRequest, setSettingsSection),
+    [],
+  )
+  const providerAppPort = runtimeCapabilities.can('mods', 'appPress') ? appPressPort : undefined
+  const providerAppSignIn = runtimeCapabilities.can('mcpAuth', 'signIn') ? handleAppSignIn : undefined
+  const providerAppOpener = useMemo(
+    () =>
+      runtimeConnection
+        ? createProviderAppOpener({ port: providerAppPort, openApp: handleOpenApp, signIn: providerAppSignIn, closeSettings: closeSettingsForApp })
+        : undefined,
+    [runtimeConnection, providerAppPort, handleOpenApp, providerAppSignIn, closeSettingsForApp],
+  )
   const handleOpenProviderSettings = useMemo(
     () => createShellHandleOpenProviderSettings(setProviderSettingsRequest, setSettingsSection),
     [],
@@ -3193,6 +3209,7 @@ export function MultiSessionShell({
           mounted threads keep their UI state and attention acknowledgements. */}
       {settingsSection ? (
         <Suspense fallback={null}>
+        <ProviderAppOpenerContext.Provider value={providerAppOpener}>
         <SettingsScreen
           section={settingsSection}
           onNavigate={handleSettingsNavigate}
@@ -3228,6 +3245,7 @@ export function MultiSessionShell({
             void refreshModelCatalog()
           }}
         />
+        </ProviderAppOpenerContext.Provider>
         </Suspense>
       ) : null}
       {

@@ -61,6 +61,7 @@ import { MissingRequiredMark, OptionFieldControl, OptionRow, OptionRowList } fro
 import { ModProviderStatusCard } from "./ModProviderStatusCard";
 import { ProviderModelEntries } from "./ProviderModelEntries";
 import { ProviderSignInDialog } from "./ProviderSignInDialog";
+import { ProviderSettingsAppEntry } from "./ProviderSettingsAppEntry";
 import { holdsModSignIn } from "../../../../settings/providerSignIn";
 import { isRouterMod, type RouterPeerRow } from "../modRouterView";
 import { ModRouterPanel } from "./ModRouterPanel";
@@ -655,6 +656,7 @@ function ReadyEditor({
         </DialogContent>
       </Dialog>
       <ProviderSignInDialog name={name} session={loginSession} />
+      <ProviderSettingsAppEntry provider={provider} added={saved !== undefined} />
     </div>
   );
 }

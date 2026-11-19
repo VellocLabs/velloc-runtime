@@ -23,6 +23,8 @@ import type { AppBackgroundBootDeps } from './appBackgroundBoot'
 import { createAppBackgroundMcp } from './appBackgroundMcp'
 import type { AppMcpStatusSource } from './appMcpStatus'
 import { currentMcpOAuthService, onMcpOAuthServiceChanged } from '../../mcp/oauth/mcpOAuthHolder'
+import { createReloadFolder, settingsAppPeerSource } from './appProviderCalls'
+import { reloadModProvider } from '../provider/providerReload'
 
 export function createAppBackgroundRuntime(
   deps: AppBackgroundBootDeps & { report: (line: string) => void } & Pick<AppBackgroundRuntimeOptions, 'onBadge' | 'onBusy' | 'onView'>,
@@ -56,7 +58,9 @@ export function createAppBackgroundRuntime(
     const { secrets } = createNativePrimitives({ transport: host.transport, createRequestId: () => crypto.randomUUID(), ...(host.manifest ? { manifest: host.manifest } : {}) })
     await storePluginSecrets(writes, [], secrets, report, { prune: false })
   }
+  const reloads = createReloadFolder(providerId => reloadModProvider(providerId, deps.transport, report))
   return new AppBackgroundRuntime({
+    providerCalls: { reload: reloads.reload, peers: settingsAppPeerSource },
     readModule: loaders.readModule,
     ...(loaders.compile ? { compile: loaders.compile } : {}),
     ...(loaders.scan ? { scan: loaders.scan } : {}),

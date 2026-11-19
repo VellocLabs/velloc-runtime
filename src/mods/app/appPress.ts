@@ -34,7 +34,8 @@ export function readAppPressAnswer(answer: unknown, trigger: AppPressTrigger, ur
     return url === undefined || trigger !== 'menu' ? null : { kind: 'signOut', url }
   }
   if ('menu' in answer) {
-    const items = trigger === 'menu' ? null : readAppPressMenuItems(answer.menu)
+    // A menu needs an icon to stand at: none after a menu pick, none for a settings app's open.
+    const items = trigger === 'menu' || trigger === 'provider' ? null : readAppPressMenuItems(answer.menu)
     return items ? { kind: 'menu', items } : null
   }
   if ('handled' in answer) return answer.handled === true ? { kind: 'handled' } : null

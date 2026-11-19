@@ -121,7 +121,7 @@ export function usePluginTopbarItems(
   const pressSeq = React.useRef(0);
   const pressApp = React.useCallback(
     (id: string, trigger: AppPressTrigger, at: MenuPoint | undefined, item?: string): boolean => {
-      const app = onOpenApp ? apps.find(entry => appItemId(entry.type) === id) : undefined;
+      const app = onOpenApp ? apps.find(entry => appItemId(entry.type) === id && entry.topbar !== false) : undefined;
       if (!app) return false;
       const seq = ++pressSeq.current;
       setNotice(null);
@@ -165,7 +165,8 @@ export function usePluginTopbarItems(
     [onPress, pressApp, activeSessionId],
   );
   const commands = onPress && canPress ? contributions.topbar : [];
-  const appItems = onOpenApp ? apps : [];
+  // An app with `topbar: false` opens from its provider's settings alone (F-27).
+  const appItems = onOpenApp ? apps.filter(app => app.topbar !== false) : [];
   if (commands.length === 0 && appItems.length === 0) return null;
   return {
     items: [

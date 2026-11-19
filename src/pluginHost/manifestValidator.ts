@@ -12,6 +12,7 @@ import { currentTemplateChannel, type UpdateChannel } from '../branding/updateCh
 import { parseHooksSettings } from '../lifecycleHooks/hookTypes'
 import { checkProviderManifests } from '../mods/provider/providerManifest'
 import { checkTemplateDecls, checkUiDecl } from '../mods/ui/uiManifest'
+import { checkSettingsApps } from '../mods/provider/providerSettingsApp'
 import { checkRequires } from './pluginRequirements'
 import type { PluginDescriptor } from './pluginModel'
 import { readUserConfigFields } from './userConfigFields'
@@ -174,6 +175,11 @@ export function checkPluginDescriptor(value: unknown, channel: UpdateChannel = c
     set('providers', checkProviderManifests(name, value.providers, errors))
   }
   if (value.templates !== undefined) set('templates', checkTemplateDecls(name, value.templates, errors, channel))
+  if (manifest.providers) {
+    const kept = checkSettingsApps(manifest.providers, manifest.templates, errors, channel)
+    if (kept) manifest.providers = kept
+    else delete manifest.providers
+  }
   if (value.ui !== undefined) set('ui', checkUiDecl(name, value.ui, errors))
   if (value.requires !== undefined) {
     set('requires', checkRequires(value.requires, Object.keys(manifest.providers ?? {}), errors, channel))

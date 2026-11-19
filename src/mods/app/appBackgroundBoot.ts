@@ -81,6 +81,7 @@ export function appBackgroundRef(
     folder,
     stateFile,
     mcpOwner: app.mcp,
+    ...(app.settingsFor ? { settingsFor: app.settingsFor } : {}),
     ...(app.decl.backgroundAgent && agentApproved ? { agentType: app.type } : {}),
     ...(granted
       ? {

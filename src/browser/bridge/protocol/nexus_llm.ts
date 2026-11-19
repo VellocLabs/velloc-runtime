@@ -153,6 +153,8 @@ export type BrowserLlmModProvider = {
   readsSecrets?: boolean
   /** How the aggregated "Add models" page is drawn (manifest `modelsUi`). */
   modelsUi?: ProviderModelsUi
+  /** The app id of the provider's settings app (F-40), which the page opens. */
+  settingsApp?: string
 }
 
 export type BrowserLlmProvider = {

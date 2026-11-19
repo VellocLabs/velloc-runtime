@@ -28,6 +28,7 @@ import { checkModelFacts, type ProviderModelFacts } from './providerModelFacts'
 import { checkProviderWire, type ProviderWireManifest } from './providerToolAliasesManifest'
 import { withSettingBinds, type SettingBinding } from './providerSettingBinds'
 import { insideRoutesTo } from '../../models/drivers/providerRouter'
+import { whyNotSettingsAppKey } from './providerSettingsApp'
 
 /** The `providerApi` values this Velloc serves. A manifest naming another is
  *  refused with a message that names it. */
@@ -178,6 +179,8 @@ export type ProviderManifest = {
   /** The pools of proxies its module registers while it runs, by name. */
   egressPools?: ProviderEgressPools
   jobs?: ProviderJobDecl[]
+  /** The key of one of the plugin's app templates: the provider's settings app (F-40). */
+  settingsApp?: string
   /** Package-relative module path, `./`-prefixed. */
   module: string
 }
@@ -962,6 +965,12 @@ function checkProvider(key: string, id: string, raw: unknown, errors: string[]):
   const policy = raw.policy === undefined ? undefined : checkPolicy(raw.policy, bad, PROVIDER_WIRE_FORMATS, message => reportPolicyClamp(`${label}.${message}`))
   const wire = raw.wire === undefined ? undefined : checkProviderWire(raw.wire, bad)
   const jobs = raw.jobs === undefined ? undefined : checkProviderJobs(raw.jobs, bad)
+  let settingsApp: string | undefined
+  if (raw.settingsApp !== undefined) {
+    const why = whyNotSettingsAppKey(raw.settingsApp)
+    if (why) bad(why)
+    else settingsApp = raw.settingsApp as string
+  }
   const egress =
     raw.egress === undefined
       ? undefined
@@ -991,6 +1000,7 @@ function checkProvider(key: string, id: string, raw: unknown, errors: string[]):
     ...(policy && Object.keys(policy).length > 0 ? { policy } : {}),
     ...(egress && Object.keys(egress).length > 0 ? { egressPools: egress } : {}),
     ...(jobs && jobs.length > 0 ? { jobs } : {}),
+    ...(settingsApp !== undefined ? { settingsApp } : {}),
     module: moduleRef,
   }
 }

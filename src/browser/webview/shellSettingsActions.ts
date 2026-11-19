@@ -232,3 +232,18 @@ export function createShellSettingsHostActions(
         revealProjectFolder(hostBridgeTransport, path),
     }))()
 }
+
+/** Closes Settings and drops the requests that opened it on a section, as its close button does. */
+export function createShellCloseSettings(
+  setProviderSettingsRequest: Dispatch<SetStateAction<{ providerId: string; seq: number; } | null>>,
+  setPluginSettingsRequest: Dispatch<SetStateAction<{ plugin: string; seq: number; } | null>>,
+  setMcpSettingsRequest: Dispatch<SetStateAction<{ server: string; seq: number; } | null>>,
+  setSettingsSection: Dispatch<SetStateAction<SettingsSectionId | null>>,
+) {
+  return (): void => {
+    setProviderSettingsRequest(null)
+    setPluginSettingsRequest(null)
+    setMcpSettingsRequest(null)
+    setSettingsSection(null)
+  }
+}
