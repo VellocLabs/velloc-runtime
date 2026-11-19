@@ -1225,14 +1225,13 @@ export function ModPlacedSite({ plugin, id, requestId }: { plugin: string; id: s
 }
 
 /** The mod rows seated right above the prompt: inline panes, then the band.
- *  A compact (phone) thread draws neither. */
+ *  A compact (phone) thread keeps the panes and leaves out the band. */
 export function ModPromptRows() {
   const compact = useCompactThreadChrome();
-  if (compact) return null;
   return (
     <>
       <ModPanes />
-      <ModAbovePrompt />
+      {compact ? null : <ModAbovePrompt />}
     </>
   );
 }

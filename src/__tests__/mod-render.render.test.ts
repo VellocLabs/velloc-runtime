@@ -836,9 +836,9 @@ describe('ModPromptRows — the mod rows above the prompt', () => {
     expect(title.compareDocumentPosition(band$) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
   })
 
-  it('draws nothing in a compact (phone) thread and asks no mod to render', async () => {
+  it('draws the open panes with their close mark but not the band in a compact (phone) thread', async () => {
     const render$ = tree()
-    const { container } = render(
+    render(
       createElement(
         CompactThreadChromeContext.Provider,
         { value: true },
@@ -848,8 +848,10 @@ describe('ModPromptRows — the mod rows above the prompt', () => {
         ),
       ),
     )
-    await act(async () => {})
-    expect(container.innerHTML).toBe('')
-    expect(render$).not.toHaveBeenCalled()
+    await waitFor(() => expect(render$).toHaveBeenCalledWith(expect.objectContaining({ component: 'Pane', requestId: 'clock' })))
+    expect(screen.getByTestId('mod-pane-title-p-clock')).toBeTruthy()
+    expect(screen.getByTestId('mod-pane-close-p-clock')).toBeTruthy()
+    expect(screen.queryByTestId('mod-band')).toBeNull()
+    expect(render$).not.toHaveBeenCalledWith(expect.objectContaining({ component: 'AbovePrompt' }))
   })
 })
