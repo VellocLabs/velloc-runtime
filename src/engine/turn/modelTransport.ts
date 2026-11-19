@@ -82,7 +82,7 @@ import { raisesTurnRequest, requestThroughTurnRequest } from './requestThroughMo
 import { raisesTurnRecover, recoverThroughMods } from './recoverThroughMods'
 import { observeProviderCall, type CallEnding } from './providerOutcomeCall'
 import { providerRouterBoundsFor, RouteSwitchError, type RoutedVia } from '../../models/drivers/providerRouter'
-import { routeCallOf, routedViaOf, shareRouteCall } from '../../models/drivers/providerRouteCall'
+import { routeCallOf, routedViaOf, routeErrorOfCall, shareRouteCall } from '../../models/drivers/providerRouteCall'
 import { sessionUsageOf } from '../../mods/sessionNouns'
 import type { StoredRow } from '../../mods/sessionAppendEvent'
 
@@ -253,6 +253,9 @@ async function* blockingFallback(
     shareRouteCall(payload, call.payload)
     result = await call.send(createBridgeRoute('model', 'call'), payload as never)
   } catch (fallbackError) {
+    // The blocking route's error crosses as text; a router's decision rides the call.
+    const routed = fallbackError instanceof Error ? routeErrorOfCall(call.payload, fallbackError) : undefined
+    if (routed) throw routed
     if (isPromptTooLongError(fallbackError)) {
       yield makePromptTooLongAssistant(runtimeConfig, model)
       return
@@ -529,7 +532,7 @@ function openRouteCall(payload: object, params: QueryModelCallParams): RoutedVia
   }
   for (let i = rows.length - 1; i >= 0; i -= 1) {
     const row = rows[i]!
-    if (row.type !== MSG_TYPE_ASSISTANT) continue
+    if (row.type !== MSG_TYPE_ASSISTANT || row.isApiErrorMessage || row.apiError) continue
     const via = row.routedVia as RoutedVia | undefined
     return via && typeof via.provider === 'string' && typeof via.model === 'string' ? via : undefined
   }

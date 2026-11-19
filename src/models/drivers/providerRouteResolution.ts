@@ -28,7 +28,7 @@ import { verdictOfFailure, type FailureEvent } from './providerClassify'
 import { OUTCOME_CALL_FIELD } from './providerOutcome'
 import { thinkingTierOf } from './providerRequestSeam'
 import { checkRouteAnswer, type CheckedRouteAnswer, type RouteAnswerFacts, type RouteTarget } from './providerRouteAnswer'
-import { acceptRouteTarget, routeCallOf } from './providerRouteCall'
+import { acceptRouteTarget, routeCallOf, sendRouteTo } from './providerRouteCall'
 import {
   providerRouterFor,
   ROUTE_HOPS_MAX,
@@ -143,19 +143,32 @@ export function routeCall(
   return {
     model: rowModel,
     async resolve(signal) {
+      call.decided = undefined
       const answer = await ask(signal)
-      if (answer.kind === 'stop') return { stop: answer.message !== undefined ? { message: answer.message } : {} }
+      if (answer.kind === 'stop') {
+        call.switchTo = undefined
+        call.decided = { stop: true, ...(answer.message !== undefined ? { message: answer.message } : {}) }
+        return { stop: answer.message !== undefined ? { message: answer.message } : {} }
+      }
       if (answer.kind === 'target') {
         acceptRouteTarget(call, answer.target, true)
         return { leg: legFor(answer.target) }
       }
       const reason = answer.kind === 'refused' ? `its answer was refused: ${answer.reason}` : 'it named no target'
+      // A send after a broken reply goes where the router moved it.
+      const switched = call.switchTo
+      if (switched) {
+        traceLine(`[providers] ${routerId}: provider.route was not applied (${reason}); the call goes to ${switched.provider}, chosen at the failure`, { level: 'warn' })
+        sendRouteTo(call, switched)
+        return { leg: legFor(switched) }
+      }
       // A retry of a call that was already sent stays where it was.
       if (call.target && call.sends > 0) {
         traceLine(`[providers] ${routerId}: provider.route was not applied (${reason}); the call stays on ${call.target.provider}`, { level: 'warn' })
         call.sends += 1
         return { leg: legFor(call.target) }
       }
+      call.decided = { stop: true }
       throw new ProviderConfigError(`provider.route of ${routerId}: ${reason}; the request was not sent`)
     },
     async after(failure, streamStarted, signal): Promise<RouteDecision> {
@@ -164,11 +177,15 @@ export function routeCall(
       if (!failed) return { kind: 'none' }
       call.lastFailure = failed
       const answer = await ask(signal)
-      if (answer.kind === 'stop') return { kind: 'stop', ...(answer.message !== undefined ? { message: answer.message } : {}) }
+      if (answer.kind === 'stop') {
+        call.decided = { stop: true, ...(answer.message !== undefined ? { message: answer.message } : {}) }
+        return { kind: 'stop', ...(answer.message !== undefined ? { message: answer.message } : {}) }
+      }
       if (answer.kind === 'target') {
         // Once a reply has started the call is sent again by its caller, and
         // that send is resolved, and counted, on its own.
         acceptRouteTarget(call, answer.target, !streamStarted)
+        if (streamStarted) call.decided = { switch: { ...answer.target } }
         return { kind: 'switch', leg: legFor(answer.target) }
       }
       if (answer.kind === 'refused') {

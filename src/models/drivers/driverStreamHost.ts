@@ -263,10 +263,8 @@ class DriverStream {
 
   private push(events: readonly DriverStreamEvent[]): void {
     if (this.emitter.terminalEmitted || events.length === 0) return
-    if (this.tally) {
-      this.tally.note(events)
-      this.failure = events.find((event): event is FailureEvent => event.type === 'error') ?? this.failure
-    } else if (this.route) {
+    this.tally?.note(events)
+    if (this.tally || this.route) {
       this.failure = events.find((event): event is FailureEvent => event.type === 'error') ?? this.failure
     }
     this.queue.push(...this.emitter.emit(events.map(withHostFinishUsage)))

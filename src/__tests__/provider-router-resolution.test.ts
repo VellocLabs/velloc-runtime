@@ -26,6 +26,7 @@ import { resetRuntimeProviders, setRuntimeProviderConfigs } from '../models/driv
 import { assembleTurnDependencies } from '../engine/turn/turnDependencies'
 import { recoverThroughMods } from '../engine/turn/recoverThroughMods'
 import { RouteSwitchError } from '../models/drivers/providerRouter'
+import { getProviderErrorFields, ProviderApiError } from '../utils/providerConnectivity'
 import {
   DefaultRuntimeConfig,
   NoopPlatformCapabilities,
@@ -398,7 +399,8 @@ describe('a request to a router provider', () => {
     // Nothing is sent to the new target by this stream: the caller sends the call again.
     expect(opens.map(o => o.providerId)).toEqual([A])
     expect(events[1]!.lastFailure).toMatchObject({ provider: A, streamStarted: true, verdict: { kind: 'network' } })
-    expect(outcomes).toEqual([])
+    // The stream is over even though the call goes on: the router hears of it.
+    expect(outcomes).toEqual([expect.objectContaining({ ok: false, target: { provider: A, model: 'm-a' } })])
   })
 
   it('ends with the target\'s error when the router stops, and sends nothing again', async () => {
@@ -748,6 +750,88 @@ describe('a call to a router provider', () => {
     expect(values.at(-1)).not.toHaveProperty('routedVia')
     expect(routedViaOf({})).toBeUndefined()
     expect(routeCallOf({})).toEqual({ sends: 0, hops: 0 })
+  })
+
+  it('sends the call to the target chosen at a broken reply when the router names none at the re-send', async () => {
+    const { transport, opens } = rawHost({ [A]: [cutAfter('half')] })
+    const { router, events } = testRouter([toA, toB, undefined])
+    registerProviderRouter(ROUTER, router, { routesTo: '*' })
+
+    const startedAt = Date.now()
+    const values = await call(transport, config())
+
+    expect(opens.map(o => o.providerId)).toEqual([A, B])
+    expect(Date.now() - startedAt).toBeLessThan(400)
+    expect(events).toHaveLength(3)
+    expect(assistants(values).at(-1).routedVia).toEqual({
+      provider: B,
+      model: 'm-b',
+      switchedFrom: { provider: A, model: 'm-a', reason: 'network' },
+    })
+  })
+
+  it('sends the call to the target chosen at a broken reply when the hop bound ends the asking', async () => {
+    const busy = () => refusedWith(429, 'busy')
+    // Sends one to seven alternate A and B, each refused before a reply; the
+    // seventh (A) breaks off mid-reply and the router's eighth answer is B.
+    const { transport, opens } = rawHost({
+      [A]: [busy(), busy(), busy(), cutAfter('half')],
+      [B]: [busy(), busy(), busy()],
+    })
+    const { router, events } = testRouter([e => (e.lastFailure?.provider === A ? toB : toA)])
+    registerProviderRouter(ROUTER, router, { routesTo: '*' })
+
+    const values = await call(transport, config())
+
+    // The re-send cannot ask again, and goes to B, never back to A.
+    expect(events).toHaveLength(ROUTE_HOPS_MAX)
+    expect(opens.map(o => o.providerId)).toEqual([A, B, A, B, A, B, A, B])
+    expect(replyText(assistants(values).filter(v => !v.isApiErrorMessage))).toContain(`from ${B}`)
+  })
+
+  it('ends a blocking fallback with the router\'s stop, not a retry of the failure\'s text', async () => {
+    const empty: Reply = { status: 200, body: enc([]) }
+    const { transport, opens } = rawHost({ [A]: [empty, refusedWith(429, 'rate limit')] })
+    registerProviderRouter(ROUTER, testRouter([toA, toA, { stop: true, message: 'every member is used up' }]).router, {
+      routesTo: '*',
+      retry: { maxRetries: 3, initialDelayMs: 1, maxDelayMs: 1, jitterRatio: 0 },
+    })
+
+    const values = await call(transport, config())
+
+    expect(opens).toHaveLength(2)
+    const failed = assistants(values).find(v => v.isApiErrorMessage)
+    expect(failed.errorDetails).toContain('every member is used up')
+    expect(failed.errorRetryCount).toBe(0)
+  })
+
+  it('compares with the last routed reply, past an error card', async () => {
+    const { transport } = rawHost({})
+    registerProviderRouter(ROUTER, testRouter([toA]).router, { routesTo: '*' })
+    const p = params({
+      messages: [
+        { type: 'user', uuid: 'u-1', message: { role: 'user', content: 'hello' } },
+        { type: 'assistant', uuid: 'a-1', message: { role: 'assistant', content: [{ type: 'text', text: 'hi' }] }, routedVia: { provider: B, model: 'm-b' } },
+        { type: 'user', uuid: 'u-2', message: { role: 'user', content: 'again' } },
+        { type: 'assistant', uuid: 'a-2', message: { role: 'assistant', content: [{ type: 'text', text: 'API Error' }] }, isApiErrorMessage: true },
+        { type: 'user', uuid: 'u-3', message: { role: 'user', content: 'once more' } },
+      ],
+    })
+    const values = assistants(await call(transport, config(), p))
+    expect(values.at(-1).routedVia).toEqual({ provider: A, model: 'm-a', switchedFrom: { provider: B, model: 'm-b' } })
+  })
+
+  it('keeps the failure\'s status and declared verdict on a switch', () => {
+    const cause = new ProviderApiError('API Error: 402 plan used up', {
+      httpStatus: 402,
+      retryAfterMs: 5000,
+      declared: { kind: 'billing', retryable: false, errorCode: 'plan-used-up' } as never,
+    })
+    const error = new RouteSwitchError({ provider: B, model: 'm-b' }, cause)
+    expect(error.httpStatus).toBe(402)
+    expect(error.retryAfterMs).toBe(5000)
+    expect(error.declared).toEqual(getProviderErrorFields(cause).declared)
+    expect(error.declared?.kind).toBe('billing')
   })
 
   it('still puts a switch to turn.recover, as the retry the ladder decided', async () => {

@@ -59,7 +59,7 @@ export interface StreamRouting {
   resolve(signal: AbortSignal): Promise<{ leg: RouteLeg } | { stop: { message?: string } }>
   /** What follows a failed send; `none` leaves the failure as it is. */
   after(failure: FailureEvent, streamStarted: boolean, signal: AbortSignal): Promise<RouteDecision>
-  /** Told once, when the stream is over and no switch follows. */
+  /** Told once, when the stream is over; a switch within it is not an end. */
   ended?(ending: RoutedEnding): void
 }
 
@@ -223,8 +223,7 @@ export class RoutedStream {
     const mark: RouteErrorMark = decision.kind === 'switch'
       ? { switch: { ...decision.leg.target } }
       : { stop: true, ...(decision.message !== undefined ? { message: decision.message } : {}) }
-    // A switch is not the end of the request: the caller sends it again.
-    if (decision.kind === 'stop') this.report(false, failure)
+    this.report(false, failure)
     return { chunks: [...before, marked(errorChunk, mark)], done: true, status: 'done' }
   }
 

@@ -83,16 +83,24 @@ export type RoutedVia = {
 }
 
 /** A started stream failed and the router chose another target: the call is
- *  sent again at once, to `target`. */
+ *  sent again at once, to `target`. It reads as its cause does, status and
+ *  declared verdict included. */
 export class RouteSwitchError extends Error {
   readonly target: { provider: string; model: string; effort?: string }
   override readonly cause: unknown
+  readonly httpStatus?: number
+  readonly retryAfterMs?: number
+  readonly declared?: ProviderErrorFields['declared']
 
   constructor(target: { provider: string; model: string; effort?: string }, cause: unknown) {
     super(cause instanceof Error ? cause.message : String(cause))
     this.name = 'RouteSwitchError'
     this.target = target
     this.cause = cause
+    const fields = getProviderErrorFields(cause)
+    if (fields.httpStatus !== undefined) this.httpStatus = fields.httpStatus
+    if (fields.retryAfterMs !== undefined) this.retryAfterMs = fields.retryAfterMs
+    if (fields.declared !== undefined) this.declared = fields.declared
   }
 }
 

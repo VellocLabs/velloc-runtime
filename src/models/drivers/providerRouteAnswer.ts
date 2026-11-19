@@ -6,7 +6,7 @@
  * one that target lists. `provider` is an opaque instance id: it is compared
  * and looked up, never taken apart.
  */
-import { THINKING_TIER_ORDER } from '../../config/nexusModelConfig/providers/shared/listing'
+import { isRecord, THINKING_TIER_ORDER } from '../../config/nexusModelConfig/providers/shared/listing'
 import { insideRoutesTo, type RoutesTo } from './providerRouter'
 
 export const ROUTE_MODEL_MAX_LENGTH = 256
@@ -34,10 +34,6 @@ export type CheckedRouteAnswer =
   | { kind: 'refused'; reason: string }
 
 const refused = (reason: string): CheckedRouteAnswer => ({ kind: 'refused', reason })
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value)
-}
 
 export function checkRouteAnswer(answer: unknown, facts: RouteAnswerFacts): CheckedRouteAnswer {
   if (answer === undefined || answer === null) return { kind: 'none' }

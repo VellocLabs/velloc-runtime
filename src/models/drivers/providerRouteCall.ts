@@ -6,7 +6,7 @@
  * retries send the same payload object, so they find the same record; a new
  * call starts a new one. Nothing here is serialized or reaches the host.
  */
-import type { RoutedVia, RouteFailure } from './providerRouter'
+import { routeErrorOf, type RouteErrorMark, type RoutedVia, type RouteFailure } from './providerRouter'
 import type { RouteTarget } from './providerRouteAnswer'
 
 export type RouteCall = {
@@ -21,6 +21,11 @@ export type RouteCall = {
   movedFrom?: NonNullable<RoutedVia['switchedFrom']>
   /** The session's context in tokens when the call began. */
   contextTokens?: number
+  /** The target the router chose after a reply broke off; the call's next
+   *  send goes there when the router names none at that send. */
+  switchTo?: RouteTarget
+  /** The router's decision about the call's latest send, while it stands. */
+  decided?: RouteErrorMark
 }
 
 const calls = new WeakMap<object, RouteCall>()
@@ -43,16 +48,33 @@ export function shareRouteCall(copy: object, original: object): void {
 const sameTarget = (a: { provider: string; model: string }, b: { provider: string; model: string }): boolean =>
   a.provider === b.provider && a.model === b.model
 
-/** A target answer was accepted, and with `sent` the request goes to it. */
+/** A target answer was accepted, and with `sent` the request goes to it;
+ *  without, it is the target of the call's next send. */
 export function acceptRouteTarget(call: RouteCall, target: RouteTarget, sent: boolean): void {
   call.hops += 1
-  if (!sent) return
+  if (sent) sendRouteTo(call, target)
+  else call.switchTo = target
+}
+
+/** The call's next send goes to `target`. */
+export function sendRouteTo(call: RouteCall, target: RouteTarget): void {
+  call.switchTo = undefined
   const failed = call.lastFailure
   if (failed && !sameTarget(failed, target)) {
     call.movedFrom = { provider: failed.provider, model: failed.model, reason: failed.verdict.kind }
   }
   call.target = target
   call.sends += 1
+}
+
+/**
+ * The router's decision about the call's latest send, as the error it stands
+ * for; undefined for a call that went through no router or has none. Read by
+ * a route whose error crosses as text.
+ */
+export function routeErrorOfCall(payload: object, cause: Error): Error | undefined {
+  const decided = calls.get(payload)?.decided
+  return decided ? routeErrorOf(decided, cause) : undefined
 }
 
 /**
