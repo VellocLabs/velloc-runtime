@@ -14,6 +14,7 @@ import { createShellHandleOpenThemeStore } from '../browser/webview/shellSetting
 import { INSTALL_TOAST_MS } from '../browser/webview/customize/InstallToasts'
 import { PACK_LIMIT, packTitle } from '../browser/webview/customize/ThemeBrowser'
 import type { ThemeTarget } from '../browser/webview/customize/useThemeCatalog'
+import { askUseLook, cancelWaitingLooks } from '../browser/webview/mods/themeLooks'
 import { en as EN } from '../browser/webview/i18n/messages/en'
 import { SettingsBridgeContext, type NexusSettingsBridge } from '../browser/webview/nexusSettingsBridge'
 
@@ -459,6 +460,28 @@ describe('Theme directory — a look picked during a turn', () => {
     })
     await waitFor(() => expect(view.getByTestId('customize-theme-notice').getAttribute('data-kind')).toBe('applied'))
     expect(within(card('scenes', 'scene-1')).getByTestId('customize-theme-in-use')).toBeTruthy()
+  })
+
+  it('a waiting notice goes when another window replaces its look in that session', async () => {
+    let release!: () => void
+    const useGate = new Promise<void>(resolve => (release = resolve))
+    const { view, open, card, target } = setup({ themes: [{ ...pack(), installed: true }, single()], target: 'busy', useGate })
+    await open()
+    fireEvent.click(within(card('scenes', 'scene-1')).getByTestId('customize-theme-use'))
+    await waitFor(() => expect(view.getByTestId('customize-theme-notice').getAttribute('data-kind')).toBe('waiting'))
+    const never = async () => ({ request: () => new Promise(() => {}) }) as unknown as RuntimeConnection
+    // The conversation's theme menu picks another look for the same session.
+    await act(async () => {
+      void askUseLook(never, target.sessionId, 'scenes', 'scene-0', { waitForTurn: true })
+      await Promise.resolve()
+    })
+    await waitFor(() => expect(view.queryByTestId('customize-theme-notice')).toBeNull())
+    expect(within(card('scenes', 'scene-0')).getByTestId('customize-theme-waiting')).toBeTruthy()
+    cancelWaitingLooks()
+    await act(async () => {
+      release()
+      await useGate
+    })
   })
 })
 

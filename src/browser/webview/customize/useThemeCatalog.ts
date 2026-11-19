@@ -39,7 +39,7 @@ type ThemeOutcome =
   | { kind: 'applied'; name: string; session: string }
   | { kind: 'failed'; name: string; reason: ThemeFailure; detail?: string }
   /** Picked while the session runs a turn: it applies when the turn ends. */
-  | { kind: 'waiting'; name: string; session: string; sessionId: string }
+  | { kind: 'waiting'; name: string; session: string; sessionId: string; key: string }
 
 /** How the last Use ended, for the line above the grid; a new `seq` is a new outcome. */
 export type ThemeNotice = ThemeOutcome & { seq: number }
@@ -168,7 +168,7 @@ export function useThemeCatalog(
       const name = look.name ?? look.id
       // A turn is running: the look waits for it, and other looks stay pickable meanwhile.
       const waitForTurn = target.busy
-      if (waitForTurn) say({ kind: 'waiting', name, session: target.title, sessionId: target.sessionId })
+      if (waitForTurn) say({ kind: 'waiting', name, session: target.title, sessionId: target.sessionId, key })
       else setApplying(key)
       const ask = async (left: number, first: boolean): Promise<ThemeUseLookResult | null> => {
         const result = await askUseLook(runtimeConnection, target.sessionId, plugin, look.id, {

@@ -31,6 +31,24 @@ describe('SessionIdleWaiters', () => {
     expect(settled).toBe(true)
   })
 
+  it('keeps waiting when a turn queued behind the last one starts as it ends', async () => {
+    vi.useFakeTimers()
+    let busy = true
+    const waiters = new SessionIdleWaiters(() => busy, 60_000)
+    let settled = false
+    void waiters.wait('s1').then(() => (settled = true))
+    busy = false
+    waiters.check('s1')
+    // The queued turn is dispatched in the same task as the turn end.
+    busy = true
+    await vi.advanceTimersByTimeAsync(10)
+    expect(settled).toBe(false)
+    busy = false
+    waiters.check('s1')
+    await vi.advanceTimersByTimeAsync(10)
+    expect(settled).toBe(true)
+  })
+
   it('rejects when the request is cancelled, and at once for one cancelled already', async () => {
     const waiters = new SessionIdleWaiters(() => true)
     const controller = new AbortController()
@@ -46,7 +64,7 @@ describe('SessionIdleWaiters', () => {
     const waiters = new SessionIdleWaiters(() => held, 2000)
     const waiting = waiters.wait('s1')
     held = false
-    await vi.advanceTimersByTimeAsync(2000)
+    await vi.advanceTimersByTimeAsync(2001)
     await expect(waiting).resolves.toBeUndefined()
   })
 })

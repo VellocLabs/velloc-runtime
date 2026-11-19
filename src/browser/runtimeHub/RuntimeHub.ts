@@ -375,7 +375,7 @@ export class RuntimeHub {
     })
     // Theme looks (F-35): `theme.useLook`, `theme.onEnable` and `theme.clear`,
     // all `full`; the command is read from the built-in marketplace's cached listing.
-    registerThemeCapability(this.registry, {
+    const themeLooks = registerThemeCapability(this.registry, {
       fs: () => this.context.webUiBridge.fs,
       resolveHome: () => resolveHostHome(this.context),
       channel: currentTemplateChannel,
@@ -389,6 +389,7 @@ export class RuntimeHub {
       context: () => ({ fs: this.context.webUiBridge.fs }),
       resolveHome: () => resolveHostHome(this.context),
       reload: () => this.host.reloadPluginsOnAllSessions(),
+      beforeTurnOffAll: () => themeLooks.cancelWaiting(),
     })
     // Model data (F-28): the catalog status on `catalog/status` and the
     // `catalog.refresh` action (`manager`); the service comes from the seam in

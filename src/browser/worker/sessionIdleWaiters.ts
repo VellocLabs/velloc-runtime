@@ -1,8 +1,10 @@
 /**
  * Waits for a session's turn to end (F-35). `wait` settles at once when the
  * session runs no turn (or is not held), else at the first status change that
- * finds it idle; it rejects with the signal's reason when `signal` aborts. A
- * slow check backs the status path up, for a session closed while it waits.
+ * finds it idle and still idle a task later, once a turn queued behind the
+ * last one has had its chance to start; it rejects with the signal's reason
+ * when `signal` aborts. A slow check backs the status path up, for a session
+ * closed while it waits.
  */
 export class SessionIdleWaiters {
   private readonly waiting = new Map<string, Set<() => void>>()
@@ -45,11 +47,14 @@ export class SessionIdleWaiters {
     })
   }
 
-  /** The session's status changed: its waiters go on when it is idle now. */
+  /** The session's status changed: its waiters go on when it is idle now and a task later. */
   check(sessionId: string): void {
-    const set = this.waiting.get(sessionId)
-    if (!set || this.busy(sessionId)) return
-    for (const done of [...set]) done()
+    if (!this.waiting.has(sessionId) || this.busy(sessionId)) return
+    setTimeout(() => {
+      const set = this.waiting.get(sessionId)
+      if (!set || this.busy(sessionId)) return
+      for (const done of [...set]) done()
+    }, 0)
   }
 }
 

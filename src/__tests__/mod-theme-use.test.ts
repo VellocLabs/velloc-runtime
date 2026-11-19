@@ -261,7 +261,7 @@ describe('the theme capability', () => {
     const fake = fakeSlot()
     const asked: string[] = []
     const registry = new CapabilityRegistry()
-    registerThemeCapability(registry, {
+    const looks = registerThemeCapability(registry, {
       fs: () => fs,
       resolveHome: options.home ?? (async () => HOME),
       channel: () => 'stable',
@@ -276,7 +276,7 @@ describe('the theme capability', () => {
       expect(entry.spec.guard?.(payload, c, {} as never) ?? true).toBe(true)
       return entry.handle({ id: '1', route: { cap: 'theme', act }, payload, conn: c, signal } as never, {} as never)
     }
-    return { registry, ask, asked, ...fake }
+    return { registry, ask, asked, cancelWaiting: looks.cancelWaiting, ...fake }
   }
 
   it('declares every action at full, with its guard', async () => {
@@ -327,6 +327,18 @@ describe('the theme capability', () => {
     })
     const answer = ask('useLook', { sessionId: 's1', plugin: 'pack', lookId: 'lagoon' }, conn(), controller.signal)
     controller.abort()
+    expect(await answer).toEqual({ ok: false, reason: 'notLoaded' })
+    expect(ran).toEqual([])
+  })
+
+  it('a look still waiting when the runtime cancels every wait runs nothing, whichever client asked', async () => {
+    const { ask, ran, cancelWaiting } = await rig({
+      whenIdle: (_sessionId, signal) =>
+        new Promise((_resolve, reject) => signal?.addEventListener('abort', () => reject(new Error('cancelled')))),
+    })
+    const answer = ask('useLook', { sessionId: 's1', plugin: 'pack', lookId: 'lagoon' })
+    await new Promise(resolve => setTimeout(resolve, 0))
+    cancelWaiting()
     expect(await answer).toEqual({ ok: false, reason: 'notLoaded' })
     expect(ran).toEqual([])
   })

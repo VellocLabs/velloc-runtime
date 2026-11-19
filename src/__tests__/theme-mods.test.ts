@@ -55,7 +55,7 @@ function memoryFs(initial: Record<string, unknown>) {
 const conn = (mode: 'observe' | 'control' | 'full' = 'full') =>
   ({ connectionId: 'c', clientId: 'c', kind: 'cli', scope: { mode, sessions: 'all' }, transport: 'message-port' }) as ConnectionInfo
 
-function rig(initial: Record<string, unknown>) {
+function rig(initial: Record<string, unknown>, beforeTurnOffAll?: () => void) {
   const disk = memoryFs(initial)
   const registry = new CapabilityRegistry()
   const broker = new TopicBroker()
@@ -68,6 +68,7 @@ function rig(initial: Record<string, unknown>) {
       reloads += 1
     },
     report: line => reports.push(line),
+    ...(beforeTurnOffAll ? { beforeTurnOffAll } : {}),
   })
   const events: ThemeModsState[] = []
   const subscribe = () =>
@@ -181,13 +182,20 @@ describe('theme mods', () => {
   it('turns every theme plugin off at once, as a manager, and reloads the sessions once', async () => {
     const one = { plugin: 'one', id: 'one@builtin' }
     const two = { plugin: 'two', id: 'two@builtin' }
-    const r = rig({ version: 1, mods: { themeMods: [one, two] }, enabledPlugins: { 'two@builtin': false, 'other@builtin': true } })
+    const cancelled: number[] = []
+    let r: ReturnType<typeof rig> | undefined
+    r = rig(
+      { version: 1, mods: { themeMods: [one, two] }, enabledPlugins: { 'two@builtin': false, 'other@builtin': true } },
+      () => cancelled.push(r!.reloads()),
+    )
     expect(r.registry.resolve('themeMods', 'turnOffAll')!.spec.scope).toBe('manager')
     expect(((await r.ask('read')) as { on: number }).on).toBe(1)
     expect(await r.ask('turnOffAll')).toEqual({ ok: true, turnedOff: 1 })
     expect(((await r.ask('read')) as { on: number }).on).toBe(0)
     expect(r.current().enabledPlugins).toEqual({ 'one@builtin': false, 'two@builtin': false, 'other@builtin': true })
     expect(r.reloads()).toBe(1)
+    // The looks waiting for a turn were stopped before any plugin went off.
+    expect(cancelled).toEqual([0])
     expect(await r.ask('turnOffAll')).toEqual({ ok: true, turnedOff: 0 })
     expect(r.reloads()).toBe(1)
   })

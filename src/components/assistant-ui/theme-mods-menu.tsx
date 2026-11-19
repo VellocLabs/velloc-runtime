@@ -202,11 +202,13 @@ export const ThemeModsMenu: FC<{ sessionId?: string; isForeground?: boolean }> =
     const waitForTurn = lookTarget.busy;
     if (!waitForTurn) setApplying(key);
     setLookFailure(null);
+    // A look that applies late closes only the menu it was picked in, not one opened since.
+    const pickedIn = menu;
     void applyLook(lookTarget.sessionId, plugin.name, look.id, { waitForTurn })
       .then(
         (result) => {
           if (result === null) return;
-          if (result.ok) setMenu(null);
+          if (result.ok) setMenu((current) => (current === pickedIn ? null : current));
           else setLookFailure(t(THEME_FAILURE_MESSAGE[result.reason]));
         },
         () => setLookFailure(t(THEME_FAILURE_MESSAGE.request)),

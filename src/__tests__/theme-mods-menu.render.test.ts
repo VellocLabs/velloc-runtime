@@ -316,6 +316,28 @@ describe('theme mods menu — Themes', () => {
     await waitFor(() => expect(screen.queryByTestId('theme-mods-menu')).toBeNull())
   })
 
+  it('a look that applies after the menu was opened again leaves that menu open', async () => {
+    const { askUseLook } = await import('../browser/webview/mods/themeLooks')
+    let answer!: (result: unknown) => void
+    const request = vi.fn(() => new Promise(resolve => (answer = resolve)))
+    const connection = async () => ({ request }) as never
+    mount(
+      withLooks((sessionId, plugin, lookId, options) => askUseLook(connection, sessionId, plugin, lookId, options), {
+        sessionId: 's',
+        busy: true,
+      }),
+    )
+    await openSub('theme-mods-menu-looks')
+    fireEvent.click(await screen.findByTestId('theme-look:theme-examples/honu-lagoon'))
+    await waitFor(() => expect(request).toHaveBeenCalled())
+    fireEvent.contextMenu(screen.getByTestId('blank'))
+    await act(async () => answer({ ok: true, via: 'command' }))
+    await act(async () => {
+      await Promise.resolve()
+    })
+    expect(screen.getByTestId('theme-mods-menu')).toBeTruthy()
+  })
+
   it('marks the look in use once its plugin stands', async () => {
     const { rememberAppliedLook } = await import('../browser/webview/mods/themeLooks')
     rememberAppliedLook('s', 'theme-examples/night-reef')

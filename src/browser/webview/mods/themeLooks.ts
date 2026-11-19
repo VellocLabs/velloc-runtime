@@ -156,7 +156,8 @@ export const THEME_FAILURE_MESSAGE: Record<ThemeFailure, MessageKey> = {
  * success is remembered for the window. A newer ask for the session replaces
  * a look still waiting there. `waitForTurn`: the session runs a turn, so the
  * runtime applies the look once it ends — the look waits (`waitingLooks`),
- * with no deadline, and null is the answer when it was replaced or cancelled.
+ * and null is the answer when it was replaced or cancelled. No ask has a
+ * deadline: the runtime waits for a turn the window may not have seen start.
  */
 export async function askUseLook(
   runtimeConnection: () => Promise<RuntimeConnection>,
@@ -177,7 +178,7 @@ export async function askUseLook(
     const result = (await conn.request(
       `${THEME_CAPABILITY}.useLook` as RouteKey,
       { sessionId, plugin, lookId },
-      options.waitForTurn ? { timeoutMs: 0, signal: controller.signal } : {},
+      { timeoutMs: 0, signal: controller.signal },
     )) as ThemeUseLookResult
     if (controller.signal.aborted) return null
     if (result.ok) rememberAppliedLook(sessionId, key)

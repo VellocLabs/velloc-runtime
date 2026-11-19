@@ -408,14 +408,14 @@ function NoticeLine({
   onView,
 }: {
   notice: ThemeNotice | null
-  /** The looks still waiting for a turn, per session id: a waiting notice whose look no longer waits is gone. */
+  /** The looks still waiting for a turn, per session id: a waiting notice whose look no longer waits there is gone. */
   waiting: Readonly<Record<string, string>>
   onDismiss: () => void
   onView: () => void
 }) {
   const t = useT()
   if (!notice) return null
-  if (notice.kind === 'waiting' && waiting[notice.sessionId] === undefined) return null
+  if (notice.kind === 'waiting' && waiting[notice.sessionId] !== notice.key) return null
   const failed = notice.kind === 'failed'
   const title =
     notice.kind === 'applied'

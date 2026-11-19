@@ -66,8 +66,13 @@ export async function readCachedBuiltinListings(
   }
 }
 
-export function registerThemeCapability(registry: CapabilityRegistry, options: ThemeCapabilityOptions): void {
+export function registerThemeCapability(
+  registry: CapabilityRegistry,
+  options: ThemeCapabilityOptions,
+): { cancelWaiting(): void } {
   const slotOf = options.slotOf ?? modSlotFor
+  /** The looks waiting for a turn to end, from every client. */
+  const waits = new Set<AbortController>()
   const slotInScope = (conn: ConnectionInfo, sessionId: string): ThemeLookSlot | undefined => {
     if (conn.scope.sessions !== 'all' && !conn.scope.sessions.includes(sessionId)) {
       throw wireError('forbidden_scope', `session ${sessionId} is not in this connection's scope`)
@@ -103,10 +108,14 @@ export function registerThemeCapability(registry: CapabilityRegistry, options: T
           // A look picked while the session runs a turn applies once it ends:
           // its plugins reload only between turns.
           if (options.whenIdle) {
+            const stop = new AbortController()
+            waits.add(stop)
             try {
-              await options.whenIdle(payload.sessionId, request.signal)
+              await options.whenIdle(payload.sessionId, request.signal ? AbortSignal.any([request.signal, stop.signal]) : stop.signal)
             } catch {
               return { ok: false, reason: 'notLoaded' } satisfies ThemeUseLookResult
+            } finally {
+              waits.delete(stop)
             }
           }
           const slot = slotOf(payload.sessionId)
@@ -167,4 +176,10 @@ export function registerThemeCapability(registry: CapabilityRegistry, options: T
       }
     },
   })
+  return {
+    /** Every look waiting for a turn stops waiting and runs nothing (`notLoaded`). */
+    cancelWaiting: () => {
+      for (const stop of [...waits]) stop.abort()
+    },
+  }
 }

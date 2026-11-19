@@ -28,11 +28,16 @@ const listing = (name: string) =>
   ({ name, installed: true, theme: { looks: [{ id: 'one', preview: 'p.svg' }] } }) as unknown as ThemePlugin
 
 describe('theme looks', () => {
-  it('asks the runtime by session, plugin and look id — never a command — and remembers a success', async () => {
+  it('asks the runtime by session, plugin and look id — never a command — with no deadline, and remembers a success', async () => {
     const request = vi.fn(async () => ({ ok: true, via: 'command' }))
     const connection = async () => ({ request }) as unknown as RuntimeConnection
     await askUseLook(connection, 's1', 'theme-examples', 'honu-lagoon')
-    expect(request).toHaveBeenCalledWith('theme.useLook', { sessionId: 's1', plugin: 'theme-examples', lookId: 'honu-lagoon' }, {})
+    // A turn the window has not seen start still holds the answer back: a deadline would fail it.
+    expect(request).toHaveBeenCalledWith(
+      'theme.useLook',
+      { sessionId: 's1', plugin: 'theme-examples', lookId: 'honu-lagoon' },
+      { timeoutMs: 0, signal: expect.any(AbortSignal) },
+    )
     expect(appliedLooks()).toEqual({ s1: 'theme-examples/honu-lagoon' })
   })
 

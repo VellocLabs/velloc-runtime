@@ -34,6 +34,8 @@ export type ThemeModsCapabilityOptions = {
   resolveHome: () => Promise<string>
   /** Every open session loads its plugins again. */
   reload?: () => void
+  /** Before Turn off all: a look still waiting for a turn would switch a theme plugin back on. */
+  beforeTurnOffAll?: () => void
   report?: (line: string) => void
 }
 
@@ -109,6 +111,7 @@ export function registerThemeModsCapability(
       if (!homeDir) throw wireError('host_unavailable', 'themeMods: the host did not report a home folder')
       if (act === 'turnOffAll') {
         // Every theme plugin off: their themes go as they unload, and the app's own look stands.
+        options.beforeTurnOffAll?.()
         let turnedOff: number
         try {
           const keep = (request.payload as ThemeModsTurnOffPayload | undefined)?.keep
