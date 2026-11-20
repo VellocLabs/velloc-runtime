@@ -53,7 +53,10 @@ export type ThemeSwitchEntry = {
 /** Oldest first; the last is the latest. */
 export type ThemeSwitchState = { switches: ThemeSwitchEntry[] }
 
+/** Finished switches kept beyond this many are dropped, oldest first. */
 const LIMIT = 8
+/** Hard cap on listed switches, running ones included. */
+const HARD_LIMIT = 32
 const NAME_LIMIT = 300
 const FAILURES: ReadonlySet<string> = new Set<ThemeSwitchFailure>([
   'unknownLook',
@@ -114,7 +117,7 @@ function readOutcome(value: unknown): ThemeSwitchOutcome | null {
 export function readThemeSwitchState(value: unknown): ThemeSwitchState | null {
   if (!value || typeof value !== 'object' || !Array.isArray((value as { switches?: unknown }).switches)) return null
   const switches: ThemeSwitchEntry[] = []
-  for (const each of (value as { switches: unknown[] }).switches.slice(-LIMIT)) {
+  for (const each of (value as { switches: unknown[] }).switches.slice(-HARD_LIMIT)) {
     if (!each || typeof each !== 'object') continue
     const raw = each as Record<string, unknown>
     const subject = readSubject(raw.subject)
@@ -179,7 +182,12 @@ export class ThemeSwitchBoard {
     this.next += 1
     const entry: ThemeSwitchEntry = { id: `switch-${this.next}`, subject, steps: [] }
     this.entries.push(entry)
-    while (this.entries.length > LIMIT) this.entries.shift()
+    // A running switch stays listed while it runs: finished ones go first.
+    for (let at = 0; this.entries.length > LIMIT && at < this.entries.length - 1; ) {
+      if (this.entries[at]!.outcome) this.entries.splice(at, 1)
+      else at += 1
+    }
+    while (this.entries.length > HARD_LIMIT) this.entries.shift()
     let timer: ReturnType<typeof setTimeout> | null = null
     const stopTimer = () => {
       if (timer !== null) clearTimeout(timer)

@@ -86,8 +86,20 @@ describe('the theme switch board', () => {
     expect(board.state().switches).toHaveLength(2)
     vi.advanceTimersByTime(2_000)
     expect(board.state().switches).toHaveLength(1)
-    for (let n = 0; n < 12; n += 1) board.start({ kind: 'turnOffAll' })
+    for (let n = 0; n < 12; n += 1) board.start({ kind: 'turnOffAll' }).finish({ ok: true })
     expect(board.state().switches).toHaveLength(8)
+  })
+
+  it('a running switch stays listed while newer ones finish', () => {
+    vi.useFakeTimers()
+    const board = new ThemeSwitchBoard({ publish: () => {} })
+    const waiting = board.start({ kind: 'look', plugin: 'pack', look: 'Rain' })
+    for (let n = 0; n < 12; n += 1) board.start({ kind: 'turnOffAll' }).finish({ ok: true })
+    const ids = board.state().switches.map(each => each.id)
+    expect(ids).toHaveLength(8)
+    expect(ids).toContain(waiting.id)
+    for (let n = 0; n < 40; n += 1) board.start({ kind: 'turnOffAll' })
+    expect(board.state().switches).toHaveLength(32)
   })
 
   it('a reader keeps only well-formed switches and steps', () => {
