@@ -747,6 +747,7 @@ describe('provider.outcome', () => {
       attempts: 1,
     })
     expect(calls.outcome[0]!.verdict).toBeUndefined()
+    expect(calls.outcome[0]).not.toHaveProperty('callId')
     expect(calls.outcome[0]!.durationMs).toEqual(expect.any(Number))
     expect(calls.outcome[0]!.firstByteMs).toEqual(expect.any(Number))
     expect(calls.outcome[0]!.context).toMatchObject({ attempt: 1, requestId: expect.any(String) })

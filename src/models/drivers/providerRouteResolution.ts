@@ -215,6 +215,7 @@ export function routeCall(
       router.outcome({
         provider: routerId,
         model: rowModel,
+        callId: call.id,
         target: { provider: ending.target.provider, model: ending.target.model },
         ok: ending.ok,
         ...(ending.failure?.httpStatus !== undefined ? { status: ending.failure.httpStatus } : {}),

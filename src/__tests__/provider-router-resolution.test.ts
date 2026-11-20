@@ -294,6 +294,7 @@ describe('a request to a router provider', () => {
     expect(outcomes).toEqual([expect.objectContaining({
       provider: ROUTER,
       model: 'route-row',
+      callId: events[0]!.callId,
       target: { provider: A, model: 'm-a' },
       ok: true,
       usage: { inputTokens: 11, outputTokens: 3 },
@@ -533,7 +534,7 @@ describe('a request to a router provider', () => {
 
   it('serves the blocking route the same way', async () => {
     const { transport, opens } = rawHost({ [A]: [refusedWith(503, 'down')] })
-    const { router, events } = testRouter([toA, toB])
+    const { router, events, outcomes } = testRouter([toA, toB])
     registerProviderRouter(ROUTER, router, { routesTo: '*' })
 
     const answer = await model(withModelProviders(transport, config()), 'call', payload())
@@ -544,6 +545,20 @@ describe('a request to a router provider', () => {
     expect(answer.result.message.model).toBe('m-b')
     expect(events.map(e => e.attempt)).toEqual([1, 2])
     expect(events[1]!.callId).toBe(events[0]!.callId)
+    expect(outcomes).toEqual([expect.objectContaining({ ok: true, callId: events[0]!.callId, target: { provider: B, model: 'm-b' } })])
+  })
+
+  it('tells each call\'s outcome that call\'s id', async () => {
+    const { transport } = rawHost({})
+    const { router, events, outcomes } = testRouter([toA])
+    registerProviderRouter(ROUTER, router, { routesTo: '*' })
+    const wrapped = withModelProviders(transport, config())
+
+    await stream(wrapped)
+    await stream(wrapped)
+
+    expect(outcomes.map(o => o.callId)).toEqual(events.map(e => e.callId))
+    expect(outcomes[1]!.callId).not.toBe(outcomes[0]!.callId)
   })
 
   it('leaves a provider that is no router on its own path', async () => {

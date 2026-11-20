@@ -64,8 +64,9 @@ export type RouteAnswer =
   | { stop: true; message?: string }
   | undefined
 
-/** What a router's module is told when a routed request is over. */
-export type RouteOutcomeEvent = ProviderOutcomeEvent
+/** What a router's module is told when a routed request is over. `callId`
+ *  is the id the call's `provider.route` events carry. */
+export type RouteOutcomeEvent = ProviderOutcomeEvent & { callId: string }
 
 export interface ProviderRouter {
   route(event: RouteEvent, signal: AbortSignal): Promise<RouteAnswer>
