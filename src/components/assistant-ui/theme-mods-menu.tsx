@@ -438,6 +438,50 @@ export const ThemeModsMenu: FC<{ sessionId?: string; isForeground?: boolean }> =
                       {failure}
                     </div>
                   )}
+                  <DropdownMenuPrimitive.Separator className={SEPARATOR_CLASS} />
+                  <DropdownMenuPrimitive.Sub>
+                    <DropdownMenuPrimitive.SubTrigger data-testid="theme-mods-menu-backdrop" className={ITEM_CLASS}>
+                      <ScopeThumb scope={themes.backdropScope} />
+                      <span className="flex-1">{t("themeMenu.backdrop")}</span>
+                      <ChevronRightIcon aria-hidden className="size-4 text-muted-foreground rtl:rotate-180" />
+                    </DropdownMenuPrimitive.SubTrigger>
+                    <DropdownMenuPrimitive.Portal>
+                      <DropdownMenuPrimitive.SubContent
+                        data-testid="theme-mods-menu-backdrop-list"
+                        sideOffset={6}
+                        collisionPadding={8}
+                        className={CONTENT_CLASS}
+                      >
+                        <DropdownMenuPrimitive.RadioGroup
+                          value={themes.backdropScope}
+                          onValueChange={(value) => {
+                            if (isThemeBackdropScope(value)) void setBackdropScope?.(value).catch(() => undefined);
+                          }}
+                        >
+                          {(["conversation", "window"] as const).map((scope) => (
+                            <DropdownMenuPrimitive.RadioItem
+                              key={scope}
+                              value={scope}
+                              data-testid={`theme-backdrop-scope:${scope}`}
+                              disabled={!setBackdropScope}
+                              onSelect={(event) => event.preventDefault()}
+                              className={ITEM_CLASS}
+                            >
+                              <ScopeThumb scope={scope} />
+                              <span className="flex-1">
+                                {t(scope === "window" ? "themeMenu.backdropWindow" : "themeMenu.backdropConversation")}
+                              </span>
+                              <span className="flex size-4 items-center justify-center">
+                                <DropdownMenuPrimitive.ItemIndicator>
+                                  <CheckIcon aria-hidden className="size-4 text-primary" />
+                                </DropdownMenuPrimitive.ItemIndicator>
+                              </span>
+                            </DropdownMenuPrimitive.RadioItem>
+                          ))}
+                        </DropdownMenuPrimitive.RadioGroup>
+                      </DropdownMenuPrimitive.SubContent>
+                    </DropdownMenuPrimitive.Portal>
+                  </DropdownMenuPrimitive.Sub>
                   {openThemeStore && (
                     <>
                       <DropdownMenuPrimitive.Separator className={SEPARATOR_CLASS} />
@@ -485,49 +529,6 @@ export const ThemeModsMenu: FC<{ sessionId?: string; isForeground?: boolean }> =
                       >
                         <Icon aria-hidden className="size-4 shrink-0 text-muted-foreground" />
                         <span className="flex-1">{t(label)}</span>
-                        <span className="flex size-4 items-center justify-center">
-                          <DropdownMenuPrimitive.ItemIndicator>
-                            <CheckIcon aria-hidden className="size-4 text-primary" />
-                          </DropdownMenuPrimitive.ItemIndicator>
-                        </span>
-                      </DropdownMenuPrimitive.RadioItem>
-                    ))}
-                  </DropdownMenuPrimitive.RadioGroup>
-                </DropdownMenuPrimitive.SubContent>
-              </DropdownMenuPrimitive.Portal>
-            </DropdownMenuPrimitive.Sub>
-            <DropdownMenuPrimitive.Sub>
-              <DropdownMenuPrimitive.SubTrigger data-testid="theme-mods-menu-backdrop" className={ITEM_CLASS}>
-                <ScopeThumb scope={themes.backdropScope} />
-                <span className="flex-1">{t("themeMenu.backdrop")}</span>
-                <ChevronRightIcon aria-hidden className="size-4 text-muted-foreground rtl:rotate-180" />
-              </DropdownMenuPrimitive.SubTrigger>
-              <DropdownMenuPrimitive.Portal>
-                <DropdownMenuPrimitive.SubContent
-                  data-testid="theme-mods-menu-backdrop-list"
-                  sideOffset={6}
-                  collisionPadding={8}
-                  className={CONTENT_CLASS}
-                >
-                  <DropdownMenuPrimitive.RadioGroup
-                    value={themes.backdropScope}
-                    onValueChange={(value) => {
-                      if (isThemeBackdropScope(value)) void setBackdropScope?.(value).catch(() => undefined);
-                    }}
-                  >
-                    {(["conversation", "window"] as const).map((scope) => (
-                      <DropdownMenuPrimitive.RadioItem
-                        key={scope}
-                        value={scope}
-                        data-testid={`theme-backdrop-scope:${scope}`}
-                        disabled={!setBackdropScope}
-                        onSelect={(event) => event.preventDefault()}
-                        className={ITEM_CLASS}
-                      >
-                        <ScopeThumb scope={scope} />
-                        <span className="flex-1">
-                          {t(scope === "window" ? "themeMenu.backdropWindow" : "themeMenu.backdropConversation")}
-                        </span>
                         <span className="flex size-4 items-center justify-center">
                           <DropdownMenuPrimitive.ItemIndicator>
                             <CheckIcon aria-hidden className="size-4 text-primary" />

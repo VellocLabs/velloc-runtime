@@ -147,11 +147,18 @@ describe('theme mods menu', () => {
 
   it('asks for the other reach on a press and marks the standing one', async () => {
     const setBackdropScope = vi.fn(async () => {})
-    mount({ mods: MODS, backdropScope: 'window', single: false, refresh: () => {}, setBackdropScope })
+    mount({ mods: MODS, backdropScope: 'window', single: false, refresh: () => {}, setBackdropScope, openThemeStore: () => {} })
     fireEvent.contextMenu(screen.getByTestId('blank'))
     // The reach is chosen in the Backdrop covers submenu, not on the menu itself.
-    const trigger = await screen.findByTestId('theme-mods-menu-backdrop')
+    const menu = await screen.findByTestId('theme-mods-menu')
+    expect(menu.querySelector('[data-testid="theme-mods-menu-backdrop"]')).toBeNull()
     expect(screen.queryByTestId('theme-backdrop-scope:window')).toBeNull()
+    fireEvent.keyDown(screen.getByTestId('theme-mods-menu-mods'), { key: 'ArrowRight' })
+    const trigger = await screen.findByTestId('theme-mods-menu-backdrop')
+    expect(trigger.previousElementSibling?.getAttribute('role')).toBe('separator')
+    const more = screen.getByTestId('theme-mods-menu-more')
+    expect(more.previousElementSibling?.previousElementSibling).toBe(trigger)
+    expect(more.previousElementSibling?.getAttribute('role')).toBe('separator')
     fireEvent.keyDown(trigger, { key: 'ArrowRight' })
     const standing = await screen.findByTestId('theme-backdrop-scope:window')
     expect(standing.getAttribute('aria-checked')).toBe('true')
