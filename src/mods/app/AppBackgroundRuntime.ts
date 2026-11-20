@@ -352,12 +352,15 @@ export class AppBackgroundRuntime {
    */
   async action(appId: string, action: string, context: unknown, sessionId: string): Promise<boolean> {
     const budget = this.options.actionTimeoutMs ?? APP_ACTION_TIMEOUT_MS
-    const began = this.now()
+    let left = budget
     const woken = this.wake(appId)
-    if (woken) await untilReady(woken, budget)
+    if (woken?.starting) {
+      const began = this.now()
+      await untilReady(woken, budget)
+      left = budget - (this.now() - began)
+    }
     const module = this.modules.get(appId)
     if (!module || !module.loaded || !module.dispatcher.hasHooksFor('app.action')) return false
-    const left = budget - (this.now() - began)
     if (left <= 0) return false
     const raised = await this.raise(
       module,
