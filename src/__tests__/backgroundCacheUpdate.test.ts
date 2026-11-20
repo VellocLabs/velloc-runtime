@@ -205,3 +205,48 @@ describe('backgroundCacheUpdate at an immutable build entry', () => {
     expect(recorded(storage)['/runtime/v1/b/20260920T230614000Z/assets-manifest.json']).toBe(BUILD_ID)
   })
 })
+
+describe('backgroundCacheUpdate batch', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  it('keeps at most four chunk fetches in flight, and still fetches every chunk', async () => {
+    const assets = Array.from({ length: 30 }, (_, i) => ({ url: `assets/chunk-${i}.js`, type: 'js' }))
+    const waiting: Array<() => void> = []
+    let inFlight = 0
+    let most = 0
+    let chunks = 0
+    const win: { __runBackgroundCacheUpdate?: () => Promise<void>; addEventListener: () => void } = { addEventListener: () => {} }
+    vi.stubGlobal('window', win)
+    vi.stubGlobal('location', new URL(ROOT))
+    vi.stubGlobal('localStorage', memoryStorage())
+    vi.stubGlobal('navigator', { language: 'en-US' })
+    vi.stubGlobal('setInterval', () => 0)
+    vi.stubGlobal('document', { baseURI: ROOT, addEventListener: () => {}, querySelector: () => null, getElementById: () => null })
+    vi.stubGlobal('fetch', async (input: string) => {
+      if (String(input).endsWith('/assets-manifest.json')) {
+        return new Response(JSON.stringify({ buildId: 'build-pool', assets }), { status: 200 })
+      }
+      if (!String(input).includes('/assets/')) return new Response('<html></html>', { status: 200 })
+      chunks++
+      inFlight++
+      most = Math.max(most, inFlight)
+      await new Promise<void>(resolve => waiting.push(resolve))
+      inFlight--
+      return new Response('chunk', { status: 200 })
+    })
+
+    vi.resetModules()
+    await import('../glic/backgroundCacheUpdate')
+    const done = win.__runBackgroundCacheUpdate!()
+    await vi.waitFor(() => expect(waiting.length).toBe(4))
+    while (chunks < assets.length || waiting.length > 0) {
+      waiting.shift()?.()
+      await new Promise(resolve => setTimeout(resolve, 0))
+    }
+    await done
+    expect(most).toBe(4)
+    expect(chunks).toBe(assets.length)
+  })
+})

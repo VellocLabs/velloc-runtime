@@ -88,6 +88,7 @@ function warmBatch(urls: string[]): Promise<{ succeeded: number; failed: number 
     let completed = 0
     let nextIdx = 0
 
+    // One worker of the pool: its next fetch starts when its last one ends.
     function run() {
       const idx = nextIdx++
       if (idx >= total) return
@@ -96,12 +97,12 @@ function warmBatch(urls: string[]): Promise<{ succeeded: number; failed: number 
         () => { succeeded++; finish() },
         () => { failed++; finish() },
       )
-      run()
     }
 
     function finish() {
       completed++
       if (completed >= total) resolve({ succeeded, failed })
+      else run()
     }
 
     const poolSize = Math.min(CONCURRENCY, total)
