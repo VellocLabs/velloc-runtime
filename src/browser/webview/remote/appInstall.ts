@@ -16,7 +16,7 @@ export type BeforeInstallPromptEvent = Event & {
 // The manifest link
 // ---------------------------------------------------------------------------
 
-/** Where vite's `base` puts `public/manifest.webmanifest` (`/v<N>/` in a
+/** Where vite's `base` puts `public/manifest.webmanifest` (`/runtime/v<N>/` in a
  *  release, `/` in dev) — the same rewrite the favicon gets. */
 export function manifestHref(baseUrl: string = import.meta.env.BASE_URL): string {
   return `${baseUrl.endsWith('/') ? baseUrl : `${baseUrl}/`}manifest.webmanifest`

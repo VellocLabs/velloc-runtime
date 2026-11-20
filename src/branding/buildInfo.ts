@@ -45,7 +45,7 @@ export function getBuildTime(): string {
 }
 
 /**
- * The immutable build-entry key under `/v<N>/b/`, a pure transform of the
+ * The immutable build-entry key under `/runtime/v<N>/b/`, a pure transform of the
  * build-time ISO string (`"2026-09-17T10:30:00.000Z"` →
  * `"20260917T103000000Z"`); `''` for anything else. Must stay equal to the
  * stage-side copy.

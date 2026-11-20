@@ -170,7 +170,7 @@ describe('About channel toggle — switching', () => {
     fireEvent.click(await screen.findByTestId('about-channel-beta'))
 
     await waitFor(() => expect(setWebappUrl).toHaveBeenCalled())
-    expect(f.mock.calls[0]?.[0]).toContain('https://beta.velloc.app/v')
+    expect(f.mock.calls[0]?.[0]).toContain('https://beta.velloc.app/runtime/v')
     expect(setWebappUrl.mock.calls[0]?.[1]).toBe('https://beta.velloc.app/')
 
     // Pins the fix for the flash: the tip must still be there after the save
@@ -311,7 +311,7 @@ describe('About channel card — availability', () => {
     // The page is being served BY the current channel, so probing it would be
     // asking a question already answered — one request, for beta only.
     expect(f).toHaveBeenCalledTimes(1)
-    expect(f.mock.calls[0]?.[0]).toContain('https://beta.velloc.app/v')
+    expect(f.mock.calls[0]?.[0]).toContain('https://beta.velloc.app/runtime/v')
     expect(channelCard('stable').getAttribute('data-availability')).toBe(
       'available',
     )

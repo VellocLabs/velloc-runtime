@@ -61,12 +61,12 @@ function listTree(root: string): string[] {
 // base in its script URL and the nexus-build-time meta stageBuildEntry keys on.
 const indexHtml = (version: number, buildTime = '2026-10-09T01:02:03.004Z') =>
   `<!doctype html><head><meta name="nexus-build-time" content="${buildTime}">` +
-  `<script type="module" src="/v${version}/assets/index-ABCDEF12.js"></script></head>`
+  `<script type="module" src="/runtime/v${version}/assets/index-ABCDEF12.js"></script></head>`
 
 /** A release's unzipped site/ holding a frozen /v<version>/ tree. */
 function legacyRelease(version: number, opts: { base?: number } = {}) {
   const site = join(fresh('legacy-release'), 'site')
-  const v = join(site, `v${version}`)
+  const v = join(site, 'runtime', `v${version}`)
   write(join(v, 'index.html'), indexHtml(opts.base ?? version, '2026-10-07T00:00:00.000Z'))
   write(join(v, 'assets', 'index-ABCDEF12.js'), `console.log("v${version}")`)
   write(join(v, 'assets', 'locales', 'en-11111111.json'), '{"hello":"Hello"}')
@@ -168,16 +168,16 @@ describe('resolveLegacySites — supplied trees against the config', () => {
     const result = resolveLegacySites(undefined, entries)
     expect(result.sites).toBeUndefined()
     expect(result.error).toMatch(/v1 is retained \(pinned to runtime-v1-2026\.10\.07\.1\)/)
-    expect(result.error).toMatch(/drops \/v1\//)
+    expect(result.error).toMatch(/drops \/runtime\/v1\//)
   })
 
   it('fails when the supplied dir is missing or holds no v<K>/index.html', () => {
     expect(resolveLegacySites(`1=${join(tmp, 'never-downloaded')}`, entries).error)
-      .toMatch(/has no v1\/index\.html/)
+      .toMatch(/has no runtime\/v1\/index\.html/)
     // A release tree for a different version is not a v1 tree.
     const v2site = legacyRelease(2)
     expect(resolveLegacySites(`1=${v2site}`, entries).error)
-      .toMatch(/has no v1\/index\.html/)
+      .toMatch(/has no runtime\/v1\/index\.html/)
   })
 
   it('fails on a version the config does not retain, on duplicates and on malformed segments', () => {
@@ -192,7 +192,7 @@ describe('resolveLegacySites — supplied trees against the config', () => {
   it('refuses a dir passed both as a legacy tree and as a current-version baseline', () => {
     const site = legacyRelease(1)
     expect(resolveLegacySites(`1=${site}`, entries, [site]).error)
-      .toMatch(/both as the retained \/v1\/ tree and as a retention baseline/)
+      .toMatch(/both as the retained \/runtime\/v1\/ tree and as a retention baseline/)
   })
 })
 
@@ -208,15 +208,16 @@ describe('stageLegacyInterface — verbatim copy at its own base', () => {
       release: 'runtime-v1-2026.10.07.1',
       candidateId: 'candidate-v1-abcdef0-42',
     })
-    const source = listTree(join(site, 'v1'))
-    expect(listTree(join(out, 'v1'))).toEqual(source)
+    const source = listTree(join(site, 'runtime', 'v1'))
+    expect(listTree(join(out, 'runtime', 'v1'))).toEqual(source)
     expect(result.files).toBe(source.length)
     for (const file of source) {
-      expect(readFileSync(join(out, 'v1', file)).equals(readFileSync(join(site, 'v1', file))),
+      expect(readFileSync(join(out, 'runtime', 'v1', file)).equals(readFileSync(join(site, 'runtime', 'v1', file))),
         `${file} must be byte-identical`).toBe(true)
     }
     // Root files of the old release stay behind.
-    expect(readdirSync(out)).toEqual(['v1'])
+    expect(readdirSync(out)).toEqual(['runtime'])
+    expect(readdirSync(join(out, 'runtime'))).toEqual(['v1'])
   })
 
   it('fails when the legacy index.html is built for a different base', () => {
@@ -224,22 +225,22 @@ describe('stageLegacyInterface — verbatim copy at its own base', () => {
     const site = legacyRelease(1, { base: 2 })
     const result = stageLegacyInterface(
       { version: 1, release: 'runtime-v1-x', siteDir: site }, fresh('out-site'))
-    expect(result.error).toMatch(/does not reference \/v1\/assets\/ — the bundle was built for \/v2\/ but staged as \/v1\//)
+    expect(result.error).toMatch(/does not reference \/runtime\/v1\/assets\/ — the bundle was built for \/runtime\/v2\/ but staged as \/runtime\/v1\//)
     expect(result.error).toMatch(/^retained runtime-v1-x:/)
   })
 
   it('refuses to overwrite an already-staged version', () => {
     const site = legacyRelease(1)
     const out = fresh('out-site')
-    mkdirSync(join(out, 'v1'))
+    mkdirSync(join(out, 'runtime', 'v1'), { recursive: true })
     expect(stageLegacyInterface({ version: 1, release: 'r', siteDir: site }, out).error)
       .toMatch(/already staged/)
   })
 
   it('bundleBaseError accepts a bundle at its own base', () => {
     const site = legacyRelease(1)
-    expect(bundleBaseError({ name: 'v1', dir: join(site, 'v1') })).toBeNull()
-    expect(bundleBaseError({ name: 'v3', dir: join(site, 'v1') })).toMatch(/built for \/v1\//)
+    expect(bundleBaseError({ name: 'runtime/v1', dir: join(site, 'runtime', 'v1') })).toBeNull()
+    expect(bundleBaseError({ name: 'runtime/v3', dir: join(site, 'runtime', 'v1') })).toMatch(/built for \/runtime\/v1\//)
   })
 })
 
@@ -256,8 +257,8 @@ describe('generatedHeaderBlocks — one immutable block per served version', () 
   }
 
   it('covers assets/ and b/ of the current and of every retained version', () => {
-    const headers = generatedHeaderBlocks(['v2', 'v1'])
-    for (const name of ['v2', 'v1']) {
+    const headers = generatedHeaderBlocks(['runtime/v2', 'runtime/v1'])
+    for (const name of ['runtime/v2', 'runtime/v1']) {
       for (const path of [`/${name}/assets/*`, `/${name}/b/*`]) {
         const rules = rulesFor(headers, path)
         expect(rules).toContain('  ! Cache-Control')
@@ -267,9 +268,9 @@ describe('generatedHeaderBlocks — one immutable block per served version', () 
   })
 
   it('emits only the current version when nothing is retained', () => {
-    const headers = generatedHeaderBlocks(['v1'])
-    expect(headers).toMatch(/^\/v1\/assets\/\*$/m)
-    expect(headers).not.toMatch(/^\/v2\//m)
+    const headers = generatedHeaderBlocks(['runtime/v1'])
+    expect(headers).toMatch(/^\/runtime\/v1\/assets\/\*$/m)
+    expect(headers).not.toMatch(/^\/runtime\/v2\//m)
   })
 })
 
@@ -300,9 +301,9 @@ describe('assembleSite — a whole local stage with a fake legacy release', () =
     // Production's release AFTER the bump: carries /v2/ (the baseline) AND a
     // retained /v1/ — whose files must NOT donate to anything.
     const baselineSite = join(root, 'baseline', 'site')
-    write(join(baselineSite, 'v2', 'assets', 'old-OLDOLD11.js'), 'old v2 chunk')
-    write(join(baselineSite, 'v1', 'assets', 'baseline-v1-ZZZZZZZZ.js'), 'not the pinned v1')
-    write(join(baselineSite, 'v1', 'index.html'), indexHtml(1))
+    write(join(baselineSite, 'runtime', 'v2', 'assets', 'old-OLDOLD11.js'), 'old v2 chunk')
+    write(join(baselineSite, 'runtime', 'v1', 'assets', 'baseline-v1-ZZZZZZZZ.js'), 'not the pinned v1')
+    write(join(baselineSite, 'runtime', 'v1', 'index.html'), indexHtml(1))
     return {
       siteDir: join(root, 'site'), dist, publicDir, rootIndexPath, baselineSite,
       legacySite: legacyRelease(1),
@@ -310,7 +311,7 @@ describe('assembleSite — a whole local stage with a fake legacy release', () =
   }
 
   function stage(f: ReturnType<typeof fixture>, withLegacy: boolean) {
-    const resolved = resolveRetentionBaselines(f.baselineSite, 'v2')
+    const resolved = resolveRetentionBaselines(f.baselineSite, 'runtime/v2')
     expect(resolved.error).toBeUndefined()
     const legacy = resolveLegacySites(
       withLegacy ? `1=${f.legacySite}` : '',
@@ -334,12 +335,12 @@ describe('assembleSite — a whole local stage with a fake legacy release', () =
     const result = stage(f, true)
 
     // /v1/ is exactly the pinned release's tree — not the baseline's v1/.
-    expect(listTree(join(f.siteDir, 'v1'))).toEqual(listTree(join(f.legacySite, 'v1')))
-    for (const file of listTree(join(f.legacySite, 'v1'))) {
-      expect(readFileSync(join(f.siteDir, 'v1', file))
-        .equals(readFileSync(join(f.legacySite, 'v1', file)))).toBe(true)
+    expect(listTree(join(f.siteDir, 'runtime', 'v1'))).toEqual(listTree(join(f.legacySite, 'runtime', 'v1')))
+    for (const file of listTree(join(f.legacySite, 'runtime', 'v1'))) {
+      expect(readFileSync(join(f.siteDir, 'runtime', 'v1', file))
+        .equals(readFileSync(join(f.legacySite, 'runtime', 'v1', file)))).toBe(true)
     }
-    expect(existsSync(join(f.siteDir, 'v1', 'assets', 'baseline-v1-ZZZZZZZZ.js'))).toBe(false)
+    expect(existsSync(join(f.siteDir, 'runtime', 'v1', 'assets', 'baseline-v1-ZZZZZZZZ.js'))).toBe(false)
 
     // Root files come from this checkout, never from the retained release.
     expect(readFileSync(join(f.siteDir, 'index.html'), 'utf8')).toBe('CURRENT LANDING PAGE')
@@ -347,14 +348,14 @@ describe('assembleSite — a whole local stage with a fake legacy release', () =
     const headers = readFileSync(join(f.siteDir, '_headers'), 'utf8')
     expect(headers.startsWith('/*\n  X-Base: 1\n')).toBe(true)
     expect(headers).not.toMatch(/X-Old/)
-    for (const path of ['/v2/assets/*', '/v2/b/*', '/v1/assets/*', '/v1/b/*']) {
+    for (const path of ['/runtime/v2/assets/*', '/runtime/v2/b/*', '/runtime/v1/assets/*', '/runtime/v1/b/*']) {
       expect(headers.split('\n')).toContain(path)
     }
     expect(readdirSync(f.siteDir).sort())
-      .toEqual(['_headers', 'index.html', 'managed-binaries.json', 'v1', 'v2'])
+      .toEqual(['_headers', 'index.html', 'managed-binaries.json', 'runtime'])
 
     // build-info.json of the CURRENT version records what rode along.
-    const info = JSON.parse(readFileSync(join(f.siteDir, 'v2', 'build-info.json'), 'utf8'))
+    const info = JSON.parse(readFileSync(join(f.siteDir, 'runtime', 'v2', 'build-info.json'), 'utf8'))
     expect(info.legacyInterfaces).toEqual([{
       interfaceVersion: 1,
       release: 'runtime-v1-2026.10.07.1',
@@ -362,7 +363,7 @@ describe('assembleSite — a whole local stage with a fake legacy release', () =
     }])
     expect(info.candidateId).toBe('candidate-v2-1234567-99')
     // ...while /v1/build-info.json still names the candidate that built /v1/.
-    expect(JSON.parse(readFileSync(join(f.siteDir, 'v1', 'build-info.json'), 'utf8')).candidateId)
+    expect(JSON.parse(readFileSync(join(f.siteDir, 'runtime', 'v1', 'build-info.json'), 'utf8')).candidateId)
       .toBe('candidate-v1-abcdef0-42')
     expect(result.legacy.map((l: { version: number }) => l.version)).toEqual([1])
   })
@@ -376,13 +377,13 @@ describe('assembleSite — a whole local stage with a fake legacy release', () =
     expect(a.retained).toBe(b.retained)
     expect(a.retainedEntries).toBe(b.retainedEntries)
     // The baseline's v2 chunk was retained into /v2/; its v1 files went nowhere.
-    expect(listTree(join(withLegacy.siteDir, 'v2'))).toEqual(listTree(join(without.siteDir, 'v2'))
+    expect(listTree(join(withLegacy.siteDir, 'runtime', 'v2'))).toEqual(listTree(join(without.siteDir, 'runtime', 'v2'))
       .filter(file => file !== 'build-info.json').concat('build-info.json').sort())
-    expect(existsSync(join(withLegacy.siteDir, 'v2', 'assets', 'old-OLDOLD11.js'))).toBe(true)
-    expect(listTree(join(withLegacy.siteDir, 'v2')).some(file => file.includes('baseline-v1'))).toBe(false)
+    expect(existsSync(join(withLegacy.siteDir, 'runtime', 'v2', 'assets', 'old-OLDOLD11.js'))).toBe(true)
+    expect(listTree(join(withLegacy.siteDir, 'runtime', 'v2')).some(file => file.includes('baseline-v1'))).toBe(false)
     // Without retention configured, /v1/ is simply not served.
-    expect(existsSync(join(without.siteDir, 'v1'))).toBe(false)
-    expect(JSON.parse(readFileSync(join(without.siteDir, 'v2', 'build-info.json'), 'utf8'))
+    expect(existsSync(join(without.siteDir, 'runtime', 'v1'))).toBe(false)
+    expect(JSON.parse(readFileSync(join(without.siteDir, 'runtime', 'v2', 'build-info.json'), 'utf8'))
       .legacyInterfaces).toEqual([])
   })
 
@@ -395,7 +396,7 @@ describe('assembleSite — a whole local stage with a fake legacy release', () =
       rootIndexPath: f.rootIndexPath,
       publicDir: f.publicDir,
       legacySites: [{ version: 1, release: 'runtime-v1-x', siteDir: legacyRelease(1, { base: 2 }) }],
-    })).toThrow(/does not reference \/v1\/assets\//)
+    })).toThrow(/does not reference \/runtime\/v1\/assets\//)
   })
 })
 

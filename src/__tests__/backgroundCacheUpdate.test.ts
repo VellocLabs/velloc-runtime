@@ -5,8 +5,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 const ORIGIN = 'https://beta.velloc.app'
-const ROOT = `${ORIGIN}/v1/`
-const ENTRY = `${ORIGIN}/v1/b/20260920T230614000Z/`
+const ROOT = `${ORIGIN}/runtime/v1/`
+const ENTRY = `${ORIGIN}/runtime/v1/b/20260920T230614000Z/`
 const BUILD_ID = 'build-abc'
 const RECORD_KEY = '__nexusPrefetchedBuildIds'
 
@@ -96,7 +96,7 @@ async function runWarmer(
     }
     if (url === ENTRY || url === ROOT) return new Response('<html></html>', { status: 200 })
     // What the deploy actually stages: chunks at the version root only.
-    if (url.startsWith(`${ORIGIN}/v1/assets/`)) {
+    if (url.startsWith(`${ORIGIN}/runtime/v1/assets/`)) {
       return new Response('chunk', { status: 200 })
     }
     return new Response('not found', { status: 404 })
@@ -135,18 +135,18 @@ describe('backgroundCacheUpdate at an immutable build entry', () => {
   it('fetches every chunk from the version root, never from inside the entry', async () => {
     const { fetched } = await runWarmer()
     expect(chunkUrls(fetched).sort()).toEqual([
-      `${ORIGIN}/v1/assets/geist-abc.woff2`,
-      `${ORIGIN}/v1/assets/index-abc.css`,
-      `${ORIGIN}/v1/assets/index-abc.js`,
-      `${ORIGIN}/v1/assets/locales/fr-abc.json`,
-      `${ORIGIN}/v1/assets/logo-abc.png`,
+      `${ORIGIN}/runtime/v1/assets/geist-abc.woff2`,
+      `${ORIGIN}/runtime/v1/assets/index-abc.css`,
+      `${ORIGIN}/runtime/v1/assets/index-abc.js`,
+      `${ORIGIN}/runtime/v1/assets/locales/fr-abc.json`,
+      `${ORIGIN}/runtime/v1/assets/logo-abc.png`,
     ])
     expect(fetched.some((u) => u.includes('/b/20260920T230614000Z/assets/'))).toBe(false)
   })
 
   it('records the build id once the batch is all-OK, so the next load skips it', async () => {
     const { storage } = await runWarmer()
-    expect(recorded(storage)).toEqual({ '/v1/b/20260920T230614000Z/assets-manifest.json': BUILD_ID })
+    expect(recorded(storage)).toEqual({ '/runtime/v1/b/20260920T230614000Z/assets-manifest.json': BUILD_ID })
     const again = await runWarmer({ storage, expectChunks: 0 })
     expect(chunkUrls(again.fetched)).toEqual([])
   })
@@ -160,8 +160,8 @@ describe('backgroundCacheUpdate at an immutable build entry', () => {
     await runWarmer({ address: ROOT, baseURI: ROOT, storage })
     await runWarmer({ storage })
     expect(recorded(storage)).toEqual({
-      '/v1/assets-manifest.json': 'build-newer',
-      '/v1/b/20260920T230614000Z/assets-manifest.json': BUILD_ID,
+      '/runtime/v1/assets-manifest.json': 'build-newer',
+      '/runtime/v1/b/20260920T230614000Z/assets-manifest.json': BUILD_ID,
     })
 
     const root = await runWarmer({ address: ROOT, baseURI: ROOT, storage, expectChunks: 0 })
@@ -175,18 +175,18 @@ describe('backgroundCacheUpdate at an immutable build entry', () => {
     storage.setItem(RECORD_KEY, '"build-abc"')
     const { fetched } = await runWarmer({ storage })
     expect(chunkUrls(fetched)).toHaveLength(5)
-    expect(recorded(storage)).toEqual({ '/v1/b/20260920T230614000Z/assets-manifest.json': BUILD_ID })
+    expect(recorded(storage)).toEqual({ '/runtime/v1/b/20260920T230614000Z/assets-manifest.json': BUILD_ID })
 
     // Ten older entries recorded: the newest write survives, the oldest go.
     const old = Object.fromEntries(
-      Array.from({ length: 10 }, (_, i) => [`/v1/b/old-${i}/assets-manifest.json`, `b${i}`]))
+      Array.from({ length: 10 }, (_, i) => [`/runtime/v1/b/old-${i}/assets-manifest.json`, `b${i}`]))
     storage.setItem(RECORD_KEY, JSON.stringify(old))
     await runWarmer({ storage })
     const paths = Object.keys(recorded(storage))
     expect(paths).toHaveLength(8)
-    expect(paths.at(-1)).toBe('/v1/b/20260920T230614000Z/assets-manifest.json')
-    expect(paths).not.toContain('/v1/b/old-0/assets-manifest.json')
-    expect(paths).toContain('/v1/b/old-9/assets-manifest.json')
+    expect(paths.at(-1)).toBe('/runtime/v1/b/20260920T230614000Z/assets-manifest.json')
+    expect(paths).not.toContain('/runtime/v1/b/old-0/assets-manifest.json')
+    expect(paths).toContain('/runtime/v1/b/old-9/assets-manifest.json')
   })
 
   it('on a remote page shown at its bare origin, still reads the entry it was served from', async () => {
@@ -202,6 +202,6 @@ describe('backgroundCacheUpdate at an immutable build entry', () => {
     expect(fetched).toContain(`${ENTRY}assets-manifest.json`)
     expect(fetched).toContain(ENTRY)
     expect(fetched.some((u) => u.startsWith('http://192.168.1.10:47615'))).toBe(false)
-    expect(recorded(storage)['/v1/b/20260920T230614000Z/assets-manifest.json']).toBe(BUILD_ID)
+    expect(recorded(storage)['/runtime/v1/b/20260920T230614000Z/assets-manifest.json']).toBe(BUILD_ID)
   })
 })

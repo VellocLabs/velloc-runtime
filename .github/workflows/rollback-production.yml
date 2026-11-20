@@ -4,7 +4,7 @@ name: C · Rollback Production
 # archived bytes; never a rebuild of an old tag (toolchain and deps drift).
 # The Cloudflare dashboard rollback is faster for a fresh regression, but not
 # right after an interface bump: the previous version serves only the older
-# /v<N>/ and 404s every binary on the newer one. This workflow refuses that
+# /runtime/v<N>/ and 404s every binary on the newer one. This workflow refuses that
 # case. (G-3)
 
 on:
@@ -52,10 +52,10 @@ jobs:
           (cd artifact && sha256sum -c SHA256SUMS)
           V=$(jq -r .interfaceVersion artifact/manifest.json)
           unzip -q artifact/runtime.zip -d candidate
-          test -f "candidate/site/v$V/index.html"
+          test -f "candidate/site/runtime/v$V/index.html"
           test -f candidate/wrangler.toml
-          grep -q "/v$V/assets/" "candidate/site/v$V/index.html"
-          # A release from before an interface bump has no /v<newer>/ tree:
+          grep -q "/runtime/v$V/assets/" "candidate/site/runtime/v$V/index.html"
+          # A release from before an interface bump has no /runtime/v<newer>/ tree:
           # deploying it would 404 every binary on the newer interface. Only
           # releases of the newest published interface may be restored.
           NEWEST=$(gh release list --repo "$GITHUB_REPOSITORY" --limit 200 \
@@ -64,7 +64,7 @@ jobs:
                        | capture("^runtime-v(?<v>[0-9]+)-").v | tonumber]
                        | max // 0')
           if [ "$V" -lt "$NEWEST" ]; then
-            echo "::error::$RELEASE_TAG is interface v$V; production serves v$NEWEST — restoring it would drop /v$NEWEST/"
+            echo "::error::$RELEASE_TAG is interface v$V; production serves v$NEWEST — restoring it would drop /runtime/v$NEWEST/"
             exit 1
           fi
           {
@@ -97,7 +97,7 @@ jobs:
             echo "| Candidate | \`$CANDIDATE_ID\` |"
             echo "| Source commit | \`$SOURCE_COMMIT\` |"
             echo
-            echo "Verify: <https://app.velloc.app/v$V/build-info.json> must report"
+            echo "Verify: <https://app.velloc.app/runtime/v$V/build-info.json> must report"
             echo "\`candidateId: $CANDIDATE_ID\`."
             echo
             echo "Note: the GitHub \"latest release\" marker is unchanged — it still"

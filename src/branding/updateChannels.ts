@@ -180,12 +180,12 @@ export function parseUpdateChannel(value: unknown): UpdateChannel | null {
 /** The path a binary on `version` actually requests from a channel. */
 export function channelVersionUrl(
   channel: UpdateChannel, version: number): string {
-  return `${CHANNEL_ORIGINS[channel]}/v${version}/`
+  return `${CHANNEL_ORIGINS[channel]}/runtime/v${version}/`
 }
 
 /**
  * Whether `channel` serves this bundle's interface version, probed before
- * switching (a missing `/v<N>/` would brick the panel). Fails closed on any
+ * switching (a missing `/runtime/v<N>/` would brick the panel). Fails closed on any
  * network, CORS or non-2xx error; relies on the origins sending
  * `Access-Control-Allow-Origin`.
  */

@@ -17,9 +17,9 @@ import {
 describe('channelForUrl', () => {
   it('recognises both official origins, with or without a path', () => {
     expect(channelForUrl('https://app.velloc.app/')).toBe('stable')
-    expect(channelForUrl('https://app.velloc.app/v1/')).toBe('stable')
+    expect(channelForUrl('https://app.velloc.app/runtime/v1/')).toBe('stable')
     expect(channelForUrl('https://beta.velloc.app/')).toBe('beta')
-    expect(channelForUrl('https://beta.velloc.app/v1/?nexus=1')).toBe('beta')
+    expect(channelForUrl('https://beta.velloc.app/runtime/v1/?nexus=1')).toBe('beta')
   })
 
   it('returns null for anything else, so the toggle hides', () => {
@@ -232,10 +232,10 @@ describe('channelServesThisVersion', () => {
     const fetchImpl = vi.fn(async () => ({ ok: true }) as Response)
     await channelServesThisVersion('beta', 7, fetchImpl as unknown as typeof fetch)
     expect(fetchImpl).toHaveBeenCalledWith(
-      'https://beta.velloc.app/v7/',
+      'https://beta.velloc.app/runtime/v7/',
       expect.objectContaining({ method: 'HEAD' }),
     )
-    expect(channelVersionUrl('beta', 7)).toBe('https://beta.velloc.app/v7/')
+    expect(channelVersionUrl('beta', 7)).toBe('https://beta.velloc.app/runtime/v7/')
   })
 
   it('is false for a 404 — the interface-skew case', async () => {

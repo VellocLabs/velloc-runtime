@@ -102,7 +102,7 @@ function renderError(container: HTMLElement, error: unknown): void {
 }
 
 // Hard block for a bridge interface-version mismatch: the page was loaded
-// from a `/v<K>/` path whose K differs from this bundle's compiled-in
+// from a `/runtime/v<K>/` path whose K differs from this bundle's compiled-in
 // NEXUS_INTERFACE_VERSION — the deploy (or a cache/mirror) served the
 // wrong bundle at a versioned path. Unlike renderError this is a
 // deterministic, terminal state — no retry loop: the fix is updating the
@@ -118,7 +118,7 @@ function renderVersionBlock(
         <div style="font-size:12px;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;color:var(--warning-emphasis);">Version Mismatch</div>
         <h1 style="margin:0;font-size:clamp(2rem,5vw,3.25rem);line-height:1.05;">${productName} needs an update</h1>
         <div style="color:var(--muted-foreground);line-height:1.6;">The app requested bridge interface <strong>v${mismatch.pathVersion}</strong> (from the page path), but this web build speaks <strong>v${mismatch.guestVersion}</strong>. To avoid silent misbehavior the app will not start across mismatched versions.</div>
-        <div style="color:var(--muted-foreground);line-height:1.6;">Update ${productName} to the latest version, then reload this panel. If you self-host the web app, redeploy so the <code>/v${mismatch.pathVersion}/</code> path serves the matching build.</div>
+        <div style="color:var(--muted-foreground);line-height:1.6;">Update ${productName} to the latest version, then reload this panel. If you self-host the web app, redeploy so the <code>/runtime/v${mismatch.pathVersion}/</code> path serves the matching build.</div>
       </section>
     </main>
   `
@@ -132,7 +132,7 @@ async function main(): Promise<void> {
 
   // Interface-version tripwire — synchronous, before any host handshake,
   // so it works no matter how the bridge protocol itself evolves. The
-  // binary derives the `/v<N>/` path it loads from its own compiled-in
+  // binary derives the `/runtime/v<N>/` path it loads from its own compiled-in
   // constant; if this bundle's constant disagrees with the path it was
   // served at, the two sides speak different bridge contracts. An
   // unversioned path (dev server, frozen root) skips the check — dev

@@ -43,8 +43,8 @@ describe('buildEntryUrl', () => {
   const key = buildKeyFromBuildTime(iso)
 
   it('derives the entry from a production worker asset URL', () => {
-    expect(buildEntryUrl('https://beta.velloc.app/v3/assets/worker-abc.js', iso))
-      .toBe(`https://beta.velloc.app/v3/b/${key}/`)
+    expect(buildEntryUrl('https://beta.velloc.app/runtime/v3/assets/worker-abc.js', iso))
+      .toBe(`https://beta.velloc.app/runtime/v3/b/${key}/`)
   })
 
   it('returns null on a dev server (no /v<N>/ path)', () => {
@@ -53,9 +53,9 @@ describe('buildEntryUrl', () => {
   })
 
   it('returns null for an unknown or invalid build stamp', () => {
-    expect(buildEntryUrl('https://beta.velloc.app/v3/assets/worker-abc.js', null)).toBeNull()
-    expect(buildEntryUrl('https://beta.velloc.app/v3/assets/worker-abc.js', '')).toBeNull()
-    expect(buildEntryUrl('https://beta.velloc.app/v3/assets/worker-abc.js', 'garbage')).toBeNull()
+    expect(buildEntryUrl('https://beta.velloc.app/runtime/v3/assets/worker-abc.js', null)).toBeNull()
+    expect(buildEntryUrl('https://beta.velloc.app/runtime/v3/assets/worker-abc.js', '')).toBeNull()
+    expect(buildEntryUrl('https://beta.velloc.app/runtime/v3/assets/worker-abc.js', 'garbage')).toBeNull()
   })
 
   it('returns null for an unparseable worker href', () => {
@@ -128,34 +128,34 @@ describe('manifestAssetBase', () => {
   const key = '20260917T103000000Z'
 
   it("resolves an entry manifest's chunks at the version root, not inside the entry", () => {
-    const manifestUrl = `https://beta.velloc.app/v1/b/${key}/assets-manifest.json`
+    const manifestUrl = `https://beta.velloc.app/runtime/v1/b/${key}/assets-manifest.json`
     // What the warmer did before: `stageBuildEntry` copies the manifest into
     // the entry but no chunks, so every one of the ~230 URLs 404s -- on the
     // deploy itself and through the desktop's reverse proxy alike.
     expect(new URL('assets/index-abc.js', manifestUrl).href)
-      .toBe(`https://beta.velloc.app/v1/b/${key}/assets/index-abc.js`)
+      .toBe(`https://beta.velloc.app/runtime/v1/b/${key}/assets/index-abc.js`)
     // What it does now.
     expect(new URL('assets/index-abc.js', manifestAssetBase(manifestUrl)).href)
-      .toBe('https://beta.velloc.app/v1/assets/index-abc.js')
+      .toBe('https://beta.velloc.app/runtime/v1/assets/index-abc.js')
     expect(manifestAssetBase(manifestUrl))
-      .toBe('https://beta.velloc.app/v1/assets-manifest.json')
+      .toBe('https://beta.velloc.app/runtime/v1/assets-manifest.json')
   })
 
   it('rewrites the path only, so the reverse-proxy origin is preserved', () => {
     // A remote client reads the manifest through the desktop's listener (F-24),
     // whose origin is plain http on a LAN address and a port.
-    const manifestUrl = `http://192.168.1.10:47615/v1/b/${key}/assets-manifest.json`
+    const manifestUrl = `http://192.168.1.10:47615/runtime/v1/b/${key}/assets-manifest.json`
     expect(new URL('assets/locales/en-abc.json', manifestAssetBase(manifestUrl)).href)
-      .toBe('http://192.168.1.10:47615/v1/assets/locales/en-abc.json')
+      .toBe('http://192.168.1.10:47615/runtime/v1/assets/locales/en-abc.json')
   })
 
   it('leaves a version-root manifest alone', () => {
-    const manifestUrl = 'https://beta.velloc.app/v1/assets-manifest.json'
+    const manifestUrl = 'https://beta.velloc.app/runtime/v1/assets-manifest.json'
     expect(manifestAssetBase(manifestUrl)).toBe(manifestUrl)
     expect(new URL('assets/index-abc.js', manifestAssetBase(manifestUrl)).href)
-      .toBe('https://beta.velloc.app/v1/assets/index-abc.js')
-    expect(manifestAssetBase('https://beta.velloc.app/v12/assets-manifest.json'))
-      .toBe('https://beta.velloc.app/v12/assets-manifest.json')
+      .toBe('https://beta.velloc.app/runtime/v1/assets/index-abc.js')
+    expect(manifestAssetBase('https://beta.velloc.app/runtime/v12/assets-manifest.json'))
+      .toBe('https://beta.velloc.app/runtime/v12/assets-manifest.json')
   })
 
   it('leaves anything that is not a build entry alone', () => {
@@ -166,7 +166,7 @@ describe('manifestAssetBase', () => {
       // unsupported, exactly as buildEntryUrl treats it.
       `https://example.test/app/v1/b/${key}/assets-manifest.json`,
       // `b/<seg>/` has to sit directly under the version segment.
-      'https://beta.velloc.app/v1/assets/b/x/assets-manifest.json',
+      'https://beta.velloc.app/runtime/v1/assets/b/x/assets-manifest.json',
       // Not a URL at all: returned unchanged rather than thrown.
       'not a url',
       '',

@@ -13,13 +13,13 @@ import { recoverLocaleCatalog } from '../browser/boot/remoteLocaleRecovery'
 // When the desktop has stayed up across deploys that did not retain that
 // build's assets, the entry's locale table names catalogs the origin 404s,
 // and every string rendered as its raw key (reported:
-// `/v1/assets/locales/en-xVEfEiZC.json` 404 → "locale catalog load failed").
+// `/runtime/v1/assets/locales/en-xVEfEiZC.json` 404 → "locale catalog load failed").
 // The recovery reads the CURRENT deploy's manifest from the runtime's origin
 // and loads that catalog through the relay.
 
 const RELAY = 'http://192.168.1.10:47615'
-const ENTRY = 'https://beta.example/v1/b/20260924T014234067Z/'
-const MANIFEST = 'https://beta.example/v1/assets-manifest.json'
+const ENTRY = 'https://beta.example/runtime/v1/b/20260924T014234067Z/'
+const MANIFEST = 'https://beta.example/runtime/v1/assets-manifest.json'
 
 const MANIFEST_BODY = {
   buildId: '2026-09-24T01:42:34.067Z',
@@ -66,7 +66,7 @@ describe('recoverLocaleCatalog', () => {
   it("loads the current deploy's catalog when the entry's own one is gone", async () => {
     const fetchMock = routes({
       [MANIFEST]: MANIFEST_BODY,
-      [`${RELAY}/v1/assets/locales/en-cK9gL6Rw.json`]: en,
+      [`${RELAY}/runtime/v1/assets/locales/en-cK9gL6Rw.json`]: en,
     })
     vi.stubGlobal('fetch', fetchMock)
     const t = createTranslate('en')
@@ -84,7 +84,7 @@ describe('recoverLocaleCatalog', () => {
     expect(result).toEqual({
       outcome: 'recovered',
       locale: 'en',
-      url: `${RELAY}/v1/assets/locales/en-cK9gL6Rw.json`,
+      url: `${RELAY}/runtime/v1/assets/locales/en-cK9gL6Rw.json`,
     })
     expect(t('sidebar.recents')).toBe(en['sidebar.recents'])
     // The manifest from the runtime's origin, revalidated: that path is
@@ -98,14 +98,14 @@ describe('recoverLocaleCatalog', () => {
     })
     // The catalog through the relay, like every other asset of the page.
     expect(String(fetchMock.mock.calls[1][0])).toBe(
-      `${RELAY}/v1/assets/locales/en-cK9gL6Rw.json`,
+      `${RELAY}/runtime/v1/assets/locales/en-cK9gL6Rw.json`,
     )
   })
 
   it("recovers the page's own locale, not just English", async () => {
     vi.stubGlobal('fetch', routes({
       [MANIFEST]: MANIFEST_BODY,
-      [`${RELAY}/v1/assets/locales/zh-Q1w2E3r4.json`]: zh,
+      [`${RELAY}/runtime/v1/assets/locales/zh-Q1w2E3r4.json`]: zh,
     }))
 
     const result = await recoverLocaleCatalog({
@@ -126,7 +126,7 @@ describe('recoverLocaleCatalog', () => {
     }
     vi.stubGlobal('fetch', routes({
       [MANIFEST]: manifest,
-      [`${RELAY}/v1/assets/locales/en-cK9gL6Rw.json`]: en,
+      [`${RELAY}/runtime/v1/assets/locales/en-cK9gL6Rw.json`]: en,
     }))
 
     const result = await recoverLocaleCatalog({

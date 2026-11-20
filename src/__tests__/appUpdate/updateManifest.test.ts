@@ -1,9 +1,18 @@
 import { describe, expect, it } from 'vitest'
-import { compareVersions, parseUpdateManifest, parseVersion, shouldInstall } from '../../appUpdate/updateManifest'
+import {
+  compareVersions, parseUpdateManifest, parseVersion, shouldInstall, UPDATE_MANIFEST_URLS,
+} from '../../appUpdate/updateManifest'
 
 const URL_OK = 'https://github.com/VellocLabs/velloc-bootstrap/releases/download/velloc-v1.149.2.5/mini_installer.exe'
 
 describe('update manifest', () => {
+  it('fetches each channel from the client-update path, never the retired update path', () => {
+    expect(UPDATE_MANIFEST_URLS).toEqual({
+      stable: 'https://velloc.app/client-update/stable.json',
+      beta: 'https://velloc.app/client-update/beta.json',
+    })
+  })
+
   it('parses four dotted integers and orders them field by field', () => {
     expect(parseVersion('1.149.2.5')).toEqual([1, 149, 2, 5])
     expect(parseVersion('1.149.2')).toBeNull()

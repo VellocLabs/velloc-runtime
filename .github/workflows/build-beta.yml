@@ -140,7 +140,7 @@ jobs:
             src/browser/bridge/protocol/interfaceVersion.gen.ts)
           test -n "$V" || { echo "could not read NEXUS_INTERFACE_VERSION"; exit 1; }
           # Every deploy replaces the whole site. A ref from before an
-          # interface bump builds no /v<newer>/ tree, so beta would stop
+          # interface bump builds no /runtime/v<newer>/ tree, so beta would stop
           # serving the newer binaries — and promote would pick this run as
           # the newest candidate. Same floor as promote and rollback.
           NEWEST=$(gh release list --repo "$GITHUB_REPOSITORY" --limit 200 \
@@ -149,7 +149,7 @@ jobs:
                        | capture("^runtime-v(?<v>[0-9]+)-").v | tonumber]
                        | max // 0')
           if [ "$V" -lt "$NEWEST" ]; then
-            echo "::error::ref $SOURCE_REF is interface v$V; production serves v$NEWEST — deploying it would drop /v$NEWEST/ and 404 every binary on it"
+            echo "::error::ref $SOURCE_REF is interface v$V; production serves v$NEWEST — deploying it would drop /runtime/v$NEWEST/ and 404 every binary on it"
             exit 1
           fi
           echo "interface_version=$V" >> "$GITHUB_OUTPUT"
@@ -183,7 +183,7 @@ jobs:
           fi
 
           LIVE=$(curl -fsS --max-time 20 -H 'Cache-Control: no-cache' \
-                   "$PROD_ORIGIN/v$V/build-info.json" 2>/dev/null \
+                   "$PROD_ORIGIN/runtime/v$V/build-info.json" 2>/dev/null \
                  | jq -r '.candidateId // empty') || LIVE=''
 
           TAG=''
@@ -201,7 +201,7 @@ jobs:
                    "release claims. Falling back to the newest release."
             fi
           else
-            echo "::warning::could not read $PROD_ORIGIN/v$V/build-info.json —" \
+            echo "::warning::could not read $PROD_ORIGIN/runtime/v$V/build-info.json —" \
                  "falling back to the newest release for the baseline."
           fi
           if [ -z "$TAG" ]; then
@@ -212,6 +212,14 @@ jobs:
           gh release download "$TAG" --repo "$GITHUB_REPOSITORY" \
             --pattern runtime.zip --dir baseline-dl
           unzip -q baseline-dl/runtime.zip -d baseline
+          # A release staged before the /runtime/ prefix has no tree a client
+          # on this layout can reach, so it donates nothing.
+          if [ ! -d "baseline/site/runtime/v$V" ]; then
+            echo "::warning::$TAG has no site/runtime/v$V/ — no baseline"
+            rm -rf baseline
+            echo "tag=" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
 
       # Beta's baseline is a union: also retain the candidate beta is serving,
@@ -227,7 +235,7 @@ jobs:
         run: |
           set -euo pipefail
           BCAND=$(curl -fsS --max-time 20 -H 'Cache-Control: no-cache' \
-                    "$BETA_ORIGIN/v$V/build-info.json" 2>/dev/null \
+                    "$BETA_ORIGIN/runtime/v$V/build-info.json" 2>/dev/null \
                   | jq -r '.candidateId // empty') || BCAND=''
           # candidate-v<N>-<sha>-<runId>; the run id is the LAST segment. The sha is
           # `git rev-parse --short=7`, a minimum (git lengthens an ambiguous one), so
@@ -235,7 +243,7 @@ jobs:
           BRUN=$(printf '%s' "$BCAND" | sed -nE 's/^candidate-v[0-9]+-[0-9a-f]{7,}-([0-9]+)$/\1/p')
           if [ -z "$BRUN" ]; then
             echo "::warning::could not read a beta candidate run id from " \
-                 "$BETA_ORIGIN/v$V/build-info.json (got '${BCAND:-nothing}') — " \
+                 "$BETA_ORIGIN/runtime/v$V/build-info.json (got '${BCAND:-nothing}') — " \
                  "beta-only entries will not be retained."
             exit 0
           fi
@@ -262,7 +270,7 @@ jobs:
           fi
 
       # Retained legacy interface versions: a deploy replaces the whole site, so
-      # binaries pinned to an older /v<K>/ 404 unless the artifact carries it.
+      # binaries pinned to an older /runtime/v<K>/ 404 unless the artifact carries it.
       # deploy/retained-interfaces.json pins each version to one published release,
       # copied verbatim. Unlike the baselines, a configured release that cannot be
       # fetched or verified fails the build.
@@ -276,7 +284,7 @@ jobs:
           ENTRIES=$(jq -r '(.retained // {}) | to_entries[] | "\(.key) \(.value)"' \
                       deploy/retained-interfaces.json)
           if [ -z "$ENTRIES" ]; then
-            echo "deploy/retained-interfaces.json retains nothing — serving /v$V/ only"
+            echo "deploy/retained-interfaces.json retains nothing — serving /runtime/v$V/ only"
             echo "args=" >> "$GITHUB_OUTPUT"
             exit 0
           fi
@@ -301,8 +309,8 @@ jobs:
             (cd "legacy-dl/v$K" && sha256sum -c SHA256SUMS)
             mkdir -p "legacy/v$K"
             unzip -q "legacy-dl/v$K/runtime.zip" -d "legacy/v$K"
-            test -f "legacy/v$K/site/v$K/index.html"
-            echo "retained /v$K/ from $TAG ($(jq -r .candidateId "legacy-dl/v$K/manifest.json"))"
+            test -f "legacy/v$K/site/runtime/v$K/index.html"
+            echo "retained /runtime/v$K/ from $TAG ($(jq -r .candidateId "legacy-dl/v$K/manifest.json"))"
             LEGACY="$LEGACY $K=legacy/v$K/site"
           done <<< "$ENTRIES"
           echo "args=${LEGACY# }" >> "$GITHUB_OUTPUT"
@@ -317,8 +325,8 @@ jobs:
         run: |
           set -euo pipefail
           npm run catalog:snapshot -- \
-            --fallback-base "https://beta.velloc.app/v$V" \
-            --fallback-base "https://app.velloc.app/v$V"
+            --fallback-base "https://beta.velloc.app/runtime/v$V" \
+            --fallback-base "https://app.velloc.app/runtime/v$V"
 
       - name: Build and pack candidate
         # Every user-supplied value goes through env, never through `${{ }}`
@@ -434,12 +442,12 @@ jobs:
           set -euo pipefail
           (cd artifact && sha256sum -c SHA256SUMS)
           unzip -q artifact/runtime.zip -d candidate
-          test -f "candidate/site/v$V/index.html"
+          test -f "candidate/site/runtime/v$V/index.html"
           test -f candidate/wrangler.toml
           # Every retained version must have ridden along, at its own base.
           for K in $(jq -r '.legacyInterfaces[]?.interfaceVersion' artifact/manifest.json); do
-            test -f "candidate/site/v$K/index.html"
-            grep -q "/v$K/assets/" "candidate/site/v$K/index.html"
+            test -f "candidate/site/runtime/v$K/index.html"
+            grep -q "/runtime/v$K/assets/" "candidate/site/runtime/v$K/index.html"
           done
 
       - name: Deploy to beta
@@ -601,8 +609,8 @@ jobs:
               echo '</details>'
             fi
             echo
-            echo "Soak: <https://beta.velloc.app/v$V/>"
-            echo "Provenance: <https://beta.velloc.app/v$V/build-info.json> reports this candidate ID."
+            echo "Soak: <https://beta.velloc.app/runtime/v$V/>"
+            echo "Provenance: <https://beta.velloc.app/runtime/v$V/build-info.json> reports this candidate ID."
             echo
             echo "Then run [**B · Promote Production**]($PROMOTE_URL) — it defaults to"
             echo "the newest successful build, which is this one, so both inputs can be"

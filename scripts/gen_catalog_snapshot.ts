@@ -4,7 +4,7 @@
 // is reused with a `::warning::`; exit 1 when none is usable or a built-in
 // row's figures are missing. Output is staged and swapped in, never partial.
 //   --out <dir>  --url <url>  --file <path> (tests)  --skip-builtin-coverage (tests)
-//   --fallback-base <base>  a served interface root (.../v5) or a local dir; repeatable
+//   --fallback-base <base>  a served interface root (.../runtime/v5) or a local dir; repeatable
 import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'

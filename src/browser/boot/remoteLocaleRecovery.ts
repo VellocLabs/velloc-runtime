@@ -28,7 +28,7 @@ type ManifestAsset = { url?: unknown; type?: unknown }
 export async function recoverLocaleCatalog(options: {
   locale: Locale
   /** `runtime.getBuildEntry`'s `entryUrl`, e.g.
-   *  `https://beta.velloc.app/v1/b/20260924T014234067Z/`. */
+   *  `https://beta.velloc.app/runtime/v2/b/20260924T014234067Z/`. */
   entryUrl: string | null | undefined
   /** The page's own origin: the relay the catalog is fetched through. */
   pageOrigin: string
@@ -108,7 +108,7 @@ function versionRootOf(
   } catch {
     return null
   }
-  const m = /^(\/v[0-9]+\/)b\/[^/]+\/$/.exec(url.pathname)
+  const m = /^(\/runtime\/v[0-9]+\/)b\/[^/]+\/$/.exec(url.pathname)
   return m ? { origin: url.origin, root: m[1] } : null
 }
 

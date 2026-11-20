@@ -14,8 +14,8 @@ export type UpdateManifest = {
 
 /** Endpoints per channel; each redirects to the matching release asset. */
 export const UPDATE_MANIFEST_URLS = {
-  stable: 'https://velloc.app/update/stable.json',
-  beta: 'https://velloc.app/update/beta.json',
+  stable: 'https://velloc.app/client-update/stable.json',
+  beta: 'https://velloc.app/client-update/beta.json',
 } as const
 
 type Version = readonly [number, number, number, number]

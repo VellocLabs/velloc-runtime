@@ -41,5 +41,5 @@ jobs:
       - run: npm test
 
       # Compiles with VERSIONED_DEPLOY=1, which is how `deploy:stage` builds the
-      # current /v<N>/ — a plain `vite build` would not catch a base-path break.
+      # current /runtime/v<N>/ — a plain `vite build` would not catch a base-path break.
       - run: npm run build:versioned

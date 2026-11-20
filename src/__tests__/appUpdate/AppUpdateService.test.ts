@@ -85,7 +85,7 @@ function service(host: AppUpdateHost) {
   const states: AppUpdateState[] = []
   const svc = new AppUpdateService({
     host,
-    manifestUrl: 'https://velloc.app/update/stable.json',
+    manifestUrl: 'https://velloc.app/client-update/stable.json',
     now: () => 1_000,
     sleep: async () => {},
     report: () => {},
@@ -103,7 +103,7 @@ describe('AppUpdateService', () => {
     expect(svc.getState()).toMatchObject({ phase: 'ready', current: '1.149.2.4', target: '1.149.2.5', checkedAt: 1_000 })
     const dir = `${ROOT}\\1.149.2.5`
     expect(fake.calls).toEqual([
-      'fetch https://velloc.app/update/stable.json',
+      'fetch https://velloc.app/client-update/stable.json',
       `mkdir ${dir}`,
       `download ${PKG} -> ${dir}\\mini_installer.exe.part`,
       `rename ${dir}\\mini_installer.exe.part -> ${dir}\\mini_installer.exe`,
@@ -120,7 +120,7 @@ describe('AppUpdateService', () => {
     const { svc } = service(fake.host)
     await svc.check()
     expect(svc.getState()).toMatchObject({ phase: 'idle', current: '1.149.2.5', checkedAt: 1_000 })
-    expect(fake.calls).toEqual(['fetch https://velloc.app/update/stable.json'])
+    expect(fake.calls).toEqual(['fetch https://velloc.app/client-update/stable.json'])
   })
 
   it('each check first deletes version directories at or below the running version', async () => {
@@ -132,7 +132,7 @@ describe('AppUpdateService', () => {
       `rmdir ${ROOT}\\1.149.2.3`,
       `rmdir ${ROOT}\\1.149.2.4`,
       `rmdir ${ROOT}\\1.149.2.5`,
-      'fetch https://velloc.app/update/stable.json',
+      'fetch https://velloc.app/client-update/stable.json',
     ])
     expect([...fake.dirs]).toEqual(['1.150.0.0', 'notes', '1.149'])
     expect(svc.getState().phase).toBe('idle')
@@ -143,7 +143,7 @@ describe('AppUpdateService', () => {
     const remove = fakeHost({ current: '1.149.2.5', dirs: ['1.149.2.3', '1.149.2.4'], failRemove: '1.149.2.3' })
     const svc = new AppUpdateService({
       host: remove.host,
-      manifestUrl: 'https://velloc.app/update/stable.json',
+      manifestUrl: 'https://velloc.app/client-update/stable.json',
       report: line => lines.push(line),
     })
     await svc.check()
@@ -155,7 +155,7 @@ describe('AppUpdateService', () => {
     const second = service(list.host)
     await second.svc.check()
     expect(second.svc.getState().phase).toBe('idle')
-    expect(list.calls).toEqual(['fetch https://velloc.app/update/stable.json'])
+    expect(list.calls).toEqual(['fetch https://velloc.app/client-update/stable.json'])
   })
 
   it('reports an update directory it cannot resolve as that, not as a listing failure', async () => {
@@ -163,13 +163,13 @@ describe('AppUpdateService', () => {
     const fake = fakeHost({ current: '1.149.2.5', dirs: ['1.149.2.3'], failRoot: true })
     const svc = new AppUpdateService({
       host: fake.host,
-      manifestUrl: 'https://velloc.app/update/stable.json',
+      manifestUrl: 'https://velloc.app/client-update/stable.json',
       report: line => lines.push(line),
     })
     await svc.check()
     expect(svc.getState().phase).toBe('idle')
     expect(lines).toEqual(['could not find the update directory: the host has no local cache directory'])
-    expect(fake.calls).toEqual(['fetch https://velloc.app/update/stable.json'])
+    expect(fake.calls).toEqual(['fetch https://velloc.app/client-update/stable.json'])
   })
 
   it('honours min_version: a client at or above it is left alone', async () => {
@@ -218,7 +218,7 @@ describe('AppUpdateService', () => {
     const { svc } = service(fake.host)
     await svc.check()
     expect(svc.getState()).toMatchObject({ phase: 'ready', target: '1.149.2.5' })
-    expect(fake.calls).toEqual(['fetch https://velloc.app/update/stable.json'])
+    expect(fake.calls).toEqual(['fetch https://velloc.app/client-update/stable.json'])
   })
 
   it('once ready, later checks do nothing and relaunch reaches the host', async () => {
@@ -244,7 +244,7 @@ describe('AppUpdateService', () => {
     const fake = fakeHost({ runningPolls: Number.POSITIVE_INFINITY })
     const svc = new AppUpdateService({
       host: fake.host,
-      manifestUrl: 'https://velloc.app/update/stable.json',
+      manifestUrl: 'https://velloc.app/client-update/stable.json',
       now: () => clock,
       sleep: async ms => {
         clock += ms
@@ -262,7 +262,7 @@ describe('AppUpdateService', () => {
     const fake = fakeHost({ current: '1.149.2.5' })
     const svc = new AppUpdateService({
       host: fake.host,
-      manifestUrl: 'https://velloc.app/update/stable.json',
+      manifestUrl: 'https://velloc.app/client-update/stable.json',
       setTimer: (fn, ms) => {
         timers.push({ fn, ms })
         return timers.length

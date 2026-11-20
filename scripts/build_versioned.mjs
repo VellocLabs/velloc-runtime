@@ -1,7 +1,7 @@
 // Cross-platform wrapper for `VERSIONED_DEPLOY=1 vite build` (npm run
 // build:versioned) — Windows shells have no inline env-var syntax and the
 // repo avoids a cross-env dependency for one flag. The flag makes
-// vite.config.ts derive `base` (`/v<N>/`) from NEXUS_INTERFACE_VERSION; see
+// vite.config.ts derive `base` (`/runtime/v<N>/`) from NEXUS_INTERFACE_VERSION; see
 // G-3.
 import { spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'

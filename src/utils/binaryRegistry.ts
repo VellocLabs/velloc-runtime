@@ -41,7 +41,7 @@ export type ManagedBinaryRegistryWire = {
  *  fleet-wide security-pin data (it controls which binaries hosts run),
  *  independent of the bridge interface version. Versioned deploys serve
  *  this one file at the site root so a pin update reaches every retained
- *  `/v<N>/` build and the frozen root build at once, without touching
+ *  `/runtime/v<N>/` build and the frozen root build at once, without touching
  *  their otherwise-immutable snapshots (see scripts/stage_deploy.mjs). */
 export const MANAGED_BINARIES_PATH = '/managed-binaries.json'
 

@@ -14,6 +14,7 @@ import { spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 
 import { isMainModule } from './lib/isMainModule.mjs'
+import { versionTreeName } from './stage_deploy.mjs'
 import { zipDirectory, listFiles } from './lib/zip.mjs'
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
@@ -296,7 +297,7 @@ function main() {
   const sourceCommit = args['source-commit'] || gitHead()
   const runId = args['run-id'] ? String(args['run-id']) : ''
   const id = args['candidate-id'] || candidateId({ interfaceVersion, sourceCommit, runId })
-  const stagedName = `v${interfaceVersion}`
+  const stagedName = versionTreeName(interfaceVersion)
 
   const outDir = path.resolve(args.out)
   fs.rmSync(outDir, { recursive: true, force: true })
@@ -312,7 +313,7 @@ function main() {
   // in deploy/retained-interfaces.json, each the unzipped site/ of that
   // version's pinned release. stage_deploy checks the set against the config
   // (a configured version with no --legacy fails the stage) and copies only
-  // site/v<K>/ out of each.
+  // site/runtime/v<K>/ out of each.
   const legacySites = asList(args.legacy).map(entry => {
     const match = /^([1-9]\d*)=(.+)$/.exec(String(entry))
     if (!match) fail(`--legacy ${entry} is not <version>=<site dir>`)

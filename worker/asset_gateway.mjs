@@ -2,7 +2,7 @@
  * Contract: Cloudflare Worker in front of the static-assets deploy. Its one
  * job: error responses carry `Cache-Control: no-store`. `_headers` matches by
  * path only, so the `/*` catch-all's year-long max-age would land on 404s, and
- * a cached 404 for `/v<N>/index.html` bricks a client on that origin (the
+ * a cached 404 for `/runtime/v<N>/index.html` bricks a client on that origin (the
  * updater that could repair it runs only in a booted guest).
  *
  * Invoked only for requests no static asset matched (`run_worker_first`

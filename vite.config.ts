@@ -38,13 +38,13 @@ function resolvePagesBasePath(): string {
   }
 
   // Version-pinned production deploy (`npm run build:versioned`): the bundle
-  // is served under /v<N>/ where <N> is the bridge interface version baked
+  // is served under /runtime/v<N>/ where <N> is the bridge interface version baked
   // into this build — the path the binary derives from its own constant.
   // The base is derived from the SAME TS constant the runtime check uses,
   // so bundle content and serving path can never disagree by construction.
   // See G-3.
   if (process.env.VERSIONED_DEPLOY === '1') {
-    return `/v${NEXUS_INTERFACE_VERSION}/`
+    return `/runtime/v${NEXUS_INTERFACE_VERSION}/`
   }
 
   const repository = process.env.GITHUB_REPOSITORY

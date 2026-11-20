@@ -2,8 +2,8 @@
 // `npm run deploy:stage`. A deploy replaces the whole site, so what is not
 // staged here is not served (G-3).
 //   site/index.html             deploy/root-index.html (bare-origin landing page)
-//   site/v<N>/                  the current interface version, built fresh from src/
-//   site/v<K>/ (K < N)          retained versions, byte copies of the release pinned
+//   site/runtime/v<N>/          the current interface version, built fresh from src/
+//   site/runtime/v<K>/ (K < N)  retained versions, byte copies of the release pinned
 //                               in deploy/retained-interfaces.json (STAGE_LEGACY_SITES);
 //                               a configured version that is not supplied fails the stage
 //   site/managed-binaries.json  fleet-wide security-pin data; the guest's only
@@ -25,6 +25,19 @@ const deployDir = path.join(repoRoot, 'deploy')
 const siteDir = path.join(repoRoot, 'site')
 const publicDir = path.join(repoRoot, 'public')
 const retainedInterfacesPath = path.join(deployDir, 'retained-interfaces.json')
+
+/** The site-relative directory every interface version is served under. */
+export const RUNTIME_PATH = 'runtime'
+
+/** Site-relative name of one interface version's tree: `runtime/v<N>`. */
+export function versionTreeName(version) {
+  return `${RUNTIME_PATH}/v${version}`
+}
+
+// A baseline's `<root>/runtime/v<N>/assets` back to its site root.
+function siteRootOfAssets(assetsDir) {
+  return path.resolve(assetsDir, '..', '..', '..')
+}
 
 function fail(message) {
   console.error(`stage_deploy: ${message}`)
@@ -57,7 +70,7 @@ export function bundleBaseError(bundle) {
   const html = fs.readFileSync(indexPath, 'utf8')
   const expectedPrefix = `/${bundle.name}/assets/`
   if (!html.includes(expectedPrefix)) {
-    const found = /\/(v\d+)\/assets\//.exec(html)
+    const found = /\/((?:[a-z]+\/)?v\d+)\/assets\//.exec(html)
     return (
       `${indexPath} does not reference ${expectedPrefix} — the bundle was ` +
       (found
@@ -162,21 +175,22 @@ export function resolveLegacySites(env, entries, baselineRoots = []) {
         error:
           `interface v${version} is retained (pinned to ${release}) but ` +
           'STAGE_LEGACY_SITES supplies no site for it. Without it this deploy ' +
-          `drops /v${version}/ and every binary pinned to it 404s. Download the ` +
+          `drops /${versionTreeName(version)}/ and every binary pinned to it 404s. Download the ` +
           `release and pass ${version}=<unzipped>/site.`,
       }
     }
     if (baselines.has(siteDir)) {
       return {
         error:
-          `${siteDir} is passed both as the retained /v${version}/ tree and as a ` +
+          `${siteDir} is passed both as the retained /${versionTreeName(version)}/ tree and as a ` +
           'retention baseline of the current version — they are different inputs',
       }
     }
-    if (!fs.existsSync(path.join(siteDir, `v${version}`, 'index.html'))) {
+    if (!fs.existsSync(path.join(siteDir, versionTreeName(version), 'index.html'))) {
       return {
         error:
-          `STAGE_LEGACY_SITES v${version}=${siteDir} has no v${version}/index.html — ` +
+          `STAGE_LEGACY_SITES v${version}=${siteDir} has no ` +
+          `${versionTreeName(version)}/index.html — ` +
           `point it at the unzipped site/ of ${release}`,
       }
     }
@@ -186,14 +200,14 @@ export function resolveLegacySites(env, entries, baselineRoots = []) {
 }
 
 /**
- * Copy one retained version's tree verbatim, `<siteDir>/v<K>/` →
- * `<outSiteDir>/v<K>/`, including its build-info.json and b/<key>/ entries;
+ * Copy one retained version's tree verbatim, `<siteDir>/runtime/v<K>/` →
+ * `<outSiteDir>/runtime/v<K>/`, including its build-info.json and b/<key>/ entries;
  * the release's root files and _headers are not taken. Returns
  * `{ version, release, candidateId, files }` or `{ error }` (target already
- * staged, or a bundle base that is not /v<K>/assets/). Exported for tests.
+ * staged, or a bundle base that is not /runtime/v<K>/assets/). Exported for tests.
  */
 export function stageLegacyInterface(site, outSiteDir) {
-  const name = `v${site.version}`
+  const name = versionTreeName(site.version)
   const target = path.join(outSiteDir, name)
   if (fs.existsSync(target)) {
     return { error: `${target} is already staged — /${name}/ cannot be served twice` }
@@ -217,10 +231,10 @@ export function stageLegacyInterface(site, outSiteDir) {
 
 /**
  * The generated part of site/_headers: one immutable block per SERVED
- * version, current and retained alike — a retained /v<K>/ still has hashed
+ * version, current and retained alike — a retained /runtime/v<K>/ still has hashed
  * assets and per-build entries that must cache forever, or every legacy boot
  * re-downloads its whole bundle. Literal paths — Workers-assets placeholder
- * support isn't relied on. /v<N>/index.html deliberately falls through to the
+ * support isn't relied on. /runtime/v<N>/index.html deliberately falls through to the
  * catch-all (see public/_headers). Pure; exported for tests.
  */
 export function generatedHeaderBlocks(stagedNames) {
@@ -243,7 +257,7 @@ export function generatedHeaderBlocks(stagedNames) {
 }
 
 // Fresh `npm run build:versioned` of this checkout — the staged content for
-// the current version, and the only thing that ever ends up under /v<N>/.
+// the current version, and the only thing that ever ends up under /runtime/v<N>/.
 function buildCurrentDist() {
   const build = spawnSync(
     process.execPath, [path.join(repoRoot, 'scripts', 'build_versioned.mjs')],
@@ -343,19 +357,18 @@ function countFiles(dir) {
 /**
  * Stage this build's immutable entry: byte copies of index.html, mobile.html
  * (F-24) and assets-manifest.json under `v<N>/b/<buildKey>/`, buildKey derived
- * from the staged index.html's nexus-build-time meta. `/v<N>/index.html`
+ * from the staged index.html's nexus-build-time meta. `/runtime/v<N>/index.html`
  * changes bytes on a same-version redeploy; this URL names one build forever.
  * Chunks are not copied: the manifest's paths resolve against the version root
  * (manifestAssetBase.ts). Returns { key, entryPath }. Exported for tests.
  */
-export function stageBuildEntry(stagedDir) {
+export function stageBuildEntry(stagedDir, stagedName = path.basename(stagedDir)) {
   const indexPath = path.join(stagedDir, 'index.html')
   const key = readBuildKeyFromIndexHtml(fs.readFileSync(indexPath, 'utf8'))
   if (!key) {
     fail('index.html carries no valid nexus-build-time meta — cannot stage a ' +
          'build entry. Rebuild with buildTimeMetaPlugin (npm run build:versioned).')
   }
-  const stagedName = path.basename(stagedDir)
   const entryDir = path.join(stagedDir, 'b', key)
   fs.mkdirSync(entryDir, { recursive: true })
   for (const name of ['index.html', 'mobile.html', 'assets-manifest.json']) {
@@ -406,7 +419,7 @@ export function retainBaselineEntries(baselineRoot, stagedName, stagedDir) {
 
 /**
  * Assemble site/ from an already-built current dist plus the inputs main()
- * resolved: the fresh /v<N>/, its retention, the retained /v<K>/ trees, the
+ * resolved: the fresh /runtime/v<N>/, its retention, the retained /runtime/v<K>/ trees, the
  * root files, _headers and build-info.json. Separate from main() so tests run
  * a whole stage without vite. A legacy-tree problem throws. Returns
  * `{ stagedName, retained, retainedEntries, entry, legacy }`.
@@ -415,31 +428,30 @@ export function assembleSite({
   siteDir, distDir, currentVersion, rootIndexPath, publicDir,
   baselines = [], legacySites = [], buildInfoExtra = {},
 }) {
-  const stagedName = `v${currentVersion}`
+  const stagedName = versionTreeName(currentVersion)
   const stagedDir = path.join(siteDir, stagedName)
 
   fs.rmSync(siteDir, { recursive: true, force: true })
   fs.mkdirSync(siteDir, { recursive: true })
 
   fs.cpSync(distDir, stagedDir, { recursive: true })
-  // The fresh build must reference its own /v<N>/assets/ base.
+  // The fresh build must reference its own /runtime/v<N>/assets/ base.
   verifyBundleBase({ name: stagedName, dir: stagedDir })
   // Immutable per-build entry, staged from the fresh index.html BEFORE
   // retention touches anything (retention only ever ADDS files, so entry
   // bytes are the fresh build's own).
-  const entry = stageBuildEntry(stagedDir)
+  const entry = stageBuildEntry(stagedDir, stagedName)
   // Retain from EVERY baseline, in order (production first — on a same-path
   // collision the earlier baseline's bytes win, and production is earlier).
   // Each baseline contributes the assets/entries the fresh build lacks. Only
   // the CURRENT version's subtree of a baseline is read: a baseline release
-  // that itself carried a retained /v<K>/ donates nothing to it — retained
+  // that itself carried a retained /runtime/v<K>/ donates nothing to it — retained
   // trees come from their own pinned release below, never from a baseline.
   let retained = 0
   let retainedEntries = 0
   for (const b of baselines) {
-    // b.dir is .../site/v<N>/assets; retainBaselineEntries wants the site ROOT
-    // (it re-appends v<N>/b itself), so strip both segments.
-    const baselineRoot = path.dirname(path.dirname(b.dir))
+    // retainBaselineEntries wants the site ROOT (it re-appends runtime/v<N>/b).
+    const baselineRoot = siteRootOfAssets(b.dir)
     retained += retainBaselineAssets(b.dir, path.join(stagedDir, 'assets'))
     retainedEntries += retainBaselineEntries(baselineRoot, stagedName, stagedDir)
   }
@@ -457,12 +469,12 @@ export function assembleSite({
     if (result.error) throw new Error(result.error)
     legacy.push(result)
     console.log(
-      `stage_deploy: retained /v${result.version}/ verbatim from ${result.release} ` +
+      `stage_deploy: retained /${versionTreeName(result.version)}/ verbatim from ${result.release} ` +
       `(${result.files} files, candidate ${result.candidateId ?? 'unknown'})`)
   }
 
   // Served marker for checking a live deploy's provenance
-  // (curl https://.../v<N>/build-info.json). STAGE_BUILD_INFO merges the
+  // (curl https://.../runtime/v<N>/build-info.json). STAGE_BUILD_INFO merges the
   // candidate identity in; beta and production run the same artifact, so equal
   // candidateIds mean equal bytes. legacyInterfaces names the retained trees.
   fs.writeFileSync(path.join(stagedDir, 'build-info.json'), JSON.stringify({
@@ -496,23 +508,23 @@ export function assembleSite({
     path.join(siteDir, 'managed-binaries.json'))
 
   // _headers: current rules + one generated immutable block per SERVED
-  // version (current first, then each retained one). /v<N>/index.html
+  // version (current first, then each retained one). /runtime/v<N>/index.html
   // deliberately falls through to the year-max-age, s-maxage=0 catch-all so
   // same-version web fixes propagate via the background updater.
   fs.writeFileSync(
     path.join(siteDir, '_headers'),
     `${fs.readFileSync(path.join(publicDir, '_headers'), 'utf8').trimEnd()}\n\n` +
-    generatedHeaderBlocks([stagedName, ...legacy.map(l => `v${l.version}`)]))
+    generatedHeaderBlocks([stagedName, ...legacy.map(l => versionTreeName(l.version))]))
 
   return { stagedName, retained, retainedEntries, entry, legacy }
 }
 
 function main() {
   const currentVersion = readInterfaceVersion()
-  const stagedName = `v${currentVersion}`
+  const stagedName = versionTreeName(currentVersion)
 
   // Lives under deploy/, NOT public/: vite copies public/ verbatim into the
-  // bundle, so a landing page there would also ship as /v<N>/root-index.html.
+  // bundle, so a landing page there would also ship as /runtime/v<N>/root-index.html.
   const rootIndexPath = path.join(deployDir, 'root-index.html')
   if (!fs.existsSync(rootIndexPath)) {
     fail(`missing ${rootIndexPath} — the static landing page served at the ` +
@@ -530,7 +542,7 @@ function main() {
   if (config.error) fail(config.error)
   const legacy = resolveLegacySites(
     process.env.STAGE_LEGACY_SITES, config.entries,
-    baselines.map(b => path.dirname(path.dirname(b.dir))))
+    baselines.map(b => siteRootOfAssets(b.dir)))
   if (legacy.error) fail(legacy.error)
   if (config.entries.length === 0) {
     console.log(
@@ -558,7 +570,7 @@ function main() {
     fail(error.message)
   }
 
-  const retainedNames = result.legacy.map(l => `/v${l.version}/`)
+  const retainedNames = result.legacy.map(l => `/${versionTreeName(l.version)}/`)
   console.log(
     `stage_deploy: staged ${siteDir} — landing page + /${stagedName}/ ` +
     '(built fresh from src)' +

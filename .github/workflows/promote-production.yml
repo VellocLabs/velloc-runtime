@@ -182,13 +182,13 @@ jobs:
           fi
 
           unzip -q artifact/runtime.zip -d candidate
-          test -f "candidate/site/v$V/index.html"
+          test -f "candidate/site/runtime/v$V/index.html"
           test -f candidate/wrangler.toml
           # The bundle's baked-in asset base must match the path it will be
           # served at; a mismatch is a fleet-wide blank panel.
-          grep -q "/v$V/assets/" "candidate/site/v$V/index.html"
+          grep -q "/runtime/v$V/assets/" "candidate/site/runtime/v$V/index.html"
           # Every deploy replaces the whole site. A candidate from before an
-          # interface bump has no /v<newer>/ tree; promoting it (a pinned old
+          # interface bump has no /runtime/v<newer>/ tree; promoting it (a pinned old
           # run, or a beta build of an old ref) would 404 every binary on the
           # newer interface. Same floor as build-beta and rollback.
           NEWEST=$(gh release list --repo "$GITHUB_REPOSITORY" --limit 200 \
@@ -197,7 +197,7 @@ jobs:
                        | capture("^runtime-v(?<v>[0-9]+)-").v | tonumber]
                        | max // 0')
           if [ "$V" -lt "$NEWEST" ]; then
-            echo "::error::run $RUN_ID is interface v$V; production serves v$NEWEST — deploying it would drop /v$NEWEST/ and 404 every binary on it"
+            echo "::error::run $RUN_ID is interface v$V; production serves v$NEWEST — deploying it would drop /runtime/v$NEWEST/ and 404 every binary on it"
             exit 1
           fi
 
@@ -235,7 +235,7 @@ jobs:
         # step, so "beta is unreachable" and "beta disagrees" stay distinct.
         run: |
           set -uo pipefail
-          URL="$BETA_ORIGIN/v$V/build-info.json"
+          URL="$BETA_ORIGIN/runtime/v$V/build-info.json"
           LIVE=''
           for attempt in 1 2 3; do
             # s-maxage=0 already makes the edge revalidate; no-cache is belt
@@ -430,7 +430,7 @@ jobs:
             fi
             echo
             echo "Integrity verified: digests match, the manifest names this run,"
-            echo "the bundle's baked-in base is \`/v$V/assets/\`, and beta was"
+            echo "the bundle's baked-in base is \`/runtime/v$V/assets/\`, and beta was"
             echo "compared against this candidate rather than taken on trust."
             echo
             echo "Note what the cross-check cannot know: whether the candidate beta"
@@ -472,7 +472,7 @@ jobs:
             exit 1
           fi
           unzip -q artifact/runtime.zip -d candidate
-          grep -q "/v$V/assets/" "candidate/site/v$V/index.html"
+          grep -q "/runtime/v$V/assets/" "candidate/site/runtime/v$V/index.html"
           test -f candidate/wrangler.toml
 
       # Draft first: the release exists with its assets attached BEFORE
@@ -536,6 +536,6 @@ jobs:
             echo "| Source commit | \`$SOURCE_COMMIT\` |"
             echo "| runtime.zip SHA-256 | \`$DIGEST\` |"
             echo
-            echo "Verify: <https://app.velloc.app/v$V/build-info.json> must report"
+            echo "Verify: <https://app.velloc.app/runtime/v$V/build-info.json> must report"
             echo "\`candidateId: $CANDIDATE_ID\` — the same id beta served."
           } >> "$GITHUB_STEP_SUMMARY"

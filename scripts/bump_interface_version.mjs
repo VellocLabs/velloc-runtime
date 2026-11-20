@@ -3,7 +3,7 @@
 // src/custom_browser/VERSION, and regenerates interfaceVersion.gen.ts via
 // check_interface_version.py --sync. The VERSION edit is left uncommitted in
 // the browser repo; the ninja gate stays red until that commit lands.
-// Run it before the contract change, which ships at /v<N+1>/. (G-3)
+// Run it before the contract change, which ships at /runtime/v<N+1>/. (G-3)
 // A clean working tree is enforced because this script creates commits.
 import fs from 'node:fs'
 import path from 'node:path'
@@ -93,7 +93,7 @@ function main() {
   const to = from + 1
   console.log(`bump_interface_version: v${from} -> v${to}`)
   console.log('REMINDER: run this BEFORE the contract change — the contract ' +
-              `work itself lands AFTER this bump and ships at /v${to}/.`)
+              `work itself lands AFTER this bump and ships at /runtime/v${to}/.`)
 
   // Bump the single source (sibling src/custom_browser/VERSION) and
   // regenerate the committed TS artifact from it. There is no freeze step:
@@ -123,10 +123,10 @@ Done. The VERSION bump in ${cppVersionPath} is UNCOMMITTED. Next steps:
   2. Land it on main (author -> review -> merge). Pushing main deploys
      nothing.
   3. Run "A · Build & Deploy Beta" from main and soak
-     https://beta.velloc.app/v${to}/. It is the first /v${to}/ deploy, so it
+     https://beta.velloc.app/runtime/v${to}/. It is the first /runtime/v${to}/ deploy, so it
      correctly starts with no retention baseline.
   4. Run "B · Promote Production" with that run id and release tag
-     runtime-v${to}-<date>.1, then verify https://app.velloc.app/v${to}/
+     runtime-v${to}-<date>.1, then verify https://app.velloc.app/runtime/v${to}/
      loads standalone BEFORE shipping the binary.
   5. Commit the VERSION bump (+ contract change) in the browser repo —
      the paired commit; the ninja gate stays red until it lands. The C++

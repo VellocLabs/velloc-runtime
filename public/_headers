@@ -18,7 +18,7 @@
   Cache-Control: public, max-age=3600
   Content-Type: application/json
 
-# index.html and every other non-asset path (incl. each /v<N>/index.html,
+# index.html and every other non-asset path (incl. each /runtime/v<N>/index.html,
 # which deliberately falls through here — see scripts/stage_deploy.mjs).
 # max-age=31536000 means the browser treats the stored copy as fresh for
 # one year: every boot serves from cache instantly with ZERO network wait.
@@ -33,7 +33,7 @@
 # navigations, so the old max-age=0 + SWR strategy did not work as intended.
 #
 # Access-Control-Allow-Origin: the About page's update-channel picker probes
-# the OTHER channel's /v<N>/ with a cross-origin HEAD fetch
+# the OTHER channel's /runtime/v<N>/ with a cross-origin HEAD fetch
 # (channelServesThisVersion, src/branding/updateChannels.ts). Without this
 # header the browser blocks the response, the probe fails CLOSED, and the
 # other channel shows "Not available" even while it is serving that version —
@@ -55,18 +55,18 @@
   Cache-Control: public, max-age=31536000, s-maxage=0
 
 # THE ROOT LANDING PAGE ONLY (`/` — deploy/root-index.html). Static, tiny, and
-# never requested by a binary: every build pins itself to /v<N>/. It carries no
+# never requested by a binary: every build pins itself to /runtime/v<N>/. It carries no
 # background cache updater, so under the year max-age above a browser that
 # loaded `/` once would be stuck with that copy for a year and could never be
 # told anything new. Bounded max-age instead: still cached across quick
 # restarts, self-corrects within a day (s-maxage=0 keeps the edge fresh, so the
-# daily conditional GET always sees the newest copy). Every /v<N>/index.html
+# daily conditional GET always sees the newest copy). Every /runtime/v<N>/index.html
 # keeps the year strategy above — those bundles carry the updater. Specific
 # rules beat the `/*` catch-all regardless of position (live-verified
 # 2026-07-26: /product_logo_128.png serves its own 86400).
 #
 # (Until 2026-08-04 this served deploy/root-freeze/index.html, the frozen
-# pre-versioning build for binaries that predate /v<N>/. That fleet is gone
+# pre-versioning build for binaries that predate /runtime/v<N>/. That fleet is gone
 # along with nexus.velloc.app; the freeze and the staging logic carrying it
 # were removed with it.)
 /
