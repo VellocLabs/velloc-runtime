@@ -33,6 +33,22 @@ export function providerSettingsApp(
   return apps.find(app => app.appId === appId && app.plugin === plugin)
 }
 
+/** Where a picker's settings button goes for the selected provider: its published settings app, else its settings page, else the Models page. */
+export type ProviderSettingsTarget =
+  | { kind: 'app'; app: ContributedApp }
+  | { kind: 'page'; providerId: string }
+  | { kind: 'models' }
+
+export function providerSettingsTarget(
+  provider: { id: string; mod?: { settingsApp?: string; plugin?: string } } | undefined,
+  apps: readonly ContributedApp[] | undefined,
+  canOpenApps: boolean,
+): ProviderSettingsTarget {
+  if (!provider) return { kind: 'models' }
+  const app = canOpenApps ? providerSettingsApp(provider.mod?.settingsApp, provider.mod?.plugin, apps) : undefined
+  return app ? { kind: 'app', app } : { kind: 'page', providerId: provider.id }
+}
+
 /** True on the render a provider goes from not added to added: its settings app opens then. */
 export function addedJustNow(before: boolean | undefined, now: boolean): boolean {
   return before === false && now

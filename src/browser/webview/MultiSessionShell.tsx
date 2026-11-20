@@ -3094,71 +3094,73 @@ export function MultiSessionShell({
       }}
     >
       <ShellBackdrop shellTheme={shellTheme} modUi={themeModUi} sessionId={activeSessionId} />
-      <NexusTopBar
-        // Settings takes the whole window: its header replaces the topbar as
-        // the drag surface and caption reserve.
-        hidden={settingsSection !== null || customizeOpen}
-        sessionTabs={sessionTabs}
-        activeSessionId={activeSessionId}
-        // Switching tab IS switching session — that is the whole feature.
-        onSelectSessionTab={openSessionFromList}
-        catalog={orderedActiveCatalog}
-        selection={topbarSelection}
-        defaultSelection={globalDefaultSelection ?? browserDefaultSelection}
-        onSelectModel={handleTopbarSelectModel}
-        sessionKindLabel={activeCliSession ? getTemplateTitle(activeCliSession.type) : undefined}
-        modelPickerOpenToken={modelPickerOpenToken}
-        routeMember={routeMember}
-        onOpenSettings={handleOpenNexusSettings}
-        onOpenProviderSettings={handleOpenProviderSettings}
-        onPressPluginItem={runtimeConnection ? handlePressPluginItem : undefined}
-        onOpenApp={runtimeConnection ? handleOpenApp : undefined}
-        onAppSignIn={runtimeConnection && runtimeCapabilities.can('mcpAuth', 'signIn') ? handleAppSignIn : undefined}
-        appPress={runtimeConnection && runtimeCapabilities.can('mods', 'appPress') ? appPressPort : undefined}
-        shownAppType={shownAppType}
-        sidebarCollapsed={sidebarCollapsed || sidebarHidden}
-        onToggleSidebar={handleToggleSidebar}
-        searchSlot={
-          transcriptSearch.enabled ? (
-            <TopbarSearch
-              transport={hostBridgeTransport}
-              resolveHomeDir={resolveSearchHomeDir}
-              sessions={sessionItems}
-              activeSessionId={activeSessionId}
-              onJumpToMatch={handleSearchJump}
-              onOpenSession={handleSearchOpenSession}
-              openToken={transcriptSearch.openToken}
-            />
-          ) : undefined
-        }
-        onDragRegionsChange={handleDragRegionsChange}
-        openPanes={openPanes}
-        hasModPanes={modPanesDocked && shellModUi.panes.length > 0}
-        terminalAvailable={terminalsState?.available ?? true}
-        onTogglePane={togglePane}
-        paneAttention={sideChatPaneAttention}
-        paneKinds={activeCli ? CLI_SESSION_PANES : undefined}
-        sessionOverview={
-          activeCli
-            ? undefined
-            : {
-                shown:
-                  paneMaximized === null &&
-                  (sessionCardsFit ? sessionCardPrefs.shown : sessionCardsPopoverOpen),
-                onToggle: handleToggleSessionCards,
-              }
-        }
-        onResetLayout={handleResetLayout}
-        backgroundTaskCount={countRunning(activeSessionSubAgentRows)}
-        importSources={topbarImportSources}
-        onOpenImport={setImportDialogSource}
-        // Customize shows this window's native tab view: never on a remote client page.
-        onOpenCustomize={remoteHost !== undefined ? undefined : handleOpenCustomize}
-        remoteDeviceCount={remoteDeviceCount}
-        remoteConnect={remoteConnect}
-        remoteHost={remoteHost}
-        onRemoteLogOut={onRemoteLogOut}
-      />
+      <ProviderAppOpenerContext.Provider value={providerAppOpener}>
+        <NexusTopBar
+          // Settings takes the whole window: its header replaces the topbar as
+          // the drag surface and caption reserve.
+          hidden={settingsSection !== null || customizeOpen}
+          sessionTabs={sessionTabs}
+          activeSessionId={activeSessionId}
+          // Switching tab IS switching session — that is the whole feature.
+          onSelectSessionTab={openSessionFromList}
+          catalog={orderedActiveCatalog}
+          selection={topbarSelection}
+          defaultSelection={globalDefaultSelection ?? browserDefaultSelection}
+          onSelectModel={handleTopbarSelectModel}
+          sessionKindLabel={activeCliSession ? getTemplateTitle(activeCliSession.type) : undefined}
+          modelPickerOpenToken={modelPickerOpenToken}
+          routeMember={routeMember}
+          onOpenSettings={handleOpenNexusSettings}
+          onOpenProviderSettings={handleOpenProviderSettings}
+          onPressPluginItem={runtimeConnection ? handlePressPluginItem : undefined}
+          onOpenApp={runtimeConnection ? handleOpenApp : undefined}
+          onAppSignIn={runtimeConnection && runtimeCapabilities.can('mcpAuth', 'signIn') ? handleAppSignIn : undefined}
+          appPress={runtimeConnection && runtimeCapabilities.can('mods', 'appPress') ? appPressPort : undefined}
+          shownAppType={shownAppType}
+          sidebarCollapsed={sidebarCollapsed || sidebarHidden}
+          onToggleSidebar={handleToggleSidebar}
+          searchSlot={
+            transcriptSearch.enabled ? (
+              <TopbarSearch
+                transport={hostBridgeTransport}
+                resolveHomeDir={resolveSearchHomeDir}
+                sessions={sessionItems}
+                activeSessionId={activeSessionId}
+                onJumpToMatch={handleSearchJump}
+                onOpenSession={handleSearchOpenSession}
+                openToken={transcriptSearch.openToken}
+              />
+            ) : undefined
+          }
+          onDragRegionsChange={handleDragRegionsChange}
+          openPanes={openPanes}
+          hasModPanes={modPanesDocked && shellModUi.panes.length > 0}
+          terminalAvailable={terminalsState?.available ?? true}
+          onTogglePane={togglePane}
+          paneAttention={sideChatPaneAttention}
+          paneKinds={activeCli ? CLI_SESSION_PANES : undefined}
+          sessionOverview={
+            activeCli
+              ? undefined
+              : {
+                  shown:
+                    paneMaximized === null &&
+                    (sessionCardsFit ? sessionCardPrefs.shown : sessionCardsPopoverOpen),
+                  onToggle: handleToggleSessionCards,
+                }
+          }
+          onResetLayout={handleResetLayout}
+          backgroundTaskCount={countRunning(activeSessionSubAgentRows)}
+          importSources={topbarImportSources}
+          onOpenImport={setImportDialogSource}
+          // Customize shows this window's native tab view: never on a remote client page.
+          onOpenCustomize={remoteHost !== undefined ? undefined : handleOpenCustomize}
+          remoteDeviceCount={remoteDeviceCount}
+          remoteConnect={remoteConnect}
+          remoteHost={remoteHost}
+          onRemoteLogOut={onRemoteLogOut}
+        />
+      </ProviderAppOpenerContext.Provider>
       {/* The wire to the runtime is down (remote only): one
           overlay over the whole shell, with the countdown to the next try
           and a button to try now. Nothing at all while `ready`, which is
