@@ -78,3 +78,47 @@
     display: none;
   }
 }
+
+/* Table on the studio surface: drawn as the DataTable is, framed, with row
+   dividers from edge to edge and every column inset; a dialog the engine
+   draws outside the surface carries the overlay mark in its style (F-1). */
+.a2-surface-host .a2ui-std-table-wrap,
+.a2ui-surface[style*="--velloc-studio-overlay"] .a2ui-std-table-wrap {
+  background: linear-gradient(180deg, var(--a2-card-sheen), transparent 40%), var(--a2-surface);
+  border: 1px solid var(--a2-line);
+  border-radius: var(--a2-radius);
+  box-shadow: var(--a2-card-shadow);
+  overflow: hidden auto;
+}
+.a2-surface-host .a2ui-std-table,
+.a2ui-surface[style*="--velloc-studio-overlay"] .a2ui-std-table {
+  font-size: 13px;
+}
+.a2-surface-host .a2ui-std-cell,
+.a2ui-surface[style*="--velloc-studio-overlay"] .a2ui-std-cell,
+.a2-surface-host .a2ui-std-cell:first-child,
+.a2ui-surface[style*="--velloc-studio-overlay"] .a2ui-std-cell:first-child,
+.a2-surface-host .a2ui-std-cell:last-child,
+.a2ui-surface[style*="--velloc-studio-overlay"] .a2ui-std-cell:last-child {
+  height: 40px;
+  padding: 8px 16px;
+  font-size: 13px !important;
+  vertical-align: middle;
+}
+.a2-surface-host .a2ui-std-cell[data-divider],
+.a2ui-surface[style*="--velloc-studio-overlay"] .a2ui-std-cell[data-divider] {
+  border-bottom: 1px solid var(--a2-line);
+}
+.a2-surface-host .a2ui-std-table th.a2ui-std-cell,
+.a2ui-surface[style*="--velloc-studio-overlay"] .a2ui-std-table th.a2ui-std-cell {
+  height: 36px;
+  padding-block: 0;
+  font-size: 11.5px !important;
+  font-weight: 500 !important;
+  color: var(--muted-foreground) !important;
+  background: color-mix(in oklch, currentColor 1.5%, var(--a2-surface));
+}
+.a2-surface-host .a2ui-std-table tbody tr:hover > td.a2ui-std-cell,
+.a2ui-surface[style*="--velloc-studio-overlay"] .a2ui-std-table tbody tr:hover > td.a2ui-std-cell {
+  background: color-mix(in oklch, currentColor 2.5%, transparent);
+}

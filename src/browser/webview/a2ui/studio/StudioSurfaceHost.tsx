@@ -27,7 +27,10 @@ export type StudioEvent = {
 
 const THREAD = 'studio'
 
-const { dark: DARK_VARIABLES, ...LIGHT_VARIABLES } = studioTheme as Record<string, unknown> & { dark?: Record<string, unknown> }
+const { dark: DARK_VARIABLES, ...THEME_VARIABLES } = studioTheme as Record<string, unknown> & { dark?: Record<string, unknown> }
+/** Marks an overlay drawn outside the surface as a studio one, for studio.css. */
+export const STUDIO_OVERLAY_MARK = '--velloc-studio-overlay'
+const LIGHT_VARIABLES = { ...THEME_VARIABLES, [STUDIO_OVERLAY_MARK]: '1' }
 const DARK_THEME = { ...LIGHT_VARIABLES, ...DARK_VARIABLES }
 
 /**
