@@ -65,6 +65,9 @@ export type AppTemplate = {
   root?: string
   /** The plugin's id in the consent file (`<name>@<catalog>`); absent for a hand-placed plugin. */
   consentId?: string
+  /** A hand-placed plugin (a folder, not a catalog install): its seed is
+   *  compared with the app's folder at each press, not only on a new version. */
+  devSeed?: boolean
 }
 
 /** A published app with a background module or a script (F-40): the module and the plugin it belongs to. */
@@ -326,7 +329,7 @@ export class ModUiContributionsHost {
       decl,
       seedDir: insideRoot(owner.path, decl.seed),
       root: owner.path,
-      ...(owner.source.startsWith(MARKETPLACE_SOURCE) ? { consentId: owner.source.slice(MARKETPLACE_SOURCE.length) } : {}),
+      ...(owner.source.startsWith(MARKETPLACE_SOURCE) ? { consentId: owner.source.slice(MARKETPLACE_SOURCE.length) } : { devSeed: true }),
     }
   }
 

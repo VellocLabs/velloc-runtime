@@ -25,6 +25,9 @@ export type AppSeedRequest = {
   appId: string
   plugin: string
   seedVersion: number
+  /** Compare every file with the seed even when the folder already holds this
+   *  version: a hand-placed plugin's seed is edited in place (F-40). */
+  everyOpen?: boolean
 }
 
 export type AppSeedResult = {
@@ -120,7 +123,7 @@ export function seedAppFolder(request: AppSeedRequest): Promise<AppSeedResult> {
   return run
 }
 
-async function seedNow({ fs, seedDir, appDir, appId, plugin, seedVersion }: AppSeedRequest): Promise<AppSeedResult> {
+async function seedNow({ fs, seedDir, appDir, appId, plugin, seedVersion, everyOpen }: AppSeedRequest): Promise<AppSeedResult> {
   const recordPath = joinRuntimePath(appDir, ...APP_RECORD_PATH.split('/'))
   let recordText: string | undefined
   try {
@@ -130,7 +133,8 @@ async function seedNow({ fs, seedDir, appDir, appId, plugin, seedVersion }: AppS
   }
   const record = readRecord(recordText)
   if (record && record.plugin !== plugin) throw new AppSeedError(`the folder belongs to the plugin ${record.plugin}`)
-  if (record && record.seedVersion >= seedVersion) return { version: record.seedVersion, written: [], conflicts: [] }
+  if (record && record.seedVersion >= seedVersion && !everyOpen) return { version: record.seedVersion, written: [], conflicts: [] }
+  const version = Math.max(seedVersion, record?.seedVersion ?? 0)
 
   const files = await listSeed(fs, seedDir)
   const written: string[] = []
@@ -166,7 +170,8 @@ async function seedNow({ fs, seedDir, appDir, appId, plugin, seedVersion }: AppS
     }
   }
   await fs.mkdir(joinRuntimePath(appDir, '.velloc'))
-  const next: AppRecord = { appId, plugin, seedVersion, files: { ...record?.files, ...hashes } }
+  const next: AppRecord = { appId, plugin, seedVersion: version, files: { ...record?.files, ...hashes } }
   await fs.writeFile(recordPath, `${JSON.stringify(next, null, 2)}\n`, { encoding: 'utf-8' })
-  return { version: seedVersion, ...(record ? { upgradedFrom: record.seedVersion } : {}), written, conflicts }
+  const upgraded = record && record.seedVersion < version ? { upgradedFrom: record.seedVersion } : {}
+  return { version, ...upgraded, written, conflicts }
 }

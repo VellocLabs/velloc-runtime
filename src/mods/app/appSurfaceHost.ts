@@ -21,7 +21,7 @@ import type {
 } from '../../browser/runtimeProtocol/modApps'
 import { blockSurfaceIds, hasA2uiBlock, splitA2uiText } from '../../toolkit/builtin/a2ui/express/a2uiBlocks'
 import { dispatchAppAction, type AppActionDispatch } from './appActionBus'
-import { hashOf, SEED_MAX_FILE_BYTES } from './appSeed'
+import { hashOf, seedAppFolder, SEED_MAX_FILE_BYTES, type AppSeedFs } from './appSeed'
 import type { AppSessionInfo } from './appSession'
 import { liveAppState, onAppState, type AppStateEvent, type AppStateSnapshot } from './appStateBus'
 import { setAppActor, setAppBuilder, setAppSurfaceState, type AppActor } from './appSurfaceRegistry'
@@ -39,6 +39,8 @@ export type AppEntryCompile = (body: string) => Promise<{ ok: true; surfaceIds: 
 
 export type AppSurfaceHostOptions = {
   fs: Pick<RuntimeFs, 'readFileBytes' | 'stat'>
+  /** Writes the app's folder when a hand-placed plugin's seed is read again at a press (`app.devSeedDir`). Absent: never. */
+  seedFs?: AppSeedFs
   app: AppSessionInfo
   sessionId: string
   /** Compiles an entry body; defaults to the runtime's Express compiler. */
@@ -367,16 +369,32 @@ export function createAppSurfaceHost(options: AppSurfaceHostOptions): AppSurface
     },
   }) as ToolContract<Record<string, never>, string>
 
+  /** A hand-placed plugin's edited seed reaches the folder at the next press; files the person edited are kept. */
+  const reseed = async (): Promise<void> => {
+    if (!app.devSeedDir || !options.seedFs) return
+    await seedAppFolder({
+      fs: options.seedFs,
+      seedDir: app.devSeedDir,
+      appDir: app.folder,
+      appId: app.appId,
+      plugin: app.plugin,
+      seedVersion: app.decl.seedVersion,
+      everyOpen: true,
+    }).catch(() => undefined)
+  }
+
   const action = async (name: string, context: unknown): Promise<ModsAppActionResult> => {
     if (disposed || !localActions.includes(name)) return { handled: false }
     acting += 1
     emit()
     try {
+      if (app.devSeedDir && options.seedFs) await reseed()
       return { handled: (await dispatchAction(app.appId, name, context, sessionId)) === true }
     } catch {
       return { handled: false }
     } finally {
       acting -= 1
+      if (app.devSeedDir && options.seedFs) await buildIfChanged().catch(() => undefined)
       emit()
     }
   }

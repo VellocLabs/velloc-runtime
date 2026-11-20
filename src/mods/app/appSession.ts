@@ -21,6 +21,8 @@ export type AppSessionInfo = {
   seed: AppSeedResult
   /** The plugin's directory, absolute: where its language files are. */
   root?: string
+  /** Set for a hand-placed plugin: where its seed is read again at each press. */
+  devSeedDir?: string
 }
 
 export async function openAppFolder(args: {
@@ -43,7 +45,15 @@ export async function openAppFolder(args: {
       plugin: app.plugin,
       seedVersion: app.decl.seedVersion,
     })
-    return { appId: app.appId, plugin: app.plugin, folder, decl: app.decl, seed, ...(app.root !== undefined ? { root: app.root } : {}) }
+    return {
+      appId: app.appId,
+      plugin: app.plugin,
+      folder,
+      decl: app.decl,
+      seed,
+      ...(app.root !== undefined ? { root: app.root } : {}),
+      ...(app.devSeed ? { devSeedDir: app.seedDir } : {}),
+    }
   } catch (error) {
     const reason = error instanceof Error ? error.message : String(error)
     throw new PluginTemplateUnavailableError('plugin_app_seed', `The app ${app.appId} could not set up its folder: ${reason}`)

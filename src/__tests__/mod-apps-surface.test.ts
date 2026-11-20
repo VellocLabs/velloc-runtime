@@ -441,6 +441,70 @@ describe("a local action of the person's", () => {
     expect(offered).toHaveLength(2)
   })
 
+  it('a hand-placed plugin\'s press copies its edited seed into the folder and rebuilds the page; a catalog one does not', async () => {
+    const SEED_DIR = 'C:/plugins/pay/app'
+    const store = new Map<string, Uint8Array>()
+    const enc = new TextEncoder()
+    store.set(`${SEED_DIR}/app.a2ui`, enc.encode(BOARD))
+    let clock = 1000
+    const mtimes = new Map<string, number>()
+    const fs = {
+      readFile: async (path: string) => new TextDecoder().decode(store.get(slash(path)) ?? (() => { throw new Error(`ENOENT ${path}`) })()),
+      readFileBytes: async (path: string) => {
+        const bytes = store.get(slash(path))
+        if (!bytes) throw Object.assign(new Error(`ENOENT ${path}`), { code: 'ENOENT' })
+        return bytes
+      },
+      writeFile: async (path: string, data: string | Uint8Array) => {
+        store.set(slash(path), typeof data === 'string' ? enc.encode(data) : data)
+        mtimes.set(slash(path), ++clock)
+      },
+      mkdir: async () => undefined,
+      stat: async (path: string) => {
+        const bytes = store.get(slash(path))
+        if (!bytes) throw Object.assign(new Error(`ENOENT ${path}`), { code: 'ENOENT' })
+        return { isFile: () => true, isDirectory: () => false, size: bytes.length, mtimeMs: mtimes.get(slash(path)) ?? 1000 } as never
+      },
+      readdir: async (path: string) =>
+        [...store.keys()]
+          .filter(file => file.startsWith(`${slash(path)}/`) && !file.slice(slash(path).length + 1).includes('/'))
+          .map(file => ({ name: file.slice(slash(path).length + 1), isFile: () => true, isDirectory: () => false, isSymbolicLink: () => false })),
+      realpath: async (path: string) => path,
+    }
+    const { seedAppFolder } = await import('../mods/app/appSeed')
+    const seeded = await seedAppFolder({ fs: fs as never, seedDir: SEED_DIR, appDir: FOLDER, appId: 'pay-board', plugin: 'pay', seedVersion: 1 })
+    const make = (devSeedDir?: string) =>
+      createAppSurfaceHost({
+        fs: fs as never,
+        seedFs: fs as never,
+        app: { ...app({ localActions: ['refresh'] }), seed: seeded, ...(devSeedDir ? { devSeedDir } : {}) },
+        sessionId: 's-dev',
+        compile,
+        publish: () => undefined,
+        registerBuild: () => () => true,
+        registerActor: () => () => true,
+        dispatchAction: async () => true,
+      })
+    const catalog = make()
+    await catalog.start()
+    store.set(`${SEED_DIR}/app.a2ui`, enc.encode(`${BOARD}\nsurface("refunds")\nroot = Text("Refunds")`))
+    compiled.length = 0
+    await catalog.action('refresh', null)
+    expect(new TextDecoder().decode(store.get(`${FOLDER}/app.a2ui`))).toBe(BOARD)
+    expect(compiled).toEqual([])
+    catalog.dispose()
+    const local = make(SEED_DIR)
+    await local.start()
+    compiled.length = 0
+    await expect(local.action('refresh', null)).resolves.toEqual({ handled: true })
+    expect(new TextDecoder().decode(store.get(`${FOLDER}/app.a2ui`))).toContain('Refunds')
+    expect(compiled).toHaveLength(1)
+    // Nothing changed: the next press builds nothing.
+    await local.action('refresh', null)
+    expect(compiled).toHaveLength(1)
+    local.dispose()
+  })
+
   it('the defaults are the realm registry: mods.appAction reaches the session that is open, and no other', async () => {
     const disk = memoryFs({ 'app.a2ui': BOARD })
     const host = createAppSurfaceHost({

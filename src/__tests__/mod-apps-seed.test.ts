@@ -148,6 +148,24 @@ describe('the seed copy', () => {
     expect(text(`${APP}/dashboard.a2ui`)).toContain('mine')
   })
 
+  it('a hand-placed plugin\'s seed reaches the folder at every open, edited files kept, version unchanged', async () => {
+    const { fs, files, text } = memoryFs(seedFiles)
+    await seedAppFolder(request(fs, 3))
+    files.set(`${APP}/AGENTS.md`, enc.encode('my own notes'))
+    files.set(`${SEED}/dashboard.a2ui`, enc.encode('surface("dashboard")\nroot = Text("edited")\n'))
+    files.set(`${SEED}/AGENTS.md`, enc.encode('seed notes, edited'))
+    const again = await seedAppFolder({ ...request(fs, 3), everyOpen: true })
+    expect(again).toEqual({ version: 3, written: ['dashboard.a2ui'], conflicts: ['AGENTS.md'] })
+    expect(text(`${APP}/dashboard.a2ui`)).toContain('edited')
+    expect(text(`${APP}/AGENTS.md`)).toBe('my own notes')
+    expect(JSON.parse(text(`${APP}/.velloc/app.json`)!).seedVersion).toBe(3)
+    // A lower declared version never lowers the record.
+    expect((await seedAppFolder({ ...request(fs, 1), everyOpen: true })).version).toBe(3)
+    // Without the flag the same version still writes nothing.
+    files.set(`${SEED}/dashboard.a2ui`, enc.encode('surface("dashboard")\nroot = Text("again")\n'))
+    expect((await seedAppFolder(request(fs, 3))).written).toEqual([])
+  })
+
   it('a folder that already holds a different file keeps it as a conflict', async () => {
     const { fs, text } = memoryFs({ ...seedFiles, [`${APP}/AGENTS.md`]: 'Written by hand.' })
     expect((await seedAppFolder(request(fs))).conflicts).toEqual(['AGENTS.md'])
@@ -255,6 +273,13 @@ describe('the host\'s app lookup', () => {
     await contributions.sync({ enabled: [appPlugin('pay', 'board')] })
     expect(contributions.appOf('pay:board')).toEqual({ appId: 'pay-board', plugin: 'pay', decl: APP_DECL, seedDir: '/plugins/pay/app', root: '/plugins/pay', consentId: 'pay@mkt' })
     expect(contributions.appOf('pay:other')).toBeUndefined()
+    // A hand-placed copy of the plugin compares its seed at each press.
+    const local = { ...appPlugin('pay', 'board'), source: 'user:/plugins/pay' }
+    delete (local as { installIdentifier?: string }).installIdentifier
+    const own = host({ '/plugins/pay/templates/board/template.md': TEMPLATE_MD.replace('TYPE', 'pay:board') })
+    await own.sync({ enabled: [local] })
+    expect(own.appOf('pay:board')).toMatchObject({ devSeed: true, seedDir: '/plugins/pay/app' })
+    expect(own.appOf('pay:board')?.consentId).toBeUndefined()
     const opened = await openPluginTemplate('pay:board', contributions)
     expect(opened.app?.appId).toBe('pay-board')
   })
