@@ -1184,7 +1184,7 @@ export function ModelsSection({
       beginCreate("opencode-zen");
       return;
     }
-    openProvider(value);
+    openRouterApp(value, openEditor, true);
   };
   const openProvider = (id: string) => openRouterApp(id, openEditor);
 

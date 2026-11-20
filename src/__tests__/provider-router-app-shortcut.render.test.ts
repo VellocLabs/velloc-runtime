@@ -180,3 +180,39 @@ describe('without a published app the editor stays', () => {
     expect(open).not.toHaveBeenCalled()
   })
 })
+
+/** The same provider as a plain gateway: not a router, keyless or key-only. */
+function gatewayRow(credentialMethods: string[]): BrowserLlmProvider {
+  const row = routerRow('switch-console')
+  const { kind: _kind, routesTo: _routesTo, ...mod } = row.mod as unknown as Record<string, unknown>
+  return { ...row, mod: { ...mod, credentialMethods } } as unknown as BrowserLlmProvider
+}
+
+describe('a provider that is not a router, with a published app', () => {
+  it('keyless, picked from the Add menu: added by its keyless entry, then the app opens', async () => {
+    act(() => setModContributions(APPS))
+    const { open, upserts } = mount({}, gatewayRow(['anonymous']))
+    await pickFromAddMenu()
+    await waitFor(() => expect(open).toHaveBeenCalledTimes(1))
+    expect(open.mock.calls[0]![0]).toMatchObject({ appId: 'switch-console', plugin: 'switch' })
+    expect(upserts).toEqual([expect.objectContaining({ source: 'mod', credentialMode: 'anonymous' })])
+    expect(screen.queryByTestId('mod-provider-editor')).toBeNull()
+  })
+
+  it('needing a key, picked from the Add menu: the editor opens, nothing is stored', async () => {
+    act(() => setModContributions(APPS))
+    const { open, upserts } = mount({}, gatewayRow(['apiKey']))
+    await pickFromAddMenu()
+    expect(await screen.findByTestId('mod-provider-editor')).toBeTruthy()
+    expect(open).not.toHaveBeenCalled()
+    expect(upserts).toEqual([])
+  })
+
+  it("already added, its row's settings button opens the editor", async () => {
+    act(() => setModContributions(APPS))
+    const { open } = mount({ [ROUTER]: ANON }, gatewayRow(['anonymous']))
+    fireEvent.click(await screen.findByTestId(`models-provider-settings-${ROUTER}`))
+    expect(await screen.findByTestId('mod-provider-editor')).toBeTruthy()
+    expect(open).not.toHaveBeenCalled()
+  })
+})
