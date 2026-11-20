@@ -566,6 +566,12 @@ export const en = {
   'providerIssue.egressUnsupported.title': 'Provider proxy not supported',
   'providerIssue.egressUnsupported.summary':
     'This provider sends its requests through a proxy it declares, and this version of {product} cannot do that, so the request was not sent. Update {product}, or choose another provider.',
+  'providerIssue.routerUnlisted.title': 'Router has no routes yet',
+  'providerIssue.routerUnlisted.summary':
+    'This router has not listed its routes yet, so {product} had nothing to send this request to, and nothing was sent. Wait a moment for the router to list its routes, then choose Try again. If it keeps happening, open the router’s settings.',
+  'providerIssue.routerListingFailed.title': 'Router could not list its routes',
+  'providerIssue.routerListingFailed.summary':
+    'This router’s last attempt to list its routes failed, so {product} had nothing to send this request to, and nothing was sent. Check the router’s settings and its connection, then choose Try again.',
   'providerIssue.rawStream.egressInvalid.summary':
     'The provider sends this request through a proxy that {product} cannot use here, so the request was not sent. Choose a different proxy in the provider settings, or update {product}.',
   'providerIssue.rawStream.egressUnavailable.summary':

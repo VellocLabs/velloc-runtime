@@ -530,6 +530,12 @@ export const zh: Messages = {
   'providerIssue.egressUnsupported.title': '不支持服务商的代理',
   'providerIssue.egressUnsupported.summary':
     '此服务商通过其声明的代理发送请求，而此版本的 {product} 不支持，因此请求未发送。请更新 {product}，或选择其他服务商。',
+  'providerIssue.routerUnlisted.title': '路由器尚无路由',
+  'providerIssue.routerUnlisted.summary':
+    '此路由器尚未列出其路由，因此 {product} 没有可发送此请求的目标，未发送任何内容。请稍等路由器列出路由，然后选择“重试”。如果反复出现，请打开路由器的设置。',
+  'providerIssue.routerListingFailed.title': '路由器无法列出其路由',
+  'providerIssue.routerListingFailed.summary':
+    '此路由器最近一次列出路由失败，因此 {product} 没有可发送此请求的目标，未发送任何内容。请检查路由器的设置和连接，然后选择“重试”。',
   'providerIssue.rawStream.egressInvalid.summary':
     '此服务商通过 {product} 在此无法使用的代理发送请求，因此请求未发送。请在服务商设置中选择其他代理，或更新 {product}。',
   'providerIssue.rawStream.egressUnavailable.summary':

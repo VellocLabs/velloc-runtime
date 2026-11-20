@@ -537,6 +537,12 @@ export const de: Messages = {
   'providerIssue.egressUnsupported.title': 'Proxy des Anbieters nicht unterstützt',
   'providerIssue.egressUnsupported.summary':
     'Dieser Anbieter sendet seine Anfragen über einen von ihm angegebenen Proxy, und diese Version von {product} kann das nicht. Die Anfrage wurde daher nicht gesendet. Aktualisieren Sie {product} oder wählen Sie einen anderen Anbieter.',
+  'providerIssue.routerUnlisted.title': 'Router hat noch keine Routen',
+  'providerIssue.routerUnlisted.summary':
+    'Dieser Router hat seine Routen noch nicht aufgelistet. {product} hatte daher kein Ziel für diese Anfrage, und es wurde nichts gesendet. Warten Sie einen Moment, bis der Router seine Routen auflistet, und wählen Sie dann „Erneut versuchen“. Wenn es weiter passiert, öffnen Sie die Einstellungen des Routers.',
+  'providerIssue.routerListingFailed.title': 'Router konnte seine Routen nicht auflisten',
+  'providerIssue.routerListingFailed.summary':
+    'Der letzte Versuch dieses Routers, seine Routen aufzulisten, ist fehlgeschlagen. {product} hatte daher kein Ziel für diese Anfrage, und es wurde nichts gesendet. Prüfen Sie die Einstellungen und die Verbindung des Routers und wählen Sie dann „Erneut versuchen“.',
   'providerIssue.rawStream.egressInvalid.summary':
     'Dieser Anbieter leitet die Anfrage über einen Proxy, den {product} hier nicht verwenden kann. Die Anfrage wurde daher nicht gesendet. Wählen Sie in den Einstellungen des Anbieters einen anderen Proxy oder aktualisieren Sie {product}.',
   'providerIssue.rawStream.egressUnavailable.summary':

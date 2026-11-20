@@ -538,6 +538,12 @@ export const es: Messages = {
   'providerIssue.egressUnsupported.title': 'Proxy del proveedor no compatible',
   'providerIssue.egressUnsupported.summary':
     'Este proveedor envía sus solicitudes a través de un proxy que declara, y esta versión de {product} no puede hacerlo, así que la solicitud no se envió. Actualiza {product} o elige otro proveedor.',
+  'providerIssue.routerUnlisted.title': 'El enrutador aún no tiene rutas',
+  'providerIssue.routerUnlisted.summary':
+    'Este enrutador aún no ha listado sus rutas, así que {product} no tenía adónde enviar esta solicitud y no se envió nada. Espera un momento a que el enrutador liste sus rutas y elige Reintentar. Si sigue ocurriendo, abre la configuración del enrutador.',
+  'providerIssue.routerListingFailed.title': 'El enrutador no pudo listar sus rutas',
+  'providerIssue.routerListingFailed.summary':
+    'El último intento de este enrutador de listar sus rutas falló, así que {product} no tenía adónde enviar esta solicitud y no se envió nada. Revisa la configuración y la conexión del enrutador y elige Reintentar.',
   'providerIssue.rawStream.egressInvalid.summary':
     'Este proveedor envía la solicitud a través de un proxy que {product} no puede usar aquí, así que la solicitud no se envió. Elige otro proxy en los ajustes del proveedor o actualiza {product}.',
   'providerIssue.rawStream.egressUnavailable.summary':

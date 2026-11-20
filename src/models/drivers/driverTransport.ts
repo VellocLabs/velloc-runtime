@@ -21,6 +21,8 @@ import type { ProviderSpec } from './driverTypes'
 import { providerRouterBoundsFor, providerRouterFor } from './providerRouter'
 import { shareRouteCall } from './providerRouteCall'
 import { routeCall } from './providerRouteResolution'
+import { routerRoutesProblem } from './runtimeProviders'
+import { getProviderDefinition } from '../../config/nexusModelConfig/providers'
 
 
 type Envelope = { id: string; route: unknown; ok: boolean; result?: unknown; error?: unknown }
@@ -107,6 +109,17 @@ export function withModelProviders(
       const router = request.providerId ? providerRouterFor(request.providerId) : undefined
       const bounds = request.providerId ? providerRouterBoundsFor(request.providerId) : undefined
       if (router && bounds && request.providerId) {
+        // A router with no listed route has nothing to send to: refused
+        // before the router is asked, with a reason the conversation names.
+        if (getProviderDefinition(request.providerId)?.router === true) {
+          const problem = routerRoutesProblem(request.providerId)
+          if (problem === 'listing_failed') {
+            throw new ProviderConfigError(`router_listing_failed: the router ${request.providerId} could not list its routes`)
+          }
+          if (problem === 'unlisted') {
+            throw new ProviderConfigError(`router_unlisted: the router ${request.providerId} has not listed its routes yet`)
+          }
+        }
         const opened = host.startRouted(routeCall(request.providerId, router, bounds, request, { runtimeConfig, providerFor, logVia: transport }))
         return action === 'call'
           ? { result: await readBlockingStream(host, opened.streamId, request) }

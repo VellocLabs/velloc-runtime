@@ -329,6 +329,24 @@ function classifyPlatformIssue(value: unknown): PlatformIssue | null {
     }
   }
 
+  // A router with no listed route: nothing was sent. Its listing failed, or
+  // has not arrived yet.
+  const routerProblem = /^(?:provider_error:\s*)?router_(listing_failed|unlisted):/.exec(text)
+  if (status === undefined && routerProblem) {
+    const failed = routerProblem[1] === 'listing_failed'
+    return {
+      kind: 'configuration',
+      error: 'invalid_request',
+      titleKey: failed ? 'providerIssue.routerListingFailed.title' : 'providerIssue.routerUnlisted.title',
+      summaryKey: failed ? 'providerIssue.routerListingFailed.summary' : 'providerIssue.routerUnlisted.summary',
+      retryable: false,
+      settingsRecommended: true,
+      detail,
+      status,
+      retryAfterMs,
+    }
+  }
+
   // The provider routes this request through a proxy the host cannot use:
   // nothing was sent, and resending cannot help on this version.
   if (/\bEGRESS_UNSUPPORTED:/.test(detail)) {

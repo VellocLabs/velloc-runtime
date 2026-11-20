@@ -533,6 +533,12 @@ export const ja: Messages = {
   'providerIssue.egressUnsupported.title': 'プロバイダのプロキシに対応していません',
   'providerIssue.egressUnsupported.summary':
     'このプロバイダは自身が宣言したプロキシ経由でリクエストを送りますが、このバージョンの {product} はそれに対応していないため、リクエストは送信されませんでした。{product} を更新するか、別のプロバイダを選んでください。',
+  'providerIssue.routerUnlisted.title': 'ルーターにまだルートがありません',
+  'providerIssue.routerUnlisted.summary':
+    'このルーターはまだルートを一覧にしていないため、{product} にはこのリクエストの送り先がなく、何も送信されませんでした。ルーターがルートを一覧にするまで少し待ってから「再試行」を選んでください。繰り返し起きる場合は、ルーターの設定を開いてください。',
+  'providerIssue.routerListingFailed.title': 'ルーターがルートを一覧にできませんでした',
+  'providerIssue.routerListingFailed.summary':
+    'このルーターの直近のルート一覧の取得に失敗したため、{product} にはこのリクエストの送り先がなく、何も送信されませんでした。ルーターの設定と接続を確認してから「再試行」を選んでください。',
   'providerIssue.rawStream.egressInvalid.summary':
     'このプロバイダは、{product} がここでは使えないプロキシ経由でリクエストを送るため、リクエストは送信されませんでした。プロバイダの設定で別のプロキシを選ぶか、{product} を更新してください。',
   'providerIssue.rawStream.egressUnavailable.summary':

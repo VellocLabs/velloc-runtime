@@ -536,6 +536,12 @@ export const fr: Messages = {
   'providerIssue.egressUnsupported.title': 'Proxy du fournisseur non pris en charge',
   'providerIssue.egressUnsupported.summary':
     'Ce fournisseur envoie ses requêtes par un proxy qu’il déclare, et cette version de {product} ne sait pas le faire : la requête n’a donc pas été envoyée. Mettez à jour {product} ou choisissez un autre fournisseur.',
+  'providerIssue.routerUnlisted.title': 'Le routeur n’a pas encore de routes',
+  'providerIssue.routerUnlisted.summary':
+    'Ce routeur n’a pas encore listé ses routes : {product} n’avait donc nulle part où envoyer cette requête, et rien n’a été envoyé. Attendez un instant que le routeur liste ses routes, puis choisissez Réessayer. Si cela se reproduit, ouvrez les paramètres du routeur.',
+  'providerIssue.routerListingFailed.title': 'Le routeur n’a pas pu lister ses routes',
+  'providerIssue.routerListingFailed.summary':
+    'La dernière tentative de ce routeur pour lister ses routes a échoué : {product} n’avait donc nulle part où envoyer cette requête, et rien n’a été envoyé. Vérifiez les paramètres et la connexion du routeur, puis choisissez Réessayer.',
   'providerIssue.rawStream.egressInvalid.summary':
     'Ce fournisseur fait passer la requête par un proxy que {product} ne peut pas utiliser ici : la requête n’a donc pas été envoyée. Choisissez un autre proxy dans les réglages du fournisseur ou mettez à jour {product}.',
   'providerIssue.rawStream.egressUnavailable.summary':

@@ -530,6 +530,12 @@ export const ko: Messages = {
   'providerIssue.egressUnsupported.title': '제공업체 프록시를 지원하지 않음',
   'providerIssue.egressUnsupported.summary':
     '이 제공업체는 직접 선언한 프록시를 통해 요청을 보내는데, 이 버전의 {product}은(는) 이를 지원하지 않아 요청을 보내지 않았습니다. {product}을(를) 업데이트하거나 다른 제공업체를 선택하세요.',
+  'providerIssue.routerUnlisted.title': '라우터에 아직 경로가 없음',
+  'providerIssue.routerUnlisted.summary':
+    '이 라우터가 아직 경로를 나열하지 않아 {product}이(가) 이 요청을 보낼 곳이 없었고, 아무것도 보내지 않았습니다. 라우터가 경로를 나열할 때까지 잠시 기다린 뒤 다시 시도를 선택하세요. 계속 발생하면 라우터 설정을 여세요.',
+  'providerIssue.routerListingFailed.title': '라우터가 경로를 나열하지 못함',
+  'providerIssue.routerListingFailed.summary':
+    '이 라우터의 마지막 경로 나열 시도가 실패해 {product}이(가) 이 요청을 보낼 곳이 없었고, 아무것도 보내지 않았습니다. 라우터 설정과 연결을 확인한 뒤 다시 시도를 선택하세요.',
   'providerIssue.rawStream.egressInvalid.summary':
     '이 제공업체가 {product}에서 사용할 수 없는 프록시로 요청을 보내므로 요청을 보내지 않았습니다. 제공업체 설정에서 다른 프록시를 선택하거나 {product}을(를) 업데이트하세요.',
   'providerIssue.rawStream.egressUnavailable.summary':

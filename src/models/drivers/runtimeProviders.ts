@@ -673,6 +673,16 @@ function toCatalogModel(info: ProviderModelInfo): BrowserLlmModel {
 }
 
 /**
+ * Why a router has no route to offer (F-27): `listing_failed` when its last
+ * listing fetch failed, `unlisted` when no listing has arrived yet; undefined
+ * once it lists at least one usable route.
+ */
+export function routerRoutesProblem(providerId: string): 'unlisted' | 'listing_failed' | undefined {
+  if (usableModels(providerId).length > 0) return undefined
+  return failures.has(providerId) ? 'listing_failed' : 'unlisted'
+}
+
+/**
  * A router's row (F-27): every model of its latest listing, as listed. A
  * router's models are its own routes, so nothing is picked by hand and a
  * renamed route reads by its new name. `entryFamilies: []` keeps the rows out
