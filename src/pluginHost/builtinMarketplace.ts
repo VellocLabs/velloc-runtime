@@ -31,8 +31,8 @@ export const BUILTIN_MARKETPLACE_SOURCE = {
   url: `${BUILTIN_MARKETPLACE_ORIGIN_URL}/${BUILTIN_MARKETPLACE_DIR}/${BUILTIN_MARKETPLACE_TARBALL_FILE}`,
 } as const satisfies PluginOrigin
 
-/** Tarball URLs the built-in entry was registered with before; a stored entry
- *  still on one is moved to BUILTIN_MARKETPLACE_SOURCE on load. */
+/** Tarball URLs the built-in entry no longer uses; a stored entry on one is
+ *  moved to BUILTIN_MARKETPLACE_SOURCE on load. */
 export const RETIRED_BUILTIN_MARKETPLACE_URLS: readonly string[] = [
   `${BUILTIN_MARKETPLACE_ORIGIN_URL}/${BUILTIN_MARKETPLACE_TARBALL_FILE}`,
 ]
