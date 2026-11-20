@@ -108,8 +108,18 @@ const withAllowance = <T extends { maxOutputTokens?: unknown; defaultMaxOutputTo
   typeof figures.maxOutputTokens === 'number' && figures.maxOutputTokens !== figures.defaultMaxOutputTokens
     ? { ...figures, defaultMaxOutputTokens: firstRequestOutputTokens(figures.maxOutputTokens) }
     : figures
+// Ids the vendor shut down: their own rows are gone, so each reads its
+// family's row, with no name of its own.
+const RETIRED: ReadonlyArray<readonly [string, string, string]> = [
+  ['google', 'gemini-3-pro-preview', 'gemini-*-pro'],
+  ['google', 'gemini-3.1-flash-lite-preview', 'gemini-*-flash-lite'],
+]
+const isRetired = (providerId: string, id: string): boolean =>
+  RETIRED.some(([p, retired]) => p === providerId && retired === id)
 const SHIPPED = Object.entries(BEFORE).flatMap(([providerId, rows]) =>
-  Object.entries(rows).map(([id, figures]) => [providerId, id, withAllowance({ ...figures, ...CHANGED_SINCE(providerId, id) })] as const))
+  Object.entries(rows)
+    .filter(([id]) => !isRetired(providerId, id))
+    .map(([id, figures]) => [providerId, id, withAllowance({ ...figures, ...CHANGED_SINCE(providerId, id) })] as const))
 
 // Versions no table names: each must read its family's row, whole.
 const UNSHIPPED: ReadonlyArray<readonly [string, string, Frozen]> = [
@@ -257,6 +267,13 @@ describe('every provider table as family rows', () => {
       }
       expect(row![field], `${providerId}/${id}.${field}`).toEqual(figures[field])
     }
+  })
+
+  it.each(RETIRED)('%s/%s — retired — reads the %s row', (providerId, id, family) => {
+    expect(BEFORE[providerId]?.[id], 'in the frozen record').toBeDefined()
+    const row = findConfiguredModel(providerId, id)
+    expect(row?.family).toBe(family)
+    expect(row?.name).toBeUndefined()
   })
 
   it.each(UNSHIPPED)('%s/%s — not shipped — reads its family\'s row, flags included', (providerId, id, frozen) => {

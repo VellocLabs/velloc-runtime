@@ -1,9 +1,10 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it } from 'vitest'
 
 import type { BrowserLlmModel } from '../browser/bridge/protocol/nexus_llm'
 import { applyConfiguredModelRule, createConfiguredProvider } from '../browser/webview/configuredModels'
 import { findConfiguredModel } from '../config/nexusModelConfig/findConfiguredModel'
 import { NEXUS_MODEL_CONFIG } from '../config/nexusModelConfig'
+import { recordEntryResolution, resetEntryResolutions } from '../config/nexusModelConfig/modelEntryResolution'
 import type { NexusConfiguredModel } from '../config/nexusModelConfig/types'
 import {
   FALLBACK_MAX_OUTPUT_TOKENS,
@@ -254,6 +255,21 @@ describe('provider request fields — every curated model × tier', () => {
     expect(fields.providerBodyExtension).toEqual({
       thinking: { type: 'adaptive' },
       output_config: { effort: 'high' },
+    })
+  })
+  describe('a picker entry id', () => {
+    afterEach(() => resetEntryResolutions())
+
+    it.each([
+      ['gemini-*-neon@4', 'gemini-4-neon', 'xhigh'],
+      ['gemini-*-hydrogen@4', 'gemini-4-hydrogen', 'xhigh'],
+      ['gemini-*-carbon@4', 'gemini-4-carbon', undefined],
+    ])('%s at xhigh sends what %s takes', (entry, concrete, level) => {
+      recordEntryResolution('google', entry, { id: concrete, versionLabel: '4', preview: false })
+      const fields = resolveModelRequestFields({ model: entry, providerId: 'google', thinkingTier: 'xhigh' })
+      expect(fields.providerBodyExtension).toEqual(
+        level ? { generationConfig: { thinkingConfig: { thinkingLevel: level } } } : undefined,
+      )
     })
   })
 })

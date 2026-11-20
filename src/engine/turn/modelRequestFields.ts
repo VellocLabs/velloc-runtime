@@ -1,4 +1,5 @@
 import { buildThinkingBodyExtension } from '../../config/nexusModelConfig'
+import { resolveModelId } from '../../config/nexusModelConfig/modelEntryResolution'
 import {
   getAvailableThinkingTiersForModel,
   getDefaultMaxOutputTokensForModel,
@@ -56,7 +57,7 @@ export function resolveModelRequestFields(params: {
     params.thinkingProviderId ?? providerId,
     thinkingTier,
     maxOutputTokens,
-    model,
+    resolveModelId(providerId ?? '', model),
   )
   return {
     maxOutputTokens,

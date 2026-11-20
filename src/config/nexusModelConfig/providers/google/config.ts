@@ -1,9 +1,9 @@
 import type { NexusConfiguredModel, NexusProviderModelConfig } from '../../types'
-import { createExactModelPattern } from '../../patterns'
+import { createExactModelPattern, escapeRegExp } from '../../patterns'
 
 function gemini4Row(id: string, name: string, tiers: string[], defaultTier: string): NexusConfiguredModel {
   return {
-    model: createExactModelPattern(id.replace(/\./g, '\.')),
+    model: createExactModelPattern(escapeRegExp(id)),
     name,
     contextWindow: 1_048_576,
     defaultMaxOutputTokens: 32_768,
