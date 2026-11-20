@@ -44,8 +44,14 @@ export type RouteEvent = {
   /** The router's own row id. */
   model: string
   requestContext: BridgeModelRequestContext
+  /** One id for every ask of a call: the first send, and each ask after a
+   *  failed send. Another call has another id. */
+  callId: string
   /** 1 for the first send of this call. */
   attempt: number
+  /** What the request asks of the model that serves it. `tools`: it carries
+   *  tool definitions. */
+  request: { tools: boolean }
   lastFailure?: RouteFailure
   /** The session's context in tokens, as its usage meter counts it. Absent
    *  for a request that belongs to no session. */

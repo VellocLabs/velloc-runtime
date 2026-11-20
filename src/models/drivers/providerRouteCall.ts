@@ -10,6 +10,8 @@ import { routeErrorOf, type RouteErrorMark, type RoutedVia, type RouteFailure } 
 import type { RouteTarget } from './providerRouteAnswer'
 
 export type RouteCall = {
+  /** The call's id, as a router's module is told it. */
+  id: string
   /** Sends made to a target. The next send is attempt `sends + 1`. */
   sends: number
   /** Target answers accepted, the first included. */
@@ -33,7 +35,7 @@ const calls = new WeakMap<object, RouteCall>()
 export function routeCallOf(payload: object): RouteCall {
   let call = calls.get(payload)
   if (!call) {
-    call = { sends: 0, hops: 0 }
+    call = { id: crypto.randomUUID(), sends: 0, hops: 0 }
     calls.set(payload, call)
   }
   return call

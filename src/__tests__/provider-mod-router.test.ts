@@ -97,11 +97,19 @@ const PEERS: Peer[] = [
 ] as unknown as Peer[]
 
 const CONTEXT = { sessionId: 's', agentId: 'a', purpose: 'main', querySource: 'test' } as unknown as RouteEvent['requestContext']
-const first = (context = CONTEXT): RouteEvent => ({ model: 'row', requestContext: context, attempt: 1 })
+const first = (context = CONTEXT): RouteEvent => ({
+  model: 'row',
+  requestContext: context,
+  callId: 'call-1',
+  attempt: 1,
+  request: { tools: false },
+})
 const afterFailure = (context = CONTEXT): RouteEvent => ({
   model: 'row',
   requestContext: context,
+  callId: 'call-1',
   attempt: 2,
+  request: { tools: false },
   lastFailure: {
     provider: 'relay-a',
     model: 'm-a',
@@ -129,6 +137,19 @@ describe('createModProviderRouter over the provider mod runtime', () => {
     const router = createModProviderRouter(runtime, ROUTER, () => PEERS)
     expect(await router.route(first(), signal())).toEqual({ provider: 'relay-a', model: 'm', seen: 2 })
     expect(await router.route(afterFailure(), signal())).toEqual({ provider: 'relay-b', model: 'm', seen: 2 })
+  })
+
+  it('hands the module the call id and what the request asks for', async () => {
+    const runtime = routerRuntime(`
+      export function register(on) {
+        on('provider.route', ($, e) => ({ provider: 'relay-a', model: 'm', callId: e.callId, request: e.request }))
+      }
+    `)
+    const router = createModProviderRouter(runtime, ROUTER, () => PEERS)
+    expect(await router.route({ ...first(), callId: 'call-7', request: { tools: true } }, signal())).toMatchObject({
+      callId: 'call-7',
+      request: { tools: true },
+    })
   })
 
   it('rejects naming provider.route when the first send overruns the budget', async () => {

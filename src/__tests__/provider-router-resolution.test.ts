@@ -286,7 +286,9 @@ describe('a request to a router provider', () => {
     expect(bodyOf(opens[0]!)).toMatchObject({ model: 'm-a', tier: 'high' })
     expect(hooks.calls.request).toHaveLength(1)
     expect(hooks.calls.request[0]!.provider).toBe(A)
-    expect(events).toEqual([{ model: 'route-row', requestContext: CONTEXT, attempt: 1 }])
+    expect(events).toEqual([
+      { model: 'route-row', requestContext: CONTEXT, callId: expect.any(String), attempt: 1, request: { tools: false } },
+    ])
     // The reply's first chunk names the target's model, as a request of its own would.
     expect(chunks[0]).toMatchObject({ type: 'message_start', message: { model: 'm-a' } })
     expect(outcomes).toEqual([expect.objectContaining({
@@ -315,6 +317,35 @@ describe('a request to a router provider', () => {
       lastFailure: { provider: A, model: 'm-a', status: 429, streamStarted: false, verdict: { kind: 'rate_limit' } },
     })
     expect(events[1]!.lastFailure!.message).toContain('slow down')
+  })
+
+  it('tells every ask of a call one call id, and another call another', async () => {
+    const { transport } = rawHost({ [A]: [refusedWith(429, 'slow down')] })
+    const { router, events } = testRouter([toA, toB, toA])
+    registerProviderRouter(ROUTER, router, { routesTo: [A, B] })
+    const wrapped = withModelProviders(transport, config())
+
+    await stream(wrapped)
+    await stream(wrapped)
+
+    expect(events.map(e => e.attempt)).toEqual([1, 2, 1])
+    expect(events[0]!.callId).not.toBe('')
+    expect(events[1]!.callId).toBe(events[0]!.callId)
+    expect(events[2]!.callId).not.toBe(events[0]!.callId)
+  })
+
+  it('tells the router whether the request carries tool definitions', async () => {
+    const { transport } = rawHost({})
+    const { router, events } = testRouter([toA])
+    registerProviderRouter(ROUTER, router, { routesTo: '*' })
+    const wrapped = withModelProviders(transport, config())
+    const tool = { name: 'read', description: 'reads', inputSchema: { type: 'object' } }
+
+    await stream(wrapped, payload({ tools: [tool] }))
+    await stream(wrapped, payload({ tools: [] }))
+    await stream(wrapped)
+
+    expect(events.map(e => e.request)).toEqual([{ tools: true }, { tools: false }, { tools: false }])
   })
 
   it('asks the router after the target\'s own verdict and before the target\'s own re-send', async () => {
@@ -749,7 +780,7 @@ describe('a call to a router provider', () => {
     const values = assistants(await call(transport, config(), { ...params(), providerId: A, model: 'm-a' }))
     expect(values.at(-1)).not.toHaveProperty('routedVia')
     expect(routedViaOf({})).toBeUndefined()
-    expect(routeCallOf({})).toEqual({ sends: 0, hops: 0 })
+    expect(routeCallOf({})).toEqual({ id: expect.any(String), sends: 0, hops: 0 })
   })
 
   it('sends the call to the target chosen at a broken reply when the router names none at the re-send', async () => {

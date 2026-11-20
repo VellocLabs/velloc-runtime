@@ -97,7 +97,9 @@ export function routeCall(
   const event = (): RouteEvent => ({
     model: rowModel,
     requestContext: requestContextOf(call, payload),
+    callId: call.id,
     attempt: call.sends + 1,
+    request: { tools: (payload.tools?.length ?? 0) > 0 },
     ...(call.lastFailure ? { lastFailure: call.lastFailure } : {}),
     ...(call.contextTokens !== undefined ? { usage: { contextTokens: call.contextTokens } } : {}),
   })

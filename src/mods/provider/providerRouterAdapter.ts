@@ -59,7 +59,9 @@ export function createModProviderRouter(
         {
           model: event.model,
           requestContext: event.requestContext,
+          callId: event.callId,
           attempt: event.attempt,
+          request: event.request,
           ...(event.lastFailure ? { lastFailure: event.lastFailure } : {}),
           ...(event.usage ? { usage: event.usage } : {}),
           peers: peersFor(event),
