@@ -598,16 +598,24 @@ export function ModelsSection({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isCustomSelection, selectedId, draft.baseUrl, draft.apiCompatibility, transport]);
 
-  // The quick picker's "Edit…" lands on that provider's editor (what
-  // `openProvider` does; above the early return, so hook order holds).
+  // A router with a settings app opens that app instead of the editor.
+  // Above the early return, so hook order holds.
+  const openRouterApp = useRouterAppShortcut({ providers, configs, bridge, onChanged: reload });
+
+  // The quick picker's "Edit…" opens the provider as a row click does: a
+  // router with a settings app opens the app, any other its editor. Above the
+  // early return, so hook order holds.
   const handledOpenRequest = React.useRef<number | null>(null);
   React.useEffect(() => {
     if (!openProviderRequest || handledOpenRequest.current === openProviderRequest.seq) return;
     handledOpenRequest.current = openProviderRequest.seq;
-    setCreating(false);
-    seededRecordId.current = null;
-    setSelectedId(openProviderRequest.providerId);
-    setView("edit");
+    openRouterApp(openProviderRequest.providerId, (id) => {
+      setCreating(false);
+      seededRecordId.current = null;
+      setSelectedId(id);
+      setView("edit");
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [openProviderRequest]);
 
   const [addMenuOpen, setAddMenuOpen] = React.useState(false);
@@ -636,9 +644,6 @@ export function ModelsSection({
         : isProviderFormDirty(form, configs[selectedId])),
   );
 
-  // A router with a settings app opens that app instead of the editor.
-  // Above the early return, so hook order holds.
-  const openRouterApp = useRouterAppShortcut({ providers, configs, bridge, onChanged: reload });
 
   if (!bridge) {
     return (
