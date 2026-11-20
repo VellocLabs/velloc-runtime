@@ -15,7 +15,7 @@ import { devCatalogSnapshotPlugin } from './vite/devCatalogSnapshotPlugin'
 import { devServerWatch } from './vite/devServerWatch'
 import { xtermHeadlessWorkerPlugin } from './vite/xtermHeadlessWorkerPlugin'
 import { thirdPartyNotices } from './vite/thirdPartyNoticesPlugin'
-import { reachedOnlyByStudio, type ModuleGraph } from './vite/studioChunks'
+import { normalizeModuleId, studioReach, type ModuleGraph } from './vite/studioChunks'
 import { asciiRegexLiteralsPlugin, BUNDLE_ESBUILD_OPTIONS } from './vite/bundleCharset'
 import { NEXUS_INTERFACE_VERSION } from './src/browser/bridge/protocol/interfaceVersion'
 import { BUILD_TIME_META_NAME, buildTimeFromCommit } from './src/branding/buildInfo'
@@ -128,13 +128,9 @@ function injectWarmSharedWorkerPlugin(): Plugin {
   }
 }
 
-function normalizeModuleId(id: string): string {
-  return id.replace(/\\/g, '/')
-}
-
-function resolveManualChunk(id: string, graph?: ModuleGraph, memo?: Map<string, boolean>): string | undefined {
+function resolveManualChunk(id: string, graph?: ModuleGraph): string | undefined {
   const chunk = resolveVendorChunk(id)
-  if (chunk && graph && memo && reachedOnlyByStudio(id, graph, memo)) return undefined
+  if (chunk && graph && studio.reachedOnlyByStudio(id, graph)) return undefined
   return chunk
 }
 
@@ -297,13 +293,14 @@ const devWatch = devServerWatch(__dirname)
 // third-party-licenses.txt once every graph is known.
 const notices = thirdPartyNotices(__dirname)
 
-const studioReach = new Map<string, boolean>()
+const studio = studioReach()
 
 export default defineConfig(({ mode }) => ({
   base: resolvePagesBasePath(),
   esbuild: BUNDLE_ESBUILD_OPTIONS,
   plugins: [
     devWatch.plugin,
+    studio.plugin,
     xtermHeadlessWorkerPlugin(),
     processPolyfillPlugin(mode),
     injectWarmSharedWorkerPlugin(),
@@ -415,7 +412,7 @@ export default defineConfig(({ mode }) => ({
       },
       output: {
         manualChunks(id, graph) {
-          return resolveManualChunk(id, graph, studioReach)
+          return resolveManualChunk(id, graph)
         },
       },
     },
