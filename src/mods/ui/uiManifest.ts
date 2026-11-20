@@ -60,6 +60,9 @@ export type PluginAppDecl = {
   backgroundFs?: FolderScopes
   /** The background module may start headless agent runs in the app's folder (`$.app.analyze`). */
   backgroundAgent?: true
+  /** Plugin-relative path of the app's script, `./`-prefixed: a worker that runs only while the app is on
+   *  screen, in place of a background module. An app declares one of the two. */
+  script?: string
   /** The pane is this one page in a sandboxed frame instead of surfaces built from `entry` (F-42). */
   page?: AppPageDecl
   /** `false`: no topbar icon and no overflow-menu entry; the app opens from elsewhere (a provider's settings, F-27). */
@@ -239,6 +242,19 @@ function readApp(value: unknown, label: string, appId: string, bad: Bad): Plugin
       else bad(`${label}.background.agent: expected true or false`)
     }
   }
+  let script: string | undefined
+  if (value.script !== undefined) {
+    const declared = value.script
+    if (typeof declared === 'string' && insidePlugin(declared) && MOD_MODULE_EXTENSIONS.some(ext => declared.toLowerCase().endsWith(ext))) {
+      script = declared
+    } else {
+      bad(`${label}.script: expected a module path starting with "./", without "..", ending in ${MOD_MODULE_EXTENSIONS.join(', ')}`)
+    }
+  }
+  if (value.background !== undefined && value.script !== undefined) {
+    bad(`${label}.script: an app declares "background" or "script", not both`)
+    return null
+  }
   let page: AppPageDecl | undefined
   if (value.page !== undefined) {
     const declared = value.page
@@ -265,6 +281,7 @@ function readApp(value: unknown, label: string, appId: string, bad: Bad): Plugin
     ...(background ? { background } : {}),
     ...(background && backgroundFs ? { backgroundFs } : {}),
     ...(background && backgroundAgent ? { backgroundAgent: true as const } : {}),
+    ...(script ? { script } : {}),
     ...(page ? { page } : {}),
     ...(topbar ? {} : { topbar: false as const }),
   }

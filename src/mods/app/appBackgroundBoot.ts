@@ -80,7 +80,7 @@ export function appBackgroundRef(
     appId: app.appId,
     folder,
     stateFile,
-    mcpOwner: app.mcp,
+    ...(app.shown ? { lifetime: 'shown' as const } : { mcpOwner: app.mcp }),
     ...(app.settingsFor ? { settingsFor: app.settingsFor } : {}),
     ...(app.decl.backgroundAgent && agentApproved ? { agentType: app.type } : {}),
     ...(granted

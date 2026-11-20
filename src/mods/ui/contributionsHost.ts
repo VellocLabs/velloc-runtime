@@ -67,7 +67,7 @@ export type AppTemplate = {
   consentId?: string
 }
 
-/** A published app with a background module (F-40): the module and the plugin it belongs to. */
+/** A published app with a background module or a script (F-40): the module and the plugin it belongs to. */
 export type AppBackgroundTemplate = {
   appId: string
   type: string
@@ -76,6 +76,8 @@ export type AppBackgroundTemplate = {
   root: string
   /** The module file, absolute. */
   module: string
+  /** The module is the app's script: it runs only while the app is on screen. */
+  shown?: true
   /** `pluginOwnerId` of the plugin: the module's provenance. */
   owner: string
   decl: PluginAppDecl
@@ -328,19 +330,21 @@ export class ModUiContributionsHost {
     }
   }
 
-  /** The published apps that declare a background module, in publish order. */
+  /** The published apps that declare a background module or a script, in publish order. */
   backgroundApps(): AppBackgroundTemplate[] {
     const list: AppBackgroundTemplate[] = []
     for (const app of this.current.apps ?? []) {
       const owner = this.plugins.find(entry => entry.name === app.plugin)
       const decl = owner?.templates?.find(entry => entry.type === app.type)?.decl.app
-      if (!owner || !decl?.background) continue
+      const module = decl?.background ?? decl?.script
+      if (!owner || !decl || !module) continue
       list.push({
         appId: app.appId,
         type: app.type,
         plugin: owner.name,
         root: owner.path,
-        module: insideRoot(owner.path, decl.background),
+        module: insideRoot(owner.path, module),
+        ...(decl.background ? {} : { shown: true as const }),
         owner: pluginOwnerId(owner),
         decl,
         mcp: appBackgroundMcpOwner(owner),

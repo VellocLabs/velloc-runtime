@@ -7,6 +7,11 @@
  * module's `$.app` reaches the app's state document, whose batches the
  * open sessions' surfaces follow.
  *
+ * An app's script (`lifetime: 'shown'`) is the same module run only while
+ * the app is on screen: started when a page shows it or when one of its
+ * actions or presses arrives, stopped when no page has shown it for
+ * `APP_SCRIPT_IDLE_MS` (`appScriptLifetime.ts`).
+ *
  * Security: a background module belongs to no session. Its admission
  * (`appBackgroundEvents.ts`) refuses every session event and noun; its
  * `$.fs` is the app's folder alone; its `$.mcp` is a pool of its own,
@@ -61,6 +66,7 @@ import { APP_PRESS_TIMEOUT_MS, readAppPressAnswer } from './appPress'
 import { AppStateDocument, type AppStateDocumentFs } from './appStateDocument'
 import { AppViews, type AppViewEvent, type AppViewLayout } from './appViews'
 import { serveSettingsAppProviderCall, type SettingsAppBinding, type SettingsAppProviderDeps } from './appProviderCalls'
+import { APP_SCRIPT_IDLE_MS, AppScriptLifetimes, untilReady } from './appScriptLifetime'
 
 /** One app's background module: a hooks-module ref plus the app it serves. */
 export type AppBackgroundRef = ModModuleRef & {
@@ -79,6 +85,8 @@ export type AppBackgroundRef = ModModuleRef & {
   readonly agentType?: string
   /** The provider that names this app as its settings app: `$.provider` acts on it alone. Absent: `$.provider` is refused. */
   readonly settingsFor?: SettingsAppBinding
+  /** `'shown'`: the app's script, run only while the app is on screen. Absent: resident. */
+  readonly lifetime?: 'shown'
 }
 
 /** Where workers are spawned from: some window's control port. */
@@ -130,6 +138,8 @@ export type AppBackgroundRuntimeOptions = {
   /** The budget of an `app.press` hook; past it the press has no answer. */
   pressTimeoutMs?: number
   respawnBackoffMs?: readonly number[]
+  /** How long an app's script runs on after the last page stopped showing the app. */
+  scriptIdleMs?: number
   persistDelayMs?: number
   now?: () => number
 }
@@ -216,6 +226,7 @@ const sameRef = (a: AppBackgroundRef, b: AppBackgroundRef): boolean =>
   a.plugin === b.plugin &&
   sameMcpOwner(a.mcpOwner, b.mcpOwner) &&
   a.agentType === b.agentType &&
+  a.lifetime === b.lifetime &&
   JSON.stringify(a.settingsFor ?? null) === JSON.stringify(b.settingsFor ?? null) &&
   JSON.stringify(a.folders ?? null) === JSON.stringify(b.folders ?? null)
 
@@ -245,8 +256,15 @@ export class AppBackgroundRuntime {
   /** The client whose press each app's module was offered last, by app. */
   private readonly lastPress = new Map<string, string>()
   private readonly stopMcpStatus: (() => void) | undefined
+  /** The apps' scripts by app id, running or not, with the timers that stop them once not shown. */
+  private readonly scripts: AppScriptLifetimes<AppBackgroundRef>
 
   constructor(private readonly options: AppBackgroundRuntimeOptions) {
+    this.scripts = new AppScriptLifetimes({
+      idleMs: options.scriptIdleMs ?? APP_SCRIPT_IDLE_MS,
+      shown: appId => this.views.current(appId) !== null,
+      sleep: appId => this.sleep(appId),
+    })
     this.stopMcpStatus = options.mcpStatus?.onChange(() => this.noteMcpStatus())
     this.agentRuns = new AppAgentRuns({
       ...(options.runAgent ? { run: options.runAgent } : {}),
@@ -260,6 +278,7 @@ export class AppBackgroundRuntime {
   /** The apps to run: a new one starts, a gone one stops, a changed one restarts, an unreadable one is read again. */
   sync(refs: readonly AppBackgroundRef[]): void {
     if (this.disposed) return
+    this.scripts.sync(refs.filter(ref => ref.lifetime === 'shown'))
     const wanted = new Map(refs.map(ref => [ref.appId, ref]))
     for (const [appId, module] of [...this.modules]) {
       const next = wanted.get(appId)
@@ -269,8 +288,27 @@ export class AppBackgroundRuntime {
     for (const ref of refs) {
       const module = this.modules.get(ref.appId)
       if (module && sameRef(module.ref, ref)) continue
+      if (ref.lifetime === 'shown' && !this.scripts.isShown(ref.appId)) continue
       this.start(ref)
     }
+  }
+
+  /** The app's script, started when it is not running; its stop is armed while no page shows the app. Undefined for a resident module. */
+  private wake(appId: string): Module | undefined {
+    const ref = this.scripts.wake(appId)
+    if (!ref || this.disposed) return undefined
+    const running = this.modules.get(appId)
+    if (running) return running
+    this.start(ref)
+    return this.modules.get(appId)
+  }
+
+  /** No page has shown the app for the idle time: its script stops, unless it is off and holds no worker. */
+  private sleep(appId: string): void {
+    const module = this.modules.get(appId)
+    if (!module || module.ref.lifetime !== 'shown') return
+    if (module.state === 'refused' || module.state === 'dead') return
+    void this.stop(module, 'the app is not on screen')
   }
 
   status(): AppBackgroundStatus[] {
@@ -294,6 +332,8 @@ export class AppBackgroundRuntime {
    * failed, or ran past its budget — the action then goes to the model.
    */
   async action(appId: string, action: string, context: unknown, sessionId: string): Promise<boolean> {
+    const woken = this.wake(appId)
+    if (woken) await untilReady(woken, this.options.actionTimeoutMs ?? APP_ACTION_TIMEOUT_MS)
     const module = this.modules.get(appId)
     if (!module || !module.loaded || !module.dispatcher.hasHooksFor('app.action')) return false
     const raised = await this.raise(
@@ -321,6 +361,8 @@ export class AppBackgroundRuntime {
     const offered = menus.get(appId)
     menus.delete(appId)
     if (trigger === 'menu' && (item === undefined || !offered?.has(item))) return null
+    const woken = this.wake(appId)
+    if (woken) await untilReady(woken, this.options.pressTimeoutMs ?? APP_PRESS_TIMEOUT_MS)
     const module = this.modules.get(appId)
     if (!module || !module.loaded || module.viewsOpen !== module.loaded || !module.dispatcher.hasHooksFor('app.press')) return null
     this.lastPress.set(appId, client)
@@ -365,6 +407,9 @@ export class AppBackgroundRuntime {
 
   private raiseViews(events: readonly AppViewEvent[]): void {
     for (const { event, payload } of events) {
+      // A script started here hears the view after its app.start, as any module loaded while shown does.
+      if (event === 'app.show') this.wake(payload.appId)
+      else if (event === 'app.hide') this.scripts.hidden(payload.appId)
       const module = this.modules.get(payload.appId)
       if (module) this.raiseView(module, event, payload)
     }
@@ -414,6 +459,7 @@ export class AppBackgroundRuntime {
   async dispose(): Promise<void> {
     if (this.disposed) return
     this.disposed = true
+    this.scripts.dispose()
     this.stopMcpStatus?.()
     this.options.providerCalls?.dispose?.()
     await Promise.all([...this.modules.values()].map(module => this.stop(module, 'the realm is ending')))
@@ -515,7 +561,7 @@ export class AppBackgroundRuntime {
     })
     try {
       const hooks = await Promise.race([instance.load(source, ref.options ?? {}), goneWhileLoading])
-      const refused = refuseAppBackgroundRegistrations(hooks)
+      const refused = refuseAppBackgroundRegistrations(hooks, ref.lifetime !== 'shown')
       if (refused) throw new ModuleRefused('refused', refused)
       if (module.gone.signal.aborted) throw new ModuleRefused('failed', 'the app was synced out while it loaded')
       instance.join()
@@ -554,7 +600,7 @@ export class AppBackgroundRuntime {
 
   /** Read, admit, compile and scan the module; unchanged files come from the build store. */
   private async prepare(module: Module): Promise<string> {
-    return (await prepareModule(module.ref, this.options, uses => refuseAppBackgroundUses(uses, module.ref.settingsFor))).source
+    return (await prepareModule(module.ref, this.options, uses => refuseAppBackgroundUses(uses, module.ref.settingsFor, module.ref.lifetime !== 'shown'))).source
   }
 
   private async raiseStart(module: Module): Promise<void> {
@@ -777,6 +823,10 @@ export class AppBackgroundRuntime {
     module.restart = setTimeout(() => {
       module.restart = undefined
       if (module.gone.signal.aborted) return
+      if (module.ref.lifetime === 'shown' && !this.scripts.isShown(module.ref.appId)) {
+        void this.stop(module, 'the app is not on screen')
+        return
+      }
       module.starting = this.load(module).finally(() => {
         module.starting = undefined
       })
@@ -785,7 +835,7 @@ export class AppBackgroundRuntime {
 
   /** Serve a `$` call of a background module: its nouns alone. */
   private async serveCall(module: Module, call: ModCall): Promise<unknown> {
-    const refused = refuseAppBackgroundCall(call.noun, call.method, module.ref.settingsFor)
+    const refused = refuseAppBackgroundCall(call.noun, call.method, module.ref.settingsFor, module.ref.lifetime !== 'shown')
     if (refused) throw named('NotAllowedError', refused)
     if (call.noun !== 'log' && call.signal?.aborted) {
       throw named('AbortError', `$.${call.noun}.${call.method}: the calling hook was abandoned`)

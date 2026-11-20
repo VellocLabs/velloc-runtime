@@ -383,3 +383,39 @@ describe('an app with a background module', () => {
     ])
   })
 })
+
+describe("an app's script", () => {
+  it('takes a plugin-relative module path and refuses one outside the plugin or of another kind', () => {
+    const errors: string[] = []
+    const decls = checkTemplateDecls('pay', { board: { title: 'P', app: { ...APP, script: './ui/app.js' } } }, errors, 'beta')
+    expect(decls?.board?.app?.script).toBe('./ui/app.js')
+    expect(decls?.board?.app).not.toHaveProperty('background')
+    expect(errors).toEqual([])
+    for (const bad of ['ui/app.js', './../x.js', './ui\\app.js', './ui/app.json', 7, { module: './ui/app.js' }]) {
+      const refused: string[] = []
+      expect(checkTemplateDecls('pay', { board: { title: 'P', app: { ...APP, script: bad } } }, refused, 'beta')).toBeUndefined()
+      expect(refused.map(line => line.split(':')[0])).toEqual(['templates.board.app.script'])
+    }
+  })
+
+  it('refuses an app that declares a background module and a script, naming the field', () => {
+    const refused: string[] = []
+    const app = { ...APP, background: './bg/app.js', script: './ui/app.js' }
+    expect(checkTemplateDecls('pay', { board: { title: 'P', app } }, refused, 'beta')).toBeUndefined()
+    expect(refused).toEqual(['templates.board.app.script: an app declares "background" or "script", not both'])
+  })
+
+  it('the contributions host lists an app with a script as shown, the module resolved under the plugin', async () => {
+    const { contributions } = host()
+    const withScript = appPlugin('pay', 'board')
+    withScript.templates![0]!.decl.app!.script = './ui/app.js'
+    await contributions.sync({ enabled: [withScript] })
+    expect(contributions.backgroundApps()).toEqual([
+      expect.objectContaining({
+        appId: 'pay-board',
+        module: expect.stringMatching(/plugins.pay.ui.app.js$/),
+        shown: true,
+      }),
+    ])
+  })
+})

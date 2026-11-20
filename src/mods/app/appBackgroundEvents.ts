@@ -3,6 +3,10 @@
  * and the nouns it may call. Security: the module runs outside every
  * session, so every session noun is refused by name, before it loads where
  * the scan sees the call and at the call otherwise.
+ *
+ * An app's script (`script` in the manifest) is admitted by the same rules
+ * with `resident` false: it runs only while the app is on screen, so what
+ * needs a resident worker is refused as well.
  */
 
 import type { HookRegistration } from '../modTypes'
@@ -24,13 +28,25 @@ const ONLY_METHODS: Readonly<Record<string, readonly string[]>> = Object.freeze(
   mcp: Object.freeze(['call', 'connect']),
 })
 
+/** The events an app's script may hook: those of a background module but `mcp.status`, which a module without servers never hears. */
+export const APP_SCRIPT_EVENTS: readonly string[] = Object.freeze(APP_BACKGROUND_EVENTS.filter(name => name !== 'mcp.status'))
+
+/** What an app's script may not call although a background module may: each needs a worker that keeps running. */
+const NOT_FOR_SCRIPT: Readonly<Record<string, string>> = Object.freeze({
+  'clock.every': 'a periodic timer',
+  'app.badge': 'a badge on its icon',
+  'app.busy': 'an at-work mark on its icon',
+  'app.analyze': 'an agent run',
+})
+
 /** Why a background module may not hook what it registered, or null. */
-export function refuseAppBackgroundRegistrations(hooks: readonly HookRegistration[]): string | null {
+export function refuseAppBackgroundRegistrations(hooks: readonly HookRegistration[], resident = true): string | null {
+  const events = resident ? APP_BACKGROUND_EVENTS : APP_SCRIPT_EVENTS
   const foreign: string[] = []
   const generators: string[] = []
   for (const hook of hooks) {
     const { pattern } = hook
-    if (!isValidPattern(pattern) || pattern.startsWith('!') || !APP_BACKGROUND_EVENTS.includes(pattern)) {
+    if (!isValidPattern(pattern) || pattern.startsWith('!') || !events.includes(pattern)) {
       foreign.push(pattern)
       continue
     }
@@ -38,9 +54,9 @@ export function refuseAppBackgroundRegistrations(hooks: readonly HookRegistratio
   }
   const reasons: string[] = []
   if (foreign.length > 0) {
-    const events = `${APP_BACKGROUND_EVENTS.slice(0, -1).join(', ')} and ${APP_BACKGROUND_EVENTS.at(-1)}`
+    const listed = `${events.slice(0, -1).join(', ')} and ${events.at(-1)}`
     reasons.push(
-      `an app's background module hooks ${events} alone, and it hooks ` +
+      `an app's ${resident ? 'background module' : 'script'} hooks ${listed} alone, and it hooks ` +
         `${[...new Set(foreign)].join(', ')} — put session hooks in a module listed under the manifest's hooks (${APP_BACKGROUND_ABI})`,
     )
   }
@@ -50,9 +66,16 @@ export function refuseAppBackgroundRegistrations(hooks: readonly HookRegistratio
   return reasons.length > 0 ? reasons.join('; ') : null
 }
 
-/** Why a background module may not call `$.<noun>.<method>`, or null. `binding`: the provider whose settings app this is. */
-export function refuseAppBackgroundCall(noun: string, method: string, binding?: SettingsAppBinding): string | null {
+/** Why a background module may not call `$.<noun>.<method>`, or null. `binding`: the provider whose settings app this is; `resident` false: an app's script. */
+export function refuseAppBackgroundCall(noun: string, method: string, binding?: SettingsAppBinding, resident = true): string | null {
   if (noun === 'provider') return refuseSettingsAppProviderCall(method, binding)
+  if (!resident && (noun === 'mcp' || NOT_FOR_SCRIPT[`${noun}.${method}`] !== undefined)) {
+    const what = noun === 'mcp' ? "the plugin's MCP servers" : NOT_FOR_SCRIPT[`${noun}.${method}`]
+    return (
+      `$.${noun}${method ? `.${method}` : ''} is not available to an app's script: it runs only while the app is on screen, ` +
+      `and ${what} needs a worker that keeps running — declare the module under "background" instead (${APP_BACKGROUND_ABI})`
+    )
+  }
   if (!APP_BACKGROUND_NOUNS.includes(noun)) {
     return (
       `$.${noun} is a session noun, which an app's background module cannot use — it may use ` +
@@ -67,11 +90,11 @@ export function refuseAppBackgroundCall(noun: string, method: string, binding?: 
 }
 
 /** Why what the module calls (as scanned before it runs) is not what it may call, or null. */
-export function refuseAppBackgroundUses(uses: ModUses, binding?: SettingsAppBinding): string | null {
+export function refuseAppBackgroundUses(uses: ModUses, binding?: SettingsAppBinding, resident = true): string | null {
   const reasons: string[] = []
   for (const call of uses.calls) {
     const dot = call.indexOf('.')
-    const reason = refuseAppBackgroundCall(dot === -1 ? call : call.slice(0, dot), dot === -1 ? '' : call.slice(dot + 1), binding)
+    const reason = refuseAppBackgroundCall(dot === -1 ? call : call.slice(0, dot), dot === -1 ? '' : call.slice(dot + 1), binding, resident)
     if (reason && !reasons.includes(reason)) reasons.push(reason)
   }
   return reasons.length > 0 ? reasons.join('; ') : null
