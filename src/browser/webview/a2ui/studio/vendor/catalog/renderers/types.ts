@@ -16,7 +16,12 @@ type ValueSetter<T> = "value" extends keyof T
  * component's `onAction` event (when the model bound one).
  */
 export type Props<K extends keyof Definitions> = Out<K> &
-  ValueSetter<Out<K>> & { action?: () => void };
+  ValueSetter<Out<K>> & {
+    action?: () => void;
+    /** A declared event other than `onAction`, when bound: called with its args. */
+    onChange?: (args: { value: unknown }) => void;
+    onRowClick?: (args: { row: Record<string, unknown> }) => void;
+  };
 
 export type RendererProps<K extends keyof Definitions> = { props: Props<K> };
 

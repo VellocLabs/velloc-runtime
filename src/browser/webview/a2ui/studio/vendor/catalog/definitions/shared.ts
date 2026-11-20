@@ -98,6 +98,16 @@ export const onAction = (description: string): Pick<Def, "events"> => ({
   events: { onAction: { description, parameters: z.object({}).passthrough() } },
 });
 
+/** An input's change event: sent after the new value is written, with it as `value`. */
+export const onChange = (value: z.ZodTypeAny): Pick<Def, "events"> => ({
+  events: {
+    onChange: {
+      description: "Sent when the person changes the value, after it is written to the bound path. The args carry the new value.",
+      parameters: z.object({ value }),
+    },
+  },
+});
+
 /** Inputs write their `value` back to the bound data-model path. */
 export const writableValue: Pick<Def, "writable"> = { writable: ["value"] };
 

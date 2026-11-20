@@ -79,6 +79,14 @@ export const dataDefinitions = {
       searchable: z.boolean().optional(),
       pageSize: z.number().optional(),
     }),
+    {
+      events: {
+        onRowClick: {
+          description: "Sent when the person clicks a row. The args carry the whole row object as \"row\", fields not shown in a column included.",
+          parameters: z.object({ row: z.record(z.unknown()) }),
+        },
+      },
+    },
   ),
   KeyValueList: def(
     "Data display",

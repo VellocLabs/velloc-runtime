@@ -433,12 +433,14 @@ function DataTableView({
   rows,
   searchable,
   pageSize,
+  onRowClick,
 }: {
   title?: string;
   columns: Col[];
   rows: Row[];
   searchable?: boolean;
   pageSize: number;
+  onRowClick?: (row: Row) => void;
 }) {
   const cols = useMemo<ColumnDef<typeof tableFeats, Row>[]>(
     () =>
@@ -583,7 +585,21 @@ function DataTableView({
             {table.getRowModel().rows.map((row) => (
               <TableRow
                 key={row.id}
-                className="border-(--a2-line) hover:bg-black/[0.025] dark:hover:bg-white/[0.025]"
+                className={cn(
+                  "border-(--a2-line) hover:bg-black/[0.025] dark:hover:bg-white/[0.025]",
+                  onRowClick && "cursor-pointer",
+                )}
+                {...(onRowClick
+                  ? {
+                      tabIndex: 0,
+                      onClick: () => onRowClick(row.original),
+                      onKeyDown: (event: { key: string; preventDefault: () => void }) => {
+                        if (event.key !== "Enter" && event.key !== " ") return;
+                        event.preventDefault();
+                        onRowClick(row.original);
+                      },
+                    }
+                  : {})}
               >
                 {row.getAllCells().map((cell) => {
                   const col = columns.find((c) => c.key === cell.column.id);
@@ -927,6 +943,7 @@ export const dataRenderers: RendererMap<DataKeys> = {
         rows={rows}
         searchable={props.searchable}
         pageSize={pageSize}
+        {...(props.onRowClick ? { onRowClick: (row: Row) => props.onRowClick?.({ row }) } : {})}
       />
     );
   },

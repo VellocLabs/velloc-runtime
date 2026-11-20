@@ -256,7 +256,11 @@ export const inputRenderers: RendererMap<InputKeys> = {
           type="single"
           spacing={0}
           value={value}
-          onValueChange={(v: string) => v && setValue(v)}
+          onValueChange={(v: string) => {
+            if (!v) return;
+            setValue(v);
+            props.onChange?.({ value: v });
+          }}
           className="w-fit max-w-full overflow-x-auto rounded-lg border border-black/[0.09] dark:border-white/[0.09] bg-black/[0.025] dark:bg-white/[0.025] p-0.5"
         >
           {options.map((o) => (
@@ -299,7 +303,10 @@ export const inputRenderers: RendererMap<InputKeys> = {
           type="multiple"
           spacing={1.5}
           value={selected}
-          onValueChange={(v: string[]) => setValue(v)}
+          onValueChange={(v: string[]) => {
+            setValue(v);
+            props.onChange?.({ value: v });
+          }}
           className="flex-wrap justify-start"
         >
           {options.map((o) => {

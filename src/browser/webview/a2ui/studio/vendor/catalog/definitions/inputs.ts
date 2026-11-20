@@ -1,5 +1,5 @@
 import { z } from "zod/v3";
-import { def, option, writableValue } from "./shared";
+import { def, option, writableValue, onChange } from "./shared";
 
 const label = z.string().optional();
 const opts = z.array(option);
@@ -48,12 +48,12 @@ export const inputDefinitions = {
     "Inputs",
     "Segmented single-choice control; value bound to a path.",
     z.object({ label, value: z.string().optional(), options: opts }),
-    writableValue,
+    { ...writableValue, ...onChange(z.string()) },
   ),
   ChipSelect: def(
     "Inputs",
     "Multi-select chips bound to a string-list path: extras, interests, dietary needs.",
     z.object({ label, value: z.array(z.string()).optional(), options: opts }),
-    writableValue,
+    { ...writableValue, ...onChange(z.array(z.string())) },
   ),
 };

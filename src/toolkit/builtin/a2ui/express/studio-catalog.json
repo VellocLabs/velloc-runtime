@@ -18450,6 +18450,10 @@
               "$ref": "common_types.json#/$defs/FunctionCall"
             }
           ]
+        },
+        "onRowClick": {
+          "$ref": "common_types.json#/$defs/Action",
+          "description": "Sent when the person clicks a row. The args carry the whole row object as \"row\", fields not shown in a column included."
         }
       },
       "required": [
@@ -21557,6 +21561,10 @@
               "$ref": "common_types.json#/$defs/FunctionCall"
             }
           ]
+        },
+        "onChange": {
+          "$ref": "common_types.json#/$defs/Action",
+          "description": "Sent when the person changes the value, after it is written to the bound path. The args carry the new value."
         }
       },
       "required": [
@@ -21668,6 +21676,10 @@
               "$ref": "common_types.json#/$defs/FunctionCall"
             }
           ]
+        },
+        "onChange": {
+          "$ref": "common_types.json#/$defs/Action",
+          "description": "Sent when the person changes the value, after it is written to the bound path. The args carry the new value."
         }
       },
       "required": [

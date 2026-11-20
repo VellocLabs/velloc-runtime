@@ -135,8 +135,9 @@ Use these exact positional signatures to instantiate components. Do not output p
   - size: Default "lg" Must be one of: 'sm', 'md', 'lg'
   - weight: flex-grow in a Row or Column
   - pill: Default true
-• ButtonGroup(label?, value?, options)
+• ButtonGroup(label?, value?, options, onChange? (static))
   - Description: Segmented single-choice control; value bound to a path.
+  - onChange: Sent when the person changes the value, after it is written to the bound path. The args carry the new value.
 • Callout(title?, text, icon?, actionLabel?, onAction? (static))
   - Description: Highlighted tip or note with optional emoji/icon and a call to action.
   - onAction: Fires when the call-to-action button is clicked.
@@ -265,8 +266,9 @@ Use these exact positional signatures to instantiate components. Do not output p
   - shape: Default "round" Must be one of: 'round', 'square'
   - weight: flex-grow in a Row or Column
   - lineThrough: Default false. Strikes the label when the box is checked
-• ChipSelect(label?, value?, options)
+• ChipSelect(label?, value?, options, onChange? (static))
   - Description: Multi-select chips bound to a string-list path: extras, interests, dietary needs.
+  - onChange: Sent when the person changes the value, after it is written to the bound path. The args carry the new value.
 • ChoicePicker(label?, options?, value?, checks?, variant?, displayStyle?, filterable?, disabled?, required?, weight?)
   - Description: Options as checkboxes or chips: pick one, or several with variant "multipleSelection". Its value is the list of chosen values. Give it a label.
   - label: The visible label of the field. Always set it
@@ -310,8 +312,9 @@ Use these exact positional signatures to instantiate components. Do not output p
   - Description: Searchable dropdown for long option lists (countries, cities, timezones).
 • ComparisonTable(title?, options, rows, highlight?)
   - Description: Feature matrix comparing options side by side. options are the option names as strings; rows [{feature, values}] with one value per option, in the same order, each true/false/text; highlight is the recommended option's index in options (0 is the first).
-• DataTable(title?, columns, rows, searchable?, pageSize?)
+• DataTable(title?, columns, rows, searchable?, pageSize?, onRowClick? (static))
   - Description: Sortable, filterable table (TanStack Table). columns [{key,label,format?}], rows are objects keyed by column key.
+  - onRowClick: Sent when the person clicks a row. The args carry the whole row object as "row", fields not shown in a column included.
 • DatePicker(label?, value?, placeholder?)
   - Description: Date picker with calendar popover; value ISO date bound to a path.
 • DateTimeInput(label?, value?, checks?, enableDate?, enableTime?, timeStep?, min?, max?, placeholder?, disabled?, required?, clearable?, block?, weight?)
