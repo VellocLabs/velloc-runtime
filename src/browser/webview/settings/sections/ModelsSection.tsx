@@ -41,6 +41,7 @@ import { getProviderUsageStore } from "../../providerUsageStore";
 import { ModProviderEditor, modProviderName } from "./ModProviderEditor";
 import { isModProviderAdded, isModProviderConnected } from "../modProviderForm";
 import { isRouterMod, type RouterPeerRow } from "../modRouterView";
+import { useRouterAppShortcut } from "./models/routerAppShortcut";
 import { orderByProviderIds } from "../../modelCatalog";
 import { mergeProviderConfigForSave } from "../providerConfigMerge";
 import type { ProviderTrust } from "../../../../settings/providerTrust";
@@ -635,6 +636,10 @@ export function ModelsSection({
         : isProviderFormDirty(form, configs[selectedId])),
   );
 
+  // A router with a settings app opens that app instead of the editor.
+  // Above the early return, so hook order holds.
+  const openRouterApp = useRouterAppShortcut({ providers, configs, bridge, onChanged: reload });
+
   if (!bridge) {
     return (
       <SettingsSubpageLayout title={t("settings.models.title")}>
@@ -1127,7 +1132,7 @@ export function ModelsSection({
   };
 
   /** Open one provider's editor — a home-page Settings click, or an add. */
-  const openProvider = (id: string) => {
+  const openEditor = (id: string) => {
     setCreating(false);
     seededRecordId.current = null;
     setSelectedId(id);
@@ -1176,6 +1181,7 @@ export function ModelsSection({
     }
     openProvider(value);
   };
+  const openProvider = (id: string) => openRouterApp(id, openEditor);
 
   const cancelCreate = goHome;
 

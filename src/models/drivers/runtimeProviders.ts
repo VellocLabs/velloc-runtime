@@ -673,6 +673,22 @@ function toCatalogModel(info: ProviderModelInfo): BrowserLlmModel {
 }
 
 /**
+ * A router's row (F-27): every model of its latest listing, as listed. A
+ * router's models are its own routes, so nothing is picked by hand and a
+ * renamed route reads by its new name. `entryFamilies: []` keeps the rows out
+ * of the entry rewrite (`applyModelEntries`).
+ */
+export function routerCatalogRow(base: BrowserLlmProvider, listed: readonly ProviderModelInfo[]): BrowserLlmProvider {
+  const models = listed.map(toCatalogModel)
+  const row: BrowserLlmProvider = { ...base, models, entryFamilies: [], enabled: base.enabled && models.length > 0 }
+  const stored = base.defaultModelId
+  const defaultModelId = stored && models.some(model => model.id === stored) ? stored : models[0]?.id
+  if (defaultModelId) row.defaultModelId = defaultModelId
+  else delete row.defaultModelId
+  return row
+}
+
+/**
  * One catalog row per runtime-only provider, listed (so Settings can offer
  * it) whether or not it is set up. Its models are the user's ENTRIES,
  * resolved against the listing — an entry the listing cannot resolve yet (no
@@ -693,6 +709,7 @@ export function runtimeProviderCatalogRows(): BrowserLlmProvider[] {
       // A provider mod's row carries what the page draws it from.
       ...(definition?.catalogMod ? { mod: definition.catalogMod } : {}),
     }
+    if (definition?.router === true) return routerCatalogRow(base, usableModels(id))
     return buildEntryRows(base, providerEntries(id), listedFamilies(id), modelId => {
       const { id: _id, enabled: _enabled, ...meta } = toCatalogModel(
         listed.get(modelId) ?? { id: modelId, supportsTools: true },
