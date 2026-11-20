@@ -15,6 +15,7 @@ import { devCatalogSnapshotPlugin } from './vite/devCatalogSnapshotPlugin'
 import { devServerWatch } from './vite/devServerWatch'
 import { xtermHeadlessWorkerPlugin } from './vite/xtermHeadlessWorkerPlugin'
 import { thirdPartyNotices } from './vite/thirdPartyNoticesPlugin'
+import { reachedOnlyByStudio, type ModuleGraph } from './vite/studioChunks'
 import { asciiRegexLiteralsPlugin, BUNDLE_ESBUILD_OPTIONS } from './vite/bundleCharset'
 import { NEXUS_INTERFACE_VERSION } from './src/browser/bridge/protocol/interfaceVersion'
 import { BUILD_TIME_META_NAME, buildTimeFromCommit } from './src/branding/buildInfo'
@@ -131,7 +132,13 @@ function normalizeModuleId(id: string): string {
   return id.replace(/\\/g, '/')
 }
 
-function resolveManualChunk(id: string): string | undefined {
+function resolveManualChunk(id: string, graph?: ModuleGraph, memo?: Map<string, boolean>): string | undefined {
+  const chunk = resolveVendorChunk(id)
+  if (chunk && graph && memo && reachedOnlyByStudio(id, graph, memo)) return undefined
+  return chunk
+}
+
+function resolveVendorChunk(id: string): string | undefined {
   const normalized = normalizeModuleId(id)
 
   if (!normalized.includes('/node_modules/')) {
@@ -290,6 +297,8 @@ const devWatch = devServerWatch(__dirname)
 // third-party-licenses.txt once every graph is known.
 const notices = thirdPartyNotices(__dirname)
 
+const studioReach = new Map<string, boolean>()
+
 export default defineConfig(({ mode }) => ({
   base: resolvePagesBasePath(),
   esbuild: BUNDLE_ESBUILD_OPTIONS,
@@ -405,8 +414,8 @@ export default defineConfig(({ mode }) => ({
         ),
       },
       output: {
-        manualChunks(id) {
-          return resolveManualChunk(id)
+        manualChunks(id, graph) {
+          return resolveManualChunk(id, graph, studioReach)
         },
       },
     },
