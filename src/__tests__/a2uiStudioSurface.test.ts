@@ -40,6 +40,7 @@ function host(state: DashboardState, onEvent?: (event: StudioEvent) => void) {
 afterEach(() => {
   cleanup()
   vi.unstubAllGlobals()
+  vi.restoreAllMocks()
 })
 
 describe('studio catalog', () => {
@@ -113,7 +114,6 @@ describe('studio surface host lifetime', () => {
     forget.mockClear()
     expect(() => view.unmount()).not.toThrow()
     expect(forget).toHaveBeenCalledWith('studio', DASHBOARD_SURFACE_ID)
-    forget.mockRestore()
   })
 })
 
