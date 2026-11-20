@@ -696,6 +696,6 @@ export function resolveLocaleAssetUrl(
     (typeof document !== 'undefined' ? document.baseURI : undefined) ??
     (typeof location !== 'undefined' ? location.href : undefined)
   // Absolute from here on: the worker has no document.baseURI, and nothing
-  // downstream should have to know about /v<N>/ or the deploy layout.
+  // downstream should have to know about /runtime/v<N>/ or the deploy layout.
   return base ? new URL(relative, base).href : relative
 }

@@ -550,7 +550,7 @@ export class RuntimeHub {
   }
 
   /**
-   * The immutable entry path this runtime reports (e.g. \`/v3/b/<key>/\`), from
+   * The immutable entry path this runtime reports (e.g. \`/runtime/v3/b/<key>/\`), from
    * the boot build + the worker's own href — the PATH half of
    * \`runtime.getBuildEntry\`. Null on dev (no version path) or unknown build.
    */

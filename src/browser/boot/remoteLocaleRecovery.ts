@@ -96,7 +96,7 @@ export async function recoverLocaleCatalog(options: {
   }
 }
 
-/** `https://host/v1/b/<key>/` → `{ origin: 'https://host', root: '/v1/' }`.
+/** `https://host/runtime/v2/b/<key>/` → `{ origin: 'https://host', root: '/runtime/v2/' }`.
  *  The version segment leads the path, as in `buildEntryUrl`. */
 function versionRootOf(
   entryUrl: string | null | undefined,

@@ -55,7 +55,7 @@ const CHANNEL_TEXT = {
 } as const;
 
 /**
- * What we know about a channel's ability to serve THIS binary's `/v<N>/`.
+ * What we know about a channel's ability to serve THIS binary's `/runtime/v<N>/`.
  * `unknown` is the pre-probe state; `checking` drives the spinner; the other
  * two drive the Active / Not-available chips. The channel the panel is running
  * on is `available` by construction — it is serving this page.
@@ -289,7 +289,7 @@ export function AboutSection({
   const activeChannel = channelForUrl(initialEffectiveUrl);
 
   /**
-   * HEAD every channel except `current` for this binary's `/v<N>/`. The current
+   * HEAD every channel except `current` for this binary's `/runtime/v<N>/`. The current
    * one needs no probe: the panel is running off it, so it demonstrably serves
    * this version. Fails closed, like the switch-time guard it shares.
    */

@@ -182,8 +182,8 @@ runtime**. A runtime change never requires rebuilding the client.
 Other ways to serve it:
 
 ```bash
-npm run build:versioned   # a production bundle under /v<N>/
-npm run preview           # serve it; point Velloc at http://localhost:4173/v2/
+npm run build:versioned   # a production bundle under /runtime/v<N>/
+npm run preview           # serve it; point Velloc at http://localhost:4173/runtime/v2/
 npm run deploy            # build and deploy your own copy to Cloudflare
 ```
 

@@ -1,7 +1,7 @@
 // Bridge interface version — the compatibility contract with the C++ host. One
 // source of truth: NEXUS_INTERFACE_VERSION in src/custom_browser/VERSION, synced
 // into ./interfaceVersion.gen.ts by `check_interface_version.py --sync`.
-// Enforced by URL (`{base}/v<N>/`), not handshake; dev paths skip it (G-3).
+// Enforced by URL (`{base}/runtime/v<N>/`), not handshake; dev paths skip it (G-3).
 
 import { NEXUS_INTERFACE_VERSION } from './interfaceVersion.gen'
 
@@ -15,7 +15,7 @@ export type UrlInterfaceVersionCheck =
   | { kind: 'mismatch'; pathVersion: number; guestVersion: number }
 
 // Only the LAST, trailing `/v<K>/` counts, so a self-hosted prefix like
-// `/apps/v2/` never shadows it. A remote entry `/v<K>/b/<buildKey>/` matches only
+// `/apps/v2/` never shadows it. A remote entry `/runtime/v<K>/b/<buildKey>/` matches only
 // with the key's exact shape; anything else falls through to 'unversioned'.
 const TRAILING_VERSION_SEGMENT =
   /\/v(\d+)\/(?:b\/[0-9]{8}T[0-9]{9}Z\/)?(?:index\.html)?$/
