@@ -14,7 +14,7 @@ import {
 } from '../../config/nexusModelConfig/modelEntries'
 import { providerModelPool } from '../../config/nexusModelConfig/providerModelPool'
 import { losslessEntryRow } from '../../models/drivers/modelEntryCatalog'
-import { withSuccessorModel } from '../../config/nexusModelConfig/retiredModels'
+import { concreteSuccessorId, withSuccessorModel } from '../../config/nexusModelConfig/retiredModels'
 
 export function getFirstEnabledSelection(
   catalog: BrowserLlmCatalog | null,
@@ -93,13 +93,19 @@ function isPooledSelection(
 /**
  * A selection naming a concrete model id: kept when the catalog offers it as a row, else mapped to the
  * entry resolving to that id, its version's pinned entry, or its family's `latest`; otherwise as is.
- * A retired model id is first replaced by its successor's.
+ * A retired model id is first replaced by its successor's; a successor entry the catalog has no row
+ * for falls back to the successor's concrete id, mapped the same way.
  */
 export function toEntrySelection<T extends BrowserLlmSelection | null | undefined>(
   catalog: BrowserLlmCatalog | null,
   stored: T,
 ): T {
-  const selection = (stored ? withSuccessorModel(stored) : stored) as T
+  let selection = (stored ? withSuccessorModel(stored) : stored) as T
+  if (catalog && stored && selection && selection !== stored && isEntryId(selection.modelId)
+      && !getProviderById(catalog, selection.providerId)?.models.some(model => model.id === selection!.modelId)) {
+    const concrete = concreteSuccessorId(stored.providerId, stored.modelId)
+    if (concrete) selection = { ...selection, modelId: concrete }
+  }
   if (!catalog || !selection || isEntryId(selection.modelId)) return selection
   const provider = getProviderById(catalog, selection.providerId)
   if (provider?.models.some(model => model.id === selection.modelId)) return selection

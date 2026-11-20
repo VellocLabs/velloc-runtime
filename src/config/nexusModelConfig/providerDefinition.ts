@@ -210,6 +210,15 @@ export type ProviderCodeListing = {
   }
 }
 
+/** A shut-down model and its successor. */
+export type RetiredModel = {
+  /** The concrete ids, snapshots included. */
+  ids: RegExp
+  /** The picker entry ids (`<family>@<version>`) that pin them. */
+  entries: readonly string[]
+  successor: { id: string; family: string; version: string }
+}
+
 export type ProviderDefinition = {
   /** The catalog entry — pure data, serialized to the host. */
   config: NexusProviderModelConfig
@@ -281,6 +290,11 @@ export type ProviderDefinition = {
    * the `name-<version>[-variant][-<date>]` shape.
    */
   versions?: (id: string) => ModelVersionInfo
+  /**
+   * Model ids the provider has shut down, each with the model a stored
+   * selection of it moves to (`retiredModels.ts`).
+   */
+  retired?: readonly RetiredModel[]
   /**
    * How the page shows this provider's models, where it differs from the
    * listing as read (`modelDisplay.ts` applies it; absent = as listed).

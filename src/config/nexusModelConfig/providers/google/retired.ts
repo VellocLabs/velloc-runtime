@@ -1,4 +1,4 @@
-import type { RetiredModel } from '../../retiredModels'
+import type { RetiredModel } from '../../providerDefinition'
 
 /** Shut-down google previews and the model a stored pick of each moves to. */
 export const GOOGLE_RETIRED_MODELS: readonly RetiredModel[] = [

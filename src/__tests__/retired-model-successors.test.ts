@@ -1,8 +1,11 @@
 // A stored pick of a shut-down model loads as its successor: settings.json's
 // provider and agent fields, tier pins and session-type pins, and a session's
 // saved selection.
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import type { BrowserLlmCatalog, BrowserLlmModel } from '../browser/bridge/browserBridgeProtocol'
+import type { AgentRuntimeState } from '../browser/runtime/AgentRuntimeState'
+import type { AgentRuntimeWorkerInitPayload } from '../browser/worker/workerProtocol'
+import { AgentModelController } from '../browser/worker/AgentModelController'
 import { resolveSelection, toEntrySelection } from '../browser/worker/modelSelection'
 import {
   successorModelId,
@@ -44,6 +47,11 @@ describe('retired model successors', () => {
   it('applies under the provider that retired the id only', () => {
     expect(successorModelId('openrouter', 'gemini-3-pro-preview')).toBe('gemini-3-pro-preview')
     expect(successorModelId('custom:my-proxy', 'gemini-3.1-flash-lite-preview')).toBe('gemini-3.1-flash-lite-preview')
+  })
+
+  it.each(['constructor', 'toString', '__proto__'])('a provider id named %s passes through', providerId => {
+    expect(successorModelId(providerId, 'gemini-3-pro-preview')).toBe('gemini-3-pro-preview')
+    expect(normalizeModelTiers({ fast: { providerId, modelId: 'm' } })).toEqual({ fast: { providerId, modelId: 'm' } })
   })
 
   it('replaces retired ids in a list and folds duplicates', () => {
@@ -132,5 +140,30 @@ describe('a session saved on a retired model resumes on its successor', () => {
   it('without a catalog yet, the saved pick is already the successor', () => {
     expect(toEntrySelection(null, { providerId: 'google', modelId: 'gemini-3-pro-preview' }))
       .toEqual({ providerId: 'google', modelId: 'gemini-4-carbon' })
+  })
+
+  it('a retired entry whose successor entry has no row resumes on the successor model', () => {
+    const latestOnly = {
+      ...catalog,
+      providers: [{ ...catalog.providers[0]!, models: [row('gemini-*-pro@latest'), row('gemini-4-carbon')] }],
+    } as BrowserLlmCatalog
+    expect(resolveSelection(latestOnly, { persistedSelection: { providerId: 'google', modelId: 'gemini-*-pro@3-preview' } }))
+      .toEqual({ providerId: 'google', modelId: 'gemini-4-carbon' })
+  })
+
+  it('a cold start before the catalog loads commits the successor', () => {
+    const runtime = { options: {}, engine: { setModelSelection: vi.fn() } } as unknown as AgentRuntimeState
+    const controller = new AgentModelController({
+      getRuntime: () => runtime,
+      emitState: () => {},
+      emitDebugLog: () => {},
+      reportModelChanged: () => {},
+    })
+    const immediate = controller.resolveImmediateSelection(
+      {} as AgentRuntimeWorkerInitPayload,
+      { llmSelection: { providerId: 'google', modelId: 'gemini-*-pro@3-preview' } },
+      null,
+    )
+    expect(immediate).toMatchObject({ kind: 'commit', selection: { providerId: 'google', modelId: 'gemini-*-carbon@4' } })
   })
 })

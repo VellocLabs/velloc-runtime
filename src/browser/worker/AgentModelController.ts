@@ -22,6 +22,7 @@ import { getSessionTracer } from '../../utils/sessionTrace'
 import { isModelUploadTraceEnabled } from '../../engine/turn/modelTrace'
 import { publishHostModelCatalog } from '../../config/hostModelCatalog'
 import { publishCatalogModelPool } from '../../config/nexusModelConfig/providerModelPool'
+import { withSuccessorModel } from '../../config/nexusModelConfig/retiredModels'
 
 export type AgentModelSnapshot = {
   modelCatalog: BrowserLlmCatalog | null
@@ -206,14 +207,14 @@ export class AgentModelController {
       }
     }
 
-    // No catalog yet — apply persisted or requested as-is. The engine
-    // only needs {providerId, modelId} strings to route requests; the
-    // catalog is for the picker UI.
+    // No catalog yet — apply persisted or requested as-is, a retired model
+    // id replaced by its successor's. The engine only needs {providerId,
+    // modelId} strings to route requests; the catalog is for the picker UI.
     if (persistedSelection) {
       return {
         kind: 'commit',
         selection: withDefaultThinkingTier(
-          mergeRequestedTier(persistedSelection, requestedSelection),
+          mergeRequestedTier(withSuccessorModel(persistedSelection), requestedSelection),
         ),
         viaCatalog: false,
       }
@@ -221,7 +222,7 @@ export class AgentModelController {
     if (requestedSelection) {
       return {
         kind: 'commit',
-        selection: withDefaultThinkingTier(requestedSelection),
+        selection: withDefaultThinkingTier(withSuccessorModel(requestedSelection)),
         viaCatalog: false,
       }
     }

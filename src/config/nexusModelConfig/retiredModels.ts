@@ -1,27 +1,16 @@
 /**
- * Model ids a provider has shut down, each with the model a stored selection
- * of it now names. Applied where a stored selection is read (settings.json, a
- * session's saved pick), so a shut-down id never reaches a request.
+ * Shut-down model ids (a provider definition's `retired`) and the model a
+ * stored selection of each now names. Applied where a stored selection is
+ * read (settings.json, a session's saved pick), so a shut-down id never
+ * reaches a request.
  */
-import { GOOGLE_RETIRED_MODELS } from './providers/google/retired'
-
-export type RetiredModel = {
-  /** The concrete ids, snapshots included. */
-  ids: RegExp
-  /** The picker entry ids (`<family>@<version>`) that pin them. */
-  entries: readonly string[]
-  successor: { id: string; family: string; version: string }
-}
-
-const RETIRED: Readonly<Record<string, readonly RetiredModel[]>> = {
-  google: GOOGLE_RETIRED_MODELS,
-}
-
-const successorEntryId = (retired: RetiredModel): string =>
-  `${retired.successor.family}@${retired.successor.version}`
+import type { RetiredModel } from './providerDefinition'
+import { entryId } from './modelEntries'
+import { getProviderDefinition } from './providers'
 
 function retiredModel(providerId: string, modelId: string): RetiredModel | undefined {
-  return RETIRED[providerId]?.find(r => r.entries.includes(modelId) || r.ids.test(modelId))
+  return getProviderDefinition(providerId)?.retired
+    ?.find(r => r.entries.includes(modelId) || r.ids.test(modelId))
 }
 
 /** The id a stored `modelId` now names: a retired entry id becomes its
@@ -30,7 +19,12 @@ function retiredModel(providerId: string, modelId: string): RetiredModel | undef
 export function successorModelId(providerId: string, modelId: string): string {
   const retired = retiredModel(providerId, modelId)
   if (!retired) return modelId
-  return retired.entries.includes(modelId) ? successorEntryId(retired) : retired.successor.id
+  return retired.entries.includes(modelId) ? entryId(retired.successor) : retired.successor.id
+}
+
+/** The successor's concrete id when `modelId` is retired, else undefined. */
+export function concreteSuccessorId(providerId: string, modelId: string): string | undefined {
+  return retiredModel(providerId, modelId)?.successor.id
 }
 
 export function withSuccessorModel<T extends { providerId: string; modelId: string }>(selection: T): T {
@@ -53,9 +47,9 @@ export function withSuccessorEntries(
   const out: Array<{ family: string; version: string; id?: string }> = []
   const seen = new Set<string>()
   for (const entry of entries) {
-    const retired = retiredModel(providerId, `${entry.family}@${entry.version}`)
+    const retired = retiredModel(providerId, entryId(entry))
     const next = retired ? { ...retired.successor } : entry
-    const key = `${next.family}@${next.version}`
+    const key = entryId(next)
     if (seen.has(key)) continue
     seen.add(key)
     out.push(next)
