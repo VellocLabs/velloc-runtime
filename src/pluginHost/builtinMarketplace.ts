@@ -19,14 +19,34 @@ export const BUILTIN_MARKETPLACE_KEY = 'velloc'
  */
 export const BUILTIN_MARKETPLACE_ORIGIN_URL = 'https://plugins.velloc.app'
 
-/** File names the origin serves at its root. */
+/** The directory under the origin the client reads from. */
+export const BUILTIN_MARKETPLACE_DIR = 'builtin'
+
+/** File names the origin serves in that directory. */
 export const BUILTIN_MARKETPLACE_TARBALL_FILE = 'marketplace.tar.gz'
 export const BUILTIN_MARKETPLACE_INDEX_FILE = 'index.json'
 
 export const BUILTIN_MARKETPLACE_SOURCE = {
   source: 'url',
-  url: `${BUILTIN_MARKETPLACE_ORIGIN_URL}/${BUILTIN_MARKETPLACE_TARBALL_FILE}`,
+  url: `${BUILTIN_MARKETPLACE_ORIGIN_URL}/${BUILTIN_MARKETPLACE_DIR}/${BUILTIN_MARKETPLACE_TARBALL_FILE}`,
 } as const satisfies PluginOrigin
+
+/** Tarball URLs the built-in entry was registered with before; a stored entry
+ *  still on one is moved to BUILTIN_MARKETPLACE_SOURCE on load. */
+export const RETIRED_BUILTIN_MARKETPLACE_URLS: readonly string[] = [
+  `${BUILTIN_MARKETPLACE_ORIGIN_URL}/${BUILTIN_MARKETPLACE_TARBALL_FILE}`,
+]
+
+/**
+ * The built-in entry with a retired tarball URL moved to the current one; any
+ * other entry (including one repointed at a test server) is returned as is.
+ */
+export function withCurrentBuiltinSource(name: string, entry: CatalogRecord): CatalogRecord {
+  if (!isBuiltinMarketplace(name)) return entry
+  const source = entry.source
+  if (source.source !== 'url' || !RETIRED_BUILTIN_MARKETPLACE_URLS.includes(source.url)) return entry
+  return { ...entry, source: BUILTIN_MARKETPLACE_SOURCE }
+}
 
 /**
  * settings.json `features` key: `false` switches the whole built-in job off

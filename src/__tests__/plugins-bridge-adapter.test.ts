@@ -333,7 +333,7 @@ describe('pluginsHandlers.listMarketplacePlugins', () => {
         theme: {
           official: true,
           looks: [
-            { id: 'lagoon', appearance: 'light', preview: 'https://plugins.velloc.app/previews/pack/lagoon.svg', use: { command: 'pick-look', args: 'lagoon' } },
+            { id: 'lagoon', appearance: 'light', preview: 'https://plugins.velloc.app/builtin/previews/pack/lagoon.svg', use: { command: 'pick-look', args: 'lagoon' } },
             { id: 'pinned', preview: raw },
           ],
         },

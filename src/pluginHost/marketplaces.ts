@@ -13,6 +13,7 @@ import { buildInitialOfficialEntries } from './defaultMarketplace'
 import {
   buildInitialBuiltinEntries,
   builtinNameSourceProblem,
+  withCurrentBuiltinSource,
   isBuiltinMarketplace,
 } from './builtinMarketplace'
 import type { UpdateChannel } from '../branding/updateChannels'
@@ -88,7 +89,7 @@ function normalizeRegistry(
     for (const [name, value] of Object.entries(raw as Record<string, unknown>)) {
       const entry = normalizeEntry(value, ctx, name)
       if (entry && typeof name === 'string' && name.length > 0) {
-        out[name] = entry
+        out[name] = withCurrentBuiltinSource(name, entry)
       }
     }
   }

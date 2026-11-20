@@ -195,6 +195,25 @@ describe('built-in marketplace registry', () => {
     expect(builtinMarketplaceIndexUrl(mirror)).toBe('http://127.0.0.1:9/index.json')
   })
 
+  it('is served from the builtin/ directory of its origin', () => {
+    expect(BUILTIN_MARKETPLACE_SOURCE.url).toBe('https://plugins.velloc.app/builtin/marketplace.tar.gz')
+    expect(INDEX_URL).toBe('https://plugins.velloc.app/builtin/index.json')
+  })
+
+  it('moves an entry on file at the retired root URL to the current one, keeping its other fields', async () => {
+    const fs = makeMemFs()
+    const retired = { source: 'url', url: 'https://plugins.velloc.app/marketplace.tar.gz' } as const
+    await fs.writeFile(
+      getKnownMarketplacesFilePath(ctx),
+      JSON.stringify({ [MP]: { source: retired, installLocation: '/x', lastUpdated: '2026-01-01T00:00:00.000Z' } }),
+      { encoding: 'utf-8' },
+    )
+    const { registry } = await loadKnownMarketplaces(ctx, fs, '2026-10-13T00:00:00.000Z')
+    expect(registry[MP]?.source).toEqual(BUILTIN_MARKETPLACE_SOURCE)
+    expect(registry[MP]?.installLocation).toBe('/x')
+    expect(registry[MP]?.lastUpdated).toBe('2026-01-01T00:00:00.000Z')
+  })
+
   it('cannot be removed, and its name cannot be taken by another source', async () => {
     const fs = makeMemFs()
     await expect(removeMarketplace(ctx, fs, MP, '2026-10-13T00:00:00.000Z')).rejects.toThrow(/built-in/)

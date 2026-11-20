@@ -120,7 +120,7 @@ function makeBridge(
           name: BUILTIN,
           isOfficial: false,
           isBuiltin: true,
-          source: { source: 'url', url: 'https://plugins.velloc.app/marketplace.tar.gz' },
+          source: { source: 'url', url: 'https://plugins.velloc.app/builtin/marketplace.tar.gz' },
           installLocation: '/mp/velloc',
           lastUpdated: '2026-09-20T00:00:00.000Z',
         },
