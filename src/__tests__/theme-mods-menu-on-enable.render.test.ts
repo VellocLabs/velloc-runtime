@@ -5,9 +5,9 @@
  * turning one off does not.
  */
 import { act, renderHook, waitFor } from '@testing-library/react'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import type { NexusSettingsBridge } from '../browser/webview/nexusSettingsBridge'
-import type { ThemeModsView } from '../browser/webview/mods/themeModsView'
+import { askThemeOnEnable, type ThemeModsView } from '../browser/webview/mods/themeModsView'
 import { useThemeModsMenu } from '../browser/webview/mods/useThemeModsMenu'
 
 const RAIN = { plugin: 'rain', id: 'rain@velloc' }
@@ -54,5 +54,19 @@ describe('the theme menu, turning a theme mod on', () => {
     await act(() => hook.result.current!.setEnabled!(RAIN, false))
     expect(asked).toEqual(['rain@velloc true', 'rain@velloc false'])
     expect(started).toEqual(['rain'])
+  })
+})
+
+describe('starting a theme plugin just turned on', () => {
+  it('asks the runtime with no deadline while the session runs a turn, which runs it once the turn ends', async () => {
+    const request = vi.fn(async () => ({ ok: true, via: 'command' }))
+    const connection = async () => ({ request }) as never
+    askThemeOnEnable(connection, 's1', 'rain', { waitForTurn: true })
+    askThemeOnEnable(connection, 's1', 'rain')
+    await vi.waitFor(() => expect(request).toHaveBeenCalledTimes(2))
+    expect(request.mock.calls).toEqual([
+      ['theme.onEnable', { sessionId: 's1', plugin: 'rain' }, { timeoutMs: 0 }],
+      ['theme.onEnable', { sessionId: 's1', plugin: 'rain' }, {}],
+    ])
   })
 })

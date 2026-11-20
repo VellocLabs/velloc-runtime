@@ -27,6 +27,10 @@ export type ThemePluginsDeps = {
   reload: () => void
   /** A directory plugin switched off, by its folder's name. */
   onFolderOff?: (folder: string) => void
+  /** Theme plugins just switched off, by name, before the sessions reload. */
+  onOff?: (plugins: string[]) => void
+  /** A theme plugin just switched on, by name. */
+  onOn?: (plugin: string) => void
 }
 
 /**
@@ -110,6 +114,7 @@ async function switchOff(
 ): Promise<number> {
   const { homeDir, fs } = deps
   const patch: Record<string, boolean> = {}
+  const names: string[] = []
   let written = 0
   try {
     for (const mod of mods) {
@@ -118,6 +123,7 @@ async function switchOff(
         try {
           await setLocalPluginEnabled(mod.root, false, fs)
           written += 1
+          names.push(mod.plugin)
           deps.onFolderOff?.(basenameRuntimePath(normalizeRuntimePath(mod.root)))
         } catch {
           // A folder outside the plugin roots is not switched from here.
@@ -130,8 +136,10 @@ async function switchOff(
     if (marketplace > 0) {
       await applyEnabledPluginsPatch({ homeDir }, fs, patch)
       written += marketplace
+      for (const mod of mods) if (Object.hasOwn(patch, mod.id)) names.push(mod.plugin)
     }
   } finally {
+    if (names.length > 0) deps.onOff?.([...new Set(names)])
     if (written > 0) deps.reload()
   }
   return written
@@ -165,6 +173,7 @@ export async function turnOnListedThemePlugin(
     const id = installs.find(candidate => pluginBlockReason(candidate) === null)
     if (id === undefined) return false
     await applyEnabledPluginsPatch({ homeDir }, fs, { [id]: true })
+    deps.onOn?.(listing.name)
     deps.reload()
     return true
   } catch {
@@ -211,6 +220,25 @@ export async function keepOnlyListedThemePlugin(
 
 const sameFolder = (a: string, b: string) => normalizeRuntimePath(a).toLowerCase() === normalizeRuntimePath(b).toLowerCase()
 
+function findThemePlugin(known: readonly ThemeModEntry[], which: { plugin: string } | { root: string }): ThemeModEntry | undefined {
+  return known.find(mod =>
+    'root' in which ? mod.id.endsWith('@inline') && !!mod.root && sameFolder(mod.root, which.root) : mod.plugin === which.plugin,
+  )
+}
+
+/** The name of the theme plugin `which` names (a directory plugin by its folder); null when it is none. Never rejects. */
+export async function themePluginName(
+  homeDir: string,
+  fs: RuntimeFs,
+  which: { plugin: string } | { root: string },
+): Promise<string | null> {
+  try {
+    return findThemePlugin(await knownThemePlugins(homeDir, fs), which)?.plugin ?? null
+  } catch {
+    return null
+  }
+}
+
 /**
  * With *Only one at a time* on (settings `mods.singleThemeMod`) and the plugin
  * just switched on a theme plugin, switches off every other one. A directory
@@ -224,9 +252,7 @@ export async function keepOneThemePlugin(
   try {
     const { known, enabled, single } = await readThemePlugins(deps.homeDir, deps.fs)
     if (!single) return 0
-    const self = known.find(mod =>
-      'root' in which ? mod.id.endsWith('@inline') && !!mod.root && sameFolder(mod.root, which.root) : mod.plugin === which.plugin,
-    )
+    const self = findThemePlugin(known, which)
     if (!self) return 0
     return await switchOff(deps, known.filter(mod => mod.plugin !== self.plugin), enabled)
   } catch {

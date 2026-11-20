@@ -21,6 +21,7 @@ import {
   type ThemeModsTurnOffResult,
 } from '../../mods/themeMods'
 import { themePluginRows, turnOffThemePlugins } from '../../mods/themePlugins'
+import type { ThemeSwitchBoard } from '../../mods/themeSwitch'
 import { readLayerFresh, updateSectionInSource } from '../../settings/settingsStore'
 import type { RuntimeFs } from '../../utils/fs/runtimeFs'
 import { scopeAllows, type CapabilityRegistry } from './CapabilityRegistry'
@@ -36,6 +37,8 @@ export type ThemeModsCapabilityOptions = {
   reload?: () => void
   /** Before Turn off all: a look still waiting for a turn would switch a theme plugin back on. */
   beforeTurnOffAll?: () => void
+  /** Where *Turn off all* shows its steps (topic `theme/switch`). */
+  switches?: ThemeSwitchBoard
   report?: (line: string) => void
 }
 
@@ -112,11 +115,23 @@ export function registerThemeModsCapability(
       if (act === 'turnOffAll') {
         // Every theme plugin off: their themes go as they unload, and the app's own look stands.
         options.beforeTurnOffAll?.()
+        const run = options.switches?.start({ kind: 'turnOffAll' })
+        const off = run?.step({ kind: 'turnOff', plugins: [] })
         let turnedOff: number
         try {
           const keep = (request.payload as ThemeModsTurnOffPayload | undefined)?.keep
-          turnedOff = await turnOffThemePlugins({ homeDir, fs: options.context().fs, reload: options.reload ?? (() => {}) }, keep)
+          turnedOff = await turnOffThemePlugins(
+            {
+              homeDir,
+              fs: options.context().fs,
+              reload: options.reload ?? (() => {}),
+              onOff: plugins => off?.done({ plugins }),
+            },
+            keep,
+          )
+          run?.finish({ ok: true })
         } catch (error) {
+          run?.finish({ ok: false, reason: 'request' })
           throw wireError('conflict', error instanceof Error ? error.message : String(error))
         }
         await publish()

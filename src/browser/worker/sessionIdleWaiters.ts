@@ -16,9 +16,11 @@ export class SessionIdleWaiters {
     private readonly backstopMs = 2000,
   ) {}
 
-  wait(sessionId: string, signal?: AbortSignal): Promise<void> {
+  /** `onWaiting`: called once, at once, when the session runs a turn and the wait begins. */
+  wait(sessionId: string, signal?: AbortSignal, onWaiting?: () => void): Promise<void> {
     if (signal?.aborted) return Promise.reject(abortReason(signal))
     if (!this.busy(sessionId)) return Promise.resolve()
+    onWaiting?.()
     return new Promise<void>((resolve, reject) => {
       const set = this.waiting.get(sessionId) ?? new Set<() => void>()
       this.waiting.set(sessionId, set)

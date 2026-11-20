@@ -21,6 +21,7 @@ import {
   withThemeMod,
   type ThemeModsState,
 } from '../mods/themeMods'
+import { ThemeSwitchBoard } from '../mods/themeSwitch'
 import { normalizeSettings } from '../settings/settingsNormalize'
 import type { RuntimeFs } from '../utils/fs/runtimeFs'
 
@@ -55,7 +56,7 @@ function memoryFs(initial: Record<string, unknown>) {
 const conn = (mode: 'observe' | 'control' | 'full' = 'full') =>
   ({ connectionId: 'c', clientId: 'c', kind: 'cli', scope: { mode, sessions: 'all' }, transport: 'message-port' }) as ConnectionInfo
 
-function rig(initial: Record<string, unknown>, beforeTurnOffAll?: () => void) {
+function rig(initial: Record<string, unknown>, beforeTurnOffAll?: () => void, switches?: ThemeSwitchBoard) {
   const disk = memoryFs(initial)
   const registry = new CapabilityRegistry()
   const broker = new TopicBroker()
@@ -69,6 +70,7 @@ function rig(initial: Record<string, unknown>, beforeTurnOffAll?: () => void) {
     },
     report: line => reports.push(line),
     ...(beforeTurnOffAll ? { beforeTurnOffAll } : {}),
+    ...(switches ? { switches } : {}),
   })
   const events: ThemeModsState[] = []
   const subscribe = () =>
@@ -198,6 +200,21 @@ describe('theme mods', () => {
     expect(cancelled).toEqual([0])
     expect(await r.ask('turnOffAll')).toEqual({ ok: true, turnedOff: 0 })
     expect(r.reloads()).toBe(1)
+  })
+
+  it('Turn off all shows the plugins it turned off, or that none was on', async () => {
+    const switches = new ThemeSwitchBoard({ publish: () => {} })
+    const r = rig(
+      { version: 1, mods: { themeMods: [{ plugin: 'one', id: 'one@builtin' }, { plugin: 'two', id: 'two@builtin' }] } },
+      undefined,
+      switches,
+    )
+    await r.ask('turnOffAll')
+    await r.ask('turnOffAll')
+    expect(switches.state().switches.map(each => [each.subject, each.steps, each.outcome])).toEqual([
+      [{ kind: 'turnOffAll' }, [{ kind: 'turnOff', state: 'done', plugins: ['one', 'two'] }], { ok: true }],
+      [{ kind: 'turnOffAll' }, [{ kind: 'turnOff', state: 'done', plugins: [] }], { ok: true }],
+    ])
   })
 
   it('publishes the count again when asked, once the topic has a reader', async () => {

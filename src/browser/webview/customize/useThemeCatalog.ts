@@ -224,7 +224,9 @@ export function useThemeCatalog(
             announce(result.ok ? 'installed' : 'notListed')
             if (!result.ok || !then) return
             if (then.look) use(plugin, then.look, then.target, AFTER_INSTALL_TRIES)
-            else if (runtimeConnection) askThemeOnEnable(runtimeConnection, then.target.sessionId, plugin)
+            else if (runtimeConnection) {
+              askThemeOnEnable(runtimeConnection, then.target.sessionId, plugin, { waitForTurn: then.target.busy })
+            }
           },
           () => {
             if (live.current) setInstallFailed(set => new Set(set).add(plugin))

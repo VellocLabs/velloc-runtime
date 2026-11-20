@@ -6,6 +6,7 @@
  */
 
 import type { RuntimeFs } from '../../../utils/fs/runtimeFs'
+import type { ThemeSwitchBoard } from '../../../mods/themeSwitch'
 import type {
   BrowserBridgeRequest,
   BrowserBridgeResponse,
@@ -55,6 +56,9 @@ export type WebUiBridgeContext = {
    * next session). Optional: handlers MUST treat `undefined` as "no live engines".
    */
   reloadPluginsOnAllSessions?(): void
+
+  /** Where switching a theme plugin on or off shows its steps (F-25). Optional. */
+  themeSwitches?: ThemeSwitchBoard
 }
 
 export type WebUiBridgeHandler = (

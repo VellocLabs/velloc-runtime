@@ -28,6 +28,7 @@ import { forgetRegistryFile, saveInstalledPlugins } from '../pluginHost/installe
 import { getMarketplaceManifestPath } from '../pluginHost/pluginDirs'
 import type { CatalogListing } from '../pluginHost/registryFormats'
 import { listingInstalls } from '../pluginHost/themeListing'
+import { ThemeSwitchBoard, enableSwitchKey, type ThemeSwitchState } from '../mods/themeSwitch'
 import { makeMemFs } from './_helpers/memFs'
 
 const MP = BUILTIN_MARKETPLACE_KEY
@@ -232,7 +233,8 @@ describe('the theme capability', () => {
     options: {
       cached?: boolean
       home?: () => Promise<string>
-      whenIdle?: (sessionId: string, signal?: AbortSignal) => Promise<void>
+      whenIdle?: (sessionId: string, signal?: AbortSignal, onWaiting?: () => void) => Promise<void>
+      switches?: ThemeSwitchBoard
     } = {},
   ) {
     const fs = makeMemFs()
@@ -270,6 +272,7 @@ describe('the theme capability', () => {
         return sessionId === 's1' ? fake.slot : undefined
       },
       ...(options.whenIdle ? { whenIdle: options.whenIdle } : {}),
+      ...(options.switches ? { switches: options.switches } : {}),
     })
     const ask = (act: 'useLook' | 'clear', payload: unknown, c = conn(), signal?: AbortSignal) => {
       const entry = registry.resolve('theme', act)!
@@ -317,6 +320,59 @@ describe('the theme capability', () => {
     turnEnds()
     expect(await answer).toMatchObject({ ok: true, via: 'command' })
     expect(ran).toHaveLength(1)
+  })
+
+  it('a look shows its steps as it goes: the wait for the turn, the command, then that it applied', async () => {
+    const seen: ThemeSwitchState[] = []
+    const switches = new ThemeSwitchBoard({ publish: state => seen.push(state) })
+    let turnEnds!: () => void
+    const { ask } = await rig({
+      switches,
+      whenIdle: (_sessionId, _signal, onWaiting) => {
+        onWaiting?.()
+        return new Promise(resolve => (turnEnds = resolve))
+      },
+    })
+    const answer = ask('useLook', { sessionId: 's1', plugin: 'pack', lookId: 'lagoon' })
+    await vi.waitFor(() => expect(switches.state().switches[0]?.steps).toEqual([{ kind: 'waitTurn', state: 'running' }]))
+    expect(switches.state().switches[0]!.subject).toEqual({ kind: 'look', plugin: 'pack', look: 'lagoon' })
+    turnEnds()
+    await answer
+    expect(switches.state().switches[0]).toMatchObject({
+      steps: [
+        { kind: 'waitTurn', state: 'done' },
+        { kind: 'command', state: 'done', command: '/pick-look lagoon' },
+      ],
+      outcome: { ok: true },
+    })
+    // Every change was published, the command while it ran.
+    expect(seen.some(state => state.switches[0]?.steps[1]?.state === 'running')).toBe(true)
+  })
+
+  it('a look that never waited shows no wait, and one that fails shows why', async () => {
+    const switches = new ThemeSwitchBoard({ publish: () => {} })
+    const { ask } = await rig({ switches, whenIdle: async () => {} })
+    await ask('useLook', { sessionId: 's1', plugin: 'pack', lookId: 'spaced' })
+    expect(switches.state().switches[0]).toMatchObject({ steps: [], outcome: { ok: false, reason: 'unknownLook' } })
+  })
+
+  it('a look cancelled while it waits shows it stopped', async () => {
+    const switches = new ThemeSwitchBoard({ publish: () => {} })
+    const { ask, cancelWaiting } = await rig({
+      switches,
+      whenIdle: (_sessionId, signal, onWaiting) => {
+        onWaiting?.()
+        return new Promise((_resolve, reject) => signal?.addEventListener('abort', () => reject(new Error('cancelled'))))
+      },
+    })
+    const answer = ask('useLook', { sessionId: 's1', plugin: 'pack', lookId: 'lagoon' })
+    await vi.waitFor(() => expect(switches.state().switches[0]?.steps).toHaveLength(1))
+    cancelWaiting()
+    expect(await answer).toEqual({ ok: false, reason: 'notLoaded' })
+    expect(switches.state().switches[0]).toMatchObject({
+      steps: [{ kind: 'waitTurn', state: 'failed' }],
+      outcome: { ok: false, reason: 'cancelled' },
+    })
   })
 
   it('a look cancelled while it waits for the turn runs nothing', async () => {
@@ -583,6 +639,7 @@ describe('theme.useLook with one theme plugin at a time, two plugins serving one
     servedBy: 'pack' | 'rival'
     reloadLands?: Promise<void>
     onPause?: () => void
+    switches?: ThemeSwitchBoard
   }) {
     const fs = makeMemFs()
     await fs.writeFile(
@@ -636,6 +693,7 @@ describe('theme.useLook with one theme plugin at a time, two plugins serving one
       resolveHome: async () => HOME,
       channel: () => 'stable',
       slotOf: () => slot,
+      ...(state.switches ? { switches: state.switches } : {}),
       onEnableTiming: {
         attempts: 5,
         pause: async () => {
@@ -669,6 +727,25 @@ describe('theme.useLook with one theme plugin at a time, two plugins serving one
         )
     return { useLagoon, enabledNow, ran, registeredAgain, reloads: () => reloads }
   }
+
+  it('shows each step of the switch: the other plugin off, the look\'s plugin loading, its command, the end', async () => {
+    const switches = new ThemeSwitchBoard({ publish: () => {} })
+    const { useLagoon } = await rig({ enabledPlugins: { [PACK]: false, [RIVAL]: true }, single: true, servedBy: 'rival', switches })
+    expect(await useLagoon()).toEqual({ ok: true, via: 'command' })
+    expect(switches.state().switches).toEqual([
+      {
+        id: expect.any(String),
+        subject: { kind: 'look', plugin: 'pack', look: 'lagoon' },
+        steps: [
+          { kind: 'turnOn', state: 'done', plugin: 'pack' },
+          { kind: 'turnOff', state: 'done', plugins: ['rival'] },
+          { kind: 'load', state: 'done', plugin: 'pack' },
+          { kind: 'command', state: 'done', command: '/pick-look lagoon' },
+        ],
+        outcome: { ok: true },
+      },
+    ])
+  })
 
   it('switches the other theme plugin off first, registers the look\'s plugin again, and runs the command as its own', async () => {
     const { useLagoon, enabledNow, ran, registeredAgain, reloads } = await rig({

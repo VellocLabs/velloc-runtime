@@ -76,6 +76,7 @@ import {
 import { loadModPanesAsked } from './layout/layoutStorage'
 import { useModCellWidth } from '@/components/assistant-ui/mod-render'
 import { ShellBackdrop, ShellThemeProviders, useShellTheme, useThemeAcrossSwitch } from './shellTheme'
+import { ThemeSwitchPanel } from './mods/ThemeSwitchPanel'
 import type { ModUiSeatPlaces } from '@/components/assistant-ui/mod-ui-context'
 import { useSessionModUi } from './mods/useSessionModUi'
 import { useModAgentView } from './mods/useModAgentView'
@@ -3216,6 +3217,8 @@ export function MultiSessionShell({
           />
         </Suspense>
       ) : null}
+      {/* Theme switches (F-25): over every screen, Customize and Settings included. */}
+      <ThemeSwitchPanel runtimeConnection={runtimeConnection} />
       {/* Settings is an overlay SIBLING: the session area stays mounted (`display:none`), so
           mounted threads keep their UI state and attention acknowledgements. */}
       {settingsSection ? (

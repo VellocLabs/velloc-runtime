@@ -11,7 +11,21 @@ afterEach(() => vi.useRealTimers())
 describe('SessionIdleWaiters', () => {
   it('settles at once for a session that runs no turn', async () => {
     const waiters = new SessionIdleWaiters(() => false)
-    await expect(waiters.wait('s1')).resolves.toBeUndefined()
+    const onWaiting = vi.fn()
+    await expect(waiters.wait('s1', undefined, onWaiting)).resolves.toBeUndefined()
+    expect(onWaiting).not.toHaveBeenCalled()
+  })
+
+  it('says at once, and once, when a wait begins behind a running turn', async () => {
+    let busy = true
+    const waiters = new SessionIdleWaiters(() => busy)
+    const onWaiting = vi.fn()
+    const waiting = waiters.wait('s1', undefined, onWaiting)
+    expect(onWaiting).toHaveBeenCalledTimes(1)
+    busy = false
+    waiters.check('s1')
+    await waiting
+    expect(onWaiting).toHaveBeenCalledTimes(1)
   })
 
   it('settles at the first status change that finds the session idle, and not before', async () => {

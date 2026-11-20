@@ -458,6 +458,7 @@ export function initBuiltinWebUiBridgeHandlers(): void {
       // restart). Optional chain handles test contexts without a session
       // fan-out — the enabled map is still written for the next boot.
       reloadPluginsOnAllSessions: () => ctx.reloadPluginsOnAllSessions?.(),
+      ...(ctx.themeSwitches ? { themeSwitches: ctx.themeSwitches } : {}),
     })
     const action = request.route.action
     if (response.ok && (action === 'install' || action === 'installFromDirectory')) {

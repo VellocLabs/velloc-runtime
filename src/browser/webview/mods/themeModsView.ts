@@ -117,13 +117,18 @@ export function useThemeMods(runtimeConnection: (() => Promise<RuntimeConnection
  * After a person turns `plugin` on: asks the runtime to run the command the
  * catalogue names for it (`theme.onEnable`) in `sessionId`. What shows after
  * is read from the session's published theme; a refusal changes nothing.
+ * `waitForTurn`: the session runs a turn, and the runtime runs the command
+ * once it ends, so the ask has no deadline.
  */
 export function askThemeOnEnable(
   runtimeConnection: () => Promise<RuntimeConnection>,
   sessionId: string,
   plugin: string,
+  options: { waitForTurn?: boolean } = {},
 ): void {
   void runtimeConnection()
-    .then(conn => conn.request('theme.onEnable' as RouteKey, { sessionId, plugin }))
+    .then(conn =>
+      conn.request('theme.onEnable' as RouteKey, { sessionId, plugin }, options.waitForTurn ? { timeoutMs: 0 } : {}),
+    )
     .catch(() => undefined)
 }

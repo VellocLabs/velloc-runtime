@@ -84,9 +84,9 @@ export function useShellTheme(options: {
   const afterEnable = useCallback(
     (plugin: string) => {
       const shown = target.current
-      // A running turn is left alone: the plugin's own command would land in it.
-      if (!runtimeConnection || !canOnEnable || !shown || shown.busy) return
-      askThemeOnEnable(runtimeConnection, shown.sessionId, plugin)
+      if (!runtimeConnection || !canOnEnable || !shown) return
+      // During a turn the runtime runs the plugin's command once the turn ends.
+      askThemeOnEnable(runtimeConnection, shown.sessionId, plugin, { waitForTurn: shown.busy })
     },
     [runtimeConnection, canOnEnable],
   )

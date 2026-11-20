@@ -83,6 +83,7 @@ import { currentTemplateChannel } from '../../branding/updateChannels'
 import { registerCatalogCapability } from './catalogCapability'
 import { registerAppUpdateCapability } from './appUpdateCapability'
 import { registerThemeCapability } from './themeCapability'
+import { registerThemeSwitchTopic } from './themeSwitchTopic'
 import { registerMcpAuthCapability } from './mcpAuthCapability'
 import { registerRenderCacheCapability } from './renderCacheCapability'
 import { registerProviderLoginCapability } from './providerLoginCapability'
@@ -119,7 +120,7 @@ export type RuntimeHubHost = {
   /** Reload every session's mods whose module text changed (F-25). */
   reloadModsOnAllSessions?(): void
   /** Settles once `sessionId` runs no turn (at once when it runs none); rejects when `signal` aborts. */
-  whenSessionIdle?(sessionId: string, signal?: AbortSignal): Promise<void>
+  whenSessionIdle?(sessionId: string, signal?: AbortSignal, onWaiting?: () => void): Promise<void>
   /** Submit to a session the runtime holds; false when it holds none. */
   submitToSession?(sessionId: string, payload: Record<string, unknown>): boolean
   /** What `welcome.server.runtimeVersion` reports. */
@@ -261,6 +262,8 @@ export class RuntimeHub {
       broadcastEvent: (route, payload) => this.publishLegacyBroadcast(route, payload),
       applyAgentSettingsToAllSessions: config => host.applyAgentSettingsToAllSessions(config),
       reloadPluginsOnAllSessions: () => host.reloadPluginsOnAllSessions(),
+      // Theme switches in progress (F-25): `theme/switch`, `observe`.
+      themeSwitches: registerThemeSwitchTopic(this.broker),
     }
     // Runtime-only providers (OpenRouter, the Vercel AI Gateway) write their
     // reconciled model lists through the same `providers` path a settings
@@ -397,6 +400,7 @@ export class RuntimeHub {
       channel: currentTemplateChannel,
       reload: () => this.host.reloadPluginsOnAllSessions(),
       ...(this.host.whenSessionIdle ? { whenIdle: this.host.whenSessionIdle.bind(this.host) } : {}),
+      ...(this.context.webUiBridge.themeSwitches ? { switches: this.context.webUiBridge.themeSwitches } : {}),
     })
     // Theme mods (F-25): the plugins that have set a theme and the
     // backdrop's reach on `mods/themes`; `read` is `observe`,
@@ -406,6 +410,7 @@ export class RuntimeHub {
       resolveHome: () => resolveHostHome(this.context),
       reload: () => this.host.reloadPluginsOnAllSessions(),
       beforeTurnOffAll: () => themeLooks.cancelWaiting(),
+      ...(this.context.webUiBridge.themeSwitches ? { switches: this.context.webUiBridge.themeSwitches } : {}),
     })
     // Model data (F-28): the catalog status on `catalog/status` and the
     // `catalog.refresh` action (`manager`); the service comes from the seam in

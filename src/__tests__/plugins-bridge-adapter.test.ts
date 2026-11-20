@@ -404,6 +404,32 @@ describe('pluginsHandlers.listMarketplacePlugins', () => {
       })
     })
 
+    it('switching a theme plugin shows each step: on, the others off; an enable waits for its command to carry it on', async () => {
+      const { ThemeSwitchBoard } = await import('../mods/themeSwitch')
+      const { ctx } = await world({ singleThemeMod: true })
+      const switches = new ThemeSwitchBoard({ publish: () => {}, joinMs: 60_000 })
+      await pluginsHandlers.setEnabled({ identifier: 'rain@their-own', enabled: true }, { ...ctx, themeSwitches: switches })
+      const [enable] = switches.state().switches
+      expect(enable).toEqual({
+        id: expect.any(String),
+        subject: { kind: 'enable', plugin: 'rain' },
+        steps: [
+          { kind: 'turnOn', state: 'done', plugin: 'rain' },
+          { kind: 'turnOff', state: 'done', plugins: ['lagoon'] },
+        ],
+      })
+      expect(switches.join('enable:rain')?.id).toBe(enable!.id)
+      await pluginsHandlers.setEnabled({ identifier: 'rain@their-own', enabled: false }, { ...ctx, themeSwitches: switches })
+      expect(switches.state().switches.at(-1)).toMatchObject({
+        subject: { kind: 'disable', plugin: 'rain' },
+        steps: [{ kind: 'turnOff', state: 'done', plugins: ['rain'] }],
+        outcome: { ok: true },
+      })
+      // An ordinary plugin is no theme switch.
+      await pluginsHandlers.setEnabled({ identifier: `tool@${BUILTIN_MARKETPLACE_KEY}`, enabled: true }, { ...ctx, themeSwitches: switches })
+      expect(switches.state().switches).toHaveLength(2)
+    })
+
     it('one at a time is on when the settings do not say', async () => {
       const { fs, ctx } = await world({})
       await pluginsHandlers.setEnabled({ identifier: 'rain@their-own', enabled: true }, ctx)

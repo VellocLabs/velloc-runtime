@@ -64,7 +64,8 @@ import type {
   PluginSetupRecord,
 } from '../../../pluginHost/registryFormats'
 import { createBridgeBackedFetch } from '../../../pluginHost/bridgeBackedFetch'
-import { keepOneThemePlugin } from '../../../mods/themePlugins'
+import { keepOneThemePlugin, themePluginName } from '../../../mods/themePlugins'
+import { enableSwitchKey, type ThemeSwitchBoard, type ThemeSwitchRun } from '../../../mods/themeSwitch'
 import type { BrowserBridgeTransport } from '../protocol/core'
 
 export type PluginsAdapterContext = {
@@ -94,6 +95,8 @@ export type PluginsAdapterContext = {
    *  Optional — unit tests omit it; the enabled map is still persisted, so a
    *  fresh session picks the change up at boot. */
   reloadPluginsOnAllSessions?: () => void
+  /** Where switching a theme plugin on or off shows its steps (F-25). */
+  themeSwitches?: ThemeSwitchBoard
 }
 
 export type PluginsAction = keyof PluginsBridgeActionMap
@@ -286,7 +289,10 @@ async function handleInstall(
     if (error instanceof PluginNotListedError) return { ok: false, reason: 'notListed' }
     throw error
   }
-  await keepOneTheme(ctx, { plugin: parsed.name })
+  const run = await startThemeSwitch(ctx, true, { plugin: parsed.name })
+  run?.record({ kind: 'turnOn', plugin: parsed.name })
+  await keepOneTheme(ctx, { plugin: parsed.name }, run)
+  if (run && ctx.themeSwitches) run.finishUnlessJoined(ctx.themeSwitches.joinMs)
   const enabledMap = await getEnabledPluginsMap(
     { homeDir: ctx.homeDir }, ctx.fs,
   )
@@ -351,8 +357,44 @@ function forgetBuilds(ctx: PluginsAdapterContext, which: { plugin?: string; root
 
 /** A theme plugin just switched on: with *Only one at a time* on, the others
  *  go off. The caller's own reload loads the result. */
-function keepOneTheme(ctx: PluginsAdapterContext, which: { plugin: string } | { root: string }): Promise<number> {
-  return keepOneThemePlugin({ homeDir: ctx.homeDir, fs: ctx.fs, reload: () => {} }, which)
+function keepOneTheme(
+  ctx: PluginsAdapterContext,
+  which: { plugin: string } | { root: string },
+  run?: ThemeSwitchRun,
+): Promise<number> {
+  return keepOneThemePlugin(
+    {
+      homeDir: ctx.homeDir,
+      fs: ctx.fs,
+      reload: () => {},
+      ...(run ? { onOff: (plugins: string[]) => run.record({ kind: 'turnOff', plugins }) } : {}),
+    },
+    which,
+  )
+}
+
+/**
+ * A switch on the board when `which` is a theme plugin: an enable is left
+ * open for the plugin's own command to carry on (`theme.onEnable`).
+ */
+async function startThemeSwitch(
+  ctx: PluginsAdapterContext,
+  enabling: boolean,
+  which: { plugin: string } | { root: string },
+): Promise<ThemeSwitchRun | undefined> {
+  if (!ctx.themeSwitches) return undefined
+  const plugin = await themePluginName(ctx.homeDir, ctx.fs, which)
+  if (plugin === null) return undefined
+  return enabling
+    ? ctx.themeSwitches.start({ kind: 'enable', plugin }, enableSwitchKey(plugin))
+    : ctx.themeSwitches.start({ kind: 'disable', plugin })
+}
+
+/** Ends `run` once its plugin is switched: an enable waits a moment for its command to join it. */
+function settleThemeSwitch(ctx: PluginsAdapterContext, run: ThemeSwitchRun | undefined, enabling: boolean): void {
+  if (!run || !ctx.themeSwitches) return
+  if (enabling) run.finishUnlessJoined(ctx.themeSwitches.joinMs)
+  else run.finish({ ok: true })
 }
 
 /** `<name>@<marketplace>` → `<name>`. */
@@ -437,11 +479,20 @@ async function handleSetLocalEnabled(
   payload: PluginsBridgeActionMap['setLocalEnabled']['payload'],
   ctx: PluginsAdapterContext,
 ): Promise<PluginsBridgeActionMap['setLocalEnabled']['result']> {
-  const { name } = await setLocalPluginEnabled(payload.path, payload.enabled === true, ctx.fs)
-  await forgetBuilds(ctx, { root: payload.path })
-  if (payload.enabled === true) await keepOneTheme(ctx, { root: payload.path })
-  ctx.reloadPluginsOnAllSessions?.()
-  return { ok: true, name }
+  const enabling = payload.enabled === true
+  const run = await startThemeSwitch(ctx, enabling, { root: payload.path })
+  try {
+    const { name } = await setLocalPluginEnabled(payload.path, enabling, ctx.fs)
+    run?.record(enabling ? { kind: 'turnOn', plugin: name } : { kind: 'turnOff', plugins: [name] })
+    await forgetBuilds(ctx, { root: payload.path })
+    if (enabling) await keepOneTheme(ctx, { root: payload.path }, run)
+    ctx.reloadPluginsOnAllSessions?.()
+    settleThemeSwitch(ctx, run, enabling)
+    return { ok: true, name }
+  } catch (error) {
+    run?.finish({ ok: false, reason: 'request' })
+    throw error
+  }
 }
 
 async function handleSetEnabled(
@@ -457,19 +508,28 @@ async function handleSetEnabled(
       throw new Error(blockReason)
     }
   }
-  await setPluginEnabled(
-    { homeDir: ctx.homeDir }, ctx.fs,
-    payload.identifier, payload.enabled,
-  )
-  await forgetBuilds(ctx, { plugin: pluginNameOf(payload.identifier) })
-  if (payload.enabled !== false) await keepOneTheme(ctx, { plugin: pluginNameOf(payload.identifier) })
-  // Hot-reload every active session so the enable/disable applies live —
-  // the same reload `/reload-plugins` runs, never a session restart. The reload re-reads this enabled map from disk, so the
-  // change we just wrote takes effect on the next turn. MCP server changes
-  // still defer to the next session.
-  ctx.reloadPluginsOnAllSessions?.()
-  const effective = payload.enabled !== false
-  return { ok: true, effectiveEnabled: effective }
+  const plugin = pluginNameOf(payload.identifier)
+  const enabling = payload.enabled !== false
+  const run = await startThemeSwitch(ctx, enabling, { plugin })
+  try {
+    await setPluginEnabled(
+      { homeDir: ctx.homeDir }, ctx.fs,
+      payload.identifier, payload.enabled,
+    )
+    run?.record(enabling ? { kind: 'turnOn', plugin } : { kind: 'turnOff', plugins: [plugin] })
+    await forgetBuilds(ctx, { plugin })
+    if (enabling) await keepOneTheme(ctx, { plugin }, run)
+    // Hot-reload every active session so the enable/disable applies live —
+    // the same reload `/reload-plugins` runs, never a session restart. The reload re-reads this enabled map from disk, so the
+    // change we just wrote takes effect on the next turn. MCP server changes
+    // still defer to the next session.
+    ctx.reloadPluginsOnAllSessions?.()
+    settleThemeSwitch(ctx, run, enabling)
+  } catch (error) {
+    run?.finish({ ok: false, reason: 'request' })
+    throw error
+  }
+  return { ok: true, effectiveEnabled: enabling }
 }
 
 async function handleRefreshMarketplace(

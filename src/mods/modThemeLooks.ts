@@ -140,6 +140,7 @@ export async function useThemeLook(
   target: ThemeLookTarget,
   ask: Pick<ThemeUseLookPayload, 'plugin' | 'lookId'>,
   signal?: AbortSignal,
+  onRun?: ThemeCommandStarted,
 ): Promise<ThemeUseLookResult> {
   const listing = target.listings?.find(candidate => candidate.name === ask.plugin)
   const look = listing?.theme?.looks.find(candidate => candidate.id === ask.lookId)
@@ -149,7 +150,7 @@ export async function useThemeLook(
   if (!slot) return { ok: false, reason: 'notLoaded' }
   const run = look.use ?? listing!.theme!.onEnable
   // A look without its own command: the plugin's `onEnable`, else loading the plugin again.
-  if (run) return runOwnCommand(slot, ask.plugin, installs, run, signal)
+  if (run) return runOwnCommand(slot, ask.plugin, installs, run, signal, onRun)
   for (const install of installs) {
     const reloaded = (await slot.reloadPlugin?.(install).catch(() => 0)) ?? 0
     if (reloaded > 0) return { ok: true, via: 'reload' }
@@ -170,7 +171,7 @@ export async function useThemeLookOnceLoaded(
   ask: Pick<ThemeUseLookPayload, 'plugin' | 'lookId'>,
   timing: ThemeOnEnableTiming = {},
   signal?: AbortSignal,
-  after: { othersOff?: readonly string[] } = {},
+  after: { othersOff?: readonly string[]; onRun?: ThemeCommandStarted } = {},
 ): Promise<ThemeUseLookResult> {
   const { pause, attempts } = loadingTiming(timing)
   // Named apart: spreading `target` would read its `slot` once more.
@@ -193,7 +194,7 @@ export async function useThemeLookOnceLoaded(
     const started = hasStarted(slot, installs)
     // A look applied by loading the plugin already stands once the session has loaded it.
     if (started && appliedByLoading && slot!.themeOwner?.() === ask.plugin) return { ok: true, via: 'reload' }
-    result = await useThemeLook({ marketplace, listings, ...(installsOf ? { installsOf } : {}), slot }, ask, signal)
+    result = await useThemeLook({ marketplace, listings, ...(installsOf ? { installsOf } : {}), slot }, ask, signal, after.onRun)
     if (result.ok) return result
     if (after.othersOff?.length && run && started && result.reason === 'notOwnCommand') {
       const owner = slot.commandOwner?.(run.command)
@@ -236,6 +237,7 @@ async function runOwnCommand(
   installs: readonly string[],
   run: ThemeLookUse,
   signal?: AbortSignal,
+  onRun?: ThemeCommandStarted,
 ): Promise<OwnCommandResult> {
   if (slot.hasLoaded && !installs.some(install => slot.hasLoaded!(install))) return { ok: false, reason: 'notLoaded' }
   const owner = slot.commandOwner?.(run.command)
@@ -247,6 +249,7 @@ async function runOwnCommand(
   ) {
     return { ok: false, reason: 'notOwnCommand' }
   }
+  onRun?.(run.args ? `/${run.command} ${run.args}` : `/${run.command}`)
   const settlement = await slot
     .commandRun({ command: run.command, args: run.args ?? '' }, undefined, signal, undefined, { kind: 'bridge' })
     .catch((): CommandRunSettlement => ({ settled: false }))
@@ -256,6 +259,9 @@ async function runOwnCommand(
   if (typeof exitCode === 'number' && exitCode !== 0) return { ok: false, reason: 'commandFailed', ...said }
   return { ok: true, via: 'command', ...said }
 }
+
+/** A plugin's own command is about to run in the session, as `/name args`. */
+export type ThemeCommandStarted = (command: string) => void
 
 export type ThemeOnEnableTiming = {
   /** How many times to ask while the plugin is still loading. Default 12. */
@@ -277,6 +283,7 @@ export async function runThemeOnEnable(
   plugin: string,
   timing: ThemeOnEnableTiming = {},
   signal?: AbortSignal,
+  onRun?: ThemeCommandStarted,
 ): Promise<ThemeOnEnableResult> {
   const listing = target.listings?.find(candidate => candidate.name === plugin)
   const run = listing?.theme?.onEnable
@@ -294,7 +301,7 @@ export async function runThemeOnEnable(
       if (signal?.aborted) break
       if (slot.themeOwner?.() === plugin) return { ok: true, via: 'self' }
     }
-    if (slot) result = await runOwnCommand(slot, plugin, installs, run, signal)
+    if (slot) result = await runOwnCommand(slot, plugin, installs, run, signal, onRun)
     if (result.ok) return result
     // Once the plugin has started, a command it did not register will not appear.
     const loading = result.reason === 'notLoaded' || (result.reason === 'notOwnCommand' && !started)

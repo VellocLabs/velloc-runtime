@@ -342,7 +342,7 @@ export class SharedWorkerSessionManager {
       this.applyAgentSettingsToAllSessions(config),
     reloadPluginsOnAllSessions: () => this.reloadPluginsOnAllSessions(),
     reloadModsOnAllSessions: () => this.reloadModsOnAllSessions(),
-    whenSessionIdle: (sessionId, signal) => this.idleWaiters.wait(sessionId, signal),
+    whenSessionIdle: (sessionId, signal, onWaiting) => this.idleWaiters.wait(sessionId, signal, onWaiting),
     submitToSession: (sessionId, payload) => {
       if (!this.sessions.has(sessionId) || !this.runtimeSessionSurface) return false
       this.runtimeSessionSurface.submit(sessionId, payload)
