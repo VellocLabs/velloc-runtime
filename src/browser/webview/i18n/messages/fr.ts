@@ -2554,6 +2554,7 @@ export const fr: Messages = {
   'themeMenu.backdrop': 'Le fond couvre',
   'themeMenu.backdropConversation': 'La conversation seulement',
   'themeMenu.backdropWindow': 'Toute la fenêtre',
+  'themeMenu.defaultTheme': 'Thème par défaut',
   'settings.plugins.noFilterMatch': 'Aucune extension ne correspond au filtre.',
   'settings.plugins.previous': 'Précédent',
   'settings.plugins.next': 'Suivant',

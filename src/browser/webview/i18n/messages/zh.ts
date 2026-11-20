@@ -2482,6 +2482,7 @@ export const zh: Messages = {
   'themeMenu.backdrop': '背景范围',
   'themeMenu.backdropConversation': '仅对话区',
   'themeMenu.backdropWindow': '整个窗口',
+  'themeMenu.defaultTheme': '默认主题',
   'settings.plugins.noFilterMatch': '没有符合筛选条件的插件。',
   'settings.plugins.previous': '上一页',
   'settings.plugins.next': '下一页',

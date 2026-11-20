@@ -2508,6 +2508,7 @@ export const ko: Messages = {
   'themeMenu.backdrop': '배경 범위',
   'themeMenu.backdropConversation': '대화만',
   'themeMenu.backdropWindow': '창 전체',
+  'themeMenu.defaultTheme': '기본 테마',
   'settings.plugins.noFilterMatch': '조건에 맞는 플러그인이 없습니다.',
   'settings.plugins.previous': '이전',
   'settings.plugins.next': '다음',

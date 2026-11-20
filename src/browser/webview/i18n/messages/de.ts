@@ -2545,6 +2545,7 @@ export const de: Messages = {
   'themeMenu.backdrop': 'Hintergrund reicht über',
   'themeMenu.backdropConversation': 'Nur die Unterhaltung',
   'themeMenu.backdropWindow': 'Das ganze Fenster',
+  'themeMenu.defaultTheme': 'Standarddesign',
   'settings.plugins.noFilterMatch': 'Keine Plugins passen zum Filter.',
   'settings.plugins.previous': 'Zurück',
   'settings.plugins.next': 'Weiter',

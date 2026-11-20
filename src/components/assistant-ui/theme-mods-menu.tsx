@@ -1,7 +1,8 @@
-import { CheckIcon, ChevronRightIcon, ClockIcon, Loader2Icon, PaletteIcon, PlusIcon, PowerOffIcon } from "lucide-react";
+import { CheckIcon, ChevronRightIcon, ClockIcon, Loader2Icon, MonitorIcon, MoonIcon, PaletteIcon, PlusIcon, PowerOffIcon, SunIcon } from "lucide-react";
 import { DropdownMenu as DropdownMenuPrimitive } from "radix-ui";
 import { useEffect, useMemo, useRef, useState, type FC } from "react";
 
+import type { GuestColorScheme } from "@/browser/boot/guestColorScheme";
 import { useT } from "@/browser/webview/i18n";
 import type { MessageKey } from "@/browser/webview/i18n/messages/en";
 import {
@@ -15,6 +16,7 @@ import {
   useWaitingLooks,
   type ThemePlugin,
 } from "@/browser/webview/mods/themeLooks";
+import { useGuestColorScheme } from "@/browser/webview/useGuestColorScheme";
 import type { ThemeLook } from "@/pluginHost/registryFormats";
 import type { ThemeBackdropScope, ThemeModEntry } from "@/mods/themeMods";
 import { isThemeBackdropScope } from "@/mods/themeMods";
@@ -103,6 +105,13 @@ const ThemeModsGlyph: FC = () => (
   </svg>
 );
 
+/** The app's own modes, in the Appearance settings' order; each label is that setting's. */
+const COLOR_SCHEMES: ReadonlyArray<{ scheme: GuestColorScheme; label: MessageKey; Icon: typeof SunIcon }> = [
+  { scheme: "system", label: "settings.appearance.modeSystem", Icon: MonitorIcon },
+  { scheme: "light", label: "settings.appearance.modeLight", Icon: SunIcon },
+  { scheme: "dark", label: "settings.appearance.modeDark", Icon: MoonIcon },
+];
+
 /** A window in small: a picture in its middle alone, or all over it. */
 const ScopeThumb: FC<{ scope: ThemeBackdropScope }> = ({ scope }) => (
   <svg
@@ -135,6 +144,7 @@ export const ThemeModsMenu: FC<{ sessionId?: string; isForeground?: boolean }> =
   const [lookFailure, setLookFailure] = useState<string | null>(null);
   // The look picked during a turn, waiting for it to end (shared with the theme directory).
   const waiting = useWaitingLooks();
+  const [colorScheme, setColorScheme] = useGuestColorScheme();
 
   const available = themes !== undefined;
   const refreshRef = useRef(themes?.refresh);
@@ -194,6 +204,8 @@ export const ThemeModsMenu: FC<{ sessionId?: string; isForeground?: boolean }> =
   const inUse = sessionId
     ? lookInUse(appliedLooks()[sessionId], themeStandingOf({ theme, isLoaded, modsSettled }), themes.looks ?? [])
     : null;
+
+  const SchemeIcon = (COLOR_SCHEMES.find((each) => each.scheme === colorScheme) ?? COLOR_SCHEMES[0]!).Icon;
 
   const apply = (plugin: ThemePlugin, look: ThemeLook) => {
     if (!applyLook || !lookTarget || blocked || applying) return;
@@ -458,6 +470,47 @@ export const ThemeModsMenu: FC<{ sessionId?: string; isForeground?: boolean }> =
               </DropdownMenuPrimitive.Portal>
             </DropdownMenuPrimitive.Sub>
             <DropdownMenuPrimitive.Separator className={SEPARATOR_CLASS} />
+            <DropdownMenuPrimitive.Sub>
+              <DropdownMenuPrimitive.SubTrigger data-testid="theme-mods-menu-default" className={ITEM_CLASS}>
+                <SchemeIcon aria-hidden className="size-4 shrink-0 text-muted-foreground" />
+                <span className="flex-1">{t("themeMenu.defaultTheme")}</span>
+                <ChevronRightIcon aria-hidden className="size-4 text-muted-foreground rtl:rotate-180" />
+              </DropdownMenuPrimitive.SubTrigger>
+              <DropdownMenuPrimitive.Portal>
+                <DropdownMenuPrimitive.SubContent
+                  data-testid="theme-mods-menu-default-list"
+                  sideOffset={6}
+                  collisionPadding={8}
+                  className={CONTENT_CLASS}
+                >
+                  <DropdownMenuPrimitive.RadioGroup
+                    value={colorScheme}
+                    onValueChange={(value) => {
+                      const picked = COLOR_SCHEMES.find((each) => each.scheme === value);
+                      if (picked) setColorScheme(picked.scheme);
+                    }}
+                  >
+                    {COLOR_SCHEMES.map(({ scheme, label, Icon }) => (
+                      <DropdownMenuPrimitive.RadioItem
+                        key={scheme}
+                        value={scheme}
+                        data-testid={`theme-default-scheme:${scheme}`}
+                        onSelect={(event) => event.preventDefault()}
+                        className={ITEM_CLASS}
+                      >
+                        <Icon aria-hidden className="size-4 shrink-0 text-muted-foreground" />
+                        <span className="flex-1">{t(label)}</span>
+                        <span className="flex size-4 items-center justify-center">
+                          <DropdownMenuPrimitive.ItemIndicator>
+                            <CheckIcon aria-hidden className="size-4 text-primary" />
+                          </DropdownMenuPrimitive.ItemIndicator>
+                        </span>
+                      </DropdownMenuPrimitive.RadioItem>
+                    ))}
+                  </DropdownMenuPrimitive.RadioGroup>
+                </DropdownMenuPrimitive.SubContent>
+              </DropdownMenuPrimitive.Portal>
+            </DropdownMenuPrimitive.Sub>
             <DropdownMenuPrimitive.Sub>
               <DropdownMenuPrimitive.SubTrigger data-testid="theme-mods-menu-backdrop" className={ITEM_CLASS}>
                 <ScopeThumb scope={themes.backdropScope} />

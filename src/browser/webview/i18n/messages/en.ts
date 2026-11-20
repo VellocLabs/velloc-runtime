@@ -2591,6 +2591,7 @@ export const en = {
   'themeMenu.backdrop': 'Backdrop covers',
   'themeMenu.backdropConversation': 'Conversation only',
   'themeMenu.backdropWindow': 'Whole window',
+  'themeMenu.defaultTheme': 'Default theme',
   'settings.plugins.noFilterMatch': 'No plugins match the filter.',
   'settings.plugins.previous': 'Previous',
   'settings.plugins.next': 'Next',

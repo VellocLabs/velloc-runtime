@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { createElement } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 
 import {
   THEME_SWATCHES,
@@ -20,6 +20,7 @@ import {
 import {
   GUEST_COLOR_SCHEME_STORAGE_KEY,
   readGuestColorScheme,
+  writeGuestColorScheme,
 } from '../browser/boot/guestColorScheme'
 import {
   GUEST_TEXT_SIZE_ATTR,
@@ -151,6 +152,14 @@ describe('AppearanceSection', () => {
     fireEvent.click(option)
     await waitFor(() => expect(localStorage.getItem(GUEST_COLOR_SCHEME_STORAGE_KEY)).toBe('dark'))
     expect(readGuestColorScheme()).toBe('dark')
+  })
+
+  it('follows a mode set elsewhere in the window, such as the theme menu', async () => {
+    localStorage.setItem(GUEST_COLOR_SCHEME_STORAGE_KEY, 'light')
+    render(createElement(AppearanceSection))
+    expect(screen.getByTestId('appearance-mode').textContent).toContain(en['settings.appearance.modeLight'])
+    act(() => writeGuestColorScheme('dark'))
+    expect(screen.getByTestId('appearance-mode').textContent).toContain(en['settings.appearance.modeDark'])
   })
 
   it('selects Default on a fresh client (no stored choice)', () => {

@@ -15,10 +15,6 @@ import {
   writeGuestPalette,
 } from "../../../boot/guestPalette";
 import {
-  readGuestColorScheme,
-  writeGuestColorScheme,
-} from "../../../boot/guestColorScheme";
-import {
   GUEST_TEXT_SIZES,
   parseGuestTextSize,
   readGuestTextSize,
@@ -26,6 +22,7 @@ import {
   type GuestTextSize,
 } from "../../../boot/guestTextSize";
 import { useT, type TranslateFn } from "../../i18n";
+import { useGuestColorScheme } from "../../useGuestColorScheme";
 import { useShowReasoning, writeShowReasoning } from "../../showReasoning";
 import {
   SWATCH_CHECK_ON_PREVIEW,
@@ -179,10 +176,9 @@ function Swatch({
 
 export function AppearanceSection() {
   const t = useT();
-  // Read locally at render — there is no bridge round-trip to wait for.
-  const [scheme, setScheme] = React.useState<BrowserColorScheme>(() =>
-    readGuestColorScheme(),
-  );
+  // Read locally at render — there is no bridge round-trip to wait for; the
+  // theme menu's Default theme sets the same mode.
+  const [scheme, setScheme] = useGuestColorScheme();
   const [swatchId, setSwatchId] = React.useState<string | null>(() => {
     const palette = readGuestPalette();
     const accent = readGuestAccent();
@@ -194,11 +190,10 @@ export function AppearanceSection() {
     [t],
   );
 
-  const chooseScheme = React.useCallback((next: string) => {
-    const value = next as BrowserColorScheme;
-    setScheme(value);
-    writeGuestColorScheme(value);
-  }, []);
+  const chooseScheme = React.useCallback(
+    (next: string) => setScheme(next as BrowserColorScheme),
+    [setScheme],
+  );
 
   const chooseSwatch = React.useCallback((swatch: ThemeSwatch) => {
     setSwatchId(swatch.id);

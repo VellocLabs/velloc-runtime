@@ -4,7 +4,7 @@
  * order of its rows, and what a press asks the window for.
  */
 import { createElement } from 'react'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, onTestFinished, vi } from 'vitest'
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { en as EN } from '../browser/webview/i18n/messages/en'
 import { EMPTY_MOD_UI, ModUiContext, type ModUiContextValue } from '../components/assistant-ui/mod-ui-context'
@@ -157,6 +157,37 @@ describe('theme mods menu', () => {
     expect(standing.getAttribute('aria-checked')).toBe('true')
     fireEvent.click(screen.getByTestId('theme-backdrop-scope:conversation'))
     expect(setBackdropScope).toHaveBeenCalledWith('conversation')
+  })
+
+  it('Default theme sets the colour mode Settings shows, and follows a change made there', async () => {
+    const { readGuestColorScheme, writeGuestColorScheme } = await import('../browser/boot/guestColorScheme')
+    const stored = new Map<string, string>()
+    vi.stubGlobal('localStorage', {
+      getItem: (key: string) => stored.get(key) ?? null,
+      setItem: (key: string, value: string) => void stored.set(key, value),
+    })
+    onTestFinished(() => {
+      vi.unstubAllGlobals()
+    })
+    writeGuestColorScheme('light')
+    mount({ mods: MODS, backdropScope: 'conversation', single: false, refresh: () => {} })
+    fireEvent.contextMenu(screen.getByTestId('blank'))
+    const trigger = await screen.findByTestId('theme-mods-menu-default')
+    expect(trigger.textContent).toContain(EN['themeMenu.defaultTheme'])
+    fireEvent.keyDown(trigger, { key: 'ArrowRight' })
+    const list = await screen.findByTestId('theme-mods-menu-default-list')
+    expect([...list.querySelectorAll('[role="menuitemradio"]')].map(item => item.textContent)).toEqual([
+      EN['settings.appearance.modeSystem'],
+      EN['settings.appearance.modeLight'],
+      EN['settings.appearance.modeDark'],
+    ])
+    expect(screen.getByTestId('theme-default-scheme:light').getAttribute('aria-checked')).toBe('true')
+    fireEvent.click(screen.getByTestId('theme-default-scheme:dark'))
+    expect(readGuestColorScheme()).toBe('dark')
+    await waitFor(() => expect(screen.getByTestId('theme-default-scheme:dark').getAttribute('aria-checked')).toBe('true'))
+    // The list stays open for another pick; a change made in Settings shows here.
+    act(() => writeGuestColorScheme('system'))
+    expect(screen.getByTestId('theme-default-scheme:system').getAttribute('aria-checked')).toBe('true')
   })
 })
 

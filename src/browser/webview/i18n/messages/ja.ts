@@ -2514,6 +2514,7 @@ export const ja: Messages = {
   'themeMenu.backdrop': '背景の範囲',
   'themeMenu.backdropConversation': '会話のみ',
   'themeMenu.backdropWindow': 'ウィンドウ全体',
+  'themeMenu.defaultTheme': 'デフォルトのテーマ',
   'settings.plugins.noFilterMatch': '絞り込み条件に一致するプラグインはありません。',
   'settings.plugins.previous': '前へ',
   'settings.plugins.next': '次へ',

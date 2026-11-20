@@ -2548,6 +2548,7 @@ export const es: Messages = {
   'themeMenu.backdrop': 'El fondo cubre',
   'themeMenu.backdropConversation': 'Solo la conversación',
   'themeMenu.backdropWindow': 'Toda la ventana',
+  'themeMenu.defaultTheme': 'Tema predeterminado',
   'settings.plugins.noFilterMatch':
     'Ningún complemento coincide con el filtro.',
   'settings.plugins.previous': 'Anterior',
