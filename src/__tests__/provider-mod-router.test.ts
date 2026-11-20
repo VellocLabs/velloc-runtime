@@ -97,17 +97,17 @@ const PEERS: Peer[] = [
 ] as unknown as Peer[]
 
 const CONTEXT = { sessionId: 's', agentId: 'a', purpose: 'main', querySource: 'test' } as unknown as RouteEvent['requestContext']
-const first = (context = CONTEXT): RouteEvent => ({
+const first = (context = CONTEXT, callId = 'call-1'): RouteEvent => ({
   model: 'row',
   requestContext: context,
-  callId: 'call-1',
+  callId,
   attempt: 1,
   request: { tools: false },
 })
-const afterFailure = (context = CONTEXT): RouteEvent => ({
+const afterFailure = (context = CONTEXT, callId = 'call-1'): RouteEvent => ({
   model: 'row',
   requestContext: context,
-  callId: 'call-1',
+  callId,
   attempt: 2,
   request: { tools: false },
   lastFailure: {
@@ -216,7 +216,7 @@ describe('createModProviderRouter over the provider mod runtime', () => {
     await router.route(first(call), signal())
     await router.route(afterFailure(call), signal())
     expect(reads).toBe(1)
-    await router.route(first({ ...CONTEXT } as RouteEvent['requestContext']), signal())
+    await router.route(first({ ...CONTEXT } as RouteEvent['requestContext'], 'call-2'), signal())
     expect(reads).toBe(2)
   })
 
@@ -238,7 +238,7 @@ describe('createModProviderRouter over the provider mod runtime', () => {
     states['relay-a'] = { status: 'cooling', until: Date.now() + 60_000 }
     // A first ask reads the table as it is, overlay or not.
     expect(await router.route(first(call), signal())).toMatchObject({ states: ['ok', 'ok'] })
-    expect(await router.route(first(other), signal())).toMatchObject({ states: ['ok', 'ok'] })
+    expect(await router.route(first(other, 'call-2'), signal())).toMatchObject({ states: ['ok', 'ok'] })
     expect(await router.route(afterFailure(call), signal())).toMatchObject({ states: ['cooling', 'ok'] })
     expect(reads).toBe(2)
     expect(PEERS[0]!.state.status).toBe('ok')
@@ -247,7 +247,7 @@ describe('createModProviderRouter over the provider mod runtime', () => {
     expect(await router.route({ ...afterFailure(call), attempt: 3 }, signal())).toMatchObject({ states: ['cooling', 'ok'] })
     // A new call starts from a fresh table and no overlay.
     states['relay-a'] = { status: 'ok' }
-    expect(await router.route(first(call), signal())).toMatchObject({ states: ['ok', 'ok'] })
+    expect(await router.route(first(call, 'call-3'), signal())).toMatchObject({ states: ['ok', 'ok'] })
     expect(reads).toBe(3)
   })
 

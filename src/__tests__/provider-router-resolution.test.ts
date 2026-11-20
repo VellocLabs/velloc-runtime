@@ -533,7 +533,7 @@ describe('a request to a router provider', () => {
 
   it('serves the blocking route the same way', async () => {
     const { transport, opens } = rawHost({ [A]: [refusedWith(503, 'down')] })
-    const { router } = testRouter([toA, toB])
+    const { router, events } = testRouter([toA, toB])
     registerProviderRouter(ROUTER, router, { routesTo: '*' })
 
     const answer = await model(withModelProviders(transport, config()), 'call', payload())
@@ -542,6 +542,8 @@ describe('a request to a router provider', () => {
     expect(opens.map(o => o.providerId)).toEqual([A, B])
     expect(answer.result.message.content).toEqual([expect.objectContaining({ type: 'text', text: `from ${B}` })])
     expect(answer.result.message.model).toBe('m-b')
+    expect(events.map(e => e.attempt)).toEqual([1, 2])
+    expect(events[1]!.callId).toBe(events[0]!.callId)
   })
 
   it('leaves a provider that is no router on its own path', async () => {
