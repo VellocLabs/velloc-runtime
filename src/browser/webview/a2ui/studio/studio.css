@@ -103,7 +103,7 @@
   height: 40px;
   padding: 8px 16px;
   font-size: 13px !important;
-  vertical-align: middle;
+  vertical-align: middle !important;
 }
 .a2-surface-host .a2ui-std-cell[data-divider],
 .a2ui-surface[style*="--velloc-studio-overlay"] .a2ui-std-cell[data-divider] {
@@ -116,7 +116,7 @@
   font-size: 11.5px !important;
   font-weight: 500 !important;
   color: var(--muted-foreground) !important;
-  background: color-mix(in oklch, currentColor 1.5%, var(--a2-surface));
+  background: oklch(0.5 0 0 / 4%);
 }
 .a2-surface-host .a2ui-std-table tbody tr:hover > td.a2ui-std-cell,
 .a2ui-surface[style*="--velloc-studio-overlay"] .a2ui-std-table tbody tr:hover > td.a2ui-std-cell {
