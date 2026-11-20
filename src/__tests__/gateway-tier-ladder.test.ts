@@ -119,10 +119,10 @@ describe('the borrowed ladder over the gateways\' real listings', () => {
     // OpenAI: Luna / Sol / Astra.
     [OR, 'openai/gpt-6-astra', 'openai/gpt-6-luna', 'openai/gpt-6.1-sol', 'openai/gpt-6-astra'],
     [VC, 'openai/gpt-5.6-sol', 'openai/gpt-6-luna', 'openai/gpt-6.1-sol', 'openai/gpt-6-astra'],
-    // Google: balanced is a FIXED id (3.6 Flash) — that very version; best is
-    // the Pro family's newest STABLE version (3.1 Pro is preview-only).
-    [OR, 'google/gemini-3.8-flash', 'google/gemini-3.5-flash-lite', 'google/gemini-3.6-flash', 'google/gemini-2.5-pro'],
-    [VC, 'google/gemini-2.5-pro', 'google/gemini-3.5-flash-lite', 'google/gemini-3.6-flash', 'google/gemini-2.5-pro'],
+    // Google: balanced and best are FIXED Gemini 4 ids (Hydrogen, Carbon); a
+    // listing without them borrows only the fast tier.
+    [OR, 'google/gemini-3.8-flash', 'google/gemini-3.5-flash-lite', undefined, undefined],
+    [VC, 'google/gemini-2.5-pro', 'google/gemini-3.5-flash-lite', undefined, undefined],
     // GLM: one vendor, a different prefix on each gateway — the session's own
     // prefix is what is searched, no vendor-name table is involved.
     [OR, 'z-ai/glm-5.3', 'z-ai/glm-5.3-flash', 'z-ai/glm-5.2', 'z-ai/glm-5.3'],

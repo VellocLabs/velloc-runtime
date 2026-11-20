@@ -418,11 +418,11 @@ describe('nexus model config helpers', () => {
           label: 'Google',
           iconSvg: '<svg />',
           enabled: true,
-          defaultModelId: 'gemini-3-pro-preview',
+          defaultModelId: 'gemini-3.1-pro-preview',
           models: [
             {
-              id: 'gemini-3-pro-preview',
-              label: 'gemini-3-pro-preview',
+              id: 'gemini-3.1-pro-preview',
+              label: 'gemini-3.1-pro-preview',
               enabled: true,
             },
             {
@@ -556,6 +556,10 @@ describe('nexus model config helpers', () => {
             label: 'Gemini 3.5 Flash-Lite',
           },
           {
+            id: 'gemini-3.1-flash-lite',
+            label: 'Gemini 3.1 Flash-Lite',
+          },
+          {
             id: 'gemini-2.5-flash-lite',
             label: 'Gemini 2.5 Flash-Lite',
           },
@@ -564,16 +568,28 @@ describe('nexus model config helpers', () => {
             label: 'Gemini 2.5 Pro',
           },
           {
-            id: 'gemini-3-pro-preview',
+            id: 'gemini-4-carbon',
+            label: 'Gemini 4 Carbon',
+          },
+          {
+            id: 'gemini-4-argon',
+            label: 'Gemini 4 Argon',
+          },
+          {
+            id: 'gemini-4-neon',
+            label: 'Gemini 4 Neon',
+          },
+          {
+            id: 'gemini-4-hydrogen',
+            label: 'Gemini 4 Hydrogen',
+          },
+          {
+            id: 'gemini-3.1-pro-preview',
             label: 'Gemini 3.1 Pro Preview',
           },
           {
             id: 'gemini-3-flash-preview',
             label: 'Gemini 3 Flash Preview',
-          },
-          {
-            id: 'gemini-3.1-flash-lite-preview',
-            label: 'Gemini 3.1 Flash-Lite Preview',
           },
         ],
       },

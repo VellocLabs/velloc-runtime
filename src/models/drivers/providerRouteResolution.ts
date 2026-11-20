@@ -169,7 +169,7 @@ export function routeCall(
     const { [OUTCOME_CALL_FIELD]: _call, providerBodyExtension: _extension, ...rest } =
       payload as BridgeModelRequestPayload & Record<string, unknown>
     const tier = target.effort ?? thinkingTierOf(payload)
-    const extension = buildThinkingBodyExtension(target.provider, tier, payload.maxOutputTokens ?? 0)
+    const extension = buildThinkingBodyExtension(target.provider, tier, payload.maxOutputTokens ?? 0, model)
     const sent = {
       ...rest,
       providerId: target.provider,

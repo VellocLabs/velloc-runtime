@@ -9,9 +9,10 @@ export function buildThinkingBodyExtension(
   providerId: string | undefined,
   tier: string | undefined,
   maxOutputTokens: number,
+  model?: string,
 ): Record<string, unknown> | undefined {
   if (!tier || !providerId) {
     return undefined
   }
-  return getProviderDefinition(providerId)?.reasoning?.(tier, { maxOutputTokens })
+  return getProviderDefinition(providerId)?.reasoning?.(tier, { maxOutputTokens, ...(model ? { model } : {}) })
 }

@@ -182,6 +182,19 @@ describe('buildThinkingBodyExtension', () => {
       })
     })
 
+    it.each([
+      ['gemini-4-hydrogen', 'xhigh', 'xhigh'],
+      ['gemini-4-neon', 'extra-high', 'xhigh'],
+      ['gemini-4-neon', 'max', 'xhigh'],
+      ['gemini-4-carbon', 'xhigh', 'high'],
+      ['gemini-4-argon', 'xhigh', 'high'],
+      ['gemini-3.8-flash', 'xhigh', 'high'],
+    ])('%s at %s sends thinkingLevel=%s', (model, tier, level) => {
+      expect(buildThinkingBodyExtension('google', tier, 8192, model)).toEqual({
+        generationConfig: { thinkingConfig: { thinkingLevel: level } },
+      })
+    })
+
     it('sends nothing for `none` (Gemini thinking cannot be switched off) or an unknown tier', () => {
       expect(buildThinkingBodyExtension('google', 'none', 8192)).toBeUndefined()
       expect(buildThinkingBodyExtension('google', 'turbo', 8192)).toBeUndefined()

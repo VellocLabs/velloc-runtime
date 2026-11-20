@@ -56,6 +56,7 @@ export function resolveModelRequestFields(params: {
     params.thinkingProviderId ?? providerId,
     thinkingTier,
     maxOutputTokens,
+    model,
   )
   return {
     maxOutputTokens,

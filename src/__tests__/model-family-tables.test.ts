@@ -154,9 +154,15 @@ const ADDED: ReadonlyArray<readonly [string, string, Frozen & { name: string }]>
   ['openai', 'gpt-5.4-pro', { ...GPT_LUNA, name: 'GPT-5.4 Pro', availableThinkingTiers: ['medium', 'high', 'xhigh'] }],
   ['kimi', 'k3.1-pro', { ...{ defaultThinkingTier: 'high', availableThinkingTiers: ['low', 'high', 'max'], contextWindow: 1_048_576, defaultMaxOutputTokens: 64_000, maxOutputTokens: 131_072 }, name: 'K3.1 Pro' }],
   ['kimi', 'k3.1-pro-highspeed', { ...{ defaultThinkingTier: 'high', availableThinkingTiers: ['low', 'high', 'max'], contextWindow: 1_048_576, defaultMaxOutputTokens: 64_000, maxOutputTokens: 131_072 }, name: 'K3.1 Pro Highspeed' }],
+  ['google', 'gemini-4-carbon', { name: 'Gemini 4 Carbon', contextWindow: 1_048_576, defaultMaxOutputTokens: 32_768, maxOutputTokens: 65_536, availableThinkingTiers: ['low', 'medium', 'high'], defaultThinkingTier: 'medium' }],
+  ['google', 'gemini-4-argon', { name: 'Gemini 4 Argon', contextWindow: 1_048_576, defaultMaxOutputTokens: 32_768, maxOutputTokens: 65_536, availableThinkingTiers: ['low', 'medium', 'high'], defaultThinkingTier: 'medium' }],
+  ['google', 'gemini-4-neon', { name: 'Gemini 4 Neon', contextWindow: 1_048_576, defaultMaxOutputTokens: 32_768, maxOutputTokens: 65_536, availableThinkingTiers: ['low', 'medium', 'high', 'xhigh'], defaultThinkingTier: 'high' }],
+  ['google', 'gemini-4-hydrogen', { name: 'Gemini 4 Hydrogen', contextWindow: 1_048_576, defaultMaxOutputTokens: 32_768, maxOutputTokens: 65_536, availableThinkingTiers: ['low', 'medium', 'high', 'xhigh'], defaultThinkingTier: 'high' }],
 ]
 const ADDED_IDS: Record<string, string[]> = {}
 for (const [providerId, id] of ADDED) (ADDED_IDS[providerId] ??= []).push(id)
+// A version a family row names, reading the family's figures.
+ADDED_IDS.google!.push('gemini-3.1-flash-lite')
 
 // Models the tables do NOT speak for.
 const UNCOVERED: ReadonlyArray<readonly [string, string, string]> = [
@@ -217,9 +223,12 @@ describe('every provider table as family rows', () => {
       'openai/GPT-5.5 Pro',
       'glm/GLM-4V Plus',
       'deepseek/V4.1 Flash',
+      'google/Gemini 4 Carbon',
+      'google/Gemini 4 Argon',
+      'google/Gemini 4 Neon',
+      'google/Gemini 4 Hydrogen',
       'google/Gemini 3.1 Pro Preview',
       'google/Gemini 3 Flash Preview',
-      'google/Gemini 3.1 Flash-Lite Preview',
       'kimi/K2.8 Preview',
       'kimi/K2.7 Code Highspeed',
     ])
@@ -296,7 +305,9 @@ describe('a family row names the versions it knows (`versions[<v>].id`)', () => 
       'MiniMax-M2.7-highspeed', 'MiniMax-M2.5-highspeed', 'MiniMax-M2.1-highspeed',
     ])
     // A fixed row is itself, where it stands — pattern rows included.
-    expect(idsOf('google').slice(-3)).toEqual([undefined, undefined, undefined])
+    expect(idsOf('google').slice(-6)).toEqual([
+      'gemini-4-carbon', 'gemini-4-argon', 'gemini-4-neon', 'gemini-4-hydrogen', undefined, undefined,
+    ])
     expect(idsOf('deepseek')).toEqual(['deepseek-v4-pro', 'deepseek-flash'])
   })
 
@@ -503,13 +514,13 @@ describe('no table grafts a row for a discovered version', () => {
     }
   })
 
-  it('a stable Gemini 3.x Pro moves Latest and the best tier; a preview does not', () => {
-    builtInEntryRow(host('google', 'gemini-2.5-pro', 'gemini-3.1-pro-preview'), undefined)
-    expect(getTierModelForProvider('google', 'best')).toBe('gemini-2.5-pro')
+  it('the best tier is the fixed Gemini 4 Carbon id; a newer Pro version does not move it', () => {
+    builtInEntryRow(host('google', 'gemini-2.5-pro', 'gemini-3.1-pro-preview', 'gemini-4-carbon'), undefined)
+    expect(getTierModelForProvider('google', 'best')).toBe('gemini-4-carbon')
     // The preview reads its own fixed row, not the Pro family's.
     expect(findConfiguredModel('google', 'gemini-3.1-pro-preview')).toMatchObject({ name: 'Gemini 3.1 Pro Preview' })
-    builtInEntryRow(host('google', 'gemini-2.5-pro', 'gemini-3.1-pro-preview', 'gemini-3.5-pro'), undefined)
-    expect(getTierModelForProvider('google', 'best')).toBe('gemini-3.5-pro')
+    builtInEntryRow(host('google', 'gemini-2.5-pro', 'gemini-3.5-pro', 'gemini-4-carbon'), undefined)
+    expect(getTierModelForProvider('google', 'best')).toBe('gemini-4-carbon')
   })
 })
 
@@ -565,7 +576,7 @@ describe('the tier ladder names families', () => {
       anthropic: ['claude-haiku-4-5', 'claude-sonnet-5-5', 'claude-fable-5-1'],
       glm: ['glm-5.3-flash', 'glm-5.2', 'glm-5.3'],
       deepseek: ['deepseek-flash', 'deepseek-flash', 'deepseek-v4-pro'],
-      google: ['gemini-3.5-flash-lite', 'gemini-3.6-flash', 'gemini-2.5-pro'],
+      google: ['gemini-3.5-flash-lite', 'gemini-4-hydrogen', 'gemini-4-carbon'],
       kimi: ['kimi-for-coding', 'k3', 'k3.1-pro'],
       minimax: ['MiniMax-M2.7', 'MiniMax-M2.7', 'MiniMax-M3'],
       qwen: ['qwen3.8-flash', 'qwen3.7-max', 'qwen3.8-max'],

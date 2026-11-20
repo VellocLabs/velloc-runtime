@@ -16,7 +16,7 @@ import type { NexusProviderModelConfig } from './types'
  *  (`providerBodyExtension`). Undefined = send nothing for this tier. */
 export type ReasoningMapper = (
   tier: string,
-  context: { maxOutputTokens: number },
+  context: { maxOutputTokens: number; model?: string },
 ) => Record<string, unknown> | undefined
 
 /**

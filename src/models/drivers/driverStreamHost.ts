@@ -448,7 +448,7 @@ class DriverStream {
           ...(over.tools !== undefined ? { tools: over.tools as BridgeModelRequestPayload['tools'] } : {}),
           ...(over.maxOutputTokens !== undefined ? { maxOutputTokens: over.maxOutputTokens } : {}),
           ...(over.effort !== undefined
-            ? thinkingFieldsAt(this.provider.id, over.effort, over.maxOutputTokens ?? payload.maxOutputTokens)
+            ? thinkingFieldsAt(this.provider.id, over.effort, over.maxOutputTokens ?? payload.maxOutputTokens, payload.model)
             : {}),
         }
         return this.withMaskedValues(this.provider.buildRequest(next, this.model))
@@ -951,10 +951,15 @@ type FailureSite = {
 type StreamSite = FailureSite & { response: RawProviderStream; bodyText: string; guard: SendGuard }
 
 /** The payload fields of a thinking tier: what the request is built from at `effort`. */
-function thinkingFieldsAt(providerId: string, effort: string, maxOutputTokens: number | undefined): Record<string, unknown> {
+function thinkingFieldsAt(
+  providerId: string,
+  effort: string,
+  maxOutputTokens: number | undefined,
+  model: string | undefined,
+): Record<string, unknown> {
   return {
     thinkingTier: effort,
-    providerBodyExtension: buildThinkingBodyExtension(providerId, effort, maxOutputTokens ?? 0),
+    providerBodyExtension: buildThinkingBodyExtension(providerId, effort, maxOutputTokens ?? 0, model),
   }
 }
 

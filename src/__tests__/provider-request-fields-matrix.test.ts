@@ -74,6 +74,7 @@ function expectedExtension(
   providerId: string,
   tier: string,
   maxOutputTokens: number,
+  model: string,
 ): Record<string, unknown> | undefined {
   const xhigh = (t: string) => (t === 'extra-high' ? 'xhigh' : t)
   switch (providerId) {
@@ -114,6 +115,12 @@ function expectedExtension(
         ? { enable_thinking: true }
         : { enable_thinking: true, thinking_budget: budget }
     }
+    case 'google': {
+      // thinkingConfig.thinkingLevel; `xhigh` only on the Gemini 4 models that take it.
+      const native = /^gemini-4-(?:hydrogen|neon)$/.test(model)
+      const level = tier === 'xhigh' ? (native ? 'xhigh' : 'high') : tier
+      return { generationConfig: { thinkingConfig: { thinkingLevel: level } } }
+    }
     default:
       return undefined
   }
@@ -122,7 +129,7 @@ function expectedExtension(
 /** Providers whose tiers ride a per-request body field. A curated tier on
  *  one of these that produces NO field would be a silent drop. */
 const MAPPED_PROVIDERS = new Set([
-  'anthropic', 'openai', 'chatgpt-pro', 'deepseek', 'kimi', 'qwen',
+  'anthropic', 'openai', 'chatgpt-pro', 'deepseek', 'kimi', 'qwen', 'google',
 ])
 
 /**
@@ -164,7 +171,7 @@ describe('provider request fields — every curated model × tier', () => {
         .toBeUndefined()
       return
     }
-    const expected = c.tier ? expectedExtension(c.providerId, c.tier, maxOut) : undefined
+    const expected = c.tier ? expectedExtension(c.providerId, c.tier, maxOut, c.model.id) : undefined
     expect(fields.providerBodyExtension).toEqual(expected)
     if (c.tier && MAPPED_PROVIDERS.has(c.providerId)) {
       expect(fields.providerBodyExtension, 'an offered tier is never silently dropped')
