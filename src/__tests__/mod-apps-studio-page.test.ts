@@ -10,7 +10,7 @@ import { act, cleanup, fireEvent, render, waitFor } from '@testing-library/react
 
 import { A2uiProviderHost } from '../browser/webview/a2ui/A2uiProviderHost'
 import { setActionsSlot, setOwner, setShownSession, setSlot } from '../browser/webview/a2ui/a2uiPaneBus'
-import { studioAppDataModel, studioAppOperations } from '../browser/webview/a2ui/studio/StudioAppSurface'
+import { studioAppOperations } from '../browser/webview/a2ui/studio/StudioAppSurface'
 import { setModContributions } from '../browser/webview/mods/modContributionsView'
 import { EMPTY_MOD_CONTRIBUTIONS } from '../browser/runtimeProtocol/modContributions'
 import type { AppSurfaceState, ModsAppActionResult } from '../browser/runtimeProtocol/modApps'
@@ -77,11 +77,6 @@ describe('the operations a studio surface is drawn from', () => {
     const broken = { ...board(DASHBOARD_START), surface: { body: 'surface("x")\nroot = NoSuchComponent("a")', hash: 'h2', surfaceIds: ['x'] } }
     expect(studioAppOperations(broken, 'x')).toEqual([])
     warn.mockRestore()
-  })
-
-  it('the data model told to the model is the board\'s data and text', () => {
-    expect(studioAppDataModel(board(DASHBOARD_START))).toEqual({ data: dashboardData(DASHBOARD_START), text: { title: 'Router' } })
-    expect(studioAppDataModel(null)).toEqual({})
   })
 })
 

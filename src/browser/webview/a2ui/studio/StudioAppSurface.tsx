@@ -44,14 +44,6 @@ export function studioAppOperations(board: AppSurfaceState, surfaceId: string): 
   return operations
 }
 
-/** The data model a studio surface of the board is drawn from, as the model is told it. */
-export function studioAppDataModel(board: AppSurfaceState | null): Record<string, unknown> {
-  return {
-    ...(board?.data !== undefined ? { data: board.data } : {}),
-    ...(board?.text ? { text: board.text } : {}),
-  }
-}
-
 export function StudioAppSurface({
   board,
   surfaceId,

@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createElement } from 'react'
 import { cleanup, fireEvent, render, waitFor } from '@testing-library/react'
 import { exportA2UICatalog } from '@copilotkit/react-core/v2/generative-ui'
+import { GenerativeUISurfaceManager } from '@copilotkit/core/generative-ui'
 import { STUDIO_CATALOG_ID, studioUI } from '../browser/webview/a2ui/studio/studioCatalog'
 import { createStudioExpressCompiler } from '../toolkit/builtin/a2ui/express/studioExpress'
 import { StudioSurfaceHost, type StudioEvent } from '../browser/webview/a2ui/studio/StudioSurfaceHost'
@@ -99,14 +100,20 @@ describe('studio surface host lifetime', () => {
   it('draws another surface in place of the one it drew, and unmounts cleanly', async () => {
     const second = compiler.compile('surface("second")\nroot = Text("SECOND_SURFACE")\n')
     if (!second.ok) throw new Error(second.message)
+    const forget = vi.spyOn(GenerativeUISurfaceManager.prototype, 'forgetSurface')
     const view = render(host(DASHBOARD_START))
     await waitFor(() => expect(view.container.textContent).toContain('系统运行正常'))
+    forget.mockClear()
     view.rerender(createElement(StudioSurfaceHost, { surfaceId: 'second', operations: second.messages }))
+    expect(forget).toHaveBeenCalledWith('studio', DASHBOARD_SURFACE_ID)
     await waitFor(() => expect(view.container.textContent).toContain('SECOND_SURFACE'))
     expect(view.container.textContent).not.toContain('系统运行正常')
     view.rerender(host(DASHBOARD_START))
     await waitFor(() => expect(view.container.textContent).toContain('系统运行正常'))
+    forget.mockClear()
     expect(() => view.unmount()).not.toThrow()
+    expect(forget).toHaveBeenCalledWith('studio', DASHBOARD_SURFACE_ID)
+    forget.mockRestore()
   })
 })
 
