@@ -20,6 +20,12 @@ import { normalizeModelTiers, normalizeSessionModelPolicy } from './sessionModel
 import { isAutoCompactWindow, normalizeModelSettings } from './modelSettings'
 import { SETTINGS_MODE_IDS } from '../permissions/sessionModes'
 import { sanitizeUserModels } from '../config/nexusModelConfig/userModels'
+import {
+  successorModelId,
+  withSuccessorEntries,
+  withSuccessorIds,
+  withSuccessorModel,
+} from '../config/nexusModelConfig/retiredModels'
 
 /**
  * `providers.order` as stored: non-empty string ids, first occurrence wins.
@@ -129,13 +135,13 @@ export function normalizeSettings(
       const m = a.model as Record<string, unknown>
       if (typeof m.providerId === 'string' && m.providerId.length > 0
           && typeof m.modelId === 'string' && m.modelId.length > 0) {
-        agent.model = {
+        agent.model = withSuccessorModel({
           providerId: m.providerId,
           modelId: m.modelId,
           ...(typeof m.thinkingTier === 'string' && m.thinkingTier.length > 0
               ? { thinkingTier: m.thinkingTier }
               : {}),
-        }
+        })
       }
     }
     // Drop the section entirely if no recognised field made it through —
@@ -253,20 +259,20 @@ export function normalizeSettings(
           config.baseUrl = r.baseUrl
         }
         if (typeof r.defaultModel === 'string' && r.defaultModel.length > 0) {
-          config.defaultModel = r.defaultModel
+          config.defaultModel = successorModelId(id, r.defaultModel)
         }
         if (typeof r.model === 'string' && r.model.length > 0) {
-          config.model = r.model
+          config.model = successorModelId(id, r.model)
         }
         if (Array.isArray(r.enabledModels)) {
           const models = r.enabledModels
               .filter((m): m is string => typeof m === 'string' && m.length > 0)
-          if (models.length > 0) config.enabledModels = models
+          if (models.length > 0) config.enabledModels = withSuccessorIds(id, models)
         }
         // Kept even when empty: `[]` (every entry removed) is not "absent"
         // (the provider's defaults).
         if (Array.isArray(r.modelEntries)) {
-          config.modelEntries = (r.modelEntries as unknown[])
+          config.modelEntries = withSuccessorEntries(id, (r.modelEntries as unknown[])
             .filter((e): e is { family: string; version: string; id?: unknown } =>
               !!e && typeof e === 'object'
               && typeof (e as { family?: unknown }).family === 'string'
@@ -277,7 +283,7 @@ export function normalizeSettings(
               family: e.family,
               version: e.version,
               ...(typeof e.id === 'string' && e.id.length > 0 ? { id: e.id } : {}),
-            }))
+            })))
         }
         if (r.lastVerification && typeof r.lastVerification === 'object') {
           const lv = r.lastVerification as Record<string, unknown>

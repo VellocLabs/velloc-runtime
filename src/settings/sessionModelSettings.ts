@@ -14,6 +14,7 @@ import {
   type SessionModelPolicyType,
   type TierModelPin,
 } from './settingsTypes'
+import { withSuccessorModel } from '../config/nexusModelConfig/retiredModels'
 
 function isModelTierSlot(v: unknown): v is ModelTierSlot {
   return (
@@ -28,7 +29,8 @@ function isSessionModelPolicyType(v: unknown): v is SessionModelPolicyType {
   )
 }
 
-/** A pin requires a non-empty (providerId, modelId) pair; `thinkingTier`
+/** A pin requires a non-empty (providerId, modelId) pair; a retired model id
+ *  becomes its successor's; `thinkingTier`
  *  survives only as a non-empty string (model-compat is enforced at resolve
  *  time, not here — the same model-agnostic stance as the picker). */
 function normalizeTierModelPin(raw: unknown): TierModelPin | undefined {
@@ -42,7 +44,7 @@ function normalizeTierModelPin(raw: unknown): TierModelPin | undefined {
   if (typeof r.thinkingTier === 'string' && r.thinkingTier.length > 0) {
     pin.thinkingTier = r.thinkingTier
   }
-  return pin
+  return withSuccessorModel(pin)
 }
 
 /** Validate the tier dictionary. Unknown slots dropped; invalid pins dropped;
