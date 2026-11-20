@@ -29,6 +29,7 @@ export function useRouterAppShortcut({
 }): (providerId: string, openEditor: (providerId: string) => void) => void {
   const open = React.useContext(ProviderAppOpenerContext);
   const contributions = useModContributions();
+  const adding = React.useRef(new Set<string>());
   return (providerId, openEditor) => {
     const provider = providers.find((p) => p.id === providerId);
     const mod = provider?.mod;
@@ -45,10 +46,18 @@ export function useRouterAppShortcut({
       open(app);
       return;
     }
+    if (adding.current.has(providerId)) return;
+    adding.current.add(providerId);
     const base = saved ?? { source: "mod" as const, ...(mod.version ? { modVersion: mod.version } : {}) };
     void providersUpsert(bridge, providerId, modProviderConfig(base, { credentialMode: "anonymous" }))
-      .then(onChanged)
-      .then(() => open(app))
-      .catch(() => openEditor(providerId));
+      .then(
+        // Added: the app opens even when the page's reload fails.
+        () => {
+          open(app);
+          return onChanged().catch(() => undefined);
+        },
+        () => openEditor(providerId),
+      )
+      .finally(() => adding.current.delete(providerId));
   };
 }

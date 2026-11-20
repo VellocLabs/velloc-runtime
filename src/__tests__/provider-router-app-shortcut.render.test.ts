@@ -47,13 +47,14 @@ function routerRow(settingsApp: string | undefined): BrowserLlmProvider {
   }
 }
 
-function mount(initial: Record<string, NexusProviderConfig>, row: BrowserLlmProvider, failUpsert = false) {
+function mount(initial: Record<string, NexusProviderConfig>, row: BrowserLlmProvider, failUpsert = false, failReloadAfterAdd = false) {
   let configs = { ...initial }
   const upserts: NexusProviderConfig[] = []
   const bridge = {
     request: vi.fn(async (route: { action: string }, payload: Record<string, unknown>) => {
       switch (route.action) {
         case 'list':
+          if (failReloadAfterAdd && upserts.length > 0) throw new Error('reload failed')
           return { configs, activeProviderId: undefined }
         case 'upsert': {
           if (failUpsert) throw new Error('disk full')
@@ -127,6 +128,15 @@ describe('a router with a settings app', () => {
     await waitFor(() => expect(open).toHaveBeenCalledTimes(1))
     expect(upserts).toHaveLength(1)
     expect(upserts[0]).toMatchObject({ source: 'mod', credentialMode: 'anonymous' })
+    expect(screen.queryByTestId('mod-provider-editor')).toBeNull()
+  })
+
+  it('an add whose page reload fails still opens the app', async () => {
+    act(() => setModContributions(APPS))
+    const { open, upserts } = mount({}, routerRow('switch-console'), false, true)
+    await pickFromAddMenu()
+    await waitFor(() => expect(open).toHaveBeenCalledTimes(1))
+    expect(upserts).toHaveLength(1)
     expect(screen.queryByTestId('mod-provider-editor')).toBeNull()
   })
 
