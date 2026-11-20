@@ -207,10 +207,10 @@ describe('no hard-coded user-visible strings in the webview UI', () => {
   it('keeps the vendored exemption to source no screen draws yet', () => {
     // The exemption ends when anything outside the studio directory imports
     // its surface host: from then on a person can read these strings.
-    const importers = files
+    const importers = walk(ROOT)
       .map(file => relative(ROOT, file).split(sep).join('/'))
       .filter(file => !file.startsWith('browser/webview/a2ui/studio/'))
-      .filter(file => /a2ui\/studio\/|\.\/studio\//.test(readFileSync(join(ROOT, file), 'utf8')))
+      .filter(file => /a2ui\/studio(?:\/|['\"])|\.\/studio(?:\/|['\"])/.test(readFileSync(join(ROOT, file), 'utf8')))
     expect(importers).toEqual([])
   })
 

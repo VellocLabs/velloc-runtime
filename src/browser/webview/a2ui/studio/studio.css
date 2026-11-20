@@ -57,7 +57,8 @@
   --radius-4xl: calc(var(--radius) * 2.6);
 }
 
-/* The page is light unless <html> has the dark class (src/lib/theme.ts). Surface hosts repeat the tokens
+/* The page is light unless <html> has the dark class. Surface hosts repeat the
+ * colour tokens for the shown mode. */
 
 /* State variants the components are written with: the Radix `data-state` /
  * `data-orientation` values and the bare attribute. */
