@@ -260,7 +260,7 @@ type ChartProps = {
   title?: unknown
   data?: unknown
   xKey?: string
-  series?: { key: string; label?: string; color?: string }[]
+  series?: { key: string; label?: unknown; color?: string }[]
   donut?: boolean
   curved?: boolean
   stacked?: boolean

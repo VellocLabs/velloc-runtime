@@ -19,7 +19,7 @@ const series = z
   .array(
     z.object({
       key: z.string().describe('The numeric field of each row this series draws.'),
-      label: z.string().optional().describe('Legend label; defaults to the key.'),
+      label: DynamicString.optional().describe('Legend and tooltip label, literal or a data binding; defaults to the key.'),
       color: z.string().optional().describe('CSS color; leave out to use the theme palette.'),
     }),
   )

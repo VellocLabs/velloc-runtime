@@ -81,7 +81,7 @@ Use these exact positional signatures to instantiate components. Do not output p
   - series: One entry per line or bar group.
     List of maps keys:
     * key - The numeric field of each row this series draws.
-    * label - Legend label; defaults to the key.
+    * label - Legend and tooltip label, literal or a data binding; defaults to the key.
     * color - CSS color; leave out to use the theme palette.
   - stacked: Stack the series in one bar per row.
   - height: Chart height in pixels; default 240.
@@ -168,7 +168,7 @@ Use these exact positional signatures to instantiate components. Do not output p
   - series: One entry per line or bar group.
     List of maps keys:
     * key - The numeric field of each row this series draws.
-    * label - Legend label; defaults to the key.
+    * label - Legend and tooltip label, literal or a data binding; defaults to the key.
     * color - CSS color; leave out to use the theme palette.
   - curved: Smooth the lines.
   - height: Chart height in pixels; default 240.

@@ -35,7 +35,14 @@ const LEGEND_STYLE = { fontSize: 12 }
 /** Legend props shared by every chart: entries keep the order the author gave the slices or series. */
 const LEGEND_PROPS = { itemSorter: null, wrapperStyle: LEGEND_STYLE }
 
-export type SeriesSpec = { key: string; label?: string; color?: string }
+/** `label` is what its binding resolved to: anything that is not text reads as absent. */
+export type SeriesSpec = { key: string; label?: unknown; color?: string }
+
+/** The name a series is shown by: its label, else its key. */
+export function seriesName(series: SeriesSpec): string {
+  const { label } = series
+  return (typeof label === 'string' && label) || (typeof label === 'number' ? String(label) : '') || series.key
+}
 
 export function colorAt(index: number, color?: string): string {
   return color ?? PALETTE[index % PALETTE.length]
@@ -149,7 +156,7 @@ export function LineChartView({ title, data, xKey, series, curved, height, ...un
           <Line
             key={s.key}
             dataKey={s.key}
-            name={s.label ?? s.key}
+            name={seriesName(s)}
             type={curved ? 'monotone' : 'linear'}
             stroke={colorAt(index, s.color)}
             strokeWidth={2}
@@ -184,7 +191,7 @@ export function BarChartView({ title, data, xKey, series, stacked, height, ...un
           <Bar
             key={s.key}
             dataKey={s.key}
-            name={s.label ?? s.key}
+            name={seriesName(s)}
             fill={colorAt(index, s.color)}
             stackId={stacked ? 'stack' : undefined}
             radius={stacked ? 0 : [4, 4, 0, 0]}

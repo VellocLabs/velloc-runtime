@@ -962,8 +962,19 @@
                 "description": "The numeric field of each row this series draws."
               },
               "label": {
-                "type": "string",
-                "description": "Legend label; defaults to the key."
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "$ref": "common_types.json#/$defs/DataBinding"
+                  },
+                  {
+                    "$ref": "common_types.json#/$defs/FunctionCall",
+                    "description": "Invokes a named function, combining common function properties with the catalog function definition."
+                  }
+                ],
+                "description": "Legend and tooltip label, literal or a data binding; defaults to the key."
               },
               "color": {
                 "type": "string",
@@ -1069,8 +1080,19 @@
                 "description": "The numeric field of each row this series draws."
               },
               "label": {
-                "type": "string",
-                "description": "Legend label; defaults to the key."
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "$ref": "common_types.json#/$defs/DataBinding"
+                  },
+                  {
+                    "$ref": "common_types.json#/$defs/FunctionCall",
+                    "description": "Invokes a named function, combining common function properties with the catalog function definition."
+                  }
+                ],
+                "description": "Legend and tooltip label, literal or a data binding; defaults to the key."
               },
               "color": {
                 "type": "string",

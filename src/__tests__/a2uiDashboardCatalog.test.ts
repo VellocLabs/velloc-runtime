@@ -1,14 +1,14 @@
 // @vitest-environment happy-dom
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { act, createElement } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { A2uiSurface, type ReactCatalogComponent } from '@a2ui/react'
 import { MessageProcessor } from '@a2ui/web_core/v1_0'
 import { chartCatalogDefinitions } from '../browser/webview/a2ui/catalog/chartCatalogDefinitions'
 import { badgeTone, metricBetter, metricSense, metricTrend, vellocCatalog } from '../browser/webview/a2ui/catalog/vellocCatalog'
-import { valueText } from '../browser/webview/a2ui/catalog/ChartViews'
+import { seriesName, valueText } from '../browser/webview/a2ui/catalog/ChartViews'
 import { createA2uiExpressCompiler } from '../toolkit/builtin/a2ui/express/a2uiExpressCompiler'
 import { getRuntimeA2uiCompiler } from '../toolkit/builtin/a2ui/express/a2uiRuntimeCompiler'
 
@@ -65,6 +65,12 @@ describe('the dashboard components of the Velloc catalog', () => {
     expect(table.safeParse({ columns: [{ key: 's', label: 'S', badge: { Paid: 'green' } }], rows: [] }).success, 'an unknown tone is drawn neutral, as on a Badge').toBe(true)
     expect(chartCatalogDefinitions.Metric.schema.safeParse({ label: 'A', value: 1, trend: { path: '/t' } }).success, 'trend binds').toBe(true)
     expect(chartCatalogDefinitions.BarChart.schema.safeParse({ data: [], xKey: 'm', series: [], valuePrefix: '$', valueSuffix: 'K' }).success).toBe(true)
+    for (const chart of ['LineChart', 'BarChart'] as const) {
+      const schema = chartCatalogDefinitions[chart].schema
+      expect(schema.safeParse({ data: [], xKey: 'm', series: [{ key: 'v', label: { path: '/text/requests' } }] }).success, `${chart} series label binds`).toBe(true)
+      expect(schema.safeParse({ data: [], xKey: 'm', series: [{ key: 'v', label: 'Requests' }] }).success, `${chart} series label is literal too`).toBe(true)
+      expect(schema.safeParse({ data: [], xKey: 'm', series: [{ key: 'v', color: { path: '/c' } }] }).success, `${chart} series color stays literal`).toBe(false)
+    }
   })
 
   it('a bound trend and tone fall back to flat and neutral; a unit wraps a value', () => {
@@ -321,5 +327,51 @@ describe('the dashboard components of the Velloc catalog', () => {
   it('the runtime compiler, built from the catalog document, accepts the same dashboard', async () => {
     const compiler = await getRuntimeA2uiCompiler()
     expect(compiler.compile(DASHBOARD, compiler.createState())).toMatchObject({ ok: true })
+  })
+})
+
+describe('a chart series label', () => {
+  it('names a series by its resolved label, else by its key', () => {
+    expect(seriesName({ key: 'v', label: 'Requests' })).toBe('Requests')
+    expect(seriesName({ key: 'v', label: 3 })).toBe('3')
+    expect(seriesName({ key: 'v' })).toBe('v')
+    expect(seriesName({ key: 'v', label: '' })).toBe('v')
+    expect(seriesName({ key: 'v', label: { path: '/missing' } })).toBe('v')
+  })
+
+  it('is resolved from the data model before the chart is drawn', async () => {
+    const seen: unknown[] = []
+    vi.doMock('../browser/webview/a2ui/catalog/ChartViews', async original => ({
+      ...(await original<typeof import('../browser/webview/a2ui/catalog/ChartViews')>()),
+      LineChartView: (props: { series: unknown }) => {
+        seen.push(props.series)
+        return null
+      },
+    }))
+    vi.resetModules()
+    try {
+      const { vellocCatalog: catalog } = await import('../browser/webview/a2ui/catalog/vellocCatalog')
+      const { createA2uiExpressCompiler: compilerFor } = await import('../toolkit/builtin/a2ui/express/a2uiExpressCompiler')
+      const { A2uiSurface: Surface } = await import('@a2ui/react')
+      const { MessageProcessor: Processor } = await import('@a2ui/web_core/v1_0')
+      const body = [
+        'surface("series")',
+        '$/text = {requests: "Requests"}',
+        '$/rows = [{day: "11-19", requests: 4}]',
+        'root = LineChart(data=$/rows, xKey="day", series=[{key: "requests", label: $/text/requests}])',
+      ].join('\n')
+      const processor = new Processor<ReactCatalogComponent>([catalog], () => {})
+      const compiler = compilerFor(catalog)
+      expect(compiler.compile(body, compiler.stateFor(processor))).toMatchObject({ ok: true })
+      const container = document.createElement('div')
+      document.body.appendChild(container)
+      root = createRoot(container)
+      await act(async () => root!.render(createElement(Surface, { surface: processor.getSurface('series')! })))
+      await vi.waitFor(() => expect(seen.length).toBeGreaterThan(0))
+      expect(seen.at(-1)).toMatchObject([{ key: 'requests', label: 'Requests' }])
+    } finally {
+      vi.doUnmock('../browser/webview/a2ui/catalog/ChartViews')
+      vi.resetModules()
+    }
   })
 })
