@@ -329,6 +329,18 @@ describe('a request to a router provider', () => {
     expect(events[1]!.lastFailure!.message).toContain('slow down')
   })
 
+  it('moves to another target when the first rejects its credentials before the reply', async () => {
+    const { transport, opens } = rawHost({ [A]: [refusedWith(401, 'Missing Authentication header')] })
+    const { router, events } = testRouter([toA, toB])
+    registerProviderRouter(ROUTER, router, { routesTo: [A, B] })
+
+    const { chunks } = await stream(withModelProviders(transport, config()))
+
+    expect(opens.map(o => o.providerId)).toEqual([A, B])
+    expect(errorOf(chunks)).toBeUndefined()
+    expect(events[1]).toMatchObject({ lastFailure: { provider: A, status: 401, verdict: { kind: 'credentials' } } })
+  })
+
   it('tells every ask of a call one call id, and another call another', async () => {
     const { transport } = rawHost({ [A]: [refusedWith(429, 'slow down')] })
     const { router, events } = testRouter([toA, toB, toA])
