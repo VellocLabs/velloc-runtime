@@ -23,6 +23,7 @@ import {
 } from './chartCatalogDefinitions'
 import { TABS_CATALOG_INSTRUCTIONS, tabsComponent } from './TabsView'
 import type { CatalogPropNames } from '../toA2uiMessages'
+import type { SeriesSpec } from './ChartViews'
 
 const PieChartView = lazy(async () => ({
   default: (await import('./ChartViews')).PieChartView,
@@ -260,7 +261,7 @@ type ChartProps = {
   title?: unknown
   data?: unknown
   xKey?: string
-  series?: { key: string; label?: unknown; color?: string }[]
+  series?: SeriesSpec[]
   donut?: boolean
   curved?: boolean
   stacked?: boolean

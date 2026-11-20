@@ -337,6 +337,8 @@ describe('a chart series label', () => {
     expect(seriesName({ key: 'v' })).toBe('v')
     expect(seriesName({ key: 'v', label: '' })).toBe('v')
     expect(seriesName({ key: 'v', label: { path: '/missing' } })).toBe('v')
+    expect(seriesName({ key: 'v', label: null })).toBe('v')
+    expect(seriesName({ key: 'v', label: true })).toBe('v')
   })
 
   it('is resolved from the data model before the chart is drawn', async () => {
@@ -369,6 +371,10 @@ describe('a chart series label', () => {
       await act(async () => root!.render(createElement(Surface, { surface: processor.getSurface('series')! })))
       await vi.waitFor(() => expect(seen.length).toBeGreaterThan(0))
       expect(seen.at(-1)).toMatchObject([{ key: 'requests', label: 'Requests' }])
+      await act(async () => {
+        processor.processMessages([{ version: '1.0', updateDataModel: { surfaceId: 'series', path: '/text/requests', value: 'Calls' } }] as never)
+      })
+      await vi.waitFor(() => expect(seen.at(-1), 'a bound label follows its data').toMatchObject([{ key: 'requests', label: 'Calls' }]))
     } finally {
       vi.doUnmock('../browser/webview/a2ui/catalog/ChartViews')
       vi.resetModules()

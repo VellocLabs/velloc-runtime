@@ -35,13 +35,13 @@ const LEGEND_STYLE = { fontSize: 12 }
 /** Legend props shared by every chart: entries keep the order the author gave the slices or series. */
 const LEGEND_PROPS = { itemSorter: null, wrapperStyle: LEGEND_STYLE }
 
-/** `label` is what its binding resolved to: anything that is not text reads as absent. */
+/** `label` is what its binding resolved to: a string or number is shown, anything else reads as absent. */
 export type SeriesSpec = { key: string; label?: unknown; color?: string }
 
 /** The name a series is shown by: its label, else its key. */
 export function seriesName(series: SeriesSpec): string {
   const { label } = series
-  return (typeof label === 'string' && label) || (typeof label === 'number' ? String(label) : '') || series.key
+  return (typeof label === 'string' || typeof label === 'number' ? String(label) : '') || series.key
 }
 
 export function colorAt(index: number, color?: string): string {
