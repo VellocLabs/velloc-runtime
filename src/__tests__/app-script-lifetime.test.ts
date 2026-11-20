@@ -14,7 +14,8 @@ import type { ModWorkerHandle } from '../mods/ModRuntime'
 import { AppBackgroundRuntime, type AppBackgroundRef } from '../mods/app/AppBackgroundRuntime'
 import { appBackgroundRef } from '../mods/app/appBackgroundBoot'
 import { refuseAppBackgroundCall, refuseAppBackgroundRegistrations } from '../mods/app/appBackgroundEvents'
-import { AppScriptLifetimes, untilReady } from '../mods/app/appScriptLifetime'
+import { APP_SCRIPT_IDLE_MS, AppScriptLifetimes, untilReady } from '../mods/app/appScriptLifetime'
+import type { SettingsAppPeerSource } from '../mods/app/appProviderCalls'
 import { resetAppStateBusForTests } from '../mods/app/appStateBus'
 import type { AppBackgroundTemplate } from '../mods/ui/contributionsHost'
 
@@ -158,20 +159,30 @@ describe('AppBackgroundRuntime — an app script', () => {
       on('app.press', async ($, e) => { await $.app.state.update(s => { s.seen.push(['press', e.trigger]) }); return { open: true } })
     }`
 
-  function world(source: string, idleMs = 40, scanned = false) {
+  type Extra = Partial<Pick<ConstructorParameters<typeof AppBackgroundRuntime>[0], 'pressTimeoutMs' | 'pressStartTimeoutMs' | 'actionTimeoutMs' | 'respawnBackoffMs' | 'providerCalls'>> & {
+    /** How long the worker takes to open. */
+    slowOpenMs?: number
+  }
+
+  function world(source: string, idleMs = 40, scanned = false, extra: Extra = {}) {
     let opened = 0
     let closed = 0
+    const reports: string[] = []
+    const crashes: Array<() => void> = []
+    const { slowOpenMs, ...options } = extra
     const runtime = new AppBackgroundRuntime({
       readModule: async () => source,
       openWorker: async (): Promise<ModWorkerHandle> => {
         opened += 1
+        if (slowOpenMs) await new Promise(resolve => setTimeout(resolve, slowOpenMs))
         const channel = new MessageChannel()
         ports.push(channel.port1, channel.port2)
         installModWorkerHost(channel.port2)
-        let settle!: (value: { reason: 'closed' }) => void
-        const done = new Promise<{ reason: 'closed' }>(resolve => {
+        let settle!: (value: { reason: 'closed' | 'crashed' }) => void
+        const done = new Promise<{ reason: 'closed' | 'crashed' }>(resolve => {
           settle = resolve
         })
+        crashes.push(() => settle({ reason: 'crashed' }))
         return {
           port: channel.port1,
           closed: done,
@@ -182,9 +193,10 @@ describe('AppBackgroundRuntime — an app script', () => {
         }
       },
       window: { available: () => true, attached: async () => {} },
-      report: () => undefined,
+      report: line => void reports.push(line),
       scriptIdleMs: idleMs,
       ...(scanned ? { scan: async (_ref: unknown, text: string) => scanModuleUses(ts, [{ path: 'ui.js', text }]) } : {}),
+      ...options,
     })
     runtimes.push(runtime)
     const ref: AppBackgroundRef = {
@@ -197,7 +209,7 @@ describe('AppBackgroundRuntime — an app script', () => {
       lifetime: 'shown',
     }
     const seen = () => (runtime.document('pay-board')?.value as { seen?: unknown[] } | undefined)?.seen ?? []
-    return { runtime, ref, seen, workers: () => ({ opened, closed }) }
+    return { runtime, ref, seen, reports, crash: () => crashes.at(-1)?.(), workers: () => ({ opened, closed }) }
   }
 
   it('is not started at sync; a page showing the app starts it, and it hears app.show after app.start', async () => {
@@ -271,5 +283,159 @@ describe('AppBackgroundRuntime — an app script', () => {
     await vi.waitFor(() => expect(runtime.status().map(each => [each.appId, each.state])).toEqual([['pay-other', 'ready']]))
     expect(workers().opened).toBe(1)
     expect(seen()).toEqual([])
+  })
+
+  it('stays while a second page shows the app, and stops once neither does', async () => {
+    const { runtime, ref, seen, workers } = world(LOGGER)
+    runtime.sync([ref])
+    runtime.view('pay-board', 's1', 'c1', 'full')
+    runtime.view('pay-board', 's1', 'c2', 'beside')
+    await vi.waitFor(() => expect(seen()).toContain('app.show'))
+    runtime.view('pay-board', 's1', 'c1', null)
+    await new Promise(resolve => setTimeout(resolve, 100))
+    expect(workers()).toEqual({ opened: 1, closed: 0 })
+    runtime.viewClientGone('c2')
+    await vi.waitFor(() => expect(workers().closed).toBe(1))
+    expect(runtime.status()).toEqual([])
+  })
+
+  it('a press waits for a stopped script to load beyond its hook budget, and is answered', async () => {
+    const { runtime, ref, seen } = world(LOGGER, 1_000, false, { pressTimeoutMs: 30, slowOpenMs: 80 })
+    runtime.sync([ref])
+    await expect(runtime.press('pay-board', 'provider', undefined, 'c1')).resolves.toEqual({ kind: 'open' })
+    expect(seen()).toEqual(['start', ['press', 'provider']])
+  })
+
+  it('a press gives up on a load that outlasts its start budget', async () => {
+    const { runtime, ref } = world(LOGGER, 1_000, false, { pressStartTimeoutMs: 20, slowOpenMs: 80 })
+    runtime.sync([ref])
+    await expect(runtime.press('pay-board', 'provider', undefined, 'c1')).resolves.toBeNull()
+  })
+
+  it('an action on a stopped script gets one budget for the load and the hook together', async () => {
+    const SLOW = `
+      export function register(on) {
+        on('app.action', async ($) => { await $.clock.sleep(100); return { handled: true } })
+      }`
+    const { runtime, ref } = world(SLOW, 1_000, false, { actionTimeoutMs: 200, slowOpenMs: 150 })
+    runtime.sync([ref])
+    await expect(runtime.action('pay-board', 'save', null, 's1')).resolves.toBe(false)
+    await expect(runtime.action('pay-board', 'save', null, 's1')).resolves.toBe(true)
+  })
+
+  it('a script that failed to load is not loaded again at each show', async () => {
+    const { runtime, ref, reports, workers } = world('export function register(on) { on(', 20)
+    runtime.sync([ref])
+    runtime.view('pay-board', 's1', 'c1', 'full')
+    await vi.waitFor(() => expect(runtime.status().map(each => each.state)).toEqual(['failed']))
+    const failures = reports.length
+    runtime.view('pay-board', 's1', 'c1', null)
+    await new Promise(resolve => setTimeout(resolve, 60))
+    runtime.view('pay-board', 's1', 'c1', 'full')
+    await new Promise(resolve => setTimeout(resolve, 30))
+    expect(runtime.status().map(each => each.state)).toEqual(['failed'])
+    expect(reports.length).toBe(failures)
+    expect(workers().opened).toBe(1)
+  })
+
+  it('a crash while no page shows the app does not restart it; the next action does, keeping the crash count', async () => {
+    const { runtime, ref, seen, crash, workers } = world(LOGGER, 1_000, false, { respawnBackoffMs: [0] })
+    runtime.sync([ref])
+    await expect(runtime.action('pay-board', 'save', null, 's1')).resolves.toBe(true)
+    crash()
+    await vi.waitFor(() => expect(runtime.status().map(each => each.state)).toEqual(['crashed']))
+    await new Promise(resolve => setTimeout(resolve, 30))
+    expect(workers().opened).toBe(1)
+    for (let round = 0; round < 3; round += 1) {
+      await expect(runtime.action('pay-board', 'save', null, 's1')).resolves.toBe(true)
+      crash()
+      await vi.waitFor(() => expect(runtime.status().map(each => each.state)).not.toContain('ready'))
+      await new Promise(resolve => setTimeout(resolve, 20))
+    }
+    expect(runtime.status().map(each => each.state)).toEqual(['dead'])
+    await expect(runtime.action('pay-board', 'save', null, 's1')).resolves.toBe(false)
+    expect(workers().opened).toBe(4)
+    expect(seen()).toEqual(['start', ['action', 'save']])
+  })
+
+  it('a crash while the app is shown restarts it', async () => {
+    const { runtime, ref, seen, crash, workers } = world(LOGGER, 1_000, false, { respawnBackoffMs: [0] })
+    runtime.sync([ref])
+    runtime.view('pay-board', 's1', 'c1', 'full')
+    await vi.waitFor(() => expect(seen()).toEqual(['start', 'app.show']))
+    crash()
+    await vi.waitFor(() => expect(workers().opened).toBe(2))
+    await vi.waitFor(() => expect(runtime.status().map(each => each.state)).toEqual(['ready']))
+  })
+
+  it('refuses the calls that need a resident worker at the call, with the reason', async () => {
+    const CALLS = `
+      export function register(on) {
+        on('app.start', async ($) => {
+          const out = {}
+          const tries = { badge: () => $.app.badge(1), busy: () => $.app.busy(true), analyze: () => $.app.analyze({ prompt: 'x' }), mcp: () => $.mcp.call('s', 't', {}) }
+          for (const [key, run] of Object.entries(tries)) {
+            try { await run(); out[key] = 'ok' } catch (e) { out[key] = e.name + ': ' + e.message }
+          }
+          await $.app.state.set(out)
+        })
+      }`
+    const { runtime, ref } = world(CALLS)
+    runtime.sync([ref])
+    runtime.view('pay-board', 's1', 'c1', 'full')
+    await vi.waitFor(() => expect(runtime.document('pay-board')?.value).toHaveProperty('mcp'))
+    const value = runtime.document('pay-board')?.value as Record<string, string>
+    for (const key of ['badge', 'busy', 'analyze', 'mcp']) expect(value[key]).toMatch(/^NotAllowedError: .*not available to an app's script: it runs only while the app is on screen/)
+  })
+
+  it('refuses a scanned script that calls what needs a resident worker before it loads, naming each', async () => {
+    const USES = `
+      export function register(on) {
+        on('app.start', async ($) => { await $.app.badge(1); await $.app.busy(true); await $.app.analyze({}); await $.mcp.call('s', 't', {}) })
+      }`
+    const { runtime, ref, workers } = world(USES, 40, true)
+    runtime.sync([ref])
+    runtime.view('pay-board', 's1', 'c1', 'full')
+    await vi.waitFor(() => expect(runtime.status().map(each => each.state)).toEqual(['refused']))
+    const reason = runtime.status()[0]?.reason ?? ''
+    for (const call of ['app.badge', 'app.busy', 'app.analyze', 'mcp.call']) expect(reason).toContain(`$.${call} is not available to an app's script`)
+    expect(workers().opened).toBe(0)
+  })
+
+  it("serves a settings app's $.provider calls to a script", async () => {
+    const PROVIDER = `
+      export function register(on) {
+        on('app.start', async ($) => {
+          const peers = (await $.provider.peers()).map(p => p.id)
+          await $.provider.reload()
+          const clear = await $.provider.clearState({ provider: 'vendor-a' })
+          const usage = await $.provider.usage({ from: 0, to: 3600000, by: 'hour' })
+          await $.app.state.set({ peers, clear, usage })
+        })
+      }`
+    const reloads: string[] = []
+    const asked: unknown[] = []
+    const source: SettingsAppPeerSource = {
+      peersFor: () => [{ id: 'vendor-a', definition: 'vendor-a', label: 'A', kind: 'provider', source: 'builtin', connected: true, models: [], state: { status: 'ok' } }] as never,
+      clearPeerState: () => ({ ok: true }) as never,
+    }
+    const { runtime, ref } = world(PROVIDER, 1_000, true, {
+      providerCalls: {
+        peers: () => source,
+        reload: async (id: string) => void reloads.push(id),
+        usage: async (query: unknown) => (asked.push(query), { by: 'hour', buckets: [], truncated: false }) as never,
+      },
+    })
+    const bound: AppBackgroundRef = { ...ref, settingsFor: { providerId: 'mod.pay.route', router: true, routesTo: '*' } }
+    runtime.sync([bound])
+    runtime.view('pay-board', 's1', 'c1', 'full')
+    await vi.waitFor(() => expect(runtime.document('pay-board')?.value).toHaveProperty('usage'))
+    expect(runtime.document('pay-board')?.value).toEqual({ peers: ['vendor-a'], clear: { ok: true }, usage: { by: 'hour', buckets: [], truncated: false } })
+    expect(reloads).toEqual(['mod.pay.route'])
+    expect(asked).toEqual([expect.objectContaining({ router: 'mod.pay.route', by: 'hour' })])
+  })
+
+  it('runs on for a minute by default', () => {
+    expect(APP_SCRIPT_IDLE_MS).toBe(60_000)
   })
 })

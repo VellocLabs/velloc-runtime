@@ -70,7 +70,7 @@ export function refuseAppBackgroundRegistrations(hooks: readonly HookRegistratio
 export function refuseAppBackgroundCall(noun: string, method: string, binding?: SettingsAppBinding, resident = true): string | null {
   if (noun === 'provider') return refuseSettingsAppProviderCall(method, binding)
   if (!resident && (noun === 'mcp' || NOT_FOR_SCRIPT[`${noun}.${method}`] !== undefined)) {
-    const what = noun === 'mcp' ? "the plugin's MCP servers" : NOT_FOR_SCRIPT[`${noun}.${method}`]
+    const what = noun === 'mcp' ? "a connection to the plugin's MCP servers" : NOT_FOR_SCRIPT[`${noun}.${method}`]
     return (
       `$.${noun}${method ? `.${method}` : ''} is not available to an app's script: it runs only while the app is on screen, ` +
       `and ${what} needs a worker that keeps running — declare the module under "background" instead (${APP_BACKGROUND_ABI})`

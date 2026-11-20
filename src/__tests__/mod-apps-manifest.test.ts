@@ -403,6 +403,9 @@ describe("an app's script", () => {
     const app = { ...APP, background: './bg/app.js', script: './ui/app.js' }
     expect(checkTemplateDecls('pay', { board: { title: 'P', app } }, refused, 'beta')).toBeUndefined()
     expect(refused).toEqual(['templates.board.app.script: an app declares "background" or "script", not both'])
+    const malformed: string[] = []
+    expect(checkTemplateDecls('pay', { board: { title: 'P', app: { ...app, script: 7 } } }, malformed, 'beta')).toBeUndefined()
+    expect(malformed).toEqual(['templates.board.app.script: an app declares "background" or "script", not both'])
   })
 
   it('the contributions host lists an app with a script as shown, the module resolved under the plugin', async () => {

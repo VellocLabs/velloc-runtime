@@ -117,6 +117,7 @@ const isRecord = (v: unknown): v is Record<string, unknown> =>
   typeof v === 'object' && v !== null && !Array.isArray(v)
 const insidePlugin = (p: string): boolean => p.startsWith('./') && !p.includes('..') && !p.includes('\\')
 const svgPath = (p: unknown): p is string => typeof p === 'string' && insidePlugin(p) && /\.svg$/i.test(p)
+const modulePath = (p: unknown): p is string => typeof p === 'string' && insidePlugin(p) && MOD_MODULE_EXTENSIONS.some(ext => p.toLowerCase().endsWith(ext))
 
 /** `<plugin>:<key>` — the id of a template, a topbar item or a settings page.
  *  Bundled template ids never hold `:`, so a plugin cannot shadow one. */
@@ -221,13 +222,17 @@ function readApp(value: unknown, label: string, appId: string, bad: Bad): Plugin
       bad(`${label}.localActions: expected at most ${LOCAL_ACTIONS_MAX} event names of letters, digits, "_" and "-"`)
     }
   }
+  if (value.background !== undefined && value.script !== undefined) {
+    bad(`${label}.script: an app declares "background" or "script", not both`)
+    return null
+  }
   let background: string | undefined
   let backgroundFs: FolderScopes | undefined
   let backgroundAgent = false
   if (value.background !== undefined) {
     const declared = value.background
     const module = isRecord(declared) ? declared.module : declared
-    if (typeof module === 'string' && insidePlugin(module) && MOD_MODULE_EXTENSIONS.some(ext => module.toLowerCase().endsWith(ext))) {
+    if (modulePath(module)) {
       background = module
     } else {
       bad(`${label}.background: expected a module path starting with "./", without "..", ending in ${MOD_MODULE_EXTENSIONS.join(', ')}, or { module, fs?, agent? }`)
@@ -244,16 +249,8 @@ function readApp(value: unknown, label: string, appId: string, bad: Bad): Plugin
   }
   let script: string | undefined
   if (value.script !== undefined) {
-    const declared = value.script
-    if (typeof declared === 'string' && insidePlugin(declared) && MOD_MODULE_EXTENSIONS.some(ext => declared.toLowerCase().endsWith(ext))) {
-      script = declared
-    } else {
-      bad(`${label}.script: expected a module path starting with "./", without "..", ending in ${MOD_MODULE_EXTENSIONS.join(', ')}`)
-    }
-  }
-  if (value.background !== undefined && value.script !== undefined) {
-    bad(`${label}.script: an app declares "background" or "script", not both`)
-    return null
+    if (modulePath(value.script)) script = value.script
+    else bad(`${label}.script: expected a module path starting with "./", without "..", ending in ${MOD_MODULE_EXTENSIONS.join(', ')}`)
   }
   let page: AppPageDecl | undefined
   if (value.page !== undefined) {

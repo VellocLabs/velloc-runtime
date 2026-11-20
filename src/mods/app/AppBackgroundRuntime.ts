@@ -66,7 +66,7 @@ import { APP_PRESS_TIMEOUT_MS, readAppPressAnswer } from './appPress'
 import { AppStateDocument, type AppStateDocumentFs } from './appStateDocument'
 import { AppViews, type AppViewEvent, type AppViewLayout } from './appViews'
 import { serveSettingsAppProviderCall, type SettingsAppBinding, type SettingsAppProviderDeps } from './appProviderCalls'
-import { APP_SCRIPT_IDLE_MS, AppScriptLifetimes, untilReady } from './appScriptLifetime'
+import { APP_SCRIPT_IDLE_MS, APP_SCRIPT_PRESS_START_MS, AppScriptLifetimes, untilReady } from './appScriptLifetime'
 
 /** One app's background module: a hooks-module ref plus the app it serves. */
 export type AppBackgroundRef = ModModuleRef & {
@@ -137,6 +137,8 @@ export type AppBackgroundRuntimeOptions = {
   actionTimeoutMs?: number
   /** The budget of an `app.press` hook; past it the press has no answer. */
   pressTimeoutMs?: number
+  /** How long a press waits for a stopped script to load before its hook's budget starts. */
+  pressStartTimeoutMs?: number
   respawnBackoffMs?: readonly number[]
   /** How long an app's script runs on after the last page stopped showing the app. */
   scriptIdleMs?: number
@@ -288,27 +290,44 @@ export class AppBackgroundRuntime {
     for (const ref of refs) {
       const module = this.modules.get(ref.appId)
       if (module && sameRef(module.ref, ref)) continue
-      if (ref.lifetime === 'shown' && !this.scripts.isShown(ref.appId)) continue
+      if (ref.lifetime === 'shown' && this.views.current(ref.appId) === null) continue
       this.start(ref)
     }
   }
 
-  /** The app's script, started when it is not running; its stop is armed while no page shows the app. Undefined for a resident module. */
+  /**
+   * The app's script, started when it is not running, or loaded again when it
+   * crashed while no page showed it; its stop is armed while no page shows the
+   * app. Undefined for a resident module.
+   */
   private wake(appId: string): Module | undefined {
     const ref = this.scripts.wake(appId)
     if (!ref || this.disposed) return undefined
     const running = this.modules.get(appId)
-    if (running) return running
-    this.start(ref)
-    return this.modules.get(appId)
+    if (!running) {
+      this.start(ref)
+      return this.modules.get(appId)
+    }
+    if (running.state === 'crashed' && !running.loaded && !running.starting && running.restart === undefined) this.reload(running)
+    return running
   }
 
-  /** No page has shown the app for the idle time: its script stops, unless it is off and holds no worker. */
+  /**
+   * No page has shown the app for the idle time: its script stops, unless it
+   * holds no worker because it is off or crashed, so its crash count holds.
+   */
   private sleep(appId: string): void {
     const module = this.modules.get(appId)
     if (!module || module.ref.lifetime !== 'shown') return
-    if (module.state === 'refused' || module.state === 'dead') return
+    if (module.state === 'refused' || module.state === 'failed' || module.state === 'dead') return
+    if (module.state === 'crashed' && !module.loaded && !module.starting) return
     void this.stop(module, 'the app is not on screen')
+  }
+
+  private reload(module: Module): void {
+    module.starting = this.load(module).finally(() => {
+      module.starting = undefined
+    })
   }
 
   status(): AppBackgroundStatus[] {
@@ -332,15 +351,19 @@ export class AppBackgroundRuntime {
    * failed, or ran past its budget — the action then goes to the model.
    */
   async action(appId: string, action: string, context: unknown, sessionId: string): Promise<boolean> {
+    const budget = this.options.actionTimeoutMs ?? APP_ACTION_TIMEOUT_MS
+    const began = this.now()
     const woken = this.wake(appId)
-    if (woken) await untilReady(woken, this.options.actionTimeoutMs ?? APP_ACTION_TIMEOUT_MS)
+    if (woken) await untilReady(woken, budget)
     const module = this.modules.get(appId)
     if (!module || !module.loaded || !module.dispatcher.hasHooksFor('app.action')) return false
+    const left = budget - (this.now() - began)
+    if (left <= 0) return false
     const raised = await this.raise(
       module,
       'app.action',
       { appId, action, context: context ?? null, sessionId },
-      this.options.actionTimeoutMs ?? APP_ACTION_TIMEOUT_MS,
+      left,
       `app.action "${action}" of ${appId}`,
       '; the model takes it',
     )
@@ -362,7 +385,7 @@ export class AppBackgroundRuntime {
     menus.delete(appId)
     if (trigger === 'menu' && (item === undefined || !offered?.has(item))) return null
     const woken = this.wake(appId)
-    if (woken) await untilReady(woken, this.options.pressTimeoutMs ?? APP_PRESS_TIMEOUT_MS)
+    if (woken) await untilReady(woken, this.options.pressStartTimeoutMs ?? APP_SCRIPT_PRESS_START_MS)
     const module = this.modules.get(appId)
     if (!module || !module.loaded || module.viewsOpen !== module.loaded || !module.dispatcher.hasHooksFor('app.press')) return null
     this.lastPress.set(appId, client)
@@ -823,13 +846,9 @@ export class AppBackgroundRuntime {
     module.restart = setTimeout(() => {
       module.restart = undefined
       if (module.gone.signal.aborted) return
-      if (module.ref.lifetime === 'shown' && !this.scripts.isShown(module.ref.appId)) {
-        void this.stop(module, 'the app is not on screen')
-        return
-      }
-      module.starting = this.load(module).finally(() => {
-        module.starting = undefined
-      })
+      // A script no page shows stays crashed, with its crash count, until the next show, action or press.
+      if (module.ref.lifetime === 'shown' && this.views.current(module.ref.appId) === null) return
+      this.reload(module)
     }, wait)
   }
 

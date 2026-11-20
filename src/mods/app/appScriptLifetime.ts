@@ -10,6 +10,13 @@
 /** How long an app's script runs on after the last page stopped showing the app. */
 export const APP_SCRIPT_IDLE_MS = 60_000
 
+/**
+ * How long a press waits for a stopped script to load before the hook's own
+ * budget starts: with that budget, inside the time a page waits for a press's
+ * answer. A load that takes longer leaves the press unanswered.
+ */
+export const APP_SCRIPT_PRESS_START_MS = 1_200
+
 export type AppScriptLifetimeOptions = {
   idleMs: number
   /** Whether some page shows the app now. */
@@ -34,10 +41,6 @@ export class AppScriptLifetimes<Ref extends { readonly appId: string }> {
       }
     }
     for (const ref of refs) this.refs.set(ref.appId, ref)
-  }
-
-  isShown(appId: string): boolean {
-    return this.options.shown(appId)
   }
 
   /** The script of `appId` is wanted now: its ref, or undefined when the app declares none. */
