@@ -138,6 +138,7 @@ export const ThemeModsMenu: FC<{ sessionId?: string; isForeground?: boolean }> =
   // A press shows at once; the stored state then takes over.
   const [pressed, setPressed] = useState<Readonly<Record<string, boolean>>>({});
   const [failure, setFailure] = useState<string | null>(null);
+  const [offFailure, setOffFailure] = useState<string | null>(null);
   const [turningOff, setTurningOff] = useState(false);
   // The look being applied, and why the last one was not.
   const [applying, setApplying] = useState<string | null>(null);
@@ -160,6 +161,7 @@ export const ThemeModsMenu: FC<{ sessionId?: string; isForeground?: boolean }> =
       pointer.preventDefault();
       refreshRef.current?.();
       setFailure(null);
+      setOffFailure(null);
       setLookFailure(null);
       const active = root.ownerDocument.activeElement;
       setMenu({ x: pointer.clientX, y: pointer.clientY, returnFocus: active instanceof HTMLElement ? active : null });
@@ -232,7 +234,7 @@ export const ThemeModsMenu: FC<{ sessionId?: string; isForeground?: boolean }> =
 
   const turnOff = () => {
     if (!turnOffAll || turningOff) return;
-    setFailure(null);
+    setOffFailure(null);
     setTurningOff(true);
     setPressed((previous) => ({
       ...previous,
@@ -243,7 +245,7 @@ export const ThemeModsMenu: FC<{ sessionId?: string; isForeground?: boolean }> =
       .catch((error: unknown) => {
         setPressed({});
         const reason = error instanceof Error ? error.message : String(error);
-        setFailure(t("settings.plugins.disableFailed", { error: reason }));
+        setOffFailure(t("settings.plugins.disableFailed", { error: reason }));
       })
       .finally(() => setTurningOff(false));
   };
@@ -552,9 +554,9 @@ export const ThemeModsMenu: FC<{ sessionId?: string; isForeground?: boolean }> =
                   <PowerOffIcon aria-hidden className="size-4 text-muted-foreground" />
                   <span className="flex-1">{t("themeMenu.turnOffAll")}</span>
                 </DropdownMenuPrimitive.Item>
-                {failure && (
+                {offFailure && (
                   <div role="status" className="max-w-64 px-2 py-1.5 text-xs text-destructive">
-                    {failure}
+                    {offFailure}
                   </div>
                 )}
               </>

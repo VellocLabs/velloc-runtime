@@ -277,6 +277,18 @@ describe('theme mods menu — Turn off all', () => {
     await waitFor(() => expect(screen.getByTestId('theme-mods-menu-turn-off').getAttribute('data-disabled')).not.toBeNull())
   })
 
+  it('shows a turn-off failure once, under the item, not in the mods list', async () => {
+    mount(base({ looks: true }, async () => { throw new Error('boom') }))
+    await openMenu()
+    fireEvent.click(await screen.findByTestId('theme-mods-menu-turn-off'))
+    const status = await screen.findByRole('status')
+    expect(status.textContent).toContain('boom')
+    expect(status.previousElementSibling?.getAttribute('data-testid')).toBe('theme-mods-menu-turn-off')
+    fireEvent.keyDown(screen.getByTestId('theme-mods-menu-mods'), { key: 'ArrowRight' })
+    await screen.findByTestId('theme-mods-menu-list')
+    expect(screen.getAllByRole('status')).toHaveLength(1)
+  })
+
   it('is absent where the connection may not turn theme plugins off', async () => {
     mount(base({ looks: true }))
     await openMenu()
