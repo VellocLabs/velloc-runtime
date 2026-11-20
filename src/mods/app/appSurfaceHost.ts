@@ -235,6 +235,7 @@ export function createAppSurfaceHost(options: AppSurfaceHostOptions): AppSurface
   let attempted: { hash: string; result: ModsBuildAppResult } | undefined
   let published: AppSurfaceState | undefined
   let disposed = false
+  let seedConflicts: readonly string[] = app.seed.conflicts
   let queue: Promise<unknown> = Promise.resolve()
   let pendingData = false
   /** Counts the local actions the background module has in hand. */
@@ -253,7 +254,7 @@ export function createAppSurfaceHost(options: AppSurfaceHostOptions): AppSurface
       ...(text ? { text } : {}),
       refreshing: acting > 0,
       ...(list.length > 0 ? { errors: list } : {}),
-      ...(app.seed.conflicts.length > 0 ? { seedConflicts: [...app.seed.conflicts] } : {}),
+      ...(seedConflicts.length > 0 ? { seedConflicts: [...seedConflicts] } : {}),
       ...(localActions.length > 0 ? { localActions: [...localActions] } : {}),
     }
     dataPatches = undefined
@@ -369,18 +370,23 @@ export function createAppSurfaceHost(options: AppSurfaceHostOptions): AppSurface
     },
   }) as ToolContract<Record<string, never>, string>
 
-  /** A hand-placed plugin's edited seed reaches the folder at the next press; files the person edited are kept. */
+  /** A hand-placed plugin's edited seed reaches the folder at the next press; files the person edited are kept and published as conflicts. */
   const reseed = async (): Promise<void> => {
     if (!app.devSeedDir || !options.seedFs) return
-    await seedAppFolder({
-      fs: options.seedFs,
-      seedDir: app.devSeedDir,
-      appDir: app.folder,
-      appId: app.appId,
-      plugin: app.plugin,
-      seedVersion: app.decl.seedVersion,
-      everyOpen: true,
-    }).catch(() => undefined)
+    try {
+      const result = await seedAppFolder({
+        fs: options.seedFs,
+        seedDir: app.devSeedDir,
+        appDir: app.folder,
+        appId: app.appId,
+        plugin: app.plugin,
+        seedVersion: app.decl.seedVersion,
+        everyOpen: true,
+      })
+      seedConflicts = result.conflicts
+    } catch (error) {
+      console.warn('[mods/app] seed copy failed', error)
+    }
   }
 
   const action = async (name: string, context: unknown): Promise<ModsAppActionResult> => {
@@ -394,7 +400,7 @@ export function createAppSurfaceHost(options: AppSurfaceHostOptions): AppSurface
       return { handled: false }
     } finally {
       acting -= 1
-      if (app.devSeedDir && options.seedFs) await buildIfChanged().catch(() => undefined)
+      if (app.devSeedDir && options.seedFs && !disposed) await buildIfChanged().catch(() => undefined)
       emit()
     }
   }

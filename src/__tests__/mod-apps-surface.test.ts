@@ -473,6 +473,7 @@ describe("a local action of the person's", () => {
     }
     const { seedAppFolder } = await import('../mods/app/appSeed')
     const seeded = await seedAppFolder({ fs: fs as never, seedDir: SEED_DIR, appDir: FOLDER, appId: 'pay-board', plugin: 'pay', seedVersion: 1 })
+    let lastState: { seedConflicts?: readonly string[] } | null | undefined
     const make = (devSeedDir?: string) =>
       createAppSurfaceHost({
         fs: fs as never,
@@ -480,7 +481,7 @@ describe("a local action of the person's", () => {
         app: { ...app({ localActions: ['refresh'] }), seed: seeded, ...(devSeedDir ? { devSeedDir } : {}) },
         sessionId: 's-dev',
         compile,
-        publish: () => undefined,
+        publish: (_id, state) => void (lastState = state),
         registerBuild: () => () => true,
         registerActor: () => () => true,
         dispatchAction: async () => true,
@@ -502,6 +503,16 @@ describe("a local action of the person's", () => {
     // Nothing changed: the next press builds nothing.
     await local.action('refresh', null)
     expect(compiled).toHaveLength(1)
+    // A hand edit in the folder is kept and published as a conflict.
+    store.set(`${FOLDER}/app.a2ui`, enc.encode(`${BOARD}
+surface("mine")
+root = Text("Mine")`))
+    store.set(`${SEED_DIR}/app.a2ui`, enc.encode(`${BOARD}
+surface("theirs")
+root = Text("Theirs")`))
+    await local.action('refresh', null)
+    expect(new TextDecoder().decode(store.get(`${FOLDER}/app.a2ui`))).toContain('Mine')
+    expect(lastState?.seedConflicts).toEqual(['app.a2ui'])
     local.dispose()
   })
 
