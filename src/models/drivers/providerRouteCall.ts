@@ -28,6 +28,9 @@ export type RouteCall = {
   switchTo?: RouteTarget
   /** The router's decision about the call's latest send, while it stands. */
   decided?: RouteErrorMark
+  /** The call in the request log: its id there, the sends written so far,
+   *  and the latest of them with the verdict kind it failed with. */
+  logged?: { callId: number; sends: number; last?: { provider: string; model: string; kind?: string } }
 }
 
 const calls = new WeakMap<object, RouteCall>()

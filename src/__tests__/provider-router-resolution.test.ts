@@ -3,7 +3,7 @@
  * written in the test and registered directly: the stream host under a
  * scripted raw endpoint, then the whole call with its retries.
  */
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { BrowserBridgeTransport } from '../browser/bridge/browserBridgeProtocol'
 import { DriverStreamHost } from '../models/drivers/driverStreamHost'
 import { registerProviderDriver } from '../models/drivers/driverRegistry'
@@ -35,6 +35,15 @@ import {
 } from '../runtime/testing/noopAdapters'
 import type { RuntimeConfig } from '../runtime/interfaces/RuntimeConfig'
 import { fakeProviderRequestSeam } from './_helpers/fakeProviderRequestSeam'
+import { logRowOf } from '../models/drivers/providerRouteResolution'
+import { recordRequest } from '../models/usage/requestLogWriter'
+import type { RequestLogRow } from '../models/usage/requestLogStore'
+
+vi.mock('../models/usage/requestLogWriter', async original => ({
+  ...(await original<typeof import('../models/usage/requestLogWriter')>()),
+  recordRequest: vi.fn(),
+}))
+const loggedRows = (): RequestLogRow[] => vi.mocked(recordRequest).mock.calls.map(call => call[0])
 
 // ── a JSON codec: the request body names the model; the reply is JSON lines ──
 const codec: ProviderDriver = {
@@ -347,6 +356,41 @@ describe('a request to a router provider', () => {
     await stream(wrapped)
 
     expect(events.map(e => e.request)).toEqual([{ tools: true }, { tools: false }, { tools: false }])
+  })
+
+  it('writes one request-log row per send, the sends of a call under one call id', async () => {
+    vi.mocked(recordRequest).mockClear()
+    const { transport } = rawHost({ [A]: [refusedWith(429, 'slow down')] })
+    registerProviderRouter(ROUTER, testRouter([toA, toB, toA]).router, { routesTo: [A, B] })
+    const wrapped = withModelProviders(transport, config())
+
+    await stream(wrapped)
+    await stream(wrapped)
+
+    const rows = loggedRows()
+    expect(rows.map(row => [row.provider, row.model, row.hop, row.outcome])).toEqual([
+      [A, 'm-a', 1, 'failed'],
+      [B, 'm-b', 2, 'ok'],
+      [A, 'm-a', 1, 'ok'],
+    ])
+    expect(rows[0]).toMatchObject({ failureKind: 'rate_limit', httpStatus: 429, sessionId: 'session-1' })
+    expect(rows[0]).not.toHaveProperty('switchedFrom')
+    expect(rows[1]).toMatchObject({
+      router: { provider: ROUTER, row: 'route-row' },
+      switchedFrom: { provider: A, model: 'm-a', kind: 'rate_limit' },
+      usage: { inputTokens: 11, outputTokens: 3 },
+    })
+    expect(rows[1]!.callId).toBe(rows[0]!.callId)
+    expect(rows[2]!.callId).not.toBe(rows[0]!.callId)
+    expect(rows[2]).not.toHaveProperty('switchedFrom')
+  })
+
+  it('a request the router ends before any send writes no request-log row', async () => {
+    vi.mocked(recordRequest).mockClear()
+    const { transport } = rawHost({})
+    registerProviderRouter(ROUTER, testRouter([{ stop: true }]).router, { routesTo: '*' })
+    await stream(withModelProviders(transport, config()))
+    expect(loggedRows()).toEqual([])
   })
 
   it('asks the router after the target\'s own verdict and before the target\'s own re-send', async () => {
@@ -900,5 +944,36 @@ describe('a call to a router provider', () => {
     )
     expect(decision).toEqual({ retry: true, delayMs: 0, notify: false })
     expect(seen[0]).toMatchObject({ failure: { kind: 'connectivity', retryAfterMs: 0 }, decision: { retry: true, delayMs: 0 } })
+  })
+})
+
+describe('logRowOf', () => {
+  const send = (provider: string, model: string, outcome: 'ok' | 'failed' | 'aborted', status?: number) => ({
+    target: { provider, model },
+    model,
+    startedMs: 1_000,
+    durationMs: 20,
+    outcome,
+    ...(status !== undefined ? { failure: { type: 'error' as const, message: 'refused', httpStatus: status } } : {}),
+    usage: {},
+  })
+
+  it('a re-send to the same target is the next hop and names no switch', () => {
+    const call = routeCallOf({})
+    const first = logRowOf('r', 'row', undefined, call, send('a', 'm', 'failed', 503))
+    const again = logRowOf('r', 'row', undefined, call, send('a', 'm', 'ok'))
+    expect([first.hop, again.hop]).toEqual([1, 2])
+    expect(again.callId).toBe(first.callId)
+    expect(again).not.toHaveProperty('switchedFrom')
+    expect(first).not.toHaveProperty('sessionId')
+    expect(again).not.toHaveProperty('failureKind')
+  })
+
+  it('a move off a cancelled send names the kind as error', () => {
+    const call = routeCallOf({})
+    logRowOf('r', 'row', 's', call, send('a', 'm', 'aborted'))
+    const moved = logRowOf('r', 'row', 's', call, send('b', 'n', 'ok'))
+    expect(moved.switchedFrom).toEqual({ provider: 'a', model: 'm', kind: 'error' })
+    expect(moved.sessionId).toBe('s')
   })
 })

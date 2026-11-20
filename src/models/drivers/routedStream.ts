@@ -50,6 +50,18 @@ export type RoutedEnding = {
   durationMs: number
 }
 
+/** One target's send, over: a leg that ended, failed or was cancelled. */
+export type RoutedSend = {
+  target: RouteTarget
+  /** The concrete model the leg was sent for. */
+  model: string
+  startedMs: number
+  durationMs: number
+  outcome: 'ok' | 'failed' | 'aborted'
+  failure?: FailureEvent
+  usage: { inputTokens?: number; outputTokens?: number; cacheReadTokens?: number; cacheWriteTokens?: number }
+}
+
 /** The resolution step, as one call's stream uses it. */
 export interface StreamRouting {
   /** The router's row, for the stream's first chunk. */
@@ -62,6 +74,8 @@ export interface StreamRouting {
   /** Told once per stream id, when it is over, whatever the caller does next.
    *  A new target taken under the same stream id is not an end. */
   ended?(ending: RoutedEnding): void
+  /** Told once per leg, when that leg is over. An observer: what it throws is dropped. */
+  sent?(send: RoutedSend): void
 }
 
 /** What a leg asks before its own recovery of a refused response. */
@@ -92,7 +106,7 @@ function count(value: unknown): number | undefined {
 }
 
 export class RoutedStream {
-  private current: { leg: RouteLeg; stream: LegStream } | undefined
+  private current: { leg: RouteLeg; stream: LegStream; startedMs: number; usage: RoutedSend['usage']; told: boolean } | undefined
   /** The stream's last chunks when no leg could run. */
   private ending: BridgeModelStreamChunk[] | undefined
   private opening: Promise<void> = Promise.resolve()
@@ -133,8 +147,29 @@ export class RoutedStream {
     const stream = this.openLeg(leg, {
       taken: async failure => (await this.decide(failure)).kind !== 'none',
     })
-    this.current = { leg, stream }
+    this.current = { leg, stream, startedMs: Date.now(), usage: {}, told: false }
     stream.start()
+  }
+
+  /** The current leg is over. */
+  private legOver(outcome: RoutedSend['outcome'], failure: FailureEvent | undefined): void {
+    const current = this.current
+    if (!current || current.told) return
+    current.told = true
+    if (!this.routing.sent) return
+    try {
+      this.routing.sent({
+        target: current.leg.target,
+        model: current.leg.model,
+        startedMs: current.startedMs,
+        durationMs: Date.now() - current.startedMs,
+        outcome,
+        ...(failure ? { failure } : {}),
+        usage: current.usage,
+      })
+    } catch {
+      // An observer.
+    }
   }
 
   private endWith(chunks: BridgeModelStreamChunk[]): void {
@@ -214,6 +249,7 @@ export class RoutedStream {
     result: StreamReadResult,
   ): StreamReadResult {
     if (decision.kind === 'switch' && !this.started) {
+      this.legOver('failed', failure)
       this.run(decision.leg)
       return { chunks: before, done: false, status: 'ok' }
     }
@@ -232,17 +268,32 @@ export class RoutedStream {
     for (const chunk of chunks) {
       if (isReplyChunk(chunk)) this.started = true
       const usage = (chunk.type === 'message_start' ? chunk.message?.usage : chunk.usage) as
-        | { input_tokens?: unknown; output_tokens?: unknown }
+        | {
+          input_tokens?: unknown
+          output_tokens?: unknown
+          cache_read_input_tokens?: unknown
+          cache_creation_input_tokens?: unknown
+        }
         | undefined
       if (!usage || typeof usage !== 'object') continue
       const input = count(usage.input_tokens)
       const output = count(usage.output_tokens)
       if (input !== undefined) this.usage.inputTokens = input
       if (output !== undefined) this.usage.outputTokens = output
+      const leg = this.current?.usage
+      if (!leg) continue
+      // A later report replaces a figure only when it carries one.
+      const cacheRead = count(usage.cache_read_input_tokens)
+      const cacheWrite = count(usage.cache_creation_input_tokens)
+      if (input) leg.inputTokens = input
+      if (output) leg.outputTokens = output
+      if (cacheRead) leg.cacheReadTokens = cacheRead
+      if (cacheWrite) leg.cacheWriteTokens = cacheWrite
     }
   }
 
   private report(ok: boolean, failure: FailureEvent | undefined): void {
+    this.legOver(ok ? 'ok' : 'failed', failure)
     if (this.reported || !this.routing.ended) return
     this.reported = true
     const { inputTokens, outputTokens } = this.usage
@@ -263,6 +314,7 @@ export class RoutedStream {
 
   async cancel(): Promise<void> {
     this.abort.abort()
+    this.legOver('aborted', undefined)
     await this.current?.stream.cancel()
   }
 }

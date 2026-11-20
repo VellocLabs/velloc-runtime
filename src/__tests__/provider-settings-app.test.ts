@@ -220,6 +220,25 @@ function fakeSource(rows: Peer[]) {
 }
 
 describe('$.provider calls behind the seam', () => {
+  it('usage reads the request log for the bound router alone, whatever the module passes', async () => {
+    const asked: unknown[] = []
+    const answer = { by: 'hour' as const, buckets: [], truncated: false }
+    const deps = { reload: async () => {}, usage: async (query: unknown) => (asked.push(query), answer) }
+    const query = { from: 0, to: 3_600_000, by: 'hour', router: 'mod.other.route', tzOffsetMinutes: 60 }
+    expect(await serveSettingsAppProviderCall(ROUTER_BINDING, 'usage', [query], deps)).toBe(answer)
+    expect(asked).toEqual([{ from: 0, to: 3_600_000, by: 'hour', tzOffsetMinutes: 60, router: 'mod.switch.route' }])
+  })
+
+  it('usage refuses a malformed query, a provider that is not a router, and a build with no log', async () => {
+    const deps = { reload: async () => {}, usage: async () => undefined }
+    await expect(serveSettingsAppProviderCall(ROUTER_BINDING, 'usage', [], deps)).rejects.toThrow(/expected an object/)
+    await expect(serveSettingsAppProviderCall(ROUTER_BINDING, 'usage', [{ from: 0, to: 1, by: 'week' }], deps)).rejects.toThrow(/by must be one of hour, day, switch/)
+    await expect(serveSettingsAppProviderCall(ROUTER_BINDING, 'usage', [{ from: '0', to: 1, by: 'hour' }], deps)).rejects.toThrow(/epoch milliseconds/)
+    await expect(serveSettingsAppProviderCall(ROUTER_BINDING, 'usage', [{ from: 0, to: 1, by: 'hour' }], deps)).rejects.toThrow(/the request log is not available/)
+    await expect(serveSettingsAppProviderCall(ROUTER_BINDING, 'usage', [{ from: 0, to: 1, by: 'hour' }], { reload: async () => {} })).rejects.toThrow(/not available/)
+    await expect(serveSettingsAppProviderCall(PLAIN_BINDING, 'usage', [{ from: 0, to: 1, by: 'hour' }], deps)).rejects.toThrow(/is a router's/)
+  })
+
   it('peers reads the bound router\'s table, bounded by its routesTo', async () => {
     const { source, asked } = fakeSource([peer('vendor-a'), peer('vendor-z')])
     const rows = (await serveSettingsAppProviderCall(ROUTER_BINDING, 'peers', [], { peers: () => source, reload: async () => {} })) as Peer[]

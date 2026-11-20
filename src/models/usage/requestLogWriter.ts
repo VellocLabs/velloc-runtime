@@ -77,12 +77,14 @@ async function openStore(transport: BrowserBridgeTransport): Promise<RequestLogS
   return opened
 }
 
-/** The open log, for a reader. Undefined while no bridge is attached or the
- *  file cannot be opened. */
-export async function openRequestLog(): Promise<RequestLogStore | undefined> {
-  if (!attached) return undefined
+/** The open log, for a reader. `via`: the reader's own bridge, used while
+ *  none is attached. Undefined with no bridge at all, or when the file
+ *  cannot be opened. */
+export async function openRequestLog(via?: BrowserBridgeTransport): Promise<RequestLogStore | undefined> {
+  const transport = attached ?? via
+  if (!transport) return undefined
   try {
-    return await openStore(attached)
+    return await openStore(transport)
   } catch {
     return undefined
   }

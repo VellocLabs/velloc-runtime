@@ -29,7 +29,7 @@ import { recordProviderVerdict } from './providerHealthLedger'
 import { OUTCOME_CALL_FIELD } from './providerOutcome'
 import { thinkingTierOf } from './providerRequestSeam'
 import { checkRouteAnswer, type CheckedRouteAnswer, type RouteAnswerFacts, type RouteTarget } from './providerRouteAnswer'
-import { acceptRouteTarget, routeCallOf, sendRouteTo } from './providerRouteCall'
+import { acceptRouteTarget, routeCallOf, sendRouteTo, type RouteCall } from './providerRouteCall'
 import {
   providerRouterFor,
   ROUTE_HOPS_MAX,
@@ -38,7 +38,9 @@ import {
   type RouteEvent,
   type RouteFailure,
 } from './providerRouter'
-import type { RouteDecision, RouteLeg, StreamRouting } from './routedStream'
+import type { RouteDecision, RouteLeg, RoutedSend, StreamRouting } from './routedStream'
+import { newRequestLogCallId, type RequestLogRow } from '../usage/requestLogStore'
+import { recordRequest } from '../usage/requestLogWriter'
 import { isProviderSetUp, mergedModels, providerEntries } from './runtimeProviders'
 
 const NO_REQUEST_CONTEXT: BridgeModelRequestContext = { purpose: 'other', querySource: '' }
@@ -72,6 +74,43 @@ function isRouter(provider: string): boolean {
 }
 
 const text = (error: unknown): string => (error instanceof Error ? error.message : String(error))
+
+/**
+ * The request-log row of one send of a routed call. The sends of a call share
+ * one call id and count their hops from 1; a send to another target than the
+ * one before it names that target and the verdict kind that moved the call.
+ */
+export function logRowOf(
+  routerId: string,
+  rowModel: string,
+  sessionId: string | undefined,
+  call: RouteCall,
+  send: RoutedSend,
+): RequestLogRow {
+  const logged = (call.logged ??= { callId: newRequestLogCallId(send.startedMs), sends: 0 })
+  logged.sends += 1
+  const before = logged.last
+  const moved = before && (before.provider !== send.target.provider || before.model !== send.model)
+  const verdict = send.failure ? verdictOfFailure(send.failure) : null
+  const failureKind = send.outcome === 'failed' ? (verdict?.kind ?? 'error') : undefined
+  logged.last = { provider: send.target.provider, model: send.model, ...(failureKind ? { kind: failureKind } : {}) }
+  const httpStatus = send.failure?.httpStatus ?? verdict?.status
+  return {
+    startedMs: send.startedMs,
+    durationMs: send.durationMs,
+    ...(sessionId ? { sessionId } : {}),
+    callId: logged.callId,
+    hop: logged.sends,
+    provider: send.target.provider,
+    model: send.model,
+    router: { provider: routerId, row: rowModel },
+    ...(moved ? { switchedFrom: { provider: before.provider, model: before.model, kind: before.kind ?? 'error' } } : {}),
+    usage: send.usage,
+    outcome: send.outcome,
+    ...(failureKind ? { failureKind } : {}),
+    ...(send.outcome === 'failed' && httpStatus !== undefined ? { httpStatus } : {}),
+  }
+}
 
 /** The routing of one call to the router provider `routerId`. */
 export function routeCall(
@@ -208,6 +247,9 @@ export function routeCall(
         traceLine(`[providers] ${routerId}: provider.route was not applied after a failure (${answer.reason})`, { level: 'warn' })
       }
       return { kind: 'none' }
+    },
+    sent(send) {
+      recordRequest(logRowOf(routerId, rowModel, payload.requestContext?.sessionId, call, send))
     },
     ended(ending) {
       if (!router.outcome || !ending.target) return
