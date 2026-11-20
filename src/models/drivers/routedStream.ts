@@ -21,6 +21,7 @@ import type { ModelProvider } from './modelProvider'
 import type { FailureEvent } from './providerClassify'
 import type { RouteTarget } from './providerRouteAnswer'
 import type { RouteErrorMark } from './providerRouter'
+import { foldUsage } from '../usage/requestLogStore'
 
 export type StreamReadResult = {
   chunks: BridgeModelStreamChunk[]
@@ -268,27 +269,14 @@ export class RoutedStream {
     for (const chunk of chunks) {
       if (isReplyChunk(chunk)) this.started = true
       const usage = (chunk.type === 'message_start' ? chunk.message?.usage : chunk.usage) as
-        | {
-          input_tokens?: unknown
-          output_tokens?: unknown
-          cache_read_input_tokens?: unknown
-          cache_creation_input_tokens?: unknown
-        }
+        | { input_tokens?: unknown; output_tokens?: unknown }
         | undefined
       if (!usage || typeof usage !== 'object') continue
       const input = count(usage.input_tokens)
       const output = count(usage.output_tokens)
       if (input !== undefined) this.usage.inputTokens = input
       if (output !== undefined) this.usage.outputTokens = output
-      const leg = this.current?.usage
-      if (!leg) continue
-      // A later report replaces a figure only when it carries one.
-      const cacheRead = count(usage.cache_read_input_tokens)
-      const cacheWrite = count(usage.cache_creation_input_tokens)
-      if (input) leg.inputTokens = input
-      if (output) leg.outputTokens = output
-      if (cacheRead) leg.cacheReadTokens = cacheRead
-      if (cacheWrite) leg.cacheWriteTokens = cacheWrite
+      if (this.current) foldUsage(this.current.usage, usage)
     }
   }
 
@@ -314,7 +302,9 @@ export class RoutedStream {
 
   async cancel(): Promise<void> {
     this.abort.abort()
-    this.legOver('aborted', undefined)
+    // A leg that had already failed, cancelled while the router decided, is a failure.
+    const failure = this.current?.stream.failed()
+    this.legOver(failure ? 'failed' : 'aborted', failure)
     await this.current?.stream.cancel()
   }
 }

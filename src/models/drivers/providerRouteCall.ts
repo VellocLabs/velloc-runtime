@@ -6,12 +6,15 @@
  * retries send the same payload object, so they find the same record; a new
  * call starts a new one. Nothing here is serialized or reaches the host.
  */
+import { newRequestLogCallId } from '../usage/requestLogStore'
 import { routeErrorOf, type RouteErrorMark, type RoutedVia, type RouteFailure } from './providerRouter'
 import type { RouteTarget } from './providerRouteAnswer'
 
 export type RouteCall = {
-  /** The call's id, as a router's module is told it. */
+  /** The call's id, as a router's module is told it: `logCallId` as text. */
   id: string
+  /** The same id as the request log stores it. */
+  logCallId: number
   /** Sends made to a target. The next send is attempt `sends + 1`. */
   sends: number
   /** Target answers accepted, the first included. */
@@ -28,9 +31,9 @@ export type RouteCall = {
   switchTo?: RouteTarget
   /** The router's decision about the call's latest send, while it stands. */
   decided?: RouteErrorMark
-  /** The call in the request log: its id there, the sends written so far,
-   *  and the latest of them with the verdict kind it failed with. */
-  logged?: { callId: number; sends: number; last?: { provider: string; model: string; kind?: string } }
+  /** The call in the request log: the sends written so far, and the latest
+   *  of them with the verdict kind it failed with. */
+  logged?: { sends: number; last?: { provider: string; model: string; kind?: string } }
 }
 
 const calls = new WeakMap<object, RouteCall>()
@@ -38,7 +41,8 @@ const calls = new WeakMap<object, RouteCall>()
 export function routeCallOf(payload: object): RouteCall {
   let call = calls.get(payload)
   if (!call) {
-    call = { id: crypto.randomUUID(), sends: 0, hops: 0 }
+    const logCallId = newRequestLogCallId()
+    call = { id: String(logCallId), logCallId, sends: 0, hops: 0 }
     calls.set(payload, call)
   }
   return call

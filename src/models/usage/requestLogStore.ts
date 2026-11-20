@@ -49,6 +49,24 @@ export type RequestLogUsage = {
   cacheWriteTokens?: number
 }
 
+const USAGE_FIELDS: ReadonlyArray<[keyof RequestLogUsage, string]> = [
+  ['inputTokens', 'input_tokens'],
+  ['outputTokens', 'output_tokens'],
+  ['cacheReadTokens', 'cache_read_input_tokens'],
+  ['cacheWriteTokens', 'cache_creation_input_tokens'],
+]
+
+/** Folds a reported wire `usage` into `into`. A later report replaces a
+ *  figure only when it carries one. */
+export function foldUsage(into: RequestLogUsage, reported: unknown): void {
+  if (!reported || typeof reported !== 'object') return
+  const usage = reported as Record<string, unknown>
+  for (const [key, wire] of USAGE_FIELDS) {
+    const value = usage[wire]
+    if (typeof value === 'number' && value > 0) into[key] = value
+  }
+}
+
 /** One send of a model request. */
 export type RequestLogRow = {
   startedMs: number

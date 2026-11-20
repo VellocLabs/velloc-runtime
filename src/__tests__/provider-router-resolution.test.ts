@@ -361,13 +361,19 @@ describe('a request to a router provider', () => {
   it('writes one request-log row per send, the sends of a call under one call id', async () => {
     vi.mocked(recordRequest).mockClear()
     const { transport } = rawHost({ [A]: [refusedWith(429, 'slow down')] })
-    registerProviderRouter(ROUTER, testRouter([toA, toB, toA]).router, { routesTo: [A, B] })
+    const { router, events, outcomes } = testRouter([toA, toB, toA])
+    registerProviderRouter(ROUTER, router, { routesTo: [A, B] })
     const wrapped = withModelProviders(transport, config())
 
     await stream(wrapped)
     await stream(wrapped)
 
     const rows = loggedRows()
+    // The log's call id is the one the route and outcome events carry.
+    expect(rows.map(row => String(row.callId))).toEqual([events[0]!.callId, events[1]!.callId, events[2]!.callId])
+    expect(outcomes.map(o => o.callId)).toEqual([events[0]!.callId, events[2]!.callId])
+    // Each row is written through the bridge the call came on.
+    expect(vi.mocked(recordRequest).mock.calls.every(call => call[1] === transport)).toBe(true)
     expect(rows.map(row => [row.provider, row.model, row.hop, row.outcome])).toEqual([
       [A, 'm-a', 1, 'failed'],
       [B, 'm-b', 2, 'ok'],
@@ -383,6 +389,54 @@ describe('a request to a router provider', () => {
     expect(rows[1]!.callId).toBe(rows[0]!.callId)
     expect(rows[2]!.callId).not.toBe(rows[0]!.callId)
     expect(rows[2]).not.toHaveProperty('switchedFrom')
+  })
+
+  it('a leg\'s row carries its own cache counts', async () => {
+    vi.mocked(recordRequest).mockClear()
+    const cached = enc([
+      { type: 'text_delta', text: 'cached' },
+      { type: 'finish', finishReason: 'stop', usage: { promptTokens: 40, completionTokens: 5, promptCacheHits: 30, promptCacheWrites: 6 } },
+    ])
+    const { transport } = rawHost({ [A]: [{ status: 200, body: cached }] })
+    registerProviderRouter(ROUTER, testRouter([toA]).router, { routesTo: '*' })
+    await stream(withModelProviders(transport, config()))
+    expect(loggedRows()[0]!.usage).toEqual({ inputTokens: 40, outputTokens: 5, cacheReadTokens: 30, cacheWriteTokens: 6 })
+  })
+
+  it('a cancel mid-leg writes that leg as aborted, once', async () => {
+    vi.mocked(recordRequest).mockClear()
+    const { transport, opens } = rawHost({ [A]: [{ status: 200, body: new Uint8Array(), hang: true }] })
+    registerProviderRouter(ROUTER, testRouter([toA]).router, { routesTo: '*' })
+    const wrapped = withModelProviders(transport, config())
+    const started = await model(wrapped, 'streamStart', payload())
+    await vi.waitFor(() => expect(opens).toHaveLength(1))
+    await model(wrapped, 'streamCancel', { streamId: started.result.streamId })
+    await model(wrapped, 'streamCancel', { streamId: started.result.streamId })
+    expect(loggedRows().map(row => [row.provider, row.hop, row.outcome])).toEqual([[A, 1, 'aborted']])
+    expect(loggedRows()[0]).not.toHaveProperty('failureKind')
+  })
+
+  it('a cancel while the router decides on a failed leg writes that leg as failed', async () => {
+    vi.mocked(recordRequest).mockClear()
+    const { transport } = rawHost({ [A]: [refusedWith(429, 'slow down')] })
+    let release!: () => void
+    const held = new Promise<RouteAnswer>(resolve => { release = () => resolve(toB) })
+    const { router, events } = testRouter([toA, (() => held) as never])
+    registerProviderRouter(ROUTER, router, { routesTo: [A, B] })
+    const wrapped = withModelProviders(transport, config())
+    const started = await model(wrapped, 'streamStart', payload())
+    const reading = (async () => {
+      for (let i = 0; i < 50; i += 1) {
+        const read = await model(wrapped, 'streamRead', { streamId: started.result.streamId, waitMs: 5000 })
+        if (!read.ok || read.result.done) return
+      }
+    })()
+    await vi.waitFor(() => expect(events).toHaveLength(2))
+    await model(wrapped, 'streamCancel', { streamId: started.result.streamId })
+    release()
+    await reading.catch(() => {})
+    expect(loggedRows()).toHaveLength(1)
+    expect(loggedRows()[0]).toMatchObject({ provider: A, outcome: 'failed', failureKind: 'rate_limit', httpStatus: 429 })
   })
 
   it('a request the router ends before any send writes no request-log row', async () => {
@@ -841,7 +895,7 @@ describe('a call to a router provider', () => {
     const values = assistants(await call(transport, config(), { ...params(), providerId: A, model: 'm-a' }))
     expect(values.at(-1)).not.toHaveProperty('routedVia')
     expect(routedViaOf({})).toBeUndefined()
-    expect(routeCallOf({})).toEqual({ id: expect.any(String), sends: 0, hops: 0 })
+    expect(routeCallOf({})).toEqual({ id: expect.any(String), logCallId: expect.any(Number), sends: 0, hops: 0 })
   })
 
   it('sends the call to the target chosen at a broken reply when the router names none at the re-send', async () => {

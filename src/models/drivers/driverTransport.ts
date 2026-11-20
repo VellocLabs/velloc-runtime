@@ -107,7 +107,7 @@ export function withModelProviders(
       const router = request.providerId ? providerRouterFor(request.providerId) : undefined
       const bounds = request.providerId ? providerRouterBoundsFor(request.providerId) : undefined
       if (router && bounds && request.providerId) {
-        const opened = host.startRouted(routeCall(request.providerId, router, bounds, request, { runtimeConfig, providerFor }))
+        const opened = host.startRouted(routeCall(request.providerId, router, bounds, request, { runtimeConfig, providerFor, logVia: transport }))
         return action === 'call'
           ? { result: await readBlockingStream(host, opened.streamId, request) }
           : { result: opened }

@@ -14,6 +14,7 @@
 import type {
   BridgeModelRequestContext,
   BridgeModelRequestPayload,
+  BrowserBridgeTransport,
 } from '../../browser/bridge/browserBridgeProtocol'
 import { entryId } from '../../config/nexusModelConfig/modelEntries'
 import { resolveModelId } from '../../config/nexusModelConfig/modelEntryResolution'
@@ -39,7 +40,7 @@ import {
   type RouteFailure,
 } from './providerRouter'
 import type { RouteDecision, RouteLeg, RoutedSend, StreamRouting } from './routedStream'
-import { newRequestLogCallId, type RequestLogRow } from '../usage/requestLogStore'
+import type { RequestLogRow } from '../usage/requestLogStore'
 import { recordRequest } from '../usage/requestLogWriter'
 import { isProviderSetUp, mergedModels, providerEntries } from './runtimeProviders'
 
@@ -60,6 +61,8 @@ function requestContextOf(call: object, payload: BridgeModelRequestPayload): Bri
 export type RouteResolutionDeps = {
   runtimeConfig?: RuntimeConfig
   providerFor(spec: ProviderSpec): ModelProvider
+  /** The bridge the call came on; its request-log rows are written through it. */
+  logVia?: BrowserBridgeTransport
 }
 
 function knownModel(provider: string, model: string): boolean {
@@ -77,7 +80,8 @@ const text = (error: unknown): string => (error instanceof Error ? error.message
 
 /**
  * The request-log row of one send of a routed call. The sends of a call share
- * one call id and count their hops from 1; a send to another target than the
+ * the call's id, the one its route events carry, and count their hops from 1;
+ * a send to another target than the
  * one before it names that target and the verdict kind that moved the call.
  */
 export function logRowOf(
@@ -87,7 +91,7 @@ export function logRowOf(
   call: RouteCall,
   send: RoutedSend,
 ): RequestLogRow {
-  const logged = (call.logged ??= { callId: newRequestLogCallId(send.startedMs), sends: 0 })
+  const logged = (call.logged ??= { sends: 0 })
   logged.sends += 1
   const before = logged.last
   const moved = before && (before.provider !== send.target.provider || before.model !== send.model)
@@ -99,7 +103,7 @@ export function logRowOf(
     startedMs: send.startedMs,
     durationMs: send.durationMs,
     ...(sessionId ? { sessionId } : {}),
-    callId: logged.callId,
+    callId: call.logCallId,
     hop: logged.sends,
     provider: send.target.provider,
     model: send.model,
@@ -249,7 +253,7 @@ export function routeCall(
       return { kind: 'none' }
     },
     sent(send) {
-      recordRequest(logRowOf(routerId, rowModel, payload.requestContext?.sessionId, call, send))
+      recordRequest(logRowOf(routerId, rowModel, payload.requestContext?.sessionId, call, send), deps.logVia)
     },
     ended(ending) {
       if (!router.outcome || !ending.target) return

@@ -17,6 +17,7 @@ import {
 import { withRequestLog } from '../models/usage/requestLogTransport'
 import {
   attachRequestLogBridge,
+  openRequestLog,
   recordRequest,
   REQUEST_LOG_QUEUE_MAX,
   requestLogIdle,
@@ -434,6 +435,26 @@ describe('request log writer', () => {
     recordRequest(row())
     await requestLogIdle()
     expect((transport.request as ReturnType<typeof vi.fn>).mock.calls.length).toBe(asked)
+  })
+})
+
+describe('request log reader', () => {
+  it('reads through the reader\'s own bridge, whatever bridge the writer last used', async () => {
+    const writer = makeBridge()
+    attachRequestLogBridge(writer.transport)
+    recordRequest(row({ ...viaRouter }))
+    await requestLogIdle()
+    const closed = {
+      request: vi.fn(async () => { throw new DOMException('Runtime scope was disposed.', 'AbortError') }),
+    } as unknown as BrowserBridgeTransport
+    attachRequestLogBridge(closed)
+    const reader = makeBridge()
+    const log = await openRequestLog(reader.transport)
+    expect(log).toBeDefined()
+    await log!.query({ from: T0, to: T0 + HOUR_MS, by: 'hour', router: 'mod.pool.main' })
+    expect(reader.requests.some(r => r.action === 'query')).toBe(true)
+    expect(closed.request).not.toHaveBeenCalled()
+    expect(await openRequestLog(reader.transport)).toBe(log)
   })
 })
 

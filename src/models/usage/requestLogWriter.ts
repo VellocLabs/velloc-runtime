@@ -39,6 +39,8 @@ let queue: Waiting[] = []
 let draining: Promise<void> | undefined
 let dropped = 0
 let dropRun = false
+/** A reader's own view of the file, per reader bridge. */
+let readers = new WeakMap<BrowserBridgeTransport, RequestLogStore>()
 
 function warn(text: string, error?: unknown): void {
   const detail = error === undefined ? '' : `: ${error instanceof Error ? error.message : String(error)}`
@@ -77,14 +79,21 @@ async function openStore(transport: BrowserBridgeTransport): Promise<RequestLogS
   return opened
 }
 
-/** The open log, for a reader. `via`: the reader's own bridge, used while
- *  none is attached. Undefined with no bridge at all, or when the file
- *  cannot be opened. */
+/** The open log, for a reader. `via`: the reader's own bridge, which every
+ *  read then goes through; without it, the attached one. Undefined with no
+ *  bridge at all, or when the file cannot be opened. */
 export async function openRequestLog(via?: BrowserBridgeTransport): Promise<RequestLogStore | undefined> {
-  const transport = attached ?? via
-  if (!transport) return undefined
   try {
-    return await openStore(transport)
+    if (!via) return attached ? await openStore(attached) : undefined
+    let reader = readers.get(via)
+    if (!reader) {
+      const home = await homeDir(via)
+      if (!home) return undefined
+      reader = new RequestLogStore({ dbPath: requestLogPath(home), transport: () => via })
+      readers.set(via, reader)
+    }
+    await reader.ensureSchema()
+    return reader
   } catch {
     return undefined
   }
@@ -177,4 +186,5 @@ export function resetRequestLog(): void {
   queue = []
   dropped = 0
   dropRun = false
+  readers = new WeakMap()
 }

@@ -17,7 +17,7 @@ import type { RuntimeConfig } from '../../runtime/interfaces/RuntimeConfig'
 import { classifyProviderConnectivityIssue, ProviderApiError } from '../../utils/providerConnectivity'
 import type { DeclaredVerdict } from '../../utils/providerVerdict'
 import { providerRouterFor } from '../drivers/providerRouter'
-import type { RequestLogRow, RequestLogUsage } from './requestLogStore'
+import { foldUsage, type RequestLogRow, type RequestLogUsage } from './requestLogStore'
 import { attachRequestLogBridge, recordRequest } from './requestLogWriter'
 
 /** Streams watched at once; past it the oldest is recorded as abandoned. */
@@ -39,22 +39,6 @@ function fields(value: unknown): Fields {
 
 function text(value: unknown): string | undefined {
   return typeof value === 'string' && value.length > 0 ? value : undefined
-}
-
-const USAGE_FIELDS: ReadonlyArray<[keyof RequestLogUsage, string]> = [
-  ['inputTokens', 'input_tokens'],
-  ['outputTokens', 'output_tokens'],
-  ['cacheReadTokens', 'cache_read_input_tokens'],
-  ['cacheWriteTokens', 'cache_creation_input_tokens'],
-]
-
-/** A later report replaces a figure only when it carries one. */
-function foldUsage(into: RequestLogUsage, reported: unknown): void {
-  const usage = fields(reported)
-  for (const [key, wire] of USAGE_FIELDS) {
-    const value = usage[wire]
-    if (typeof value === 'number' && value > 0) into[key] = value
-  }
 }
 
 function failure(error: Fields): Pick<RequestLogRow, 'outcome' | 'failureKind' | 'httpStatus'> {
