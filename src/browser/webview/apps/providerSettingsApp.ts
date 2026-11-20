@@ -16,7 +16,7 @@ export type ProviderSettingsApp = Pick<ContributedApp, 'appId' | 'type' | 'title
 /** Opens a provider's settings app: Settings closes once the app is to open. */
 export type ProviderAppOpener = (app: ProviderSettingsApp) => void
 
-/** Provided by the shell around Settings; absent where apps cannot open (no runtime connection). */
+/** Provided by the shell around Settings and the topbar; absent where apps cannot open (no runtime connection). */
 export const ProviderAppOpenerContext = React.createContext<ProviderAppOpener | undefined>(undefined)
 
 /**
