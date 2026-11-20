@@ -4,7 +4,7 @@ import { createElement } from 'react'
 import { cleanup, fireEvent, render, waitFor } from '@testing-library/react'
 import { exportA2UICatalog } from '@copilotkit/react-core/v2/generative-ui'
 import { STUDIO_CATALOG_ID, studioUI } from '../browser/webview/a2ui/studio/studioCatalog'
-import { createStudioExpressCompiler } from '../browser/webview/a2ui/studio/studioExpress'
+import { createStudioExpressCompiler } from '../toolkit/builtin/a2ui/express/studioExpress'
 import { StudioSurfaceHost, type StudioEvent } from '../browser/webview/a2ui/studio/StudioSurfaceHost'
 import {
   DASHBOARD_EXPRESS,
@@ -92,6 +92,21 @@ describe('studio surface host', () => {
     await waitFor(() => expect(view.container.textContent).toContain('系统运行正常'))
     view.rerender(host(dashboardStep(DASHBOARD_START, 'refresh_status', undefined)))
     await waitFor(() => expect(view.container.textContent).toContain('系统运行正常 · 1'))
+  })
+})
+
+describe('studio surface host lifetime', () => {
+  it('draws another surface in place of the one it drew, and unmounts cleanly', async () => {
+    const second = compiler.compile('surface("second")\nroot = Text("SECOND_SURFACE")\n')
+    if (!second.ok) throw new Error(second.message)
+    const view = render(host(DASHBOARD_START))
+    await waitFor(() => expect(view.container.textContent).toContain('系统运行正常'))
+    view.rerender(createElement(StudioSurfaceHost, { surfaceId: 'second', operations: second.messages }))
+    await waitFor(() => expect(view.container.textContent).toContain('SECOND_SURFACE'))
+    expect(view.container.textContent).not.toContain('系统运行正常')
+    view.rerender(host(DASHBOARD_START))
+    await waitFor(() => expect(view.container.textContent).toContain('系统运行正常'))
+    expect(() => view.unmount()).not.toThrow()
   })
 })
 

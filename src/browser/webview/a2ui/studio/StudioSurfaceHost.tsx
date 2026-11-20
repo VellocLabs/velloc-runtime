@@ -15,6 +15,8 @@ import './vendor/styles/tokens.css'
 import './vendor/styles/motion.css'
 import { shownColorScheme, watchShownColorScheme } from '@/lib/shownColorScheme'
 import { studioTheme, studioUI } from './studioCatalog'
+import { setStudioTranslate } from './studioText'
+import { useT } from '../../i18n'
 
 export type StudioEvent = {
   name: string
@@ -50,6 +52,7 @@ export function StudioSurfaceHost({
   const onEventRef = useRef(onEvent)
   onEventRef.current = onEvent
   const theme = useShownTheme()
+  setStudioTranslate(useT())
   const core = useMemo(() => {
     const reportError = (info: unknown): void => console.warn('[a2ui] studio surface error', info)
     const manager = new GenerativeUISurfaceManager(studioUI as never, {
@@ -84,6 +87,8 @@ export function StudioSurfaceHost({
       rejected: [],
     } as never)
   }, [core, surfaceId, target, operations])
+  // A surface this host no longer draws leaves its manager.
+  useEffect(() => () => core.manager.forgetSurface(THREAD, surfaceId), [core, surfaceId])
   return (
     <GenerativeUIRuntimeContext.Provider value={runtime as never}>
       <div data-slot="a2ui-studio-surface" className="a2-surface-host a2-static">

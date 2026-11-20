@@ -11,7 +11,7 @@ this list.
 | Here | Upstream | Change |
 |---|---|---|
 | `catalog/definitions/*`, `catalog/entries.ts` | `src/a2ui/catalog/…` | `zod` imports read `zod/v3`. `definitions/index.ts` no longer includes the map definitions. `definitions/maps.ts` is not copied. |
-| `catalog/renderers/*` | `src/a2ui/catalog/renderers/…` | `@/components/ui/*` and `@/lib/utils` imports are relative paths into `ui/` and `lib/`. The `"use client"` line is removed. `maps.tsx` and `map/` are not copied. `content.tsx` copies code through `writeClipboard` from `@/utils/clipboard`, which also works off a secure context. One comment in `domain.tsx` is reworded. |
+| `catalog/renderers/*` | `src/a2ui/catalog/renderers/…` | `@/components/ui/*` and `@/lib/utils` imports are relative paths into `ui/` and `lib/`. The `"use client"` line is removed. `maps.tsx` and `map/` are not copied. `content.tsx` copies code through `writeClipboard` from `@/utils/clipboard`, which also works off a secure context. One comment in `domain.tsx` is reworded. Every string a person can see (chart names, table search, paging, empty states, date and option pickers, "Feels like", "Sample data") is read with `studioText("a2ui.studio.…")` from `../../../studioText` instead of written in place: `chart-kit.tsx`, `charts.tsx`, `content.tsx`, `data.tsx`, `domain.tsx`, `inputs.tsx`. |
 | `catalog/theme.ts` | `src/a2ui/catalog/catalog.ts` | Only the `playgroundTheme` constant. |
 | `ui/*` | `src/components/ui/*` | Only the files the renderers import. Same import rewrites. |
 | `lib/utils.ts` | `src/lib/utils.ts` | None. |

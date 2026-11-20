@@ -33,6 +33,7 @@ import { scalePoint } from "@tanstack/charts/scales/point";
 import { tooltip } from "@tanstack/charts/tooltip";
 import { Chart } from "@tanstack/react-charts";
 import { cn } from "../../lib/utils";
+import { studioText } from "../../../studioText";
 import type { RendererMap } from "./types";
 import {
   ChartFrame,
@@ -225,7 +226,7 @@ export const chartRenderers: RendererMap<
           <Chart
             definition={definition}
             height={props.height ?? 220}
-            ariaLabel={props.title ?? "Line chart"}
+            ariaLabel={props.title ?? studioText("a2ui.studio.lineChart")}
           />
         </Plot>
       </ChartFrame>
@@ -351,7 +352,7 @@ export const chartRenderers: RendererMap<
           <Chart
             definition={definition}
             height={props.height ?? 220}
-            ariaLabel={props.title ?? "Area chart"}
+            ariaLabel={props.title ?? studioText("a2ui.studio.areaChart")}
           />
         </Plot>
       </ChartFrame>
@@ -506,13 +507,13 @@ export const chartRenderers: RendererMap<
             <Chart
               definition={definition.def}
               height={height}
-              ariaLabel={props.title ?? "Bar chart"}
+              ariaLabel={props.title ?? studioText("a2ui.studio.barChart")}
             />
           ) : (
             <Chart
               definition={definition.def}
               height={height}
-              ariaLabel={props.title ?? "Bar chart"}
+              ariaLabel={props.title ?? studioText("a2ui.studio.barChart")}
             />
           )}
         </Plot>
@@ -601,7 +602,7 @@ export const chartRenderers: RendererMap<
               definition={definition}
               width={size}
               height={size}
-              ariaLabel={props.title ?? "Pie chart"}
+              ariaLabel={props.title ?? studioText("a2ui.studio.pieChart")}
             />
             {donut ? (
               <div className="pointer-events-none absolute inset-0 grid place-items-center text-center">
@@ -772,7 +773,7 @@ export const chartRenderers: RendererMap<
           <Chart
             definition={definition}
             height={props.height ?? 260}
-            ariaLabel={props.title ?? "Scatter chart"}
+            ariaLabel={props.title ?? studioText("a2ui.studio.scatterChart")}
           />
         </Plot>
       </ChartFrame>
@@ -930,7 +931,7 @@ export const chartRenderers: RendererMap<
           <Chart
             definition={definition}
             height={height}
-            ariaLabel={props.title ?? "Heatmap"}
+            ariaLabel={props.title ?? studioText("a2ui.studio.heatmap")}
           />
         </Plot>
       </ChartFrame>
@@ -1178,7 +1179,7 @@ export const chartRenderers: RendererMap<
           <Chart
             definition={definition}
             height={props.height ?? 280}
-            ariaLabel={props.title ?? "Radar chart"}
+            ariaLabel={props.title ?? studioText("a2ui.studio.radarChart")}
           />
         </Plot>
       </ChartFrame>
@@ -1320,7 +1321,7 @@ export const chartRenderers: RendererMap<
           <Chart
             definition={definition}
             height={props.height ?? 240}
-            ariaLabel={props.title ?? "Candlestick chart"}
+            ariaLabel={props.title ?? studioText("a2ui.studio.candlestickChart")}
           />
         </Plot>
       </ChartFrame>
@@ -1444,7 +1445,7 @@ export const chartRenderers: RendererMap<
           <Chart
             definition={definition}
             height={props.height ?? 260}
-            ariaLabel={props.title ?? "Treemap"}
+            ariaLabel={props.title ?? studioText("a2ui.studio.treemap")}
           />
         </Plot>
       </ChartFrame>
@@ -1602,7 +1603,7 @@ export const chartRenderers: RendererMap<
           <Chart
             definition={definition}
             height={props.height ?? 280}
-            ariaLabel={props.title ?? "Sankey chart"}
+            ariaLabel={props.title ?? studioText("a2ui.studio.sankeyChart")}
           />
         </Plot>
       </ChartFrame>
@@ -1686,7 +1687,7 @@ export const chartRenderers: RendererMap<
             <Chart
               definition={definition}
               height={240}
-              ariaLabel={props.title ?? "Gauge"}
+              ariaLabel={props.title ?? studioText("a2ui.studio.gauge")}
             />
           </div>
           <div className="pointer-events-none absolute inset-x-0 bottom-0 text-center">

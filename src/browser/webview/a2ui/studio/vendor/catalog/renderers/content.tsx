@@ -5,6 +5,7 @@ import { highlight } from "sugar-high";
 import { Check, Copy, Quote as QuoteIcon } from "lucide-react";
 import { writeClipboard } from "@/utils/clipboard";
 import { cn } from "../../lib/utils";
+import { studioText } from "../../../studioText";
 import type { RendererMap } from "./types";
 
 const TEXT: Record<string, string> = {
@@ -215,7 +216,7 @@ export const contentRenderers: RendererMap<
             />
           ) : (
             <div className="grid size-full place-items-center text-[12px] text-muted-foreground">
-              Unsupported video URL
+              {studioText("a2ui.studio.unsupportedVideo")}
             </div>
           )}
         </div>

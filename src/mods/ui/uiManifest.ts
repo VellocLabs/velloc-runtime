@@ -11,6 +11,7 @@ import type { UpdateChannel } from '../../branding/updateChannels'
 import { isLocalizedText, whyNotLocalizedText, type LocalizedText } from '../../config/localizedText'
 import { readFolderScopes, type FolderScopes } from '../app/appFolderScopes'
 import { MOD_MODULE_EXTENSIONS } from '../modCompilerSurface'
+import { APP_CATALOG_NAMES, isAppCatalogName, type AppCatalogName } from '../../browser/runtimeProtocol/modApps'
 
 /** Where a template's launcher is offered: the sidebar list, the project
  *  folder menu, both, or neither (creatable by id only). */
@@ -67,6 +68,8 @@ export type PluginAppDecl = {
   page?: AppPageDecl
   /** `false`: no topbar icon and no overflow-menu entry; the app opens from elsewhere (a provider's settings, F-27). */
   topbar?: false
+  /** The component set `entry` is written for and drawn with; the Velloc catalog when unset (F-1). */
+  catalog?: AppCatalogName
 }
 
 /** A plugin page drawn in a sandboxed frame that reads the runtime through a capped port. */
@@ -268,6 +271,12 @@ function readApp(value: unknown, label: string, appId: string, bad: Bad): Plugin
     if (typeof value.topbar === 'boolean') topbar = value.topbar
     else bad(`${label}.topbar: expected true or false`)
   }
+  let catalog: AppCatalogName | undefined
+  if (value.catalog !== undefined) {
+    if (isAppCatalogName(value.catalog)) catalog = value.catalog
+    else bad(`${label}.catalog: expected ${APP_CATALOG_NAMES.map(name => `"${name}"`).join(' or ')}`)
+    if (value.page !== undefined) bad(`${label}.catalog: an app with "page" draws its own page and names no catalog`)
+  }
   if (!seed || !entry || data === null) return null
   return {
     seed,
@@ -281,6 +290,7 @@ function readApp(value: unknown, label: string, appId: string, bad: Bad): Plugin
     ...(script ? { script } : {}),
     ...(page ? { page } : {}),
     ...(topbar ? {} : { topbar: false as const }),
+    ...(catalog ? { catalog } : {}),
   }
 }
 

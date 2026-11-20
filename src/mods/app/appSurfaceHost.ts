@@ -17,6 +17,7 @@ import type {
   AppSurfaceState,
   ModsAppActionResult,
   ModsBuildAppResult,
+  AppCatalogName,
 } from '../../browser/runtimeProtocol/modApps'
 import { blockSurfaceIds, hasA2uiBlock, splitA2uiText } from '../../toolkit/builtin/a2ui/express/a2uiBlocks'
 import { dispatchAppAction, type AppActionDispatch } from './appActionBus'
@@ -90,10 +91,21 @@ export type AppSurfaceHost = {
   dispose(): void
 }
 
-async function defaultCompile(body: string): Promise<{ ok: true; surfaceIds: string[] } | { ok: false; message: string }> {
+type CompiledMessages = { ok: true; messages: readonly unknown[] } | { ok: false; message: string }
+
+/** The entry's messages under the component set the app names. */
+async function compileMessages(body: string, catalog: AppCatalogName | undefined): Promise<CompiledMessages> {
+  if (catalog === 'studio') {
+    const { getRuntimeStudioCompiler } = await import('../../toolkit/builtin/a2ui/express/studioRuntimeCompiler')
+    return (await getRuntimeStudioCompiler()).compile(body)
+  }
   const { getRuntimeA2uiCompiler } = await import('../../toolkit/builtin/a2ui/express/a2uiRuntimeCompiler')
   const compiler = await getRuntimeA2uiCompiler()
-  const result = compiler.compile(body, compiler.createState())
+  return compiler.compile(body, compiler.createState())
+}
+
+async function defaultCompile(body: string, catalog?: AppCatalogName): Promise<{ ok: true; surfaceIds: string[] } | { ok: false; message: string }> {
+  const result = await compileMessages(body, catalog)
   if (!result.ok) return { ok: false, message: result.message }
   const ids: string[] = []
   for (const message of result.messages as unknown as Array<Record<string, { surfaceId?: unknown } | undefined>>) {
@@ -158,15 +170,27 @@ export function replyDrawsAppSurface(reply: readonly Message[], ids: readonly st
 }
 
 export function appPromptBlock(app: AppSessionInfo): string {
-  const { entry, data } = app.decl
-  return [
+  const { entry, data, catalog } = app.decl
+  const head = [
     `# This session is an app`,
     `This session runs the app "${app.appId}" of the plugin "${app.plugin}". Its folder is the project root; AGENTS.md there says what the app is for.`,
+  ]
+  const dataLine = data
+    ? `- The app's data is \`${data}\`, set under $/data on each of its surfaces: bind to $/data/... . A2UI does no arithmetic, so every figure shown must already be in the data.`
+    : `- The app has no data file; its values are written in \`${entry}\`.`
+  if (catalog === 'studio') {
+    return [
+      ...head,
+      `- What the person sees is built from \`${entry}\`, an A2UI Express file with one surface("..."), written for the studio component set. Load the a2ui skill before you edit it: in this session it lists that set's components and their arguments, and the file may use no other.`,
+      `- After you change the app's files, call ${BUILD_APP_TOOL_NAME}: it builds \`${entry}\`, shows the result to the person and returns any error to fix. Never write an <a2ui> block in chat in this session: the app's surface is the one place it draws.`,
+      dataLine,
+    ].join('\n')
+  }
+  return [
+    ...head,
     `- What the person sees is built from \`${entry}\`, an A2UI Express file with one surface("..."). The app's pages are a Tabs component in that surface, as in \`root = Tabs([{title: "Overview", child: overview}, {title: "Refunds", child: refunds}])\`: the person switches between them, and a new build keeps the tab they are on. Load the a2ui skill before you edit it: it has the grammar and the components.`,
     `- After you change the app's files, call ${BUILD_APP_TOOL_NAME}: it builds \`${entry}\`, shows the result to the person and returns any error to fix. Never write an <a2ui> block in chat for one of the app's surfaces; a chart that answers a question in chat is fine.`,
-    data
-      ? `- The app's data is \`${data}\`, set under $/data on each of its surfaces: bind to $/data/... . A2UI does no arithmetic, so every figure shown must already be in the data.`
-      : `- The app has no data file; its values are written in \`${entry}\`.`,
+    dataLine,
   ].join('\n')
 }
 
@@ -180,7 +204,8 @@ function buildReport(entry: string, result: ModsBuildAppResult, errors: readonly
 
 export function createAppSurfaceHost(options: AppSurfaceHostOptions): AppSurfaceHost {
   const { fs, app, sessionId } = options
-  const compile = options.compile ?? defaultCompile
+  const catalog = app.decl.catalog
+  const compile = options.compile ?? ((body: string) => defaultCompile(body, catalog))
   const publish = options.publish ?? setAppSurfaceState
   const registerBuild = options.registerBuild ?? setAppBuilder
   const registerActor = options.registerActor ?? setAppActor
@@ -220,6 +245,7 @@ export function createAppSurfaceHost(options: AppSurfaceHostOptions): AppSurface
     const state: AppSurfaceState = {
       appId: app.appId,
       surface: built,
+      ...(catalog ? { catalog } : {}),
       ...(data ? { data: data.value, dataAt: data.at, dataSeq } : {}),
       ...(data && dataPatches ? { dataPatches } : {}),
       ...(text ? { text } : {}),

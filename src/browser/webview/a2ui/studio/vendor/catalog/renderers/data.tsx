@@ -60,6 +60,7 @@ import {
   TooltipTrigger,
 } from "../../ui/tooltip";
 import { cn } from "../../lib/utils";
+import { studioText } from "../../../studioText";
 import { asArray, formatNumber } from "./format";
 import type { RendererMap } from "./types";
 
@@ -503,7 +504,7 @@ function DataTableView({
               </h3>
             ) : null}
             <span className="text-[11px] text-muted-foreground tabular-nums">
-              {rows.length} rows
+              {studioText("a2ui.studio.rowCount", { count: rows.length })}
             </span>
           </div>
           {searchable ? (
@@ -512,8 +513,8 @@ function DataTableView({
               <Input
                 value={String(table.state.globalFilter ?? "")}
                 onChange={(e) => table.setGlobalFilter(e.target.value)}
-                placeholder="Search rows"
-                aria-label="Search rows"
+                placeholder={studioText("a2ui.studio.searchRows")}
+                aria-label={studioText("a2ui.studio.searchRows")}
                 className="h-7.5 rounded-lg pl-8 text-[12.5px]"
               />
             </div>
@@ -611,8 +612,8 @@ function DataTableView({
                   className="h-20 text-center text-[12.5px] text-muted-foreground"
                 >
                   {rows.length === 0
-                    ? "No rows yet"
-                    : "No rows match your search"}
+                    ? studioText("a2ui.studio.noRows")
+                    : studioText("a2ui.studio.noRowsMatch")}
                 </TableCell>
               </TableRow>
             ) : null}
@@ -622,13 +623,13 @@ function DataTableView({
       {showPager ? (
         <div className="flex items-center justify-between gap-3 border-t border-(--a2-line) px-4 py-2">
           <span className="text-[11px] text-muted-foreground tabular-nums">
-            {from}-{to} of {filtered}
+            {studioText("a2ui.studio.pageRange", { from, to, total: filtered })}
           </span>
           <div className="flex items-center gap-1">
             <Button
               variant="ghost"
               size="icon-xs"
-              aria-label="Previous page"
+              aria-label={studioText("a2ui.studio.previousPage")}
               disabled={!table.getCanPreviousPage()}
               onClick={() => table.previousPage()}
             >
@@ -640,7 +641,7 @@ function DataTableView({
             <Button
               variant="ghost"
               size="icon-xs"
-              aria-label="Next page"
+              aria-label={studioText("a2ui.studio.nextPage")}
               disabled={!table.getCanNextPage()}
               onClick={() => table.nextPage()}
             >
@@ -1106,7 +1107,7 @@ export const dataRenderers: RendererMap<DataKeys> = {
             </span>
           ) : null}
           <span className="text-[11px] text-muted-foreground tabular-nums">
-            {Math.round(v)} of 100
+            {studioText("a2ui.studio.scoreOf", { value: Math.round(v) })}
           </span>
         </div>
       </div>
@@ -1229,7 +1230,7 @@ export const dataRenderers: RendererMap<DataKeys> = {
                 <div className="flex min-w-0 flex-1 flex-col gap-1.5">
                   {events.length === 0 ? (
                     <span className="py-2 text-[12.5px] text-muted-foreground">
-                      Nothing scheduled
+                      {studioText("a2ui.studio.nothingScheduled")}
                     </span>
                   ) : null}
                   {events.map((ev, ei) => {
@@ -1246,7 +1247,7 @@ export const dataRenderers: RendererMap<DataKeys> = {
                           )}
                         />
                         <span className="w-16 shrink-0 pt-px text-[11.5px] font-medium text-muted-foreground tabular-nums">
-                          {ev.time ?? "All day"}
+                          {ev.time ?? studioText("a2ui.studio.allDay")}
                         </span>
                         <div className="flex min-w-0 flex-1 flex-col">
                           <span className="truncate text-[13px] font-medium text-foreground">
@@ -1366,13 +1367,13 @@ export const dataRenderers: RendererMap<DataKeys> = {
                             <Check
                               className="size-3"
                               strokeWidth={3}
-                              aria-label="Yes"
+                              aria-label={studioText("a2ui.studio.yes")}
                             />
                           </span>
                         ) : v === false ? (
                           <X
                             className="inline size-3.5 text-muted-foreground/45"
-                            aria-label="No"
+                            aria-label={studioText("a2ui.studio.no")}
                           />
                         ) : v == null || v === "" ? (
                           <span className="text-muted-foreground/40">-</span>

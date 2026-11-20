@@ -695,12 +695,16 @@ export async function createBrowserRuntime(
   // `commands` list is assembled after the MCP pool resolves (below) so
   // each connected MCP server can contribute its own `Skill('mcp__<x>')`
   // command.
+  // A studio app's session is taught the component set its entry is written for.
+  const a2uiSkill = pluginApp?.decl.catalog === 'studio'
+    ? (await import('../../toolkit/builtin/a2ui/a2uiStudioSkill')).A2UI_STUDIO_HOSTED_SKILL
+    : A2UI_HOSTED_SKILL
   const hostedSkills: HostedSkillDefinition[] = [
     ...(resolvedOptions.hostManifest?.hostedSkills ?? []),
     // A2UI: a JS-defined deferrable skill (no C++ manifest entry). Deferred by
     // default because the `chat` template lists it in `deferredTools`;
     // toggleable + activatable via Skill('a2ui') / ToolSearch.
-    A2UI_HOSTED_SKILL,
+    a2uiSkill,
     // Agent-teams: a JS-defined deferrable skill; deferred by default via the
     // `chat` template's `deferredTools` (agent teams stay experimental),
     // unlocked via Skill('agent-teams').

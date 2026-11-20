@@ -57,6 +57,9 @@ type VellocProcessor = MessageProcessor<ReactCatalogComponent>
 
 const ProcessorContext = createContext<VellocProcessor | null>(null)
 
+// An app that names the studio catalog loads that catalog's engine only when its pane opens (F-1).
+const LazyStudioAppSurface = lazy(() => import('./studio/StudioAppSurface'))
+
 // An app drawn as one plugin page loads its frame code only when such a pane opens (F-42).
 const LazyAppPageFrame = lazy(async () => {
   const m = await import('../apps/AppPageFrame')
@@ -140,6 +143,7 @@ function A2uiFeeder({
   live,
   reservedIds,
   localActions,
+  boardModel,
   onBoardTouched,
 }: {
   sessionId: string
@@ -149,6 +153,8 @@ function A2uiFeeder({
   reservedIds: readonly string[]
   /** The app's local actions; undefined for a session that is not an app's, or an app with none. */
   localActions?: LocalSurfaceActions
+  /** The data model of the app's surfaces when another engine than this processor draws them. */
+  boardModel?: Record<string, unknown>
   onBoardTouched: () => void
   messages: readonly Message[]
   submitActionMessage?: (prompt: string) => Promise<void>
@@ -234,7 +240,8 @@ function A2uiFeeder({
           return
         }
         if (busyRef.current || localPendingRef.current) return
-        const dataModel = processor.getSurface(action.surfaceId)?.dataModel.get('/') ?? {}
+        const ownModel = boardModel && reservedIds.includes(action.surfaceId) ? boardModel : undefined
+        const dataModel = ownModel ?? processor.getSurface(action.surfaceId)?.dataModel.get('/') ?? {}
         const turn = buildActionTurn(action, dataModel)
         const name = action.name
         if (localActions && typeof name === 'string' && localActions.names.includes(name) && reservedIds.includes(action.surfaceId)) {
@@ -262,7 +269,7 @@ function A2uiFeeder({
     return () => {
       actionHandlerRef.current = null
     }
-  }, [processor, submitActionMessage, actionHandlerRef, localActions, reservedIds, composer, passageStore, sessionId])
+  }, [processor, submitActionMessage, actionHandlerRef, localActions, boardModel, reservedIds, composer, passageStore, sessionId])
 
   return null
 }
@@ -270,7 +277,16 @@ function A2uiFeeder({
 // The selected surface, portalled into the side pane's slot while the slot
 // belongs to this session (F-1). The portal keeps the surface inside this
 // session's providers, so its data model and actions stay where they are.
-function A2uiPanePortal({ sessionId, board }: { sessionId: string; board: AppBoard | undefined }) {
+function A2uiPanePortal({
+  sessionId,
+  board,
+  onSurfaceAction,
+}: {
+  sessionId: string
+  board: AppBoard | undefined
+  /** A press on a surface this processor does not draw. */
+  onSurfaceAction: SurfaceActionHandler
+}) {
   const slot = useSyncExternalStore(subscribeSlot, getSlot, () => null)
   const actionsSlot = useSyncExternalStore(subscribeSlot, getActionsSlot, () => null)
   const { paneSurfaceIds, selectedSurfaceId, openSurface, busy } =
@@ -281,6 +297,7 @@ function A2uiPanePortal({ sessionId, board }: { sessionId: string; board: AppBoa
   // An app with no surface yet still shows Reload in the header and why it did not build.
   const appIds = appSurfaceIds(board?.state)
   const showsBar = board !== undefined && (selectedSurfaceId === null || appIds.includes(selectedSurfaceId))
+  const studioBoard = board?.state?.catalog === 'studio' && selectedSurfaceId !== null && appIds.includes(selectedSurfaceId) ? board.state : null
   const filled = shown !== null && (selectedSurfaceId !== null || board !== undefined)
   useEffect(() => {
     if (!filled) return
@@ -348,7 +365,24 @@ function A2uiPanePortal({ sessionId, board }: { sessionId: string; board: AppBoa
             surfaceId={selectedSurfaceId}
             fallbackText={t('a2ui.renderFailed')}
           >
-            <SelectedSurface surfaceId={selectedSurfaceId} />
+            {studioBoard ? (
+              <Suspense fallback={null}>
+                <LazyStudioAppSurface
+                  board={studioBoard}
+                  surfaceId={selectedSurfaceId}
+                  onEvent={event =>
+                    onSurfaceAction({
+                      surfaceId: event.surfaceId,
+                      name: event.name,
+                      sourceComponentId: event.componentId,
+                      context: event.context,
+                    } as ActionPayload)
+                  }
+                />
+              </Suspense>
+            ) : (
+              <SelectedSurface surfaceId={selectedSurfaceId} />
+            )}
           </SurfaceErrorBoundary>
         ) : null}
       </div>
@@ -420,6 +454,15 @@ export const A2uiProviderHost = memo(function A2uiProviderHost({
   const isApp = appBoard !== undefined
   const appState = appBoard?.state ?? null
   const reservedIds = useMemo(() => appSurfaceIds(appState), [appState])
+  // A studio app's surfaces are drawn by that catalog's engine, from the board itself.
+  const studio = appState?.catalog === 'studio'
+  const boardData = appState?.data
+  const boardText = appState?.text
+  const boardModel = useMemo<Record<string, unknown> | undefined>(
+    () => (studio ? { ...(boardData !== undefined ? { data: boardData } : {}), ...(boardText ? { text: boardText } : {}) } : undefined),
+    [studio, boardData, boardText],
+  )
+  const [onSurfaceAction] = useState<SurfaceActionHandler>(() => (action: ActionPayload) => actionHandlerRef.current?.(action))
   const act = appBoard?.act
   const localNames = appState?.localActions
   const localActions = useMemo<LocalSurfaceActions | undefined>(() => {
@@ -435,13 +478,14 @@ export const A2uiProviderHost = memo(function A2uiProviderHost({
     <ProcessorContext.Provider value={processor}>
       <A2uiLiveContext.Provider value={live}>
       <A2uiPresentationProvider sessionId={sessionId} messages={messages} busy={busy} live={live} boardKey={appState?.surface?.hash} boardIds={reservedIds}>
-        {isApp ? <AppSurfaceFeeder board={appState} processor={processor} compiler={compiler} epoch={boardEpoch} /> : null}
+        {isApp && !studio ? <AppSurfaceFeeder board={appState} processor={processor} compiler={compiler} epoch={boardEpoch} /> : null}
         <A2uiFeeder
           sessionId={sessionId}
           compiler={compiler}
           live={live}
           reservedIds={reservedIds}
           localActions={localActions}
+          boardModel={boardModel}
           onBoardTouched={onBoardTouched}
           messages={messages}
           submitActionMessage={submitActionMessage}
@@ -449,7 +493,7 @@ export const A2uiProviderHost = memo(function A2uiProviderHost({
           actionHandlerRef={actionHandlerRef}
         />
         {children}
-        <A2uiPanePortal sessionId={sessionId} board={appBoard} />
+        <A2uiPanePortal sessionId={sessionId} board={appBoard} onSurfaceAction={onSurfaceAction} />
       </A2uiPresentationProvider>
       </A2uiLiveContext.Provider>
     </ProcessorContext.Provider>

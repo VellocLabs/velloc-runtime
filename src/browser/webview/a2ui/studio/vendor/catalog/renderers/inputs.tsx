@@ -33,6 +33,7 @@ import { Switch } from "../../ui/switch";
 import { Textarea } from "../../ui/textarea";
 import { ToggleGroup, ToggleGroupItem } from "../../ui/toggle-group";
 import { cn } from "../../lib/utils";
+import { studioText } from "../../../studioText";
 import { iconFor } from "./data";
 import { asArray, formatNumber } from "./format";
 import type { RendererMap } from "./types";
@@ -131,7 +132,7 @@ export const inputRenderers: RendererMap<InputKeys> = {
               <span
                 className={cn("truncate", !selected && "text-muted-foreground")}
               >
-                {selected?.label ?? props.placeholder ?? "Search options"}
+                {selected?.label ?? props.placeholder ?? studioText("a2ui.studio.searchOptions")}
               </span>
               <ChevronsUpDown className="size-3.5 shrink-0 text-muted-foreground" />
             </Button>
@@ -141,10 +142,10 @@ export const inputRenderers: RendererMap<InputKeys> = {
             className="w-(--radix-popover-trigger-width) min-w-52 p-0"
           >
             <Command>
-              <CommandInput placeholder="Search" className="text-[13px]" />
+              <CommandInput placeholder={studioText("a2ui.studio.search")} className="text-[13px]" />
               <CommandList>
                 <CommandEmpty className="py-5 text-[12.5px] text-muted-foreground">
-                  No match found
+                  {studioText("a2ui.studio.noMatch")}
                 </CommandEmpty>
                 <CommandGroup>
                   {options.map((o) => (
@@ -224,7 +225,7 @@ export const inputRenderers: RendererMap<InputKeys> = {
               >
                 {date
                   ? formatDate(date, "EEE, MMM d, yyyy")
-                  : (props.placeholder ?? "Pick a date")}
+                  : (props.placeholder ?? studioText("a2ui.studio.pickDate"))}
               </span>
             </Button>
           </PopoverTrigger>

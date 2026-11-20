@@ -4,6 +4,7 @@ import type { CSSProperties, ReactNode } from "react";
 import type { ChartCurve, ChartTheme } from "@tanstack/charts";
 import type { RadialAreaOptions } from "@tanstack/charts/polar";
 import { cn } from "../../lib/utils";
+import { studioText } from "../../../studioText";
 import { formatNumber } from "./format";
 import type { NumberFormat } from "./format";
 
@@ -323,7 +324,7 @@ class ChartBoundary extends Component<
   }
   render() {
     return this.state.failed ? (
-      <EmptyState label="Waiting for complete data" />
+      <EmptyState label={studioText("a2ui.studio.waitingData")} />
     ) : (
       this.props.children
     );

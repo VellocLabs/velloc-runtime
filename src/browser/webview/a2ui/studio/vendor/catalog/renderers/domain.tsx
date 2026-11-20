@@ -32,6 +32,7 @@ import { Button } from "../../ui/button";
 import { Checkbox } from "../../ui/checkbox";
 import { Separator } from "../../ui/separator";
 import { cn } from "../../lib/utils";
+import { studioText } from "../../../studioText";
 import { asArray } from "./format";
 import type { RendererMap } from "./types";
 
@@ -210,7 +211,7 @@ export const domainRenderers: RendererMap<DomainKeys> = {
       num(props.feels) != null
         ? {
             icon: Thermometer,
-            label: "Feels like",
+            label: studioText("a2ui.studio.feelsLike"),
             value: `${Math.round(props.feels as number)}°`,
           }
         : null,
@@ -820,7 +821,7 @@ export const domainRenderers: RendererMap<DomainKeys> = {
           </div>
           {props.sample ? (
             <Badge className="shrink-0 border border-amber-300/25 bg-amber-300/10 text-[10.5px] text-amber-800 dark:text-amber-200">
-              Sample data
+              {studioText("a2ui.studio.sampleData")}
             </Badge>
           ) : null}
         </div>

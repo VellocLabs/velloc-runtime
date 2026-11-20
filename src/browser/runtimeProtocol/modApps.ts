@@ -17,6 +17,14 @@ export type AppSurfaceErrorKind = 'build' | 'data'
 /** Why the newest build or data file is not what the page draws; English, for the model and logs. */
 export type AppSurfaceError = { kind: AppSurfaceErrorKind; message: string }
 
+/** A component set an app may name in place of the Velloc catalog (F-1). */
+export const APP_CATALOG_NAMES = ['studio'] as const
+export type AppCatalogName = (typeof APP_CATALOG_NAMES)[number]
+
+export function isAppCatalogName(value: unknown): value is AppCatalogName {
+  return typeof value === 'string' && (APP_CATALOG_NAMES as readonly string[]).includes(value)
+}
+
 /** One build of the app's entry file: its text and the surfaces it draws, in order. */
 export type AppSurfaceBuild = { body: string; hash: string; surfaceIds: string[] }
 
@@ -27,6 +35,8 @@ export type AppSurfaceState = {
   appId: string
   /** The latest successful build; null before one has succeeded. */
   surface: AppSurfaceBuild | null
+  /** The component set the build was checked against and the page draws it with; the Velloc catalog when absent. */
+  catalog?: AppCatalogName
   /** The data file's value, set under `/data` on each of the app's surfaces. */
   data?: unknown
   /** When the data file was last written (epoch ms). */
@@ -133,6 +143,7 @@ export function isAppSurfaceState(value: unknown): value is AppSurfaceState {
     const ids = surface.surfaceIds
     if (!Array.isArray(ids) || ids.length === 0 || !ids.every(id => typeof id === 'string')) return false
   }
+  if (value.catalog !== undefined && !isAppCatalogName(value.catalog)) return false
   if (value.text !== undefined && !(isRecord(value.text) && Object.values(value.text).every(text => typeof text === 'string'))) return false
   if (value.dataAt !== undefined && typeof value.dataAt !== 'number') return false
   if (value.dataSeq !== undefined && typeof value.dataSeq !== 'number') return false

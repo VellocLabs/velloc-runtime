@@ -29,7 +29,7 @@ const LazySurface = lazy(async () => {
     import('../StudioSurfaceHost'),
     import('../studioCatalog'),
     import('@copilotkit/react-core/v2/generative-ui'),
-    import('../studioExpress'),
+    import('../../../../../toolkit/builtin/a2ui/express/studioExpress'),
   ])
   const compiled = createStudioExpressCompiler(exportA2UICatalog(studioUI as never) as Record<string, unknown>).compile(DASHBOARD_EXPRESS)
   const loaded: Loaded = {
