@@ -22,7 +22,7 @@ export type ThemeModEntry = {
 /** `window`: the backdrop fills the whole window. `conversation`: it stays in
  *  the conversation, and the rest of the window shows the theme's colours. */
 export type ThemeBackdropScope = 'conversation' | 'window'
-export const DEFAULT_THEME_BACKDROP_SCOPE: ThemeBackdropScope = 'window'
+export const DEFAULT_THEME_BACKDROP_SCOPE: ThemeBackdropScope = 'conversation'
 
 export const THEME_MODS_LIMIT = 64
 const TEXT_LIMIT = 300

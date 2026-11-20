@@ -405,7 +405,7 @@ export type NexusSettingsV1 = {
     headless?: boolean
     /** The plugins that have set a theme, oldest first; the runtime writes it. */
     themeMods?: ThemeModEntry[]
-    /** How far a theme's backdrop reaches. Absent reads as the whole window. */
+    /** How far a theme's backdrop reaches. Absent reads as the conversation alone. */
     backdropScope?: ThemeBackdropScope
     /** Enabling one theme mod disables the others. Absent reads as on; `false` turns it off. */
     singleThemeMod?: boolean
