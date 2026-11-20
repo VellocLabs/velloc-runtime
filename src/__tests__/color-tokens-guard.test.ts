@@ -22,6 +22,12 @@ const ALLOWLIST: Record<string, string> = {
     'a QR code is black modules on a white quiet zone in every theme: phone scanners need that contrast, so it must NOT follow the theme.',
 }
 
+/**
+ * Third-party component source kept as it is upstream (F-1): its colours and
+ * focus styles are the look it is vendored for, scoped to its own surface.
+ */
+const VENDORED_PREFIX = 'browser/webview/a2ui/studio/vendor/'
+
 /** Any utility prefix (`text-`, `border-l-`, `ring-offset-`, `via-`, …)
  *  followed by a palette hue and a numeric stop. */
 const RAW_TAILWIND_HUE =
@@ -51,7 +57,7 @@ function offenders(pattern: RegExp): string[] {
   const hits: string[] = []
   for (const file of walk(SRC)) {
     const rel = relative(SRC, file).replace(/\\/g, '/')
-    if (rel in ALLOWLIST) continue
+    if (rel in ALLOWLIST || rel.startsWith(VENDORED_PREFIX)) continue
     const text = readFileSync(file, 'utf8')
     const lines = text.split('\n')
     lines.forEach((line, i) => {
@@ -128,6 +134,10 @@ describe('colour tokens guard', () => {
       new RegExp(`^\\s*--color-${step}:`, 'm').test(theme),
     )
     expect(shadowed, 'rename the token (e.g. --color-base-surface)').toEqual([])
+  })
+
+  it('the vendored exemption names a directory that still exists', () => {
+    expect(statSync(join(SRC, VENDORED_PREFIX)).isDirectory()).toBe(true)
   })
 
   it('the allowlist only names files that still exist', () => {

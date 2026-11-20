@@ -233,3 +233,39 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ```
+
+## CopilotKit A2UI Playground
+
+- Upstream: https://github.com/CopilotKit/CopilotKit at commit c1f317e839996dc845b930567210c8d976d6c5b1,
+  `examples/showcases/a2ui-playground`
+- Copied, with the modifications listed in
+  `src/browser/webview/a2ui/studio/vendor/PATCHES.md`, into
+  `src/browser/webview/a2ui/studio/vendor/` (component definitions, renderers,
+  interface primitives and styles of the studio catalog)
+- Licence: MIT (full text below).
+
+### MIT License (CopilotKit)
+
+```
+The MIT License
+
+Copyright (c) Atai Barkai
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
+```

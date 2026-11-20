@@ -19,6 +19,12 @@ const ROOT = join(__dirname, '..')
 const UI_DIRS = ['browser/webview', 'components/assistant-ui', 'mobile']
 
 /**
+ * Third-party component source kept as it is upstream (F-1). No screen draws
+ * it yet; its strings move to the catalog in the change that lets one.
+ */
+const UNREACHABLE_VENDORED_PREFIX = 'browser/webview/a2ui/studio/vendor/'
+
+/**
  * Files that legitimately still carry English literals, with the reason.
  * Shrinking this list is good; growing it needs a reason in review.
  */
@@ -177,7 +183,7 @@ describe('no hard-coded user-visible strings in the webview UI', () => {
   it('finds no literal outside the documented exclusions', () => {
     const offenders = files
       .flatMap(scan)
-      .filter(h => !ALLOWED.has(h.file))
+      .filter(h => !ALLOWED.has(h.file) && !h.file.startsWith(UNREACHABLE_VENDORED_PREFIX))
       .map(h => `${h.file}:${h.line}  ${h.text}`)
     expect(offenders).toEqual([])
   })
@@ -196,6 +202,16 @@ describe('no hard-coded user-visible strings in the webview UI', () => {
     expect(keys.length).toBe(10)
     const unresolved = keys.filter(k => !(k in en))
     expect(unresolved).toEqual([])
+  })
+
+  it('keeps the vendored exemption to source no screen draws yet', () => {
+    // The exemption ends when anything outside the studio directory imports
+    // its surface host: from then on a person can read these strings.
+    const importers = files
+      .map(file => relative(ROOT, file).split(sep).join('/'))
+      .filter(file => !file.startsWith('browser/webview/a2ui/studio/'))
+      .filter(file => /a2ui\/studio\/|\.\/studio\//.test(readFileSync(join(ROOT, file), 'utf8')))
+    expect(importers).toEqual([])
   })
 
   it('keeps every allow-listed file actually carrying a literal', () => {

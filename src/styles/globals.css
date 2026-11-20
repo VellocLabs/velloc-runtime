@@ -14,6 +14,10 @@
  * path is relative to this file. */
 @source not "../../deploy";
 
+/* The studio catalog (F-1) compiles its own classes into its lazy stylesheet,
+ * so they stay out of the app CSS. */
+@source not "../browser/webview/a2ui/studio";
+
 /* `.light` on an element turns what is inside it back to light on a dark page
  * (a mod theme made for the other mode, F-25). */
 @custom-variant dark (&:is(.dark *):not(:is(.light *)));

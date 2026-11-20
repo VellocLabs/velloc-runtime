@@ -1,0 +1,326 @@
+.a2-surface-host,
+body > .a2ui-surface {
+  /* The color overlays and hairlines are drawn in: near-black on light, white on dark. */
+  --ink: 0.21 0.012 285;
+  --background: oklch(0.992 0.0015 285);
+  --foreground: oklch(0.2 0.008 285);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.2 0.008 285);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.2 0.008 285);
+  --primary: oklch(0.5 0.2 292);
+  --primary-foreground: oklch(0.985 0.005 292);
+  --secondary: oklch(0.96 0.004 285);
+  --secondary-foreground: oklch(0.2 0.008 285);
+  --muted: oklch(0.96 0.004 285);
+  --muted-foreground: oklch(0.47 0.014 285);
+  --accent: oklch(0.95 0.006 285);
+  --accent-foreground: oklch(0.2 0.008 285);
+  --destructive: oklch(0.56 0.21 25);
+  --border: oklch(0.21 0.012 285 / 10%);
+  --input: oklch(0.21 0.012 285 / 15%);
+  --ring: oklch(0.5 0.2 292 / 50%);
+  --chart-1: oklch(0.55 0.2 292);
+  --chart-2: oklch(0.58 0.14 235);
+  --chart-3: oklch(0.62 0.15 162);
+  --chart-4: oklch(0.72 0.15 72);
+  --chart-5: oklch(0.6 0.2 20);
+  --radius: 0.625rem;
+  --sidebar: oklch(0.98 0.002 285);
+  --sidebar-foreground: oklch(0.2 0.008 285);
+  --sidebar-primary: oklch(0.5 0.2 292);
+  --sidebar-primary-foreground: oklch(0.985 0.005 292);
+  --sidebar-accent: oklch(0.95 0.006 285);
+  --sidebar-accent-foreground: oklch(0.2 0.008 285);
+  --sidebar-border: oklch(0.21 0.012 285 / 10%);
+  --sidebar-ring: oklch(0.5 0.2 292 / 50%);
+}
+
+.dark .a2-surface-host,
+.dark body > .a2ui-surface {
+  --ink: 1 0 0;
+  --background: oklch(0.135 0.004 285);
+  --foreground: oklch(0.97 0.003 285);
+  --card: oklch(0.175 0.005 285);
+  --card-foreground: oklch(0.97 0.003 285);
+  --popover: oklch(0.19 0.006 285);
+  --popover-foreground: oklch(0.97 0.003 285);
+  --primary: oklch(0.72 0.17 292);
+  --primary-foreground: oklch(0.16 0.02 292);
+  --secondary: oklch(0.24 0.006 285);
+  --secondary-foreground: oklch(0.97 0.003 285);
+  --muted: oklch(0.23 0.006 285);
+  --muted-foreground: oklch(0.68 0.012 285);
+  --accent: oklch(0.25 0.008 285);
+  --accent-foreground: oklch(0.97 0.003 285);
+  --destructive: oklch(0.68 0.2 22);
+  --border: oklch(1 0 0 / 8%);
+  --input: oklch(1 0 0 / 11%);
+  --ring: oklch(0.72 0.17 292 / 60%);
+  --chart-1: oklch(0.72 0.17 292);
+  --chart-2: oklch(0.75 0.13 230);
+  --chart-3: oklch(0.78 0.15 165);
+  --chart-4: oklch(0.82 0.14 80);
+  --chart-5: oklch(0.7 0.18 15);
+  --sidebar: oklch(0.155 0.005 285);
+  --sidebar-foreground: oklch(0.97 0.003 285);
+  --sidebar-primary: oklch(0.72 0.17 292);
+  --sidebar-primary-foreground: oklch(0.16 0.02 292);
+  --sidebar-accent: oklch(0.23 0.006 285);
+  --sidebar-accent-foreground: oklch(0.97 0.003 285);
+  --sidebar-border: oklch(1 0 0 / 8%);
+  --sidebar-ring: oklch(0.72 0.17 292 / 60%);
+}
+
+
+/* ───────────────────────── A2UI surface design tokens ─────────────────────────
+   Every catalog renderer composes these. One place to restyle every surface. */
+.a2-surface-host,
+body > .a2ui-surface {
+  --ts-chart-1: oklch(0.55 0.2 292);
+  --ts-chart-2: oklch(0.58 0.13 230);
+  --ts-chart-3: oklch(0.6 0.14 162);
+  --ts-chart-4: oklch(0.7 0.15 72);
+  --ts-chart-5: oklch(0.6 0.2 18);
+  --ts-chart-6: oklch(0.6 0.03 285);
+  --a2-surface: oklch(1 0 0);
+  --a2-surface-2: oklch(0.97 0.003 285);
+  --a2-line: oklch(var(--ink) / 9%);
+  --a2-line-strong: oklch(var(--ink) / 15%);
+  --a2-radius: 14px;
+  --a2-accent: oklch(0.52 0.2 292);
+  --a2-positive: oklch(0.52 0.13 160);
+  --a2-negative: oklch(0.56 0.2 22);
+  --a2-warning: oklch(0.53 0.14 62);
+  --a2-info: oklch(0.52 0.13 235);
+  --a2-card-sheen: transparent;
+  --a2-card-shadow:
+    0 1px 2px oklch(var(--ink) / 6%), 0 1px 3px oklch(var(--ink) / 4%);
+  --a2-chart-ink: oklch(0.45 0.012 285);
+  /* Dot grids under generated UI, a touch stronger on light grounds. */
+  --dot-stage: 6%;
+  --dot-grid: 7%;
+  --dot-floor: 7%;
+}
+.dark .a2-surface-host,
+.dark body > .a2ui-surface {
+  --ts-chart-1: oklch(0.72 0.17 292);
+  --ts-chart-2: oklch(0.76 0.12 225);
+  --ts-chart-3: oklch(0.79 0.15 162);
+  --ts-chart-4: oklch(0.83 0.14 78);
+  --ts-chart-5: oklch(0.71 0.18 12);
+  --ts-chart-6: oklch(0.7 0.03 285);
+  --a2-surface: oklch(0.172 0.005 285);
+  --a2-surface-2: oklch(0.205 0.006 285);
+  --a2-line: oklch(1 0 0 / 7.5%);
+  --a2-line-strong: oklch(1 0 0 / 12%);
+  --a2-accent: oklch(0.72 0.17 292);
+  --a2-positive: oklch(0.78 0.15 160);
+  --a2-negative: oklch(0.7 0.18 18);
+  --a2-warning: oklch(0.83 0.14 78);
+  --a2-info: oklch(0.76 0.12 225);
+  --a2-card-sheen: oklch(1 0 0 / 2.2%);
+  --a2-card-shadow:
+    inset 0 1px 0 oklch(1 0 0 / 4%), 0 1px 2px oklch(0 0 0 / 30%);
+  --a2-chart-ink: oklch(0.78 0.01 285);
+  --dot-stage: 5%;
+  --dot-grid: 6%;
+  --dot-floor: 5.5%;
+}
+
+/* A Gen UI 2.0 surface outside the chat draws no box of its own: the page around it frames it.
+   Unlayered, so it wins over the chat card's own classes. */
+.a2-static [data-generative-ui-chat-surface] {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+}
+
+@layer components {
+  /* Base card: every boxed component uses it. */
+  .a2-card {
+    background:
+      linear-gradient(180deg, var(--a2-card-sheen), transparent 40%),
+      var(--a2-surface);
+    border: 1px solid var(--a2-line);
+    border-radius: var(--a2-radius);
+    box-shadow: var(--a2-card-shadow);
+  }
+  /* Inset well inside a card (rows, chips, mini panels). */
+  .a2-well {
+    background: oklch(var(--ink) / 3%);
+    border: 1px solid var(--a2-line);
+    border-radius: 10px;
+  }
+  /* A heading's context line: sentence case, quiet, never a tracked uppercase kicker. */
+  .a2-label {
+    font-size: 12.5px;
+    font-weight: 500;
+    color: var(--muted-foreground);
+  }
+  .a2-chart {
+    color: var(--a2-chart-ink);
+  }
+  .a2-chart svg text {
+    font-family: var(--font-sans);
+  }
+}
+
+/* Gen UI sizes every h2 to h4 inside a surface (1.5, 1.25 and 1em, all 600), unlayered, so it outranks the
+   catalog's own Tailwind sizes: a Heading came out at one size whatever its level, and a table's title at
+   20px beside a 13.5px chart title. Headings take their own type back here, and one that sets none keeps the
+   page's. Kept at one element's specificity so a design system's heading rules still win, and off Markdown,
+   which sizes its own headings (below). */
+:where(.a2ui-surface) :is(h2, h3, h4):where(:not(.a2-md *)) {
+  font-size: revert-layer;
+  font-weight: revert-layer;
+  line-height: revert-layer;
+}
+
+/* Markdown + code inside surfaces */
+.a2-md > * + * {
+  margin-top: 0.6em;
+}
+.a2-md h1,
+.a2-md h2,
+.a2-md h3 {
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+.a2-md h1 {
+  font-size: 18px;
+}
+.a2-md h2 {
+  font-size: 16px;
+}
+.a2-md h3 {
+  font-size: 14px;
+}
+.a2-md ul {
+  list-style: disc;
+  padding-left: 1.2em;
+}
+.a2-md ol {
+  list-style: decimal;
+  padding-left: 1.3em;
+}
+.a2-md li + li {
+  margin-top: 0.25em;
+}
+.a2-md li::marker {
+  color: var(--muted-foreground);
+}
+.a2-md a {
+  color: var(--a2-accent);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  text-decoration-color: color-mix(in oklch, var(--a2-accent) 40%, transparent);
+}
+.a2-md strong {
+  font-weight: 600;
+  color: var(--foreground);
+}
+.a2-md code {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 0.88em;
+  padding: 0.1em 0.35em;
+  border-radius: 5px;
+  background: oklch(var(--ink) / 7%);
+}
+.a2-md blockquote {
+  border-left: 2px solid var(--a2-line-strong);
+  padding-left: 0.9em;
+  color: var(--muted-foreground);
+}
+.a2-md table {
+  width: 100%;
+  font-size: 12.5px;
+  border-collapse: collapse;
+}
+.a2-md th,
+.a2-md td {
+  border-bottom: 1px solid var(--a2-line);
+  padding: 6px 8px;
+  text-align: left;
+}
+.a2-code {
+  --sh-class: oklch(0.55 0.14 70);
+  --sh-identifier: oklch(0.3 0.02 285);
+  --sh-sign: oklch(0.5 0.02 285);
+  --sh-property: oklch(0.48 0.12 235);
+  --sh-entity: oklch(0.5 0.13 160);
+  --sh-jsxliterals: oklch(0.4 0.05 285);
+  --sh-string: oklch(0.5 0.12 150);
+  --sh-keyword: oklch(0.5 0.18 300);
+  --sh-comment: oklch(0.58 0.015 285);
+}
+.dark .a2-code {
+  --sh-class: oklch(0.82 0.12 75);
+  --sh-identifier: oklch(0.9 0.02 285);
+  --sh-sign: oklch(0.65 0.02 285);
+  --sh-property: oklch(0.78 0.1 225);
+  --sh-entity: oklch(0.8 0.13 160);
+  --sh-jsxliterals: oklch(0.85 0.05 285);
+  --sh-string: oklch(0.8 0.12 150);
+  --sh-keyword: oklch(0.74 0.16 300);
+  --sh-comment: oklch(0.55 0.02 285);
+}
+
+
+.a2-grid {
+  grid-template-columns: repeat(var(--g, 3), minmax(0, 1fr));
+}
+.a2-grid[data-cols="1"] {
+  --g: 1;
+}
+.a2-grid[data-cols="2"] {
+  --g: 2;
+}
+.a2-grid[data-cols="3"] {
+  --g: 3;
+}
+.a2-grid[data-cols="4"] {
+  --g: 4;
+}
+@container (max-width: 520px) {
+  .a2-grid[data-cols="4"] {
+    --g: 2;
+  }
+}
+@container (max-width: 400px) {
+  .a2-grid[data-cols="3"] {
+    --g: 2;
+  }
+}
+@container (max-width: 260px) {
+  .a2-grid {
+    --g: 1;
+  }
+}
+
+
+:is(.a2-surface-host, body > .a2ui-surface) [data-slot="table-container"] {
+  scrollbar-width: thin;
+}
+:is(.a2-surface-host, body > .a2ui-surface) [data-slot="table-container"][data-fade="right"] {
+  mask-image: linear-gradient(to right, #000 calc(100% - 36px), transparent);
+}
+:is(.a2-surface-host, body > .a2ui-surface) [data-slot="table-container"][data-fade="left"] {
+  mask-image: linear-gradient(to left, #000 calc(100% - 36px), transparent);
+}
+:is(.a2-surface-host, body > .a2ui-surface) [data-slot="table-container"][data-fade="both"] {
+  mask-image: linear-gradient(
+    to right,
+    transparent,
+    #000 36px,
+    #000 calc(100% - 36px),
+    transparent
+  );
+}
+.a2-md table {
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  white-space: nowrap;
+}

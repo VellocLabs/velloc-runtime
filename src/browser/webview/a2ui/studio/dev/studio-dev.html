@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="light dark" />
+    <title>Studio catalog</title>
+    <script>
+      if (new URLSearchParams(location.search).get('theme') === 'dark') {
+        document.documentElement.classList.add('dark');
+      }
+    </script>
+    <style>
+      :root {
+        --font-geist-sans: 'Geist Variable', ui-sans-serif, system-ui, sans-serif;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="app"></div>
+    <script type="module" src="./studioDev.tsx"></script>
+  </body>
+</html>
