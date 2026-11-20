@@ -436,23 +436,6 @@ export const ThemeModsMenu: FC<{ sessionId?: string; isForeground?: boolean }> =
                       {failure}
                     </div>
                   )}
-                  {turnOffAll && (
-                    <>
-                      <DropdownMenuPrimitive.Separator className={SEPARATOR_CLASS} />
-                      <DropdownMenuPrimitive.Item
-                        data-testid="theme-mods-menu-turn-off"
-                        disabled={(on === 0 && !themes.pluginsOn) || turningOff}
-                        onSelect={(event) => {
-                          event.preventDefault();
-                          turnOff();
-                        }}
-                        className={ITEM_CLASS}
-                      >
-                        <PowerOffIcon aria-hidden className="size-4 text-muted-foreground" />
-                        <span className="flex-1">{t("themeMenu.turnOffAll")}</span>
-                      </DropdownMenuPrimitive.Item>
-                    </>
-                  )}
                   {openThemeStore && (
                     <>
                       <DropdownMenuPrimitive.Separator className={SEPARATOR_CLASS} />
@@ -554,6 +537,28 @@ export const ThemeModsMenu: FC<{ sessionId?: string; isForeground?: boolean }> =
                 </DropdownMenuPrimitive.SubContent>
               </DropdownMenuPrimitive.Portal>
             </DropdownMenuPrimitive.Sub>
+            {turnOffAll && (
+              <>
+                <DropdownMenuPrimitive.Separator className={SEPARATOR_CLASS} />
+                <DropdownMenuPrimitive.Item
+                  data-testid="theme-mods-menu-turn-off"
+                  disabled={(on === 0 && !themes.pluginsOn) || turningOff}
+                  onSelect={(event) => {
+                    event.preventDefault();
+                    turnOff();
+                  }}
+                  className={ITEM_CLASS}
+                >
+                  <PowerOffIcon aria-hidden className="size-4 text-muted-foreground" />
+                  <span className="flex-1">{t("themeMenu.turnOffAll")}</span>
+                </DropdownMenuPrimitive.Item>
+                {failure && (
+                  <div role="status" className="max-w-64 px-2 py-1.5 text-xs text-destructive">
+                    {failure}
+                  </div>
+                )}
+              </>
+            )}
           </DropdownMenuPrimitive.Content>
         )}
       </DropdownMenuPrimitive.Portal>

@@ -226,9 +226,14 @@ describe('theme mods menu — Turn off all', () => {
     ...(turnOffAll ? { turnOffAll } : {}),
   })
 
+  const openMenu = async () => {
+    fireEvent.contextMenu(screen.getByTestId('blank'))
+    return screen.findByTestId('theme-mods-menu')
+  }
+
   it('is greyed while no theme mod is on', async () => {
     mount(base({ looks: false, aurora: false, bubblegum: false }, async () => 0))
-    await openSub('theme-mods-menu-mods')
+    await openMenu()
     const item = await screen.findByTestId('theme-mods-menu-turn-off')
     expect(item.getAttribute('data-disabled')).not.toBeNull()
   })
@@ -236,33 +241,35 @@ describe('theme mods menu — Turn off all', () => {
   it('turns every theme plugin off at one press, and the rows follow', async () => {
     const turnOffAll = vi.fn(async () => 2)
     mount(base({ looks: true, aurora: false, bubblegum: true }, turnOffAll))
-    await openSub('theme-mods-menu-mods')
+    await openMenu()
     const item = await screen.findByTestId('theme-mods-menu-turn-off')
     expect(item.getAttribute('data-disabled')).toBeNull()
     fireEvent.click(item)
     expect(turnOffAll).toHaveBeenCalledTimes(1)
+    await waitFor(() => expect(screen.getByTestId('theme-mods-menu-turn-off').getAttribute('data-disabled')).not.toBeNull())
+    fireEvent.keyDown(screen.getByTestId('theme-mods-menu-mods'), { key: 'ArrowRight' })
     await waitFor(() => expect(screen.getByTestId('theme-mod:looks').getAttribute('aria-checked')).toBe('false'))
     expect(screen.getByTestId('theme-mod:bubblegum').getAttribute('aria-checked')).toBe('false')
-    await waitFor(() => expect(screen.getByTestId('theme-mods-menu-turn-off').getAttribute('data-disabled')).not.toBeNull())
   })
 
-  it('sits in its own section between the mods and More themes', async () => {
+  it('is the last top-level item, set apart by a separator, and not in the mods list', async () => {
     mount({ ...base({ looks: true }, async () => 1), openThemeStore: () => {} })
-    await openSub('theme-mods-menu-mods')
-    const list = await screen.findByTestId('theme-mods-menu-list')
-    const order = Array.from(list.children).map(el =>
+    const menu = await openMenu()
+    const order = Array.from(menu.children).map(el =>
       el.getAttribute('role') === 'separator' ? '|' : el.getAttribute('data-testid') ?? '',
     )
-    const off = order.indexOf('theme-mods-menu-turn-off')
-    expect(order[off - 1]).toBe('|')
-    expect(order[off + 1]).toBe('|')
-    expect(order[off + 2]).toBe('theme-mods-menu-more')
+    expect(order.at(-1)).toBe('theme-mods-menu-turn-off')
+    expect(order.at(-2)).toBe('|')
+    fireEvent.keyDown(screen.getByTestId('theme-mods-menu-mods'), { key: 'ArrowRight' })
+    const list = await screen.findByTestId('theme-mods-menu-list')
+    expect(list.querySelector('[data-testid="theme-mods-menu-turn-off"]')).toBeNull()
+    expect(list.querySelector('[data-testid="theme-mods-menu-more"]')).not.toBeNull()
   })
 
   it('is offered while the runtime counts a theme plugin on, even one that has set no theme yet', async () => {
     const turnOffAll = vi.fn(async () => 1)
     mount({ ...base({ looks: false, aurora: false, bubblegum: false }, turnOffAll), pluginsOn: 1 })
-    await openSub('theme-mods-menu-mods')
+    await openMenu()
     const item = await screen.findByTestId('theme-mods-menu-turn-off')
     expect(item.getAttribute('data-disabled')).toBeNull()
     fireEvent.click(item)
@@ -272,8 +279,7 @@ describe('theme mods menu — Turn off all', () => {
 
   it('is absent where the connection may not turn theme plugins off', async () => {
     mount(base({ looks: true }))
-    await openSub('theme-mods-menu-mods')
-    await screen.findByTestId('theme-mods-menu-list')
+    await openMenu()
     expect(screen.queryByTestId('theme-mods-menu-turn-off')).toBeNull()
   })
 })
