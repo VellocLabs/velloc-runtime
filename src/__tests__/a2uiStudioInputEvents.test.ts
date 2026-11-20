@@ -90,6 +90,10 @@ describe('studio input and row events', () => {
     fireEvent.keyDown((await byText(tables[0]!, 'td', 'Alpha Model')).closest('tr')!, { key: 'Enter' })
     await waitFor(() => expect(events).toHaveLength(2))
     expect(events[1]?.context).toMatchObject({ row: { key: 'k-alpha' } })
+    // A held key's repeats send nothing more.
+    fireEvent.keyDown((await byText(tables[0]!, 'td', 'Alpha Model')).closest('tr')!, { key: 'Enter', repeat: true })
+    await new Promise(resolve => setTimeout(resolve, 20))
+    expect(events).toHaveLength(2)
     const plainRow = (await byText(tables[1]!, 'td', 'Beta Model')).closest('tr')!
     expect(plainRow.getAttribute('tabindex')).toBeNull()
     fireEvent.click(plainRow)

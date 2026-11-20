@@ -587,15 +587,21 @@ function DataTableView({
                 key={row.id}
                 className={cn(
                   "border-(--a2-line) hover:bg-black/[0.025] dark:hover:bg-white/[0.025]",
-                  onRowClick && "cursor-pointer",
+                  onRowClick &&
+                    "cursor-pointer outline-none focus-visible:bg-black/[0.04] focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/50 dark:focus-visible:bg-white/[0.04]",
                 )}
                 {...(onRowClick
                   ? {
                       tabIndex: 0,
                       onClick: () => onRowClick(row.original),
-                      onKeyDown: (event: { key: string; preventDefault: () => void }) => {
+                      onKeyDown: (event: {
+                        key: string;
+                        repeat: boolean;
+                        preventDefault: () => void;
+                      }) => {
                         if (event.key !== "Enter" && event.key !== " ") return;
                         event.preventDefault();
+                        if (event.repeat) return;
                         onRowClick(row.original);
                       },
                     }
