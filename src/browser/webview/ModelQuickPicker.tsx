@@ -965,44 +965,40 @@ function ProviderHeaderMenu({
         </DropdownMenuPrimitive.Trigger>
         <DropdownMenuPrimitive.Portal>
           <DropdownMenuPrimitive.Content align="end" sideOffset={4} className={MENU_CONTENT_CLASS}>
-            {families.length > 0 ? (
-              <>
-                <DropdownMenuPrimitive.Label className="px-2 py-1 text-muted-foreground text-xs">
-                  {t("modelPicker.addPinned")}
-                </DropdownMenuPrimitive.Label>
-                {families.map((family) => {
-                  const stable = family.versions.filter((v) => !v.preview);
-                  const previews = family.versions.filter((v) => v.preview);
-                  return (
-                    <DropdownMenuPrimitive.Sub key={family.family}>
-                      <DropdownMenuPrimitive.SubTrigger
-                        className={MENU_ITEM_CLASS}
-                        data-testid={`${testIdPrefix}-pin-family-${provider.id}-${family.family}`}
-                      >
-                        <span className="min-w-0 flex-1 truncate">{family.familyLabel}</span>
-                        <ChevronDownIcon className="size-3.5 -rotate-90 opacity-60" />
-                      </DropdownMenuPrimitive.SubTrigger>
-                      <DropdownMenuPrimitive.Portal>
-                        <DropdownMenuPrimitive.SubContent sideOffset={4} className={MENU_CONTENT_CLASS}>
-                          {stable.map((v) => versionItem(family.family, family.familyLabel, v))}
-                          {previews.length > 0 ? (
-                            <>
-                              {stable.length > 0 ? (
-                                <DropdownMenuPrimitive.Separator className="my-1 h-px bg-border" />
-                              ) : null}
-                              <DropdownMenuPrimitive.Label className="px-2 py-1 text-muted-foreground text-xs">
-                                {t("modelPicker.previewSection")}
-                              </DropdownMenuPrimitive.Label>
-                              {previews.map((v) => versionItem(family.family, family.familyLabel, v))}
-                            </>
+            <DropdownMenuPrimitive.Label className="px-2 py-1 text-muted-foreground text-xs">
+              {t("modelPicker.addPinned")}
+            </DropdownMenuPrimitive.Label>
+            {families.map((family) => {
+              const stable = family.versions.filter((v) => !v.preview);
+              const previews = family.versions.filter((v) => v.preview);
+              return (
+                <DropdownMenuPrimitive.Sub key={family.family}>
+                  <DropdownMenuPrimitive.SubTrigger
+                    className={MENU_ITEM_CLASS}
+                    data-testid={`${testIdPrefix}-pin-family-${provider.id}-${family.family}`}
+                  >
+                    <span className="min-w-0 flex-1 truncate">{family.familyLabel}</span>
+                    <ChevronDownIcon className="size-3.5 -rotate-90 opacity-60" />
+                  </DropdownMenuPrimitive.SubTrigger>
+                  <DropdownMenuPrimitive.Portal>
+                    <DropdownMenuPrimitive.SubContent sideOffset={4} className={MENU_CONTENT_CLASS}>
+                      {stable.map((v) => versionItem(family.family, family.familyLabel, v))}
+                      {previews.length > 0 ? (
+                        <>
+                          {stable.length > 0 ? (
+                            <DropdownMenuPrimitive.Separator className="my-1 h-px bg-border" />
                           ) : null}
-                        </DropdownMenuPrimitive.SubContent>
-                      </DropdownMenuPrimitive.Portal>
-                    </DropdownMenuPrimitive.Sub>
-                  );
-                })}
-              </>
-            ) : null}
+                          <DropdownMenuPrimitive.Label className="px-2 py-1 text-muted-foreground text-xs">
+                            {t("modelPicker.previewSection")}
+                          </DropdownMenuPrimitive.Label>
+                          {previews.map((v) => versionItem(family.family, family.familyLabel, v))}
+                        </>
+                      ) : null}
+                    </DropdownMenuPrimitive.SubContent>
+                  </DropdownMenuPrimitive.Portal>
+                </DropdownMenuPrimitive.Sub>
+              );
+            })}
           </DropdownMenuPrimitive.Content>
         </DropdownMenuPrimitive.Portal>
       </DropdownMenuPrimitive.Root>
