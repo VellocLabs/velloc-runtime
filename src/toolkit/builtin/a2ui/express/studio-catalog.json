@@ -13165,7 +13165,7 @@
     },
     "Modal": {
       "type": "object",
-      "description": "A dialog over the page. A click on the trigger (a Button or a Text) opens the content in the dialog. Escape, the close button or a click on the backdrop closes it.",
+      "description": "A dialog over the page. A click on the trigger (a Button or a Text) opens the content in the dialog. Escape, the close button or a click on the backdrop closes it; closeOnBackdrop false keeps it open on a backdrop click.",
       "properties": {
         "component": {
           "const": "Modal"
@@ -13192,6 +13192,20 @@
         },
         "open": {
           "description": "Default false. Bind it with { \"@path\": \"/x\" } to read it",
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "$ref": "common_types.json#/$defs/DataBinding"
+            },
+            {
+              "$ref": "common_types.json#/$defs/FunctionCall"
+            }
+          ]
+        },
+        "closeOnBackdrop": {
+          "description": "Default true. False keeps the dialog open on a click on the backdrop; Escape and the close button still close it",
           "anyOf": [
             {
               "type": "boolean"

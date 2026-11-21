@@ -1,0 +1,30 @@
+diff --git a/node_modules/@copilotkit/react-core/dist/v2/generative-ui.cjs b/node_modules/@copilotkit/react-core/dist/v2/generative-ui.cjs
+index 7c6647b..ce43449 100644
+--- a/node_modules/@copilotkit/react-core/dist/v2/generative-ui.cjs
++++ b/node_modules/@copilotkit/react-core/dist/v2/generative-ui.cjs
+@@ -4022,7 +4022,9 @@ function Modal(props) {
+ 		style: portalStyle,
+ 		children: /* @__PURE__ */ (0, react_jsx_runtime.jsx)("div", {
+ 			"data-a2ui-modal-backdrop": "",
+-			onClick: () => setOpen(false),
++			onClick: () => {
++				if (props.closeOnBackdrop !== false) setOpen(false);
++			},
+ 			style: {
+ 				position: "fixed",
+ 				inset: 0,
+diff --git a/node_modules/@copilotkit/react-core/dist/v2/generative-ui.mjs b/node_modules/@copilotkit/react-core/dist/v2/generative-ui.mjs
+index 04ba4c3..e2d4f2a 100644
+--- a/node_modules/@copilotkit/react-core/dist/v2/generative-ui.mjs
++++ b/node_modules/@copilotkit/react-core/dist/v2/generative-ui.mjs
+@@ -4020,7 +4020,9 @@ function Modal(props) {
+ 		style: portalStyle,
+ 		children: /* @__PURE__ */ jsx("div", {
+ 			"data-a2ui-modal-backdrop": "",
+-			onClick: () => setOpen(false),
++			onClick: () => {
++				if (props.closeOnBackdrop !== false) setOpen(false);
++			},
+ 			style: {
+ 				position: "fixed",
+ 				inset: 0,
