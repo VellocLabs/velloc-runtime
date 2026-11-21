@@ -76,4 +76,18 @@ describe('DataTable column filters', () => {
     view.rerender(host({ ...DATA, rows: DATA.rows.filter(r => r.source !== 'South') }))
     await waitFor(() => expect(names(view.container)).toEqual(['Alpha', 'Gamma', 'Delta']))
   })
+
+  it('chips read like the formatted cells', async () => {
+    const data = {
+      columns: [{ key: 'name', label: 'Item' }, { key: 'share', label: 'Share', format: 'percent', filter: true }],
+      rows: [{ name: 'Alpha', share: 0.5 }, { name: 'Beta', share: 0.25 }, { name: 'Gamma', share: { odd: 1 } }],
+    }
+    const view = render(createElement(StudioSurfaceHost, { surfaceId: 'cf', operations: ops(data as never), onEvent: () => undefined }))
+    await waitFor(() => expect(names(view.container)).toHaveLength(3))
+    const cells = [...view.container.querySelectorAll('tbody tr td:nth-child(2)')].map(td => td.textContent?.trim())
+    const chips = [...view.container.querySelectorAll('[aria-label="Share"] button')].map(b => b.textContent)
+    expect(chips).toEqual([cells[1], cells[0]])
+    fireEvent.click(chip(view.container, 'Share', cells[0]!))
+    await waitFor(() => expect(names(view.container)).toEqual(['Alpha']))
+  })
 })

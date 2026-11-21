@@ -372,9 +372,17 @@ type Col = {
   filter?: boolean;
 };
 
-/** The text a column filter compares: the cell as shown, blank cells excluded. */
-const filterText = (value: unknown): string =>
-  value == null ? "" : typeof value === "string" ? value : String(value);
+/** Percent columns written as fractions (0.124) are shown as 12.4%. */
+function isFraction(rows: Row[], c: Col): boolean {
+  const vals = rows
+    .map((r) => r[c.key])
+    .filter((v): v is number => typeof v === "number");
+  return (
+    c.format === "percent" &&
+    vals.length > 0 &&
+    vals.every((v) => Math.abs(v) <= 1)
+  );
+}
 
 const tableFeats = tableFeatures({
   rowSortingFeature,
@@ -398,6 +406,28 @@ function formatCell(
 ): ReactNode {
   if (value == null || value === "")
     return <span className="text-muted-foreground/50">-</span>;
+  if (format !== "badge") return cellText(value, format, fraction);
+  const text = str(value);
+  return (
+    <Badge
+      variant="outline"
+      className={cn(
+        "h-5 rounded-full px-2 text-[11px] font-medium",
+        TONE[toneFromText(text)].soft,
+      )}
+    >
+      {text}
+    </Badge>
+  );
+}
+
+/** A cell's text as the table shows it; "" for a blank cell. */
+function cellText(
+  value: unknown,
+  format: Col["format"],
+  fraction = false,
+): string {
+  if (value == null || value === "") return "";
   switch (format) {
     case "number":
       return formatNumber(
@@ -414,20 +444,6 @@ function formatCell(
         : str(value);
     case "date":
       return fmtDate(value);
-    case "badge": {
-      const text = str(value);
-      return (
-        <Badge
-          variant="outline"
-          className={cn(
-            "h-5 rounded-full px-2 text-[11px] font-medium",
-            TONE[toneFromText(text)].soft,
-          )}
-        >
-          {text}
-        </Badge>
-      );
-    }
     default:
       return str(value);
   }
@@ -453,12 +469,17 @@ function DataTableView({
     () =>
       columns
         .filter((c) => c.filter)
-        .map((c) => ({
-          col: c,
-          values: [...new Set(rows.map((r) => filterText(r[c.key])))]
-            .filter(Boolean)
-            .sort((a, b) => a.localeCompare(b, undefined, { numeric: true })),
-        }))
+        .map((c) => {
+          const fraction = isFraction(rows, c);
+          const text = (r: Row) => cellText(r[c.key], c.format, fraction);
+          return {
+            col: c,
+            text,
+            values: [...new Set(rows.map(text))]
+              .filter(Boolean)
+              .sort((a, b) => a.localeCompare(b, undefined, { numeric: true })),
+          };
+        })
         .filter((f) => f.values.length > 0),
     [columns, rows],
   );
@@ -472,25 +493,18 @@ function DataTableView({
     return out;
   }, [filters, picked]);
   const shown = useMemo(() => {
-    const active = Object.entries(live);
+    const active = filters.filter((f) => live[f.col.key]);
     if (!active.length) return rows;
     return rows.filter((r) =>
-      active.every(([key, on]) => on.includes(filterText(r[key]))),
+      active.every((f) => live[f.col.key]!.includes(f.text(r))),
     );
-  }, [rows, live]);
+  }, [rows, filters, live]);
 
   const cols = useMemo<ColumnDef<typeof tableFeats, Row>[]>(
     () =>
       columns.map((c) => {
         const numeric = NUMERIC.has(c.format ?? "");
-        // Percent columns written as fractions (0.124) are shown as 12.4%.
-        const vals = rows
-          .map((r) => r[c.key])
-          .filter((v): v is number => typeof v === "number");
-        const fraction =
-          c.format === "percent" &&
-          vals.length > 0 &&
-          vals.every((v) => Math.abs(v) <= 1);
+        const fraction = isFraction(rows, c);
         return {
           id: c.key,
           accessorFn: (row: Row) => {
@@ -1032,7 +1046,9 @@ export const dataRenderers: RendererMap<DataKeys> = {
         rows={rows}
         searchable={props.searchable}
         pageSize={pageSize}
-        {...(props.onRowClick ? { onRowClick: (row: Row) => props.onRowClick?.({ row }) } : {})}
+        {...(props.onRowClick
+          ? { onRowClick: (row: Row) => props.onRowClick?.({ row }) }
+          : {})}
       />
     );
   },
