@@ -74,10 +74,10 @@ export const dataDefinitions = {
             .optional(),
           align: z.enum(["left", "right"]).optional(),
           filter: z
-            .boolean()
+            .union([z.boolean(), z.array(z.string())])
             .optional()
             .describe(
-              "Offer this column's distinct values as filter chips, one row per filtered column, above the table.",
+              "Offer this column's values as filter chips, one row per filtered column, above the table: true for every distinct value, or a list of the values to offer (as the cells show them), in that order.",
             ),
         }),
       ),

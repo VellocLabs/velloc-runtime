@@ -91,3 +91,29 @@ describe('DataTable column filters', () => {
     await waitFor(() => expect(names(view.container)).toEqual(['Alpha']))
   })
 })
+
+describe('DataTable column filter with a value list', () => {
+  const LISTED = {
+    columns: [
+      { key: 'name', label: 'Item' },
+      { key: 'price', label: 'Price', filter: ['Free', 'Unknown'] },
+    ],
+    rows: [
+      { name: 'Alpha', price: 'Free' },
+      { name: 'Beta', price: '$0.25 / $2.00' },
+      { name: 'Gamma', price: '$4.00 / $20.00' },
+      { name: 'Delta', price: 'Free' },
+    ],
+  }
+
+  it('offers only the listed values the rows hold, and a chip narrows to them', async () => {
+    const view = render(host(LISTED as unknown as typeof DATA))
+    await waitFor(() => expect(names(view.container)).toHaveLength(4))
+    const group = view.container.querySelector('[aria-label="Price"]')
+    expect([...(group?.querySelectorAll('button') ?? [])].map(b => b.textContent)).toEqual(['Free'])
+    fireEvent.click(chip(view.container, 'Price', 'Free'))
+    await waitFor(() => expect(names(view.container)).toEqual(['Alpha', 'Delta']))
+    fireEvent.click(chip(view.container, 'Price', 'Free'))
+    await waitFor(() => expect(names(view.container)).toHaveLength(4))
+  })
+})

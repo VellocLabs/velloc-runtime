@@ -18365,10 +18365,30 @@
                         ]
                       },
                       "filter": {
-                        "description": "Offer this column's distinct values as filter chips, one row per filtered column, above the table.",
+                        "description": "Offer this column's values as filter chips, one row per filtered column, above the table: true for every distinct value, or a list of the values to offer (as the cells show them), in that order.",
                         "anyOf": [
                           {
-                            "type": "boolean"
+                            "anyOf": [
+                              {
+                                "type": "boolean"
+                              },
+                              {
+                                "type": "array",
+                                "items": {
+                                  "anyOf": [
+                                    {
+                                      "type": "string"
+                                    },
+                                    {
+                                      "$ref": "common_types.json#/$defs/DataBinding"
+                                    },
+                                    {
+                                      "$ref": "common_types.json#/$defs/FunctionCall"
+                                    }
+                                  ]
+                                }
+                              }
+                            ]
                           },
                           {
                             "$ref": "common_types.json#/$defs/DataBinding"

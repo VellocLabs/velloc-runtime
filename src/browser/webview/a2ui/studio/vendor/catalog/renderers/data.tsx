@@ -371,7 +371,7 @@ type Col = {
   label: string;
   format?: "text" | "number" | "currency" | "percent" | "badge" | "date";
   align?: "left" | "right";
-  filter?: boolean;
+  filter?: boolean | string[];
 };
 
 /** Percent columns written as fractions (0.124) are shown as 12.4%. */
@@ -477,17 +477,18 @@ function DataTableView({
   const filters = useMemo(
     () =>
       columns
-        .filter((c) => c.filter)
+        .filter((c) => c.filter === true || (Array.isArray(c.filter) && c.filter.length > 0))
         .map((c) => {
           const fraction = isFraction(rows, c);
           const text = (r: Row) => cellText(r[c.key], c.format, fraction);
-          return {
-            col: c,
-            text,
-            values: [...new Set(rows.map(text))]
-              .filter(Boolean)
-              .sort((a, b) => a.localeCompare(b, undefined, { numeric: true })),
-          };
+          const present = new Set(rows.map(text));
+          // A listed filter offers the listed values the rows hold, in the listed order.
+          const values = Array.isArray(c.filter)
+            ? [...new Set(c.filter.filter((v) => typeof v === "string" && present.has(v)))]
+            : [...present]
+                .filter(Boolean)
+                .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+          return { col: c, text, values };
         })
         .filter((f) => f.values.length > 0),
     [columns, rows],
