@@ -98,4 +98,18 @@ describe('DataTable row selection', () => {
     await new Promise(r => setTimeout(r, 50))
     expect(events).toHaveLength(1)
   })
+
+  it('a Selection filter row shows checked or unchecked rows, with counts', async () => {
+    const view = page(SELECT, () => undefined)
+    await waitFor(() => expect(boxes(view.container)).toHaveLength(4))
+    const chip = (label: string) => view.container.querySelector<HTMLElement>(`[aria-label="${label}"]`)!
+    expect([chip('Checked').textContent, chip('Not checked').textContent]).toEqual(['1', '2'])
+    fireEvent.click(chip('Checked'))
+    await waitFor(() => expect(boxes(view.container)).toHaveLength(2))
+    fireEvent.click(chip('Not checked'))
+    await waitFor(() => expect(boxes(view.container)).toHaveLength(4))
+    fireEvent.click(chip('Checked'))
+    await waitFor(() => expect(boxes(view.container)).toHaveLength(3))
+    expect([...view.container.querySelectorAll('tbody tr')].map(tr => tr.textContent)).toEqual(expect.arrayContaining([expect.stringContaining('Alpha')]))
+  })
 })

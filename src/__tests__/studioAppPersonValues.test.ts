@@ -1,0 +1,46 @@
+// @vitest-environment happy-dom
+// A studio app surface hands the person's values back to the app once an event
+// is sent (F-1): the app's later writes to those paths show, so a dialog it
+// closes closes and a choice it changes changes.
+import { afterEach, expect, it } from 'vitest'
+import { createElement } from 'react'
+import { cleanup, fireEvent, render, waitFor } from '@testing-library/react'
+import { StudioAppSurface } from '../browser/webview/a2ui/studio/StudioAppSurface'
+import type { AppSurfaceState } from '../browser/runtimeProtocol/modApps'
+import type { StudioEvent } from '../browser/webview/a2ui/studio/StudioSurfaceHost'
+
+afterEach(() => cleanup())
+
+const BODY = [
+  'surface("s")',
+  'root = Column([pickRoute, dialog])',
+  'pickRoute = ButtonGroup(value=$/data/route, options=$/data/routes, onChange=Event("select_route", {}))',
+  'dialog = Modal(trigger=openButton, open=$/data/dialogOpen, content=closeButton, title="Dialog")',
+  'openButton = Button("Open dialog")',
+  'closeButton = Button("Done here", onClick=Event("done", {}))',
+].join('\n')
+const routes = [{ value: 'a', label: 'Route A' }, { value: 'b', label: 'Route B' }, { value: 'c', label: 'Route C' }]
+const board = (seq: number, data: Record<string, unknown>): AppSurfaceState => ({
+  appId: 'x', catalog: 'studio', surface: { body: BODY, hash: 'h', surfaceIds: ['s'] },
+  data: { routes, ...data }, dataSeq: seq, refreshing: false,
+})
+const button = (text: string) => [...document.querySelectorAll('button')].find(b => b.textContent?.trim() === text)
+const on = (text: string) => button(text)?.getAttribute('data-state') === 'on'
+
+it('after an event, the app sets the choice and closes the dialog', async () => {
+  const events: StudioEvent[] = []
+  const draw = (b: AppSurfaceState) => createElement(StudioAppSurface, { board: b, surfaceId: 's', onEvent: (e: StudioEvent) => events.push(e) })
+  const view = render(draw(board(1, { route: 'a', dialogOpen: false })))
+  await waitFor(() => expect(on('Route A')).toBe(true))
+  fireEvent.click(button('Route B')!)
+  await waitFor(() => expect(events.map(e => e.name)).toEqual(['select_route']))
+  view.rerender(draw(board(2, { route: 'c', dialogOpen: false })))
+  await waitFor(() => expect(on('Route C')).toBe(true))
+
+  fireEvent.click(button('Open dialog')!)
+  await waitFor(() => expect(button('Done here')).toBeDefined())
+  fireEvent.click(button('Done here')!)
+  await waitFor(() => expect(events.map(e => e.name)).toEqual(['select_route', 'done']))
+  view.rerender(draw(board(3, { route: 'c', dialogOpen: false, tick: 1 })))
+  await waitFor(() => expect(button('Done here')).toBeUndefined())
+})

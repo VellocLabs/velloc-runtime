@@ -122,3 +122,16 @@
 .a2ui-surface[style*="--velloc-studio-overlay"] .a2ui-std-table tbody tr:hover > td.a2ui-std-cell {
   background: color-mix(in oklch, currentColor 2.5%, transparent);
 }
+
+/* Velloc's primary colour, read on the root before the studio tokens redefine
+ * --primary inside a surface; buttons, checks and accents use it. */
+:root {
+  --velloc-host-primary: var(--primary);
+  --velloc-host-primary-foreground: var(--primary-foreground);
+}
+:root .a2-surface-host.a2-surface-host,
+:root body > .a2ui-surface.a2ui-surface {
+  --primary: var(--velloc-host-primary);
+  --primary-foreground: var(--velloc-host-primary-foreground);
+  --a2-accent: var(--velloc-host-primary);
+}

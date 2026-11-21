@@ -473,6 +473,7 @@ function DataTableView({
   selection?: Selection;
 }) {
   const [picked, setPicked] = useState<Record<string, string[]>>({});
+  const [checkedFilter, setCheckedFilter] = useState<string[]>([]);
   const filters = useMemo(
     () =>
       columns
@@ -500,13 +501,24 @@ function DataTableView({
     }
     return out;
   }, [filters, picked]);
+  const checkedSet = useMemo(
+    () => new Set(selection?.value ?? []),
+    [selection?.value],
+  );
+  const stateOf = (r: Row): string =>
+    checkedSet.has(str(r[selection?.key ?? ""])) ? "on" : "off";
+  const byState = selection && checkedFilter.length === 1 ? checkedFilter[0] : undefined;
   const shown = useMemo(() => {
     const active = filters.filter((f) => live[f.col.key]);
-    if (!active.length) return rows;
-    return rows.filter((r) =>
-      active.every((f) => live[f.col.key]!.includes(f.text(r))),
+    if (!active.length && !byState) return rows;
+    return rows.filter(
+      (r) =>
+        active.every((f) => live[f.col.key]!.includes(f.text(r))) &&
+        (!byState || stateOf(r) === byState),
     );
-  }, [rows, filters, live]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rows, filters, live, byState, checkedSet]);
+  const onCount = selection ? rows.filter((r) => stateOf(r) === "on").length : 0;
 
   const cols = useMemo<ColumnDef<typeof tableFeats, Row>[]>(
     () =>
@@ -609,13 +621,60 @@ function DataTableView({
           ) : null}
         </div>
       ) : null}
-      {filters.length ? (
+      {filters.length || selection ? (
         <div
           className={cn(
             "flex min-w-0 flex-col gap-2 px-4 pb-3",
             !(title || searchable) && "pt-3.5",
           )}
         >
+          {selection ? (
+            <div className="flex min-w-0 items-center gap-3">
+              <span className="w-24 shrink-0 truncate text-[11.5px] font-medium text-muted-foreground">
+                {studioText("a2ui.studio.selectionFilter")}
+              </span>
+              <ToggleGroup
+                type="multiple"
+                spacing={1.5}
+                value={checkedFilter}
+                onValueChange={(v: string[]) => {
+                  setCheckedFilter(v);
+                  table.setPageIndex(0);
+                }}
+                aria-label={studioText("a2ui.studio.selectionFilter")}
+                className="min-w-0 flex-wrap justify-start"
+              >
+                {(["on", "off"] as const).map((state) => (
+                  <ToggleGroupItem
+                    key={state}
+                    value={state}
+                    aria-label={studioText(
+                      state === "on" ? "a2ui.studio.selectionChecked" : "a2ui.studio.selectionUnchecked",
+                    )}
+                    className={cn(
+                      "h-6.5 gap-1.5 rounded-full! border px-2.5 text-[12px] font-medium tabular-nums transition-colors",
+                      checkedFilter.includes(state)
+                        ? "border-[color-mix(in_oklch,var(--a2-accent)_50%,transparent)] bg-[color-mix(in_oklch,var(--a2-accent)_14%,transparent)]! text-(--a2-accent)"
+                        : "border-black/[0.1] dark:border-white/[0.1] bg-black/[0.02] dark:bg-white/[0.02] text-foreground/80 hover:bg-black/[0.05] dark:hover:bg-white/[0.05]",
+                    )}
+                  >
+                    <span
+                      aria-hidden
+                      className={cn(
+                        "grid size-3.5 place-content-center rounded-[3px] border",
+                        state === "on"
+                          ? "border-primary bg-primary text-primary-foreground"
+                          : "border-input",
+                      )}
+                    >
+                      {state === "on" ? <Check className="size-2.5" strokeWidth={3} /> : null}
+                    </span>
+                    {state === "on" ? onCount : rows.length - onCount}
+                  </ToggleGroupItem>
+                ))}
+              </ToggleGroup>
+            </div>
+          ) : null}
           {filters.map(({ col, values }) => {
             const on = live[col.key] ?? [];
             return (
@@ -654,7 +713,7 @@ function DataTableView({
       <div
         className={cn(
           "min-w-0 border-(--a2-line)",
-          (title || searchable || filters.length > 0) && "border-t",
+          (title || searchable || filters.length > 0 || selection) && "border-t",
         )}
       >
         <Table className="text-[13px]">
