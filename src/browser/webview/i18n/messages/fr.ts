@@ -1193,6 +1193,7 @@ export const fr: Messages = {
   'composerEffort.triggerAria': 'Effort : {name}',
   'composerEffort.stopRecommendedAria': '{name} (recommandé)',
   'composerEffort.teammateLocked': 'Un coéquipier conserve l’effort avec lequel il a été créé. Il ne peut pas être modifié ici.',
+  'composerEffort.viaRoute': 'Servi via la route {route}',
   'composerEffort.tier.none': 'Aucun',
   'composerEffort.tier.minimal': 'Minimal',
   'composerEffort.tier.low': 'Faible',

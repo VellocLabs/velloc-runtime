@@ -1227,6 +1227,7 @@ export const en = {
   'composerEffort.triggerAria': 'Effort: {name}',
   'composerEffort.stopRecommendedAria': '{name} (recommended)',
   'composerEffort.teammateLocked': 'A teammate keeps the effort it was started with. It can\'t be changed here.',
+  'composerEffort.viaRoute': 'Served through the route {route}',
   'composerEffort.tier.none': 'None',
   'composerEffort.tier.minimal': 'Minimal',
   'composerEffort.tier.low': 'Low',

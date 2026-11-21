@@ -1183,6 +1183,7 @@ export const ko: Messages = {
   'composerEffort.triggerAria': '사고 수준: {name}',
   'composerEffort.stopRecommendedAria': '{name} (권장)',
   'composerEffort.teammateLocked': '팀원은 생성될 때의 사고 수준을 계속 사용합니다. 여기서는 변경할 수 없습니다.',
+  'composerEffort.viaRoute': '경로 {route}를 통해 응답',
   'composerEffort.tier.none': '없음',
   'composerEffort.tier.minimal': '최소',
   'composerEffort.tier.low': '낮음',

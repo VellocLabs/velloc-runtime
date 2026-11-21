@@ -1186,6 +1186,7 @@ export const ja: Messages = {
   'composerEffort.triggerAria': '思考レベル: {name}',
   'composerEffort.stopRecommendedAria': '{name}（推奨）',
   'composerEffort.teammateLocked': 'チームメイトは作成時の思考レベルを使い続けます。ここでは変更できません。',
+  'composerEffort.viaRoute': 'ルート {route} 経由で応答',
   'composerEffort.tier.none': 'なし',
   'composerEffort.tier.minimal': '最小',
   'composerEffort.tier.low': '低',

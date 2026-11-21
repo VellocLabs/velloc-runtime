@@ -15,6 +15,7 @@ import { cn } from "@/lib/utils";
 
 import { useT, type TranslateFn } from "./i18n";
 import { activeModelLabel, findActiveModel } from "./activeModel";
+import { servingRouteMember } from "./routeDisplay";
 import type {
   BrowserLlmCatalog,
   BrowserLlmModel,
@@ -36,6 +37,8 @@ export type SessionEffortContextValue = {
   disabled?: boolean;
   /** Why it is inert — the trigger's tooltip. */
   inertWhy?: string;
+  /** The member that served the latest routed reply; a router selection names it and offers its tiers (F-27). */
+  routeMember?: { provider: string; model: string };
   /** Apply a selection to THIS session only. */
   onSelect: (selection: BrowserLlmSelection) => void;
 };
@@ -135,8 +138,12 @@ export function ComposerEffortPicker({
     if (!isForeground) setOpen(false);
   }, [isForeground]);
   const active = ctx ? findActiveModel(ctx.catalog, ctx.selection) : null;
-  const stops = active
-    ? resolveEffortStops(active.model, ctx?.selection?.thinkingTier)
+  const member = ctx
+    ? servingRouteMember(ctx.catalog, ctx.selection, ctx.routeMember)
+    : null;
+  const shown = member ?? active;
+  const stops = shown
+    ? resolveEffortStops(shown.model, ctx?.selection?.thinkingTier)
     : null;
   if (!ctx || !active) return null;
 
@@ -144,8 +151,13 @@ export function ComposerEffortPicker({
     <span
       className="max-w-[10rem] truncate text-xs text-muted-foreground"
       data-testid="composer-effort-model"
+      title={
+        member
+          ? t("composerEffort.viaRoute", { route: activeModelLabel(active) })
+          : undefined
+      }
     >
-      {activeModelLabel(active)}
+      {activeModelLabel(member ?? active)}
     </span>
   );
   // A model with nothing to choose (fewer than two tiers) still names itself;

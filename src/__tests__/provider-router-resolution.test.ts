@@ -35,7 +35,7 @@ import {
 } from '../runtime/testing/noopAdapters'
 import type { RuntimeConfig } from '../runtime/interfaces/RuntimeConfig'
 import { fakeProviderRequestSeam } from './_helpers/fakeProviderRequestSeam'
-import { logRowOf } from '../models/drivers/providerRouteResolution'
+import { logRowOf, tierForTarget } from '../models/drivers/providerRouteResolution'
 import { recordRequest } from '../models/usage/requestLogWriter'
 import type { RequestLogRow } from '../models/usage/requestLogStore'
 
@@ -1041,5 +1041,24 @@ describe('logRowOf', () => {
     const moved = logRowOf('r', 'row', 's', call, send('b', 'n', 'ok'))
     expect(moved.switchedFrom).toEqual({ provider: 'a', model: 'm', kind: 'error' })
     expect(moved.sessionId).toBe('s')
+  })
+})
+
+describe('tierForTarget: the tier a routed target is sent', () => {
+  it('keeps a tier the target lists, or any tier when it lists none', () => {
+    expect(tierForTarget('high', ['low', 'high'])).toBe('high')
+    expect(tierForTarget('max', undefined)).toBe('max')
+    expect(tierForTarget('max', [])).toBe('max')
+    expect(tierForTarget(undefined, ['low'])).toBeUndefined()
+  })
+
+  it('moves a tier the target lacks to the nearest it lists, the lower on a tie', () => {
+    expect(tierForTarget('max', ['low', 'medium', 'high'])).toBe('high')
+    expect(tierForTarget('minimal', ['medium', 'high'])).toBe('medium')
+    expect(tierForTarget('medium', ['low', 'high'])).toBe('low')
+  })
+
+  it('drops a tier outside the runtime vocabulary when the target lists tiers', () => {
+    expect(tierForTarget('turbo', ['low', 'high'])).toBeUndefined()
   })
 })

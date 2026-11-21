@@ -1192,6 +1192,7 @@ export const de: Messages = {
   'composerEffort.triggerAria': 'Denkaufwand: {name}',
   'composerEffort.stopRecommendedAria': '{name} (empfohlen)',
   'composerEffort.teammateLocked': 'Ein Teammitglied behält den Denkaufwand, mit dem es erstellt wurde. Hier lässt er sich nicht ändern.',
+  'composerEffort.viaRoute': 'Über die Route {route} bedient',
   'composerEffort.tier.none': 'Keiner',
   'composerEffort.tier.minimal': 'Minimal',
   'composerEffort.tier.low': 'Niedrig',

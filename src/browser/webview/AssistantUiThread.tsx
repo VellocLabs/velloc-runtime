@@ -1,4 +1,4 @@
-import { RouteNamesContext } from './routeDisplay'
+import { latestRoutedVia, RouteNamesContext } from './routeDisplay'
 import { ModUiContext } from '../../components/assistant-ui/mod-ui-context'
 import {
   AgentChangesContext,
@@ -750,6 +750,7 @@ function InteractiveAssistantUiThread({
   // useMultiSessionClients.setModelSelectionForSession).
   const effortSessionId = state.snapshot?.sessionId
   const effortTeammate = !!effortSessionId && isTeammateSessionId(effortSessionId)
+  const routeMember = useMemo(() => latestRoutedVia(state.transcriptMessages), [state.transcriptMessages])
   const sessionEffort = useMemo<SessionEffortContextValue | null>(
     () =>
       onSelectSessionModel && effortSessionId
@@ -760,6 +761,7 @@ function InteractiveAssistantUiThread({
             inertWhy: effortTeammate
               ? t('composerEffort.teammateLocked')
               : undefined,
+            ...(routeMember ? { routeMember: { provider: routeMember.provider, model: routeMember.model } } : {}),
             onSelect: selection =>
               onSelectSessionModel(effortSessionId, selection),
           }
@@ -770,6 +772,7 @@ function InteractiveAssistantUiThread({
       configuredCatalog,
       state.snapshot?.currentSelection,
       effortTeammate,
+      routeMember,
       t,
     ],
   )

@@ -1181,6 +1181,7 @@ export const zh: Messages = {
   'composerEffort.triggerAria': '思考强度：{name}',
   'composerEffort.stopRecommendedAria': '{name}（推荐）',
   'composerEffort.teammateLocked': '队友沿用创建时的思考强度，无法在此更改。',
+  'composerEffort.viaRoute': '经由路由 {route} 提供',
   'composerEffort.tier.none': '无',
   'composerEffort.tier.minimal': '最低',
   'composerEffort.tier.low': '低',

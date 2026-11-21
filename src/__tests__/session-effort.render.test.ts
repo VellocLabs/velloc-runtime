@@ -360,3 +360,52 @@ describe('ModelQuickPicker — the global default effort is marked', () => {
     expect(document.querySelector('[data-default="true"]')).toBeNull()
   })
 })
+
+describe('ComposerEffortPicker — a router selection (F-27)', () => {
+  const route: BrowserLlmModel = { id: 'route-1', label: 'Free pool', enabled: true, supportsStreaming: true }
+  const wide: BrowserLlmModel = {
+    id: 'wide-1', label: 'Wide One', enabled: true, supportsStreaming: true,
+    defaultThinkingTier: 'medium', availableThinkingTiers: ['low', 'medium', 'high', 'max'],
+  }
+  const narrow: BrowserLlmModel = { id: 'narrow-1', label: 'Narrow One', enabled: true, supportsStreaming: true }
+  const routed = {
+    providers: [
+      { id: 'vendor-x', label: 'Vendor X', iconSvg: '', enabled: true, models: [wide, narrow] },
+      { id: 'mod.router', label: 'Router', iconSvg: '', enabled: true, mod: { kind: 'router' }, models: [route] },
+    ],
+  } as unknown as BrowserLlmCatalog
+  const onRoute = { providerId: 'mod.router', modelId: 'route-1', thinkingTier: 'high' }
+
+  it('names the member that served the latest reply and offers its tiers', () => {
+    const { onSelect } = mountEffort({
+      catalog: routed,
+      selection: onRoute,
+      routeMember: { provider: 'vendor-x', model: wide.id },
+    })
+    const name = screen.getByTestId('composer-effort-model')
+    expect(name.textContent).toBe('Wide One')
+    expect(name.getAttribute('title')).toBe('Served through the route Free pool')
+    expect(screen.getByTestId('composer-effort-trigger').getAttribute('data-tier')).toBe('high')
+    fireEvent.click(screen.getByTestId('composer-effort-trigger'))
+    fireEvent.click(screen.getByTestId('composer-effort-stop-max'))
+    expect(onSelect).toHaveBeenLastCalledWith({ providerId: 'mod.router', modelId: 'route-1', thinkingTier: 'max' })
+  })
+
+  it('names the route itself before a routed reply, or for a member the catalog lacks', () => {
+    mountEffort({ catalog: routed, selection: onRoute })
+    expect(screen.getByTestId('composer-effort-model').textContent).toBe('Free pool')
+    expect(screen.queryByTestId('composer-effort-trigger')).toBeNull()
+    cleanup()
+    mountEffort({ catalog: routed, selection: onRoute, routeMember: { provider: 'gone', model: 'm' } })
+    expect(screen.getByTestId('composer-effort-model').textContent).toBe('Free pool')
+  })
+
+  it('a member on a non-router selection is ignored', () => {
+    mountEffort({
+      catalog: routed,
+      selection: { providerId: 'vendor-x', modelId: wide.id },
+      routeMember: { provider: 'vendor-x', model: narrow.id },
+    })
+    expect(screen.getByTestId('composer-effort-model').textContent).toBe('Wide One')
+  })
+})

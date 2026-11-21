@@ -1193,6 +1193,7 @@ export const es: Messages = {
   'composerEffort.triggerAria': 'Esfuerzo: {name}',
   'composerEffort.stopRecommendedAria': '{name} (recomendado)',
   'composerEffort.teammateLocked': 'Un compañero conserva el esfuerzo con el que se creó. No se puede cambiar aquí.',
+  'composerEffort.viaRoute': 'Servido a través de la ruta {route}',
   'composerEffort.tier.none': 'Ninguno',
   'composerEffort.tier.minimal': 'Mínimo',
   'composerEffort.tier.low': 'Bajo',

@@ -1,7 +1,7 @@
 import { createContext, useContext } from 'react'
 import type { RoutedVia } from '../../models/drivers/providerRouter'
-import type { BrowserLlmCatalog, BrowserLlmProvider } from '../bridge/protocol/nexus_llm'
-import { activeModelLabel } from './activeModel'
+import type { BrowserLlmCatalog, BrowserLlmModel, BrowserLlmProvider, BrowserLlmSelection } from '../bridge/protocol/nexus_llm'
+import { activeModelLabel, findActiveModel } from './activeModel'
 import type { MessageKey } from './i18n/messages/en'
 import type { TranslateFn } from './i18n/translate'
 
@@ -61,6 +61,24 @@ export function routeMemberName(
   const modelName =
     provider && model ? activeModelLabel({ provider, model: model.label ? model : { ...model, label: model.id } }) : target.model
   return t('routeMember.name', { model: modelName, source: providerName })
+}
+
+/**
+ * The member serving the selection when it is a router row: the catalog entry
+ * of the latest routed reply's member. Null for any other selection, before a
+ * routed reply, or for a member the catalog does not list.
+ */
+export function servingRouteMember(
+  catalog: BrowserLlmCatalog | null | undefined,
+  selection: BrowserLlmSelection | null | undefined,
+  member: { provider: string; model: string } | undefined,
+): { provider: BrowserLlmProvider; model: BrowserLlmModel } | null {
+  if (!member || !catalog) return null
+  const active = findActiveModel(catalog, selection)
+  if (!active || !isRouterProvider(active.provider)) return null
+  const provider = catalog.providers.find((p) => p.id === member.provider)
+  const model = provider?.models.find((m) => m.id === member.model)
+  return provider && model ? { provider, model } : null
 }
 
 const NOTICE_KEYS: Record<string, MessageKey> = {

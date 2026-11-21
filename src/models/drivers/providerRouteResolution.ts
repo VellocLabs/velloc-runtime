@@ -19,6 +19,7 @@ import type {
 import { entryId } from '../../config/nexusModelConfig/modelEntries'
 import { resolveModelId } from '../../config/nexusModelConfig/modelEntryResolution'
 import { getProviderDefinition } from '../../config/nexusModelConfig/providers'
+import { THINKING_TIER_ORDER } from '../../config/nexusModelConfig/providers/shared/listing'
 import { buildThinkingBodyExtension } from '../../config/nexusModelConfig/thinkingTierParams'
 import type { RuntimeConfig } from '../../runtime/interfaces/RuntimeConfig'
 import { traceLine } from '../../utils/debugLog'
@@ -74,6 +75,32 @@ function knownModel(provider: string, model: string): boolean {
  *  definition says so. */
 function isRouter(provider: string): boolean {
   return providerRouterFor(provider) !== undefined || getProviderDefinition(provider)?.router === true
+}
+
+/**
+ * The tier a target is sent: `tier` when the target lists it or lists none,
+ * else the listed tier nearest it in the runtime's order, the lower on a tie.
+ */
+export function tierForTarget(tier: string | undefined, listed: readonly string[] | undefined): string | undefined {
+  if (!tier || !listed || listed.length === 0 || listed.includes(tier)) return tier
+  const order = THINKING_TIER_ORDER as readonly string[]
+  const at = order.indexOf(tier)
+  if (at < 0) return undefined
+  let best: string | undefined
+  let bestDistance = Infinity
+  for (const candidate of order) {
+    if (!listed.includes(candidate)) continue
+    const distance = Math.abs(order.indexOf(candidate) - at)
+    if (distance < bestDistance) {
+      best = candidate
+      bestDistance = distance
+    }
+  }
+  return best
+}
+
+function listedTiers(provider: string, model: string): readonly string[] | undefined {
+  return mergedModels(provider).find(listed => listed.id === model)?.thinkingTiers
 }
 
 const text = (error: unknown): string => (error instanceof Error ? error.message : String(error))
@@ -168,7 +195,7 @@ export function routeCall(
     // tells its own provider how its request ended.
     const { [OUTCOME_CALL_FIELD]: _call, providerBodyExtension: _extension, ...rest } =
       payload as BridgeModelRequestPayload & Record<string, unknown>
-    const tier = target.effort ?? thinkingTierOf(payload)
+    const tier = tierForTarget(target.effort ?? thinkingTierOf(payload), listedTiers(target.provider, model))
     const extension = buildThinkingBodyExtension(target.provider, tier, payload.maxOutputTokens ?? 0, model)
     const sent = {
       ...rest,
