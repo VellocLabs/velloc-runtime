@@ -1,15 +1,17 @@
 diff --git a/node_modules/@copilotkit/shared/dist/generative-ui/standard/feedback.cjs b/node_modules/@copilotkit/shared/dist/generative-ui/standard/feedback.cjs
-index a124b7a..9e570a0 100644
+index a124b7a..5330260 100644
 --- a/node_modules/@copilotkit/shared/dist/generative-ui/standard/feedback.cjs
 +++ b/node_modules/@copilotkit/shared/dist/generative-ui/standard/feedback.cjs
-@@ -42,6 +42,7 @@ const modalSchema = zod.z.object({
+@@ -42,7 +42,8 @@ const modalSchema = zod.z.object({
  	title: zod.z.string().optional().describe("The heading of the dialog"),
  	open: zod.z.boolean().optional().describe("Default false. Bind it with { \"@path\": \"/x\" } to read it"),
  	maxWidth: require_layout.sizeValue.optional().describe("Default 480"),
-+	closeOnBackdrop: zod.z.boolean().optional().describe("Default true. False keeps the dialog open on a click on the backdrop; Escape and the close button still close it"),
- 	weight: require_layout.weightProp
+-	weight: require_layout.weightProp
++	weight: require_layout.weightProp,
++	closeOnBackdrop: zod.z.boolean().optional().describe("Default true. False keeps the dialog open on a click on the backdrop; Escape and the close button still close it")
  });
  /**
+ * The standard feedback components, without their framework components: a
 @@ -76,7 +77,7 @@ const feedbackDeclarations = {
  		slots: require_layout.CHILDREN_SLOT
  	},
@@ -20,17 +22,19 @@ index a124b7a..9e570a0 100644
  		slots: {
  			trigger: "single",
 diff --git a/node_modules/@copilotkit/shared/dist/generative-ui/standard/feedback.mjs b/node_modules/@copilotkit/shared/dist/generative-ui/standard/feedback.mjs
-index 78d1c4a..a2ff654 100644
+index 78d1c4a..5d9d6f9 100644
 --- a/node_modules/@copilotkit/shared/dist/generative-ui/standard/feedback.mjs
 +++ b/node_modules/@copilotkit/shared/dist/generative-ui/standard/feedback.mjs
-@@ -41,6 +41,7 @@ const modalSchema = z.object({
+@@ -41,7 +41,8 @@ const modalSchema = z.object({
  	title: z.string().optional().describe("The heading of the dialog"),
  	open: z.boolean().optional().describe("Default false. Bind it with { \"@path\": \"/x\" } to read it"),
  	maxWidth: sizeValue.optional().describe("Default 480"),
-+	closeOnBackdrop: z.boolean().optional().describe("Default true. False keeps the dialog open on a click on the backdrop; Escape and the close button still close it"),
- 	weight: weightProp
+-	weight: weightProp
++	weight: weightProp,
++	closeOnBackdrop: z.boolean().optional().describe("Default true. False keeps the dialog open on a click on the backdrop; Escape and the close button still close it")
  });
  /**
+ * The standard feedback components, without their framework components: a
 @@ -75,7 +76,7 @@ const feedbackDeclarations = {
  		slots: CHILDREN_SLOT
  	},
@@ -40,3 +44,27 @@ index 78d1c4a..a2ff654 100644
  		props: modalSchema,
  		slots: {
  			trigger: "single",
+diff --git a/node_modules/@copilotkit/shared/dist/generative-ui/standard/parameter-order.cjs b/node_modules/@copilotkit/shared/dist/generative-ui/standard/parameter-order.cjs
+index 1446366..7b8aa83 100644
+--- a/node_modules/@copilotkit/shared/dist/generative-ui/standard/parameter-order.cjs
++++ b/node_modules/@copilotkit/shared/dist/generative-ui/standard/parameter-order.cjs
+@@ -159,6 +159,7 @@ const STANDARD_ARGUMENT_PREFIXES = {
+ };
+ const PRESENTATION_PARAMETERS = new Set([
+ 	"align",
++	"closeOnBackdrop",
+ 	"aspectRatio",
+ 	"background",
+ 	"border",
+diff --git a/node_modules/@copilotkit/shared/dist/generative-ui/standard/parameter-order.mjs b/node_modules/@copilotkit/shared/dist/generative-ui/standard/parameter-order.mjs
+index 3530c9e..eea3591 100644
+--- a/node_modules/@copilotkit/shared/dist/generative-ui/standard/parameter-order.mjs
++++ b/node_modules/@copilotkit/shared/dist/generative-ui/standard/parameter-order.mjs
+@@ -159,6 +159,7 @@ const STANDARD_ARGUMENT_PREFIXES = {
+ };
+ const PRESENTATION_PARAMETERS = new Set([
+ 	"align",
++	"closeOnBackdrop",
+ 	"aspectRatio",
+ 	"background",
+ 	"border",

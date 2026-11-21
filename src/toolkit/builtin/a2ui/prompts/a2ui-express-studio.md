@@ -567,13 +567,13 @@ Use these exact positional signatures to instantiate components. Do not output p
   - Description: A TeX math formula, typeset with KaTeX. Set block to true for a centered formula on its own line.
   - value: TeX source
   - block: Default false
-• Modal(trigger? (component ID), content? (component ID), title?, open?, closeOnBackdrop?, maxWidth?, weight?)
+• Modal(trigger? (component ID), content? (component ID), title?, open?, maxWidth?, weight?, closeOnBackdrop?)
   - Description: A dialog over the page. A click on the trigger (a Button or a Text) opens the content in the dialog. Escape, the close button or a click on the backdrop closes it; closeOnBackdrop false keeps it open on a backdrop click.
   - title: The heading of the dialog
   - open: Default false. Bind it with { "@path": "/x" } to read it
-  - closeOnBackdrop: Default true. False keeps the dialog open on a click on the backdrop; Escape and the close button still close it
   - maxWidth: Default 480
   - weight: flex-grow in a Row or Column
+  - closeOnBackdrop: Default true. False keeps the dialog open on a click on the backdrop; Escape and the close button still close it
 • PieChart(title?, subtitle?, height?, format?, unit?, data, donut?, centerLabel?)
   - Description: Part-to-whole. data [{label,value}]; donut:true for a ring with center total.
   - format: Must be one of: 'number', 'currency', 'percent', 'compact'

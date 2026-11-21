@@ -13204,20 +13204,6 @@
             }
           ]
         },
-        "closeOnBackdrop": {
-          "description": "Default true. False keeps the dialog open on a click on the backdrop; Escape and the close button still close it",
-          "anyOf": [
-            {
-              "type": "boolean"
-            },
-            {
-              "$ref": "common_types.json#/$defs/DataBinding"
-            },
-            {
-              "$ref": "common_types.json#/$defs/FunctionCall"
-            }
-          ]
-        },
         "maxWidth": {
           "description": "Default 480",
           "anyOf": [
@@ -13240,6 +13226,20 @@
           "anyOf": [
             {
               "type": "number"
+            },
+            {
+              "$ref": "common_types.json#/$defs/DataBinding"
+            },
+            {
+              "$ref": "common_types.json#/$defs/FunctionCall"
+            }
+          ]
+        },
+        "closeOnBackdrop": {
+          "description": "Default true. False keeps the dialog open on a click on the backdrop; Escape and the close button still close it",
+          "anyOf": [
+            {
+              "type": "boolean"
             },
             {
               "$ref": "common_types.json#/$defs/DataBinding"

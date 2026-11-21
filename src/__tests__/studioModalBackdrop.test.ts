@@ -40,6 +40,20 @@ it('closes on a backdrop click by default', async () => {
   await waitFor(() => expect(document.querySelector('[data-a2ui-modal-backdrop]')).toBeNull())
 })
 
+it('closes on Escape with the default', async () => {
+  await open('')
+  fireEvent.keyDown(document, { key: 'Escape' })
+  await waitFor(() => expect(document.querySelector('[data-a2ui-modal-backdrop]')).toBeNull())
+})
+
+it('closes on the close button with closeOnBackdrop=false', async () => {
+  await open(', closeOnBackdrop=false')
+  const close = [...document.querySelectorAll('button')].find(b => b.getAttribute('aria-label') === 'Close')
+  expect(close).toBeTruthy()
+  fireEvent.click(close!)
+  await waitFor(() => expect(document.querySelector('[data-a2ui-modal-backdrop]')).toBeNull())
+})
+
 it('stays open on a backdrop click with closeOnBackdrop=false, and Escape still closes it', async () => {
   fireEvent.click(await open(', closeOnBackdrop=false'))
   expect(document.querySelector('[data-a2ui-modal-backdrop]')).toBeTruthy()
