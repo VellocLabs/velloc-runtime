@@ -4,9 +4,9 @@
 // Contract: `operations` is the whole list for the surface (the surface, then
 // its data); a change replaces it and the engine keeps what the person typed
 // and which overlays are open. `onEvent` gets each event a component raises.
-// With `dataFromApp`, each sent event hands the values the person set back to
-// the app: its later writes to those paths take effect, and a dialog's `open`
-// returns to the app's value (`appData`) at once (F-1).
+// With `dataFromApp`, an event hands back only the values it carries, a value
+// the person set gives way where the app's `appData` changes, and a dialog
+// closes on its own submit or close control or the app's write (F-1).
 
 import { useEffect, useMemo, useRef, useSyncExternalStore, type ReactElement } from 'react'
 import { createGenerativeUIDispatcher, GenerativeUISurfaceManager } from '@copilotkit/core/generative-ui'
@@ -76,59 +76,102 @@ function valueAt(root: unknown, pointer: string): unknown {
   return at
 }
 
+type EngineComponent = { type?: string; properties?: unknown }
 type EngineSurface = {
   key?: string
   model?: {
     dataModel?: { set(path: string, value: unknown): void }
     componentsModel?: {
-      get(id: string): { properties?: unknown } | undefined
-      entries?: Iterable<[string, { type?: string; properties?: unknown }]>
+      get(id: string): EngineComponent | undefined
+      entries?: Iterable<[string, EngineComponent]>
     }
   }
 }
+type OwnedValues = Map<string, Map<string, unknown>>
 
-/** The data paths the surface's dialogs bind their `open` to, except a dialog `trigger` opens. */
-function dialogOpenPaths(surface: EngineSurface, trigger: string | undefined): string[] {
-  const out: string[] = []
-  const entries = surface.model?.componentsModel?.entries
-  if (entries === undefined) {
-    console.warn('[a2ui] studio engine has no component list; dialogs keep the open value the person set')
-    return out
+/** The engine's per-surface map of the values the person set; undefined (and logged) when the engine has none. */
+function ownedValues(manager: GenerativeUISurfaceManager): OwnedValues | undefined {
+  const owned = (manager as unknown as { owned?: OwnedValues }).owned
+  if (owned instanceof Map) return owned
+  console.warn('[a2ui] studio engine has no person-value map; app writes may be refused')
+  return undefined
+}
+
+const atOrBelow = (path: string, base: string): boolean => path === base || path.startsWith(`${base}/`)
+
+/** The ids of the components below `id`: every property string that names a component of the surface. */
+function descendants(surface: EngineSurface, id: string, out = new Set<string>()): Set<string> {
+  const model = surface.model?.componentsModel
+  const visit = (value: unknown): void => {
+    if (typeof value === 'string') {
+      if (!out.has(value) && model?.get(value)) {
+        out.add(value)
+        visit(model.get(value)?.properties)
+      }
+    } else if (Array.isArray(value)) value.forEach(visit)
+    else if (value && typeof value === 'object') Object.values(value).forEach(visit)
   }
-  for (const [, component] of entries) {
+  visit(model?.get(id)?.properties)
+  return out
+}
+
+/**
+ * The `open` paths of the dialogs whose content holds `componentId`, when that
+ * component is a Button: the dialog's own submit or close control.
+ */
+function dialogsClosedBy(surface: EngineSurface, componentId: string): string[] {
+  const model = surface.model?.componentsModel
+  if (model?.get(componentId)?.type !== 'Button') return []
+  if (model.entries === undefined) {
+    console.warn('[a2ui] studio engine has no component list; a dialog stays open after its submit control')
+    return []
+  }
+  const out: string[] = []
+  for (const [id, component] of model.entries) {
     if (component?.type !== 'Modal') continue
-    const props = component.properties as { open?: unknown; trigger?: unknown } | undefined
-    if (trigger !== undefined && props?.trigger === trigger) continue
-    out.push(...boundPaths(props?.open))
+    const props = component.properties as { open?: unknown; content?: unknown } | undefined
+    if (typeof props?.content !== 'string') continue
+    const inside = props.content === componentId || descendants(surface, props.content).has(componentId)
+    if (inside && id !== componentId) out.push(...boundPaths(props.open))
   }
   return out
 }
 
 /**
- * Hands the values the person set on `surfaceId` back to the app once an event
- * is sent, so the app's later writes to those paths apply. A dialog's `open`
- * also goes back to the app's own value at once (`appData` under `/data`), so
- * a dialog the app keeps closed closes on any event from inside it, unless the
- * event comes from that dialog's own trigger. Other values (typed text,
- * a checked row) stay as the person left them until the app writes. The
- * engine keeps these values in a per-surface map it does not expose.
+ * After an event: hands back to the app only the values the event carries (the
+ * paths its component binds), so the app's next write to them applies; every
+ * other value the person set stays. A Button inside a dialog's content is that
+ * dialog's submit or close control: the dialog closes, and its `open` is the
+ * app's again.
  */
-export function releasePersonValues(
-  manager: GenerativeUISurfaceManager,
-  surfaceId: string,
-  componentId: string | undefined,
-  appData: unknown,
-): void {
+export function releaseEventValues(manager: GenerativeUISurfaceManager, surfaceId: string, componentId: string | undefined): void {
   const surface = manager.getSurface(THREAD, surfaceId) as EngineSurface | undefined
-  const owned = (manager as unknown as { owned?: Map<string, Map<string, unknown>> }).owned
-  if (!(owned instanceof Map)) {
-    console.warn('[a2ui] studio engine has no person-value map; app writes after an event may be refused')
-    return
+  const owned = ownedValues(manager)
+  if (!owned || !surface?.key || componentId === undefined) return
+  const values = owned.get(surface.key)
+  const carried = boundPaths(surface.model?.componentsModel?.get(componentId)?.properties)
+  if (values) for (const path of [...values.keys()]) if (carried.some(base => atOrBelow(path, base))) values.delete(path)
+  for (const path of dialogsClosedBy(surface, componentId)) {
+    values?.delete(path)
+    surface.model?.dataModel?.set(path, false)
   }
+}
+
+/**
+ * Before the app's new data is applied: hands back each value the person set
+ * whose path the app's value changed at, so that write shows; a key the app
+ * left as it was keeps the person's value.
+ */
+export function releaseChangedValues(manager: GenerativeUISurfaceManager, surfaceId: string, before: unknown, after: unknown): void {
+  const surface = manager.getSurface(THREAD, surfaceId) as EngineSurface | undefined
   if (!surface?.key) return
-  owned.delete(surface.key)
-  for (const path of dialogOpenPaths(surface, componentId)) {
-    surface.model?.dataModel?.set(path, valueAt({ data: appData }, path))
+  const values = ownedValues(manager)?.get(surface.key)
+  if (!values) return
+  for (const path of [...values.keys()]) {
+    if (!path.startsWith('/data/')) continue
+    const was = valueAt({ data: before }, path)
+    const now = valueAt({ data: after }, path)
+    if (JSON.stringify(was) !== JSON.stringify(now)) values.delete(path)
   }
 }
 
@@ -143,7 +186,7 @@ export function StudioSurfaceHost({
   operations: readonly unknown[]
   onEvent?: (event: StudioEvent) => void
   dataFromApp?: boolean
-  /** The app's own data value, which a released person value goes back to. */
+  /** The app's data value; a value the person set gives way where this changes. */
   appData?: unknown
 }): ReactElement {
   const onEventRef = useRef(onEvent)
@@ -151,7 +194,6 @@ export function StudioSurfaceHost({
   const dataFromAppRef = useRef(dataFromApp)
   dataFromAppRef.current = dataFromApp
   const appDataRef = useRef(appData)
-  appDataRef.current = appData
   const theme = useShownTheme()
   setStudioTranslate(useT())
   const core = useMemo(() => {
@@ -171,7 +213,7 @@ export function StudioSurfaceHost({
       config: { ui: studioUI },
       forwardEvent: async (event: StudioEvent) => {
         onEventRef.current?.(event)
-        if (dataFromAppRef.current) releasePersonValues(manager, event.surfaceId, event.componentId, appDataRef.current)
+        if (dataFromAppRef.current) releaseEventValues(manager, event.surfaceId, event.componentId)
         return { ok: true as const, result: null }
       },
       reportError,
@@ -180,6 +222,8 @@ export function StudioSurfaceHost({
   const runtime = useMemo(() => ({ ...core, theme }), [core, theme])
   const target = `studio:${surfaceId}`
   useEffect(() => {
+    if (dataFromAppRef.current && appDataRef.current !== appData) releaseChangedValues(core.manager, surfaceId, appDataRef.current, appData)
+    appDataRef.current = appData
     core.manager.ingest(THREAD, undefined, {
       surfaceId,
       target,
@@ -188,7 +232,7 @@ export function StudioSurfaceHost({
       status: 'ready',
       rejected: [],
     } as never)
-  }, [core, surfaceId, target, operations])
+  }, [core, surfaceId, target, operations, appData])
   // A surface this host no longer draws leaves its manager.
   useEffect(() => () => core.manager.forgetSurface(THREAD, surfaceId), [core, surfaceId])
   return (
