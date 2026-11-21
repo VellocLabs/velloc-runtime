@@ -553,13 +553,15 @@ describe('the live state of a background module', () => {
     }
     const disk = memoryFs({ 'app.a2ui': BOARD, 'data/latest.json': '{"count":3}' })
     const published: AppSurfaceState[] = []
+    const deltas: unknown[] = []
     const host = createAppSurfaceHost({
       fs: disk.fs,
       app: app(),
       sessionId: 's1',
       compile,
-      publish: (_id, state) => {
+      publish: (_id, state, delta) => {
         if (state) published.push(state)
+        deltas.push(delta)
       },
       registerBuild: () => () => true,
       liveData,
@@ -569,8 +571,19 @@ describe('the live state of a background module', () => {
       snapshot = { owner: event.owner, version: event.version, value: event.value }
       listener?.(event)
     }
-    return { host, published, unsubscribed, emit }
+    return { host, published, deltas, unsubscribed, emit }
   }
+
+  it('a batch goes out as a delta of its patches; a board the patches do not follow goes out whole', async () => {
+    const { host, deltas, emit } = liveRig({ owner: 1, version: 7, value: { count: 9 } })
+    await host.start()
+    expect(deltas, 'the first board is whole').toEqual([undefined])
+    emit({ appId: 'pay-board', owner: 1, version: 8, value: { count: 10 }, patches: [{ path: '/count', value: 10 }] })
+    expect(deltas.at(-1)).toEqual({ data: { from: 1, dataSeq: 2, dataAt: 5000, patches: [{ path: '/count', value: 10 }] } })
+    emit({ appId: 'pay-board', owner: 2, version: 1, value: { count: 1 }, patches: [{ path: '/count', value: 1 }] })
+    expect(deltas.at(-1), 'another document: nothing to patch from').toBeUndefined()
+    host.dispose()
+  })
 
   it('is read in place of the data file, and each batch is published as patches from the board before it', async () => {
     const { host, published, unsubscribed, emit } = liveRig({ owner: 1, version: 7, value: { count: 9 } })

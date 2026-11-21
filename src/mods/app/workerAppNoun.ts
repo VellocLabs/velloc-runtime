@@ -47,7 +47,8 @@ export function makeWorkerAppNoun(call: WorkerAppCall): unknown {
     return next
   }
   const state = Object.freeze({
-    get: () => serial(fetchState),
+    // The state changes through this noun alone, so the copy it keeps is the state.
+    get: () => serial(async () => (known ? clone(known.value) : fetchState())),
     update: (fn: unknown) =>
       serial(async () => {
         if (typeof fn !== 'function') throw new TypeError('$.app.state.update(fn): fn is not a function')

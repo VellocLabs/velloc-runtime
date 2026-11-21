@@ -14,6 +14,7 @@ import { joinRuntimePath, normalizeRuntimePath, pathCompareKey } from '../../uti
 import type {
   AppSurfaceBuild,
   AppSurfaceError,
+  AppSurfaceDelta,
   AppSurfaceState,
   ModsAppActionResult,
   ModsBuildAppResult,
@@ -24,6 +25,7 @@ import { dispatchAppAction, type AppActionDispatch } from './appActionBus'
 import { hashOf, seedAppFolder, SEED_MAX_FILE_BYTES, type AppSeedFs } from './appSeed'
 import type { AppSessionInfo } from './appSession'
 import { liveAppState, onAppState, type AppStateEvent, type AppStateSnapshot } from './appStateBus'
+import { appSurfaceDelta } from './appSurfaceDelta'
 import { setAppActor, setAppBuilder, setAppSurfaceState, type AppActor } from './appSurfaceRegistry'
 import { readAppText } from './appText'
 
@@ -46,7 +48,7 @@ export type AppSurfaceHostOptions = {
   /** Compiles an entry body; defaults to the runtime's Express compiler. */
   compile?: AppEntryCompile
   /** Where a changed state goes; defaults to the realm registry. */
-  publish?: (sessionId: string, state: AppSurfaceState | null) => void
+  publish?: (sessionId: string, state: AppSurfaceState | null, delta?: AppSurfaceDelta) => void
   /**
    * Where `mods.buildApp` finds this build; defaults to the realm registry.
    * The result forgets it, and is true while it was still this host's.
@@ -143,11 +145,6 @@ async function readText(fs: AppSurfaceHostOptions['fs'], path: string): Promise<
   }
 }
 
-/** The same board; the patches that led to it are not part of what it shows. `dataSeq` first: a live batch differs there without serializing the board. */
-const sameState = (a: AppSurfaceState | undefined, b: AppSurfaceState): boolean =>
-  a !== undefined &&
-  a.dataSeq === b.dataSeq &&
-  JSON.stringify({ ...a, dataPatches: undefined }) === JSON.stringify({ ...b, dataPatches: undefined })
 
 const liveHash = (owner: number, version: number): string => `live:${owner}:${version}`
 
@@ -258,10 +255,12 @@ export function createAppSurfaceHost(options: AppSurfaceHostOptions): AppSurface
       ...(localActions.length > 0 ? { localActions: [...localActions] } : {}),
     }
     dataPatches = undefined
-    if (!disposed && !sameState(published, state)) {
-      published = state
-      publish(sessionId, state)
-    }
+    if (disposed) return state
+    // A board with the same `dataSeq` has the same data: only its other fields are compared.
+    const delta = published ? appSurfaceDelta(published, state) : undefined
+    if (delta === null) return state
+    published = state
+    publish(sessionId, state, delta)
     return state
   }
 

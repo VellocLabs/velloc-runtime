@@ -11,6 +11,8 @@ import { isTopicSegment } from './topics'
 
 export const MODS_APP_TOPIC_PREFIX = 'mods/app/'
 export const MODS_APP_STATE_EVENT = 'state'
+/** A change to the board a page already holds; a page that cannot apply one subscribes again for the board. */
+export const MODS_APP_DELTA_EVENT = 'delta'
 
 export type AppSurfaceErrorKind = 'build' | 'data'
 
@@ -55,6 +57,34 @@ export type AppSurfaceState = {
   seedConflicts?: string[]
   /** The surface actions the manifest names as the plugin's own: the page offers each to `mods.appAction` before the model. */
   localActions?: string[]
+}
+
+/** The board's fields a delta sets or removes whole; the data travels as patches. */
+export const APP_SURFACE_PLAIN_KEYS = ['surface', 'catalog', 'text', 'refreshing', 'errors', 'seedConflicts', 'localActions'] as const
+export type AppSurfacePlainKey = (typeof APP_SURFACE_PLAIN_KEYS)[number]
+
+/**
+ * What changed since the board before: fields set, fields removed, and the
+ * data's patches from the board with `dataSeq === data.from`.
+ */
+export type AppSurfaceDelta = {
+  set?: Partial<Pick<AppSurfaceState, AppSurfacePlainKey>>
+  unset?: AppSurfacePlainKey[]
+  data?: { from: number; dataSeq: number; dataAt: number; patches: AppDataPatch[] }
+}
+
+/** Security: only the board's own field names, and patches of the wire's form. */
+export function isAppSurfaceDelta(value: unknown): value is AppSurfaceDelta {
+  if (!isRecord(value)) return false
+  const plain = APP_SURFACE_PLAIN_KEYS as readonly string[]
+  if (value.set !== undefined && !(isRecord(value.set) && Object.keys(value.set).every(key => plain.includes(key)))) return false
+  if (value.unset !== undefined && !(Array.isArray(value.unset) && value.unset.every(key => typeof key === 'string' && plain.includes(key)))) return false
+  const data = value.data
+  if (data !== undefined) {
+    if (!isRecord(data) || typeof data.from !== 'number' || typeof data.dataSeq !== 'number' || typeof data.dataAt !== 'number') return false
+    if (!Array.isArray(data.patches) || !data.patches.every(p => isRecord(p) && typeof p.path === 'string')) return false
+  }
+  return true
 }
 
 /** `mods.buildApp`: build the app's entry file again and redraw it. */

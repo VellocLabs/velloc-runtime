@@ -1,12 +1,13 @@
 /**
- * `mods/app/<sessionId>` (F-40): an app session's board. The snapshot and
- * every `state` delta carry the whole board, or null for a session with no
- * open app. Security: session-bound and `observe`; a connection bound to a
+ * `mods/app/<sessionId>` (F-40): an app session's board. The snapshot and a
+ * `state` event carry the whole board, or null for a session with no open
+ * app; a `delta` event carries what changed since the event before. Security: session-bound and `observe`; a connection bound to a
  * list of sessions sees the boards of those alone.
  */
 
 import { appSurfaceState, onAppSurfaceChanged } from '../../mods/app/appSurfaceRegistry'
 import {
+  MODS_APP_DELTA_EVENT,
   MODS_APP_STATE_EVENT,
   modsAppTopic,
   modsAppTopicSession,
@@ -40,5 +41,9 @@ export function registerModsAppTopic(
   onChanged: typeof onAppSurfaceChanged = onAppSurfaceChanged,
 ): () => void {
   broker.registerProvider(modsAppTopicProvider())
-  return onChanged((sessionId, state) => broker.publish(modsAppTopic(sessionId), state, { type: MODS_APP_STATE_EVENT }))
+  return onChanged((sessionId, state, delta) =>
+    delta
+      ? broker.publish(modsAppTopic(sessionId), delta, { type: MODS_APP_DELTA_EVENT })
+      : broker.publish(modsAppTopic(sessionId), state, { type: MODS_APP_STATE_EVENT }),
+  )
 }

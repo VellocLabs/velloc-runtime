@@ -6,14 +6,15 @@
  * so the capability loads it cheaply.
  */
 
-import type { AppSurfaceState, ModsAppActionResult, ModsBuildAppResult } from '../../browser/runtimeProtocol/modApps'
+import type { AppSurfaceDelta, AppSurfaceState, ModsAppActionResult, ModsBuildAppResult } from '../../browser/runtimeProtocol/modApps'
 import { appViewsClientGone, dispatchAppSessionGone, dispatchAppView } from './appActionBus'
 import type { AppViewLayout } from './appViews'
 
 export type AppBuild = () => Promise<ModsBuildAppResult>
 export type AppActor = (action: string, context: unknown) => Promise<ModsAppActionResult>
 
-type Listener = (sessionId: string, state: AppSurfaceState | null) => void
+/** `delta`: what changed since the state before, when that is all a holder of it needs. */
+type Listener = (sessionId: string, state: AppSurfaceState | null, delta?: AppSurfaceDelta) => void
 
 const boards = new Map<string, AppSurfaceState>()
 const listeners = new Set<Listener>()
@@ -28,7 +29,7 @@ export function appSurfaceState(sessionId: string): AppSurfaceState | null {
 }
 
 /** Records a session's app state and tells the listeners; null forgets it. */
-export function setAppSurfaceState(sessionId: string, state: AppSurfaceState | null): void {
+export function setAppSurfaceState(sessionId: string, state: AppSurfaceState | null, delta?: AppSurfaceDelta): void {
   const before = boards.get(sessionId)
   if (state) boards.set(sessionId, state)
   else if (!boards.delete(sessionId)) return
@@ -38,7 +39,7 @@ export function setAppSurfaceState(sessionId: string, state: AppSurfaceState | n
   }
   for (const listener of [...listeners]) {
     try {
-      listener(sessionId, state)
+      listener(sessionId, state, state && before ? delta : undefined)
     } catch (error) {
       console.error('[mods/app] app listener failed', error)
     }

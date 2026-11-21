@@ -7,8 +7,11 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 
 import type { RuntimeConnection } from '../../runtimeClient/RuntimeConnection'
+import { applyAppSurfaceDelta } from '../../../mods/app/appSurfaceDelta'
 import {
+  isAppSurfaceDelta,
   isAppSurfaceState,
+  MODS_APP_DELTA_EVENT,
   modsAppTopic,
   type AppSurfaceState,
   type ModsAppActionResult,
@@ -38,10 +41,24 @@ export function holdAppSurface(connection: Subscriber, sessionId: string, listen
   const held = store
   held.listeners.add(listener)
   if (held.unsubscribe === null) {
-    held.unsubscribe = connection.subscribe<unknown>(modsAppTopic(sessionId), event => {
-      held.state = isAppSurfaceState(event.payload) ? event.payload : null
-      for (const each of [...held.listeners]) each(held.state)
-    })
+    const subscribe = (): void => {
+      held.unsubscribe = connection.subscribe<unknown>(modsAppTopic(sessionId), event => {
+        if (event.type === MODS_APP_DELTA_EVENT) {
+          const next = held.state && isAppSurfaceDelta(event.payload) ? applyAppSurfaceDelta(held.state, event.payload) : undefined
+          if (!next) {
+            // The change does not follow the board held: the topic's snapshot is the board again.
+            held.unsubscribe?.()
+            if (held.listeners.size > 0) subscribe()
+            return
+          }
+          held.state = next
+        } else {
+          held.state = isAppSurfaceState(event.payload) ? event.payload : null
+        }
+        for (const each of [...held.listeners]) each(held.state)
+      })
+    }
+    subscribe()
   } else {
     listener(held.state)
   }
