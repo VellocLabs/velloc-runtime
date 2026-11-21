@@ -586,6 +586,8 @@ function DataTableView({
     const rest = selection.value.filter((k) => !shownKeys.includes(k));
     selection.set(on ? [...rest, ...shownKeys] : rest);
   };
+  /** With filter rows the search box starts where their chips start. */
+  const filterRows = filters.length > 0 || selection !== undefined;
   const rowActionOf = (row: Row) =>
     onRowClick ?? (selection && keyOf(row) ? toggleRow : undefined);
   const pick = (key: string, values: string[]) => {
@@ -596,8 +598,18 @@ function DataTableView({
   return (
     <div className="a2-card a2-enter flex w-full min-w-0 flex-col overflow-hidden">
       {title || searchable ? (
-        <div className="flex min-w-0 flex-wrap items-center justify-between gap-x-3 gap-y-2 px-4 pt-3.5 pb-3">
-          <div className="flex min-w-0 items-baseline gap-2">
+        <div
+          className={cn(
+            "flex min-w-0 flex-wrap items-center gap-x-3 gap-y-2 px-4 pt-3.5 pb-3",
+            filterRows ? "justify-start" : "justify-between",
+          )}
+        >
+          <div
+            className={cn(
+              "flex min-w-0 items-baseline gap-2",
+              filterRows && "min-w-24 shrink-0",
+            )}
+          >
             {title ? (
               <h3 className="truncate text-[13px] font-semibold tracking-tight">
                 {title}
