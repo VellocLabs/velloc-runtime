@@ -522,8 +522,6 @@ function DataTableView({
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rows, filters, live, byState, checkedSet, selectKey]);
-  const onCount = selection ? rows.filter((r) => stateOf(r) === "on").length : 0;
-  const offCount = selection ? rows.filter((r) => stateOf(r) === "off").length : 0;
 
   const cols = useMemo<ColumnDef<typeof tableFeats, Row>[]>(
     () =>
@@ -669,7 +667,7 @@ function DataTableView({
                       state === "on" ? "a2ui.studio.selectionChecked" : "a2ui.studio.selectionUnchecked",
                     )}
                     className={cn(
-                      "h-6.5 gap-1.5 rounded-full! border px-2.5 text-[12px] font-medium tabular-nums transition-colors",
+                      "h-6.5 rounded-full! border px-2 transition-colors",
                       checkedFilter.includes(state)
                         ? "border-[color-mix(in_oklch,var(--a2-accent)_50%,transparent)] bg-[color-mix(in_oklch,var(--a2-accent)_14%,transparent)]! text-(--a2-accent)"
                         : "border-black/[0.1] dark:border-white/[0.1] bg-black/[0.02] dark:bg-white/[0.02] text-foreground/80 hover:bg-black/[0.05] dark:hover:bg-white/[0.05]",
@@ -686,7 +684,6 @@ function DataTableView({
                     >
                       {state === "on" ? <Check className="size-2.5" strokeWidth={3} /> : null}
                     </span>
-                    {state === "on" ? onCount : offCount}
                   </ToggleGroupItem>
                 ))}
               </ToggleGroup>

@@ -135,3 +135,11 @@
   --primary-foreground: var(--velloc-host-primary-foreground);
   --a2-accent: var(--velloc-host-primary);
 }
+
+/* A checked box draws its mark in the primary's foreground on the primary. */
+.a2-surface-host [data-slot="checkbox"]:is([data-state="checked"], [data-state="indeterminate"]),
+body > .a2ui-surface [data-slot="checkbox"]:is([data-state="checked"], [data-state="indeterminate"]) {
+  background-color: var(--primary);
+  border-color: var(--primary);
+  color: var(--primary-foreground);
+}

@@ -129,7 +129,7 @@ export function StudioAppSurface({
   const feed = nextStudioFeed(feedRef.current, board, surfaceId)
   feedRef.current = feed
   if (!feed || feed.operations.length === 0) return null
-  return <StudioSurfaceHost surfaceId={surfaceId} operations={feed.operations} onEvent={onEvent} dataFromApp />
+  return <StudioSurfaceHost surfaceId={surfaceId} operations={feed.operations} onEvent={onEvent} dataFromApp appData={board.data} />
 }
 
 export default StudioAppSurface
