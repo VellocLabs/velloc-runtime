@@ -44,7 +44,8 @@ import {
 import type { RouteDecision, RouteLeg, RoutedSend, StreamRouting } from './routedStream'
 import type { RequestLogRow } from '../usage/requestLogStore'
 import { recordRequest } from '../usage/requestLogWriter'
-import { isProviderSetUp, mergedModels, providerEntries } from './runtimeProviders'
+import { isProviderSetUp, mergedModels, providerEntries, runtimeProviderConfigs } from './runtimeProviders'
+import { providerModelPool } from '../../config/nexusModelConfig/providerModelPool'
 
 const NO_REQUEST_CONTEXT: BridgeModelRequestContext = { purpose: 'other', querySource: '' }
 
@@ -67,9 +68,17 @@ export type RouteResolutionDeps = {
   logVia?: BrowserBridgeTransport
 }
 
-function knownModel(provider: string, model: string): boolean {
+/**
+ * Whether `provider` offers `model`. Reads the same sources as the peers table
+ * a router is shown: the listing, else the provider's custom models, else its
+ * model pool, which holds every version of a family row.
+ * A model the table offers and this check refuses ends a routed call.
+ */
+export function knownModel(provider: string, model: string): boolean {
   return mergedModels(provider).some(listed => listed.id === model)
     || providerEntries(provider).some(entry => entry.id === model || entryId(entry) === model)
+    || (runtimeProviderConfigs()[provider]?.customModels ?? []).some(custom => custom.modelId === model)
+    || providerModelPool(provider).includes(model)
 }
 
 /** A router is never a target: one is plugged in for the id, or its

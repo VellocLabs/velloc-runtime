@@ -35,7 +35,8 @@ import {
 } from '../runtime/testing/noopAdapters'
 import type { RuntimeConfig } from '../runtime/interfaces/RuntimeConfig'
 import { fakeProviderRequestSeam } from './_helpers/fakeProviderRequestSeam'
-import { logRowOf, routeMemberFacts, tierForTarget } from '../models/drivers/providerRouteResolution'
+import { knownModel, logRowOf, routeMemberFacts, tierForTarget } from '../models/drivers/providerRouteResolution'
+import { publishListedModelPool, resetProviderModelPool } from '../config/nexusModelConfig/providerModelPool'
 import { findConfiguredModel } from '../config/nexusModelConfig/findConfiguredModel'
 import { recordRequest } from '../models/usage/requestLogWriter'
 import type { RequestLogRow } from '../models/usage/requestLogStore'
@@ -1112,5 +1113,16 @@ describe('a routed send carries the tier its target lists', () => {
     } finally {
       vi.mocked(findConfiguredModel).mockImplementation(real)
     }
+  })
+})
+
+describe('knownModel', () => {
+  afterEach(() => resetProviderModelPool())
+
+  it('knows an older version of a family row, as the peers table offers it', () => {
+    expect(knownModel('pool-only', 'flash-3.7')).toBe(false)
+    publishListedModelPool('pool-only', [{ id: 'flash-3.8' }, { id: 'flash-3.7' }])
+    expect(knownModel('pool-only', 'flash-3.7')).toBe(true)
+    expect(knownModel('pool-only', 'ghost')).toBe(false)
   })
 })
