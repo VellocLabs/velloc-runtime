@@ -34,7 +34,7 @@ import {
   isAbortLikeError,
 } from '../../utils/providerConnectivity'
 import { traceLine } from '../../utils/debugLog'
-import { MSG_TYPE_ASSISTANT } from '../../runtime/VercelModelConstants'
+import { MSG_TYPE_ASSISTANT, MSG_TYPE_STREAM_EVENT } from '../../runtime/VercelModelConstants'
 import { resolveModelRequestFields } from './modelRequestFields'
 import {
   isCallModelLogEnabled,
@@ -541,11 +541,20 @@ function openRouteCall(payload: object, params: QueryModelCallParams): RoutedVia
   return undefined
 }
 
-/** One attempt of a routed call: each reply row records who served it. */
+/**
+ * One attempt of a routed call: each reply row records who served it, and so
+ * does the attempt's first stream event, so a reader knows the member while
+ * the reply is still arriving.
+ */
 async function* routedReplies(call: ModelCall, previous: RoutedVia | undefined): AsyncGenerator<Message, void, unknown> {
+  let announced = false
   for await (const message of performRequest(call)) {
-    const via = message.type === MSG_TYPE_ASSISTANT ? routedViaOf(call.payload, previous) : undefined
-    if (via) (message as { routedVia?: RoutedVia }).routedVia = { ...via, ...routeMemberFacts(via.provider, via.model) }
+    const names = message.type === MSG_TYPE_ASSISTANT || (!announced && message.type === MSG_TYPE_STREAM_EVENT)
+    const via = names ? routedViaOf(call.payload, previous) : undefined
+    if (via) {
+      ;(message as { routedVia?: RoutedVia }).routedVia = { ...via, ...routeMemberFacts(via.provider, via.model) }
+      announced = true
+    }
     yield message
   }
 }

@@ -1,4 +1,4 @@
-import { latestRoutedVia, RouteNamesContext } from './routeDisplay'
+import { latestRoutedVia, liveRouteMemberReader, RouteNamesContext } from './routeDisplay'
 import { ModUiContext } from '../../components/assistant-ui/mod-ui-context'
 import {
   AgentChangesContext,
@@ -751,7 +751,11 @@ function InteractiveAssistantUiThread({
   // useMultiSessionClients.setModelSelectionForSession).
   const effortSessionId = state.snapshot?.sessionId
   const effortTeammate = !!effortSessionId && isTeammateSessionId(effortSessionId)
-  const routeMember = useMemo(() => latestRoutedVia(state.transcriptMessages), [state.transcriptMessages])
+  const readLiveRouteMember = useRef(liveRouteMemberReader()).current
+  const routeMember = useMemo(
+    () => readLiveRouteMember(state.liveEvents) ?? latestRoutedVia(state.transcriptMessages),
+    [readLiveRouteMember, state.liveEvents, state.transcriptMessages],
+  )
   const sessionEffort = useMemo<SessionEffortContextValue | null>(
     () =>
       onSelectSessionModel && effortSessionId

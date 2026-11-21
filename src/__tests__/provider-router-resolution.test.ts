@@ -907,9 +907,22 @@ describe('a call to a router provider', () => {
     expect(moved.at(-1).routedVia).toEqual({ provider: A, model: 'm-a', switchedFrom: { provider: B, model: 'm-b' } })
   })
 
+  it('names the member on the first stream event of a reply, before the reply row', async () => {
+    const { transport } = rawHost({})
+    registerProviderRouter(ROUTER, testRouter([toA]).router, { routesTo: '*' })
+    const values = await call(transport, config())
+    const events = values.filter((v: any) => v?.type === 'stream_event')
+    expect(events.length).toBeGreaterThan(1)
+    expect(events[0].routedVia).toEqual({ provider: A, model: 'm-a' })
+    expect(events.slice(1).every((v: any) => !('routedVia' in v))).toBe(true)
+    expect(values.indexOf(events[0])).toBeLessThan(values.findIndex((v: any) => v?.type === 'assistant'))
+  })
+
   it('records nothing for a provider that is no router', async () => {
     const { transport } = rawHost({})
-    const values = assistants(await call(transport, config(), { ...params(), providerId: A, model: 'm-a' }))
+    const all = await call(transport, config(), { ...params(), providerId: A, model: 'm-a' })
+    expect(all.some((v: any) => v && 'routedVia' in v)).toBe(false)
+    const values = assistants(all)
     expect(values.at(-1)).not.toHaveProperty('routedVia')
     expect(routedViaOf({})).toBeUndefined()
     expect(routeCallOf({})).toEqual({ id: expect.any(String), logCallId: expect.any(Number), sends: 0, hops: 0 })

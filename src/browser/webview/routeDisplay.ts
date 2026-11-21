@@ -49,6 +49,27 @@ export function latestRoutedVia(rows: readonly unknown[]): RoutedVia | undefined
 }
 
 /**
+ * A reader of who serves the turn in hand, over a session's live events: a
+ * reply row or a stream event that names its member. Each call reads only the
+ * events added since the last one; a list that was cleared or replaced is
+ * read from its start.
+ */
+export function liveRouteMemberReader(): (events: readonly unknown[]) => RoutedVia | undefined {
+  let first: unknown
+  let read = 0
+  let found: RoutedVia | undefined
+  return (events) => {
+    if (events.length < read || events[0] !== first) {
+      read = 0
+      found = undefined
+    }
+    first = events[0]
+    for (; read < events.length; read += 1) found = routedViaOfRow(events[read]) ?? found
+    return found
+  }
+}
+
+/**
  * A member's name: the provider's label and the model's display name, a
  * Latest entry named by the model it runs today. A provider id is opaque: an
  * unknown provider falls back to its stored id whole, an unknown model to its

@@ -14,6 +14,7 @@ import { RouteMemberLabel, RouteSwitchNotice } from '../components/assistant-ui/
 import {
   RouteNamesContext,
   latestRoutedVia,
+  liveRouteMemberReader,
   routeMemberName,
   routeNoticeKey,
 } from '../browser/webview/routeDisplay'
@@ -249,6 +250,26 @@ describe('member names', () => {
     const rows = [reply({ provider: ALPHA.id, model: 'alpha-large' }, 'a-1'), userRow('u-2'), reply(undefined, 'a-2'), reply({ provider: BETA.id, model: 'beta-small' }, 'a-3')]
     expect(latestRoutedVia(rows)).toEqual({ provider: BETA.id, model: 'beta-small' })
     expect(latestRoutedVia([reply()])).toBeUndefined()
+  })
+
+  it('reads who serves the turn in hand from its live events, as they arrive', () => {
+    const read = liveRouteMemberReader()
+    const alpha = { provider: ALPHA.id, model: 'alpha-large' }
+    const beta = { provider: BETA.id, model: 'beta-small' }
+    const delta = { type: 'stream_event', event: { type: 'content_block_delta' } }
+    expect(read([])).toBeUndefined()
+    // The first stream event of a reply names its member, before any reply row.
+    const live: unknown[] = [{ ...delta, routedVia: alpha }]
+    expect(read(live)).toEqual(alpha)
+    live.push(delta, delta)
+    expect(read(live)).toEqual(alpha)
+    // A later reply of the same turn, served by another member.
+    live.push(reply(alpha, 'a-1'), { ...delta, routedVia: beta })
+    expect(read(live)).toEqual(beta)
+    // The list was cleared, then replaced: nothing is carried over.
+    expect(read([])).toBeUndefined()
+    expect(read([delta, delta, delta, delta, delta, delta])).toBeUndefined()
+    expect(read([{ ...delta, routedVia: alpha }, delta, delta, delta, delta, delta])).toEqual(alpha)
   })
 
   it('reads a recorded member name and tiers, dropping empty or malformed ones', () => {
