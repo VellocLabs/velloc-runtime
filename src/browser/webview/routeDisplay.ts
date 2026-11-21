@@ -55,15 +55,15 @@ export function latestRoutedVia(rows: readonly unknown[]): RoutedVia | undefined
  * read from its start.
  */
 export function liveRouteMemberReader(): (events: readonly unknown[]) => RoutedVia | undefined {
-  let first: unknown
+  let previous: readonly unknown[] | undefined
   let read = 0
   let found: RoutedVia | undefined
   return (events) => {
-    if (events.length < read || events[0] !== first) {
+    if (events !== previous || events.length < read) {
       read = 0
       found = undefined
     }
-    first = events[0]
+    previous = events
     for (; read < events.length; read += 1) found = routedViaOfRow(events[read]) ?? found
     return found
   }

@@ -751,7 +751,7 @@ function InteractiveAssistantUiThread({
   // useMultiSessionClients.setModelSelectionForSession).
   const effortSessionId = state.snapshot?.sessionId
   const effortTeammate = !!effortSessionId && isTeammateSessionId(effortSessionId)
-  const readLiveRouteMember = useRef(liveRouteMemberReader()).current
+  const readLiveRouteMember = useMemo(() => liveRouteMemberReader(), [state.snapshot?.sessionId])
   const routeMember = useMemo(
     () => readLiveRouteMember(state.liveEvents) ?? latestRoutedVia(state.transcriptMessages),
     [readLiveRouteMember, state.liveEvents, state.transcriptMessages],

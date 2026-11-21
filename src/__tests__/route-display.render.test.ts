@@ -1,6 +1,8 @@
 // @vitest-environment happy-dom
 import { createElement, type FC } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import {
   AssistantRuntimeProvider,
@@ -277,5 +279,14 @@ describe('member names', () => {
     expect(latestRoutedVia([reply(facts as never, 'a-1')])).toEqual(facts)
     const bad = { provider: BETA.id, model: 'beta-x', label: '', tiers: ['low', 3], defaultTier: '' }
     expect(latestRoutedVia([reply(bad as never, 'a-1')])).toEqual({ provider: BETA.id, model: 'beta-x' })
+  })
+})
+
+
+describe('AssistantUiThread wiring (source)', () => {
+  it('names the route member from live events before the stored transcript', () => {
+    const src = readFileSync(join(__dirname, '..', 'browser', 'webview', 'AssistantUiThread.tsx'), 'utf8')
+    expect(src).toMatch(/liveRouteMemberReader\(\)/)
+    expect(src).toMatch(/readLiveRouteMember\(state\.liveEvents\) \?\? latestRoutedVia\(state\.transcriptMessages\)/)
   })
 })

@@ -549,12 +549,14 @@ function openRouteCall(payload: object, params: QueryModelCallParams): RoutedVia
 async function* routedReplies(call: ModelCall, previous: RoutedVia | undefined): AsyncGenerator<Message, void, unknown> {
   let announced = false
   for await (const message of performRequest(call)) {
-    const names = message.type === MSG_TYPE_ASSISTANT || (!announced && message.type === MSG_TYPE_STREAM_EVENT)
+    const isStreamEvent = message.type === MSG_TYPE_STREAM_EVENT
+    const isAssistant = message.type === MSG_TYPE_ASSISTANT
+    const names = isAssistant || (!announced && isStreamEvent)
     const via = names ? routedViaOf(call.payload, previous) : undefined
     if (via) {
       ;(message as { routedVia?: RoutedVia }).routedVia = { ...via, ...routeMemberFacts(via.provider, via.model) }
-      announced = true
     }
+    if (isStreamEvent && !announced) announced = true
     yield message
   }
 }
