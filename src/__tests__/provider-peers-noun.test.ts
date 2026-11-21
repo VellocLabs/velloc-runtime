@@ -363,6 +363,25 @@ describe('the runtime\'s own table', () => {
     expect(unset.every(peer => peer.connected === false && peer.definition === peer.id)).toBe(true)
   })
 
+  it('a catalog-pooled model carries the window its own view shows (Gemini)', () => {
+    setRuntimeProviderConfigs({ google: { hasApiKey: true } })
+    publishCatalogModelPool({
+      providers: [
+        {
+          id: 'google',
+          label: 'Google',
+          enabled: true,
+          models: [{ id: 'gemini-4-neon', label: 'Gemini 4 Neon', enabled: true, supportsStreaming: true, supportsTools: true }],
+        },
+      ],
+    } as never)
+    registerProviderRouter(ROUTER, { route: async () => undefined }, { routesTo: '*' })
+    const google = runtimePeersTable(ROUTER).find(peer => peer.id === 'google')!
+    expect(google.models).toEqual([
+      { id: 'gemini-4-neon', name: 'Gemini 4 Neon', picked: true, contextWindow: 1_048_576, supportsTools: true },
+    ])
+  })
+
   it('a provider mod: hand-added models, picks, usage when cached, state from the ledger; a router mod is left out', async () => {
     modProvider('mod.acme.gateway', {
       codeListing: { isLoaded: () => false, usage: { reports: () => true, fetch: async () => USAGE } },

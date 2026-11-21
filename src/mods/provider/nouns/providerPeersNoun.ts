@@ -13,6 +13,7 @@
 import { providerDefinitions, getProviderDefinition } from '../../../config/nexusModelConfig/providers'
 import type { ProviderModelInfo } from '../../../config/nexusModelConfig/providerDefinition'
 import { providerModelName, providerModelPool } from '../../../config/nexusModelConfig/providerModelPool'
+import { contextWindowOf, isContextWindowKnown } from '../../../engine/contextWindow'
 import { providerStateOf } from '../../../models/drivers/providerHealthLedger'
 import { insideRoutesTo, providerRouterBoundsFor, type RoutesTo } from '../../../models/drivers/providerRouter'
 import { cachedUsage } from '../../../models/drivers/providerUsageService'
@@ -105,8 +106,14 @@ export function peersTableFor(routerId: string, deps: PeersTableDeps): Peer[] {
 
 // ── the runtime's own source ────────────────────────────────────────────────
 
-function listedModel(info: ProviderModelInfo, picked: ReadonlySet<string>): PeerModel {
-  return copyModel({ ...info, picked: picked.has(info.id) })
+/** The window the model config states for a model, the one its own view shows; undefined when unknown. */
+function configuredWindow(instanceId: string, modelId: string): { contextWindow?: number } {
+  return isContextWindowKnown(modelId, instanceId) ? { contextWindow: contextWindowOf(modelId, instanceId) } : {}
+}
+
+function listedModel(instanceId: string, info: ProviderModelInfo, picked: ReadonlySet<string>): PeerModel {
+  const window = info.contextWindow !== undefined ? {} : configuredWindow(instanceId, info.id)
+  return copyModel({ ...info, ...window, picked: picked.has(info.id) })
 }
 
 function customModel(model: CustomModelDef): PeerModel {
@@ -125,7 +132,7 @@ function customModel(model: CustomModelDef): PeerModel {
 function pooledModels(instanceId: string): PeerModel[] {
   return providerModelPool(instanceId).map(id => {
     const name = providerModelName(instanceId, id)
-    return { id, ...(name !== undefined ? { name } : {}), picked: true, supportsTools: true }
+    return { id, ...(name !== undefined ? { name } : {}), picked: true, ...configuredWindow(instanceId, id), supportsTools: true }
   })
 }
 
@@ -141,7 +148,7 @@ function modelsOf(
       ...providerEntries(instanceId).flatMap(entry => (entry.id ? [entry.id] : [])),
     ]
     const picked = pickedOnRow() ?? new Set(stored)
-    return listed.map(info => listedModel(info, picked))
+    return listed.map(info => listedModel(instanceId, info, picked))
   }
   if (config?.isCustomProvider && config.customModels) return config.customModels.map(customModel)
   return pooledModels(instanceId)
