@@ -1,8 +1,9 @@
 // One surface of an app that names the studio catalog (F-1): the app's build
-// compiled here, followed by its data and text, handed whole to the surface
-// host on every change.
+// compiled here, followed by its data and text. A later board extends the
+// same operation list (data patches by path, or the data whole), so the
+// engine applies only what is new; a new build starts a fresh list.
 
-import { useMemo, type ReactElement } from 'react'
+import { useRef, type ReactElement } from 'react'
 import { exportA2UICatalog } from '@copilotkit/react-core/v2/generative-ui'
 import type { AppSurfaceState } from '../../../runtimeProtocol/modApps'
 import { createStudioExpressCompiler, type StudioExpressCompiler } from '../../../../toolkit/builtin/a2ui/express/studioExpress'
@@ -44,6 +45,58 @@ export function studioAppOperations(board: AppSurfaceState, surfaceId: string): 
   return operations
 }
 
+/** Past this many operations the next board starts a fresh list, so a long session does not keep every patch. */
+export const STUDIO_FEED_LIMIT = 400
+
+/** The operation list a surface host holds, and what it was built from. */
+export type StudioFeed = {
+  surfaceId: string
+  hash: string
+  operations: readonly unknown[]
+  dataSeq?: number
+  /** The data value drawn, compared when a board carries no `dataSeq`. */
+  data: unknown
+  text: string
+}
+
+const textKey = (text: AppSurfaceState['text']): string => (text === undefined ? '' : JSON.stringify(text))
+
+/**
+ * The feed for `board`: `previous` itself when nothing it shows changed, the
+ * previous list extended when only data or text did, a fresh list on a new
+ * build. Null when the board has no build.
+ */
+export function nextStudioFeed(previous: StudioFeed | null, board: AppSurfaceState, surfaceId: string): StudioFeed | null {
+  if (!board.surface) return null
+  const fresh = (): StudioFeed => ({
+    surfaceId,
+    hash: board.surface!.hash,
+    operations: studioAppOperations(board, surfaceId),
+    dataSeq: board.dataSeq,
+    data: board.data,
+    text: textKey(board.text),
+  })
+  if (!previous || previous.surfaceId !== surfaceId || previous.hash !== board.surface.hash || previous.operations.length === 0) return fresh()
+  const added: unknown[] = []
+  const text = textKey(board.text)
+  if (text !== previous.text) {
+    added.push({ version: A2UI_PROTOCOL_VERSION, updateDataModel: { surfaceId, path: '/text', ...(board.text !== undefined ? { value: board.text } : {}) } })
+  }
+  if (board.dataSeq !== previous.dataSeq || (board.dataSeq === undefined && board.data !== previous.data)) {
+    const patches = board.dataPatches && previous.dataSeq !== undefined && board.dataPatches.from === previous.dataSeq ? board.dataPatches.patches : undefined
+    if (patches) {
+      for (const patch of patches) {
+        added.push({ version: A2UI_PROTOCOL_VERSION, updateDataModel: { surfaceId, path: `/data${patch.path}`, ...('value' in patch ? { value: patch.value } : {}) } })
+      }
+    } else {
+      added.push({ version: A2UI_PROTOCOL_VERSION, updateDataModel: { surfaceId, path: '/data', ...(board.data !== undefined ? { value: board.data } : {}) } })
+    }
+  }
+  if (added.length === 0) return previous
+  if (previous.operations.length + added.length > STUDIO_FEED_LIMIT) return fresh()
+  return { ...previous, operations: [...previous.operations, ...added], dataSeq: board.dataSeq, data: board.data, text }
+}
+
 export function StudioAppSurface({
   board,
   surfaceId,
@@ -53,15 +106,11 @@ export function StudioAppSurface({
   surfaceId: string
   onEvent: (event: StudioEvent) => void
 }): ReactElement | null {
-  const { surface, data, text } = board
-  const operations = useMemo(
-    () => studioAppOperations({ ...board, surface, data, text }, surfaceId),
-    // The board object changes on every publish; these four decide the picture.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [surface?.hash, data, text, surfaceId],
-  )
-  if (operations.length === 0) return null
-  return <StudioSurfaceHost surfaceId={surfaceId} operations={operations} onEvent={onEvent} />
+  const feedRef = useRef<StudioFeed | null>(null)
+  const feed = nextStudioFeed(feedRef.current, board, surfaceId)
+  feedRef.current = feed
+  if (!feed || feed.operations.length === 0) return null
+  return <StudioSurfaceHost surfaceId={surfaceId} operations={feed.operations} onEvent={onEvent} />
 }
 
 export default StudioAppSurface

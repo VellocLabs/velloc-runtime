@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 /**
  * An app that names the studio catalog (F-1, F-40), page half: the pane draws
- * the board with the studio engine, is given the whole list on each change,
+ * the board with the studio engine, extends one operation list on each change,
  * and a press takes the path every app surface's press takes.
  */
 import { createElement as h } from 'react'
