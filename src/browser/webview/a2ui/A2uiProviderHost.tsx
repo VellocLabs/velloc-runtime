@@ -319,16 +319,21 @@ function A2uiPanePortal({
       shown,
     )
   }
-  if (board && board.state === null && !selectedSurfaceId) {
-    return createPortal(
-      <div data-slot="a2ui-pane-content" className={`relative ${PANE_BODY}`}>
-        <A2uiPaneSkeleton />
-      </div>,
-      shown,
-    )
-  }
   const reload =
     showsBar && board && actionsSlot ? createPortal(<AppReloadButton board={board} busy={busy} />, actionsSlot) : null
+  if (board && board.state === null && !selectedSurfaceId) {
+    return (
+      <>
+        {reload}
+        {createPortal(
+          <div data-slot="a2ui-pane-content" className={`relative ${PANE_BODY}`}>
+            <A2uiPaneSkeleton />
+          </div>,
+          shown,
+        )}
+      </>
+    )
+  }
   const body = createPortal(
     <div data-slot="a2ui-pane-content" className={PANE_BODY}>
       {paneSurfaceIds.length > 1 && (

@@ -56,4 +56,15 @@ describe('A2UI pane loading skeleton', () => {
     expect(slot.querySelector('[data-slot="a2ui-pane-skeleton"]')).toBeNull()
     expect(slot.querySelector('[data-slot="a2ui-surface"]')).not.toBeNull()
   })
+
+  it('an app awaiting its first state still offers Reload in the pane header', () => {
+    const slot = document.createElement('div')
+    const actions = document.createElement('div')
+    document.body.append(slot, actions)
+    setSlot(slot, 'main')
+    setActionsSlot(actions)
+    render(createElement(A2uiProviderHost, { sessionId: 'main', messages: [], busy: false, appBoard: board(null), children: null }))
+    expect(slot.querySelector('[data-slot="a2ui-pane-skeleton"]')).not.toBeNull()
+    expect(actions.querySelector('button')).not.toBeNull()
+  })
 })
