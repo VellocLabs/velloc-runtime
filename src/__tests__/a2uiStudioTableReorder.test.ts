@@ -39,6 +39,7 @@ async function drag(root: HTMLElement, from: number, to: number, end: 'pointerUp
   await waitFor(() => expect(rowsOf(root)[from]!.className).toContain('opacity-50'))
   fireEvent.pointerMove(grip, { pointerId: 1, clientX: 10, clientY: 10 })
   fireEvent[end](grip, { pointerId: 1 })
+  await waitFor(() => expect(rowsOf(root)[from]!.className).not.toContain('opacity-50'))
   spy.mockRestore()
 }
 
@@ -101,6 +102,41 @@ describe('DataTable reorderable', () => {
     await waitFor(() => expect(rowsOf(view.container)[0]!.className).not.toContain('opacity-50'))
     expect(events).toHaveLength(0)
     expect(order(view.container)).toEqual(NAMES)
+  })
+
+  it('Escape cancels the drag and sends nothing', async () => {
+    const events: StudioEvent[] = []
+    const view = page(`${TABLE}, selectKey="id", onReorder=Event("moved", {}))`, e => events.push(e))
+    await waitFor(() => expect(handles(view.container)).toHaveLength(4))
+    const grip = handles(view.container)[0]!
+    fireEvent.pointerDown(grip, { button: 0, pointerId: 1 })
+    await waitFor(() => expect(rowsOf(view.container)[0]!.className).toContain('opacity-50'))
+    fireEvent.keyDown(grip, { key: 'Escape' })
+    await waitFor(() => expect(rowsOf(view.container)[0]!.className).not.toContain('opacity-50'))
+    expect(events).toHaveLength(0)
+    expect(order(view.container)).toEqual(NAMES)
+  })
+
+  it('a second pointer does not steer or end the drag', async () => {
+    const events: StudioEvent[] = []
+    const view = page(`${TABLE}, selectKey="id", onReorder=Event("moved", {}))`, e => events.push(e))
+    await waitFor(() => expect(handles(view.container)).toHaveLength(4))
+    const target = rowsOf(view.container)[2]!.querySelectorAll('td')[1]!
+    const spy = vi.spyOn(document, 'elementFromPoint').mockReturnValue(target)
+    const grip = handles(view.container)[0]!
+    fireEvent.pointerDown(grip, { button: 0, pointerId: 1 })
+    await waitFor(() => expect(rowsOf(view.container)[0]!.className).toContain('opacity-50'))
+    // A second pointer (e.g. a second finger) moving elsewhere must not be steered into a target.
+    fireEvent.pointerMove(grip, { pointerId: 2, clientX: 10, clientY: 10 })
+    // and its release must not end the drag
+    fireEvent.pointerUp(grip, { pointerId: 2 })
+    await waitFor(() => expect(rowsOf(view.container)[0]!.className).toContain('opacity-50'))
+    // the owner pointer still lands the row on the target
+    fireEvent.pointerMove(grip, { pointerId: 1, clientX: 10, clientY: 10 })
+    fireEvent.pointerUp(grip, { pointerId: 1 })
+    await waitFor(() => expect(events).toHaveLength(1))
+    expect(events[0]?.context).toMatchObject({ from: 0, to: 2 })
+    spy.mockRestore()
   })
 
   it('without reorderable there is no grip column', async () => {

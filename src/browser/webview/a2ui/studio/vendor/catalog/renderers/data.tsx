@@ -497,10 +497,24 @@ function DataTableView({
   const [drag, setDragState] = useState<{ from: number; over: number } | null>(null);
   // Pointer events can arrive before React re-renders; the handlers read the ref, the rows draw from state.
   const dragRef = useRef<{ from: number; over: number } | null>(null);
+  // The pointer that began the drag; a second pointer's events must not steer or end it.
+  const pointerRef = useRef<number | null>(null);
   const setDrag = (next: { from: number; over: number } | null) => {
     dragRef.current = next;
+    if (!next) pointerRef.current = null;
     setDragState(next);
   };
+  // Escape cancels a grip drag.
+  useEffect(() => {
+    if (!drag) return;
+    const onKey = (event: globalThis.KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.stopPropagation();
+      setDrag(null);
+    };
+    document.addEventListener("keydown", onKey, true);
+    return () => document.removeEventListener("keydown", onKey, true);
+  }, [drag]);
   const [picked, setPicked] = useState<Record<string, string[]>>({});
   const [checkedFilter, setCheckedFilter] = useState<string[]>([]);
   const filters = useMemo(
@@ -908,26 +922,33 @@ function DataTableView({
                       // Pointer drag from the grip, not native drag and drop, which an embedding
                       // pane may never deliver: the grip holds the pointer and the row under it is the target.
                       onPointerDown={(event) => {
-                        if (event.button !== 0) return;
+                        if (event.button !== 0 || dragRef.current) return;
                         event.preventDefault();
+                        pointerRef.current = event.pointerId;
                         event.currentTarget.setPointerCapture?.(event.pointerId);
                         setDrag({ from: at, over: at });
                       }}
                       onPointerMove={(event) => {
                         const drag = dragRef.current;
-                        if (!drag) return;
+                        if (!drag || pointerRef.current !== event.pointerId) return;
                         const hit = document
                           .elementFromPoint(event.clientX, event.clientY)
                           ?.closest<HTMLElement>("[data-reorder-row]");
                         const over = hit ? Number(hit.dataset.reorderRow) : NaN;
                         if (Number.isInteger(over) && over !== drag.over) setDrag({ ...drag, over });
                       }}
-                      onPointerUp={() => {
+                      onPointerUp={(event) => {
+                        if (pointerRef.current !== event.pointerId) return;
                         const drag = dragRef.current;
                         if (drag) move(drag.from, drag.over);
                         setDrag(null);
                       }}
-                      onPointerCancel={() => setDrag(null)}
+                      onPointerCancel={(event) => {
+                        if (pointerRef.current === event.pointerId) setDrag(null);
+                      }}
+                      onLostPointerCapture={(event) => {
+                        if (pointerRef.current === event.pointerId) setDrag(null);
+                      }}
                       onKeyDown={(event) => {
                         if (event.key === "ArrowUp" || event.key === "ArrowDown") {
                           event.preventDefault();
