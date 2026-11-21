@@ -69,16 +69,17 @@ export type RouteResolutionDeps = {
 }
 
 /**
- * Whether `provider` offers `model`. Reads the same sources as the peers table
- * a router is shown: the listing, else the provider's custom models, else its
- * model pool, which holds every version of a family row.
- * A model the table offers and this check refuses ends a routed call.
+ * Whether `provider` offers `model`: an id its listing or a stored entry names,
+ * a custom provider's own model, or a model in its pool, which holds every
+ * version of a family row. Everything the peers table offers is accepted here;
+ * a model offered there and refused here would end a routed call.
  */
 export function knownModel(provider: string, model: string): boolean {
-  return mergedModels(provider).some(listed => listed.id === model)
-    || providerEntries(provider).some(entry => entry.id === model || entryId(entry) === model)
-    || (runtimeProviderConfigs()[provider]?.customModels ?? []).some(custom => custom.modelId === model)
-    || providerModelPool(provider).includes(model)
+  if (mergedModels(provider).some(listed => listed.id === model)) return true
+  if (providerEntries(provider).some(entry => entry.id === model || entryId(entry) === model)) return true
+  const config = runtimeProviderConfigs()[provider]
+  if (config?.isCustomProvider === true && (config.customModels ?? []).some(custom => custom.modelId === model)) return true
+  return providerModelPool(provider).includes(model)
 }
 
 /** A router is never a target: one is plugged in for the id, or its

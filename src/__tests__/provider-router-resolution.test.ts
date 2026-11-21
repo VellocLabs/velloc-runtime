@@ -36,7 +36,7 @@ import {
 import type { RuntimeConfig } from '../runtime/interfaces/RuntimeConfig'
 import { fakeProviderRequestSeam } from './_helpers/fakeProviderRequestSeam'
 import { knownModel, logRowOf, routeMemberFacts, tierForTarget } from '../models/drivers/providerRouteResolution'
-import { publishListedModelPool, resetProviderModelPool } from '../config/nexusModelConfig/providerModelPool'
+import { publishCatalogModelPool } from '../config/nexusModelConfig/providerModelPool'
 import { findConfiguredModel } from '../config/nexusModelConfig/findConfiguredModel'
 import { recordRequest } from '../models/usage/requestLogWriter'
 import type { RequestLogRow } from '../models/usage/requestLogStore'
@@ -1117,12 +1117,54 @@ describe('a routed send carries the tier its target lists', () => {
 })
 
 describe('knownModel', () => {
-  afterEach(() => resetProviderModelPool())
+  function publishFamilyVersions(): void {
+    publishCatalogModelPool({
+      providers: [
+        {
+          id: 'vendor',
+          label: 'Vendor',
+          enabled: true,
+          models: [
+            { id: 'm-3.8', label: 'M 3.8', enabled: true, supportsStreaming: true, supportsTools: true },
+            { id: 'm-3.7', label: 'M 3.7', enabled: true, supportsStreaming: true, supportsTools: true },
+          ],
+        },
+      ],
+    } as never)
+  }
 
-  it('knows an older version of a family row, as the peers table offers it', () => {
-    expect(knownModel('pool-only', 'flash-3.7')).toBe(false)
-    publishListedModelPool('pool-only', [{ id: 'flash-3.8' }, { id: 'flash-3.7' }])
-    expect(knownModel('pool-only', 'flash-3.7')).toBe(true)
-    expect(knownModel('pool-only', 'ghost')).toBe(false)
+  it('knows an older version of a family row the catalog pools', () => {
+    expect(knownModel('vendor', 'm-3.7')).toBe(false)
+    publishFamilyVersions()
+    expect(knownModel('vendor', 'm-3.8')).toBe(true)
+    expect(knownModel('vendor', 'm-3.7')).toBe(true)
+    expect(knownModel('vendor', 'ghost')).toBe(false)
+  })
+
+  it('takes the pooled model through the answer check', () => {
+    publishFamilyVersions()
+    const facts: RouteAnswerFacts = {
+      routesTo: '*',
+      isSetUp: () => true,
+      isRouter: () => false,
+      definitionOf: provider => provider,
+      serves: () => true,
+      knownModel,
+    }
+    expect(checkRouteAnswer({ provider: 'vendor', model: 'm-3.7' }, facts)).toEqual({
+      kind: 'target',
+      target: { provider: 'vendor', model: 'm-3.7' },
+    })
+  })
+
+  it('reads a plain provider\'s custom models only for a custom provider', () => {
+    setRuntimeProviderConfigs({
+      vendor: { hasApiKey: true, customModels: [{ modelId: 'my-model' }] },
+    } as never)
+    expect(knownModel('vendor', 'my-model')).toBe(false)
+    setRuntimeProviderConfigs({
+      mine: { isCustomProvider: true, customModels: [{ modelId: 'my-model' }] },
+    } as never)
+    expect(knownModel('mine', 'my-model')).toBe(true)
   })
 })
