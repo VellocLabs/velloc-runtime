@@ -1,5 +1,5 @@
 import "./renderers.css";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import {
   columnFilteringFeature,
@@ -44,6 +44,7 @@ import {
 import { Badge } from "../../ui/badge";
 import { Button } from "../../ui/button";
 import { Input } from "../../ui/input";
+import { ToggleGroup, ToggleGroupItem } from "../../ui/toggle-group";
 import { Progress } from "../../ui/progress";
 import {
   Table,
@@ -368,7 +369,12 @@ type Col = {
   label: string;
   format?: "text" | "number" | "currency" | "percent" | "badge" | "date";
   align?: "left" | "right";
+  filter?: boolean;
 };
+
+/** The text a column filter compares: the cell as shown, blank cells excluded. */
+const filterText = (value: unknown): string =>
+  value == null ? "" : typeof value === "string" ? value : String(value);
 
 const tableFeats = tableFeatures({
   rowSortingFeature,
@@ -442,6 +448,28 @@ function DataTableView({
   pageSize: number;
   onRowClick?: (row: Row) => void;
 }) {
+  const [picked, setPicked] = useState<Record<string, string[]>>({});
+  const filters = useMemo(
+    () =>
+      columns
+        .filter((c) => c.filter)
+        .map((c) => ({
+          col: c,
+          values: [...new Set(rows.map((r) => filterText(r[c.key])))]
+            .filter(Boolean)
+            .sort((a, b) => a.localeCompare(b, undefined, { numeric: true })),
+        }))
+        .filter((f) => f.values.length > 0),
+    [columns, rows],
+  );
+  const shown = useMemo(() => {
+    const active = filters.filter((f) => (picked[f.col.key] ?? []).length);
+    if (!active.length) return rows;
+    return rows.filter((r) =>
+      active.every((f) => picked[f.col.key]!.includes(filterText(r[f.col.key]))),
+    );
+  }, [rows, filters, picked]);
+
   const cols = useMemo<ColumnDef<typeof tableFeats, Row>[]>(
     () =>
       columns.map((c) => {
@@ -478,7 +506,7 @@ function DataTableView({
   const table = useTable({
     features: tableFeats,
     columns: cols,
-    data: rows,
+    data: shown,
     globalFilterFn: "includesString",
     getColumnCanGlobalFilter: () => true,
     initialState: {
@@ -493,7 +521,11 @@ function DataTableView({
   const pageCount = Math.max(1, table.getPageCount());
   const from = filtered === 0 ? 0 : pageIndex * size + 1;
   const to = Math.min(filtered, (pageIndex + 1) * size);
-  const showPager = rows.length > size;
+  const showPager = shown.length > size;
+  const pick = (key: string, values: string[]) => {
+    setPicked((current) => ({ ...current, [key]: values }));
+    table.setPageIndex(0);
+  };
 
   return (
     <div className="a2-card a2-enter flex w-full min-w-0 flex-col overflow-hidden">
@@ -523,10 +555,52 @@ function DataTableView({
           ) : null}
         </div>
       ) : null}
+      {filters.length ? (
+        <div
+          className={cn(
+            "flex min-w-0 flex-col gap-2 px-4 pb-3",
+            !(title || searchable) && "pt-3.5",
+          )}
+        >
+          {filters.map(({ col, values }) => {
+            const on = picked[col.key] ?? [];
+            return (
+              <div key={col.key} className="flex min-w-0 items-center gap-3">
+                <span className="w-24 shrink-0 truncate text-[11.5px] font-medium text-muted-foreground">
+                  {col.label}
+                </span>
+                <ToggleGroup
+                  type="multiple"
+                  spacing={1.5}
+                  value={on}
+                  onValueChange={(v: string[]) => pick(col.key, v)}
+                  aria-label={col.label}
+                  className="min-w-0 flex-wrap justify-start"
+                >
+                  {values.map((value) => (
+                    <ToggleGroupItem
+                      key={value}
+                      value={value}
+                      className={cn(
+                        "h-6.5 rounded-full! border px-2.5 text-[12px] font-medium transition-colors",
+                        on.includes(value)
+                          ? "border-[color-mix(in_oklch,var(--a2-accent)_50%,transparent)] bg-[color-mix(in_oklch,var(--a2-accent)_14%,transparent)]! text-(--a2-accent)"
+                          : "border-black/[0.1] dark:border-white/[0.1] bg-black/[0.02] dark:bg-white/[0.02] text-foreground/80 hover:bg-black/[0.05] dark:hover:bg-white/[0.05]",
+                      )}
+                    >
+                      {value}
+                    </ToggleGroupItem>
+                  ))}
+                </ToggleGroup>
+              </div>
+            );
+          })}
+        </div>
+      ) : null}
       <div
         className={cn(
           "min-w-0 border-(--a2-line)",
-          (title || searchable) && "border-t",
+          (title || searchable || filters.length > 0) && "border-t",
         )}
       >
         <Table className="text-[13px]">

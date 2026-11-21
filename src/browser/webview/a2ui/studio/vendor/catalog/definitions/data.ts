@@ -73,6 +73,12 @@ export const dataDefinitions = {
             .enum(["text", "number", "currency", "percent", "badge", "date"])
             .optional(),
           align: z.enum(["left", "right"]).optional(),
+          filter: z
+            .boolean()
+            .optional()
+            .describe(
+              "Offer this column's distinct values as filter chips, one row per filtered column, above the table.",
+            ),
         }),
       ),
       rows: z.array(z.record(z.any())),

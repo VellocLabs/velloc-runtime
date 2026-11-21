@@ -18363,6 +18363,20 @@
                             "$ref": "common_types.json#/$defs/FunctionCall"
                           }
                         ]
+                      },
+                      "filter": {
+                        "description": "Offer this column's distinct values as filter chips, one row per filtered column, above the table.",
+                        "anyOf": [
+                          {
+                            "type": "boolean"
+                          },
+                          {
+                            "$ref": "common_types.json#/$defs/DataBinding"
+                          },
+                          {
+                            "$ref": "common_types.json#/$defs/FunctionCall"
+                          }
+                        ]
                       }
                     },
                     "required": [
