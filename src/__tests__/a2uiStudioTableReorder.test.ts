@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 // DataTable reorderable: a grip column first, every row on one page with no search,
-// filters or sorting, and onReorder sends { order, from, to, row } with the new order shown at once.
-import { afterEach, describe, expect, it } from 'vitest'
+// filters or sorting; a pointer drag from the grip or an arrow key moves a row, and onReorder sends { order, from, to, row } with the new order shown at once.
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createElement } from 'react'
 import { cleanup, fireEvent, render, waitFor } from '@testing-library/react'
 import { exportA2UICatalog } from '@copilotkit/react-core/v2/generative-ui'
@@ -30,11 +30,16 @@ const order = (root: HTMLElement) => [...root.querySelectorAll('tbody tr')].map(
 const handles = (root: HTMLElement) => [...root.querySelectorAll<HTMLElement>('[data-reorder-handle]')]
 const rowsOf = (root: HTMLElement) => [...root.querySelectorAll<HTMLElement>('tbody tr')]
 
-function drag(root: HTMLElement, from: number, to: number) {
-  const dataTransfer = { setData: () => undefined, effectAllowed: '', dropEffect: '' }
-  fireEvent.dragStart(rowsOf(root)[from]!, { dataTransfer })
-  fireEvent.dragOver(rowsOf(root)[to]!, { dataTransfer })
-  fireEvent.drop(rowsOf(root)[to]!, { dataTransfer })
+/** A pointer drag from row `from`'s grip to row `to`: the grip holds the pointer, the row under it is the target. */
+async function drag(root: HTMLElement, from: number, to: number, end: 'pointerUp' | 'pointerCancel' = 'pointerUp') {
+  const target = rowsOf(root)[to]!.querySelectorAll('td')[1]!
+  const spy = vi.spyOn(document, 'elementFromPoint').mockReturnValue(target)
+  const grip = handles(root)[from]!
+  fireEvent.pointerDown(grip, { button: 0, pointerId: 1 })
+  await waitFor(() => expect(rowsOf(root)[from]!.className).toContain('opacity-50'))
+  fireEvent.pointerMove(grip, { pointerId: 1, clientX: 10, clientY: 10 })
+  fireEvent[end](grip, { pointerId: 1 })
+  spy.mockRestore()
 }
 
 afterEach(() => cleanup())
@@ -67,7 +72,7 @@ describe('DataTable reorderable', () => {
     const events: StudioEvent[] = []
     const view = page(`${TABLE}, selectKey="id", onReorder=Event("moved", {}))`, e => events.push(e))
     await waitFor(() => expect(order(view.container)).toHaveLength(4))
-    drag(view.container, 0, 2)
+    await drag(view.container, 0, 2)
     await waitFor(() => expect(events).toHaveLength(1))
     expect(events[0]).toMatchObject({
       name: 'moved',
@@ -86,6 +91,16 @@ describe('DataTable reorderable', () => {
     expect(order(view.container)).toEqual(['Alpha', 'Beta', 'Delta', 'Gamma'])
     fireEvent.keyDown(handles(view.container)[0]!, { key: 'ArrowUp' })
     expect(events).toHaveLength(1)
+  })
+
+  it('a cancelled pointer drag changes nothing and sends nothing', async () => {
+    const events: StudioEvent[] = []
+    const view = page(`${TABLE}, selectKey="id", onReorder=Event("moved", {}))`, e => events.push(e))
+    await waitFor(() => expect(handles(view.container)).toHaveLength(4))
+    await drag(view.container, 0, 2, 'pointerCancel')
+    await waitFor(() => expect(rowsOf(view.container)[0]!.className).not.toContain('opacity-50'))
+    expect(events).toHaveLength(0)
+    expect(order(view.container)).toEqual(NAMES)
   })
 
   it('without reorderable there is no grip column', async () => {

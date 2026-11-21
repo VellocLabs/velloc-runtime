@@ -1,5 +1,5 @@
 import "./renderers.css";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import {
   columnFilteringFeature,
@@ -493,7 +493,14 @@ function DataTableView({
     () => (order ? order.map((i) => rows[i]!) : rows),
     [order, rows],
   );
-  const [dragFrom, setDragFrom] = useState<number | null>(null);
+  /** A grip drag in progress: the row it started on and the row under the pointer. */
+  const [drag, setDragState] = useState<{ from: number; over: number } | null>(null);
+  // Pointer events can arrive before React re-renders; the handlers read the ref, the rows draw from state.
+  const dragRef = useRef<{ from: number; over: number } | null>(null);
+  const setDrag = (next: { from: number; over: number } | null) => {
+    dragRef.current = next;
+    setDragState(next);
+  };
   const [picked, setPicked] = useState<Record<string, string[]>>({});
   const [checkedFilter, setCheckedFilter] = useState<string[]>([]);
   const filters = useMemo(
@@ -862,29 +869,14 @@ function DataTableView({
                 key={row.id}
                 {...(reorderable
                   ? {
-                      draggable: !selection || keyOf(row.original) !== "",
-                      "data-reorder-row": "",
-                      onDragStart: (event: React.DragEvent) => {
-                        event.dataTransfer.effectAllowed = "move";
-                        event.dataTransfer.setData("text/plain", String(at));
-                        setDragFrom(at);
-                      },
-                      onDragOver: (event: React.DragEvent) => {
-                        if (dragFrom === null) return;
-                        event.preventDefault();
-                        event.dataTransfer.dropEffect = "move";
-                      },
-                      onDrop: (event: React.DragEvent) => {
-                        event.preventDefault();
-                        if (dragFrom !== null) move(dragFrom, at);
-                        setDragFrom(null);
-                      },
-                      onDragEnd: () => setDragFrom(null),
+                      "data-reorder-row": String(at),
                     }
                   : {})}
                 className={cn(
                   "border-(--a2-line) hover:bg-black/[0.025] dark:hover:bg-white/[0.025]",
-                  dragFrom === at && "opacity-50",
+                  drag?.from === at && "opacity-50",
+                  drag && drag.over === at && drag.over < drag.from && "shadow-[inset_0_2px_0_var(--a2-accent)]",
+                  drag && drag.over === at && drag.over > drag.from && "shadow-[inset_0_-2px_0_var(--a2-accent)]",
                   rowActionOf(row.original) &&
                     "cursor-pointer outline-none focus-visible:bg-black/[0.04] focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/50 dark:focus-visible:bg-white/[0.04]",
                 )}
@@ -913,6 +905,29 @@ function DataTableView({
                       aria-label={studioText("a2ui.studio.reorderRow")}
                       disabled={selection !== undefined && keyOf(row.original) === ""}
                       onClick={(event) => event.stopPropagation()}
+                      // Pointer drag from the grip, not native drag and drop, which an embedding
+                      // pane may never deliver: the grip holds the pointer and the row under it is the target.
+                      onPointerDown={(event) => {
+                        if (event.button !== 0) return;
+                        event.preventDefault();
+                        event.currentTarget.setPointerCapture?.(event.pointerId);
+                        setDrag({ from: at, over: at });
+                      }}
+                      onPointerMove={(event) => {
+                        const drag = dragRef.current;
+                        if (!drag) return;
+                        const hit = document
+                          .elementFromPoint(event.clientX, event.clientY)
+                          ?.closest<HTMLElement>("[data-reorder-row]");
+                        const over = hit ? Number(hit.dataset.reorderRow) : NaN;
+                        if (Number.isInteger(over) && over !== drag.over) setDrag({ ...drag, over });
+                      }}
+                      onPointerUp={() => {
+                        const drag = dragRef.current;
+                        if (drag) move(drag.from, drag.over);
+                        setDrag(null);
+                      }}
+                      onPointerCancel={() => setDrag(null)}
                       onKeyDown={(event) => {
                         if (event.key === "ArrowUp" || event.key === "ArrowDown") {
                           event.preventDefault();
@@ -923,7 +938,7 @@ function DataTableView({
                         // The row turns Enter and Space into its own action; the grip is not the row.
                         if (event.key === "Enter" || event.key === " ") event.stopPropagation();
                       }}
-                      className="grid size-6 cursor-grab place-content-center rounded-sm text-muted-foreground/70 outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50 active:cursor-grabbing disabled:cursor-default disabled:opacity-40"
+                      className="grid size-6 cursor-grab touch-none place-content-center rounded-sm text-muted-foreground/70 outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50 active:cursor-grabbing disabled:cursor-default disabled:opacity-40"
                     >
                       <GripVertical className="size-3.5" />
                     </button>
