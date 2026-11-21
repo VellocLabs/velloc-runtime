@@ -762,7 +762,7 @@ function InteractiveAssistantUiThread({
             inertWhy: effortTeammate
               ? t('composerEffort.teammateLocked')
               : undefined,
-            ...(routeMember ? { routeMember: { provider: routeMember.provider, model: routeMember.model } } : {}),
+            ...(routeMember ? { routeMember } : {}),
             onSelect: selection =>
               onSelectSessionModel(effortSessionId, selection),
           }

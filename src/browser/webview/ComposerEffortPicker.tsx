@@ -15,6 +15,7 @@ import { cn } from "@/lib/utils";
 
 import { useT, type TranslateFn } from "./i18n";
 import { activeModelLabel, findActiveModel } from "./activeModel";
+import type { RoutedVia } from "../../models/drivers/providerRouter";
 import { servingRouteMember } from "./routeDisplay";
 import type {
   BrowserLlmCatalog,
@@ -38,7 +39,7 @@ export type SessionEffortContextValue = {
   /** Why it is inert — the trigger's tooltip. */
   inertWhy?: string;
   /** The member that served the latest routed reply; a router selection names it and offers its tiers (F-27). */
-  routeMember?: { provider: string; model: string };
+  routeMember?: Pick<RoutedVia, 'provider' | 'model' | 'label' | 'tiers' | 'defaultTier'>;
   /** Apply a selection to THIS session only. */
   onSelect: (selection: BrowserLlmSelection) => void;
 };

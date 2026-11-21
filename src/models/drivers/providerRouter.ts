@@ -83,6 +83,10 @@ export interface ProviderRouter {
 export type RoutedVia = {
   provider: string
   model: string
+  /** The member's display name and thinking tiers as the runtime lists them, so a reader needs no catalog row for it. */
+  label?: string
+  tiers?: string[]
+  defaultTier?: string
   switchedFrom?: { provider: string; model: string; reason?: ProviderConnectivityIssue['kind'] }
 }
 

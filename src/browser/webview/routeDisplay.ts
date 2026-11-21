@@ -23,6 +23,10 @@ export function routedViaOfRow(row: unknown): RoutedVia | undefined {
   const via = (row as { routedVia?: unknown } | null)?.routedVia
   if (!isTarget(via)) return undefined
   const out: RoutedVia = { provider: via.provider, model: via.model }
+  const facts = via as { label?: unknown; tiers?: unknown; defaultTier?: unknown }
+  if (typeof facts.label === 'string' && facts.label) out.label = facts.label
+  if (Array.isArray(facts.tiers) && facts.tiers.every(tier => typeof tier === 'string')) out.tiers = facts.tiers as string[]
+  if (typeof facts.defaultTier === 'string') out.defaultTier = facts.defaultTier
   const from = (via as { switchedFrom?: unknown }).switchedFrom
   if (isTarget(from)) {
     const reason = (from as { reason?: unknown }).reason
@@ -65,20 +69,31 @@ export function routeMemberName(
 
 /**
  * The member serving the selection when it is a router row: the catalog entry
- * of the latest routed reply's member. Null for any other selection, before a
- * routed reply, or for a member the catalog does not list.
+ * of the latest routed reply's member, or, for a member the catalog does not
+ * list, an entry made from what the reply recorded (its name, else its raw id,
+ * and its tiers). Null for any other selection and before a routed reply.
  */
 export function servingRouteMember(
   catalog: BrowserLlmCatalog | null | undefined,
   selection: BrowserLlmSelection | null | undefined,
-  member: { provider: string; model: string } | undefined,
+  member: Pick<RoutedVia, 'provider' | 'model' | 'label' | 'tiers' | 'defaultTier'> | undefined,
 ): { provider: BrowserLlmProvider; model: BrowserLlmModel } | null {
   if (!member || !catalog) return null
   const active = findActiveModel(catalog, selection)
   if (!active || !isRouterProvider(active.provider)) return null
   const provider = catalog.providers.find((p) => p.id === member.provider)
   const model = provider?.models.find((m) => m.id === member.model)
-  return provider && model ? { provider, model } : null
+  if (provider && model) return { provider, model }
+  const recorded = {
+    id: member.model,
+    label: member.label ?? member.model,
+    enabled: true,
+    supportsStreaming: true,
+    ...(member.tiers ? { availableThinkingTiers: member.tiers } : {}),
+    ...(member.defaultTier ? { defaultThinkingTier: member.defaultTier } : {}),
+  } as BrowserLlmModel
+  const source = provider ?? ({ id: member.provider, label: member.provider, iconSvg: '', enabled: true, models: [] } as unknown as BrowserLlmProvider)
+  return { provider: source, model: recorded }
 }
 
 const NOTICE_KEYS: Record<string, MessageKey> = {

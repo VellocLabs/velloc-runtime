@@ -106,6 +106,19 @@ function listedTiers(provider: string, model: string): readonly string[] | undef
     ?? mergedModels(provider).find(listed => listed.id === model)?.thinkingTiers
 }
 
+/** What a reader shows for a member: its name, the tiers it offers and the one it starts at. */
+export function routeMemberFacts(provider: string, model: string): { label?: string; tiers?: string[]; defaultTier?: string } {
+  const row = findConfiguredModel(provider, model)
+  const listed = mergedModels(provider).find(each => each.id === model)
+  const tiers = listedTiers(provider, model)
+  const defaultTier = row?.defaultThinkingTier ?? listed?.defaultThinkingTier
+  return {
+    ...(listed?.name ? { label: listed.name } : {}),
+    ...(tiers && tiers.length > 0 ? { tiers: [...tiers] } : {}),
+    ...(defaultTier ? { defaultTier } : {}),
+  }
+}
+
 const text = (error: unknown): string => (error instanceof Error ? error.message : String(error))
 
 /**

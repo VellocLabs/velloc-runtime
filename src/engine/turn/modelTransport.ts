@@ -84,6 +84,7 @@ import { raisesTurnRecover, recoverThroughMods } from './recoverThroughMods'
 import { observeProviderCall, type CallEnding } from './providerOutcomeCall'
 import { providerRouterBoundsFor, RouteSwitchError, type RoutedVia } from '../../models/drivers/providerRouter'
 import { routeCallOf, routedViaOf, routeErrorOfCall, shareRouteCall } from '../../models/drivers/providerRouteCall'
+import { routeMemberFacts } from '../../models/drivers/providerRouteResolution'
 import { sessionUsageOf } from '../../mods/sessionNouns'
 import type { StoredRow } from '../../mods/sessionAppendEvent'
 
@@ -544,7 +545,7 @@ function openRouteCall(payload: object, params: QueryModelCallParams): RoutedVia
 async function* routedReplies(call: ModelCall, previous: RoutedVia | undefined): AsyncGenerator<Message, void, unknown> {
   for await (const message of performRequest(call)) {
     const via = message.type === MSG_TYPE_ASSISTANT ? routedViaOf(call.payload, previous) : undefined
-    if (via) (message as { routedVia?: RoutedVia }).routedVia = via
+    if (via) (message as { routedVia?: RoutedVia }).routedVia = { ...via, ...routeMemberFacts(via.provider, via.model) }
     yield message
   }
 }

@@ -391,13 +391,29 @@ describe('ComposerEffortPicker — a router selection (F-27)', () => {
     expect(onSelect).toHaveBeenLastCalledWith({ providerId: 'mod.router', modelId: 'route-1', thinkingTier: 'max' })
   })
 
-  it('names the route itself before a routed reply, or for a member the catalog lacks', () => {
+  it('names the route itself before a routed reply', () => {
     mountEffort({ catalog: routed, selection: onRoute })
     expect(screen.getByTestId('composer-effort-model').textContent).toBe('Free pool')
     expect(screen.queryByTestId('composer-effort-trigger')).toBeNull()
+  })
+
+  it('names a member the catalog lacks from what the reply recorded, and offers the tiers recorded', () => {
+    const { onSelect } = mountEffort({
+      catalog: routed,
+      selection: onRoute,
+      routeMember: { provider: 'pool-y', model: 'far-1', label: 'Far One', tiers: ['low', 'high'], defaultTier: 'low' },
+    })
+    const name = screen.getByTestId('composer-effort-model')
+    expect(name.textContent).toBe('Far One')
+    expect(name.getAttribute('title')).toBe('Served through the route Free pool')
+    fireEvent.click(screen.getByTestId('composer-effort-trigger'))
+    fireEvent.click(screen.getByTestId('composer-effort-stop-low'))
+    expect(onSelect).toHaveBeenLastCalledWith({ providerId: 'mod.router', modelId: 'route-1', thinkingTier: 'low' })
     cleanup()
+    // Nothing recorded but the ids: the raw model id, and no tiers to choose.
     mountEffort({ catalog: routed, selection: onRoute, routeMember: { provider: 'gone', model: 'm' } })
-    expect(screen.getByTestId('composer-effort-model').textContent).toBe('Free pool')
+    expect(screen.getByTestId('composer-effort-model').textContent).toBe('m')
+    expect(screen.queryByTestId('composer-effort-trigger')).toBeNull()
   })
 
   it('a member on a non-router selection is ignored', () => {

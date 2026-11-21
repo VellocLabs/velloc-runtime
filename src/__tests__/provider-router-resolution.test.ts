@@ -35,7 +35,7 @@ import {
 } from '../runtime/testing/noopAdapters'
 import type { RuntimeConfig } from '../runtime/interfaces/RuntimeConfig'
 import { fakeProviderRequestSeam } from './_helpers/fakeProviderRequestSeam'
-import { logRowOf, tierForTarget } from '../models/drivers/providerRouteResolution'
+import { logRowOf, routeMemberFacts, tierForTarget } from '../models/drivers/providerRouteResolution'
 import { findConfiguredModel } from '../config/nexusModelConfig/findConfiguredModel'
 import { recordRequest } from '../models/usage/requestLogWriter'
 import type { RequestLogRow } from '../models/usage/requestLogStore'
@@ -1015,6 +1015,23 @@ describe('a call to a router provider', () => {
     )
     expect(decision).toEqual({ retry: true, delayMs: 0, notify: false })
     expect(seen[0]).toMatchObject({ failure: { kind: 'connectivity', retryAfterMs: 0 }, decision: { retry: true, delayMs: 0 } })
+  })
+
+  it("records the member's tiers with the reply, so a reader needs no catalog row for it", async () => {
+    const real = vi.mocked(findConfiguredModel).getMockImplementation()!
+    vi.mocked(findConfiguredModel).mockImplementation((provider, model) =>
+      provider === A && model === 'm-a' ? ({ availableThinkingTiers: ['low', 'high'], defaultThinkingTier: 'low' } as never) : real(provider, model))
+    try {
+      expect(routeMemberFacts(A, 'm-a')).toEqual({ tiers: ['low', 'high'], defaultTier: 'low' })
+      expect(routeMemberFacts(A, 'unlisted')).toEqual({})
+      const { transport } = rawHost({})
+      const { router } = testRouter([{ provider: A, model: 'm-a' }])
+      registerProviderRouter(ROUTER, router, { routesTo: '*' })
+      const values = await call(transport, config())
+      expect(assistants(values).at(-1).routedVia).toEqual({ provider: A, model: 'm-a', tiers: ['low', 'high'], defaultTier: 'low' })
+    } finally {
+      vi.mocked(findConfiguredModel).mockImplementation(real)
+    }
   })
 })
 
