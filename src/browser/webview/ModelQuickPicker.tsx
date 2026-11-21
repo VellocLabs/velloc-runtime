@@ -5,7 +5,6 @@ import {
   CircleDollarSignIcon,
   LayersIcon,
   MoreHorizontalIcon,
-  PencilIcon,
   PinIcon,
   RouteIcon,
   SettingsIcon,
@@ -710,8 +709,8 @@ function ModelQuickPickerImpl({
                 variant="ghost"
                 size="icon-sm"
                 data-testid={`${testIdPrefix}-model-picker-provider-settings`}
-                aria-label={t("modelPicker.providerSettings")}
-                title={t("modelPicker.providerSettings")}
+                aria-label={t("modelPicker.modelSettings")}
+                title={t("modelPicker.modelSettings")}
                 className="shrink-0"
                 onClick={() => {
                   setOpen(false);
@@ -930,12 +929,30 @@ function ProviderHeaderMenu({
       ) : null}
     </DropdownMenuPrimitive.Item>
   );
+  const editButton = menu.onEditProvider ? (
+    <button
+      type="button"
+      className="rounded-sm p-0.5 text-muted-foreground outline-none transition-colors hover:bg-accent hover:text-foreground focus-visible:bg-accent"
+      aria-label={t("modelPicker.providerSettings")}
+      title={t("modelPicker.providerSettings")}
+      data-testid={`${testIdPrefix}-provider-edit-${provider.id}`}
+      onClick={() => {
+        onDone();
+        menu.onEditProvider?.(provider.id);
+      }}
+    >
+      <SettingsIcon className="size-3.5" />
+    </button>
+  ) : null;
+  if (families.length === 0) return <span className="ml-auto flex items-center gap-0.5">{editButton}</span>;
   return (
+    <span className="ml-auto flex items-center gap-0.5">
+    {editButton}
     <DropdownMenuPrimitive.Root>
       <DropdownMenuPrimitive.Trigger asChild>
         <button
           type="button"
-          className="ml-auto rounded-sm p-0.5 text-muted-foreground outline-none transition-colors hover:bg-accent hover:text-foreground focus-visible:bg-accent"
+          className="rounded-sm p-0.5 text-muted-foreground outline-none transition-colors hover:bg-accent hover:text-foreground focus-visible:bg-accent"
           aria-label={t("modelPicker.providerMenu", { name: provider.label })}
           title={t("modelPicker.providerMenu", { name: provider.label })}
           data-testid={`${testIdPrefix}-provider-menu-${provider.id}`}
@@ -983,25 +1000,10 @@ function ProviderHeaderMenu({
               })}
             </>
           ) : null}
-          {families.length > 0 && menu.onEditProvider ? (
-            <DropdownMenuPrimitive.Separator className="my-1 h-px bg-border" />
-          ) : null}
-          {menu.onEditProvider ? (
-            <DropdownMenuPrimitive.Item
-              className={MENU_ITEM_CLASS}
-              data-testid={`${testIdPrefix}-provider-edit-${provider.id}`}
-              onSelect={() => {
-                onDone();
-                menu.onEditProvider?.(provider.id);
-              }}
-            >
-              <PencilIcon className="size-3.5" />
-              {t("modelPicker.editProvider")}
-            </DropdownMenuPrimitive.Item>
-          ) : null}
         </DropdownMenuPrimitive.Content>
       </DropdownMenuPrimitive.Portal>
     </DropdownMenuPrimitive.Root>
+    </span>
   );
 }
 

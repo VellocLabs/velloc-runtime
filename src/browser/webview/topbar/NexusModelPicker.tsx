@@ -17,8 +17,6 @@ import {
 import { useSettingsBridge } from "../nexusSettingsBridge";
 import { providersList, providersSetModelEntries } from "../settings/clients";
 import { useCan } from "../useCan";
-import { getModContributions } from "../mods/modContributionsView";
-import { ProviderAppOpenerContext, providerSettingsTarget } from "../apps/providerSettingsApp";
 
 /**
  * The TOPBAR model picker — a configured wrapper over `ModelQuickPicker`: the
@@ -40,7 +38,7 @@ export type NexusModelPickerProps = {
   defaultSelection?: BrowserLlmSelection | null;
   onSelect: (selection: BrowserLlmSelection) => void;
   onOpenSettings: () => void;
-  /** Open one provider's settings page (its `⋯` → "Edit…"). */
+  /** Open one provider's settings page (its gear button). */
   onOpenProviderSettings?: (providerId: string) => void;
   /** Programmatic-open signal: increment to open the popover. Used by the
    *  send gate when it adopts the catalog default for a session whose pinned
@@ -60,8 +58,8 @@ function NexusModelPickerImpl({
   onOpenProviderSettings,
   ...props
 }: NexusModelPickerProps) {
-  // The footer opens the selected provider's settings (its app, its page, or
-  // Settings → Models), all built on `providers.*`
+  // The footer opens Settings → Models; it and the per-provider gear are
+  // built on `providers.*`
   // (`manager`), which is the nav's own gate for that entry. A connection
   // without it cannot open the page — the settings shell would fall back to
   // General — so it gets no footer rather than a shortcut that lands somewhere
@@ -116,18 +114,6 @@ function NexusModelPickerImpl({
     [bridge],
   );
 
-  // The footer opens the SELECTED provider: its settings app when it names a
-  // published one, else its settings page (F-27, F-40).
-  const openApp = React.useContext(ProviderAppOpenerContext);
-  const selectedProviderId = props.selection?.providerId;
-  const openSelectedProvider = React.useCallback(() => {
-    const provider = catalog?.providers.find((p) => p.id === selectedProviderId);
-    const target = providerSettingsTarget(provider, getModContributions().apps, !!openApp);
-    if (target.kind === "app") openApp?.(target.app);
-    else if (target.kind === "page" && onOpenProviderSettings) onOpenProviderSettings(target.providerId);
-    else onOpenSettings();
-  }, [catalog, selectedProviderId, openApp, onOpenProviderSettings, onOpenSettings]);
-
   const providerMenu = React.useMemo<ModelQuickPickerProviderMenu | undefined>(() => {
     const menu: ModelQuickPickerProviderMenu = {
       ...(bridge && canEditEntries ? { onAddVersion: addVersion } : {}),
@@ -141,7 +127,7 @@ function NexusModelPickerImpl({
   return (
     <ModelQuickPicker
       {...props}
-      onOpenSettings={canOpenProviderSettings ? openSelectedProvider : undefined}
+      onOpenSettings={canOpenProviderSettings ? onOpenSettings : undefined}
       onNoProviders={canOpenProviderSettings ? onOpenSettings : undefined}
       providerMenu={providerMenu}
       publishE2eSurface

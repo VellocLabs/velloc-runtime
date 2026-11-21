@@ -174,10 +174,10 @@ describe('quick picker — model entries', () => {
     expect(bridge.request).not.toHaveBeenCalled()
   })
 
-  it('Edit… opens the provider settings page', async () => {
+  it('the provider gear opens its settings page without opening the menu', async () => {
     const { onOpenProviderSettings } = setup()
-    await openMenu()
-    fireEvent.click(await screen.findByTestId('nexus-provider-edit-anthropic'))
+    const gear = await screen.findByLabelText('Provider settings…')
+    fireEvent.click(gear)
     expect(onOpenProviderSettings).toHaveBeenCalledWith('anthropic')
   })
 

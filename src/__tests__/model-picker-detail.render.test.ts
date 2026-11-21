@@ -117,7 +117,7 @@ describe('quick picker — the detail footer', () => {
     open(onOpenSettings)
     const button = await screen.findByTestId('nexus-model-picker-provider-settings')
     expect(button.textContent).toBe('')
-    expect(button.getAttribute('aria-label')).toBe('Provider settings…')
+    expect(button.getAttribute('aria-label')).toBe('Model settings…')
     fireEvent.click(button)
     expect(onOpenSettings).toHaveBeenCalledTimes(1)
   })

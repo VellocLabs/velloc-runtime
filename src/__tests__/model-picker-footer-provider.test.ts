@@ -1,8 +1,7 @@
 // @vitest-environment happy-dom
 /**
- * The topbar picker's settings footer opens the SELECTED provider (F-27, F-40):
- * its published settings app when it names one and the page can open apps,
- * else that provider's settings page, else Settings → Models.
+ * The topbar picker's settings footer always opens Settings → Models, never a
+ * provider's page or app — the per-provider gear covers that (F-27, F-40).
  */
 import { createElement as h } from 'react'
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
@@ -49,30 +48,20 @@ function pressFooter(selection: BrowserLlmSelection, opener: ProviderAppOpener |
   return calls
 }
 
-describe('the picker footer opens the selected provider', () => {
-  it("opens the provider's settings app when it names a published one", () => {
+describe('the picker footer opens Settings → Models', () => {
+  it('for a provider that names a published settings app', () => {
     act(() => setModContributions(APPS))
     const opened: string[] = []
     const calls = pressFooter({ providerId: 'switch', modelId: 'b' }, app => opened.push(app.type))
-    expect(opened).toEqual(['switch:console'])
-    expect(calls).toEqual([])
+    expect(opened).toEqual([])
+    expect(calls).toEqual(['models'])
   })
 
-  it("opens the provider's settings page when its app is not published (stable)", () => {
-    const calls = pressFooter({ providerId: 'switch', modelId: 'b' }, () => { throw new Error('no app') })
-    expect(calls).toEqual(['page:switch'])
+  it('for a plain provider, even with a page opener', () => {
+    expect(pressFooter({ providerId: 'plain', modelId: 'a' }, undefined)).toEqual(['models'])
   })
 
-  it("opens the provider's settings page when the page cannot open apps", () => {
-    act(() => setModContributions(APPS))
-    expect(pressFooter({ providerId: 'switch', modelId: 'b' }, undefined)).toEqual(['page:switch'])
-  })
-
-  it("opens a provider with no app at its settings page", () => {
-    expect(pressFooter({ providerId: 'plain', modelId: 'a' }, undefined)).toEqual(['page:plain'])
-  })
-
-  it('falls back to Settings → Models without a page opener', () => {
+  it('without a page opener', () => {
     expect(pressFooter({ providerId: 'plain', modelId: 'a' }, undefined, false)).toEqual(['models'])
   })
 })
