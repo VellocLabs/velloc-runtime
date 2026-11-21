@@ -4,7 +4,7 @@
  * call at a time, so what the module sees and what is published never part.
  */
 
-import { diffJson } from './appStateDiff'
+import { APP_PATCH_BATCH_MAX, diffJson } from './appStateDiff'
 
 export type WorkerAppCall = (method: string, args: unknown[]) => Promise<unknown>
 
@@ -32,7 +32,9 @@ export function makeWorkerAppNoun(call: WorkerAppCall): unknown {
     return clone(state.value)
   }
   const commit = async (before: unknown, next: unknown): Promise<unknown> => {
-    const patches = diffJson(before, next)
+    const diff = diffJson(before, next)
+    // A change wider than one call takes is sent as the whole state, which the runtime diffs again for readers.
+    const patches = diff.length > APP_PATCH_BATCH_MAX ? [{ path: '', value: next }] : diff
     if (patches.length > 0) {
       try {
         await call('publish', [patches])
