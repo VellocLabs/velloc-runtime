@@ -26,7 +26,7 @@ export function routedViaOfRow(row: unknown): RoutedVia | undefined {
   const facts = via as { label?: unknown; tiers?: unknown; defaultTier?: unknown }
   if (typeof facts.label === 'string' && facts.label) out.label = facts.label
   if (Array.isArray(facts.tiers) && facts.tiers.every(tier => typeof tier === 'string')) out.tiers = facts.tiers as string[]
-  if (typeof facts.defaultTier === 'string') out.defaultTier = facts.defaultTier
+  if (typeof facts.defaultTier === 'string' && facts.defaultTier) out.defaultTier = facts.defaultTier
   const from = (via as { switchedFrom?: unknown }).switchedFrom
   if (isTarget(from)) {
     const reason = (from as { reason?: unknown }).reason
@@ -84,15 +84,16 @@ export function servingRouteMember(
   const provider = catalog.providers.find((p) => p.id === member.provider)
   const model = provider?.models.find((m) => m.id === member.model)
   if (provider && model) return { provider, model }
-  const recorded = {
+  const recorded: BrowserLlmModel = {
     id: member.model,
     label: member.label ?? member.model,
     enabled: true,
     supportsStreaming: true,
     ...(member.tiers ? { availableThinkingTiers: member.tiers } : {}),
     ...(member.defaultTier ? { defaultThinkingTier: member.defaultTier } : {}),
-  } as BrowserLlmModel
-  const source = provider ?? ({ id: member.provider, label: member.provider, iconSvg: '', enabled: true, models: [] } as unknown as BrowserLlmProvider)
+  }
+  const unlisted: BrowserLlmProvider = { id: member.provider, label: member.provider, iconSvg: '', enabled: true, models: [] }
+  const source = provider ?? unlisted
   return { provider: source, model: recorded }
 }
 

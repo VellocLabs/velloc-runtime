@@ -250,4 +250,11 @@ describe('member names', () => {
     expect(latestRoutedVia(rows)).toEqual({ provider: BETA.id, model: 'beta-small' })
     expect(latestRoutedVia([reply()])).toBeUndefined()
   })
+
+  it('reads a recorded member name and tiers, dropping empty or malformed ones', () => {
+    const facts = { provider: BETA.id, model: 'beta-x', label: 'Beta X', tiers: ['low', 'high'], defaultTier: 'low' }
+    expect(latestRoutedVia([reply(facts as never, 'a-1')])).toEqual(facts)
+    const bad = { provider: BETA.id, model: 'beta-x', label: '', tiers: ['low', 3], defaultTier: '' }
+    expect(latestRoutedVia([reply(bad as never, 'a-1')])).toEqual({ provider: BETA.id, model: 'beta-x' })
+  })
 })

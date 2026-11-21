@@ -110,7 +110,7 @@ function listedTiers(provider: string, model: string): readonly string[] | undef
 export function routeMemberFacts(provider: string, model: string): { label?: string; tiers?: string[]; defaultTier?: string } {
   const row = findConfiguredModel(provider, model)
   const listed = mergedModels(provider).find(each => each.id === model)
-  const tiers = listedTiers(provider, model)
+  const tiers = row?.availableThinkingTiers ?? listed?.thinkingTiers
   const defaultTier = row?.defaultThinkingTier ?? listed?.defaultThinkingTier
   return {
     ...(listed?.name ? { label: listed.name } : {}),
