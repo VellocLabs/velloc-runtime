@@ -35,8 +35,8 @@ export function appSurfaceDelta(before: AppSurfaceState, after: AppSurfaceState)
   if (unset.length > 0) delta.unset = unset
   if (before.dataSeq !== after.dataSeq) {
     const patches = after.dataPatches
-    if (!patches || patches.from !== before.dataSeq || after.dataSeq === undefined) return undefined
-    delta.data = { from: patches.from, dataSeq: after.dataSeq, dataAt: after.dataAt ?? 0, patches: patches.patches }
+    if (!patches || patches.from !== before.dataSeq || after.dataSeq === undefined || after.dataAt === undefined) return undefined
+    delta.data = { from: patches.from, dataSeq: after.dataSeq, dataAt: after.dataAt, patches: patches.patches }
   }
   return delta.set || delta.unset || delta.data ? delta : null
 }

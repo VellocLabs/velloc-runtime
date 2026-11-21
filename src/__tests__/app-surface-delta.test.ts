@@ -42,6 +42,8 @@ describe('appSurfaceDelta', () => {
   it('gives no delta when the data was read whole, went away, or the app changed', () => {
     expect(appSurfaceDelta(board(), board({ data: { count: 9 }, dataSeq: 2 }))).toBeUndefined()
     expect(appSurfaceDelta(board(), board({ dataSeq: 3, dataPatches: { from: 2, patches: [] } }))).toBeUndefined()
+    const { dataAt: _at, ...noAt } = board({ dataSeq: 2, dataPatches: { from: 1, patches: [] } })
+    expect(appSurfaceDelta(board(), noAt), 'a data change with no time').toBeUndefined()
     const { data: _d, dataSeq: _s, dataAt: _a, ...bare } = board()
     expect(appSurfaceDelta(board(), bare)).toBeUndefined()
     expect(appSurfaceDelta(board(), board({ appId: 'other' }))).toBeUndefined()
@@ -141,11 +143,37 @@ describe('the board store of a page', () => {
     expect(seen.at(-1)).toMatchObject({ dataSeq: 6, data: { count: 6 } })
   })
 
-  it('a delta before any board is a gap too', () => {
+  it('a delta before any board is one the snapshot holds: it is dropped, with no new subscription', () => {
     const rig = connection()
-    holdAppSurface(rig.connection, 's1', () => undefined)
+    const seen: Array<AppSurfaceState | null> = []
+    holdAppSurface(rig.connection, 's1', state => seen.push(state))
     rig.deliver(MODS_APP_DELTA_EVENT, { set: { refreshing: true } })
+    expect(rig.log).toEqual(['subscribe'])
+    expect(seen).toHaveLength(0)
+  })
+
+  it('subscribes again once for a gap: deltas still on their way before the new board are dropped', () => {
+    const rig = connection()
+    const seen: Array<AppSurfaceState | null> = []
+    holdAppSurface(rig.connection, 's1', state => seen.push(state))
+    rig.deliver(MODS_APP_STATE_EVENT, board())
+    rig.deliver(MODS_APP_DELTA_EVENT, { data: { from: 5, dataSeq: 6, dataAt: 20, patches: [] } })
+    rig.deliver(MODS_APP_DELTA_EVENT, { data: { from: 6, dataSeq: 7, dataAt: 30, patches: [] } })
     expect(rig.log).toEqual(['subscribe', 'unsubscribe', 'subscribe'])
+    rig.deliver(MODS_APP_STATE_EVENT, board({ dataSeq: 7, data: { count: 7 } }))
+    rig.deliver(MODS_APP_DELTA_EVENT, { data: { from: 7, dataSeq: 8, dataAt: 40, patches: [{ path: '/count', value: 8 }] } })
+    expect(seen.at(-1)).toMatchObject({ dataSeq: 8, data: { count: 8 } })
+    expect(rig.log).toHaveLength(3)
+  })
+
+  it('a delta that would leave a malformed board is a gap', () => {
+    const rig = connection()
+    const seen: Array<AppSurfaceState | null> = []
+    holdAppSurface(rig.connection, 's1', state => seen.push(state))
+    rig.deliver(MODS_APP_STATE_EVENT, board())
+    rig.deliver(MODS_APP_DELTA_EVENT, { set: { errors: 'not a list' } })
+    expect(rig.log).toEqual(['subscribe', 'unsubscribe', 'subscribe'])
+    expect(seen).toHaveLength(1)
   })
 })
 

@@ -41,11 +41,15 @@ export function holdAppSurface(connection: Subscriber, sessionId: string, listen
   const held = store
   held.listeners.add(listener)
   if (held.unsubscribe === null) {
+    // Until a whole board arrives, a delta is one the coming snapshot already holds.
+    let awaitingBoard = true
     const subscribe = (): void => {
+      awaitingBoard = true
       held.unsubscribe = connection.subscribe<unknown>(modsAppTopic(sessionId), event => {
         if (event.type === MODS_APP_DELTA_EVENT) {
+          if (awaitingBoard) return
           const next = held.state && isAppSurfaceDelta(event.payload) ? applyAppSurfaceDelta(held.state, event.payload) : undefined
-          if (!next) {
+          if (!next || !isAppSurfaceState(next)) {
             // The change does not follow the board held: the topic's snapshot is the board again.
             held.unsubscribe?.()
             if (held.listeners.size > 0) subscribe()
@@ -53,6 +57,7 @@ export function holdAppSurface(connection: Subscriber, sessionId: string, listen
           }
           held.state = next
         } else {
+          awaitingBoard = false
           held.state = isAppSurfaceState(event.payload) ? event.payload : null
         }
         for (const each of [...held.listeners]) each(held.state)
