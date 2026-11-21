@@ -21,10 +21,10 @@ const DATA = {
   ],
 }
 
-function page(body: string, onEvent: (event: StudioEvent) => void) {
+function page(body: string, onEvent: (event: StudioEvent) => void, data: unknown = DATA) {
   const compiled = compiler.compile(`surface("ts")\n${body}`)
   if (!compiled.ok) throw new Error(compiled.message)
-  const operations = [...compiled.messages, { version: '1.0', updateDataModel: { surfaceId: 'ts', path: '/data', value: DATA } }]
+  const operations = [...compiled.messages, { version: '1.0', updateDataModel: { surfaceId: 'ts', path: '/data', value: data } }]
   return render(createElement(StudioSurfaceHost, { surfaceId: 'ts', operations, onEvent }))
 }
 
@@ -76,5 +76,26 @@ describe('DataTable row selection', () => {
     const view = page('root = DataTable(columns=$/data/columns, rows=$/data/rows)', () => undefined)
     await waitFor(() => expect(view.container.textContent).toContain('Gamma'))
     expect(boxes(view.container)).toHaveLength(0)
+  })
+
+  it('a shared key is written once, a row without the key cannot be checked, an empty view sends nothing', async () => {
+    const events: StudioEvent[] = []
+    const rows = [
+      { id: 'a', name: 'Alpha', source: 'North' },
+      { id: 'a', name: 'Again', source: 'North' },
+      { name: 'Keyless', source: 'South' },
+    ]
+    const view = page(SELECT.replace('selectKey=', 'searchable=true, selectKey='), event => events.push(event), { ...DATA, picked: [], rows })
+    await waitFor(() => expect(boxes(view.container)).toHaveLength(4))
+    expect(rowBox(view.container, 'Keyless').hasAttribute('disabled')).toBe(true)
+    expect([...view.container.querySelectorAll('tbody tr')].find(tr => tr.textContent?.includes('Keyless'))!.hasAttribute('tabindex')).toBe(false)
+    fireEvent.click(boxes(view.container)[0]!)
+    await waitFor(() => expect(events).toHaveLength(1))
+    expect(events[0]?.context).toMatchObject({ value: ['a'] })
+    fireEvent.change(view.container.querySelector('input')!, { target: { value: 'zzz' } })
+    await waitFor(() => expect(boxes(view.container)).toHaveLength(1))
+    fireEvent.click(boxes(view.container)[0]!)
+    await new Promise(r => setTimeout(r, 50))
+    expect(events).toHaveLength(1)
   })
 })

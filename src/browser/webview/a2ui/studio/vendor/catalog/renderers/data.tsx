@@ -565,16 +565,17 @@ function DataTableView({
     );
   };
   const shownKeys = selection
-    ? table.getFilteredRowModel().rows.map((r) => keyOf(r.original)).filter(Boolean)
+    ? [...new Set(table.getFilteredRowModel().rows.map((r) => keyOf(r.original)).filter(Boolean))]
     : [];
   const shownAll = shownKeys.length > 0 && shownKeys.every((k) => selection!.value.includes(k));
   const shownSome = shownKeys.some((k) => selection!.value.includes(k));
   const selectShown = (on: boolean) => {
-    if (!selection) return;
+    if (!selection || shownKeys.length === 0) return;
     const rest = selection.value.filter((k) => !shownKeys.includes(k));
     selection.set(on ? [...rest, ...shownKeys] : rest);
   };
-  const rowAction = onRowClick ?? (selection ? toggleRow : undefined);
+  const rowActionOf = (row: Row) =>
+    onRowClick ?? (selection && keyOf(row) ? toggleRow : undefined);
   const pick = (key: string, values: string[]) => {
     setPicked((current) => ({ ...current, [key]: values }));
     table.setPageIndex(0);
@@ -723,13 +724,13 @@ function DataTableView({
                 key={row.id}
                 className={cn(
                   "border-(--a2-line) hover:bg-black/[0.025] dark:hover:bg-white/[0.025]",
-                  rowAction &&
+                  rowActionOf(row.original) &&
                     "cursor-pointer outline-none focus-visible:bg-black/[0.04] focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/50 dark:focus-visible:bg-white/[0.04]",
                 )}
-                {...(rowAction
+                {...(rowActionOf(row.original)
                   ? {
                       tabIndex: 0,
-                      onClick: () => rowAction(row.original),
+                      onClick: () => rowActionOf(row.original)?.(row.original),
                       onKeyDown: (event: {
                         key: string;
                         repeat: boolean;
@@ -738,7 +739,7 @@ function DataTableView({
                         if (event.key !== "Enter" && event.key !== " ") return;
                         event.preventDefault();
                         if (event.repeat) return;
-                        rowAction(row.original);
+                        rowActionOf(row.original)?.(row.original);
                       },
                     }
                   : {})}
@@ -747,6 +748,7 @@ function DataTableView({
                   <TableCell className="h-10 w-10 py-2 pr-0 pl-4">
                     <Checkbox
                       checked={selection.value.includes(keyOf(row.original))}
+                      disabled={!keyOf(row.original)}
                       onClick={(event) => event.stopPropagation()}
                       onKeyDown={(event) => event.stopPropagation()}
                       onCheckedChange={() => toggleRow(row.original)}
