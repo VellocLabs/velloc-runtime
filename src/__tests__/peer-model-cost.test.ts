@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest'
-import { withCatalogCost } from '../mods/provider/nouns/peerModelCost'
+import { describe, expect, it, vi } from 'vitest'
+import { CATALOG_WAIT_MS, resetPeerCostWait, runtimePeerCostDeps, withCatalogCost } from '../mods/provider/nouns/peerModelCost'
 import type { Peer } from '../mods/provider/nouns/providerPeersTypes'
 import type { CatalogHit } from '../catalog/types'
 
@@ -52,5 +52,27 @@ describe('a read before the catalog is installed', () => {
     expect(await waiting).toBe(fake)
     holder.configureModelCatalogSource(null)
     expect(await holder.waitForModelCatalog(10)).toBeUndefined()
+  })
+})
+
+describe('a realm that never installs a catalog', () => {
+  it('waits on the first read only', async () => {
+    const holder = await import('../catalog/modelCatalogHolder')
+    holder.configureModelCatalogSource(null)
+    resetPeerCostWait()
+    vi.useFakeTimers()
+    try {
+      const first = runtimePeerCostDeps()
+      await vi.dynamicImportSettled()
+      await vi.advanceTimersByTimeAsync(CATALOG_WAIT_MS)
+      expect(await first).toBeUndefined()
+      const second = runtimePeerCostDeps()
+      await vi.dynamicImportSettled()
+      await vi.advanceTimersByTimeAsync(1)
+      expect(await second).toBeUndefined()
+    } finally {
+      vi.useRealTimers()
+      resetPeerCostWait()
+    }
   })
 })
