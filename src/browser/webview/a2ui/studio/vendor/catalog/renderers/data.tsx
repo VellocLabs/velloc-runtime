@@ -484,7 +484,7 @@ function DataTableView({
           const present = new Set(rows.map(text));
           // A listed filter offers the listed values the rows hold, in the listed order.
           const values = Array.isArray(c.filter)
-            ? [...new Set(c.filter.filter((v) => typeof v === "string" && present.has(v)))]
+            ? [...new Set(c.filter.filter((v) => typeof v === "string" && v !== "" && present.has(v)))]
             : [...present]
                 .filter(Boolean)
                 .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));

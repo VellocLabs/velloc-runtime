@@ -116,4 +116,21 @@ describe('DataTable column filter with a value list', () => {
     fireEvent.click(chip(view.container, 'Price', 'Free'))
     await waitFor(() => expect(names(view.container)).toHaveLength(4))
   })
+  it('keeps the listed order and offers no chip for an empty value', async () => {
+    const ORDERED = {
+      columns: [
+        { key: 'name', label: 'Item' },
+        { key: 'price', label: 'Price', filter: ['Free', '', '$0.25 / $2.00'] },
+      ],
+      rows: [
+        { name: 'Alpha', price: 'Free' },
+        { name: 'Beta', price: '$0.25 / $2.00' },
+        { name: 'Gamma', price: '' },
+      ],
+    }
+    const view = render(host(ORDERED as unknown as typeof DATA))
+    await waitFor(() => expect(names(view.container)).toHaveLength(3))
+    const group = view.container.querySelector('[aria-label="Price"]')
+    expect([...(group?.querySelectorAll('button') ?? [])].map(b => b.textContent)).toEqual(['Free', '$0.25 / $2.00'])
+  })
 })
