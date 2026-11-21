@@ -25,12 +25,14 @@ const DATA = {
   ],
 }
 
-function page() {
+function ops(data: typeof DATA) {
   const compiled = compiler.compile('surface("cf")\nroot = DataTable(columns=$/data/columns, rows=$/data/rows)')
   if (!compiled.ok) throw new Error(compiled.message)
-  const operations = [...compiled.messages, { version: '1.0', updateDataModel: { surfaceId: 'cf', path: '/data', value: DATA } }]
-  return render(createElement(StudioSurfaceHost, { surfaceId: 'cf', operations, onEvent: () => undefined }))
+  return [...compiled.messages, { version: '1.0', updateDataModel: { surfaceId: 'cf', path: '/data', value: data } }]
 }
+
+const host = (data: typeof DATA) => createElement(StudioSurfaceHost, { surfaceId: 'cf', operations: ops(data), onEvent: () => undefined })
+const page = () => render(host(DATA))
 
 const names = (root: HTMLElement) => [...root.querySelectorAll('tbody tr td:first-child')].map(td => td.textContent?.trim())
 const chip = (root: HTMLElement, group: string, text: string) => {
@@ -64,5 +66,14 @@ describe('DataTable column filters', () => {
     fireEvent.click(chip(view.container, 'Source', 'North'))
     fireEvent.click(chip(view.container, 'Source', 'South'))
     await waitFor(() => expect(names(view.container)).toHaveLength(4))
+  })
+
+  it('a picked value gone from new rows stops filtering', async () => {
+    const view = page()
+    await waitFor(() => expect(names(view.container)).toHaveLength(4))
+    fireEvent.click(chip(view.container, 'Source', 'South'))
+    await waitFor(() => expect(names(view.container)).toEqual(['Beta']))
+    view.rerender(host({ ...DATA, rows: DATA.rows.filter(r => r.source !== 'South') }))
+    await waitFor(() => expect(names(view.container)).toEqual(['Alpha', 'Gamma', 'Delta']))
   })
 })

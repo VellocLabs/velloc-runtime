@@ -462,13 +462,22 @@ function DataTableView({
         .filter((f) => f.values.length > 0),
     [columns, rows],
   );
+  /** Picks still offered as chips; a value gone from the rows no longer filters. */
+  const live = useMemo(() => {
+    const out: Record<string, string[]> = {};
+    for (const f of filters) {
+      const on = (picked[f.col.key] ?? []).filter((v) => f.values.includes(v));
+      if (on.length) out[f.col.key] = on;
+    }
+    return out;
+  }, [filters, picked]);
   const shown = useMemo(() => {
-    const active = filters.filter((f) => (picked[f.col.key] ?? []).length);
+    const active = Object.entries(live);
     if (!active.length) return rows;
     return rows.filter((r) =>
-      active.every((f) => picked[f.col.key]!.includes(filterText(r[f.col.key]))),
+      active.every(([key, on]) => on.includes(filterText(r[key]))),
     );
-  }, [rows, filters, picked]);
+  }, [rows, live]);
 
   const cols = useMemo<ColumnDef<typeof tableFeats, Row>[]>(
     () =>
@@ -563,7 +572,7 @@ function DataTableView({
           )}
         >
           {filters.map(({ col, values }) => {
-            const on = picked[col.key] ?? [];
+            const on = live[col.key] ?? [];
             return (
               <div key={col.key} className="flex min-w-0 items-center gap-3">
                 <span className="w-24 shrink-0 truncate text-[11.5px] font-medium text-muted-foreground">
