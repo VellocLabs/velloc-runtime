@@ -59,6 +59,7 @@ export function releasePersonValues(manager: GenerativeUISurfaceManager, surface
   const key = (manager.getSurface(THREAD, surfaceId) as { key?: string } | undefined)?.key
   const owned = (manager as unknown as { owned?: Map<string, unknown> }).owned
   if (key !== undefined && owned instanceof Map) owned.delete(key)
+  else if (!(owned instanceof Map)) console.warn('[a2ui] studio engine has no person-value map; app writes after an event may be refused')
 }
 
 export function StudioSurfaceHost({

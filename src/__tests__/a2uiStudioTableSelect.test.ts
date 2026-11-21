@@ -88,6 +88,8 @@ describe('DataTable row selection', () => {
     const view = page(SELECT.replace('selectKey=', 'searchable=true, selectKey='), event => events.push(event), { ...DATA, picked: [], rows })
     await waitFor(() => expect(boxes(view.container)).toHaveLength(4))
     expect(rowBox(view.container, 'Keyless').hasAttribute('disabled')).toBe(true)
+    const chip = (label: string) => view.container.querySelector<HTMLElement>(`[aria-label="${label}"]`)!
+    expect([chip('Checked').textContent, chip('Not checked').textContent]).toEqual(['0', '2'])
     expect([...view.container.querySelectorAll('tbody tr')].find(tr => tr.textContent?.includes('Keyless'))!.hasAttribute('tabindex')).toBe(false)
     fireEvent.click(boxes(view.container)[0]!)
     await waitFor(() => expect(events).toHaveLength(1))
@@ -110,6 +112,8 @@ describe('DataTable row selection', () => {
     await waitFor(() => expect(boxes(view.container)).toHaveLength(4))
     fireEvent.click(chip('Checked'))
     await waitFor(() => expect(boxes(view.container)).toHaveLength(3))
-    expect([...view.container.querySelectorAll('tbody tr')].map(tr => tr.textContent)).toEqual(expect.arrayContaining([expect.stringContaining('Alpha')]))
+    const names = [...view.container.querySelectorAll('tbody tr')].map(tr => tr.textContent ?? '')
+    expect(names.some(n => n.includes('Beta'))).toBe(false)
+    expect(names.filter(n => n.includes('Alpha') || n.includes('Gamma'))).toHaveLength(2)
   })
 })

@@ -505,8 +505,12 @@ function DataTableView({
     () => new Set(selection?.value ?? []),
     [selection?.value],
   );
-  const stateOf = (r: Row): string =>
-    checkedSet.has(str(r[selection?.key ?? ""])) ? "on" : "off";
+  const selectKey = selection?.key;
+  /** "on" or "off" for a row that can be checked; undefined for a row without the key. */
+  const stateOf = (r: Row): string | undefined => {
+    const k = str(r[selectKey ?? ""]);
+    return k ? (checkedSet.has(k) ? "on" : "off") : undefined;
+  };
   const byState = selection && checkedFilter.length === 1 ? checkedFilter[0] : undefined;
   const shown = useMemo(() => {
     const active = filters.filter((f) => live[f.col.key]);
@@ -517,8 +521,9 @@ function DataTableView({
         (!byState || stateOf(r) === byState),
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [rows, filters, live, byState, checkedSet]);
+  }, [rows, filters, live, byState, checkedSet, selectKey]);
   const onCount = selection ? rows.filter((r) => stateOf(r) === "on").length : 0;
+  const offCount = selection ? rows.filter((r) => stateOf(r) === "off").length : 0;
 
   const cols = useMemo<ColumnDef<typeof tableFeats, Row>[]>(
     () =>
@@ -681,7 +686,7 @@ function DataTableView({
                     >
                       {state === "on" ? <Check className="size-2.5" strokeWidth={3} /> : null}
                     </span>
-                    {state === "on" ? onCount : rows.length - onCount}
+                    {state === "on" ? onCount : offCount}
                   </ToggleGroupItem>
                 ))}
               </ToggleGroup>

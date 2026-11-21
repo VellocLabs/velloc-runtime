@@ -32,4 +32,12 @@ describe('studio table style', () => {
       expect(inOverlay).toEqual(inSurface)
     }
   })
+
+  it('studio surfaces and their overlays take the host primary colour over the vendored one', () => {
+    const plain = css.replace(/\/\*[\s\S]*?\*\//g, '')
+    expect(plain).toMatch(/:root\s*\{[^}]*--velloc-host-primary: var\(--primary\)/)
+    const rule = plain.match(/:root \.a2-surface-host\.a2-surface-host,\s*:root body > \.a2ui-surface\.a2ui-surface\s*\{([^}]*)\}/)
+    expect(rule?.[1]).toMatch(/--primary: var\(--velloc-host-primary\)/)
+    expect(rule?.[1]).toMatch(/--a2-accent: var\(--velloc-host-primary\)/)
+  })
 })
