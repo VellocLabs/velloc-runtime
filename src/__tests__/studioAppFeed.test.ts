@@ -41,6 +41,10 @@ describe('the studio app feed', () => {
     expect(tail(two, 2)).toEqual([{ surfaceId: 's', path: '/data/rows', value: rows }, { surfaceId: 's', path: '/data/title' }])
     const whole = nextStudioFeed(two, board({ dataSeq: 4, dataPatches: { from: 3, patches: [{ path: '', value: {} }] } }), 's')!
     expect(tail(whole, 1)[0]?.path).toBe('/data')
+    const own = nextStudioFeed(whole, board({ data: {}, dataSeq: 5, dataPatches: { from: 4, patches: [{ path: '/constructor' }] } }), 's')!
+    expect(tail(own, 1)).toEqual([{ surfaceId: 's', path: '/data/constructor' }])
+    const empty = nextStudioFeed(own, board({ data: { '': 1 }, dataSeq: 6, dataPatches: { from: 5, patches: [{ path: '/', value: 1 }] } }), 's')!
+    expect(tail(empty, 1)).toEqual([{ surfaceId: 's', path: '/data', value: { '': 1 } }])
   })
 
   it('patches from another value, or none, append the data whole; an unchanged board keeps the same feed', () => {

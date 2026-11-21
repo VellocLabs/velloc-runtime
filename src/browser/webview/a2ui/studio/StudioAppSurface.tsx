@@ -68,6 +68,7 @@ function topKeys(patches: readonly { path: string }[]): string[] | undefined {
     if (!path.startsWith('/')) return undefined
     const raw = path.slice(1).split('/')[0]!
     const key = raw.replace(/~1/g, '/').replace(/~0/g, '~')
+    if (key === '') return undefined
     if (!keys.includes(key)) keys.push(key)
   }
   return keys
@@ -104,7 +105,7 @@ export function nextStudioFeed(previous: StudioFeed | null, board: AppSurfaceSta
       const value = board.data as Record<string, unknown>
       for (const key of tops) {
         const path = `/data/${key.replace(/~/g, '~0').replace(/\//g, '~1')}`
-        added.push({ version: A2UI_PROTOCOL_VERSION, updateDataModel: { surfaceId, path, ...(key in value ? { value: value[key] } : {}) } })
+        added.push({ version: A2UI_PROTOCOL_VERSION, updateDataModel: { surfaceId, path, ...(Object.hasOwn(value, key) ? { value: value[key] } : {}) } })
       }
     } else {
       added.push({ version: A2UI_PROTOCOL_VERSION, updateDataModel: { surfaceId, path: '/data', ...(board.data !== undefined ? { value: board.data } : {}) } })
