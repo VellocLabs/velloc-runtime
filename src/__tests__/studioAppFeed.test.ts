@@ -1,5 +1,5 @@
 // A studio app surface's operation list (F-1): a later board extends it with
-// data patches by path, or the data whole, so the engine applies only what is
+// the top-level data keys its patches touch, or the data whole, so the engine applies only what is
 // new; a new build or an overlong list starts it fresh.
 import { describe, expect, it } from 'vitest'
 import { GenerativeUISurfaceManager } from '@copilotkit/core/generative-ui'
@@ -31,14 +31,16 @@ describe('the studio app feed', () => {
     expect(feed.dataSeq).toBe(1)
   })
 
-  it('a patched board appends only the patched paths, the earlier list kept as its prefix', () => {
+  it('a patched board appends the top-level keys it touches, the earlier list kept as its prefix', () => {
     const first = nextStudioFeed(null, board(), 's')!
     const next = nextStudioFeed(first, board({ dataSeq: 2, dataPatches: { from: 1, patches: [{ path: '/rows/37/mark', value: '✓' }] } }), 's')!
     expect(next.operations.slice(0, first.operations.length)).toEqual(first.operations)
     expect(next.operations.length).toBe(first.operations.length + 1)
-    expect(tail(next, 1)).toEqual([{ surfaceId: 's', path: '/data/rows/37/mark', value: '✓' }])
-    const removed = nextStudioFeed(next, board({ dataSeq: 3, dataPatches: { from: 2, patches: [{ path: '/rows/37/mark' }] } }), 's')!
-    expect(tail(removed, 1)).toEqual([{ surfaceId: 's', path: '/data/rows/37/mark' }])
+    expect(tail(next, 1)).toEqual([{ surfaceId: 's', path: '/data/rows', value: rows }])
+    const two = nextStudioFeed(next, board({ data: { rows }, dataSeq: 3, dataPatches: { from: 2, patches: [{ path: '/rows/1/mark', value: 'x' }, { path: '/title' }, { path: '/rows/2/mark', value: 'y' }] } }), 's')!
+    expect(tail(two, 2)).toEqual([{ surfaceId: 's', path: '/data/rows', value: rows }, { surfaceId: 's', path: '/data/title' }])
+    const whole = nextStudioFeed(two, board({ dataSeq: 4, dataPatches: { from: 3, patches: [{ path: '', value: {} }] } }), 's')!
+    expect(tail(whole, 1)[0]?.path).toBe('/data')
   })
 
   it('patches from another value, or none, append the data whole; an unchanged board keeps the same feed', () => {

@@ -1,7 +1,7 @@
 // One surface of an app that names the studio catalog (F-1): the app's build
 // compiled here, followed by its data and text. A later board extends the
-// same operation list (data patches by path, or the data whole), so the
-// engine applies only what is new; a new build starts a fresh list.
+// same operation list (the top-level data keys its patches touch, or the data
+// whole), so the engine applies only what is new; a new build starts fresh.
 
 import { useRef, type ReactElement } from 'react'
 import { exportA2UICatalog } from '@copilotkit/react-core/v2/generative-ui'
@@ -59,6 +59,20 @@ export type StudioFeed = {
   text: string
 }
 
+const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null && !Array.isArray(value)
+
+/** The top-level data keys `patches` touch, in order; undefined when one replaces the whole value. */
+function topKeys(patches: readonly { path: string }[]): string[] | undefined {
+  const keys: string[] = []
+  for (const { path } of patches) {
+    if (!path.startsWith('/')) return undefined
+    const raw = path.slice(1).split('/')[0]!
+    const key = raw.replace(/~1/g, '/').replace(/~0/g, '~')
+    if (!keys.includes(key)) keys.push(key)
+  }
+  return keys
+}
+
 const textKey = (text: AppSurfaceState['text']): string => (text === undefined ? '' : JSON.stringify(text))
 
 /**
@@ -84,9 +98,13 @@ export function nextStudioFeed(previous: StudioFeed | null, board: AppSurfaceSta
   }
   if (board.dataSeq !== previous.dataSeq || (board.dataSeq === undefined && board.data !== previous.data)) {
     const patches = board.dataPatches && previous.dataSeq !== undefined && board.dataPatches.from === previous.dataSeq ? board.dataPatches.patches : undefined
-    if (patches) {
-      for (const patch of patches) {
-        added.push({ version: A2UI_PROTOCOL_VERSION, updateDataModel: { surfaceId, path: `/data${patch.path}`, ...('value' in patch ? { value: patch.value } : {}) } })
+    const tops = patches && isRecord(board.data) ? topKeys(patches) : undefined
+    if (tops) {
+      // A component bound to `/data/x` redraws on a write at or above its path, not below it: each patch is sent as its top-level key.
+      const value = board.data as Record<string, unknown>
+      for (const key of tops) {
+        const path = `/data/${key.replace(/~/g, '~0').replace(/\//g, '~1')}`
+        added.push({ version: A2UI_PROTOCOL_VERSION, updateDataModel: { surfaceId, path, ...(key in value ? { value: value[key] } : {}) } })
       }
     } else {
       added.push({ version: A2UI_PROTOCOL_VERSION, updateDataModel: { surfaceId, path: '/data', ...(board.data !== undefined ? { value: board.data } : {}) } })
