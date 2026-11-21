@@ -1147,7 +1147,7 @@ export const zh: Messages = {
   'modelPicker.selectModel': '选择模型',
   'modelPicker.search': '搜索模型…',
   'modelPicker.noModels': '没有可用模型',
-  'modelPicker.providerSettings': '服务商设置…',
+  'modelPicker.providerSettings': '{name} 设置',
   'modelPicker.modelSettings': '模型设置…',
   'modelPicker.price': '输入 {input} · 输出 {output}',
   'modelPicker.quota.five_hour': '5小时',

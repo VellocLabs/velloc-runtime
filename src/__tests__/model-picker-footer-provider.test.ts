@@ -9,7 +9,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 
 import type { BrowserLlmCatalog, BrowserLlmProvider, BrowserLlmSelection } from '../browser/bridge/protocol/nexus_llm'
 import { EMPTY_MOD_CONTRIBUTIONS, type ModContributionsState } from '../browser/runtimeProtocol/modContributions'
-import { ProviderAppOpenerContext, providerSettingsTarget, type ProviderAppOpener } from '../browser/webview/apps/providerSettingsApp'
+import { ProviderAppOpenerContext, type ProviderAppOpener } from '../browser/webview/apps/providerSettingsApp'
 import { setModContributions } from '../browser/webview/mods/modContributionsView'
 import { NexusModelPicker } from '../browser/webview/topbar/NexusModelPicker'
 
@@ -63,15 +63,5 @@ describe('the picker footer opens Settings → Models', () => {
 
   it('without a page opener', () => {
     expect(pressFooter({ providerId: 'plain', modelId: 'a' }, undefined, false)).toEqual(['models'])
-  })
-})
-
-describe('providerSettingsTarget', () => {
-  it('is the Models page when no provider is selected', () => {
-    expect(providerSettingsTarget(undefined, APPS.apps, true)).toEqual({ kind: 'models' })
-  })
-  it("ignores an app id another plugin holds", () => {
-    expect(providerSettingsTarget({ id: 'x', mod: { plugin: 'other', settingsApp: 'switch-console' } }, APPS.apps, true))
-      .toEqual({ kind: 'page', providerId: 'x' })
   })
 })

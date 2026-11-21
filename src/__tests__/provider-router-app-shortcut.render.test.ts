@@ -121,7 +121,7 @@ describe('a router with a settings app', () => {
     expect(upserts).toEqual([])
   })
 
-  it("the quick picker's Edit… opens the app, not the editor", async () => {
+  it("the quick picker's gear opens the app, not the editor", async () => {
     act(() => setModContributions(APPS))
     const { open } = mount({ [ROUTER]: ANON }, routerRow('switch-console'), false, false, { providerId: ROUTER, seq: 1 })
     await waitFor(() => expect(open).toHaveBeenCalledTimes(1))
@@ -130,7 +130,7 @@ describe('a router with a settings app', () => {
     expect(screen.queryByTestId('mod-router-panel')).toBeNull()
   })
 
-  it("the quick picker's Edit… keeps the editor without a published app", async () => {
+  it("the quick picker's gear keeps the editor without a published app", async () => {
     const { open } = mount({ [ROUTER]: ANON }, routerRow('switch-console'), false, false, { providerId: ROUTER, seq: 1 })
     expect(await screen.findByTestId('mod-router-panel')).toBeTruthy()
     expect(open).not.toHaveBeenCalled()

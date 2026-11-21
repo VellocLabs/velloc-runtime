@@ -1193,7 +1193,7 @@ export const en = {
   'modelPicker.selectModel': 'Select model',
   'modelPicker.search': 'Search models…',
   'modelPicker.noModels': 'No models available',
-  'modelPicker.providerSettings': 'Provider settings…',
+  'modelPicker.providerSettings': '{name} settings',
   'modelPicker.modelSettings': 'Model settings…',
   'modelPicker.price': '{input} in · {output} out',
   'modelPicker.quota.five_hour': '5h',

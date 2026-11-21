@@ -151,7 +151,7 @@ export function ModelsSection({
   transport: BrowserBridgeTransport;
   /**
    * Open this provider's editor instead of the home list — the quick
-   * picker's "Edit…" on a provider. `seq` changes on every request, so asking
+   * picker's gear on a provider. `seq` changes on every request, so asking
    * for the same provider twice opens it twice.
    */
   openProviderRequest?: { providerId: string; seq: number } | null;
@@ -602,7 +602,7 @@ export function ModelsSection({
   // Above the early return, so hook order holds.
   const openRouterApp = useRouterAppShortcut({ providers, configs, bridge, onChanged: reload });
 
-  // The quick picker's "Edit…" opens the provider as a row click does: a
+  // The quick picker's gear opens the provider as a row click does: a
   // router with a settings app opens the app, any other its editor. Above the
   // early return, so hook order holds.
   const handledOpenRequest = React.useRef<number | null>(null);

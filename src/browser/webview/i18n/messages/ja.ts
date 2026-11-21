@@ -1152,7 +1152,7 @@ export const ja: Messages = {
   'modelPicker.selectModel': 'モデルを選択',
   'modelPicker.search': 'モデルを検索…',
   'modelPicker.noModels': '利用できるモデルがありません',
-  'modelPicker.providerSettings': 'プロバイダ設定…',
+  'modelPicker.providerSettings': '{name} の設定',
   'modelPicker.modelSettings': 'モデル設定…',
   'modelPicker.price': '入力 {input} · 出力 {output}',
   'modelPicker.quota.five_hour': '5時間',

@@ -17,10 +17,10 @@ import { advertsForScope, queryFor } from './_helpers/capabilityQuery'
 /**
  * The quick picker with model entries: one row per entry — a family's Latest
  * names the version it means today, a pinned version carries a pin, a preview
- * a badge — and each provider heading's `⋯` menu, which pins another version
- * of one of its families as a row of its own (selected as soon as the catalog
- * carries it) and opens the provider's settings page. There is no removal in
- * the picker.
+ * a badge — each provider heading's gear, which opens that provider's
+ * settings page, and its `⋯` menu, which pins another version of one of its
+ * families as a row of its own (selected as soon as the catalog carries it).
+ * There is no removal in the picker.
  */
 
 afterEach(cleanup)
@@ -174,11 +174,22 @@ describe('quick picker — model entries', () => {
     expect(bridge.request).not.toHaveBeenCalled()
   })
 
-  it('the provider gear opens its settings page without opening the menu', async () => {
+  it('the provider gear names its provider and opens its settings page without opening the menu', async () => {
     const { onOpenProviderSettings } = setup()
-    const gear = await screen.findByLabelText('Provider settings…')
+    const provider = anthropic([])
+    const gear = await screen.findByTestId(`nexus-provider-edit-${provider.id}`)
+    expect(gear.getAttribute('aria-label')).toBe(`${provider.label} settings`)
     fireEvent.click(gear)
-    expect(onOpenProviderSettings).toHaveBeenCalledWith('anthropic')
+    expect(onOpenProviderSettings).toHaveBeenCalledWith(provider.id)
+  })
+
+  it('a provider with no families keeps its gear and loses only its ⋯ menu', async () => {
+    const { rerender } = setup()
+    const provider = { ...anthropic([entryRow('latest', 'Claude Opus', '5.5')]), entryFamilies: [] }
+    await screen.findByTestId(`nexus-provider-menu-${provider.id}`)
+    rerender(catalogOf(provider))
+    await waitFor(() => expect(screen.queryByTestId(`nexus-provider-menu-${provider.id}`)).toBeNull())
+    expect(screen.getByTestId(`nexus-provider-edit-${provider.id}`)).toBeTruthy()
   })
 
   it('a connection without the providers writes gets no menu', async () => {

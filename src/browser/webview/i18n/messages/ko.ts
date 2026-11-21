@@ -1149,7 +1149,7 @@ export const ko: Messages = {
   'modelPicker.selectModel': '모델 선택',
   'modelPicker.search': '모델 검색…',
   'modelPicker.noModels': '사용할 수 있는 모델이 없습니다',
-  'modelPicker.providerSettings': '제공업체 설정…',
+  'modelPicker.providerSettings': '{name} 설정',
   'modelPicker.modelSettings': '모델 설정…',
   'modelPicker.price': '입력 {input} · 출력 {output}',
   'modelPicker.quota.five_hour': '5시간',

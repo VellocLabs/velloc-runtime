@@ -878,10 +878,11 @@ const MENU_CONTENT_CLASS =
   "z-50 max-h-80 min-w-[12rem] overflow-y-auto rounded-md border bg-popover p-1 text-popover-foreground shadow-md";
 
 /**
- * A provider heading's `⋯` menu: its families, each opening onto its
- * versions (stable newest first, then a separate Previews section), any of
- * which becomes a pinned row; and "Edit…", the provider's settings page. No
- * removal here — that is the settings page's.
+ * A provider heading: a gear opening that provider's settings page, and,
+ * when it has families to add, a `⋯` menu listing them — each opening onto
+ * its versions (stable newest first, then a separate Previews section), any
+ * of which becomes a pinned row. No removal here — that is the settings
+ * page's.
  */
 function ProviderHeaderMenu({
   provider,
@@ -933,8 +934,8 @@ function ProviderHeaderMenu({
     <button
       type="button"
       className="rounded-sm p-0.5 text-muted-foreground outline-none transition-colors hover:bg-accent hover:text-foreground focus-visible:bg-accent"
-      aria-label={t("modelPicker.providerSettings")}
-      title={t("modelPicker.providerSettings")}
+      aria-label={t("modelPicker.providerSettings", { name: provider.label })}
+      title={t("modelPicker.providerSettings", { name: provider.label })}
       data-testid={`${testIdPrefix}-provider-edit-${provider.id}`}
       onClick={() => {
         onDone();
@@ -944,65 +945,67 @@ function ProviderHeaderMenu({
       <SettingsIcon className="size-3.5" />
     </button>
   ) : null;
-  if (families.length === 0) return <span className="ml-auto flex items-center gap-0.5">{editButton}</span>;
+  if (families.length === 0) {
+    return <span className="ml-auto flex items-center gap-0.5">{editButton}</span>;
+  }
   return (
     <span className="ml-auto flex items-center gap-0.5">
-    {editButton}
-    <DropdownMenuPrimitive.Root>
-      <DropdownMenuPrimitive.Trigger asChild>
-        <button
-          type="button"
-          className="rounded-sm p-0.5 text-muted-foreground outline-none transition-colors hover:bg-accent hover:text-foreground focus-visible:bg-accent"
-          aria-label={t("modelPicker.providerMenu", { name: provider.label })}
-          title={t("modelPicker.providerMenu", { name: provider.label })}
-          data-testid={`${testIdPrefix}-provider-menu-${provider.id}`}
-        >
-          <MoreHorizontalIcon className="size-3.5" />
-        </button>
-      </DropdownMenuPrimitive.Trigger>
-      <DropdownMenuPrimitive.Portal>
-        <DropdownMenuPrimitive.Content align="end" sideOffset={4} className={MENU_CONTENT_CLASS}>
-          {families.length > 0 ? (
-            <>
-              <DropdownMenuPrimitive.Label className="px-2 py-1 text-muted-foreground text-xs">
-                {t("modelPicker.addPinned")}
-              </DropdownMenuPrimitive.Label>
-              {families.map((family) => {
-                const stable = family.versions.filter((v) => !v.preview);
-                const previews = family.versions.filter((v) => v.preview);
-                return (
-                  <DropdownMenuPrimitive.Sub key={family.family}>
-                    <DropdownMenuPrimitive.SubTrigger
-                      className={MENU_ITEM_CLASS}
-                      data-testid={`${testIdPrefix}-pin-family-${provider.id}-${family.family}`}
-                    >
-                      <span className="min-w-0 flex-1 truncate">{family.familyLabel}</span>
-                      <ChevronDownIcon className="size-3.5 -rotate-90 opacity-60" />
-                    </DropdownMenuPrimitive.SubTrigger>
-                    <DropdownMenuPrimitive.Portal>
-                      <DropdownMenuPrimitive.SubContent sideOffset={4} className={MENU_CONTENT_CLASS}>
-                        {stable.map((v) => versionItem(family.family, family.familyLabel, v))}
-                        {previews.length > 0 ? (
-                          <>
-                            {stable.length > 0 ? (
-                              <DropdownMenuPrimitive.Separator className="my-1 h-px bg-border" />
-                            ) : null}
-                            <DropdownMenuPrimitive.Label className="px-2 py-1 text-muted-foreground text-xs">
-                              {t("modelPicker.previewSection")}
-                            </DropdownMenuPrimitive.Label>
-                            {previews.map((v) => versionItem(family.family, family.familyLabel, v))}
-                          </>
-                        ) : null}
-                      </DropdownMenuPrimitive.SubContent>
-                    </DropdownMenuPrimitive.Portal>
-                  </DropdownMenuPrimitive.Sub>
-                );
-              })}
-            </>
-          ) : null}
-        </DropdownMenuPrimitive.Content>
-      </DropdownMenuPrimitive.Portal>
-    </DropdownMenuPrimitive.Root>
+      {editButton}
+      <DropdownMenuPrimitive.Root>
+        <DropdownMenuPrimitive.Trigger asChild>
+          <button
+            type="button"
+            className="rounded-sm p-0.5 text-muted-foreground outline-none transition-colors hover:bg-accent hover:text-foreground focus-visible:bg-accent"
+            aria-label={t("modelPicker.providerMenu", { name: provider.label })}
+            title={t("modelPicker.providerMenu", { name: provider.label })}
+            data-testid={`${testIdPrefix}-provider-menu-${provider.id}`}
+          >
+            <MoreHorizontalIcon className="size-3.5" />
+          </button>
+        </DropdownMenuPrimitive.Trigger>
+        <DropdownMenuPrimitive.Portal>
+          <DropdownMenuPrimitive.Content align="end" sideOffset={4} className={MENU_CONTENT_CLASS}>
+            {families.length > 0 ? (
+              <>
+                <DropdownMenuPrimitive.Label className="px-2 py-1 text-muted-foreground text-xs">
+                  {t("modelPicker.addPinned")}
+                </DropdownMenuPrimitive.Label>
+                {families.map((family) => {
+                  const stable = family.versions.filter((v) => !v.preview);
+                  const previews = family.versions.filter((v) => v.preview);
+                  return (
+                    <DropdownMenuPrimitive.Sub key={family.family}>
+                      <DropdownMenuPrimitive.SubTrigger
+                        className={MENU_ITEM_CLASS}
+                        data-testid={`${testIdPrefix}-pin-family-${provider.id}-${family.family}`}
+                      >
+                        <span className="min-w-0 flex-1 truncate">{family.familyLabel}</span>
+                        <ChevronDownIcon className="size-3.5 -rotate-90 opacity-60" />
+                      </DropdownMenuPrimitive.SubTrigger>
+                      <DropdownMenuPrimitive.Portal>
+                        <DropdownMenuPrimitive.SubContent sideOffset={4} className={MENU_CONTENT_CLASS}>
+                          {stable.map((v) => versionItem(family.family, family.familyLabel, v))}
+                          {previews.length > 0 ? (
+                            <>
+                              {stable.length > 0 ? (
+                                <DropdownMenuPrimitive.Separator className="my-1 h-px bg-border" />
+                              ) : null}
+                              <DropdownMenuPrimitive.Label className="px-2 py-1 text-muted-foreground text-xs">
+                                {t("modelPicker.previewSection")}
+                              </DropdownMenuPrimitive.Label>
+                              {previews.map((v) => versionItem(family.family, family.familyLabel, v))}
+                            </>
+                          ) : null}
+                        </DropdownMenuPrimitive.SubContent>
+                      </DropdownMenuPrimitive.Portal>
+                    </DropdownMenuPrimitive.Sub>
+                  );
+                })}
+              </>
+            ) : null}
+          </DropdownMenuPrimitive.Content>
+        </DropdownMenuPrimitive.Portal>
+      </DropdownMenuPrimitive.Root>
     </span>
   );
 }

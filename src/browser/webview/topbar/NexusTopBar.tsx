@@ -93,7 +93,7 @@ export type NexusTopBarProps = {
    *  label, in an inert chip styled like the model picker, takes its place. */
   sessionKindLabel?: string;
   onOpenSettings: (section?: SettingsSectionId) => void;
-  /** Open one provider's settings page (the model picker's `⋯` → "Edit…"). */
+  /** Open one provider's settings page (the model picker's provider gear). */
   onOpenProviderSettings?: (providerId: string) => void;
   /** Programmatic-open signal for the model picker popover (increment to
    *  open) — see NexusModelPickerProps.openToken. */

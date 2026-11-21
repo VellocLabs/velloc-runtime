@@ -1159,7 +1159,7 @@ export const fr: Messages = {
   'modelPicker.selectModel': 'Sélectionner un modèle',
   'modelPicker.search': 'Rechercher des modèles…',
   'modelPicker.noModels': 'Aucun modèle disponible',
-  'modelPicker.providerSettings': 'Paramètres du fournisseur…',
+  'modelPicker.providerSettings': 'Paramètres de {name}',
   'modelPicker.modelSettings': 'Paramètres des modèles…',
   'modelPicker.price': '{input} entrée · {output} sortie',
   'modelPicker.quota.five_hour': '5 h',

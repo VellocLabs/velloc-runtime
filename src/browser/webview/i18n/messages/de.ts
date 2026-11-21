@@ -1158,7 +1158,7 @@ export const de: Messages = {
   'modelPicker.selectModel': 'Modell auswählen',
   'modelPicker.search': 'Modelle suchen …',
   'modelPicker.noModels': 'Keine Modelle verfügbar',
-  'modelPicker.providerSettings': 'Anbietereinstellungen …',
+  'modelPicker.providerSettings': 'Einstellungen für {name}',
   'modelPicker.modelSettings': 'Modelleinstellungen …',
   'modelPicker.price': '{input} Eingabe · {output} Ausgabe',
   'modelPicker.quota.five_hour': '5 Std.',

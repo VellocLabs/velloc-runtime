@@ -2284,7 +2284,7 @@ describe('ModelsSection home page — available model counts', () => {
   })
 })
 
-describe('ModelsSection — the quick picker\'s "Edit…" deep link', () => {
+describe('ModelsSection — the quick picker\'s gear deep link', () => {
   it('opens the requested provider\'s editor, with its model entries once connected; a new request lands again', async () => {
     const { transport, bridge } = makeHarness({
       openai: { hasApiKey: true, lastVerification: { providerId: 'openai', verifiedAtMs: 1 } },
