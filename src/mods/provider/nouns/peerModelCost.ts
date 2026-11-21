@@ -37,14 +37,17 @@ export async function withCatalogCost(peers: Peer[], deps: PeerCostDeps): Promis
   }))
 }
 
+/** How long a read made before the catalog is installed (a resident app at start) waits for it. */
+export const CATALOG_WAIT_MS = 10_000
+
 /** The runtime's binding: the realm's catalog and the built-in rows' catalog keys. */
 export async function runtimePeerCostDeps(): Promise<PeerCostDeps | undefined> {
-  const [{ acquireModelCatalog }, { catalogKeysOf }, { NEXUS_MODEL_CONFIG }] = await Promise.all([
+  const [{ waitForModelCatalog }, { catalogKeysOf }, { NEXUS_MODEL_CONFIG }] = await Promise.all([
     import('../../../catalog/modelCatalogHolder'),
     import('../../../config/nexusModelConfig/catalogFigures'),
     import('../../../config/nexusModelConfig'),
   ])
-  const catalog = await acquireModelCatalog().catch(() => undefined)
+  const catalog = await waitForModelCatalog(CATALOG_WAIT_MS).catch(() => undefined)
   if (!catalog) return undefined
   return {
     keysOf: definition => catalogKeysOf(NEXUS_MODEL_CONFIG, definition),

@@ -11,7 +11,7 @@ const peer = (definition: string, ids: string[]): Peer => ({
   source: 'builtin',
   connected: true,
   models: ids.map(id => ({ id, picked: true, supportsTools: true })),
-  state: {},
+  state: { status: 'ok' },
 })
 
 const hit = (cost?: CatalogHit['cost']): CatalogHit =>
@@ -39,5 +39,18 @@ describe('peer models take the catalog price', () => {
     expect(alpha!.models[2]).toEqual({ id: 'gone', picked: true, supportsTools: true })
     expect(alpha!.models[3]).toEqual({ id: 'boom', picked: true, supportsTools: true })
     expect(own!.models[0]!.cost).toEqual({ input: 2, output: 8 })
+  })
+})
+
+describe('a read before the catalog is installed', () => {
+  it('waits for the source, and gives up after the wait', async () => {
+    const holder = await import('../catalog/modelCatalogHolder')
+    holder.configureModelCatalogSource(null)
+    const fake = { lookup: async () => undefined } as never
+    const waiting = holder.waitForModelCatalog(5_000)
+    holder.configureModelCatalogSource(() => fake)
+    expect(await waiting).toBe(fake)
+    holder.configureModelCatalogSource(null)
+    expect(await holder.waitForModelCatalog(10)).toBeUndefined()
   })
 })

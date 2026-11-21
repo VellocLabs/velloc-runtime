@@ -23,3 +23,18 @@ export async function acquireModelCatalog(): Promise<ModelCatalog | undefined> {
 export function onModelCatalogSourceChanged(listener: () => void): () => void {
   return holder.onChanged(listener)
 }
+
+/** The service, waiting up to `ms` for a source to be configured; undefined when none comes. */
+export async function waitForModelCatalog(ms: number): Promise<ModelCatalog | undefined> {
+  if (holder.get()) return acquireModelCatalog()
+  await new Promise<void>(resolve => {
+    const timer = setTimeout(done, ms)
+    const off = holder.onChanged(done)
+    function done(): void {
+      clearTimeout(timer)
+      off()
+      resolve()
+    }
+  })
+  return acquireModelCatalog()
+}
