@@ -480,6 +480,7 @@ function DataTableView({
   onReorder?: (args: Reorder) => void;
 }) {
   // A reorderable table shows every row in the person's order: no search, filters, sorting or pages.
+  const basePageSize = pageSize;
   if (reorderable) {
     searchable = false;
     pageSize = Number.MAX_SAFE_INTEGER;
@@ -587,14 +588,14 @@ function DataTableView({
     },
   });
 
-  /** Reorder shows one page in the given order; clear any paging, sort or search an earlier render left in the table. */
+  /** Reorder shows one page in the given order: its page size, and no paging, sort or search an earlier mode left behind. */
   useEffect(() => {
+    table.setPageSize(reorderable ? Number.MAX_SAFE_INTEGER : basePageSize);
     if (!reorderable) return;
-    table.setPageSize(Number.MAX_SAFE_INTEGER);
     table.setPageIndex(0);
     table.setSorting([]);
     table.setGlobalFilter("");
-  }, [reorderable, table]);
+  }, [reorderable, basePageSize, table]);
 
   const filtered = table.getFilteredRowModel().rows.length;
   const { pageIndex, pageSize: size } = table.state.pagination;
@@ -913,10 +914,14 @@ function DataTableView({
                       disabled={selection !== undefined && keyOf(row.original) === ""}
                       onClick={(event) => event.stopPropagation()}
                       onKeyDown={(event) => {
-                        event.stopPropagation();
-                        if (event.key !== "ArrowUp" && event.key !== "ArrowDown") return;
-                        event.preventDefault();
-                        move(at, at + (event.key === "ArrowUp" ? -1 : 1));
+                        if (event.key === "ArrowUp" || event.key === "ArrowDown") {
+                          event.preventDefault();
+                          event.stopPropagation();
+                          move(at, at + (event.key === "ArrowUp" ? -1 : 1));
+                          return;
+                        }
+                        // The row turns Enter and Space into its own action; the grip is not the row.
+                        if (event.key === "Enter" || event.key === " ") event.stopPropagation();
                       }}
                       className="grid size-6 cursor-grab place-content-center rounded-sm text-muted-foreground/70 outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50 active:cursor-grabbing disabled:cursor-default disabled:opacity-40"
                     >
