@@ -91,6 +91,15 @@ function tryRead(file) {
   }
 }
 
+// Contract: the urls assets-manifest.json lists that are not files under
+// stagedDir. The boot-bundle packer fetches every listed url, so one listed
+// and never emitted fails the installer build (F-33).
+export function missingManifestAssets(assetManifest, stagedDir) {
+  return (assetManifest.assets ?? [])
+    .map((asset) => asset.url)
+    .filter((url) => !fs.existsSync(path.join(stagedDir, url)))
+}
+
 /**
  * How much of this build differs from the baseline release, by content-hashed
  * filename: a current url absent from the baseline is new or changed content
@@ -359,6 +368,10 @@ function main() {
   const assetManifest = fs.existsSync(assetManifestPath)
     ? JSON.parse(fs.readFileSync(assetManifestPath, 'utf8'))
     : { buildId: null, assets: [] }
+  const unlisted = missingManifestAssets(assetManifest, stagedDir)
+  if (unlisted.length) {
+    fail(`assets-manifest.json lists ${unlisted.length} file(s) the build did not emit: ${unlisted.slice(0, 5).join(', ')}`)
+  }
   const staged = JSON.parse(
     fs.readFileSync(path.join(stagedDir, 'build-info.json'), 'utf8'))
 

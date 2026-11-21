@@ -11,7 +11,7 @@ import { parse } from 'yaml'
 // @ts-expect-error — plain .mjs build script, no types
 import { writeZip, readZip, zipDirectory, extractZip } from '../../scripts/lib/zip.mjs'
 // @ts-expect-error — plain .mjs build script, no types
-import { candidateId, computeAssetChurn, parseArgs } from '../../scripts/pack_artifact.mjs'
+import { candidateId, computeAssetChurn, missingManifestAssets, parseArgs } from '../../scripts/pack_artifact.mjs'
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore — plain .mjs build script, no types
 import { resolveRetentionBaseline, resolveRetentionBaselines, retainBaselineAssets, retainBaselineEntries, stageBuildEntry } from '../../scripts/stage_deploy.mjs'
@@ -1286,5 +1286,23 @@ describe('retention union across multiple baselines (WP-1b)', () => {
     expect(readFileSync(join(stagedV, 'assets', 'b.js'), 'utf8')).toBe('b')
     expect(readFileSync(join(stagedV, 'b', 'KA', 'index.html'), 'utf8')).toBe('entry-a')
     expect(readFileSync(join(stagedV, 'b', 'KB', 'index.html'), 'utf8')).toBe('entry-b')
+  })
+})
+
+describe('missingManifestAssets', () => {
+  it('names a listed url with no file under the staged directory', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'manifest-assets-'))
+    mkdirSync(join(dir, 'assets'))
+    writeFileSync(join(dir, 'assets', 'kept-AAAAAAAA.js'), 'x')
+    const manifest = { assets: [
+      { url: 'assets/kept-AAAAAAAA.js', size: 1, type: 'js' },
+      { url: 'assets/dropped-BBBBBBBB.js', size: 1, type: 'js' },
+    ] }
+    expect(missingManifestAssets(manifest, dir)).toEqual(['assets/dropped-BBBBBBBB.js'])
+    rmSync(dir, { recursive: true, force: true })
+  })
+
+  it('is empty for a manifest with no assets', () => {
+    expect(missingManifestAssets({ assets: [] }, tmpdir())).toEqual([])
   })
 })

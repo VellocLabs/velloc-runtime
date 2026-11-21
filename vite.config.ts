@@ -204,7 +204,9 @@ function assetManifestPlugin(): Plugin {
   return {
     name: 'asset-manifest',
     apply: 'build',
-    generateBundle(_opts, bundle) {
+    // After the core hooks: a pure-CSS chunk leaves the bundle only there, and
+    // a manifest written earlier names a file that is never emitted.
+    generateBundle: { order: 'post', handler(_opts, bundle) {
       const assets: Array<{ url: string; size: number; type: string }> = []
       for (const [fileName, info] of Object.entries(bundle)) {
         if (info.type !== 'chunk' && info.type !== 'asset') continue
@@ -242,7 +244,7 @@ function assetManifestPlugin(): Plugin {
           assets,
         }, null, 2) + '\n',
       })
-    },
+    } },
   }
 }
 
