@@ -1,38 +1,59 @@
 /**
- * The realm's live app states (F-40): what each app's background module
- * last published, by app id, and the listeners each batch reaches — the
- * open sessions' surface hosts. One per realm, as the surface registry is.
+ * The realm's live app states (F-40). An app's script holds its state; here
+ * is, by app id, where a reader asks for it whole, and the listeners each
+ * batch of patches reaches: the open sessions' surface hosts. The value
+ * itself is never kept here. One per realm, as the surface registry is.
  */
 
 import type { AppDataPatch } from '../../browser/runtimeProtocol/modApps'
 
-/** `owner` names the document that publishes it; `version` counts that document's batches. */
-export type AppStateSnapshot = { owner: number; version: number; value: unknown }
+/** `owner` names the relay of one running script; `version` counts its batches. */
+export type AppStateSource = {
+  owner: number
+  version(): number
+  /** The state whole, as of `version`. */
+  read(): Promise<{ version: number; value: unknown }>
+}
 
-export type AppStateEvent = AppStateSnapshot & {
+export type AppStateEvent = {
   appId: string
-  /** The patches that took the state from the version before to this one. */
-  patches: readonly AppDataPatch[]
+  owner: number
+  version: number
+  /** What took the state from the version before to this one; absent when it has to be read whole. */
+  patches?: readonly AppDataPatch[]
+  /** The script stopped: the state is the data file's again. */
+  gone?: true
 }
 
 type Listener = (event: AppStateEvent) => void
 
-const live = new Map<string, AppStateSnapshot>()
+const live = new Map<string, AppStateSource>()
 const listeners = new Map<string, Set<Listener>>()
 
-export function publishAppState(event: AppStateEvent): void {
-  live.set(event.appId, { owner: event.owner, version: event.version, value: event.value })
+const tell = (event: AppStateEvent): void => {
   for (const listener of [...(listeners.get(event.appId) ?? [])]) listener(event)
 }
 
-/** The state of `appId` while a background module holds one. */
-export function liveAppState(appId: string): AppStateSnapshot | undefined {
+/** A script now holds the state of `appId`. */
+export function holdAppState(appId: string, source: AppStateSource): void {
+  live.set(appId, source)
+}
+
+export function publishAppState(event: AppStateEvent): void {
+  tell(event)
+}
+
+/** Where the state of `appId` is read while a script holds it. */
+export function liveAppState(appId: string): AppStateSource | undefined {
   return live.get(appId)
 }
 
-/** The module of `owner` is gone: its live state goes, a successor's stays. */
+/** The script of `owner` is gone: its source goes, a successor's stays. */
 export function clearAppState(appId: string, owner: number): void {
-  if (live.get(appId)?.owner === owner) live.delete(appId)
+  const source = live.get(appId)
+  if (source?.owner !== owner) return
+  live.delete(appId)
+  tell({ appId, owner, version: source.version(), gone: true })
 }
 
 export function onAppState(appId: string, listener: Listener): () => void {

@@ -24,14 +24,14 @@ import { blockSurfaceIds, hasA2uiBlock, splitA2uiText } from '../../toolkit/buil
 import { dispatchAppAction, type AppActionDispatch } from './appActionBus'
 import { hashOf, seedAppFolder, SEED_MAX_FILE_BYTES, type AppSeedFs } from './appSeed'
 import type { AppSessionInfo } from './appSession'
-import { liveAppState, onAppState, type AppStateEvent, type AppStateSnapshot } from './appStateBus'
+import { liveAppState, onAppState, type AppStateEvent, type AppStateSource } from './appStateBus'
 import { appSurfaceDelta } from './appSurfaceDelta'
-import { setAppActor, setAppBuilder, setAppSurfaceState, type AppActor } from './appSurfaceRegistry'
+import { setAppActor, setAppBuilder, setAppSurfaceState, type AppActor, type AppSurfaceLiveData } from './appSurfaceRegistry'
 import { readAppText } from './appText'
 
 /** The app's live state, while its background module holds one. */
 export type AppLiveData = {
-  snapshot(appId: string): AppStateSnapshot | undefined
+  snapshot(appId: string): AppStateSource | undefined
   subscribe(appId: string, listener: (event: AppStateEvent) => void): () => void
 }
 
@@ -48,7 +48,7 @@ export type AppSurfaceHostOptions = {
   /** Compiles an entry body; defaults to the runtime's Express compiler. */
   compile?: AppEntryCompile
   /** Where a changed state goes; defaults to the realm registry. */
-  publish?: (sessionId: string, state: AppSurfaceState | null, delta?: AppSurfaceDelta) => void
+  publish?: typeof setAppSurfaceState
   /**
    * Where `mods.buildApp` finds this build; defaults to the realm registry.
    * The result forgets it, and is true while it was still this host's.
@@ -219,7 +219,8 @@ export function createAppSurfaceHost(options: AppSurfaceHostOptions): AppSurface
 
   let built: AppSurfaceBuild | null = null
   let buildError: AppSurfaceError | undefined
-  let data: { value: unknown; at: number; hash: string } | undefined
+  /** `live`: the app's script holds the value, which is then not kept here. */
+  let data: { value?: unknown; at: number; hash: string; live?: { owner: number; version: number } } | undefined
   let dataError: AppSurfaceError | undefined
   /** The plugin's text in the session's language, read at each build. */
   let text: Record<string, string> | undefined
@@ -246,7 +247,7 @@ export function createAppSurfaceHost(options: AppSurfaceHostOptions): AppSurface
       appId: app.appId,
       surface: built,
       ...(catalog ? { catalog } : {}),
-      ...(data ? { data: data.value, dataAt: data.at, dataSeq } : {}),
+      ...(data ? { ...(data.live ? {} : { data: data.value }), dataAt: data.at, dataSeq } : {}),
       ...(data && dataPatches ? { dataPatches } : {}),
       ...(text ? { text } : {}),
       refreshing: acting > 0,
@@ -260,8 +261,26 @@ export function createAppSurfaceHost(options: AppSurfaceHostOptions): AppSurface
     const delta = published ? appSurfaceDelta(published, state) : undefined
     if (delta === null) return state
     published = state
-    publish(sessionId, state, delta)
+    publish(sessionId, state, delta, data?.live ? loadLive : undefined)
     return state
+  }
+
+  /** The data of a board whose script holds it, numbered as this host numbers what it published. */
+  const loadLive = async (): Promise<AppSurfaceLiveData> => {
+    const source = live.snapshot(app.appId)
+    if (!source) throw new Error(`${app.appId}: its script stopped`)
+    const read = await source.read()
+    const held = data?.live
+    if (!held || held.owner !== source.owner) throw new Error(`${app.appId}: its script stopped`)
+    return { data: read.value, dataSeq: dataSeq + (read.version - held.version), dataAt: data!.at }
+  }
+
+  const setLive = (owner: number, version: number): void => {
+    const hash = liveHash(owner, version)
+    if (data?.hash === hash) return
+    data = { at: now(), hash, live: { owner, version } }
+    dataError = undefined
+    dataSeq += 1
   }
 
   const setData = (value: unknown, at: number, hash: string): void => {
@@ -274,7 +293,7 @@ export function createAppSurfaceHost(options: AppSurfaceHostOptions): AppSurface
   const readData = async (): Promise<void> => {
     const snapshot = live.snapshot(app.appId)
     if (snapshot) {
-      setData(snapshot.value, now(), liveHash(snapshot.owner, snapshot.version))
+      setLive(snapshot.owner, snapshot.version())
       return
     }
     if (!dataPath) return
@@ -411,11 +430,19 @@ export function createAppSurfaceHost(options: AppSurfaceHostOptions): AppSurface
     async start() {
       unsubscribeLive ??= live.subscribe(app.appId, event => {
         if (disposed) return
+        if (event.gone) {
+          // The data file is the state again.
+          void enqueue(async () => {
+            await readData()
+            emit()
+          }).catch(error => console.warn('[mods/app] data read failed', error))
+          return
+        }
         const from = dataSeq
-        // The patches lead from the document's version before this one: valid only onto that value.
+        // The patches lead from the script's version before this one: valid only onto that value.
         const follows = data?.hash === liveHash(event.owner, event.version - 1)
-        setData(event.value, now(), liveHash(event.owner, event.version))
-        if (dataSeq !== from && follows) dataPatches = { from, patches: [...event.patches] }
+        setLive(event.owner, event.version)
+        if (dataSeq !== from && follows && event.patches) dataPatches = { from, patches: [...event.patches] }
         emit()
       })
       await build()

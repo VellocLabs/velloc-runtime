@@ -4,7 +4,6 @@ import { isAppSurfaceDelta, MODS_APP_DELTA_EVENT, MODS_APP_STATE_EVENT, type App
 import { modsAppTopicProvider, registerModsAppTopic } from '../browser/runtimeHub/modsAppTopic'
 import { holdAppSurface } from '../browser/webview/apps/appSurfaceView'
 import { appSurfaceDelta, applyAppSurfaceDelta } from '../mods/app/appSurfaceDelta'
-import { makeWorkerAppNoun } from '../mods/app/workerAppNoun'
 
 /**
  * A page that holds an app's board is sent what changed (F-40): the data as
@@ -174,36 +173,5 @@ describe('the board store of a page', () => {
     rig.deliver(MODS_APP_DELTA_EVENT, { set: { errors: 'not a list' } })
     expect(rig.log).toEqual(['subscribe', 'unsubscribe', 'subscribe'])
     expect(seen).toHaveLength(1)
-  })
-})
-
-describe('$.app.state.get', () => {
-  it('asks the runtime once, then answers from the copy the noun keeps', async () => {
-    let asked = 0
-    let value: unknown = { n: 1 }
-    const noun = makeWorkerAppNoun(async (method, args) => {
-      if (method === 'state') {
-        asked += 1
-        return { value }
-      }
-      if (method === 'publish') return { version: 1, patches: args[0] }
-      throw new Error(method)
-    }) as {
-      state: { get(): Promise<Record<string, unknown>>; update(fn: (draft: Record<string, unknown>) => void): Promise<unknown> }
-      publish(patches: unknown): Promise<unknown>
-    }
-    const first = await noun.state.get()
-    first.n = 99
-    expect(await noun.state.get(), 'a copy: an edit of one answer never reaches the next').toEqual({ n: 1 })
-    await noun.state.update(draft => {
-      draft.n = 2
-    })
-    expect(await noun.state.get()).toEqual({ n: 2 })
-    expect(asked).toBe(1)
-    // A raw publish is not diffed here, so the copy is dropped and the next read asks.
-    value = { n: 3 }
-    await noun.publish([{ path: '/n', value: 3 }])
-    expect(await noun.state.get()).toEqual({ n: 3 })
-    expect(asked).toBe(2)
   })
 })

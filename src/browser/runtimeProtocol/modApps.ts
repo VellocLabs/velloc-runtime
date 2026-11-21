@@ -13,6 +13,8 @@ export const MODS_APP_TOPIC_PREFIX = 'mods/app/'
 export const MODS_APP_STATE_EVENT = 'state'
 /** A change to the board a page already holds; a page that cannot apply one subscribes again for the board. */
 export const MODS_APP_DELTA_EVENT = 'delta'
+/** The board held is out of date and cannot be patched: subscribe again for it. */
+export const MODS_APP_RESYNC_EVENT = 'resync'
 
 export type AppSurfaceErrorKind = 'build' | 'data'
 

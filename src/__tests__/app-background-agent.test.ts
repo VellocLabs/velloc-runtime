@@ -20,6 +20,9 @@ import {
 } from '../mods/app/appAgentRun'
 import { refuseAppBackgroundCall } from '../mods/app/appBackgroundEvents'
 import { appRunKeepsTool, appRunMcpScope, appRunTools } from '../mods/app/appRunTools'
+import { mirrorAppState } from './_helpers/appStateMirror'
+
+const appState = mirrorAppState('pay-board')
 
 const FOLDER = 'C:/home/.velloc/shared-workspace/app-pay-board'
 const TYPE = 'pay:board'
@@ -87,7 +90,7 @@ function world(options: Partial<AppBackgroundRuntimeOptions> = {}) {
     stateFile: `${FOLDER}/data/state.json`,
     ...(agentType ? { agentType } : {}),
   })
-  const answers = () => (runtime.document('pay-board')?.value as { answers?: unknown[] } | undefined)?.answers ?? []
+  const answers = () => (appState() as { answers?: unknown[] } | undefined)?.answers ?? []
   const ready = async (agentType?: string) => {
     runtime.sync([ref(agentType)])
     await vi.waitFor(() => expect(runtime.status()[0]?.state).toBe('ready'))

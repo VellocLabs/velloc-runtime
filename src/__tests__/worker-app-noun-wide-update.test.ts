@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { makeWorkerAppNoun } from '../mods/app/workerAppNoun'
+import { makeWorkerAppState } from '../mods/app/workerAppNoun'
 import { APP_PATCH_BATCH_MAX, applyAppPatches, checkAppPatches } from '../mods/app/appStateDiff'
 
 type AppNoun = { state: { update(fn: (draft: Record<string, unknown>) => void): Promise<unknown> } }
@@ -18,7 +18,7 @@ function runtime(initial: unknown) {
     }
     throw new Error(method)
   }
-  return { noun: makeWorkerAppNoun(call) as AppNoun, sent, value: () => value }
+  return { noun: makeWorkerAppState().noun(call) as AppNoun, sent, value: () => value }
 }
 
 describe('$.app.state.update with a change wider than one call', () => {

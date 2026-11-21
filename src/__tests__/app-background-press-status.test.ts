@@ -21,6 +21,9 @@ import { realmMcpStatus } from '../mods/app/appBackgroundRuntimeFactory'
 import { configureMcpOAuthService } from '../mcp/oauth/mcpOAuthHolder'
 import type { McpOAuthService } from '../mcp/oauth/McpOAuthService'
 import { resetAppStateBusForTests } from '../mods/app/appStateBus'
+import { mirrorAppState } from './_helpers/appStateMirror'
+
+const appState = mirrorAppState('pay-board')
 
 const PAYPAL = 'https://mcp.example.com/mcp'
 const OWNER = {
@@ -84,7 +87,7 @@ function world(source: string, options: { pressTimeoutMs?: number } = {}) {
     stateFile: 'C:/app/data/state.json',
     mcpOwner: OWNER as never,
   }
-  const seen = () => (runtime.document('pay-board')?.value as { seen?: unknown[] } | undefined)?.seen ?? []
+  const seen = () => (appState() as { seen?: unknown[] } | undefined)?.seen ?? []
   const setAuth = (next: McpAuthState | null) => {
     auth = next
     for (const listener of [...listeners]) listener()

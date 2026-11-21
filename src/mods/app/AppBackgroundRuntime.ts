@@ -4,7 +4,7 @@
  * when its app is synced in and runs until the app is synced out or the
  * realm ends; `app.start` is raised once it is seated, `app.stop` before it
  * goes. A crashed worker restarts under the shared backoff and limit. The
- * module's `$.app` reaches the app's state document, whose batches the
+ * module's `$.app` reaches the app's state relay, whose batches the
  * open sessions' surfaces follow.
  *
  * An app's script (`lifetime: 'shown'`) is the same module run only while
@@ -63,7 +63,8 @@ import {
 } from './appMcpStatus'
 import { normalizeMcpServerUrl } from '../../mcp/oauth/oauthKeys'
 import { APP_PRESS_TIMEOUT_MS, readAppPressAnswer } from './appPress'
-import { AppStateDocument, type AppStateDocumentFs } from './appStateDocument'
+import { AppStateRelay, type AppStateRelayFs } from './appStateRelay'
+import { APP_STATE_TEXT_METHOD } from './workerAppNoun'
 import { AppViews, type AppViewEvent, type AppViewLayout } from './appViews'
 import { serveSettingsAppProviderCall, type SettingsAppBinding, type SettingsAppProviderDeps } from './appProviderCalls'
 import { APP_SCRIPT_IDLE_MS, APP_SCRIPT_PRESS_START_MS, AppScriptLifetimes, untilReady } from './appScriptLifetime'
@@ -170,7 +171,7 @@ type Module = {
   ref: AppBackgroundRef
   key: string
   dispatcher: ModDispatcher
-  document: AppStateDocument
+  relay: AppStateRelay
   gone: AbortController
   generation: number
   crashes: number[]
@@ -339,9 +340,16 @@ export class AppBackgroundRuntime {
     }))
   }
 
-  /** The state document of a running app; undefined when it is not synced in. */
-  document(appId: string): AppStateDocument | undefined {
-    return this.modules.get(appId)?.document
+  /** The state relay of a running app; undefined when it is not synced in. */
+  relay(appId: string): AppStateRelay | undefined {
+    return this.modules.get(appId)?.relay
+  }
+
+  /** The state as the module's script holds it; rejects when no script runs. */
+  private askStateText(module: Module): Promise<unknown> {
+    const loaded = module.loaded
+    if (!loaded) return Promise.reject(new Error(`${module.ref.appId}: no script is running`))
+    return loaded.instance.serve('app', APP_STATE_TEXT_METHOD, [], 'runtime')
   }
 
   /**
@@ -508,12 +516,13 @@ export class AppBackgroundRuntime {
       dispatcher: new ModDispatcher({
         onHookFailure: report => this.options.report(`${ref.plugin}: the background module's ${report.event} hook failed (${report.failure.kind})`),
       }),
-      document: new AppStateDocument({
+      relay: new AppStateRelay({
         appId: ref.appId,
         file: ref.stateFile,
-        fs: this.documentFs(),
+        fs: this.relayFs(),
         ensureDir: dir => this.ensureDir(dir),
         report: this.options.report,
+        ask: () => this.askStateText(module),
         ...(this.options.persistDelayMs !== undefined ? { persistDelayMs: this.options.persistDelayMs } : {}),
       }),
       gone: new AbortController(),
@@ -526,7 +535,6 @@ export class AppBackgroundRuntime {
     this.options.onStatusChanged?.()
     const before = this.stopping.get(ref.appId) ?? Promise.resolve()
     module.starting = before
-      .then(() => (module.gone.signal.aborted ? undefined : module.document.load()))
       .then(() => this.load(module))
       .finally(() => {
         module.starting = undefined
@@ -723,6 +731,8 @@ export class AppBackgroundRuntime {
     }
     module.gone.abort()
     await module.starting?.catch(() => undefined)
+    // The script holds the state: its last changes are written while it still answers.
+    await module.relay.dispose()
     const loaded = module.loaded
     module.loaded = undefined
     if (loaded) {
@@ -732,7 +742,7 @@ export class AppBackgroundRuntime {
     this.clearBadge(module)
     this.clearBusy(module)
     this.note(module, 'stopped', reason)
-    await Promise.all([module.document.dispose(), this.closeMcp(module)])
+    await this.closeMcp(module)
   }
 
   /** `$.app.badge(count)`: a whole number from 0, or null for none. */
@@ -871,12 +881,12 @@ export class AppBackgroundRuntime {
       })
     }
     if (call.noun === 'app') {
-      if (call.method === 'state') return { value: module.document.value, version: module.document.version }
+      if (call.method === 'state') return await module.relay.load()
       if (call.method === 'badge') return this.setBadge(module, call.args[0])
       if (call.method === 'busy') return this.setBusy(module, call.args[0])
       if (call.method === 'analyze') return await this.analyze(module, call.args[0])
       if (call.method === 'view') return this.askView(module, call.args[0], call.args[1])
-      return module.document.apply(call.args[0])
+      return module.relay.relay(call.args[0], call.args[1])
     }
     if (call.noun === 'log') {
       const first = call.args[0]
@@ -927,7 +937,7 @@ export class AppBackgroundRuntime {
     }
   }
 
-  private documentFs(): AppStateDocumentFs {
+  private relayFs(): AppStateRelayFs {
     const { fs } = this.options
     if (!fs) {
       return {

@@ -29,6 +29,9 @@ import { PROVIDER_WIRE_FORMATS } from '../mods/provider/providerManifest'
 import { checkTemplateDecls } from '../mods/ui/uiManifest'
 import { ModUiContributionsHost, type ContributingPlugin } from '../mods/ui/contributionsHost'
 import { resetModContributionsState } from '../mods/ui/contributionsState'
+import { mirrorAppState } from './_helpers/appStateMirror'
+
+const appState = mirrorAppState('switch-console')
 
 const ROUTER = {
   providerApi: 1,
@@ -344,7 +347,7 @@ function world(source: string, settingsFor: SettingsAppBinding | undefined, peer
     stateFile: 'C:/app/data/state.json',
     ...(settingsFor ? { settingsFor } : {}),
   }
-  const value = () => runtime.document('switch-console')?.value as Record<string, unknown> | undefined
+  const value = () => appState() as Record<string, unknown> | undefined
   return { runtime, ref, value, reloads }
 }
 

@@ -1,14 +1,13 @@
 /**
  * An app's state as patches (F-40): the diff names leaves, arrays of one
  * length by index and of two lengths whole; a patch applies without touching
- * the value it was applied to; a batch the document refuses, and why; the
- * document's byte cap and the patches it publishes.
+ * the value it was applied to; a batch that is refused, and why; how the
+ * bytes of a state are counted.
  */
 import { describe, expect, it } from 'vitest'
 
 import {
   APP_PATCH_BATCH_MAX,
-  appStateBytes,
   utf8Length,
   applyAppPatch,
   applyAppPatches,
@@ -16,8 +15,6 @@ import {
   diffJson,
   parseAppPointer,
 } from '../mods/app/appStateDiff'
-import type { AppStateEvent } from '../mods/app/appStateBus'
-import { AppStateDocument } from '../mods/app/appStateDocument'
 
 describe('the diff', () => {
   it('names the leaves that changed, a key gone as a removal, and nothing for equal values', () => {
@@ -98,21 +95,7 @@ describe('the check', () => {
   })
 })
 
-describe('the document', () => {
-  const make = (maxBytes?: number) => {
-    const events: AppStateEvent[] = []
-    const document = new AppStateDocument({
-      appId: 'pay-board',
-      file: 'C:/app/data/state.json',
-      fs: { readFile: () => Promise.reject(new Error('none')), writeFile: async () => undefined },
-      ensureDir: async () => undefined,
-      report: () => undefined,
-      publish: event => events.push(event),
-      ...(maxBytes !== undefined ? { maxBytes } : {}),
-    })
-    return { document, events }
-  }
-
+describe('sizes and keys', () => {
   it('counts UTF-8 bytes as the encoder does, surrogate pairs included', () => {
     for (const text of ['', 'abc', 'é', '€', '😀', 'a�', '�b', 'mixed é € 😀 end']) {
       expect(utf8Length(text)).toBe(new TextEncoder().encode(text).length)
@@ -122,34 +105,5 @@ describe('the document', () => {
   it('a key named as an Object member is removed like any other', () => {
     expect(diffJson({ words: { valueOf: 3, a: 1 } }, { words: { a: 1 } })).toEqual([{ path: '/words/valueOf' }])
     expect(applyAppPatch({ words: { toString: 1 } }, { path: '/words/toString' })).toEqual({ words: {} })
-  })
-
-  it('a change wider than a batch is published as the whole state', () => {
-    const { document, events } = make()
-    const rows = Object.fromEntries(Array.from({ length: APP_PATCH_BATCH_MAX + 1 }, (_, i) => [`r${i}`, i]))
-    document.apply([{ path: '', value: rows }])
-    expect(events.at(-1)!.patches).toEqual([{ path: '', value: rows }])
-    document.apply([{ path: '/r0', value: -1 }])
-    expect(events.at(-1)!.patches).toEqual([{ path: '/r0', value: -1 }])
-  })
-
-  it('caps the state at the UTF-8 size of the file it writes', () => {
-    const value = { name: 'é'.repeat(20) }
-    const bytes = appStateBytes(value)
-    expect(bytes).toBe(new TextEncoder().encode(JSON.stringify(value, null, 2)).length)
-    expect(bytes).toBeGreaterThan(JSON.stringify(value).length)
-    expect(() => make(bytes - 1).document.apply([{ path: '', value }])).toThrow(/at most/)
-    expect(make(bytes).document.apply([{ path: '', value }])).toEqual({ version: 1 })
-  })
-
-  it('publishes the change as the diff of the state, so an append or a removal reaches every reader alike', () => {
-    const { document, events } = make()
-    document.apply([{ path: '/list', value: ['a'] }])
-    document.apply([{ path: '/list/-', value: 'b' }])
-    expect(events.at(-1)!.patches).toEqual([{ path: '/list', value: ['a', 'b'] }])
-    document.apply([{ path: '/list/0' }])
-    expect(events.at(-1)!.patches).toEqual([{ path: '/list', value: ['b'] }])
-    expect(events.map(e => e.owner)).toEqual([document.owner, document.owner, document.owner])
-    expect(make().document.owner).not.toBe(document.owner)
   })
 })

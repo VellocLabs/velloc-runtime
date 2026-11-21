@@ -13,10 +13,17 @@ import type { AppViewLayout } from './appViews'
 export type AppBuild = () => Promise<ModsBuildAppResult>
 export type AppActor = (action: string, context: unknown) => Promise<ModsAppActionResult>
 
-/** `delta`: what changed since the state before, when that is all a holder of it needs. */
-type Listener = (sessionId: string, state: AppSurfaceState | null, delta?: AppSurfaceDelta) => void
+/** The data of a board whose app's script holds it, read when a page needs the board whole. */
+export type AppSurfaceLiveData = Required<Pick<AppSurfaceState, 'dataSeq' | 'dataAt'>> & { data: unknown }
+
+/**
+ * `delta`: what changed since the state before, when that is all a holder of
+ * it needs. `live`: the state carries no data, which `appSurfaceBoard` reads.
+ */
+type Listener = (sessionId: string, state: AppSurfaceState | null, delta?: AppSurfaceDelta, live?: boolean) => void
 
 const boards = new Map<string, AppSurfaceState>()
+const liveData = new Map<string, () => Promise<AppSurfaceLiveData>>()
 const listeners = new Set<Listener>()
 const builders = new Map<string, AppBuild>()
 const actors = new Map<string, AppActor>()
@@ -28,9 +35,33 @@ export function appSurfaceState(sessionId: string): AppSurfaceState | null {
   return boards.get(sessionId) ?? null
 }
 
-/** Records a session's app state and tells the listeners; null forgets it. */
-export function setAppSurfaceState(sessionId: string, state: AppSurfaceState | null, delta?: AppSurfaceDelta): void {
+/**
+ * The board of `sessionId` whole: the state, with the data its app's script
+ * holds read in. A read that fails gives the board with a data error.
+ */
+export async function appSurfaceBoard(sessionId: string): Promise<AppSurfaceState | null> {
+  const board = boards.get(sessionId)
+  const load = liveData.get(sessionId)
+  if (!board || !load) return board ?? null
+  try {
+    const { dataPatches: _patches, ...rest } = board
+    return { ...rest, ...(await load()) }
+  } catch (error) {
+    const message = `the app's data could not be read: ${error instanceof Error ? error.message : String(error)}`
+    return { ...board, errors: [...(board.errors ?? []), { kind: 'data', message }] }
+  }
+}
+
+/** Records a session's app state and tells the listeners; null forgets it. `loadData`: the state carries no data, and this reads it. */
+export function setAppSurfaceState(
+  sessionId: string,
+  state: AppSurfaceState | null,
+  delta?: AppSurfaceDelta,
+  loadData?: () => Promise<AppSurfaceLiveData>,
+): void {
   const before = boards.get(sessionId)
+  if (state && loadData) liveData.set(sessionId, loadData)
+  else liveData.delete(sessionId)
   if (state) boards.set(sessionId, state)
   else if (!boards.delete(sessionId)) return
   if (before && (!state || state.appId !== before.appId)) dispatchAppSessionGone(before.appId, sessionId)
@@ -39,7 +70,7 @@ export function setAppSurfaceState(sessionId: string, state: AppSurfaceState | n
   }
   for (const listener of [...listeners]) {
     try {
-      listener(sessionId, state, state && before ? delta : undefined)
+      listener(sessionId, state, state && before ? delta : undefined, state !== null && loadData !== undefined)
     } catch (error) {
       console.error('[mods/app] app listener failed', error)
     }

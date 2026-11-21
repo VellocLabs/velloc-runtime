@@ -18,6 +18,9 @@ import { APP_SCRIPT_IDLE_MS, AppScriptLifetimes, untilReady } from '../mods/app/
 import type { SettingsAppPeerSource } from '../mods/app/appProviderCalls'
 import { resetAppStateBusForTests } from '../mods/app/appStateBus'
 import type { AppBackgroundTemplate } from '../mods/ui/contributionsHost'
+import { mirrorAppState } from './_helpers/appStateMirror'
+
+const appState = mirrorAppState('pay-board')
 
 const ports: MessagePort[] = []
 const runtimes: AppBackgroundRuntime[] = []
@@ -208,7 +211,7 @@ describe('AppBackgroundRuntime — an app script', () => {
       stateFile: 'C:/app/data/state.json',
       lifetime: 'shown',
     }
-    const seen = () => (runtime.document('pay-board')?.value as { seen?: unknown[] } | undefined)?.seen ?? []
+    const seen = () => (appState() as { seen?: unknown[] } | undefined)?.seen ?? []
     return { runtime, ref, seen, reports, crash: () => crashes.at(-1)?.(), workers: () => ({ opened, closed }) }
   }
 
@@ -383,8 +386,8 @@ describe('AppBackgroundRuntime — an app script', () => {
     const { runtime, ref } = world(CALLS)
     runtime.sync([ref])
     runtime.view('pay-board', 's1', 'c1', 'full')
-    await vi.waitFor(() => expect(runtime.document('pay-board')?.value).toHaveProperty('mcp'))
-    const value = runtime.document('pay-board')?.value as Record<string, string>
+    await vi.waitFor(() => expect(appState()).toHaveProperty('mcp'))
+    const value = appState() as Record<string, string>
     for (const key of ['badge', 'busy', 'analyze', 'mcp']) expect(value[key]).toMatch(/^NotAllowedError: .*not available to an app's script: it runs only while the app is on screen/)
   })
 
@@ -429,8 +432,8 @@ describe('AppBackgroundRuntime — an app script', () => {
     const bound: AppBackgroundRef = { ...ref, settingsFor: { providerId: 'mod.pay.route', router: true, routesTo: '*' } }
     runtime.sync([bound])
     runtime.view('pay-board', 's1', 'c1', 'full')
-    await vi.waitFor(() => expect(runtime.document('pay-board')?.value).toHaveProperty('usage'))
-    expect(runtime.document('pay-board')?.value).toEqual({ peers: ['vendor-a'], clear: { ok: true }, usage: { by: 'hour', buckets: [], truncated: false } })
+    await vi.waitFor(() => expect(appState()).toHaveProperty('usage'))
+    expect(appState()).toEqual({ peers: ['vendor-a'], clear: { ok: true }, usage: { by: 'hour', buckets: [], truncated: false } })
     expect(reloads).toEqual(['mod.pay.route'])
     expect(asked).toEqual([expect.objectContaining({ router: 'mod.pay.route', by: 'hour' })])
   })

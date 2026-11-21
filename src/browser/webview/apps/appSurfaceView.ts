@@ -12,7 +12,9 @@ import {
   isAppSurfaceDelta,
   isAppSurfaceState,
   MODS_APP_DELTA_EVENT,
+  MODS_APP_RESYNC_EVENT,
   modsAppTopic,
+  type AppSurfaceDelta,
   type AppSurfaceState,
   type ModsAppActionResult,
   type ModsAppPageResult,
@@ -46,9 +48,10 @@ export function holdAppSurface(connection: Subscriber, sessionId: string, listen
     const subscribe = (): void => {
       awaitingBoard = true
       held.unsubscribe = connection.subscribe<unknown>(modsAppTopic(sessionId), event => {
-        if (event.type === MODS_APP_DELTA_EVENT) {
+        if (event.type === MODS_APP_DELTA_EVENT || event.type === MODS_APP_RESYNC_EVENT) {
           if (awaitingBoard) return
-          const next = held.state && isAppSurfaceDelta(event.payload) ? applyAppSurfaceDelta(held.state, event.payload) : undefined
+          const patched = event.type === MODS_APP_DELTA_EVENT && held.state && isAppSurfaceDelta(event.payload)
+          const next = patched ? applyAppSurfaceDelta(held.state!, event.payload as AppSurfaceDelta) : undefined
           if (!next || !isAppSurfaceState(next)) {
             // The change does not follow the board held: the topic's snapshot is the board again.
             held.unsubscribe?.()

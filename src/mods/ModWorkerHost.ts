@@ -28,7 +28,7 @@ import { isEngineTable, type EngineTable } from './modEngineTable'
 import { MOD_DEFAULT_LOCALE, normalizeModLocale } from './modLocale'
 import { createWorkerUiNoun } from './workerUiNoun'
 import { makeInteractHandle, makeProviderNoun } from './provider/nouns/workerProviderNoun'
-import { makeWorkerAppNoun } from './app/workerAppNoun'
+import { APP_STATE_TEXT_METHOD, makeWorkerAppState } from './app/workerAppNoun'
 import { MOD_MODULE_SOURCE_URL, moduleFramesOf, type ModFrame } from './modLineMap'
 
 /** What a hooks module exports — `register`, and nothing the loader reads
@@ -185,6 +185,9 @@ export function installModWorkerHost(
   /** The noun tables of the `$.script.run` calls in flight, by the run-scoped
    *  noun each is served under (`scriptNounKey`); dropped when the call settles. */
   const scriptTables = new Map<string, Record<string, (...args: unknown[]) => unknown>>()
+  /** The state an app's script holds (F-40), shared by every hook's `$.app`; the runtime asks for its text. */
+  const appState = makeWorkerAppState()
+  const appStateTable: Record<string, (...args: unknown[]) => unknown> = { [APP_STATE_TEXT_METHOD]: () => appState.text() }
   const invocations = new Map<string, Invocation>()
   const pendingNext = new Map<string, Pending & { invocation: Invocation }>()
   /** A streaming hook's read of a stream beneath, waiting for its
@@ -714,7 +717,7 @@ export function installModWorkerHost(
                   : noun === 'agent'
                     ? makeAgent(invocation)
                   : noun === 'app'
-                    ? makeWorkerAppNoun((method, args) => callRuntime(invocation, 'app', method, args))
+                    ? appState.noun((method, args) => callRuntime(invocation, 'app', method, args))
                     : new Proxy(Object.freeze({}), {
                   get: (_target, method) =>
                     // `then`: so that `await $.fs` does not treat the noun as a promise.
@@ -854,7 +857,7 @@ export function installModWorkerHost(
 
   /** `mod.serve`: a method of a noun this module provides, run here. */
   const serve = async (msg: ModServeMessage): Promise<void> => {
-    const fns = provided.get(msg.noun) ?? scriptTables.get(msg.noun)
+    const fns = provided.get(msg.noun) ?? scriptTables.get(msg.noun) ?? (msg.noun === 'app' ? appStateTable : undefined)
     const fn = fns?.[msg.method]
     if (!fns || !fn) {
       post({

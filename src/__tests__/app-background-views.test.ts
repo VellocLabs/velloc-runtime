@@ -20,6 +20,9 @@ import { AppViews } from '../mods/app/appViews'
 import { RuntimeHub, type RuntimeHubHost } from '../browser/runtimeHub/RuntimeHub'
 import { connectRuntime } from '../browser/runtimeClient'
 import { createMessagePortTransport } from '../browser/runtimeTransport'
+import { mirrorAppState } from './_helpers/appStateMirror'
+
+const appState = mirrorAppState('pay-board')
 
 const ports: MessagePort[] = []
 const runtimes: AppBackgroundRuntime[] = []
@@ -172,7 +175,7 @@ describe('AppBackgroundRuntime — the app on screen', () => {
     })
     runtimes.push(runtime)
     const ref: AppBackgroundRef = { plugin: 'pay', path: '/plugins/pay/bg.js', root: '/plugins/pay', appId: 'pay-board', folder: 'C:/app', stateFile: 'C:/app/data/state.json' }
-    const seen = () => (runtime.document('pay-board')?.value as { seen?: unknown[] } | undefined)?.seen ?? []
+    const seen = () => (appState() as { seen?: unknown[] } | undefined)?.seen ?? []
     return { runtime, ref, seen }
   }
 

@@ -18,6 +18,9 @@ import type { ModWorkerHandle } from '../mods/ModRuntime'
 import { AppBackgroundRuntime, type AppBackgroundRef } from '../mods/app/AppBackgroundRuntime'
 import { refuseAppBackgroundCall } from '../mods/app/appBackgroundEvents'
 import { resetAppStateBusForTests } from '../mods/app/appStateBus'
+import { mirrorAppState } from './_helpers/appStateMirror'
+
+const appState = mirrorAppState('pay-board')
 
 const ports: MessagePort[] = []
 const runtimes: AppBackgroundRuntime[] = []
@@ -61,7 +64,7 @@ function world(source: string, options: { busyMaxMs?: number } = {}) {
     folder: 'C:/app',
     stateFile: 'C:/app/data/state.json',
   }
-  const said = () => (runtime.document('pay-board')?.value as { said?: unknown[] } | undefined)?.said ?? []
+  const said = () => (appState() as { said?: unknown[] } | undefined)?.said ?? []
   return { runtime, ref, asked, said, busy }
 }
 

@@ -539,13 +539,19 @@ root = Text("Theirs")`))
   })
 })
 
-describe('the live state of a background module', () => {
-  function liveRig(start?: { owner: number; version: number; value: unknown }) {
-    let snapshot = start
-    let listener: ((event: { appId: string; owner: number; version: number; value: unknown; patches: Array<{ path: string; value?: unknown }> }) => void) | undefined
+describe('the state an app script holds', () => {
+  type Held = { owner: number; version: number; value: unknown }
+  type Batch = { appId: string; owner: number; version: number; value: unknown; patches?: Array<{ path: string; value?: unknown }> }
+
+  function liveRig(start?: Held) {
+    let held = start
+    let listener: ((event: { appId: string; owner: number; version: number; patches?: Batch['patches']; gone?: true }) => void) | undefined
     const unsubscribed: string[] = []
     const liveData = {
-      snapshot: () => snapshot,
+      snapshot: () => {
+        const now = held
+        return now ? { owner: now.owner, version: () => held?.version ?? now.version, read: async () => ({ version: held!.version, value: held!.value }) } : undefined
+      },
       subscribe: (appId: string, fn: typeof listener) => {
         listener = fn
         return () => void unsubscribed.push(appId)
@@ -554,24 +560,35 @@ describe('the live state of a background module', () => {
     const disk = memoryFs({ 'app.a2ui': BOARD, 'data/latest.json': '{"count":3}' })
     const published: AppSurfaceState[] = []
     const deltas: unknown[] = []
+    let load: (() => Promise<unknown>) | undefined
     const host = createAppSurfaceHost({
       fs: disk.fs,
       app: app(),
       sessionId: 's1',
       compile,
-      publish: (_id, state, delta) => {
+      publish: (_id, state, delta, loadData) => {
         if (state) published.push(state)
         deltas.push(delta)
+        load = loadData
       },
       registerBuild: () => () => true,
       liveData,
       now: () => 5000,
     })
-    const emit = (event: Parameters<NonNullable<typeof listener>>[0]) => {
-      snapshot = { owner: event.owner, version: event.version, value: event.value }
+    /** The script changes its state and the batch reaches the host. */
+    const emit = ({ value, ...event }: Batch) => {
+      held = { owner: event.owner, version: event.version, value }
       listener?.(event)
     }
-    return { host, published, deltas, unsubscribed, emit }
+    /** The script changes its state; the batch is still on its way. */
+    const ahead = (next: Held) => {
+      held = next
+    }
+    const gone = (owner: number, version: number) => {
+      held = undefined
+      listener?.({ appId: 'pay-board', owner, version, gone: true })
+    }
+    return { host, published, deltas, unsubscribed, emit, ahead, gone, load: () => load }
   }
 
   it('a batch goes out as a delta of its patches; a board the patches do not follow goes out whole', async () => {
@@ -581,43 +598,61 @@ describe('the live state of a background module', () => {
     emit({ appId: 'pay-board', owner: 1, version: 8, value: { count: 10 }, patches: [{ path: '/count', value: 10 }] })
     expect(deltas.at(-1)).toEqual({ data: { from: 1, dataSeq: 2, dataAt: 5000, patches: [{ path: '/count', value: 10 }] } })
     emit({ appId: 'pay-board', owner: 2, version: 1, value: { count: 1 }, patches: [{ path: '/count', value: 1 }] })
-    expect(deltas.at(-1), 'another document: nothing to patch from').toBeUndefined()
+    expect(deltas.at(-1), 'another script: nothing to patch from').toBeUndefined()
     host.dispose()
   })
 
-  it('is read in place of the data file, and each batch is published as patches from the board before it', async () => {
-    const { host, published, unsubscribed, emit } = liveRig({ owner: 1, version: 7, value: { count: 9 } })
+  it('is not kept on the board: the board names where it stands, and the data is asked of the script', async () => {
+    const { host, published, unsubscribed, emit, ahead, load } = liveRig({ owner: 1, version: 7, value: { count: 9 } })
     const first = await host.start()
-    expect(first).toMatchObject({ data: { count: 9 }, dataAt: 5000, dataSeq: 1 })
+    expect(first).toMatchObject({ dataAt: 5000, dataSeq: 1 })
+    expect(first).not.toHaveProperty('data')
     expect(first.dataPatches).toBeUndefined()
+    expect(await load()!()).toEqual({ data: { count: 9 }, dataSeq: 1, dataAt: 5000 })
     emit({ appId: 'pay-board', owner: 1, version: 8, value: { count: 10 }, patches: [{ path: '/count', value: 10 }] })
-    expect(published.at(-1)).toMatchObject({ data: { count: 10 }, dataSeq: 2, dataPatches: { from: 1, patches: [{ path: '/count', value: 10 }] } })
-    // The same version again changes nothing; the next build reads the data whole, without patches.
+    expect(published.at(-1)).toMatchObject({ dataSeq: 2, dataPatches: { from: 1, patches: [{ path: '/count', value: 10 }] } })
+    expect(published.at(-1)).not.toHaveProperty('data')
+    expect(await load()!()).toEqual({ data: { count: 10 }, dataSeq: 2, dataAt: 5000 })
+    // The same version again changes nothing, and neither does the next build.
     emit({ appId: 'pay-board', owner: 1, version: 8, value: { count: 10 }, patches: [] })
     expect(published).toHaveLength(2)
     await host.build()
     expect(published).toHaveLength(2)
+    // A read that is a batch ahead of the board is numbered as the board will number that batch.
+    ahead({ owner: 1, version: 9, value: { count: 11 } })
+    expect(await load()!()).toMatchObject({ data: { count: 11 }, dataSeq: 3 })
     host.dispose()
     expect(unsubscribed).toEqual(['pay-board'])
   })
 
-  it('a restarted module\'s document is a new owner: its first batch is taken, set whole, and its patches follow from it', async () => {
+  it('a script started again, a skipped batch and a batch without patches leave nothing to patch from', async () => {
     const { host, published, emit } = liveRig({ owner: 1, version: 1, value: { count: 1 } })
     await host.start()
     emit({ appId: 'pay-board', owner: 2, version: 1, value: { count: 5 }, patches: [{ path: '/count', value: 5 }] })
-    const restarted = published.at(-1)!
-    expect(restarted).toMatchObject({ data: { count: 5 }, dataSeq: 2 })
-    expect(restarted.dataPatches, 'not computed against what the board holds').toBeUndefined()
+    expect(published.at(-1)).toMatchObject({ dataSeq: 2 })
+    expect(published.at(-1)!.dataPatches, 'not computed against what a page holds').toBeUndefined()
     emit({ appId: 'pay-board', owner: 2, version: 2, value: { count: 6 }, patches: [{ path: '/count', value: 6 }] })
-    expect(published.at(-1)).toMatchObject({ data: { count: 6 }, dataSeq: 3, dataPatches: { from: 2, patches: [{ path: '/count', value: 6 }] } })
-    // A skipped version leaves the board's value behind: set whole.
+    expect(published.at(-1)).toMatchObject({ dataSeq: 3, dataPatches: { from: 2, patches: [{ path: '/count', value: 6 }] } })
     emit({ appId: 'pay-board', owner: 2, version: 4, value: { count: 8 }, patches: [{ path: '/count', value: 8 }] })
-    expect(published.at(-1)).toMatchObject({ data: { count: 8 }, dataSeq: 4 })
+    expect(published.at(-1)).toMatchObject({ dataSeq: 4 })
+    expect(published.at(-1)!.dataPatches).toBeUndefined()
+    emit({ appId: 'pay-board', owner: 2, version: 5, value: { count: 9 } })
+    expect(published.at(-1)).toMatchObject({ dataSeq: 5 })
     expect(published.at(-1)!.dataPatches).toBeUndefined()
     host.dispose()
   })
 
-  it('without a live state the data file is read as before, and the page check takes the new fields', async () => {
+  it('a script that stops gives the board back to the data file', async () => {
+    const { host, published, gone, load } = liveRig({ owner: 1, version: 2, value: { count: 9 } })
+    await host.start()
+    expect(load()).toBeTypeOf('function')
+    gone(1, 2)
+    await vi.waitFor(() => expect(published.at(-1)).toMatchObject({ data: { count: 3 }, dataSeq: 2 }))
+    expect(load(), 'the board carries its data again').toBeUndefined()
+    host.dispose()
+  })
+
+  it('without a script the data file is read as before, and the page check takes the new fields', async () => {
     const { host } = liveRig()
     const state = await host.start()
     expect(state).toMatchObject({ data: { count: 3 }, dataAt: 1000, dataSeq: 1 })

@@ -22,6 +22,8 @@ import type { AppBackgroundMcpOwner } from '../mods/app/appBackgroundMcp'
 import { liveAppState, resetAppStateBusForTests } from '../mods/app/appStateBus'
 import { createAppSurfaceHost } from '../mods/app/appSurfaceHost'
 
+const stateOf = async (runtime: AppBackgroundRuntime): Promise<unknown> => (await runtime.relay('pay-board')!.read()).value
+
 const sleep = (ms: number): Promise<void> => new Promise(resolve => setTimeout(resolve, ms))
 
 const openPorts: MessagePort[] = []
@@ -134,12 +136,11 @@ describe('AppBackgroundRuntime — a synced app', () => {
     runtime.sync([ref('/plugins/pay/bg.js')])
     await vi.waitFor(() => expect(status()?.state).toBe('ready'))
     expect(opened()).toBe(1)
-    const document = runtime.document('pay-board')!
-    await vi.waitFor(() => expect((document.value as { ticks: number }).ticks).toBeGreaterThanOrEqual(2))
-    expect(document.value).toMatchObject({ count: 3, started: 'pay-board', folder: FOLDER })
-    expect(liveAppState('pay-board')?.value).toBe(document.value)
+    await vi.waitFor(async () => expect(((await stateOf(runtime)) as { ticks: number }).ticks).toBeGreaterThanOrEqual(2))
+    expect((await stateOf(runtime))).toMatchObject({ count: 3, started: 'pay-board', folder: FOLDER })
+    expect(liveAppState('pay-board')).toBe(runtime.relay('pay-board'))
     await vi.waitFor(() => expect(writes.length).toBeGreaterThan(0))
-    await document.flush()
+    await runtime.relay('pay-board')!.flush()
     expect(JSON.parse(files.get(`${FOLDER}/data/latest.json`)!)).toMatchObject({ count: 3, started: 'pay-board' })
   })
 
@@ -149,25 +150,30 @@ describe('AppBackgroundRuntime — a synced app', () => {
     await vi.waitFor(() => expect(status()?.state).toBe('ready'))
     const published: AppSurfaceState[] = []
     const disk = { stat: async () => ({ isFile: () => true, isDirectory: () => false, size: 1, mtimeMs: 1 }) as never, readFileBytes: async () => new TextEncoder().encode('surface("app")\nroot = Text($/data/ticks)') }
+    let load: (() => Promise<{ data: unknown; dataSeq: number }>) | undefined
     const host = createAppSurfaceHost({
       fs: disk,
       app: { appId: 'pay-board', plugin: 'pay', folder: FOLDER, decl: { seed: './app', seedVersion: 1, entry: 'app.a2ui', data: 'data/latest.json' }, seed: { version: 1, written: [], conflicts: [] } },
       sessionId: 's1',
       compile: async () => ({ ok: true, surfaceIds: ['app'] }),
-      publish: (_id, state) => {
+      publish: (_id, state, _delta, loadData) => {
         if (state) published.push(state)
+        load = loadData
       },
       registerBuild: () => () => true,
     })
     const first = await host.start()
-    expect(first.data).toMatchObject({ started: 'pay-board' })
+    expect(first, 'the script holds the data: the board carries none').not.toHaveProperty('data')
+    const whole = await load!()
+    expect(whole.data).toMatchObject({ started: 'pay-board' })
+    expect(whole.dataSeq).toBeGreaterThanOrEqual(first.dataSeq!)
     expect(first.surface?.surfaceIds).toEqual(['app'])
     const built = published.indexOf(first)
     await vi.waitFor(() => expect(published.length).toBeGreaterThanOrEqual(built + 3))
     const second = published[built + 1]!
     const third = published[built + 2]!
     expect(second.dataSeq).toBe(first.dataSeq! + 1)
-    expect(second.dataPatches).toEqual({ from: first.dataSeq, patches: [{ path: '/ticks', value: (second.data as { ticks: number }).ticks }] })
+    expect(second.dataPatches).toEqual({ from: first.dataSeq, patches: [{ path: '/ticks', value: expect.any(Number) }] })
     expect(third.dataPatches?.from).toBe(second.dataSeq)
     expect(third.dataSeq).toBe(second.dataSeq! + 1)
     host.dispose()
@@ -194,8 +200,7 @@ describe('AppBackgroundRuntime — a synced app', () => {
     await vi.waitFor(() => expect(opened()).toBe(2))
     await vi.waitFor(() => expect(status()?.state).toBe('ready'))
     expect(reports).toContainEqual(expect.stringMatching(/stopped — its worker is gone \(boom\); it starts again after 10ms/))
-    const document = runtime.document('pay-board')!
-    expect(document.value).toMatchObject({ started: 'pay-board' })
+    expect((await stateOf(runtime))).toMatchObject({ started: 'pay-board' })
   })
 
   it('a changed module starts after the old one stopped: it reads what the old one wrote, and keeps the live state', async () => {
@@ -213,13 +218,12 @@ describe('AppBackgroundRuntime — a synced app', () => {
       { persistDelayMs: 1000 },
     )
     runtime.sync([ref('/plugins/pay/bg.js')])
-    await vi.waitFor(() => expect(runtime.document('pay-board')?.value).toMatchObject({ ticks: 1 }))
+    await vi.waitFor(async () => expect((await stateOf(runtime))).toMatchObject({ ticks: 1 }))
     runtime.sync([ref('/plugins/pay/bg2.js')])
     await vi.waitFor(() => expect(status()?.state).toBe('ready'))
-    const document = runtime.document('pay-board')!
-    await vi.waitFor(() => expect(document.value).toMatchObject({ ticks: 2, saved: 'on stop' }))
-    expect(liveAppState('pay-board')?.value, 'the old module going leaves the new one\'s live state').toBe(document.value)
-    await document.flush()
+    await vi.waitFor(async () => expect((await stateOf(runtime))).toMatchObject({ ticks: 2, saved: 'on stop' }))
+    expect(liveAppState('pay-board'), 'the old module going leaves the new one\'s live state').toBe(runtime.relay('pay-board'))
+    await runtime.relay('pay-board')!.flush()
     expect(JSON.parse(files.get(`${FOLDER}/data/latest.json`)!)).toMatchObject({ ticks: 2, saved: 'on stop' })
   })
 
@@ -232,7 +236,7 @@ describe('AppBackgroundRuntime — a synced app', () => {
     runtime.sync([ref('/plugins/pay/bg3.js')])
     await vi.waitFor(() => expect(reports).toContainEqual(expect.stringMatching(/did not stop cleanly \(close failed\)/)))
     await vi.waitFor(() => expect(status()?.state).toBe('ready'))
-    expect(runtime.document('pay-board')!.value).toMatchObject({ started: 'pay-board' })
+    expect((await stateOf(runtime))).toMatchObject({ started: 'pay-board' })
   })
 
   it('waits for a window instead of failing', async () => {
@@ -274,7 +278,7 @@ describe('AppBackgroundRuntime — admission', () => {
     })
     runtime.sync([ref('/plugins/pay/bg.js'), ref('/plugins/pay/missing.js', 'pay-other')])
     await vi.waitFor(() => expect(status()?.state).toBe('ready'))
-    await vi.waitFor(() => expect((runtime.document('pay-board')!.value as { message: string }).message).toMatch(/^NotAllowedError: \$\.ui is a session noun/))
+    await vi.waitFor(async () => expect(((await stateOf(runtime)) as { message: string }).message).toMatch(/^NotAllowedError: \$\.ui is a session noun/))
     expect(status('pay-other')).toMatchObject({ state: 'failed', reason: expect.stringMatching(/could not be read/) })
   })
 
@@ -307,8 +311,8 @@ describe('AppBackgroundRuntime — admission', () => {
     })
     runtime.sync([ref('/plugins/pay/bg.js')])
     await vi.waitFor(() => expect(status()?.state).toBe('ready'))
-    await vi.waitFor(() => expect(runtime.document('pay-board')!.value).toMatchObject({ ok: 1, refused: expect.stringMatching(/not a JSON pointer/) }))
-    expect(runtime.document('pay-board')!.version).toBe(2)
+    await vi.waitFor(async () => expect((await stateOf(runtime))).toMatchObject({ ok: 1, refused: expect.stringMatching(/not a JSON pointer/) }))
+    expect(runtime.relay('pay-board')!.version()).toBe(2)
   })
 
   it('an object the module got and edited in place is still published when set', async () => {
@@ -330,7 +334,7 @@ describe('AppBackgroundRuntime — admission', () => {
     })
     runtime.sync([ref('/plugins/pay/bg.js')])
     await vi.waitFor(() => expect(status()?.state).toBe('ready'))
-    await vi.waitFor(() => expect(runtime.document('pay-board')!.value).toEqual({ count: 2, note: 'after', list: ['a', 'b'] }))
+    await vi.waitFor(async () => expect((await stateOf(runtime))).toEqual({ count: 2, note: 'after', list: ['a', 'b'] }))
   })
 
   it('the static checks name the session events, the session nouns and the forbidden methods', () => {
@@ -378,7 +382,7 @@ describe('AppBackgroundRuntime — app.action', () => {
     expect(await runtime.action('pay-board', 'plain', null, 's2')).toBe(true)
     expect(await runtime.action('pay-board', 'boom', null, 's1')).toBe(false)
     expect(await runtime.action('pay-other', 'refresh', null, 's1')).toBe(false)
-    expect((runtime.document('pay-board')!.value as { seen: unknown[] }).seen).toEqual([
+    expect(((await stateOf(runtime)) as { seen: unknown[] }).seen).toEqual([
       ['pay-board', 'refresh', { id: 7 }, 's1'],
       ['pay-board', 'other', null, 's1'],
       ['pay-board', 'plain', null, 's2'],
@@ -420,7 +424,7 @@ describe('AppBackgroundRuntime — app.action', () => {
     const before = published.length
     await expect(host.action('open_case', { id: 1 })).resolves.toEqual({ handled: false })
     expect(published.length).toBe(before)
-    expect((runtime.document('pay-board')!.value as { seen: unknown[][] }).seen.map(row => row[1])).toEqual(['refresh'])
+    expect(((await stateOf(runtime)) as { seen: unknown[][] }).seen.map(row => row[1])).toEqual(['refresh'])
     host.dispose()
   })
 })
@@ -447,7 +451,7 @@ describe('AppBackgroundRuntime — $.app.badge', () => {
     expect(badges).toEqual([['pay-board', 3], ['pay-board', 12]])
     for (const bad of [-1, 1.5, 'x']) {
       await runtime.action('pay-board', 'badge', bad, 's1')
-      expect((runtime.document('pay-board')!.value as { refused: string }).refused).toMatch(/^TypeError: \$\.app\.badge\(count\): count is a whole number from 0, or null/)
+      expect(((await stateOf(runtime)) as { refused: string }).refused).toMatch(/^TypeError: \$\.app\.badge\(count\): count is a whole number from 0, or null/)
     }
     await runtime.action('pay-board', 'badge', 0, 's1')
     expect(badges.at(-1)).toEqual(['pay-board', 0])
@@ -561,9 +565,8 @@ describe('AppBackgroundRuntime — $.mcp', () => {
     )
     runtime.sync([{ ...ref('/plugins/pay/bg.js'), mcpOwner: OWNER }])
     await vi.waitFor(() => expect(status()?.state).toBe('ready'))
-    const document = runtime.document('pay-board')!
-    await vi.waitFor(() => expect(document.value).toHaveProperty('result'))
-    expect(document.value).toEqual({
+    await vi.waitFor(async () => expect((await stateOf(runtime))).toHaveProperty('result'))
+    expect((await stateOf(runtime))).toEqual({
       connect: { isConnected: true, server: 'docs' },
       result: { content: [{ type: 'text', text: 'docs/search {"q":1}' }], isError: false },
     })
@@ -594,7 +597,7 @@ describe('AppBackgroundRuntime — $.mcp', () => {
     )
     runtime.sync([{ ...ref('/plugins/pay/bg.js'), mcpOwner: OWNER }])
     await vi.waitFor(() => expect(status()?.state).toBe('ready'))
-    await vi.waitFor(() => expect(runtime.document('pay-board')!.value).toHaveProperty('result'))
+    await vi.waitFor(async () => expect((await stateOf(runtime))).toHaveProperty('result'))
     expect(closed).toBe(0)
     workers[0]!.close()
     await vi.waitFor(() => expect(closed).toBe(1))
@@ -604,9 +607,8 @@ describe('AppBackgroundRuntime — $.mcp', () => {
     const { runtime, ref, status } = world({ '/plugins/pay/bg.js': MCP_USER })
     runtime.sync([{ ...ref('/plugins/pay/bg.js'), mcpOwner: OWNER }])
     await vi.waitFor(() => expect(status()?.state).toBe('ready'))
-    const document = runtime.document('pay-board')!
-    await vi.waitFor(() => expect(document.value).toHaveProperty('result'))
-    expect(document.value).toEqual({ connect: { error: 'NotSupportedError' }, result: { error: 'NotSupportedError' } })
+    await vi.waitFor(async () => expect((await stateOf(runtime))).toHaveProperty('result'))
+    expect((await stateOf(runtime))).toEqual({ connect: { error: 'NotSupportedError' }, result: { error: 'NotSupportedError' } })
   })
 })
 
@@ -633,9 +635,8 @@ describe('AppBackgroundRuntime — declared folders', () => {
     )
     runtime.sync([{ ...ref('/plugins/pay/bg.js'), folders: FOLDERS }])
     await vi.waitFor(() => expect(status()?.state).toBe('ready'))
-    const document = runtime.document('pay-board')!
-    await vi.waitFor(() => expect(document.value).toHaveProperty('outside'))
-    expect(document.value).toEqual({ folders: FOLDERS, read: 'csv', readOnly: 'NotAllowedError', outside: 'NotAllowedError' })
+    await vi.waitFor(async () => expect((await stateOf(runtime))).toHaveProperty('outside'))
+    expect((await stateOf(runtime))).toEqual({ folders: FOLDERS, read: 'csv', readOnly: 'NotAllowedError', outside: 'NotAllowedError' })
     expect(files.get('C:/home/Documents/invoices/2026/new.txt')).toBe('n')
     expect(files.has('C:/home/Downloads/out.txt')).toBe(false)
   })
@@ -658,9 +659,8 @@ describe('AppBackgroundRuntime — declared folders', () => {
     )
     runtime.sync([ref('/plugins/pay/bg.js')])
     await vi.waitFor(() => expect(status()?.state).toBe('ready'))
-    const document = runtime.document('pay-board')!
-    await vi.waitFor(() => expect(document.value).toHaveProperty('other'))
-    expect(document.value).toEqual({ hello: '你好', write: 'NotAllowedError', other: 'NotAllowedError' })
+    await vi.waitFor(async () => expect((await stateOf(runtime))).toHaveProperty('other'))
+    expect((await stateOf(runtime))).toEqual({ hello: '你好', write: 'NotAllowedError', other: 'NotAllowedError' })
     expect(files.get('/plugins/pay/locales/zh.json')).toBe('{"hello":"你好"}')
   })
 
@@ -669,8 +669,7 @@ describe('AppBackgroundRuntime — declared folders', () => {
     runtime.sync([ref('/plugins/pay/bg.js')])
     await vi.waitFor(() => expect(status()?.state).toBe('ready'))
     await vi.waitFor(() => expect(status()?.state).toBe('ready'))
-    const document = runtime.document('pay-board')!
     await sleep(50)
-    expect(document.value).toEqual({})
+    expect((await stateOf(runtime))).toEqual({})
   })
 })
