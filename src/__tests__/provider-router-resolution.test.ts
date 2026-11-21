@@ -36,6 +36,7 @@ import {
 import type { RuntimeConfig } from '../runtime/interfaces/RuntimeConfig'
 import { fakeProviderRequestSeam } from './_helpers/fakeProviderRequestSeam'
 import { logRowOf, tierForTarget } from '../models/drivers/providerRouteResolution'
+import { findConfiguredModel } from '../config/nexusModelConfig/findConfiguredModel'
 import { recordRequest } from '../models/usage/requestLogWriter'
 import type { RequestLogRow } from '../models/usage/requestLogStore'
 
@@ -43,6 +44,10 @@ vi.mock('../models/usage/requestLogWriter', async original => ({
   ...(await original<typeof import('../models/usage/requestLogWriter')>()),
   recordRequest: vi.fn(),
 }))
+vi.mock('../config/nexusModelConfig/findConfiguredModel', async original => {
+  const real = await original<typeof import('../config/nexusModelConfig/findConfiguredModel')>()
+  return { ...real, findConfiguredModel: vi.fn(real.findConfiguredModel) }
+})
 const loggedRows = (): RequestLogRow[] => vi.mocked(recordRequest).mock.calls.map(call => call[0])
 
 // ── a JSON codec: the request body names the model; the reply is JSON lines ──
@@ -1060,5 +1065,22 @@ describe('tierForTarget: the tier a routed target is sent', () => {
 
   it('drops a tier outside the runtime vocabulary when the target lists tiers', () => {
     expect(tierForTarget('turbo', ['low', 'high'])).toBeUndefined()
+  })
+})
+
+describe('a routed send carries the tier its target lists', () => {
+  it("moves the router's effort to the nearest tier the target's catalog row lists", async () => {
+    const real = vi.mocked(findConfiguredModel).getMockImplementation()!
+    vi.mocked(findConfiguredModel).mockImplementation((provider, model) =>
+      provider === A && model === 'm-a' ? ({ availableThinkingTiers: ['low', 'high'] } as never) : real(provider, model))
+    try {
+      const { transport, opens } = rawHost({})
+      const { router } = testRouter([{ provider: A, model: 'm-a', effort: 'max' }])
+      registerProviderRouter(ROUTER, router, { routesTo: '*' })
+      await stream(withModelProviders(transport, config()))
+      expect(bodyOf(opens[0]!)).toMatchObject({ model: 'm-a', tier: 'high' })
+    } finally {
+      vi.mocked(findConfiguredModel).mockImplementation(real)
+    }
   })
 })

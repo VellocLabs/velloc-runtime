@@ -18,6 +18,7 @@ import type {
 } from '../../browser/bridge/browserBridgeProtocol'
 import { entryId } from '../../config/nexusModelConfig/modelEntries'
 import { resolveModelId } from '../../config/nexusModelConfig/modelEntryResolution'
+import { findConfiguredModel } from '../../config/nexusModelConfig/findConfiguredModel'
 import { getProviderDefinition } from '../../config/nexusModelConfig/providers'
 import { THINKING_TIER_ORDER } from '../../config/nexusModelConfig/providers/shared/listing'
 import { buildThinkingBodyExtension } from '../../config/nexusModelConfig/thinkingTierParams'
@@ -99,8 +100,10 @@ export function tierForTarget(tier: string | undefined, listed: readonly string[
   return best
 }
 
+/** The tiers the picker offers for a target: its catalog row's, else its listing's. */
 function listedTiers(provider: string, model: string): readonly string[] | undefined {
-  return mergedModels(provider).find(listed => listed.id === model)?.thinkingTiers
+  return findConfiguredModel(provider, model)?.availableThinkingTiers
+    ?? mergedModels(provider).find(listed => listed.id === model)?.thinkingTiers
 }
 
 const text = (error: unknown): string => (error instanceof Error ? error.message : String(error))
