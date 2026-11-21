@@ -69,6 +69,9 @@ import { AppViews, type AppViewEvent, type AppViewLayout } from './appViews'
 import { serveSettingsAppProviderCall, type SettingsAppBinding, type SettingsAppProviderDeps } from './appProviderCalls'
 import { APP_SCRIPT_IDLE_MS, APP_SCRIPT_PRESS_START_MS, AppScriptLifetimes, untilReady } from './appScriptLifetime'
 
+/** How long the runtime waits for a script to give its state's text; a busy hook cannot hold a write or a stop past it. */
+export const APP_STATE_ASK_TIMEOUT_MS = 5_000
+
 /** One app's background module: a hooks-module ref plus the app it serves. */
 export type AppBackgroundRef = ModModuleRef & {
   /** The plugin's directory, absolute: `$.plugin.root`. */
@@ -144,6 +147,8 @@ export type AppBackgroundRuntimeOptions = {
   /** How long an app's script runs on after the last page stopped showing the app. */
   scriptIdleMs?: number
   persistDelayMs?: number
+  /** How long the runtime waits for a script to give its state's text; default `APP_STATE_ASK_TIMEOUT_MS`. */
+  stateAskTimeoutMs?: number
   now?: () => number
 }
 
@@ -345,11 +350,11 @@ export class AppBackgroundRuntime {
     return this.modules.get(appId)?.relay
   }
 
-  /** The state as the module's script holds it; rejects when no script runs. */
+  /** The state as the module's script holds it; rejects when no script runs or it does not answer within `APP_STATE_ASK_TIMEOUT_MS`. */
   private askStateText(module: Module): Promise<unknown> {
     const loaded = module.loaded
     if (!loaded) return Promise.reject(new Error(`${module.ref.appId}: no script is running`))
-    return loaded.instance.serve('app', APP_STATE_TEXT_METHOD, [], 'runtime')
+    return loaded.instance.serve('app', APP_STATE_TEXT_METHOD, [], 'runtime', AbortSignal.timeout(this.options.stateAskTimeoutMs ?? APP_STATE_ASK_TIMEOUT_MS))
   }
 
   /**

@@ -179,6 +179,20 @@ describe('AppBackgroundRuntime — a synced app', () => {
     host.dispose()
   })
 
+  it('a script that does not give its state in time cannot hold the stop: the write is reported and the worker closes', async () => {
+    const { runtime, ref, status, workers, reports } = world({ '/plugins/pay/bg.js': COUNTER }, { stateAskTimeoutMs: 20 })
+    runtime.sync([ref('/plugins/pay/bg.js')])
+    await vi.waitFor(() => expect(status()?.state).toBe('ready'))
+    const instance = (runtime as unknown as { modules: Map<string, { loaded?: { instance: { serve: (...args: unknown[]) => Promise<unknown> } } }> }).modules.get('pay-board')!.loaded!.instance
+    // A worker whose thread is held by a hook never answers; only the signal ends the wait.
+    instance.serve = (_noun, _method, _args, _caller, signal) =>
+      new Promise((_resolve, reject) => (signal as AbortSignal | undefined)?.addEventListener('abort', () => reject(new Error('no answer'))))
+    runtime.sync([])
+    await expect(workers[0]!.closed).resolves.toEqual({ reason: 'closed' })
+    expect(status()).toBeUndefined()
+    expect(reports.some(line => line.includes('could not be written'))).toBe(true)
+  })
+
   it('a sync-out raises app.stop and closes the worker; the live state is gone', async () => {
     const { runtime, ref, status, workers, reports } = world({ '/plugins/pay/bg.js': COUNTER })
     runtime.sync([ref('/plugins/pay/bg.js')])
