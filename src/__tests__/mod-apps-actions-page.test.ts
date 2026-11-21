@@ -4,7 +4,8 @@
  * surfaces that the manifest names local is offered to the app's background
  * module (`mods.appAction`) and goes to the model only when the module did
  * not take it; any other press goes to the model as before, and none while
- * a turn runs. Also the board's `act`.
+ * a turn runs. Presses made while the module is answering wait and go in
+ * order. Also the board's `act`.
  */
 import { createElement as h, type ReactNode } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -149,19 +150,59 @@ describe('a press on the app\'s surface', () => {
     expect(submit).not.toHaveBeenCalled()
   })
 
-  it('while the module has a local action in hand, further presses go nowhere; after its answer they go again', async () => {
+  it('presses made while the module has a local action in hand wait and reach it in the order they were made', async () => {
+    const answers: Array<(result: ModsAppActionResult) => void> = []
+    const { submit, actFn, button } = rig(state(['refresh', 'open_case']), { act: () => new Promise(resolve => { answers.push(resolve) }) })
+    await waitFor(() => expect(button('Refresh')).toBeDefined())
+    fireEvent.click(button('Refresh'))
+    fireEvent.click(button('Work this case'))
+    fireEvent.click(button('Refresh'))
+    await act(async () => undefined)
+    expect(actFn.mock.calls.map(call => call[0])).toEqual(['refresh'])
+    await act(async () => answers[0]!({ handled: true }))
+    expect(actFn.mock.calls.map(call => call[0])).toEqual(['refresh', 'open_case'])
+    expect(actFn.mock.calls[1]![1]).toEqual({ id: 7 })
+    await act(async () => answers[1]!({ handled: true }))
+    expect(actFn.mock.calls.map(call => call[0])).toEqual(['refresh', 'open_case', 'refresh'])
+    await act(async () => answers[2]!({ handled: true }))
+    expect(actFn).toHaveBeenCalledTimes(3)
+    expect(submit).not.toHaveBeenCalled()
+  })
+
+  it('a press for the model made while a local action is in hand goes to the model after the answer', async () => {
+    let answer!: (result: ModsAppActionResult) => void
+    const { submit, actFn, button } = rig(state(['refresh']), { act: () => new Promise(resolve => { answer = resolve }) })
+    await waitFor(() => expect(button('Refresh')).toBeDefined())
+    fireEvent.click(button('Refresh'))
+    fireEvent.click(button('Work this case'))
+    await act(async () => undefined)
+    expect(submit).not.toHaveBeenCalled()
+    await act(async () => answer({ handled: true }))
+    expect(actFn).toHaveBeenCalledTimes(1)
+    expect(submit).toHaveBeenCalledTimes(1)
+    expect(submit.mock.calls[0]![0] as unknown as string).toContain('"action":"open_case"')
+  })
+
+  it('a press that starts a turn discards the presses still waiting behind it', async () => {
     let answer!: (result: ModsAppActionResult) => void
     const { submit, actFn, button } = rig(state(['refresh']), { act: () => new Promise(resolve => { answer = resolve }) })
     await waitFor(() => expect(button('Refresh')).toBeDefined())
     fireEvent.click(button('Refresh'))
     fireEvent.click(button('Refresh'))
     fireEvent.click(button('Work this case'))
+    await act(async () => answer({ handled: false }))
     await act(async () => undefined)
+    expect(submit).toHaveBeenCalledTimes(1)
+    expect(submit.mock.calls[0]![0] as unknown as string).toContain('"action":"refresh"')
     expect(actFn).toHaveBeenCalledTimes(1)
-    expect(submit).not.toHaveBeenCalled()
-    await act(async () => answer({ handled: true }))
-    fireEvent.click(button('Refresh'))
-    await waitFor(() => expect(actFn).toHaveBeenCalledTimes(2))
+  })
+
+  it('while a turn runs the surface is marked busy and takes no pointer', async () => {
+    const { slot } = rig(state(['refresh']), { busy: true })
+    await waitFor(() => expect(slot.querySelector('[data-slot="a2ui-surface"]')).not.toBeNull())
+    const surface = slot.querySelector('[data-slot="a2ui-surface"]')!
+    expect(surface.getAttribute('aria-busy')).toBe('true')
+    expect(surface.className).toContain('pointer-events-none')
   })
 })
 

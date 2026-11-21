@@ -51,6 +51,7 @@ import { A2uiPaneSkeleton } from './A2uiPaneSkeleton'
 import type { AppBoard } from '../apps/appSurfaceView'
 import { AppReloadButton, AppSurfaceBar } from '../apps/AppSurfaceBar'
 import { APP_COMPOSE_EVENT, composeDraftOf, composeIntoSession, composeQuoteOf } from '../apps/appCompose'
+import { createSurfacePressLine } from './surfacePressLine'
 import { useComposerPassages } from '@/components/assistant-ui/composer-passages'
 
 type SurfaceActionHandler = (action: ActionPayload) => void
@@ -170,7 +171,8 @@ function A2uiFeeder({
   const processedRef = useRef(0)
   const busyRef = useRef(busy)
   busyRef.current = busy
-  const localPendingRef = useRef(false)
+  const deliverRef = useRef<(action: ActionPayload) => Promise<unknown> | void>(() => undefined)
+  const [pressLine] = useState(() => createSurfacePressLine<ActionPayload>(action => deliverRef.current(action)))
 
   // Feed only NEW sources each time, one at a time, so one bad source cannot
   // abort the rest. A block compiled here that fails leaves the renderer as it
@@ -222,9 +224,31 @@ function A2uiFeeder({
   // turn is in flight — one action per turn). An action on one of the app's own
   // surfaces that the manifest names local is offered to the app's background
   // module first; the model gets it only when the module did not take it. While
-  // the module has one in hand, every other press is dropped too. `compose` on
-  // one of the app's own surfaces only fills the composer, even while a turn runs.
+  // the module has one in hand, later presses wait in line and go in the order
+  // they were made; a turn that starts discards the ones still waiting. `compose`
+  // on one of the app's own surfaces only fills the composer, even while a turn runs.
   useEffect(() => {
+    deliverRef.current = (action: ActionPayload) => {
+      if (!submitActionMessage || busyRef.current) return
+      const ownModel = boardModel && reservedIds.includes(action.surfaceId) ? boardModel : undefined
+      const dataModel = ownModel ?? processor.getSurface(action.surfaceId)?.dataModel.get('/') ?? {}
+      const turn = buildActionTurn(action, dataModel)
+      const toModel = () => {
+        if (busyRef.current) return
+        pressLine.clear()
+        void submitActionMessage(turn)
+      }
+      const name = action.name
+      if (localActions && typeof name === 'string' && localActions.names.includes(name) && reservedIds.includes(action.surfaceId)) {
+        return localActions.run(name, action.context ?? null).then(
+          handled => {
+            if (!handled) toModel()
+          },
+          () => toModel(),
+        )
+      }
+      toModel()
+    }
     actionHandlerRef.current = (action: ActionPayload) => {
       try {
         if (!submitActionMessage) return
@@ -240,29 +264,8 @@ function A2uiFeeder({
           }
           return
         }
-        if (busyRef.current || localPendingRef.current) return
-        const ownModel = boardModel && reservedIds.includes(action.surfaceId) ? boardModel : undefined
-        const dataModel = ownModel ?? processor.getSurface(action.surfaceId)?.dataModel.get('/') ?? {}
-        const turn = buildActionTurn(action, dataModel)
-        const name = action.name
-        if (localActions && typeof name === 'string' && localActions.names.includes(name) && reservedIds.includes(action.surfaceId)) {
-          const toModel = () => {
-            if (!busyRef.current) void submitActionMessage(turn)
-          }
-          localPendingRef.current = true
-          localActions.run(name, action.context ?? null).then(
-            handled => {
-              localPendingRef.current = false
-              if (!handled) toModel()
-            },
-            () => {
-              localPendingRef.current = false
-              toModel()
-            },
-          )
-          return
-        }
-        void submitActionMessage(turn)
+        if (busyRef.current) return
+        pressLine.press(action)
       } catch (error) {
         console.error('[a2ui] failed to forward surface action', error)
       }
@@ -270,7 +273,9 @@ function A2uiFeeder({
     return () => {
       actionHandlerRef.current = null
     }
-  }, [processor, submitActionMessage, actionHandlerRef, localActions, boardModel, reservedIds, composer, passageStore, sessionId])
+  }, [processor, submitActionMessage, actionHandlerRef, localActions, boardModel, reservedIds, composer, passageStore, sessionId, pressLine])
+
+  useEffect(() => () => pressLine.clear(), [pressLine])
 
   return null
 }
