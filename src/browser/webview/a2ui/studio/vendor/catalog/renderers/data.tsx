@@ -25,6 +25,7 @@ import {
   ChevronLeft,
   ChevronRight,
   ChevronsUpDown,
+  GripVertical,
   MapPin,
   Minus,
   Search,
@@ -399,6 +400,8 @@ const tableFeats = tableFeatures({
 });
 
 /** Row selection: the row field that names a row, the checked names, and the writer. */
+/** What onReorder sends: the new order (selectKey values, else indexes into rows), the moved row's old and new index, and the row. */
+type Reorder = { order: (string | number)[]; from: number; to: number; row: Row };
 type Selection = { key: string; value: string[]; set: (next: string[]) => void };
 const NO_KEYS: string[] = [];
 
@@ -463,6 +466,8 @@ function DataTableView({
   pageSize,
   onRowClick,
   selection,
+  reorderable = false,
+  onReorder,
 }: {
   title?: string;
   columns: Col[];
@@ -471,12 +476,28 @@ function DataTableView({
   pageSize: number;
   onRowClick?: (row: Row) => void;
   selection?: Selection;
+  reorderable?: boolean;
+  onReorder?: (args: Reorder) => void;
 }) {
+  // A reorderable table shows every row in the person's order: no search, filters, sorting or pages.
+  if (reorderable) {
+    searchable = false;
+    pageSize = Number.MAX_SAFE_INTEGER;
+  }
+  /** The order the person dragged to, as indexes into rows; dropped when new rows arrive. */
+  const [moved, setMoved] = useState<{ rows: Row[]; order: number[] } | null>(null);
+  const order = moved && moved.rows === rows ? moved.order : null;
+  const indexOf = useMemo(() => new Map(rows.map((r, i) => [r, i])), [rows]);
+  const ordered = useMemo(
+    () => (order ? order.map((i) => rows[i]!) : rows),
+    [order, rows],
+  );
+  const [dragFrom, setDragFrom] = useState<number | null>(null);
   const [picked, setPicked] = useState<Record<string, string[]>>({});
   const [checkedFilter, setCheckedFilter] = useState<string[]>([]);
   const filters = useMemo(
     () =>
-      columns
+      (reorderable ? [] : columns)
         .filter((c) => c.filter === true || (Array.isArray(c.filter) && c.filter.length > 0))
         .map((c) => {
           const fraction = isFraction(rows, c);
@@ -491,7 +512,7 @@ function DataTableView({
           return { col: c, text, values };
         })
         .filter((f) => f.values.length > 0),
-    [columns, rows],
+    [columns, rows, reorderable],
   );
   /** Picks still offered as chips; a value gone from the rows no longer filters. */
   const live = useMemo(() => {
@@ -515,6 +536,7 @@ function DataTableView({
   const byState = selection && checkedFilter.length === 1 ? checkedFilter[0] : undefined;
   const shown = useMemo(() => {
     const active = filters.filter((f) => live[f.col.key]);
+    if (reorderable) return ordered;
     if (!active.length && !byState) return rows;
     return rows.filter(
       (r) =>
@@ -522,7 +544,7 @@ function DataTableView({
         (!byState || stateOf(r) === byState),
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [rows, filters, live, byState, checkedSet, selectKey]);
+  }, [rows, ordered, reorderable, filters, live, byState, checkedSet, selectKey]);
 
   const cols = useMemo<ColumnDef<typeof tableFeats, Row>[]>(
     () =>
@@ -543,17 +565,19 @@ function DataTableView({
           header: c.label,
           cell: (ctx) =>
             formatCell(ctx.row.original[c.key], c.format, fraction),
+          enableSorting: !reorderable,
           sortFn: numeric || c.format === "date" ? "basic" : "alphanumeric",
           sortUndefined: "last",
         } satisfies ColumnDef<typeof tableFeats, Row>;
       }),
-    [columns, rows],
+    [columns, rows, reorderable],
   );
 
   const table = useTable({
     features: tableFeats,
     columns: cols,
     data: shown,
+    getRowId: (row: Row, i: number) => String(indexOf.get(row) ?? i),
     globalFilterFn: "includesString",
     getColumnCanGlobalFilter: () => true,
     initialState: {
@@ -590,8 +614,24 @@ function DataTableView({
     const rest = selection.value.filter((k) => !shownKeys.includes(k));
     selection.set(on ? [...rest, ...shownKeys] : rest);
   };
+  /** Moves the row at `from` to `to` at once, then tells the app the new order. */
+  const move = (from: number, to: number) => {
+    if (from === to || to < 0 || to >= ordered.length) return;
+    const next = ordered.map((r) => indexOf.get(r)!);
+    const [index] = next.splice(from, 1);
+    next.splice(to, 0, index!);
+    setMoved({ rows, order: next });
+    const row = rows[index!]!;
+    onReorder?.({
+      order: selectKey ? next.map((i) => str(rows[i]![selectKey])) : next,
+      from,
+      to,
+      row,
+    });
+  };
+  const chips = selection && !reorderable ? selection : undefined;
   /** With filter rows the search box starts where their chips start. */
-  const filterRows = filters.length > 0 || selection !== undefined;
+  const filterRows = filters.length > 0 || chips !== undefined;
   const rowActionOf = (row: Row) =>
     onRowClick ?? (selection && keyOf(row) ? toggleRow : undefined);
   const pick = (key: string, values: string[]) => {
@@ -637,14 +677,14 @@ function DataTableView({
           ) : null}
         </div>
       ) : null}
-      {filters.length || selection ? (
+      {filters.length || chips ? (
         <div
           className={cn(
             "flex min-w-0 flex-col gap-2 px-4 pb-3",
             !(title || searchable) && "pt-3.5",
           )}
         >
-          {selection ? (
+          {chips ? (
             <div className="flex min-w-0 items-center gap-3">
               <span className="w-24 shrink-0 truncate text-[11.5px] font-medium text-muted-foreground">
                 {studioText("a2ui.studio.selectionFilter")}
@@ -728,7 +768,7 @@ function DataTableView({
       <div
         className={cn(
           "min-w-0 border-(--a2-line)",
-          (title || searchable || filters.length > 0 || selection) && "border-t",
+          (title || searchable || filters.length > 0 || chips) && "border-t",
         )}
       >
         <Table className="text-[13px]">
@@ -738,6 +778,9 @@ function DataTableView({
                 key={group.id}
                 className="border-(--a2-line) hover:bg-transparent"
               >
+                {reorderable ? (
+                  <TableHead className="h-9 w-8 bg-black/[0.015] dark:bg-white/[0.015] pr-0 pl-3" />
+                ) : null}
                 {selection ? (
                   <TableHead className="h-9 w-10 bg-black/[0.015] dark:bg-white/[0.015] pr-0 pl-4">
                     <Checkbox
@@ -793,11 +836,34 @@ function DataTableView({
             ))}
           </TableHeader>
           <TableBody>
-            {table.getRowModel().rows.map((row) => (
+            {table.getRowModel().rows.map((row, at) => (
               <TableRow
                 key={row.id}
+                {...(reorderable
+                  ? {
+                      draggable: true,
+                      "data-reorder-row": "",
+                      onDragStart: (event: React.DragEvent) => {
+                        event.dataTransfer.effectAllowed = "move";
+                        event.dataTransfer.setData("text/plain", String(at));
+                        setDragFrom(at);
+                      },
+                      onDragOver: (event: React.DragEvent) => {
+                        if (dragFrom === null) return;
+                        event.preventDefault();
+                        event.dataTransfer.dropEffect = "move";
+                      },
+                      onDrop: (event: React.DragEvent) => {
+                        event.preventDefault();
+                        if (dragFrom !== null) move(dragFrom, at);
+                        setDragFrom(null);
+                      },
+                      onDragEnd: () => setDragFrom(null),
+                    }
+                  : {})}
                 className={cn(
                   "border-(--a2-line) hover:bg-black/[0.025] dark:hover:bg-white/[0.025]",
+                  dragFrom === at && "opacity-50",
                   rowActionOf(row.original) &&
                     "cursor-pointer outline-none focus-visible:bg-black/[0.04] focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/50 dark:focus-visible:bg-white/[0.04]",
                 )}
@@ -818,6 +884,25 @@ function DataTableView({
                     }
                   : {})}
               >
+                {reorderable ? (
+                  <TableCell className="h-10 w-8 py-2 pr-0 pl-3">
+                    <button
+                      type="button"
+                      data-reorder-handle=""
+                      aria-label={studioText("a2ui.studio.reorderRow")}
+                      onClick={(event) => event.stopPropagation()}
+                      onKeyDown={(event) => {
+                        if (event.key !== "ArrowUp" && event.key !== "ArrowDown") return;
+                        event.preventDefault();
+                        event.stopPropagation();
+                        move(at, at + (event.key === "ArrowUp" ? -1 : 1));
+                      }}
+                      className="grid size-6 cursor-grab place-content-center rounded-sm text-muted-foreground/70 outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50 active:cursor-grabbing"
+                    >
+                      <GripVertical className="size-3.5" />
+                    </button>
+                  </TableCell>
+                ) : null}
                 {selection ? (
                   <TableCell className="h-10 w-10 py-2 pr-0 pl-4">
                     <Checkbox
@@ -853,7 +938,7 @@ function DataTableView({
             {filtered === 0 ? (
               <TableRow className="hover:bg-transparent">
                 <TableCell
-                  colSpan={Math.max(1, columns.length + (selection ? 1 : 0))}
+                  colSpan={Math.max(1, columns.length + (selection ? 1 : 0) + (reorderable ? 1 : 0))}
                   className="h-20 text-center text-[12.5px] text-muted-foreground"
                 >
                   {rows.length === 0
@@ -1190,6 +1275,8 @@ export const dataRenderers: RendererMap<DataKeys> = {
         rows={rows}
         searchable={props.searchable}
         pageSize={pageSize}
+        reorderable={props.reorderable === true}
+        {...(props.onReorder ? { onReorder: props.onReorder } : {})}
         {...(props.onRowClick
           ? { onRowClick: (row: Row) => props.onRowClick?.({ row }) }
           : {})}

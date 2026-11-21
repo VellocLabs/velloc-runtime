@@ -1310,6 +1310,7 @@ export const es: Messages = {
   'a2ui.studio.searchRows': 'Buscar filas',
   'a2ui.studio.selectRow': 'Seleccionar fila',
   'a2ui.studio.selectShownRows': 'Seleccionar las filas mostradas',
+  'a2ui.studio.reorderRow': 'Arrastra o usa las flechas arriba y abajo para mover esta fila',
   'a2ui.studio.selectionFilter': 'Selección',
   'a2ui.studio.selectionChecked': 'Marcadas',
   'a2ui.studio.selectionUnchecked': 'Sin marcar',

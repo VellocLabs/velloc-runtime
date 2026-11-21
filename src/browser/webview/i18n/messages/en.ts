@@ -1343,6 +1343,7 @@ export const en = {
   'a2ui.studio.searchRows': 'Search rows',
   'a2ui.studio.selectRow': 'Select row',
   'a2ui.studio.selectShownRows': 'Select the rows shown',
+  'a2ui.studio.reorderRow': 'Drag, or press the up and down arrow keys, to move this row',
   'a2ui.studio.selectionFilter': 'Selection',
   'a2ui.studio.selectionChecked': 'Checked',
   'a2ui.studio.selectionUnchecked': 'Not checked',

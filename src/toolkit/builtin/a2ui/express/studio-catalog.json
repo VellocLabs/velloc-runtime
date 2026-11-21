@@ -18540,9 +18540,27 @@
             }
           ]
         },
+        "reorderable": {
+          "description": "Lets the person drag rows (or move a row with the up and down arrow keys on its grip) to change their order. A grip column comes first. The table shows every row in the given order: pageSize, searchable, column filters and sorting are ignored. Send onReorder to keep the new order.",
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "$ref": "common_types.json#/$defs/DataBinding"
+            },
+            {
+              "$ref": "common_types.json#/$defs/FunctionCall"
+            }
+          ]
+        },
         "onRowClick": {
           "$ref": "common_types.json#/$defs/Action",
           "description": "Sent when the person clicks a row. The args carry the whole row object as \"row\", fields not shown in a column included. With selectKey and no onRowClick, a row click checks or clears the row."
+        },
+        "onReorder": {
+          "$ref": "common_types.json#/$defs/Action",
+          "description": "Sent when the person drops a row in a reorderable table; the table shows the new order at once. The args: \"order\", every row's selectKey value in the new order (without selectKey, each row's index in rows); \"from\" and \"to\", the moved row's old and new index; \"row\", the moved row object."
         },
         "onChange": {
           "$ref": "common_types.json#/$defs/Action",

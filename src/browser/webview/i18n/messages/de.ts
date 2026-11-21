@@ -1309,6 +1309,7 @@ export const de: Messages = {
   'a2ui.studio.searchRows': 'Zeilen durchsuchen',
   'a2ui.studio.selectRow': 'Zeile auswählen',
   'a2ui.studio.selectShownRows': 'Angezeigte Zeilen auswählen',
+  'a2ui.studio.reorderRow': 'Ziehen oder mit den Pfeiltasten nach oben und unten verschieben',
   'a2ui.studio.selectionFilter': 'Auswahl',
   'a2ui.studio.selectionChecked': 'Ausgewählt',
   'a2ui.studio.selectionUnchecked': 'Nicht ausgewählt',

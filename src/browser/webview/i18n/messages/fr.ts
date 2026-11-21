@@ -1310,6 +1310,7 @@ export const fr: Messages = {
   'a2ui.studio.searchRows': 'Rechercher des lignes',
   'a2ui.studio.selectRow': 'Sélectionner la ligne',
   'a2ui.studio.selectShownRows': 'Sélectionner les lignes affichées',
+  'a2ui.studio.reorderRow': 'Faites glisser, ou utilisez les flèches haut et bas, pour déplacer cette ligne',
   'a2ui.studio.selectionFilter': 'Sélection',
   'a2ui.studio.selectionChecked': 'Cochées',
   'a2ui.studio.selectionUnchecked': 'Non cochées',

@@ -21,6 +21,12 @@ export type Props<K extends keyof Definitions> = Out<K> &
     /** A declared event other than `onAction`, when bound: called with its args. */
     onChange?: (args: { value: unknown }) => void;
     onRowClick?: (args: { row: Record<string, unknown> }) => void;
+    onReorder?: (args: {
+      order: (string | number)[];
+      from: number;
+      to: number;
+      row: Record<string, unknown>;
+    }) => void;
   };
 
 export type RendererProps<K extends keyof Definitions> = { props: Props<K> };

@@ -1297,6 +1297,7 @@ export const zh: Messages = {
   'a2ui.studio.searchRows': '搜索行',
   'a2ui.studio.selectRow': '选择此行',
   'a2ui.studio.selectShownRows': '选择显示的行',
+  'a2ui.studio.reorderRow': '拖动，或按上下方向键，移动此行',
   'a2ui.studio.selectionFilter': '勾选',
   'a2ui.studio.selectionChecked': '已勾选',
   'a2ui.studio.selectionUnchecked': '未勾选',

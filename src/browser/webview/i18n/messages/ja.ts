@@ -1302,6 +1302,7 @@ export const ja: Messages = {
   'a2ui.studio.searchRows': '行を検索',
   'a2ui.studio.selectRow': '行を選択',
   'a2ui.studio.selectShownRows': '表示中の行を選択',
+  'a2ui.studio.reorderRow': 'ドラッグするか上下の矢印キーでこの行を移動',
   'a2ui.studio.selectionFilter': '選択',
   'a2ui.studio.selectionChecked': '選択済み',
   'a2ui.studio.selectionUnchecked': '未選択',

@@ -312,11 +312,13 @@ Use these exact positional signatures to instantiate components. Do not output p
   - Description: Searchable dropdown for long option lists (countries, cities, timezones).
 • ComparisonTable(title?, options, rows, highlight?)
   - Description: Feature matrix comparing options side by side. options are the option names as strings; rows [{feature, values}] with one value per option, in the same order, each true/false/text; highlight is the recommended option's index in options (0 is the first).
-• DataTable(title?, columns, rows, searchable?, pageSize?, selectKey?, value?, onRowClick? (static), onChange? (static))
+• DataTable(title?, columns, rows, searchable?, pageSize?, selectKey?, value?, reorderable?, onRowClick? (static), onReorder? (static), onChange? (static))
   - Description: Sortable, filterable table (TanStack Table). columns [{key,label,format?}], rows are objects keyed by column key.
   - selectKey: Turns on row selection: the row field that identifies a row. A checkbox column comes first; the header box selects or clears the rows the search and filters show.
   - value: With selectKey: the selected rows' selectKey values, written back as the person checks rows.
+  - reorderable: Lets the person drag rows (or move a row with the up and down arrow keys on its grip) to change their order. A grip column comes first. The table shows every row in the given order: pageSize, searchable, column filters and sorting are ignored. Send onReorder to keep the new order.
   - onRowClick: Sent when the person clicks a row. The args carry the whole row object as "row", fields not shown in a column included. With selectKey and no onRowClick, a row click checks or clears the row.
+  - onReorder: Sent when the person drops a row in a reorderable table; the table shows the new order at once. The args: "order", every row's selectKey value in the new order (without selectKey, each row's index in rows); "from" and "to", the moved row's old and new index; "row", the moved row object.
   - onChange: Sent when the person changes the value, after it is written to the bound path. The args carry the new value.
 • DatePicker(label?, value?, placeholder?)
   - Description: Date picker with calendar popover; value ISO date bound to a path.

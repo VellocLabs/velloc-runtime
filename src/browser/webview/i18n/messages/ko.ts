@@ -1299,6 +1299,7 @@ export const ko: Messages = {
   'a2ui.studio.searchRows': '행 검색',
   'a2ui.studio.selectRow': '행 선택',
   'a2ui.studio.selectShownRows': '표시된 행 선택',
+  'a2ui.studio.reorderRow': '드래그하거나 위아래 화살표 키로 이 행 이동',
   'a2ui.studio.selectionFilter': '선택',
   'a2ui.studio.selectionChecked': '선택됨',
   'a2ui.studio.selectionUnchecked': '선택 안 됨',

@@ -94,6 +94,12 @@ export const dataDefinitions = {
         .array(z.string())
         .optional()
         .describe("With selectKey: the selected rows' selectKey values, written back as the person checks rows."),
+      reorderable: z
+        .boolean()
+        .optional()
+        .describe(
+          "Lets the person drag rows (or move a row with the up and down arrow keys on its grip) to change their order. A grip column comes first. The table shows every row in the given order: pageSize, searchable, column filters and sorting are ignored. Send onReorder to keep the new order.",
+        ),
     }),
     {
       ...writableValue,
@@ -101,6 +107,15 @@ export const dataDefinitions = {
         onRowClick: {
           description: "Sent when the person clicks a row. The args carry the whole row object as \"row\", fields not shown in a column included. With selectKey and no onRowClick, a row click checks or clears the row.",
           parameters: z.object({ row: z.record(z.unknown()) }),
+        },
+        onReorder: {
+          description: "Sent when the person drops a row in a reorderable table; the table shows the new order at once. The args: \"order\", every row's selectKey value in the new order (without selectKey, each row's index in rows); \"from\" and \"to\", the moved row's old and new index; \"row\", the moved row object.",
+          parameters: z.object({
+            order: z.array(z.union([z.string(), z.number()])),
+            from: z.number(),
+            to: z.number(),
+            row: z.record(z.unknown()),
+          }),
         },
         ...onChange(z.array(z.string())).events,
       },
