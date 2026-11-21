@@ -2,6 +2,8 @@
 // data patches by path, or the data whole, so the engine applies only what is
 // new; a new build or an overlong list starts it fresh.
 import { describe, expect, it } from 'vitest'
+import { GenerativeUISurfaceManager } from '@copilotkit/core/generative-ui'
+import { studioUI } from '../browser/webview/a2ui/studio/studioCatalog'
 import { nextStudioFeed, STUDIO_FEED_LIMIT, type StudioFeed } from '../browser/webview/a2ui/studio/StudioAppSurface'
 import type { AppSurfaceState } from '../browser/runtimeProtocol/modApps'
 
@@ -60,6 +62,21 @@ describe('the studio app feed', () => {
       feed = next
     }
     expect(feed.operations.length).toBe(first.operations.length)
+  })
+
+  it('the engine keeps the surface it drew when the list grows, and rebuilds it on a fresh list', () => {
+    const manager = new GenerativeUISurfaceManager(studioUI as never)
+    manager.setActiveThread('t')
+    const ingest = (feed: StudioFeed) =>
+      manager.ingest('t', undefined, { surfaceId: 's', target: 'studio:s', catalogId: studioUI.id, operations: feed.operations, status: 'ready', rejected: [] } as never)
+    const first = nextStudioFeed(null, board(), 's')!
+    ingest(first)
+    const drawn = manager.getSurface('t', 's')
+    expect(drawn).toBeDefined()
+    ingest(nextStudioFeed(first, board({ dataSeq: 2, dataPatches: { from: 1, patches: [{ path: '/title', value: 'U' }] } }), 's')!)
+    expect(manager.getSurface('t', 's')).toBe(drawn)
+    ingest(nextStudioFeed(first, board({ surface: { body: BODY, hash: 'h2', surfaceIds: ['s'] } }), 's')!)
+    expect(manager.getSurface('t', 's')).not.toBe(drawn)
   })
 
   it('no build draws nothing', () => {
