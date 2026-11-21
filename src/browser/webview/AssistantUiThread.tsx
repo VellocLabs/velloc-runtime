@@ -167,6 +167,7 @@ import {
 } from '@/components/assistant-ui/thread'
 import { hasA2uiBlockInRecentRows, hasA2uiContent } from './a2ui/hasA2uiSurface'
 import { useAppBoard } from './apps/appSurfaceView'
+import { setAwaitingApp as setA2uiAwaitingApp } from './a2ui/a2uiPaneBus'
 import {
   revealChapterRow,
 } from './revealThreadMessage'
@@ -876,6 +877,12 @@ function InteractiveAssistantUiThread({
     [state.transcriptMessages],
   )
   const appBoard = useAppBoard(runtimeConnection, state.snapshot?.sessionId, activeTemplateType)
+  const awaitingAppSessionId = appBoard !== undefined && appBoard.state === null && !appBoard.readPage ? state.snapshot?.sessionId : undefined
+  useEffect(() => {
+    if (awaitingAppSessionId === undefined) return
+    setA2uiAwaitingApp(awaitingAppSessionId, true)
+    return () => setA2uiAwaitingApp(awaitingAppSessionId, false)
+  }, [awaitingAppSessionId])
   const shouldLoadA2uiSurfaces =
     a2uiLoadedRef.current.loaded ||
     appBoard !== undefined ||

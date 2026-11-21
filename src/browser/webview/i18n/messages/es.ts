@@ -688,6 +688,7 @@ export const es: Messages = {
   'pane.resize': 'Redimensionar los paneles',
   'pane.noActivePlan': 'No hay ningún plan activo.',
   'pane.noA2uiSurface': 'No hay ninguna interfaz que mostrar.',
+  'pane.a2uiLoading': 'Cargando la interfaz…',
   'pane.closeFileTab': 'Cerrar {name}',
   'filesFind.placeholder': 'Buscar archivos, o ? para buscar en su contenido',
   'filesFind.searching': 'Buscando…',

@@ -715,6 +715,7 @@ export const en = {
   'pane.resize': 'Resize panes',
   'pane.noActivePlan': 'No active plan.',
   'pane.noA2uiSurface': 'No interface to show.',
+  'pane.a2uiLoading': 'Loading interface…',
   'pane.closeFileTab': 'Close {name}',
   'filesFind.placeholder': 'Find files, or ? to search in files',
   'filesFind.searching': 'Searching…',

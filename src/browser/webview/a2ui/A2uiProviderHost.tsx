@@ -47,6 +47,7 @@ import { useT } from '../i18n'
 import { PANE_BODY } from '../panes/paneSurface'
 import { getActionsSlot, getOwner, getSlot, setOwner, subscribeSlot } from './a2uiPaneBus'
 import { AppSurfaceFeeder, appSurfaceIds } from './AppSurfaceFeeder'
+import { A2uiPaneSkeleton } from './A2uiPaneSkeleton'
 import type { AppBoard } from '../apps/appSurfaceView'
 import { AppReloadButton, AppSurfaceBar } from '../apps/AppSurfaceBar'
 import { APP_COMPOSE_EVENT, composeDraftOf, composeIntoSession, composeQuoteOf } from '../apps/appCompose'
@@ -311,9 +312,17 @@ function A2uiPanePortal({
   if (board?.readPage) {
     return createPortal(
       <div data-slot="a2ui-pane-content" className={PANE_BODY}>
-        <Suspense fallback={null}>
+        <Suspense fallback={<A2uiPaneSkeleton />}>
           <LazyAppPageFrame readPage={board.readPage} />
         </Suspense>
+      </div>,
+      shown,
+    )
+  }
+  if (board && board.state === null && !selectedSurfaceId) {
+    return createPortal(
+      <div data-slot="a2ui-pane-content" className={`relative ${PANE_BODY}`}>
+        <A2uiPaneSkeleton />
       </div>,
       shown,
     )

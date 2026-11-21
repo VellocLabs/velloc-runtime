@@ -676,6 +676,7 @@ export const zh: Messages = {
   'pane.resize': '调整面板大小',
   'pane.noActivePlan': '当前没有计划。',
   'pane.noA2uiSurface': '没有可显示的界面。',
+  'pane.a2uiLoading': '正在加载界面…',
   'pane.closeFileTab': '关闭{name}',
   'filesFind.placeholder': '查找文件，输入 ? 可搜索文件内容',
   'filesFind.searching': '正在搜索…',

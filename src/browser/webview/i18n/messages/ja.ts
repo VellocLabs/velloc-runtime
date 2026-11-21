@@ -681,6 +681,7 @@ export const ja: Messages = {
   'pane.resize': 'パネルのサイズを変更',
   'pane.noActivePlan': '進行中の計画はありません。',
   'pane.noA2uiSurface': '表示するインターフェースはありません。',
+  'pane.a2uiLoading': 'インターフェースを読み込んでいます…',
   'pane.closeFileTab': '{name}を閉じる',
   'filesFind.placeholder': 'ファイルを検索（? でファイル内を検索）',
   'filesFind.searching': '検索中…',

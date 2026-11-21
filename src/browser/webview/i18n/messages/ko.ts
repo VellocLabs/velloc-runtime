@@ -678,6 +678,7 @@ export const ko: Messages = {
   'pane.resize': '패널 크기 조절',
   'pane.noActivePlan': '진행 중인 계획이 없습니다.',
   'pane.noA2uiSurface': '표시할 인터페이스가 없습니다.',
+  'pane.a2uiLoading': '인터페이스를 불러오는 중…',
   'pane.closeFileTab': '{name} 닫기',
   'filesFind.placeholder': '파일 찾기, ? 입력 시 파일 내용 검색',
   'filesFind.searching': '검색 중…',

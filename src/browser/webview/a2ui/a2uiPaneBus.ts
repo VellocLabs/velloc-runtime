@@ -14,6 +14,8 @@
 //   actions with `setActionsSlot`; the host portals them into it.
 // - The shell publishes the session it shows with `setShownSession`, so a
 //   host whose surfaces can never reach the pane (a side chat) knows it.
+// - An app session whose first state has not arrived is marked with
+//   `setAwaitingApp`, so the slot shows a loading skeleton, not its empty state.
 
 /** `byPerson`: the person pressed a card or tab, not a transcript change. */
 export type A2uiPaneRequest =
@@ -28,6 +30,7 @@ let slot: A2uiPaneSlot | null = null
 let actionsSlot: HTMLElement | null = null
 let owner: string | null = null
 let shown: string | null = null
+const awaiting = new Set<string>()
 const slotListeners = new Set<Listener>()
 const requestListeners = new Set<(request: A2uiPaneRequest) => void>()
 const closedListeners = new Set<(sessionId: string) => void>()
@@ -75,6 +78,17 @@ export function setShownSession(sessionId: string | null): void {
 
 export function getShownSession(): string | null {
   return shown
+}
+
+export function setAwaitingApp(sessionId: string, waiting: boolean): void {
+  if (awaiting.has(sessionId) === waiting) return
+  if (waiting) awaiting.add(sessionId)
+  else awaiting.delete(sessionId)
+  emitSlot()
+}
+
+export function isAwaitingApp(sessionId: string | null): boolean {
+  return sessionId !== null && awaiting.has(sessionId)
 }
 
 export function subscribeSlot(listener: Listener): () => void {

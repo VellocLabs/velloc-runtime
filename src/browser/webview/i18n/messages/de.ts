@@ -687,6 +687,7 @@ export const de: Messages = {
   'pane.resize': 'Bereiche in der Größe ändern',
   'pane.noActivePlan': 'Kein aktiver Plan.',
   'pane.noA2uiSurface': 'Keine Oberfläche zum Anzeigen.',
+  'pane.a2uiLoading': 'Oberfläche wird geladen…',
   'pane.closeFileTab': '{name} schließen',
   'filesFind.placeholder': 'Dateien suchen, oder ? für Dateiinhalte',
   'filesFind.searching': 'Suche läuft…',
