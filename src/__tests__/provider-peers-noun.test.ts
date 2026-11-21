@@ -97,7 +97,7 @@ function deps(instances: PeerInstance[], routesTo: RoutesTo | undefined = '*', o
   return {
     instances: () => instances,
     routesToOf: id => (id === ROUTER ? routesTo : undefined),
-    stateOf: () => ({ status: 'ok' }),
+    stateOf: () => ({ models: {} }),
     now: () => NOW,
     ...over,
   }
@@ -136,8 +136,8 @@ describe('peersTableFor', () => {
         { id: 'alpha-small', picked: false, supportsTools: false },
       ],
     })
-    const state: ProviderState = { status: 'cooling', until: NOW + 5_000, reason: 'rate_limit' }
-    const peers = peersTableFor(ROUTER, deps([full, instance('beta')], '*', { stateOf: id => (id === 'alpha' ? state : { status: 'ok' }) }))
+    const state: ProviderState = { models: { 'alpha-large': { status: 'cooling', until: NOW + 5_000, reason: 'rate_limit' } } }
+    const peers = peersTableFor(ROUTER, deps([full, instance('beta')], '*', { stateOf: id => (id === 'alpha' ? state : { models: {} }) }))
     expect(peers).toEqual([
       {
         id: 'alpha',
@@ -160,7 +160,7 @@ describe('peersTableFor', () => {
         source: 'builtin',
         connected: true,
         models: [{ id: 'beta-large', picked: true, supportsTools: true }],
-        state: { status: 'ok' },
+        state: { models: {} },
       },
     ])
   })
@@ -228,7 +228,7 @@ describe('peersTableFor', () => {
       usage: structuredClone(USAGE),
       models: [{ id: 'm', picked: true, supportsTools: true, thinkingTiers: ['low'] }],
     })
-    const state: ProviderState = { status: 'ok', models: { m: { status: 'cooling', until: NOW + 1, reason: 'service' } } }
+    const state: ProviderState = { models: { m: { status: 'cooling', until: NOW + 1, reason: 'service' } } }
     const table = deps([source], '*', { stateOf: () => state })
     const [first] = peersTableFor(ROUTER, table)
     first!.label = 'changed'
@@ -249,8 +249,8 @@ describe('peersTableFor', () => {
     recordProviderVerdict('alpha', 'alpha-large', verdict('service'), NOW)
     const table = (now: number): Peer[] =>
       peersTableFor(ROUTER, deps([instance('alpha')], '*', { stateOf: providerStateOf, now: () => now }))
-    expect(table(NOW)[0]!.state).toEqual({ status: 'cooling', until: NOW + 30_000, reason: 'service' })
-    expect(table(NOW + 30_000)[0]!.state).toEqual({ status: 'ok' })
+    expect(table(NOW)[0]!.state).toEqual({ models: { 'alpha-large': { status: 'cooling', until: NOW + 30_000, reason: 'service' } } })
+    expect(table(NOW + 30_000)[0]!.state).toEqual({ models: {} })
   })
 })
 
@@ -269,14 +269,12 @@ describe('two instances of one definition', () => {
 
   it('freezing one in the ledger leaves the other ok', () => {
     recordProviderVerdict('acme#work', 'acme-large', verdict('billing', { scope: 'account' }), NOW)
-    recordProviderVerdict('acme#work', 'acme-large', verdict('model_unavailable', { scope: 'model' }), NOW)
     const peers = peersTableFor(ROUTER, deps([work, home], '*', { stateOf: providerStateOf }))
-    expect(peers[0]!.state.status).toBe('cooling')
-    expect(peers[0]!.state.models).toHaveProperty('acme-large')
-    expect(peers[1]!.state).toEqual({ status: 'ok' })
-    expect(providerStateOf('acme', NOW)).toEqual({ status: 'ok' })
+    expect(peers[0]!.state.models['acme-large']?.reason).toBe('billing')
+    expect(peers[1]!.state).toEqual({ models: {} })
+    expect(providerStateOf('acme', NOW)).toEqual({ models: {} })
     clearProviderState('acme#home')
-    expect(providerStateOf('acme#work', NOW).status).toBe('cooling')
+    expect(providerStateOf('acme#work', NOW).models['acme-large']?.status).toBe('cooling')
   })
 
   it('a boundary that names their definition holds both, and one that names an id holds neither', () => {
@@ -331,7 +329,7 @@ describe('the runtime\'s own table', () => {
           { id: 'coder-chat', picked: true, supportsTools: false },
           { id: 'coder-new', picked: false, supportsTools: true },
         ],
-        state: { status: 'ok' },
+        state: { models: {} },
       },
     ])
     expect(JSON.stringify(peers)).not.toMatch(/sealed|private\.test/)
@@ -415,7 +413,7 @@ describe('the runtime\'s own table', () => {
     recordProviderVerdict('mod.acme.gateway', 'coder-large', verdict('credentials', { scope: 'key' }), Date.now())
     const after = runtimePeersTable(ROUTER)
     expect(after[0]!.usage).toEqual(USAGE)
-    expect(after[0]!.state).toEqual({ status: 'disabled', reason: 'credentials' })
+    expect(after[0]!.state).toEqual({ models: { 'coder-large': { status: 'disabled', reason: 'credentials' } } })
   })
 
   it('a router that is not plugged in reads its boundary from its row; anything else sees nothing', () => {
@@ -478,14 +476,12 @@ describe('providers.clearPeerState', () => {
 
   it('clears an instance, or one model of it, in the ledger', async () => {
     recordProviderVerdict('acme', 'm1', verdict('billing'), NOW)
-    recordProviderVerdict('acme', 'm1', verdict('model_unavailable', { scope: 'model' }), NOW)
     recordProviderVerdict('acme', 'm2', verdict('model_unavailable', { scope: 'model' }), NOW)
     const withLedger = { ...ctx, clearPeerState: clearProviderState }
     expect(await handleClearPeerState({ provider: 'acme', model: 'm1' }, withLedger)).toEqual({ ok: true })
-    expect(Object.keys(providerStateOf('acme', NOW).models ?? {})).toEqual(['m2'])
-    expect(providerStateOf('acme', NOW).status).toBe('cooling')
+    expect(Object.keys(providerStateOf('acme', NOW).models)).toEqual(['m2'])
     expect(await handleClearPeerState({ provider: 'acme' }, withLedger)).toEqual({ ok: true })
-    expect(providerStateOf('acme', NOW)).toEqual({ status: 'ok' })
+    expect(providerStateOf('acme', NOW)).toEqual({ models: {} })
   })
 
   it('passes the instance id through unread, and answers ok with no ledger', async () => {

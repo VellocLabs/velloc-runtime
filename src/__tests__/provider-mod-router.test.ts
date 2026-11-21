@@ -92,8 +92,8 @@ function routerRuntime(source: string, options: { budgetMs?: number; attachMs?: 
 }
 
 const PEERS: Peer[] = [
-  { id: 'relay-a', definition: 'relay-a', label: 'A', kind: 'provider', source: 'custom', connected: true, models: [], state: { status: 'ok' } },
-  { id: 'relay-b', definition: 'relay-b', label: 'B', kind: 'provider', source: 'custom', connected: true, models: [], state: { status: 'ok' } },
+  { id: 'relay-a', definition: 'relay-a', label: 'A', kind: 'provider', source: 'custom', connected: true, models: [], state: { models: {} } },
+  { id: 'relay-b', definition: 'relay-b', label: 'B', kind: 'provider', source: 'custom', connected: true, models: [], state: { models: {} } },
 ] as unknown as Peer[]
 
 const CONTEXT = { sessionId: 's', agentId: 'a', purpose: 'main', querySource: 'test' } as unknown as RouteEvent['requestContext']
@@ -221,7 +221,7 @@ describe('createModProviderRouter over the provider mod runtime', () => {
   })
 
   it('shows a member that failed earlier in the call in its current state, and only in that call', async () => {
-    const SEEN = `export function register(on) { on('provider.route', ($, e) => ({ provider: 'relay-b', model: 'm', states: e.peers.map(p => p.state.status) })) }`
+    const SEEN = `export function register(on) { on('provider.route', ($, e) => ({ provider: 'relay-b', model: 'm', states: e.peers.map(p => p.state.models.m?.status ?? 'ok') })) }`
     let reads = 0
     const states: Record<string, ProviderState> = {}
     const router = createModProviderRouter(
@@ -231,22 +231,22 @@ describe('createModProviderRouter over the provider mod runtime', () => {
         reads += 1
         return PEERS
       },
-      id => states[id] ?? { status: 'ok' },
+      id => states[id] ?? { models: {} },
     )
     const call = { ...CONTEXT } as RouteEvent['requestContext']
     const other = { ...CONTEXT } as RouteEvent['requestContext']
-    states['relay-a'] = { status: 'cooling', until: Date.now() + 60_000 }
+    states['relay-a'] = { models: { m: { status: 'cooling', until: Date.now() + 60_000 } } }
     // A first ask reads the table as it is, overlay or not.
     expect(await router.route(first(call), signal())).toMatchObject({ states: ['ok', 'ok'] })
     expect(await router.route(first(other, 'call-2'), signal())).toMatchObject({ states: ['ok', 'ok'] })
     expect(await router.route(afterFailure(call), signal())).toMatchObject({ states: ['cooling', 'ok'] })
     expect(reads).toBe(2)
-    expect(PEERS[0]!.state.status).toBe('ok')
+    expect(PEERS[0]!.state).toEqual({ models: {} })
     // A member that has not failed in this call keeps the table's state.
-    states['relay-b'] = { status: 'exhausted' }
+    states['relay-b'] = { models: { m: { status: 'exhausted' } } }
     expect(await router.route({ ...afterFailure(call), attempt: 3 }, signal())).toMatchObject({ states: ['cooling', 'ok'] })
     // A new call starts from a fresh table and no overlay.
-    states['relay-a'] = { status: 'ok' }
+    states['relay-a'] = { models: {} }
     expect(await router.route(first(call, 'call-3'), signal())).toMatchObject({ states: ['ok', 'ok'] })
     expect(reads).toBe(3)
   })
@@ -543,8 +543,8 @@ describe('a failed routed send', () => {
       if (read.result.done) break
     }
     const table = runtimePeersTable(ROUTER)
-    expect(table.find(peer => peer.id === 'relay-a')?.state.status).toBe('cooling')
-    expect(table.find(peer => peer.id === 'relay-b')?.state.status).toBe('ok')
+    expect(table.find(peer => peer.id === 'relay-a')?.state.models['m-a']?.status).toBe('cooling')
+    expect(table.find(peer => peer.id === 'relay-b')?.state).toEqual({ models: {} })
   })
 
   it('lets a router that skips the failed member and reads state stop once both members failed, not bounce', async () => {
@@ -564,7 +564,7 @@ describe('a failed routed send', () => {
     const SKIPS_FAILED = `
       export function register(on) {
         on('provider.route', ($, e) => {
-          const next = e.peers.find(p => p.connected && p.state.status === 'ok' && p.id !== e.lastFailure?.provider)
+          const next = e.peers.find(p => p.connected && Object.keys(p.state.models).length === 0 && p.id !== e.lastFailure?.provider)
           return next ? { provider: next.id, model: next.id === 'relay-a' ? 'm-a' : 'm-b' } : { stop: true, message: 'all members failed' }
         })
       }

@@ -1,16 +1,16 @@
 /**
  * Contract: the provider health ledger (F-27). The platform's record of what
- * the verdicts of an instance's requests said about it: cooling, exhausted or
+ * the verdicts of a model's requests said about it: cooling, exhausted or
  * disabled, and until when. Facts only; which provider to use is a router's
  * choice. Keyed by provider INSTANCE id, which is opaque here, and under it
- * by model for a verdict about one model. Reads are synchronous and from
- * memory; every change is written to the store, so a record survives a
- * restart. A record past its end is gone when read.
+ * by model. Reads are synchronous and from memory; every change is written
+ * to the store, so a record survives a restart. A record past its end is
+ * gone when read.
  *
- * A scope of `request` records nothing. A scope of `model`, and every
- * `model_unavailable`, is recorded under the model; `key`, `account` and
- * `provider` on the instance. A record is replaced only by one that lasts at
- * least as long; `disabled` is replaced by nothing.
+ * A scope of `request` records nothing. Every other verdict is recorded
+ * under the model the request named, whatever its scope: one model failing
+ * says nothing about the instance's other models. A record is replaced only
+ * by one that lasts at least as long; `disabled` is replaced by nothing.
  */
 import type { PeerModelState, ProviderState } from '../../mods/provider/nouns/providerPeersTypes'
 import type { ProviderConnectivityIssue } from '../../utils/providerConnectivity'
@@ -46,7 +46,7 @@ type RateSeries = { at: number; waitMs: number }
 
 type Slot = { record?: HealthRecord; rate?: RateSeries }
 
-type Instance = Slot & { models: Map<string, Slot> }
+type Instance = { models: Map<string, Slot> }
 
 const instances = new Map<string, Instance>()
 /** Requests served per instance in one UTC day. In memory only. */
@@ -74,8 +74,7 @@ function instanceOf(instanceId: string): Instance {
   return instance
 }
 
-function slotOf(instance: Instance, model: string | undefined): Slot {
-  if (model === undefined) return instance
+function slotOf(instance: Instance, model: string): Slot {
   let slot = instance.models.get(model)
   if (!slot) instance.models.set(model, (slot = {}))
   return slot
@@ -102,12 +101,11 @@ function prune(instanceId: string, nowMs: number): void {
     if (!live(slot.record, nowMs)) delete slot.record
     if (!repeats(slot.rate, nowMs)) delete slot.rate
   }
-  sweep(instance)
   for (const [model, slot] of instance.models) {
     sweep(slot)
     if (slotIsEmpty(slot, nowMs)) instance.models.delete(model)
   }
-  if (instance.models.size === 0 && slotIsEmpty(instance, nowMs)) instances.delete(instanceId)
+  if (instance.models.size === 0) instances.delete(instanceId)
 }
 
 /** When the provider itself said the condition lifts, if it said. */
@@ -173,8 +171,8 @@ function recordFor(
 }
 
 /**
- * Record what a failed request's verdict says about the instance that
- * served it. `model` is the model the request named.
+ * Record what a failed request's verdict says about the model that served
+ * it: `model` of `instanceId`, the one the request named.
  */
 export function recordProviderVerdict(
   instanceId: string,
@@ -182,11 +180,9 @@ export function recordProviderVerdict(
   verdict: ProviderConnectivityIssue,
   nowMs: number,
 ): void {
-  if (!instanceId || verdict.scope === 'request') return
-  const underModel = verdict.scope === 'model' || verdict.kind === 'model_unavailable'
-  if (underModel && !model) return
+  if (!instanceId || !model || verdict.scope === 'request') return
   prune(instanceId, nowMs)
-  const slot = slotOf(instanceOf(instanceId), underModel ? model : undefined)
+  const slot = slotOf(instanceOf(instanceId), model)
   const next = recordFor(instanceId, slot, verdict, nowMs)
   const held = live(slot.record, nowMs)
   const replaces =
@@ -213,22 +209,17 @@ function stateOfRecord(record: HealthRecord): PeerModelState {
   }
 }
 
-/** What is recorded about `instanceId` now. A copy; `ok` when nothing holds. */
+/** What is recorded about the models of `instanceId` now. A copy; no model when nothing holds. */
 export function providerStateOf(instanceId: string, nowMs: number): ProviderState {
   prune(instanceId, nowMs)
-  const instance = instances.get(instanceId)
-  if (!instance) return { status: 'ok' }
   const models: Record<string, PeerModelState> = {}
-  for (const [model, slot] of instance.models) {
+  for (const [model, slot] of instances.get(instanceId)?.models ?? []) {
     if (slot.record) models[model] = stateOfRecord(slot.record)
   }
-  return {
-    ...(instance.record ? stateOfRecord(instance.record) : { status: 'ok' as const }),
-    ...(Object.keys(models).length > 0 ? { models } : {}),
-  }
+  return { models }
 }
 
-/** Forget what is recorded about `instanceId`, or about `model` of it alone. */
+/** Forget what is recorded about `model` of `instanceId`, or about all its models when none is named. */
 export function clearProviderState(instanceId: string, model?: string): void {
   const pending = store !== undefined && !adopted
   if (pending) forgotten.push({ instanceId, ...(model !== undefined ? { model } : {}) })
@@ -238,7 +229,7 @@ export function clearProviderState(instanceId: string, model?: string): void {
     instances.delete(instanceId)
     changed = true
   } else if (instance && instance.models.delete(model!)) {
-    if (instance.models.size === 0 && !instance.record && !instance.rate) instances.delete(instanceId)
+    if (instance.models.size === 0) instances.delete(instanceId)
     changed = true
   }
   if (changed || pending) persist()
@@ -260,7 +251,7 @@ function liftForConfigChange(instanceId: string): boolean {
   const instance = instances.get(instanceId)
   if (!instance) return false
   let changed = false
-  for (const slot of [instance, ...instance.models.values()]) {
+  for (const slot of instance.models.values()) {
     if (slot.record && LIFTED_BY_CONFIG.includes(slot.record.reason)) {
       delete slot.record
       changed = true
@@ -276,7 +267,7 @@ function changedBetween(before: Map<string, string>, after: Map<string, string>)
 
 /**
  * The provider configs as they are now. An instance whose config differs
- * from the one last seen loses its `billing` and `credentials` records: the
+ * from the one last seen loses its models' `billing` and `credentials` records: the
  * person may have paid or replaced the key. The configs last seen are kept
  * with the ledger, so a change made while no run was watching counts too.
  */
@@ -302,7 +293,7 @@ export function noteProviderConfigs(configs: Readonly<Record<string, unknown>>):
 type StoredSlot = { record?: HealthRecord; rate?: RateSeries }
 type StoredLedger = {
   version: 1
-  instances: Record<string, StoredSlot & { models?: Record<string, StoredSlot> }>
+  instances: Record<string, { models?: Record<string, StoredSlot> }>
   /** Each instance's config fingerprint when the ledger was written. */
   configs?: Record<string, string>
 }
@@ -354,14 +345,17 @@ function serialize(): string {
   for (const [instanceId, instance] of instances) {
     const models: Record<string, StoredSlot> = {}
     for (const [model, slot] of instance.models) models[model] = writeSlot(slot)
-    out.instances[instanceId] = { ...writeSlot(instance), ...(instance.models.size > 0 ? { models } : {}) }
+    out.instances[instanceId] = { models }
   }
   const configs = seenConfigs ?? storedConfigs
   if (configs) out.configs = Object.fromEntries(configs)
   return JSON.stringify(out)
 }
 
-/** Take what the store held. What was recorded since the start stays. */
+/**
+ * Take what the store held. What was recorded since the start stays. Only
+ * records under a model are taken.
+ */
 function adopt(text: string | undefined): void {
   if (!text) return
   let parsed: unknown
@@ -379,7 +373,7 @@ function adopt(text: string | undefined): void {
   }
   // Configs that changed while no run was watching lift what they may have fixed.
   const changedSince = new Set(seenConfigs && isRecord(parsed.configs) ? changedBetween(stored, seenConfigs) : [])
-  const isForgotten = (instanceId: string, model: string | undefined, reason: string | undefined): boolean =>
+  const isForgotten = (instanceId: string, model: string, reason: string | undefined): boolean =>
     (reason !== undefined && changedSince.has(instanceId) && LIFTED_BY_CONFIG.includes(reason)) ||
     forgotten.some(
       f =>
@@ -387,21 +381,20 @@ function adopt(text: string | undefined): void {
         (f.model === undefined || f.model === model) &&
         (f.reasons === undefined || (reason !== undefined && f.reasons.includes(reason))),
     )
-  const fill = (instanceId: string, model: string | undefined, slot: Slot, from: Slot): void => {
+  const fill = (instanceId: string, model: string, slot: Slot, from: Slot): void => {
     if (!slot.record && from.record && !isForgotten(instanceId, model, from.record.reason)) slot.record = from.record
     if (!slot.rate && from.rate && !isForgotten(instanceId, model, undefined)) slot.rate = from.rate
   }
   for (const [instanceId, value] of Object.entries(parsed.instances)) {
     if (!isRecord(value)) continue
     const instance = instanceOf(instanceId)
-    fill(instanceId, undefined, instance, readSlot(value))
     if (isRecord(value.models)) {
       for (const [model, from] of Object.entries(value.models)) fill(instanceId, model, slotOf(instance, model), readSlot(from))
     }
     for (const [model, slot] of instance.models) {
       if (!slot.record && !slot.rate) instance.models.delete(model)
     }
-    if (instance.models.size === 0 && !instance.record && !instance.rate) instances.delete(instanceId)
+    if (instance.models.size === 0) instances.delete(instanceId)
   }
   if (!seenConfigs && stored.size > 0) storedConfigs = stored
 }

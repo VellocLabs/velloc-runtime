@@ -419,7 +419,7 @@ describe('AppBackgroundRuntime — an app script', () => {
     const reloads: string[] = []
     const asked: unknown[] = []
     const source: SettingsAppPeerSource = {
-      peersFor: () => [{ id: 'vendor-a', definition: 'vendor-a', label: 'A', kind: 'provider', source: 'builtin', connected: true, models: [], state: { status: 'ok' } }] as never,
+      peersFor: () => [{ id: 'vendor-a', definition: 'vendor-a', label: 'A', kind: 'provider', source: 'builtin', connected: true, models: [], state: { models: {} } }] as never,
       clearPeerState: () => ({ ok: true }) as never,
     }
     const { runtime, ref } = world(PROVIDER, 1_000, true, {

@@ -115,7 +115,7 @@ describe('runtime hub home directory', () => {
 
   it('reads the stored provider health ledger once the host bridge arrives after the hub was built', async () => {
     resetProviderHealthLedger()
-    const stored = { version: 1, instances: { acme: { record: { status: 'disabled', reason: 'credentials' } } } }
+    const stored = { version: 1, instances: { acme: { models: { m1: { record: { status: 'disabled', reason: 'credentials' } } } } } }
     const bridge = hostBridge({ [`${HOME}/.velloc/cache/provider-health.json`]: JSON.stringify(stored) })
     let transport: DirectPortBridgeTransport | null = null
     let n = 0
@@ -129,10 +129,10 @@ describe('runtime hub home directory', () => {
     })
     hubs.push(hub)
     await providerHealthLedgerSettled()
-    expect(providerStateOf('acme', Date.now())).toEqual({ status: 'ok' })
+    expect(providerStateOf('acme', Date.now())).toEqual({ models: {} })
     transport = bridge.transport
     hub.handleDirectTransportChanged(bridge.transport)
-    await vi.waitFor(() => expect(providerStateOf('acme', Date.now()).status).toBe('disabled'))
+    await vi.waitFor(() => expect(providerStateOf('acme', Date.now()).models.m1?.status).toBe('disabled'))
     resetProviderHealthLedger()
   })
 

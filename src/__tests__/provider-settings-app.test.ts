@@ -203,7 +203,7 @@ const peer = (id: string, definition = id): Peer => ({
   source: 'builtin',
   connected: true,
   models: [],
-  state: { status: 'ok' },
+  state: { models: {} },
 })
 
 function fakeSource(rows: Peer[]) {
@@ -432,16 +432,16 @@ describe('the calls over the real peers table and health ledger', () => {
   it('shows a member cooling after a recorded verdict, and ok again once clearState forgets it', async () => {
     recordProviderVerdict('vendor-a', 'm-1', rateLimited, NOW)
     const before = (await serveSettingsAppProviderCall(ROUTER_BINDING, 'peers', [], deps)) as Peer[]
-    expect(before.map(p => [p.id, p.state.status])).toEqual([['vendor-a', 'cooling']])
+    expect(before.map(p => [p.id, p.state.models['m-1']?.status])).toEqual([['vendor-a', 'cooling']])
     await serveSettingsAppProviderCall(ROUTER_BINDING, 'clearState', [{ provider: 'vendor-a' }], deps)
     const after = (await serveSettingsAppProviderCall(ROUTER_BINDING, 'peers', [], deps)) as Peer[]
-    expect(after[0]!.state.status).toBe('ok')
+    expect(after[0]!.state).toEqual({ models: {} })
   })
 
   it('still refuses a target outside routesTo and leaves its record alone', async () => {
     recordProviderVerdict('vendor-z', 'm-1', rateLimited, NOW)
     await expect(serveSettingsAppProviderCall(ROUTER_BINDING, 'clearState', [{ provider: 'vendor-z' }], deps)).rejects.toThrow(/outside/)
-    expect(providerStateOf('vendor-z', NOW).status).toBe('cooling')
+    expect(providerStateOf('vendor-z', NOW).models['m-1']?.status).toBe('cooling')
   })
 
   it('carries no secret, base URL or account name in a peer', async () => {

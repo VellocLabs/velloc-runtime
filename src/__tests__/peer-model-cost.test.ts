@@ -11,7 +11,7 @@ const peer = (definition: string, ids: string[]): Peer => ({
   source: 'builtin',
   connected: true,
   models: ids.map(id => ({ id, picked: true, supportsTools: true })),
-  state: { status: 'ok' },
+  state: { models: {} },
 })
 
 const hit = (cost?: CatalogHit['cost']): CatalogHit =>

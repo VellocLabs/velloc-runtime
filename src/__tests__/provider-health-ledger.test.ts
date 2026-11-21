@@ -60,21 +60,29 @@ function memoryStore(initial?: string): ProviderHealthStore & { text: string | u
   return store
 }
 
+/** What an instance with no model held reads as. */
+const NONE = { models: {} }
+
+/** What is recorded about one model of an instance; `ok` when nothing is. */
+function held(instanceId: string, nowMs: number, model = 'm1') {
+  return providerStateOf(instanceId, nowMs).models[model] ?? { status: 'ok' as const }
+}
+
 afterEach(() => resetProviderHealthLedger())
 
 describe('what a verdict records', () => {
-  it('an instance nothing is recorded about is ok', () => {
-    expect(providerStateOf('acme', NOON)).toEqual({ status: 'ok' })
+  it('an instance nothing is recorded about holds no model', () => {
+    expect(providerStateOf('acme', NOON)).toEqual(NONE)
   })
 
   it('rate_limit cools until the wait the verdict carries', () => {
     recordProviderVerdict('acme', 'm1', verdict('rate_limit', { retryAfterMs: 7_000 }), NOON)
-    expect(providerStateOf('acme', NOON)).toEqual({ status: 'cooling', until: NOON + 7_000, reason: 'rate_limit' })
+    expect(held('acme', NOON)).toEqual({ status: 'cooling', until: NOON + 7_000, reason: 'rate_limit' })
   })
 
   it('rate_limit with a reset time and no wait cools until that time', () => {
     recordProviderVerdict('acme', 'm1', verdict('rate_limit', { resetsAt: NOON + 90_000 }), NOON)
-    expect(providerStateOf('acme', NOON).until).toBe(NOON + 90_000)
+    expect(held('acme', NOON).until).toBe(NOON + 90_000)
   })
 
   it('rate_limit with no wait cools 60 s, doubles on a repeat within 10 minutes, and stops at 15 minutes', () => {
@@ -82,7 +90,7 @@ describe('what a verdict records', () => {
     const waits: number[] = []
     for (let i = 0; i < 6; i += 1) {
       recordProviderVerdict('acme', 'm1', verdict('rate_limit'), now)
-      const until = providerStateOf('acme', now).until!
+      const until = held('acme', now).until!
       waits.push(until - now)
       // The next one arrives right after this cooldown ended.
       now = until + 1_000
@@ -93,71 +101,64 @@ describe('what a verdict records', () => {
   it('a rate limit 10 minutes or more after the last cooldown ended starts at 60 s again', () => {
     recordProviderVerdict('acme', 'm1', verdict('rate_limit'), NOON)
     recordProviderVerdict('acme', 'm1', verdict('rate_limit'), NOON + 2 * MIN)
-    expect(providerStateOf('acme', NOON + 2 * MIN).until).toBe(NOON + 2 * MIN + 2 * MIN)
+    expect(held('acme', NOON + 2 * MIN).until).toBe(NOON + 2 * MIN + 2 * MIN)
     const stillRepeat = NOON + 4 * MIN + RATE_LIMIT_REPEAT_MS - 1
     recordProviderVerdict('acme', 'm1', verdict('rate_limit'), stillRepeat)
-    expect(providerStateOf('acme', stillRepeat).until).toBe(stillRepeat + 4 * MIN)
+    expect(held('acme', stillRepeat).until).toBe(stillRepeat + 4 * MIN)
     const later = stillRepeat + 4 * MIN + RATE_LIMIT_REPEAT_MS
     recordProviderVerdict('acme', 'm1', verdict('rate_limit'), later)
-    expect(providerStateOf('acme', later).until).toBe(later + RATE_LIMIT_FIRST_MS)
+    expect(held('acme', later).until).toBe(later + RATE_LIMIT_FIRST_MS)
   })
 
   it('quota is exhausted until the reset time the verdict carries', () => {
     recordProviderVerdict('acme', 'm1', verdict('quota', { resetsAt: NOON + 5 * 60 * MIN }), NOON)
-    expect(providerStateOf('acme', NOON)).toEqual({ status: 'exhausted', until: NOON + 5 * 60 * MIN, reason: 'quota' })
+    expect(held('acme', NOON)).toEqual({ status: 'exhausted', until: NOON + 5 * 60 * MIN, reason: 'quota' })
   })
 
   it('quota with no reset time is one hour when the day served fewer than 10 requests', () => {
     for (let i = 0; i < QUOTA_DAILY_SERVED - 1; i += 1) recordProviderServed('acme', NOON)
     recordProviderVerdict('acme', 'm1', verdict('quota'), NOON)
-    expect(providerStateOf('acme', NOON)).toEqual({ status: 'exhausted', until: NOON + QUOTA_UNKNOWN_MS, reason: 'quota' })
+    expect(held('acme', NOON)).toEqual({ status: 'exhausted', until: NOON + QUOTA_UNKNOWN_MS, reason: 'quota' })
   })
 
   it('quota with no reset time lasts to the next UTC midnight once the day served 10 requests', () => {
     for (let i = 0; i < QUOTA_DAILY_SERVED; i += 1) recordProviderServed('acme', NOON)
     recordProviderVerdict('acme', 'm1', verdict('quota'), NOON)
-    expect(providerStateOf('acme', NOON).until).toBe(NEXT_MIDNIGHT)
+    expect(held('acme', NOON).until).toBe(NEXT_MIDNIGHT)
   })
 
   it('requests served on an earlier day do not count toward today', () => {
     for (let i = 0; i < QUOTA_DAILY_SERVED; i += 1) recordProviderServed('acme', NOON - 24 * 60 * MIN)
     recordProviderVerdict('acme', 'm1', verdict('quota'), NOON)
-    expect(providerStateOf('acme', NOON).until).toBe(NOON + QUOTA_UNKNOWN_MS)
+    expect(held('acme', NOON).until).toBe(NOON + QUOTA_UNKNOWN_MS)
   })
 
   it('billing cools 30 minutes', () => {
     recordProviderVerdict('acme', 'm1', verdict('billing', { scope: 'account' }), NOON)
-    expect(providerStateOf('acme', NOON)).toEqual({ status: 'cooling', until: NOON + BILLING_COOL_MS, reason: 'billing' })
+    expect(held('acme', NOON)).toEqual({ status: 'cooling', until: NOON + BILLING_COOL_MS, reason: 'billing' })
   })
 
-  it('credentials disables the instance with no end', () => {
+  it('credentials disables the model with no end', () => {
     recordProviderVerdict('acme', 'm1', verdict('credentials', { scope: 'key' }), NOON)
-    expect(providerStateOf('acme', NOON)).toEqual({ status: 'disabled', reason: 'credentials' })
-    expect(providerStateOf('acme', NOON + 365 * 24 * 60 * MIN)).toEqual({ status: 'disabled', reason: 'credentials' })
+    expect(held('acme', NOON)).toEqual({ status: 'disabled', reason: 'credentials' })
+    expect(held('acme', NOON + 365 * 24 * 60 * MIN)).toEqual({ status: 'disabled', reason: 'credentials' })
   })
 
-  it('model_unavailable holds that model for one hour and leaves the instance ok', () => {
+  it('model_unavailable holds that model for one hour', () => {
     recordProviderVerdict('acme', 'm1', verdict('model_unavailable', { scope: 'model' }), NOON)
     expect(providerStateOf('acme', NOON)).toEqual({
-      status: 'ok',
       models: { m1: { status: 'cooling', until: NOON + MODEL_UNAVAILABLE_MS, reason: 'model_unavailable' } },
     })
   })
 
-  it('model_unavailable is recorded under the model whatever scope the verdict states', () => {
-    recordProviderVerdict('acme', 'm1', verdict('model_unavailable', { scope: 'provider' }), NOON)
-    expect(providerStateOf('acme', NOON).status).toBe('ok')
-    expect(providerStateOf('acme', NOON).models?.m1?.reason).toBe('model_unavailable')
-  })
-
   it.each(['service', 'network'] as const)('%s cools 30 s', kind => {
     recordProviderVerdict('acme', 'm1', verdict(kind), NOON)
-    expect(providerStateOf('acme', NOON)).toEqual({ status: 'cooling', until: NOON + TRANSIENT_COOL_MS, reason: kind })
+    expect(held('acme', NOON)).toEqual({ status: 'cooling', until: NOON + TRANSIENT_COOL_MS, reason: kind })
   })
 
   it.each(['configuration', 'provider_policy'] as const)('%s records nothing', kind => {
     recordProviderVerdict('acme', 'm1', verdict(kind), NOON)
-    expect(providerStateOf('acme', NOON)).toEqual({ status: 'ok' })
+    expect(providerStateOf('acme', NOON)).toEqual(NONE)
   })
 })
 
@@ -165,60 +166,77 @@ describe('where a verdict is recorded', () => {
   it('scope request records nothing', () => {
     recordProviderVerdict('acme', 'm1', verdict('rate_limit', { scope: 'request' }), NOON)
     recordProviderVerdict('acme', 'm1', verdict('credentials', { scope: 'request' }), NOON)
-    expect(providerStateOf('acme', NOON)).toEqual({ status: 'ok' })
+    expect(providerStateOf('acme', NOON)).toEqual(NONE)
   })
 
   it('scope model records under that model alone', () => {
     recordProviderVerdict('acme', 'm1', verdict('rate_limit', { scope: 'model', retryAfterMs: 5_000 }), NOON)
     expect(providerStateOf('acme', NOON)).toEqual({
-      status: 'ok',
       models: { m1: { status: 'cooling', until: NOON + 5_000, reason: 'rate_limit' } },
     })
   })
 
-  it('scope model with no model named records nothing', () => {
+  it('a verdict with no model named records nothing', () => {
     recordProviderVerdict('acme', '', verdict('rate_limit', { scope: 'model' }), NOON)
-    expect(providerStateOf('acme', NOON)).toEqual({ status: 'ok' })
+    recordProviderVerdict('acme', '', verdict('credentials', { scope: 'key' }), NOON)
+    expect(providerStateOf('acme', NOON)).toEqual(NONE)
   })
 
-  it.each(['key', 'account', 'provider'] as const)('scope %s records on the instance', scope => {
+  it.each(['key', 'account', 'provider'] as const)('scope %s records under the model the request named, and no other', scope => {
     recordProviderVerdict('acme', 'm1', verdict('quota', { scope, resetsAt: NOON + MIN }), NOON)
-    expect(providerStateOf('acme', NOON)).toEqual({ status: 'exhausted', until: NOON + MIN, reason: 'quota' })
+    expect(providerStateOf('acme', NOON)).toEqual({
+      models: { m1: { status: 'exhausted', until: NOON + MIN, reason: 'quota' } },
+    })
   })
 
-  it('an instance record and a model record are held side by side', () => {
+  it.each(['rate_limit', 'quota', 'billing', 'credentials', 'model_unavailable', 'service', 'network'] as const)(
+    '%s of one model leaves the other models of the instance ok',
+    kind => {
+      recordProviderVerdict('acme', 'm1', verdict(kind, { scope: 'provider' }), NOON)
+      expect(Object.keys(providerStateOf('acme', NOON).models)).toEqual(['m1'])
+      expect(held('acme', NOON, 'm2')).toEqual({ status: 'ok' })
+    },
+  )
+
+  it('each model of an instance holds its own record', () => {
     recordProviderVerdict('acme', 'm1', verdict('service'), NOON)
     recordProviderVerdict('acme', 'm2', verdict('quota', { scope: 'model', resetsAt: NOON + MIN }), NOON)
     expect(providerStateOf('acme', NOON)).toEqual({
-      status: 'cooling',
-      until: NOON + TRANSIENT_COOL_MS,
-      reason: 'service',
-      models: { m2: { status: 'exhausted', until: NOON + MIN, reason: 'quota' } },
+      models: {
+        m1: { status: 'cooling', until: NOON + TRANSIENT_COOL_MS, reason: 'service' },
+        m2: { status: 'exhausted', until: NOON + MIN, reason: 'quota' },
+      },
     })
+  })
+
+  it('a rate limit of one model does not lengthen the wait of another', () => {
+    recordProviderVerdict('acme', 'm1', verdict('rate_limit'), NOON)
+    recordProviderVerdict('acme', 'm1', verdict('rate_limit'), NOON + 2 * MIN)
+    recordProviderVerdict('acme', 'm2', verdict('rate_limit'), NOON + 2 * MIN)
+    expect(held('acme', NOON + 2 * MIN, 'm1').until).toBe(NOON + 2 * MIN + 2 * MIN)
+    expect(held('acme', NOON + 2 * MIN, 'm2').until).toBe(NOON + 2 * MIN + RATE_LIMIT_FIRST_MS)
   })
 
   it('one instance being frozen says nothing about another', () => {
     recordProviderVerdict('acme', 'm1', verdict('credentials', { scope: 'key' }), NOON)
-    expect(providerStateOf('other', NOON)).toEqual({ status: 'ok' })
+    expect(providerStateOf('other', NOON)).toEqual(NONE)
   })
 
   it('a shorter record does not replace a longer one, and nothing replaces disabled', () => {
     recordProviderVerdict('acme', 'm1', verdict('quota', { resetsAt: NOON + 60 * MIN }), NOON)
     recordProviderVerdict('acme', 'm1', verdict('network'), NOON + 1_000)
-    expect(providerStateOf('acme', NOON + 1_000).reason).toBe('quota')
+    expect(held('acme', NOON + 1_000).reason).toBe('quota')
     recordProviderVerdict('acme', 'm1', verdict('credentials'), NOON + 2_000)
     recordProviderVerdict('acme', 'm1', verdict('quota', { resetsAt: NOON + 600 * MIN }), NOON + 3_000)
-    expect(providerStateOf('acme', NOON + 3_000)).toEqual({ status: 'disabled', reason: 'credentials' })
+    expect(held('acme', NOON + 3_000)).toEqual({ status: 'disabled', reason: 'credentials' })
   })
 
   it('the answer is a copy', () => {
     recordProviderVerdict('acme', 'm1', verdict('quota', { scope: 'model', resetsAt: NOON + MIN }), NOON)
     const first = providerStateOf('acme', NOON)
-    first.status = 'disabled'
-    first.models!.m1!.status = 'ok'
-    delete first.models!.m1
-    expect(providerStateOf('acme', NOON).models?.m1?.status).toBe('exhausted')
-    expect(providerStateOf('acme', NOON).status).toBe('ok')
+    first.models.m1!.status = 'ok'
+    delete first.models.m1
+    expect(held('acme', NOON).status).toBe('exhausted')
   })
 })
 
@@ -226,36 +244,35 @@ describe('what ends a record', () => {
   it('a record is there until its end and gone when read at or past it', () => {
     recordProviderVerdict('acme', 'm1', verdict('service'), NOON)
     recordProviderVerdict('acme', 'm2', verdict('model_unavailable', { scope: 'model' }), NOON)
-    expect(providerStateOf('acme', NOON + TRANSIENT_COOL_MS - 1).status).toBe('cooling')
+    expect(held('acme', NOON + TRANSIENT_COOL_MS - 1).status).toBe('cooling')
     expect(providerStateOf('acme', NOON + TRANSIENT_COOL_MS)).toEqual({
-      status: 'ok',
       models: { m2: { status: 'cooling', until: NOON + MODEL_UNAVAILABLE_MS, reason: 'model_unavailable' } },
     })
-    expect(providerStateOf('acme', NOON + MODEL_UNAVAILABLE_MS)).toEqual({ status: 'ok' })
+    expect(providerStateOf('acme', NOON + MODEL_UNAVAILABLE_MS)).toEqual(NONE)
   })
 
-  it('clearing an instance forgets its record, its models and its rate-limit series', () => {
+  it('clearing an instance forgets all its models and their rate-limit series', () => {
     recordProviderVerdict('acme', 'm1', verdict('rate_limit'), NOON)
     recordProviderVerdict('acme', 'm2', verdict('quota', { scope: 'model' }), NOON)
     recordProviderVerdict('other', 'm1', verdict('billing'), NOON)
     clearProviderState('acme')
-    expect(providerStateOf('acme', NOON)).toEqual({ status: 'ok' })
-    expect(providerStateOf('other', NOON).status).toBe('cooling')
+    expect(providerStateOf('acme', NOON)).toEqual(NONE)
+    expect(held('other', NOON).status).toBe('cooling')
     // The series is gone too: the next rate limit starts at 60 s, not 2 minutes.
     recordProviderVerdict('acme', 'm1', verdict('rate_limit'), NOON + MIN)
-    expect(providerStateOf('acme', NOON + MIN).until).toBe(NOON + MIN + RATE_LIMIT_FIRST_MS)
+    expect(held('acme', NOON + MIN).until).toBe(NOON + MIN + RATE_LIMIT_FIRST_MS)
   })
 
-  it('clearing one model leaves the instance and its other models', () => {
-    recordProviderVerdict('acme', 'm1', verdict('billing'), NOON)
-    recordProviderVerdict('acme', 'm1', verdict('quota', { scope: 'model', resetsAt: NOON + MIN }), NOON)
-    recordProviderVerdict('acme', 'm2', verdict('quota', { scope: 'model', resetsAt: NOON + MIN }), NOON)
+  it('clearing one model leaves the other models of the instance', () => {
+    recordProviderVerdict('acme', 'm1', verdict('credentials', { scope: 'key' }), NOON)
+    recordProviderVerdict('acme', 'm2', verdict('credentials', { scope: 'key' }), NOON)
+    recordProviderVerdict('acme', 'm3', verdict('quota', { scope: 'model', resetsAt: NOON + MIN }), NOON)
     clearProviderState('acme', 'm1')
     expect(providerStateOf('acme', NOON)).toEqual({
-      status: 'cooling',
-      until: NOON + BILLING_COOL_MS,
-      reason: 'billing',
-      models: { m2: { status: 'exhausted', until: NOON + MIN, reason: 'quota' } },
+      models: {
+        m2: { status: 'disabled', reason: 'credentials' },
+        m3: { status: 'exhausted', until: NOON + MIN, reason: 'quota' },
+      },
     })
   })
 
@@ -264,30 +281,29 @@ describe('what ends a record', () => {
     expect(() => clearProviderState('nobody', 'm1')).not.toThrow()
   })
 
-  it('a changed config clears that instance\'s billing and credentials records, and nothing else', () => {
+  it('a changed config clears the billing and credentials records of all that instance\'s models, and nothing else', () => {
     noteProviderConfigs({ a: { hasApiKey: true }, b: { hasApiKey: true }, c: { hasApiKey: true } })
     recordProviderVerdict('a', 'm1', verdict('credentials', { scope: 'key' }), NOON)
-    recordProviderVerdict('a', 'm1', verdict('billing', { scope: 'model' }), NOON)
+    recordProviderVerdict('a', 'm3', verdict('billing', { scope: 'account' }), NOON)
     recordProviderVerdict('a', 'm2', verdict('quota', { scope: 'model', resetsAt: NOON + MIN }), NOON)
     recordProviderVerdict('b', 'm1', verdict('billing'), NOON)
     recordProviderVerdict('c', 'm1', verdict('quota', { resetsAt: NOON + MIN }), NOON)
     noteProviderConfigs({ a: { hasApiKey: true, baseUrl: 'https://x.test' }, b: { hasApiKey: true }, c: { hasApiKey: false } })
     expect(providerStateOf('a', NOON)).toEqual({
-      status: 'ok',
       models: { m2: { status: 'exhausted', until: NOON + MIN, reason: 'quota' } },
     })
     // Unchanged config: kept.
-    expect(providerStateOf('b', NOON).reason).toBe('billing')
+    expect(held('b', NOON).reason).toBe('billing')
     // Changed config, but neither billing nor credentials: kept.
-    expect(providerStateOf('c', NOON).reason).toBe('quota')
+    expect(held('c', NOON).reason).toBe('quota')
   })
 
   it('the first configs seen clear nothing, and a removed config counts as a change', () => {
     recordProviderVerdict('a', 'm1', verdict('credentials'), NOON)
     noteProviderConfigs({ a: { hasApiKey: true } })
-    expect(providerStateOf('a', NOON).status).toBe('disabled')
+    expect(held('a', NOON).status).toBe('disabled')
     noteProviderConfigs({})
-    expect(providerStateOf('a', NOON)).toEqual({ status: 'ok' })
+    expect(providerStateOf('a', NOON)).toEqual(NONE)
   })
 })
 
@@ -302,17 +318,18 @@ describe('kept between runs', () => {
     expect(store.text).toBeTruthy()
 
     resetProviderHealthLedger()
-    expect(providerStateOf('acme', NOON)).toEqual({ status: 'ok' })
+    expect(providerStateOf('acme', NOON)).toEqual(NONE)
     await configureProviderHealthLedger(store)
     expect(providerStateOf('acme', NOON + MIN)).toEqual({
-      status: 'disabled',
-      reason: 'credentials',
-      models: { m2: { status: 'exhausted', until: NOON + 60 * MIN, reason: 'quota' } },
+      models: {
+        m1: { status: 'disabled', reason: 'credentials' },
+        m2: { status: 'exhausted', until: NOON + 60 * MIN, reason: 'quota' },
+      },
     })
-    expect(providerStateOf('other', NOON + RATE_LIMIT_FIRST_MS)).toEqual({ status: 'ok' })
+    expect(providerStateOf('other', NOON + RATE_LIMIT_FIRST_MS)).toEqual(NONE)
     // The series outlived the restart: a repeat inside 10 minutes doubles.
     recordProviderVerdict('other', 'm1', verdict('rate_limit'), NOON + 2 * MIN)
-    expect(providerStateOf('other', NOON + 2 * MIN).until).toBe(NOON + 2 * MIN + 2 * MIN)
+    expect(held('other', NOON + 2 * MIN).until).toBe(NOON + 2 * MIN + 2 * MIN)
   })
 
   it('a clear and a config change are written too', async () => {
@@ -327,8 +344,8 @@ describe('kept between runs', () => {
 
     resetProviderHealthLedger()
     await configureProviderHealthLedger(store)
-    expect(providerStateOf('a', NOON)).toEqual({ status: 'ok' })
-    expect(providerStateOf('b', NOON)).toEqual({ status: 'ok' })
+    expect(providerStateOf('a', NOON)).toEqual(NONE)
+    expect(providerStateOf('b', NOON)).toEqual(NONE)
   })
 
   it('what was recorded before the stored ledger arrived is kept over it', async () => {
@@ -342,18 +359,19 @@ describe('kept between runs', () => {
     const ready = configureProviderHealthLedger(memoryStore(earlier.text))
     recordProviderVerdict('acme', 'm1', verdict('credentials'), NOON + 1_000)
     await ready
-    expect(providerStateOf('acme', NOON + 1_000).status).toBe('disabled')
-    expect(providerStateOf('other', NOON + 1_000).reason).toBe('billing')
+    expect(held('acme', NOON + 1_000).status).toBe('disabled')
+    expect(held('other', NOON + 1_000).reason).toBe('billing')
   })
 
   it.each([
     ['not JSON', '{'],
-    ['another version', JSON.stringify({ version: 2, instances: { acme: { record: { status: 'disabled', reason: 'credentials' } } } })],
-    ['a record with no end that is not disabled', JSON.stringify({ version: 1, instances: { acme: { record: { status: 'cooling', reason: 'billing' } } } })],
-    ['an unknown status', JSON.stringify({ version: 1, instances: { acme: { record: { status: 'banned', reason: 'billing', until: NOON + MIN } } } })],
+    ['another version', JSON.stringify({ version: 2, instances: { acme: { models: { m1: { record: { status: 'disabled', reason: 'credentials' } } } } } })],
+    ['a record with no end that is not disabled', JSON.stringify({ version: 1, instances: { acme: { models: { m1: { record: { status: 'cooling', reason: 'billing' } } } } } })],
+    ['an unknown status', JSON.stringify({ version: 1, instances: { acme: { models: { m1: { record: { status: 'banned', reason: 'billing', until: NOON + MIN } } } } } })],
+    ['a record on the instance itself', JSON.stringify({ version: 1, instances: { acme: { record: { status: 'disabled', reason: 'credentials' } } } })],
   ])('a stored ledger that is %s is not taken', async (_name, text) => {
     await configureProviderHealthLedger(memoryStore(text))
-    expect(providerStateOf('acme', NOON)).toEqual({ status: 'ok' })
+    expect(providerStateOf('acme', NOON)).toEqual(NONE)
   })
 
   it('a store that cannot be read or written leaves the ledger working in memory', async () => {
@@ -367,7 +385,7 @@ describe('kept between runs', () => {
     })
     recordProviderVerdict('acme', 'm1', verdict('billing'), NOON)
     await providerHealthLedgerSettled()
-    expect(providerStateOf('acme', NOON).reason).toBe('billing')
+    expect(held('acme', NOON).reason).toBe('billing')
   })
 
   it('a store that could not be read at first is read before it is written, so nothing stored is lost', async () => {
@@ -394,7 +412,7 @@ describe('kept between runs', () => {
     recordProviderVerdict('fresh', 'm2', verdict('quota', { scope: 'model', resetsAt: NOON + MIN }), NOON)
     await providerHealthLedgerSettled()
     expect(store.writes).toBe(1)
-    expect(providerStateOf('stored', NOON).status).toBe('disabled')
+    expect(held('stored', NOON).status).toBe('disabled')
     expect(Object.keys(JSON.parse(store.text!).instances).sort()).toEqual(['fresh', 'stored'])
   })
 
@@ -413,10 +431,10 @@ describe('kept between runs', () => {
       },
       write: earlier.write,
     })
-    expect(providerStateOf('stored', NOON)).toEqual({ status: 'ok' })
+    expect(providerStateOf('stored', NOON)).toEqual(NONE)
     reachable = true
     await retryProviderHealthLedgerLoad()
-    expect(providerStateOf('stored', NOON).status).toBe('disabled')
+    expect(held('stored', NOON).status).toBe('disabled')
   })
 
   it('a clear made before the stored ledger was taken is not undone by it, and is written', async () => {
@@ -440,8 +458,8 @@ describe('kept between runs', () => {
     reachable = true
     await retryProviderHealthLedgerLoad()
     await providerHealthLedgerSettled()
-    expect(providerStateOf('acme', NOON)).toEqual({ status: 'ok' })
-    expect(providerStateOf('other', NOON).reason).toBe('billing')
+    expect(providerStateOf('acme', NOON)).toEqual(NONE)
+    expect(held('other', NOON).reason).toBe('billing')
     expect(Object.keys(JSON.parse(earlier.text!).instances)).toEqual(['other'])
   })
 
@@ -457,14 +475,14 @@ describe('kept between runs', () => {
     resetProviderHealthLedger()
     await configureProviderHealthLedger(store)
     noteProviderConfigs({ a: { hasApiKey: true, apiKey: 'replaced' }, b: { hasApiKey: true } })
-    expect(providerStateOf('a', NOON)).toEqual({ status: 'ok' })
-    expect(providerStateOf('b', NOON).status).toBe('disabled')
+    expect(providerStateOf('a', NOON)).toEqual(NONE)
+    expect(held('b', NOON).status).toBe('disabled')
 
     resetProviderHealthLedger()
     noteProviderConfigs({ a: { hasApiKey: true, apiKey: 'again' }, b: { hasApiKey: true } })
     await configureProviderHealthLedger(store)
-    expect(providerStateOf('a', NOON)).toEqual({ status: 'ok' })
-    expect(providerStateOf('b', NOON).status).toBe('disabled')
+    expect(providerStateOf('a', NOON)).toEqual(NONE)
+    expect(held('b', NOON).status).toBe('disabled')
   })
 
   it('a verdict that records nothing writes nothing', async () => {

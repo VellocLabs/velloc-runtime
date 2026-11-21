@@ -19,16 +19,17 @@ export type PeerModelState = {
 }
 
 /**
- * Contract: what the platform recorded about an instance from the verdicts
- * of its requests. Kept across restarts; a record past its `until` is gone
- * when read. A verdict scoped to a key, an account or the provider is
- * recorded on the instance; one scoped to a model, under `models`. `billing`
- * is a 30-minute cooldown; `credentials` is `disabled` until the instance's
- * config changes. Any change to the instance's config clears both.
+ * Contract: what the platform recorded about an instance's models from the
+ * verdicts of their requests. Kept across restarts; a record past its
+ * `until` is gone when read. Every verdict is recorded under the model the
+ * request named, whatever its scope: the instance itself has no state, and a
+ * model with no entry is `ok`. `billing` is a 30-minute cooldown;
+ * `credentials` is `disabled` until the instance's config changes. Any
+ * change to the instance's config clears both, for all its models.
  */
-export type ProviderState = PeerModelState & {
+export type ProviderState = {
   /** By model id: what holds for that model alone. */
-  models?: Record<string, PeerModelState>
+  models: Record<string, PeerModelState>
 }
 
 export type PeerModel = {
@@ -73,8 +74,8 @@ export type Peer = {
 export type PeersTableFor = (routerId: string) => Peer[]
 
 /**
- * `providers.clearPeerState`: forget what was recorded about an instance, or
- * about one of its models when `model` is given.
+ * `providers.clearPeerState`: forget what was recorded about one model of an
+ * instance, or about all its models when no `model` is given.
  */
 export type ClearPeerStatePayload = { provider: string; model?: string }
 export type ClearPeerStateResult = { ok: true }
