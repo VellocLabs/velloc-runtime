@@ -63,6 +63,7 @@ function copyModel(model: PeerModel): PeerModel {
     ...(model.name !== undefined ? { name: model.name } : {}),
     picked: model.picked,
     ...(model.free !== undefined ? { free: model.free } : {}),
+    ...(model.cost !== undefined ? { cost: { ...model.cost } } : {}),
     ...(model.contextWindow !== undefined ? { contextWindow: model.contextWindow } : {}),
     ...(model.maxOutputTokens !== undefined ? { maxOutputTokens: model.maxOutputTokens } : {}),
     supportsTools: model.supportsTools,

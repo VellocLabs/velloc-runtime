@@ -38,6 +38,8 @@ export const SETTINGS_APP_RELOAD_FOLD_MS = 10_000
 export type SettingsAppPeerSource = {
   peersFor: PeersTableFor
   clearPeerState: (payload: ClearPeerStatePayload) => Promise<ClearPeerStateResult> | ClearPeerStateResult
+  /** Adds the catalog's price to each model; absent = the table as it is. */
+  withCost?: (peers: Peer[]) => Promise<Peer[]>
 }
 
 /** The runtime's peers table and health ledger as a settings app reads them; the module is loaded only with the background runtime. */
@@ -46,8 +48,13 @@ export async function runtimeSettingsAppPeers(): Promise<SettingsAppPeerSource> 
     import('../provider/nouns/providerPeersNoun'),
     import('../../models/drivers/providerHealthLedger'),
   ])
+  const { runtimePeerCostDeps, withCatalogCost } = await import('../provider/nouns/peerModelCost')
   return {
     peersFor: runtimePeersTable,
+    withCost: async peers => {
+      const costs = await runtimePeerCostDeps()
+      return costs ? withCatalogCost(peers, costs) : peers
+    },
     clearPeerState: ({ provider, model }) => {
       clearProviderState(provider, model)
       return { ok: true }
@@ -143,7 +150,8 @@ export async function serveSettingsAppProviderCall(
   const routesTo = binding.routesTo ?? []
   if (method === 'peers') {
     // The table is the router's own; the boundary is checked again here so no peer outside it can pass.
-    return source.peersFor(binding.providerId).filter((peer: Peer) => insideRoutesTo(routesTo, peer))
+    const peers = source.peersFor(binding.providerId).filter((peer: Peer) => insideRoutesTo(routesTo, peer))
+    return source.withCost ? source.withCost(peers) : peers
   }
   const target = readClearTarget(args[0])
   // Only a listed peer: with `routesTo: "*"` the boundary alone would admit other routers and the router itself.

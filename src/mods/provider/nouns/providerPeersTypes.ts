@@ -37,6 +37,8 @@ export type PeerModel = {
   /** The person picked it on the provider's page. */
   picked: boolean
   free?: boolean
+  /** The catalog's price, US dollars per million tokens (F-28). */
+  cost?: { input: number; output: number; cacheRead?: number }
   contextWindow?: number
   maxOutputTokens?: number
   supportsTools: boolean
