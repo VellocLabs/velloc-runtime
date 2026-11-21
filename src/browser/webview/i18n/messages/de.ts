@@ -1305,6 +1305,8 @@ export const de: Messages = {
   'a2ui.studio.gauge': 'Anzeige',
   'a2ui.studio.unsupportedVideo': 'Nicht unterstützte Video-URL',
   'a2ui.studio.searchRows': 'Zeilen durchsuchen',
+  'a2ui.studio.selectRow': 'Zeile auswählen',
+  'a2ui.studio.selectShownRows': 'Angezeigte Zeilen auswählen',
   'a2ui.studio.rowCount': '{count} Zeilen',
   'a2ui.studio.noRows': 'Noch keine Zeilen',
   'a2ui.studio.noRowsMatch': 'Keine Zeilen entsprechen der Suche',

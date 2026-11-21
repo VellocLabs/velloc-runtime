@@ -1306,6 +1306,8 @@ export const es: Messages = {
   'a2ui.studio.gauge': 'Indicador',
   'a2ui.studio.unsupportedVideo': 'URL de vídeo no compatible',
   'a2ui.studio.searchRows': 'Buscar filas',
+  'a2ui.studio.selectRow': 'Seleccionar fila',
+  'a2ui.studio.selectShownRows': 'Seleccionar las filas mostradas',
   'a2ui.studio.rowCount': '{count} filas',
   'a2ui.studio.noRows': 'Aún no hay filas',
   'a2ui.studio.noRowsMatch': 'Ninguna fila coincide con la búsqueda',

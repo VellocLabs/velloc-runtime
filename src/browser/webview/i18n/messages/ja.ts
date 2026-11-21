@@ -1298,6 +1298,8 @@ export const ja: Messages = {
   'a2ui.studio.gauge': 'ゲージ',
   'a2ui.studio.unsupportedVideo': '対応していない動画 URL です',
   'a2ui.studio.searchRows': '行を検索',
+  'a2ui.studio.selectRow': '行を選択',
+  'a2ui.studio.selectShownRows': '表示中の行を選択',
   'a2ui.studio.rowCount': '{count} 行',
   'a2ui.studio.noRows': '行はまだありません',
   'a2ui.studio.noRowsMatch': '検索に一致する行はありません',

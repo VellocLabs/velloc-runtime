@@ -46,6 +46,7 @@ import { Button } from "../../ui/button";
 import { Input } from "../../ui/input";
 import { ToggleGroup, ToggleGroupItem } from "../../ui/toggle-group";
 import { Progress } from "../../ui/progress";
+import { Checkbox } from "../../ui/checkbox";
 import {
   Table,
   TableBody,
@@ -64,6 +65,7 @@ import { cn } from "../../lib/utils";
 import { studioText } from "../../../studioText";
 import { asArray, formatNumber } from "./format";
 import type { RendererMap } from "./types";
+import { useBound } from "./use-bound";
 
 /* ---------------------------------------------------------------- tones */
 
@@ -396,6 +398,10 @@ const tableFeats = tableFeatures({
   filterFns: { includesString: filterFn_includesString },
 });
 
+/** Row selection: the row field that names a row, the checked names, and the writer. */
+type Selection = { key: string; value: string[]; set: (next: string[]) => void };
+const NO_KEYS: string[] = [];
+
 const NUMERIC = new Set(["number", "currency", "percent"]);
 const EMPTY_ROWS: Row[] = [];
 
@@ -456,6 +462,7 @@ function DataTableView({
   searchable,
   pageSize,
   onRowClick,
+  selection,
 }: {
   title?: string;
   columns: Col[];
@@ -463,6 +470,7 @@ function DataTableView({
   searchable?: boolean;
   pageSize: number;
   onRowClick?: (row: Row) => void;
+  selection?: Selection;
 }) {
   const [picked, setPicked] = useState<Record<string, string[]>>({});
   const filters = useMemo(
@@ -545,6 +553,28 @@ function DataTableView({
   const from = filtered === 0 ? 0 : pageIndex * size + 1;
   const to = Math.min(filtered, (pageIndex + 1) * size);
   const showPager = shown.length > size;
+  const keyOf = (row: Row): string => str(row[selection?.key ?? ""]);
+  const toggleRow = (row: Row) => {
+    if (!selection) return;
+    const key = keyOf(row);
+    if (!key) return;
+    selection.set(
+      selection.value.includes(key)
+        ? selection.value.filter((k) => k !== key)
+        : [...selection.value, key],
+    );
+  };
+  const shownKeys = selection
+    ? table.getFilteredRowModel().rows.map((r) => keyOf(r.original)).filter(Boolean)
+    : [];
+  const shownAll = shownKeys.length > 0 && shownKeys.every((k) => selection!.value.includes(k));
+  const shownSome = shownKeys.some((k) => selection!.value.includes(k));
+  const selectShown = (on: boolean) => {
+    if (!selection) return;
+    const rest = selection.value.filter((k) => !shownKeys.includes(k));
+    selection.set(on ? [...rest, ...shownKeys] : rest);
+  };
+  const rowAction = onRowClick ?? (selection ? toggleRow : undefined);
   const pick = (key: string, values: string[]) => {
     setPicked((current) => ({ ...current, [key]: values }));
     table.setPageIndex(0);
@@ -633,6 +663,15 @@ function DataTableView({
                 key={group.id}
                 className="border-(--a2-line) hover:bg-transparent"
               >
+                {selection ? (
+                  <TableHead className="h-9 w-10 bg-black/[0.015] dark:bg-white/[0.015] pr-0 pl-4">
+                    <Checkbox
+                      checked={shownAll ? true : shownSome ? "indeterminate" : false}
+                      onCheckedChange={() => selectShown(!shownAll)}
+                      aria-label={studioText("a2ui.studio.selectShownRows")}
+                    />
+                  </TableHead>
+                ) : null}
                 {group.headers.map((header) => {
                   const col = columns.find((c) => c.key === header.column.id);
                   const right = col?.align
@@ -684,13 +723,13 @@ function DataTableView({
                 key={row.id}
                 className={cn(
                   "border-(--a2-line) hover:bg-black/[0.025] dark:hover:bg-white/[0.025]",
-                  onRowClick &&
+                  rowAction &&
                     "cursor-pointer outline-none focus-visible:bg-black/[0.04] focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/50 dark:focus-visible:bg-white/[0.04]",
                 )}
-                {...(onRowClick
+                {...(rowAction
                   ? {
                       tabIndex: 0,
-                      onClick: () => onRowClick(row.original),
+                      onClick: () => rowAction(row.original),
                       onKeyDown: (event: {
                         key: string;
                         repeat: boolean;
@@ -699,11 +738,22 @@ function DataTableView({
                         if (event.key !== "Enter" && event.key !== " ") return;
                         event.preventDefault();
                         if (event.repeat) return;
-                        onRowClick(row.original);
+                        rowAction(row.original);
                       },
                     }
                   : {})}
               >
+                {selection ? (
+                  <TableCell className="h-10 w-10 py-2 pr-0 pl-4">
+                    <Checkbox
+                      checked={selection.value.includes(keyOf(row.original))}
+                      onClick={(event) => event.stopPropagation()}
+                      onKeyDown={(event) => event.stopPropagation()}
+                      onCheckedChange={() => toggleRow(row.original)}
+                      aria-label={studioText("a2ui.studio.selectRow")}
+                    />
+                  </TableCell>
+                ) : null}
                 {row.getAllCells().map((cell) => {
                   const col = columns.find((c) => c.key === cell.column.id);
                   const right = col?.align
@@ -727,7 +777,7 @@ function DataTableView({
             {filtered === 0 ? (
               <TableRow className="hover:bg-transparent">
                 <TableCell
-                  colSpan={Math.max(1, columns.length)}
+                  colSpan={Math.max(1, columns.length + (selection ? 1 : 0))}
                   className="h-20 text-center text-[12.5px] text-muted-foreground"
                 >
                   {rows.length === 0
@@ -1039,8 +1089,26 @@ export const dataRenderers: RendererMap<DataKeys> = {
       return list.length ? list : EMPTY_ROWS;
     }, [raw]);
     const pageSize = Math.max(1, Math.round(props.pageSize ?? 8));
+    const [selected, setSelected] = useBound<string[]>(props.value, props.setValue, NO_KEYS);
+    const selectKey = typeof props.selectKey === "string" && props.selectKey ? props.selectKey : undefined;
+    const selection = useMemo<Selection | undefined>(
+      () =>
+        selectKey
+          ? {
+              key: selectKey,
+              value: Array.isArray(selected) ? selected.map(str) : NO_KEYS,
+              set: (next) => {
+                setSelected(next);
+                props.onChange?.({ value: next });
+              },
+            }
+          : undefined,
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+      [selectKey, selected, setSelected, props.onChange],
+    );
     return (
       <DataTableView
+        {...(selection ? { selection } : {})}
         title={props.title}
         columns={columns}
         rows={rows}

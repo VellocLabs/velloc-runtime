@@ -1,5 +1,5 @@
 import { z } from "zod/v3";
-import { def, tone } from "./shared";
+import { def, onChange, tone, writableValue } from "./shared";
 
 /** Badge and List come from the Gen UI 2.0 standard catalog. */
 
@@ -84,13 +84,25 @@ export const dataDefinitions = {
       rows: z.array(z.record(z.any())),
       searchable: z.boolean().optional(),
       pageSize: z.number().optional(),
+      selectKey: z
+        .string()
+        .optional()
+        .describe(
+          "Turns on row selection: the row field that identifies a row. A checkbox column comes first; the header box selects or clears the rows the search and filters show.",
+        ),
+      value: z
+        .array(z.string())
+        .optional()
+        .describe("With selectKey: the selected rows' selectKey values, written back as the person checks rows."),
     }),
     {
+      ...writableValue,
       events: {
         onRowClick: {
-          description: "Sent when the person clicks a row. The args carry the whole row object as \"row\", fields not shown in a column included.",
+          description: "Sent when the person clicks a row. The args carry the whole row object as \"row\", fields not shown in a column included. With selectKey and no onRowClick, a row click checks or clears the row.",
           parameters: z.object({ row: z.record(z.unknown()) }),
         },
+        ...onChange(z.array(z.string())).events,
       },
     },
   ),

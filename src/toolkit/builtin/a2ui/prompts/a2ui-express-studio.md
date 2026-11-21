@@ -312,9 +312,12 @@ Use these exact positional signatures to instantiate components. Do not output p
   - Description: Searchable dropdown for long option lists (countries, cities, timezones).
 • ComparisonTable(title?, options, rows, highlight?)
   - Description: Feature matrix comparing options side by side. options are the option names as strings; rows [{feature, values}] with one value per option, in the same order, each true/false/text; highlight is the recommended option's index in options (0 is the first).
-• DataTable(title?, columns, rows, searchable?, pageSize?, onRowClick? (static))
+• DataTable(title?, columns, rows, searchable?, pageSize?, selectKey?, value?, onRowClick? (static), onChange? (static))
   - Description: Sortable, filterable table (TanStack Table). columns [{key,label,format?}], rows are objects keyed by column key.
-  - onRowClick: Sent when the person clicks a row. The args carry the whole row object as "row", fields not shown in a column included.
+  - selectKey: Turns on row selection: the row field that identifies a row. A checkbox column comes first; the header box selects or clears the rows the search and filters show.
+  - value: With selectKey: the selected rows' selectKey values, written back as the person checks rows.
+  - onRowClick: Sent when the person clicks a row. The args carry the whole row object as "row", fields not shown in a column included. With selectKey and no onRowClick, a row click checks or clears the row.
+  - onChange: Sent when the person changes the value, after it is written to the bound path. The args carry the new value.
 • DatePicker(label?, value?, placeholder?)
   - Description: Date picker with calendar popover; value ISO date bound to a path.
 • DateTimeInput(label?, value?, checks?, enableDate?, enableTime?, timeStep?, min?, max?, placeholder?, disabled?, required?, clearable?, block?, weight?)

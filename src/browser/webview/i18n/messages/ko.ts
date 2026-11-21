@@ -1295,6 +1295,8 @@ export const ko: Messages = {
   'a2ui.studio.gauge': '게이지',
   'a2ui.studio.unsupportedVideo': '지원하지 않는 동영상 URL',
   'a2ui.studio.searchRows': '행 검색',
+  'a2ui.studio.selectRow': '행 선택',
+  'a2ui.studio.selectShownRows': '표시된 행 선택',
   'a2ui.studio.rowCount': '{count}개 행',
   'a2ui.studio.noRows': '아직 행이 없습니다',
   'a2ui.studio.noRowsMatch': '검색과 일치하는 행이 없습니다',

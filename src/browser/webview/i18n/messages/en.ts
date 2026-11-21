@@ -1339,6 +1339,8 @@ export const en = {
   'a2ui.studio.gauge': 'Gauge',
   'a2ui.studio.unsupportedVideo': 'Unsupported video URL',
   'a2ui.studio.searchRows': 'Search rows',
+  'a2ui.studio.selectRow': 'Select row',
+  'a2ui.studio.selectShownRows': 'Select the rows shown',
   'a2ui.studio.rowCount': '{count} rows',
   'a2ui.studio.noRows': 'No rows yet',
   'a2ui.studio.noRowsMatch': 'No rows match your search',

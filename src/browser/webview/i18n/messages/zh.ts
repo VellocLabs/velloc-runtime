@@ -1293,6 +1293,8 @@ export const zh: Messages = {
   'a2ui.studio.gauge': '仪表盘',
   'a2ui.studio.unsupportedVideo': '不支持的视频地址',
   'a2ui.studio.searchRows': '搜索行',
+  'a2ui.studio.selectRow': '选择此行',
+  'a2ui.studio.selectShownRows': '选择显示的行',
   'a2ui.studio.rowCount': '{count} 行',
   'a2ui.studio.noRows': '暂无数据',
   'a2ui.studio.noRowsMatch': '没有符合搜索条件的行',
