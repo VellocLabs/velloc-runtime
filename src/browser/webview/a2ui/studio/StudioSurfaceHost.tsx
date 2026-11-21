@@ -56,7 +56,9 @@ function boundPaths(properties: unknown, out: string[] = []): string[] {
   if (Array.isArray(properties)) for (const item of properties) boundPaths(item, out)
   else if (properties && typeof properties === 'object') {
     for (const [key, value] of Object.entries(properties)) {
-      if ((key === '@path' || key === 'path') && typeof value === 'string') out.push(value)
+      if ((key === '@path' || key === 'path') && typeof value === 'string') {
+        if (value.startsWith('/')) out.push(value)
+      }
       else boundPaths(value, out)
     }
   }
@@ -88,7 +90,12 @@ type EngineSurface = {
 /** The data paths the surface's dialogs bind their `open` to, except a dialog `trigger` opens. */
 function dialogOpenPaths(surface: EngineSurface, trigger: string | undefined): string[] {
   const out: string[] = []
-  for (const [, component] of surface.model?.componentsModel?.entries ?? []) {
+  const entries = surface.model?.componentsModel?.entries
+  if (entries === undefined) {
+    console.warn('[a2ui] studio engine has no component list; dialogs keep the open value the person set')
+    return out
+  }
+  for (const [, component] of entries) {
     if (component?.type !== 'Modal') continue
     const props = component.properties as { open?: unknown; trigger?: unknown } | undefined
     if (trigger !== undefined && props?.trigger === trigger) continue

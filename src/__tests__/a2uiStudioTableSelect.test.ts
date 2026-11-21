@@ -89,8 +89,11 @@ describe('DataTable row selection', () => {
     await waitFor(() => expect(boxes(view.container)).toHaveLength(4))
     expect(rowBox(view.container, 'Keyless').hasAttribute('disabled')).toBe(true)
     const chip = (label: string) => view.container.querySelector<HTMLElement>(`[aria-label="${label}"]`)!
-    expect([chip('Checked').textContent, chip('Not checked').textContent]).toEqual(['', ''])
     expect([...view.container.querySelectorAll('tbody tr')].find(tr => tr.textContent?.includes('Keyless'))!.hasAttribute('tabindex')).toBe(false)
+    fireEvent.click(chip('Not checked'))
+    await waitFor(() => expect(boxes(view.container)).toHaveLength(3))
+    fireEvent.click(chip('Not checked'))
+    await waitFor(() => expect(boxes(view.container)).toHaveLength(4))
     fireEvent.click(boxes(view.container)[0]!)
     await waitFor(() => expect(events).toHaveLength(1))
     expect(events[0]?.context).toMatchObject({ value: ['a'] })
