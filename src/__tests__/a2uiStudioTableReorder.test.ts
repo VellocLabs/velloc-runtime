@@ -15,6 +15,7 @@ const NAMES = ['Alpha', 'Beta', 'Gamma', 'Delta']
 const DATA = {
   columns: [{ key: 'name', label: 'Item' }, { key: 'source', label: 'Source', filter: true }],
   rows: NAMES.map((name, i) => ({ id: name.toLowerCase(), name, source: i % 2 ? 'South' : 'North' })),
+  picked: [] as string[],
 }
 
 function page(body: string, onEvent: (event: StudioEvent) => void) {
@@ -46,7 +47,20 @@ describe('DataTable reorderable', () => {
     for (const tr of rowsOf(view.container)) expect(tr.firstElementChild!.querySelector('[data-reorder-handle]')).not.toBeNull()
     expect(view.container.querySelector('input')).toBeNull()
     expect(view.container.querySelector('[aria-label="Source"]')).toBeNull()
+    expect(view.container.querySelector('thead .group\\/sort')).toBeNull()
     expect(view.container.textContent).not.toContain('1 / 2')
+  })
+
+  it('Space or Enter on a grip never reaches the row action', async () => {
+    const view = page(`${TABLE}, selectKey="id", value=$/data/picked)`, () => undefined)
+    await waitFor(() => expect(handles(view.container)).toHaveLength(4))
+    const box = () => view.container.querySelector('tbody [data-slot="checkbox"]')!
+    expect(box().getAttribute('aria-checked')).toBe('false')
+    fireEvent.keyDown(handles(view.container)[0]!, { key: ' ' })
+    expect(box().getAttribute('aria-checked')).toBe('false')
+    fireEvent.keyDown(handles(view.container)[0]!, { key: 'Enter' })
+    expect(box().getAttribute('aria-checked')).toBe('false')
+    expect(order(view.container)).toEqual(NAMES)
   })
 
   it('a drop shows the new order at once and sends order by selectKey with from and to', async () => {

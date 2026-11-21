@@ -1,5 +1,5 @@
 import "./renderers.css";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import {
   columnFilteringFeature,
@@ -399,9 +399,9 @@ const tableFeats = tableFeatures({
   filterFns: { includesString: filterFn_includesString },
 });
 
-/** Row selection: the row field that names a row, the checked names, and the writer. */
 /** What onReorder sends: the new order (selectKey values, else indexes into rows), the moved row's old and new index, and the row. */
 type Reorder = { order: (string | number)[]; from: number; to: number; row: Row };
+/** Row selection: the row field that names a row, the checked names, and the writer. */
 type Selection = { key: string; value: string[]; set: (next: string[]) => void };
 const NO_KEYS: string[] = [];
 
@@ -586,6 +586,15 @@ function DataTableView({
       globalFilter: "",
     },
   });
+
+  /** Reorder shows one page in the given order; clear any paging, sort or search an earlier render left in the table. */
+  useEffect(() => {
+    if (!reorderable) return;
+    table.setPageSize(Number.MAX_SAFE_INTEGER);
+    table.setPageIndex(0);
+    table.setSorting([]);
+    table.setGlobalFilter("");
+  }, [reorderable, table]);
 
   const filtered = table.getFilteredRowModel().rows.length;
   const { pageIndex, pageSize: size } = table.state.pagination;
@@ -810,25 +819,36 @@ function DataTableView({
                         right && "text-right",
                       )}
                     >
-                      <button
-                        type="button"
-                        onClick={header.column.getToggleSortingHandler()}
-                        className={cn(
-                          "group/sort inline-flex items-center gap-1 rounded-sm outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50",
-                          right && "flex-row-reverse",
-                          sorted && "text-foreground",
-                        )}
-                      >
-                        <table.FlexRender header={header} />
-                        <SortIcon
+                      {reorderable ? (
+                        <span
                           className={cn(
-                            "size-3 shrink-0 transition-opacity",
-                            sorted
-                              ? "opacity-90"
-                              : "opacity-0 group-hover/sort:opacity-50",
+                            "inline-flex items-center gap-1",
+                            right && "flex-row-reverse",
                           )}
-                        />
-                      </button>
+                        >
+                          <table.FlexRender header={header} />
+                        </span>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={header.column.getToggleSortingHandler()}
+                          className={cn(
+                            "group/sort inline-flex items-center gap-1 rounded-sm outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50",
+                            right && "flex-row-reverse",
+                            sorted && "text-foreground",
+                          )}
+                        >
+                          <table.FlexRender header={header} />
+                          <SortIcon
+                            className={cn(
+                              "size-3 shrink-0 transition-opacity",
+                              sorted
+                                ? "opacity-90"
+                                : "opacity-0 group-hover/sort:opacity-50",
+                            )}
+                          />
+                        </button>
+                      )}
                     </TableHead>
                   );
                 })}
@@ -841,7 +861,7 @@ function DataTableView({
                 key={row.id}
                 {...(reorderable
                   ? {
-                      draggable: true,
+                      draggable: !selection || keyOf(row.original) !== "",
                       "data-reorder-row": "",
                       onDragStart: (event: React.DragEvent) => {
                         event.dataTransfer.effectAllowed = "move";
@@ -890,14 +910,15 @@ function DataTableView({
                       type="button"
                       data-reorder-handle=""
                       aria-label={studioText("a2ui.studio.reorderRow")}
+                      disabled={selection !== undefined && keyOf(row.original) === ""}
                       onClick={(event) => event.stopPropagation()}
                       onKeyDown={(event) => {
+                        event.stopPropagation();
                         if (event.key !== "ArrowUp" && event.key !== "ArrowDown") return;
                         event.preventDefault();
-                        event.stopPropagation();
                         move(at, at + (event.key === "ArrowUp" ? -1 : 1));
                       }}
-                      className="grid size-6 cursor-grab place-content-center rounded-sm text-muted-foreground/70 outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50 active:cursor-grabbing"
+                      className="grid size-6 cursor-grab place-content-center rounded-sm text-muted-foreground/70 outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50 active:cursor-grabbing disabled:cursor-default disabled:opacity-40"
                     >
                       <GripVertical className="size-3.5" />
                     </button>
