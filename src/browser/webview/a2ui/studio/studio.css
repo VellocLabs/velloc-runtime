@@ -143,3 +143,10 @@
   border-color: var(--primary);
   color: var(--primary-foreground);
 }
+
+/* The engine's tab strip scrolls sideways only: each tab hangs 1px below the
+   strip to cover its rule, which would otherwise let the strip scroll down
+   by that 1px and draw a vertical scrollbar beside the tabs. */
+.a2-surface-host [data-a2ui-tabs] > [role="tablist"] {
+  overflow-y: hidden;
+}

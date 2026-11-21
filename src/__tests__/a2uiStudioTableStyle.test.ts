@@ -40,4 +40,10 @@ describe('studio table style', () => {
     expect(rule?.[1]).toMatch(/--primary: var\(--velloc-host-primary\)/)
     expect(rule?.[1]).toMatch(/--a2-accent: var\(--velloc-host-primary\)/)
   })
+
+  it('the tab strip never scrolls down, so no vertical scrollbar shows beside the tabs', () => {
+    const plain = css.replace(/\/\*[\s\S]*?\*\//g, '')
+    const rule = plain.match(/\.a2-surface-host \[data-a2ui-tabs\] > \[role="tablist"\]\s*\{([^}]*)\}/)
+    expect(rule?.[1]).toMatch(/overflow-y: hidden/)
+  })
 })
