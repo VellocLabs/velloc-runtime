@@ -1518,6 +1518,10 @@ export const chartRenderers: RendererMap<
             source: "source",
             target: "target",
             value: "value",
+            // Each column keeps the order its nodes first appear in the links, so
+            // the author decides it (children under their parent, say) and the
+            // layout does not reorder them by size, crossing their flows.
+            nodeSort: null,
             nodeWidth: 10,
             nodePadding: ({ height }) => Math.max(10, height * 0.05),
             inset: { top: 6, bottom: 6, left: 2, right: 2 },
