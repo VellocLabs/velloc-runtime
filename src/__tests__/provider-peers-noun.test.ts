@@ -249,7 +249,7 @@ describe('peersTableFor', () => {
     recordProviderVerdict('alpha', 'alpha-large', verdict('service'), NOW)
     const table = (now: number): Peer[] =>
       peersTableFor(ROUTER, deps([instance('alpha')], '*', { stateOf: providerStateOf, now: () => now }))
-    expect(table(NOW)[0]!.state).toEqual({ models: { 'alpha-large': { status: 'cooling', until: NOW + 30_000, reason: 'service' } } })
+    expect(table(NOW)[0]!.state).toEqual({ models: { 'alpha-large': { status: 'cooling', until: NOW + 30_000, untilFrom: 'platform', reason: 'service' } } })
     expect(table(NOW + 30_000)[0]!.state).toEqual({ models: {} })
   })
 })

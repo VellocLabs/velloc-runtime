@@ -11,10 +11,19 @@ import type { ProviderConnectivityIssue } from '../../../utils/providerConnectiv
 
 export type PeerStatus = 'ok' | 'cooling' | 'exhausted' | 'disabled'
 
+export type PeerUntilFrom = 'provider' | 'platform'
+
 export type PeerModelState = {
   status: PeerStatus
   /** When the cooldown or the exhausted window ends, epoch ms. */
   until?: number
+  /**
+   * Who set `until`: `provider` when the provider itself stated the wait or
+   * the reset time, `platform` when the platform chose the wait because the
+   * provider stated none. Absent with no `until`, and on a record kept from
+   * before this field.
+   */
+  untilFrom?: PeerUntilFrom
   reason?: ProviderConnectivityIssue['kind']
 }
 

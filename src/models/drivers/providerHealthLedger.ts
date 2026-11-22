@@ -12,7 +12,7 @@
  * says nothing about the instance's other models. A record is replaced only
  * by one that lasts at least as long; `disabled` is replaced by nothing.
  */
-import type { PeerModelState, ProviderState } from '../../mods/provider/nouns/providerPeersTypes'
+import type { PeerModelState, PeerUntilFrom, ProviderState } from '../../mods/provider/nouns/providerPeersTypes'
 import type { ProviderConnectivityIssue } from '../../utils/providerConnectivity'
 
 export const RATE_LIMIT_FIRST_MS = 60_000
@@ -38,6 +38,8 @@ type HealthRecord = {
   status: 'cooling' | 'exhausted' | 'disabled'
   /** Absent: no end (`disabled`). */
   until?: number
+  /** Who set `until`. Absent with no `until`, and on a record stored before it was kept. */
+  untilFrom?: PeerUntilFrom
   reason: ProviderConnectivityIssue['kind']
 }
 
@@ -139,13 +141,14 @@ function recordFor(
 ): HealthRecord | undefined {
   switch (verdict.kind) {
     case 'rate_limit': {
-      let until = statedEnd(verdict, nowMs, 'wait')
+      const stated = statedEnd(verdict, nowMs, 'wait')
+      let until = stated
       if (until === undefined) {
         const waitMs = repeats(slot.rate, nowMs) ? Math.min(slot.rate.waitMs * 2, RATE_LIMIT_MAX_MS) : RATE_LIMIT_FIRST_MS
         slot.rate = { at: nowMs, waitMs }
         until = nowMs + waitMs
       }
-      return { status: 'cooling', until, reason: 'rate_limit' }
+      return { status: 'cooling', until, untilFrom: stated === undefined ? 'platform' : 'provider', reason: 'rate_limit' }
     }
     case 'quota': {
       const stated = statedEnd(verdict, nowMs, 'reset')
@@ -154,17 +157,17 @@ function recordFor(
         (servedToday(instanceId, nowMs) >= QUOTA_DAILY_SERVED
           ? (Math.floor(nowMs / DAY_MS) + 1) * DAY_MS
           : nowMs + QUOTA_UNKNOWN_MS)
-      return { status: 'exhausted', until, reason: 'quota' }
+      return { status: 'exhausted', until, untilFrom: stated === undefined ? 'platform' : 'provider', reason: 'quota' }
     }
     case 'billing':
-      return { status: 'cooling', until: nowMs + BILLING_COOL_MS, reason: 'billing' }
+      return { status: 'cooling', until: nowMs + BILLING_COOL_MS, untilFrom: 'platform', reason: 'billing' }
     case 'credentials':
       return { status: 'disabled', reason: 'credentials' }
     case 'model_unavailable':
-      return { status: 'cooling', until: nowMs + MODEL_UNAVAILABLE_MS, reason: 'model_unavailable' }
+      return { status: 'cooling', until: nowMs + MODEL_UNAVAILABLE_MS, untilFrom: 'platform', reason: 'model_unavailable' }
     case 'service':
     case 'network':
-      return { status: 'cooling', until: nowMs + TRANSIENT_COOL_MS, reason: verdict.kind }
+      return { status: 'cooling', until: nowMs + TRANSIENT_COOL_MS, untilFrom: 'platform', reason: verdict.kind }
     default:
       return undefined
   }
@@ -205,6 +208,7 @@ function stateOfRecord(record: HealthRecord): PeerModelState {
   return {
     status: record.status,
     ...(record.until !== undefined ? { until: record.until } : {}),
+    ...(record.until !== undefined && record.untilFrom ? { untilFrom: record.untilFrom } : {}),
     reason: record.reason,
   }
 }
@@ -320,6 +324,9 @@ function readSlot(value: unknown): Slot {
     slot.record = {
       status: record.status as HealthRecord['status'],
       ...(record.until !== undefined ? { until: record.until as number } : {}),
+      ...(record.until !== undefined && (record.untilFrom === 'provider' || record.untilFrom === 'platform')
+        ? { untilFrom: record.untilFrom }
+        : {}),
       reason: record.reason as HealthRecord['reason'],
     }
   }
