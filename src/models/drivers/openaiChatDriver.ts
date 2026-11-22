@@ -40,6 +40,7 @@ import type {
   DriverUsage,
   ProviderDriver,
 } from './driverTypes'
+import { readGatewayErrorDetails } from './gatewayErrorDetails'
 import { chatIdSites } from './idSites'
 
 // ── Request ───────────────────────────────────────────────────────────────
@@ -781,12 +782,18 @@ export const openaiChatDriver: ProviderDriver = {
   },
 
   errorFromResponse(response) {
-    // OnStreamComplete, http_status >= 400.
+    // OnStreamComplete, http_status >= 400. A gateway's own reset time and the
+    // upstream provider's text ride the body and headers, not the message.
+    const details = readGatewayErrorDetails(response.status, response.headers, response.bodyText, Date.now())
+    const stated = headerValue(response.headers, 'Retry-After')
+    const wait = stated || (details.retryAfterSeconds !== undefined ? String(details.retryAfterSeconds) : '')
+    const text = extractApiErrorMessage(response.bodyText)
     const message = buildProviderErrorMessage(
       response.status,
-      headerValue(response.headers, 'Retry-After'),
-      extractApiErrorMessage(response.bodyText),
+      wait,
+      details.upstream && !text.includes(details.upstream) ? (text ? `${text}: ${details.upstream}` : details.upstream) : text,
     )
-    return hostErrorEvent(message)
+    const event = hostErrorEvent(message)
+    return details.verdict ? { ...event, verdict: details.verdict } : event
   },
 }
