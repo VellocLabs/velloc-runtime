@@ -227,7 +227,7 @@ export const CollapsibleUserMessageText: FC<{
     >
       {!expanded && (
         <div
-          className="aui-user-message-preview min-w-0 max-w-full whitespace-pre-wrap wrap-break-word"
+          className="aui-user-message-preview min-w-0 max-w-full whitespace-pre-wrap wrap-break-word [mask-image:linear-gradient(to_bottom,black_calc(100%-2.5rem),transparent)]"
           data-role="user-message-preview"
           {...lineAttrs}
         >
@@ -249,7 +249,7 @@ export const CollapsibleUserMessageText: FC<{
       {/* Single right-aligned toggle: collapsed it merges the hidden-line
           count into the action ("Show full (N more lines)"); expanded it
           collapses again. */}
-      <div className="flex justify-end">
+      <div className="relative z-10 flex justify-end">
         <CollapsibleTrigger asChild>
           <button
             type="button"

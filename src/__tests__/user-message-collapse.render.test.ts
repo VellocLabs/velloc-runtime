@@ -62,6 +62,26 @@ describe('user message text collapse', () => {
     expect(html).not.toContain('Show less')
   })
 
+  it('fades the collapsed preview with a mask, the toggle stays unmasked above it', () => {
+    const { text } = longMessage()
+    const html = renderToStaticMarkup(createElement(CollapsibleUserMessageText, { text }))
+    const preview = /<div class="([^"]*)" data-role="user-message-preview"/.exec(html)
+    expect(preview?.[1]).toContain('[mask-image:linear-gradient(')
+    expect(html).not.toContain('var(--color-background)')
+    // The toggle row comes after the preview closes, outside the mask, stacked above.
+    const previewEnd = html.indexOf('</div>', html.indexOf('data-role="user-message-preview"'))
+    expect(html.indexOf('aui-user-message-toggle')).toBeGreaterThan(previewEnd)
+    expect(html).toContain('relative z-10 flex justify-end')
+  })
+
+  it('does not fade the expanded text', () => {
+    const { text } = longMessage()
+    const html = renderToStaticMarkup(
+      createElement(CollapsibleUserMessageText, { text, defaultExpanded: true }),
+    )
+    expect(html).not.toContain('mask-image')
+  })
+
   it('renders the full text when expanded', () => {
     const { text, totalLines } = longMessage()
 

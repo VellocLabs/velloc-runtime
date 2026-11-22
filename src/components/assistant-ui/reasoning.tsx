@@ -1,4 +1,4 @@
-import { memo, useCallback, useRef, useState } from "react";
+import { memo, useCallback, useLayoutEffect, useRef, useState } from "react";
 import { cva, type VariantProps } from "class-variance-authority";
 import { BrainIcon, ChevronDownIcon } from "lucide-react";
 import {
@@ -90,25 +90,11 @@ function ReasoningRoot({
   );
 }
 
-function ReasoningFade({ className, ...props }: React.ComponentProps<"div">) {
-  return (
-    <div
-      data-slot="reasoning-fade"
-      className={cn(
-        "aui-reasoning-fade pointer-events-none absolute inset-x-0 bottom-0 z-10 h-8",
-        "bg-[linear-gradient(to_top,var(--color-background),transparent)]",
-        "fade-in-0 animate-in",
-        "group-data-[state=open]/collapsible-content:animate-out",
-        "group-data-[state=open]/collapsible-content:fade-out-0",
-        "group-data-[state=open]/collapsible-content:delay-[calc(var(--animation-duration)*0.75)]",
-        "group-data-[state=open]/collapsible-content:fill-mode-forwards",
-        "duration-(--animation-duration)",
-        "group-data-[state=open]/collapsible-content:duration-(--animation-duration)",
-        className,
-      )}
-      {...props}
-    />
-  );
+const FADE_MASK = "[mask-image:linear-gradient(to_bottom,black_calc(100%-2rem),transparent)]";
+
+/** True when `el` has nothing left to scroll below its viewport. */
+function isScrolledToEnd(el: HTMLElement): boolean {
+  return el.scrollHeight - el.scrollTop - el.clientHeight <= 1;
 }
 
 function ReasoningTrigger({
@@ -174,6 +160,8 @@ function ReasoningContent({
       data-slot="reasoning-content"
       className={cn(
         "aui-reasoning-content relative overflow-hidden text-muted-foreground text-body outline-none",
+        FADE_MASK,
+        "data-[state=open]:[mask-image:none]",
         "group/collapsible-content ease-out",
         "data-[state=closed]:animate-collapsible-up",
         "data-[state=open]:animate-collapsible-down",
@@ -186,17 +174,44 @@ function ReasoningContent({
       {...props}
     >
       {children}
-      <ReasoningFade />
     </CollapsibleContent>
   );
 }
 
-function ReasoningText({ className, ...props }: React.ComponentProps<"div">) {
+function ReasoningText({
+  className,
+  onScroll,
+  ...props
+}: React.ComponentProps<"div">) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [atEnd, setAtEnd] = useState(true);
+  const update = useCallback(() => {
+    const el = ref.current;
+    if (el) setAtEnd(isScrolledToEnd(el));
+  }, []);
+
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    update();
+    const observer = new MutationObserver(update);
+    observer.observe(el, { childList: true, subtree: true, characterData: true });
+    return () => observer.disconnect();
+  }, [update]);
+
   return (
     <div
+      ref={ref}
       data-slot="reasoning-text"
+      data-at-end={atEnd ? "" : undefined}
+      onScroll={(event) => {
+        update();
+        onScroll?.(event);
+      }}
       className={cn(
         "aui-reasoning-text relative z-0 max-h-64 space-y-4 overflow-y-auto pt-2 pb-4 pl-6",
+        FADE_MASK,
+        "data-[at-end]:[mask-image:none]",
         "transform-gpu transition-[transform,opacity]",
         "group-data-[state=open]/collapsible-content:animate-in",
         "group-data-[state=closed]/collapsible-content:animate-out",
@@ -247,7 +262,6 @@ const Reasoning = memo(
   Trigger: typeof ReasoningTrigger;
   Content: typeof ReasoningContent;
   Text: typeof ReasoningText;
-  Fade: typeof ReasoningFade;
 };
 
 Reasoning.displayName = "Reasoning";
@@ -255,7 +269,6 @@ Reasoning.Root = ReasoningRoot;
 Reasoning.Trigger = ReasoningTrigger;
 Reasoning.Content = ReasoningContent;
 Reasoning.Text = ReasoningText;
-Reasoning.Fade = ReasoningFade;
 
 const ReasoningGroup = memo(ReasoningGroupImpl);
 ReasoningGroup.displayName = "ReasoningGroup";
@@ -267,6 +280,5 @@ export {
   ReasoningTrigger,
   ReasoningContent,
   ReasoningText,
-  ReasoningFade,
   reasoningVariants,
 };
