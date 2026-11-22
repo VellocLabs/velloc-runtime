@@ -524,6 +524,8 @@ function classifyPlatformIssue(value: unknown): PlatformIssue | null {
     status === 401 ||
     status === 403 ||
     /\b(unauthorized|forbidden|bad api key|invalid api key|api key .*invalid|invalid .*api key)\b/.test(text) ||
+    // Google's wording for a refused key, which arrives as a 400.
+    /\bapi key (not valid|expired)\b/.test(text) ||
     /\b(authentication|auth)\b.*\b(failed|invalid|required|expired|revoked)\b/.test(text) ||
     /\b(invalid|expired|revoked)\b.*\b(token|oauth|credential|credentials)\b/.test(text) ||
     /\b(oauth token|access token|credentials?)\b.*\b(invalid|expired|revoked|missing)\b/.test(text)

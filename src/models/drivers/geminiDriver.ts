@@ -40,6 +40,7 @@ import type {
   DriverStreamEvent,
   ProviderDriver,
 } from './driverTypes'
+import { readGoogleErrorDetails } from './googleErrorDetails'
 import { geminiIdSites } from './idSites'
 
 /** The replay envelope field holding one model message's thought signatures. */
@@ -698,12 +699,11 @@ export const geminiDriver: ProviderDriver = {
     return createGeminiDecoder(undefined, { providerId: context.providerId, model: context.model })
   },
   errorFromResponse(response) {
-    return hostErrorEvent(
-      buildProviderErrorMessage(
-        response.status,
-        findHeader(response.headers, 'Retry-After'),
-        extractApiErrorMessage(response.bodyText),
-      ),
-    )
+    // Google puts the wait, the quota and the key's fault in the body's details.
+    const details = readGoogleErrorDetails(response.bodyText, Date.now())
+    const header = findHeader(response.headers, 'Retry-After')
+    const wait = header || (details.retryDelaySeconds !== undefined ? String(details.retryDelaySeconds) : '')
+    const event = hostErrorEvent(buildProviderErrorMessage(response.status, wait, extractApiErrorMessage(response.bodyText)))
+    return details.verdict ? { ...event, verdict: details.verdict } : event
   },
 }

@@ -21,6 +21,7 @@ import {
   resetProviderHealthLedger,
   retryProviderHealthLedgerLoad,
   TRANSIENT_COOL_MS,
+  TRANSIENT_MAX_MS,
   type ProviderHealthStore,
 } from '../models/drivers/providerHealthLedger'
 import type { ProviderConnectivityIssue } from '../utils/providerConnectivity'
@@ -165,6 +166,25 @@ describe('what a verdict records', () => {
   it.each(['service', 'network'] as const)('%s cools 30 s', kind => {
     recordProviderVerdict('acme', 'm1', verdict(kind), NOON)
     expect(held('acme', NOON)).toEqual({ status: 'cooling', until: NOON + TRANSIENT_COOL_MS, untilFrom: 'platform', reason: kind })
+  })
+
+  it('a model that keeps failing with service errors waits longer each time, up to 5 min', () => {
+    let at = NOON
+    const waits: number[] = []
+    for (let i = 0; i < 6; i += 1) {
+      recordProviderVerdict('acme', 'm1', verdict('service'), at)
+      const until = held('acme', at).until!
+      waits.push(until - at)
+      at = until + 10_000
+    }
+    expect(waits).toEqual([30_000, 60_000, 120_000, 240_000, TRANSIENT_MAX_MS, TRANSIENT_MAX_MS])
+    // Quiet for longer than the repeat window: back to the shortest wait.
+    const later = at + 3 * MIN
+    recordProviderVerdict('acme', 'm1', verdict('service'), later)
+    expect(held('acme', later).until).toBe(later + TRANSIENT_COOL_MS)
+    // Another model of the same provider has a series of its own.
+    recordProviderVerdict('acme', 'm2', verdict('network'), later)
+    expect(providerStateOf('acme', later).models.m2?.until).toBe(later + TRANSIENT_COOL_MS)
   })
 
   it.each(['configuration', 'provider_policy'] as const)('%s records nothing', kind => {

@@ -706,7 +706,44 @@ describe('gemini errorFromResponse', () => {
       type: 'error',
       message: 'HTTP 400: API key not valid. Please pass a valid API key.',
       httpStatus: 400,
+      verdict: { kind: 'credentials', code: 'API_KEY_INVALID' },
     })
+  })
+
+  const quota429 = (quotaId: string) =>
+    JSON.stringify({
+      error: {
+        code: 429,
+        message: 'You exceeded your current quota, please check your plan and billing details.',
+        status: 'RESOURCE_EXHAUSTED',
+        details: [
+          { '@type': 'type.googleapis.com/google.rpc.QuotaFailure', violations: [{ quotaMetric: 'm', quotaId }] },
+          { '@type': 'type.googleapis.com/google.rpc.RetryInfo', retryDelay: '53.2s' },
+        ],
+      },
+    })
+
+  it('429 per-minute quota: the retryDelay of the body is the wait, and it is a rate limit', () => {
+    const id = 'GenerateRequestsPerMinutePerProjectPerModel-FreeTier'
+    expect(error(429, quota429(id))).toEqual({
+      type: 'error',
+      message: 'HTTP 429: You exceeded your current quota, please check your plan and billing details. (retry-after: 54s)',
+      httpStatus: 429,
+      retryAfterSeconds: 54,
+      verdict: { kind: 'rate_limit', retryable: true, code: id },
+    })
+    // A Retry-After header wins over the body.
+    expect(error(429, quota429(id), { 'Retry-After': '7' })).toMatchObject({ retryAfterSeconds: 7 })
+  })
+
+  it('429 per-day quota: used up until midnight Pacific time; the short delay is no wait', () => {
+    const id = 'GenerateRequestsPerDayPerProjectPerModel-FreeTier'
+    const before = Date.now()
+    const event = error(429, quota429(id)) as { retryAfterSeconds?: number; verdict?: { kind: string; resetsAt?: number } }
+    expect(event.retryAfterSeconds).toBeUndefined()
+    expect(event.verdict).toMatchObject({ kind: 'quota', retryable: false, code: id })
+    expect(event.verdict!.resetsAt!).toBeGreaterThan(before)
+    expect(event.verdict!.resetsAt! - before).toBeLessThanOrEqual(25 * 60 * 60_000)
   })
 
   it('429 with Retry-After in any header case', () => {

@@ -25,6 +25,10 @@ export const QUOTA_DAILY_SERVED = 10
 export const BILLING_COOL_MS = 30 * 60_000
 export const MODEL_UNAVAILABLE_MS = 60 * 60_000
 export const TRANSIENT_COOL_MS = 30_000
+/** The longest a run of service or network failures holds a model. */
+export const TRANSIENT_MAX_MS = 5 * 60_000
+/** A service or network failure this soon after the last one's cooldown ended doubles the wait. */
+export const TRANSIENT_REPEAT_MS = 2 * 60_000
 
 const DAY_MS = 24 * 60 * 60_000
 
@@ -46,7 +50,12 @@ type HealthRecord = {
 /** The last rate limit that carried no wait of its own, for the doubling. */
 type RateSeries = { at: number; waitMs: number }
 
-type Slot = { record?: HealthRecord; rate?: RateSeries }
+/**
+ * `trouble`: the last service or network failure, for its own doubling. Kept
+ * in memory only: after a restart a failing model starts again at the
+ * shortest wait.
+ */
+type Slot = { record?: HealthRecord; rate?: RateSeries; trouble?: RateSeries }
 
 type Instance = { models: Map<string, Slot> }
 
@@ -83,8 +92,8 @@ function slotOf(instance: Instance, model: string): Slot {
 }
 
 /** The series still counts: its cooldown ended less than the repeat window ago. */
-function repeats(rate: RateSeries | undefined, nowMs: number): rate is RateSeries {
-  return rate !== undefined && nowMs - (rate.at + rate.waitMs) < RATE_LIMIT_REPEAT_MS
+function repeats(rate: RateSeries | undefined, nowMs: number, windowMs: number = RATE_LIMIT_REPEAT_MS): rate is RateSeries {
+  return rate !== undefined && nowMs - (rate.at + rate.waitMs) < windowMs
 }
 
 function live(record: HealthRecord | undefined, nowMs: number): HealthRecord | undefined {
@@ -92,7 +101,7 @@ function live(record: HealthRecord | undefined, nowMs: number): HealthRecord | u
 }
 
 function slotIsEmpty(slot: Slot, nowMs: number): boolean {
-  return !live(slot.record, nowMs) && !repeats(slot.rate, nowMs)
+  return !live(slot.record, nowMs) && !repeats(slot.rate, nowMs) && !repeats(slot.trouble, nowMs, TRANSIENT_REPEAT_MS)
 }
 
 /** Drop what has ended under `instanceId`; the instance too once nothing is left. */
@@ -102,6 +111,7 @@ function prune(instanceId: string, nowMs: number): void {
   const sweep = (slot: Slot): void => {
     if (!live(slot.record, nowMs)) delete slot.record
     if (!repeats(slot.rate, nowMs)) delete slot.rate
+    if (!repeats(slot.trouble, nowMs, TRANSIENT_REPEAT_MS)) delete slot.trouble
   }
   for (const [model, slot] of instance.models) {
     sweep(slot)
@@ -166,8 +176,14 @@ function recordFor(
     case 'model_unavailable':
       return { status: 'cooling', until: nowMs + MODEL_UNAVAILABLE_MS, untilFrom: 'platform', reason: 'model_unavailable' }
     case 'service':
-    case 'network':
-      return { status: 'cooling', until: nowMs + TRANSIENT_COOL_MS, untilFrom: 'platform', reason: verdict.kind }
+    case 'network': {
+      // A model that keeps failing is tried less often: 30 s, doubling to 5 min.
+      const waitMs = repeats(slot.trouble, nowMs, TRANSIENT_REPEAT_MS)
+        ? Math.min(slot.trouble.waitMs * 2, TRANSIENT_MAX_MS)
+        : TRANSIENT_COOL_MS
+      slot.trouble = { at: nowMs, waitMs }
+      return { status: 'cooling', until: nowMs + waitMs, untilFrom: 'platform', reason: verdict.kind }
+    }
     default:
       return undefined
   }
