@@ -90,6 +90,32 @@ export const scenarios: Scenario[] = [
     check: endsWith('completed'),
   },
   {
+    // The first prompt ends on the failure limit with a recovery step that
+    // still called a tool; the next prompt runs its tool round to the answer.
+    name: 'failure-limit-exit-leaves-the-next-prompt-unlatched',
+    async run() {
+      const w = engineWorld({
+        tools: [
+          { name: 'Act', throws: 'The action failed.' },
+          { name: 'Fine' },
+        ],
+        replies: [
+          ...rounds(6),
+          { label: 'second-prompt', calls: [{ id: 'call-7', name: 'Fine' }] },
+          { label: 'second-done', text: 'Done.' },
+          title,
+        ],
+      })
+      await w.submit('do the thing')
+      await w.submit('try once more')
+      return w.finish()
+    },
+    check: t => {
+      endsWith('completed')(t)
+      expect(t.modelRequests.filter(r => JSON.stringify(r).includes('try once more')).length).toBeGreaterThanOrEqual(2)
+    },
+  },
+  {
     name: 'budget-warning-at-three-quarters',
     async run() {
       const w = engineWorld({ ...subAgent(4), tools: [{ name: 'Act' }], replies: [...rounds(3), { label: 'done', text: 'Done.' }] })

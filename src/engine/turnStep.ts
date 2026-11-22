@@ -6,6 +6,7 @@
  */
 import type {
   EffectIdentity,
+  LoopLedger,
   MessageOrigin,
   TurnEffect,
   TurnOutput,
@@ -97,9 +98,23 @@ export function phaseOf(outcome: TurnOutcome): TerminalPhase {
 
 /** The one running → terminal move: sets the phase and the conclusion and
  *  queues the single `commitTerminal`. A second call is a no-op. */
+/** The ledger a concluded turn leaves behind. A tripped failure limit ends
+ *  with its turn: the session keeps the ledger, and the next prompt must not
+ *  open already latched. An untripped streak is left as counted. */
+export function releaseFailureLimit(ledger: LoopLedger | undefined): LoopLedger | undefined {
+  if (!ledger?.pendingMaxFailuresExit) return ledger
+  return {
+    ...ledger,
+    pendingMaxFailuresExit: false,
+    forceFinalResponse: false,
+    failureStreak: 0,
+    countedFailureToolCallIds: new Set(),
+  }
+}
+
 export function conclude(d: Draft, conclusion: TurnConclusion): void {
   if (d.state.phase !== 'running') return
-  patchState(d, { phase: conclusion.phase, conclusion })
+  patchState(d, { phase: conclusion.phase, conclusion, loopLedger: releaseFailureLimit(d.state.loopLedger) })
   request(d, { kind: 'commitTerminal', conclusion })
 }
 

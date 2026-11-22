@@ -331,6 +331,23 @@ const DECISIONS: readonly Decision[] = [
     script: () => ({ model: [toolStep('c1', 'Bad'), toolStep('c2', 'Bad'), toolStep('c3', 'Bad')], tools: failTools, state: { loopLedger: failingLedger } }),
     check: (run) => expect(run.requests).toHaveLength(3),
   },
+  {
+    // The session keeps the ledger: the second turn opens with the one the
+    // first turn, ended by the failure limit, left behind.
+    decision: 'the prompt after a failure-limit exit runs its tool step to the answer',
+    fixtures: ['failure-limit-exit-leaves-the-next-prompt-unlatched'],
+    script: () => {
+      const ended = driveMachine({ model: [toolStep('c1', 'Bad'), toolStep('c2', 'Bad'), toolStep('c3', 'Bad')], tools: failTools, state: { loopLedger: failingLedger } })
+      expect(ended.conclusion).toMatchObject({ outcome: { reason: 'max_failures', consecutiveFailures: 3 } })
+      expect(ended.state.loopLedger).toMatchObject({ pendingMaxFailuresExit: false, forceFinalResponse: false, failureStreak: 0 })
+      expect(ended.state.loopLedger?.countedFailureToolCallIds.size).toBe(0)
+      return { model: [toolStep('c4', 'Read'), TEXT], tools: failTools, state: { loopLedger: ended.state.loopLedger } }
+    },
+    check: (run) => {
+      expect(run.requests).toHaveLength(2)
+      expect(run.requests.every((r) => !r.finalResponse)).toBe(true)
+    },
+  },
 ]
 
 /** Turns the loop never concluded: the fixture records no loop terminal. */
