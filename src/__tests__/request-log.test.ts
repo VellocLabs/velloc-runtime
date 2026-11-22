@@ -292,7 +292,7 @@ describe('request log queries', () => {
   it('sums hours into days of the given offset', async () => {
     const { store } = await seeded()
     const utc = await store.query({ from: T0, to: T0 + 48 * HOUR_MS, by: 'day' })
-    if (utc.by === 'switch') throw new Error('unexpected')
+    if (utc.by !== 'day') throw new Error('unexpected')
     expect(utc.buckets.map(b => [b.start, b.model, b.router ?? null, b.requests])).toEqual([
       [T0, 'acme-large', null, 2],
       [T0, 'acme-large', 'mod.pool.main', 1],
@@ -301,7 +301,7 @@ describe('request log queries', () => {
     ])
     // Seven hours west, hours 0 and 1 belong to the day before, which starts at 07:00 UTC.
     const west = await store.query({ from: T0, to: T0 + 48 * HOUR_MS, by: 'day', tzOffsetMinutes: -7 * 60 })
-    if (west.by === 'switch') throw new Error('unexpected')
+    if (west.by !== 'day') throw new Error('unexpected')
     expect(west.buckets.map(b => [b.start, b.requests])).toEqual([
       [T0 - 17 * HOUR_MS, 2],
       [T0 - 17 * HOUR_MS, 1],
@@ -333,11 +333,36 @@ describe('request log queries', () => {
     expect(many.switches[99]!.startedMs).toBe(T0 + 40 * HOUR_MS + 20)
   })
 
+  it('lists the most recent successful sends with their tokens, at most a hundred', async () => {
+    const { store } = await seeded()
+    const result = await store.query({ from: T0, to: T0 + 48 * HOUR_MS, by: 'request' })
+    // The failed and the aborted send are left out.
+    expect(result).toEqual({
+      by: 'request',
+      requests: [
+        {
+          startedMs: T0 + 30 * HOUR_MS, durationMs: 1200, callId: 7, hop: 2, provider: 'zeta', model: 'zeta-pro',
+          router: 'mod.pool.main', routerRow: 'fast', inputTokens: 100, outputTokens: 20, cacheReadTokens: 7, cacheWriteTokens: 3,
+        },
+        expect.objectContaining({ startedMs: T0 + HOUR_MS + 1, provider: 'acme', router: 'mod.pool.main', hop: 1 }),
+        expect.objectContaining({ startedMs: T0 + 5 * 60_000, provider: 'acme', inputTokens: 100 }),
+      ],
+    })
+    const routed = await store.query({ from: T0, to: T0 + 48 * HOUR_MS, by: 'request', router: 'mod.pool.main' })
+    if (routed.by !== 'request') throw new Error('unexpected')
+    expect(routed.requests.map(r => r.startedMs)).toEqual([T0 + 30 * HOUR_MS, T0 + HOUR_MS + 1])
+    for (let i = 0; i < 120; i += 1) await store.record(row({ startedMs: T0 + 40 * HOUR_MS + i }))
+    const many = await store.query({ from: T0, to: T0 + 48 * HOUR_MS, by: 'request' })
+    if (many.by !== 'request') throw new Error('unexpected')
+    expect(many.requests).toHaveLength(100)
+    expect(many.requests[0]!.startedMs).toBe(T0 + 40 * HOUR_MS + 119)
+  })
+
   it('restricts to one router', async () => {
     const { store } = await seeded()
     const span = { from: T0, to: T0 + 48 * HOUR_MS }
     const hours = await store.query({ ...span, by: 'hour', router: 'mod.pool.main' })
-    if (hours.by === 'switch') throw new Error('unexpected')
+    if (hours.by !== 'hour') throw new Error('unexpected')
     expect(hours.buckets.map(b => [b.provider, b.router, b.requests])).toEqual([
       ['acme', 'mod.pool.main', 1],
       ['zeta', 'mod.pool.main', 1],

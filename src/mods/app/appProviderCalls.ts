@@ -93,7 +93,7 @@ function readClearTarget(value: unknown): ClearPeerStatePayload {
   return { provider, ...(model !== undefined ? { model } : {}) }
 }
 
-const USAGE_BY: readonly string[] = Object.freeze(['hour', 'day', 'switch'])
+const USAGE_BY: readonly string[] = Object.freeze(['hour', 'day', 'switch', 'request'])
 
 /** Reads `{ from, to, by, tzOffsetMinutes? }` as the module passed it; throws a `TypeError` naming what is wrong. */
 function readUsageQuery(value: unknown): Omit<RequestLogQuery, 'router'> {

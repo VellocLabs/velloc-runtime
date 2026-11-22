@@ -96,7 +96,7 @@ export type RequestLogQuery = {
   from: number
   /** Epoch ms, exclusive. */
   to: number
-  by: 'hour' | 'day' | 'switch'
+  by: 'hour' | 'day' | 'switch' | 'request'
   /** Only requests that went through this router provider. */
   router?: string
   /** `day` only: minutes east of UTC of the days to sum into. An hour belongs
@@ -132,12 +132,31 @@ export type RequestLogSwitch = {
   kind?: string
 }
 
+/** One send that succeeded, with what it used. */
+export type RequestLogRequest = {
+  startedMs: number
+  durationMs: number
+  callId: number
+  hop: number
+  provider: string
+  model: string
+  router?: string
+  routerRow?: string
+  inputTokens: number
+  outputTokens: number
+  cacheReadTokens: number
+  cacheWriteTokens: number
+}
+
 export type RequestLogQueryResult =
   | { by: 'hour' | 'day'; buckets: RequestLogBucket[]; truncated: boolean }
   | { by: 'switch'; switches: RequestLogSwitch[] }
+  | { by: 'request'; requests: RequestLogRequest[] }
 
 export const QUERY_SPAN_MAX_MS = 90 * DAY_MS
 export const SWITCH_ROWS_MAX = 100
+/** Successful sends one `request` read lists at most, newest first. */
+export const REQUEST_ROWS_MAX = 100
 const BUCKET_ROWS_MAX = 100_000
 
 export class RequestLogQueryError extends Error {
@@ -316,7 +335,9 @@ export class RequestLogStore {
   async query(query: RequestLogQuery): Promise<RequestLogQueryResult> {
     checkedRange(query)
     await this.ensureSchema()
-    return query.by === 'switch' ? this.switches(query) : this.buckets(query)
+    if (query.by === 'switch') return this.switches(query)
+    if (query.by === 'request') return this.requests(query)
+    return this.buckets(query)
   }
 
   private async buckets(query: RequestLogQuery): Promise<RequestLogQueryResult> {
@@ -398,6 +419,45 @@ export class RequestLogStore {
       }
     })
     return { by: 'switch', switches }
+  }
+
+  private async requests(query: RequestLogQuery): Promise<RequestLogQueryResult> {
+    const params: SqlValue[] = [Math.floor(query.from), Math.floor(query.to)]
+    if (query.router !== undefined) params.push(query.router)
+    const result = await this.read(
+      `SELECT s.started_ms, s.duration_ms, s.call_id, s.hop, p.text, m.text, r.text, w.text,
+        s.input_tokens, s.output_tokens, s.cache_read_tokens, s.cache_write_tokens
+      FROM sends s
+        JOIN names p ON p.id = s.provider
+        JOIN names m ON m.id = s.model
+        LEFT JOIN names r ON r.id = s.router
+        LEFT JOIN names w ON w.id = s.router_row
+      WHERE s.started_ms >= ? AND s.started_ms < ? AND s.outcome = ${OUTCOME_OK}
+        ${query.router !== undefined ? `AND s.router = COALESCE(${NAME_ID}, -1)` : ''}
+      ORDER BY s.started_ms DESC, s.id DESC
+      LIMIT ${REQUEST_ROWS_MAX}`,
+      params,
+      REQUEST_ROWS_MAX,
+    )
+    const requests = result.rows.map((row): RequestLogRequest => {
+      const router = readText(row[6])
+      const routerRow = readText(row[7])
+      return {
+        startedMs: readNumber(row[0]),
+        durationMs: readNumber(row[1]),
+        callId: readNumber(row[2]),
+        hop: readNumber(row[3]),
+        provider: readText(row[4]) ?? '',
+        model: readText(row[5]) ?? '',
+        ...(router !== undefined ? { router } : {}),
+        ...(routerRow !== undefined ? { routerRow } : {}),
+        inputTokens: readNumber(row[8]),
+        outputTokens: readNumber(row[9]),
+        cacheReadTokens: readNumber(row[10]),
+        cacheWriteTokens: readNumber(row[11]),
+      }
+    })
+    return { by: 'request', requests }
   }
 
   private async read(sql: string, params: SqlValue[] = [], maxRows?: number) {

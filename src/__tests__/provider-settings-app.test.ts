@@ -235,7 +235,7 @@ describe('$.provider calls behind the seam', () => {
   it('usage refuses a malformed query, a provider that is not a router, and a build with no log', async () => {
     const deps = { reload: async () => {}, usage: async () => undefined }
     await expect(serveSettingsAppProviderCall(ROUTER_BINDING, 'usage', [], deps)).rejects.toThrow(/expected an object/)
-    await expect(serveSettingsAppProviderCall(ROUTER_BINDING, 'usage', [{ from: 0, to: 1, by: 'week' }], deps)).rejects.toThrow(/by must be one of hour, day, switch/)
+    await expect(serveSettingsAppProviderCall(ROUTER_BINDING, 'usage', [{ from: 0, to: 1, by: 'week' }], deps)).rejects.toThrow(/by must be one of hour, day, switch, request/)
     await expect(serveSettingsAppProviderCall(ROUTER_BINDING, 'usage', [{ from: '0', to: 1, by: 'hour' }], deps)).rejects.toThrow(/epoch milliseconds/)
     await expect(serveSettingsAppProviderCall(ROUTER_BINDING, 'usage', [{ from: 0, to: 1, by: 'hour' }], deps)).rejects.toThrow(/the request log is not available/)
     await expect(serveSettingsAppProviderCall(ROUTER_BINDING, 'usage', [{ from: 0, to: 1, by: 'hour' }], { reload: async () => {} })).rejects.toThrow(/not available/)
