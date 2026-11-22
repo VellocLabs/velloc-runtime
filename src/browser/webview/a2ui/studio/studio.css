@@ -5,7 +5,12 @@
  * one; the colour tokens it points at are set on the surface host.
  */
 @import "tailwindcss/theme.css" layer(theme);
-@import "tailwindcss/utilities.css" layer(utilities) source(none);
+/* Security: none of these utilities reach the app outside a studio surface or overlay. */
+@layer utilities {
+  @scope (.a2-surface-host, .a2ui-surface[style*="--velloc-studio-overlay"]) {
+    @tailwind utilities source(none);
+  }
+}
 @import "tw-animate-css";
 
 @source "./vendor";
