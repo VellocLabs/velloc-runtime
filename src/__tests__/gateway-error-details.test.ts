@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { GATEWAY_QUOTA_AFTER_MS, UPSTREAM_TEXT_MAX, readGatewayErrorDetails } from '../models/drivers/gatewayErrorDetails'
 import { openaiChatDriver } from '../models/drivers/openaiChatDriver'
 import { ProviderApiError, classifyProviderConnectivityIssue } from '../utils/providerConnectivity'
-import type { DeclaredVerdict } from '../utils/providerVerdict'
+import { VERDICT_QUOTA_RESET_CEILING_MS, type DeclaredVerdict } from '../utils/providerVerdict'
 
 const NOW = Date.UTC(2026, 10, 22, 16, 30, 0)
 const MIDNIGHT_UTC = Date.UTC(2026, 10, 23)
@@ -33,6 +33,16 @@ describe('readGatewayErrorDetails', () => {
   it('a reset hours away is a used-up allowance even when the message does not name the day', () => {
     const { headers, bodyText } = limited('Rate limit exceeded', NOW + GATEWAY_QUOTA_AFTER_MS + 1)
     expect(readGatewayErrorDetails(429, headers, bodyText, NOW).verdict?.kind).toBe('quota')
+  })
+
+  it('a reset past the platform ceiling is recorded as a quota without an invented recovery time', () => {
+    const { headers, bodyText } = limited('Rate limit exceeded', NOW + VERDICT_QUOTA_RESET_CEILING_MS + 1)
+    expect(readGatewayErrorDetails(429, headers, bodyText, NOW).verdict).toEqual({
+      kind: 'quota',
+      retryable: false,
+    })
+    const near = limited('Rate limit exceeded', NOW + VERDICT_QUOTA_RESET_CEILING_MS)
+    expect(readGatewayErrorDetails(429, near.headers, near.bodyText, NOW).verdict?.resetsAt).toBe(NOW + VERDICT_QUOTA_RESET_CEILING_MS)
   })
 
   it('reads an epoch in seconds; a count of seconds, a date or a past reset says nothing', () => {

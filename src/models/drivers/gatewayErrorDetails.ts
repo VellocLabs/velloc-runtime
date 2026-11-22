@@ -10,7 +10,7 @@
  * free model, and its daily one resets at midnight UTC: the reset time is
  * then hours away, and waiting a minute and asking again cannot help.
  */
-import type { DeclaredVerdict } from '../../utils/providerVerdict'
+import { VERDICT_QUOTA_RESET_CEILING_MS, type DeclaredVerdict } from '../../utils/providerVerdict'
 
 /** A reset further off than this is a used-up allowance, not a throttle. */
 export const GATEWAY_QUOTA_AFTER_MS = 5 * 60_000
@@ -80,8 +80,10 @@ export function readGatewayErrorDetails(
   if (reset === undefined || reset <= now) return out
   const message = typeof error?.message === 'string' ? error.message : ''
   const daily = /per[-_ ]?day\b/i.test(message)
+  const verdict: DeclaredVerdict = { kind: 'quota', retryable: false }
+  if (reset - now <= VERDICT_QUOTA_RESET_CEILING_MS) verdict.resetsAt = reset
   if (daily || reset - now > GATEWAY_QUOTA_AFTER_MS) {
-    out.verdict = { kind: 'quota', retryable: false, resetsAt: reset }
+    out.verdict = verdict
   } else {
     out.retryAfterSeconds = Math.ceil((reset - now) / 1000)
   }
