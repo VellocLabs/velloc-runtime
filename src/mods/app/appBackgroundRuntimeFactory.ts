@@ -27,7 +27,7 @@ import { createReloadFolder, runtimeSettingsAppPeers, runtimeSettingsAppUsage } 
 import { reloadModProvider } from '../provider/providerReload'
 
 export function createAppBackgroundRuntime(
-  deps: AppBackgroundBootDeps & { report: (line: string) => void } & Pick<AppBackgroundRuntimeOptions, 'onBadge' | 'onBusy' | 'onView'>,
+  deps: AppBackgroundBootDeps & { report: (line: string) => void } & Pick<AppBackgroundRuntimeOptions, 'onBadge' | 'onBusy' | 'onView' | 'reseed'>,
 ): AppBackgroundRuntime {
   const { fs, homeDir, report } = deps
   const modsDir = providerModsDir(homeDir)
@@ -101,6 +101,7 @@ export function createAppBackgroundRuntime(
     ...(deps.onBadge ? { onBadge: deps.onBadge } : {}),
     ...(deps.onBusy ? { onBusy: deps.onBusy } : {}),
     ...(deps.onView ? { onView: deps.onView } : {}),
+    ...(deps.reseed ? { reseed: deps.reseed } : {}),
     ...(deps.runAgent ? { runAgent: deps.runAgent } : {}),
   })
 }

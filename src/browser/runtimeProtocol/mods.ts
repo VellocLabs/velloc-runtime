@@ -73,7 +73,7 @@ export const MODS_ACTION_SCOPES = {
   /** A press on a plugin's topbar item: runs that plugin's command in the
    *  named session, as typing it in that session's box does — `control`. */
   pressTopbar: 'control',
-  /** A press on an app's Reload: builds its entry file again — `control`. */
+  /** A build of an app's entry file from disk: redraws its pages — `control`. */
   buildApp: 'control',
   /** A press on an app's Refresh or Reinstall: builds the entry again (after
    *  copying the seed again, for Reinstall) and raises the app's `app.show`
