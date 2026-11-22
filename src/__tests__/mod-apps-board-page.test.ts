@@ -323,6 +323,18 @@ describe('the app bar', () => {
     outside.remove()
   })
 
+  it('Shift+F5 and Alt+F5 are left alone', async () => {
+    const refresh = vi.fn(async () => ({ ok: true as const, surfaceIds: [] }))
+    const { body, press } = inPane(refresh)
+    body.focus()
+    let event!: KeyboardEvent
+    await act(async () => void (event = press({ shiftKey: true })))
+    expect(event.defaultPrevented).toBe(false)
+    await act(async () => void (event = press({ altKey: true })))
+    expect(event.defaultPrevented).toBe(false)
+    expect(refresh).not.toHaveBeenCalled()
+  })
+
   it('with nothing focused, F5 counts for the pane last pressed in', async () => {
     const refresh = vi.fn(async () => ({ ok: true as const, surfaceIds: [] }))
     const { body, outside, press } = inPane(refresh)

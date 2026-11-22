@@ -36,13 +36,6 @@ function Tip({ label, children }: { label: string; children: ReactNode }) {
 }
 
 /**
- * Help and Refresh, before the pane's own Expand and Close. Refresh builds
- * the entry again and raises the app's `app.show`; a Ctrl+click (Cmd+click on
- * macOS), or Ctrl+F5, reinstalls the page; F5 refreshes: the plugin's seed is copied over the app folder
- * first, config and data kept. A failed build keeps the previous page; the
- * bar below shows the error.
- */
-/**
  * F5 and Ctrl+F5 (Cmd+F5 on macOS) while the app's pane has the focus, or
  * was last pressed in: `refresh(false)` and `refresh(true)`. Either key is
  * swallowed there, so the page itself never reloads.
@@ -58,7 +51,7 @@ export function useAppRefreshKeys(anchor: RefObject<HTMLElement | null>, refresh
       pressedInPane = !!pane && event.target instanceof Node && pane.contains(event.target)
     }
     const onKey = (event: KeyboardEvent) => {
-      if (event.key !== 'F5') return
+      if (event.key !== 'F5' || event.shiftKey || event.altKey) return
       const pane = paneOf()
       if (!pane) return
       const focused = document.activeElement
@@ -78,6 +71,13 @@ export function useAppRefreshKeys(anchor: RefObject<HTMLElement | null>, refresh
   }, [anchor])
 }
 
+/**
+ * Help and Refresh, before the pane's own Expand and Close. Refresh builds
+ * the entry again and raises the app's `app.show`; a Ctrl+click (Cmd+click
+ * on macOS), or Ctrl+F5 / Cmd+F5, reinstalls the page: the plugin's seed is
+ * copied over the app folder first, config and data kept. A failed build
+ * keeps the previous page; the bar below shows the error.
+ */
 export function AppPaneActions({ board, sessionId, busy = false }: { board: AppBoard; sessionId: string; busy?: boolean }) {
   const t = useT()
   const [pending, setPending] = useState<'refresh' | 'reinstall' | null>(null)
