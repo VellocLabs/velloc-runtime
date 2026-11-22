@@ -14,8 +14,10 @@ import { getProviderErrorFields, type ProviderConnectivityIssue, type ProviderEr
 import type { ProviderPolicy } from './providerPolicy'
 import type { ProviderOutcomeEvent } from './providerOutcome'
 
-/** The most targets one call may be sent to, the first included. */
-export const ROUTE_HOPS_MAX = 8
+/** The target answers one call may take for each target it has been sent to.
+ *  A call's bound grows with the targets its router names, so a route of any
+ *  size is walked, and a router that keeps naming the same ones runs out. */
+export const ROUTE_SENDS_PER_TARGET = 4
 /** A router's own time to answer one `route`, ms. */
 export const ROUTE_BUDGET_MS = 2_000
 

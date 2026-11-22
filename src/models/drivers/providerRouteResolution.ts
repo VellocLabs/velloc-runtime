@@ -32,10 +32,9 @@ import { recordProviderVerdict } from './providerHealthLedger'
 import { OUTCOME_CALL_FIELD } from './providerOutcome'
 import { thinkingTierOf } from './providerRequestSeam'
 import { checkRouteAnswer, type CheckedRouteAnswer, type RouteAnswerFacts, type RouteTarget } from './providerRouteAnswer'
-import { acceptRouteTarget, routeCallOf, sendRouteTo, type RouteCall } from './providerRouteCall'
+import { acceptRouteTarget, routeCallOf, routeHopsUsed, sendRouteTo, type RouteCall } from './providerRouteCall'
 import {
   providerRouterFor,
-  ROUTE_HOPS_MAX,
   type ProviderRouter,
   type ProviderRouterBounds,
   type RouteEvent,
@@ -202,8 +201,8 @@ export function routeCall(
 
   /** The router's checked answer; a hook that throws is a refusal. */
   async function ask(signal: AbortSignal): Promise<CheckedRouteAnswer> {
-    if (call.hops >= ROUTE_HOPS_MAX) {
-      return { kind: 'refused', reason: `the call was already routed ${ROUTE_HOPS_MAX} times` }
+    if (routeHopsUsed(call)) {
+      return { kind: 'refused', reason: `the call was already routed ${call.hops} times over ${call.targets.size} targets` }
     }
     try {
       return checkRouteAnswer(await router.route(event(), signal), facts)

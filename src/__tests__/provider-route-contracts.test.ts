@@ -10,7 +10,7 @@ import {
   registerProviderRouter,
   resetProviderRouters,
   ROUTE_BUDGET_MS,
-  ROUTE_HOPS_MAX,
+  ROUTE_SENDS_PER_TARGET,
   RouteStopError,
   RouteSwitchError,
   unregisterProviderRouter,
@@ -87,8 +87,8 @@ describe('the router registry', () => {
     expect(providerRouterFor('mod.a.r')).toBeUndefined()
   })
 
-  it('bounds a call to eight targets', () => {
-    expect(ROUTE_HOPS_MAX).toBe(8)
+  it('gives a call four target answers for each target it is sent to', () => {
+    expect(ROUTE_SENDS_PER_TARGET).toBe(4)
   })
 })
 

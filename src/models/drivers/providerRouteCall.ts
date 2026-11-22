@@ -7,7 +7,7 @@
  * call starts a new one. Nothing here is serialized or reaches the host.
  */
 import { newRequestLogCallId } from '../usage/requestLogStore'
-import { routeErrorOf, type RouteErrorMark, type RoutedVia, type RouteFailure } from './providerRouter'
+import { ROUTE_SENDS_PER_TARGET, routeErrorOf, type RouteErrorMark, type RoutedVia, type RouteFailure } from './providerRouter'
 import type { RouteTarget } from './providerRouteAnswer'
 
 export type RouteCall = {
@@ -19,6 +19,8 @@ export type RouteCall = {
   sends: number
   /** Target answers accepted, the first included. */
   hops: number
+  /** The distinct targets among them, each a provider and model pair. */
+  targets: Set<string>
   lastFailure?: RouteFailure
   /** The target of the latest send. */
   target?: RouteTarget
@@ -42,7 +44,7 @@ export function routeCallOf(payload: object): RouteCall {
   let call = calls.get(payload)
   if (!call) {
     const logCallId = newRequestLogCallId()
-    call = { id: String(logCallId), logCallId, sends: 0, hops: 0 }
+    call = { id: String(logCallId), logCallId, sends: 0, hops: 0, targets: new Set() }
     calls.set(payload, call)
   }
   return call
@@ -61,8 +63,19 @@ const sameTarget = (a: { provider: string; model: string }, b: { provider: strin
  *  without, it is the target of the call's next send. */
 export function acceptRouteTarget(call: RouteCall, target: RouteTarget, sent: boolean): void {
   call.hops += 1
+  call.targets.add(JSON.stringify([target.provider, target.model]))
   if (sent) sendRouteTo(call, target)
   else call.switchTo = target
+}
+
+/**
+ * Whether the call has taken every target answer it may: as many as
+ * `ROUTE_SENDS_PER_TARGET` for each distinct target it was given. Its router
+ * is asked no more; what is left of the call is its target's own recovery and
+ * the caller's waits.
+ */
+export function routeHopsUsed(call: RouteCall): boolean {
+  return call.hops > 0 && call.hops >= ROUTE_SENDS_PER_TARGET * call.targets.size
 }
 
 /** The call's next send goes to `target`. */

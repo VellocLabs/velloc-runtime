@@ -16,7 +16,7 @@ import { routeCallOf, routedViaOf } from '../models/drivers/providerRouteCall'
 import {
   registerProviderRouter,
   resetProviderRouters,
-  ROUTE_HOPS_MAX,
+  ROUTE_SENDS_PER_TARGET,
   type ProviderRouter,
   type RouteAnswer,
   type RouteEvent,
@@ -199,7 +199,7 @@ async function stream(wrapped: BrowserBridgeTransport, body: unknown = payload()
   const started = await model(wrapped, 'streamStart', body)
   if (!started.ok) return { started, chunks: [] as any[] }
   const chunks: any[] = []
-  for (let i = 0; i < 50; i += 1) {
+  for (let i = 0; i < 200; i += 1) {
     const read = await model(wrapped, 'streamRead', { streamId: started.result.streamId, waitMs: 5000 })
     if (!read.ok) throw new Error(read.error.message)
     chunks.push(...read.result.chunks)
@@ -610,7 +610,7 @@ describe('a request to a router provider', () => {
     expect(errorOf(chunks).route).toBeUndefined()
   })
 
-  it(`sends one call to at most ${ROUTE_HOPS_MAX} targets and ends with the last failure`, async () => {
+  it('asks the router four times for each target of the call, then leaves the last failure as it is', async () => {
     const always = (text: string) => Array.from({ length: 20 }, () => refusedWith(429, text))
     const { transport, opens } = rawHost({ [A]: always('a is busy'), [B]: always('b is busy') })
     const { router, events } = testRouter([e => (e.attempt % 2 === 1 ? toA : toB)])
@@ -618,11 +618,43 @@ describe('a request to a router provider', () => {
 
     const { chunks } = await stream(withModelProviders(transport, config()))
 
-    expect(opens).toHaveLength(ROUTE_HOPS_MAX)
-    expect(events).toHaveLength(ROUTE_HOPS_MAX)
+    expect(opens).toHaveLength(ROUTE_SENDS_PER_TARGET * 2)
+    expect(events).toHaveLength(ROUTE_SENDS_PER_TARGET * 2)
     expect(errorOf(chunks)).toMatchObject({ httpStatus: 429 })
     expect(errorOf(chunks).message).toContain('b is busy')
     expect(errorOf(chunks).route).toBeUndefined()
+  })
+
+  it('ends the asking after four sends to a router that names one target', async () => {
+    const { transport, opens } = rawHost({ [A]: Array.from({ length: 20 }, () => refusedWith(429, 'busy')) })
+    const { router, events } = testRouter([toA])
+    registerProviderRouter(ROUTER, router, { routesTo: '*' })
+
+    await stream(withModelProviders(transport, config()))
+
+    expect(opens).toHaveLength(ROUTE_SENDS_PER_TARGET)
+    expect(events).toHaveLength(ROUTE_SENDS_PER_TARGET)
+  })
+
+  it('walks a route of twenty-two members, each tried once, before the router stops it', async () => {
+    const models = (provider: string) => Array.from({ length: 11 }, (_, i) => `${provider}-member-${i}`)
+    setRuntimeProviderConfigs({
+      [A]: { apiKey: 'k', modelEntries: models(A).map(entry) },
+      [B]: { apiKey: 'k', modelEntries: models(B).map(entry) },
+    } as never)
+    const members = [...models(A).map(model => ({ provider: A, model })), ...models(B).map(model => ({ provider: B, model }))]
+    const busy = () => Array.from({ length: 11 }, () => refusedWith(429, 'busy'))
+    const { transport, opens } = rawHost({ [A]: busy(), [B]: busy() })
+    const { router, events } = testRouter([
+      e => members[e.attempt - 1] ?? { stop: true, message: 'every member was tried' },
+    ])
+    registerProviderRouter(ROUTER, router, { routesTo: '*' })
+
+    const { chunks } = await stream(withModelProviders(transport, config()))
+
+    expect(opens.map(o => bodyOf(o).model)).toEqual(members.map(member => member.model))
+    expect(events).toHaveLength(members.length + 1)
+    expect(errorOf(chunks)).toMatchObject({ httpStatus: 429, route: { stop: true, message: 'every member was tried' } })
   })
 
   it('moves to another target when a held read finds the first one silent', async () => {
@@ -926,7 +958,7 @@ describe('a call to a router provider', () => {
     const values = assistants(all)
     expect(values.at(-1)).not.toHaveProperty('routedVia')
     expect(routedViaOf({})).toBeUndefined()
-    expect(routeCallOf({})).toEqual({ id: expect.any(String), logCallId: expect.any(Number), sends: 0, hops: 0 })
+    expect(routeCallOf({})).toEqual({ id: expect.any(String), logCallId: expect.any(Number), sends: 0, hops: 0, targets: new Set() })
   })
 
   it('sends the call to the target chosen at a broken reply when the router names none at the re-send', async () => {
@@ -949,11 +981,14 @@ describe('a call to a router provider', () => {
 
   it('sends the call to the target chosen at a broken reply when the hop bound ends the asking', async () => {
     const busy = () => refusedWith(429, 'busy')
-    // Sends one to seven alternate A and B, each refused before a reply; the
-    // seventh (A) breaks off mid-reply and the router's eighth answer is B.
+    // The sends alternate A and B, each refused before a reply, up to the
+    // one before the last (A), which breaks off mid-reply; the router's last
+    // answer is B.
+    const bound = ROUTE_SENDS_PER_TARGET * 2
+    const refusals = bound / 2 - 1
     const { transport, opens } = rawHost({
-      [A]: [busy(), busy(), busy(), cutAfter('half')],
-      [B]: [busy(), busy(), busy()],
+      [A]: [...Array.from({ length: refusals }, busy), cutAfter('half')],
+      [B]: Array.from({ length: refusals }, busy),
     })
     const { router, events } = testRouter([e => (e.lastFailure?.provider === A ? toB : toA)])
     registerProviderRouter(ROUTER, router, { routesTo: '*' })
@@ -961,8 +996,32 @@ describe('a call to a router provider', () => {
     const values = await call(transport, config())
 
     // The re-send cannot ask again, and goes to B, never back to A.
-    expect(events).toHaveLength(ROUTE_HOPS_MAX)
-    expect(opens.map(o => o.providerId)).toEqual([A, B, A, B, A, B, A, B])
+    expect(events).toHaveLength(bound)
+    expect(opens.map(o => o.providerId)).toEqual(Array.from({ length: bound }, (_, i) => (i % 2 === 0 ? A : B)))
+    expect(replyText(assistants(values).filter(v => !v.isApiErrorMessage))).toContain(`from ${B}`)
+  })
+
+  it('waits and sends again to the last target once the router is no longer asked, as a call to one model does', async () => {
+    const busy = () => refusedWith(429, 'busy')
+    const bound = ROUTE_SENDS_PER_TARGET * 2
+    // Every send within the bound is refused, A and B in turn; the next one
+    // to B is served.
+    const { transport, opens } = rawHost({
+      [A]: Array.from({ length: bound / 2 }, busy),
+      [B]: Array.from({ length: bound / 2 }, busy),
+    })
+    const { router, events } = testRouter([e => (e.attempt % 2 === 1 ? toA : toB)])
+    registerProviderRouter(ROUTER, router, {
+      routesTo: '*',
+      retry: { maxRetries: 2, initialDelayMs: 60, maxDelayMs: 60, jitterRatio: 0 },
+    })
+
+    const startedAt = Date.now()
+    const values = await call(transport, config())
+
+    expect(events).toHaveLength(bound)
+    expect(opens.map(o => o.providerId)).toEqual([...Array.from({ length: bound }, (_, i) => (i % 2 === 0 ? A : B)), B])
+    expect(Date.now() - startedAt).toBeGreaterThanOrEqual(55)
     expect(replyText(assistants(values).filter(v => !v.isApiErrorMessage))).toContain(`from ${B}`)
   })
 
