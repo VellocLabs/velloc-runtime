@@ -21,7 +21,7 @@ import type {
   AppCatalogName,
 } from '../../browser/runtimeProtocol/modApps'
 import { blockSurfaceIds, hasA2uiBlock, splitA2uiText } from '../../toolkit/builtin/a2ui/express/a2uiBlocks'
-import { dispatchAppAction, dispatchAppShowAgain, type AppActionDispatch } from './appActionBus'
+import { dispatchAppAction, dispatchAppRestartScript, dispatchAppShowAgain, type AppActionDispatch } from './appActionBus'
 import { hashOf, seedAppFolder, SEED_MAX_FILE_BYTES, type AppSeedFs } from './appSeed'
 import type { AppSessionInfo } from './appSession'
 import { liveAppState, onAppState, type AppStateEvent, type AppStateSource } from './appStateBus'
@@ -63,6 +63,8 @@ export type AppSurfaceHostOptions = {
   registerRefresher?: (sessionId: string, refresh: AppRefresh) => () => boolean
   /** Raises the app's `app.show` again; defaults to the realm bus. */
   showAgain?: (appId: string) => Promise<void>
+  /** At Reinstall: loads the app's running script again from its files; defaults to the realm bus. */
+  restartScript?: (appId: string) => Promise<void>
   /** The background module's state, read in place of the data file while there is one; defaults to the realm bus. */
   liveData?: AppLiveData
   /** Offers a local action to the app's background module; defaults to the realm bus. */
@@ -218,6 +220,7 @@ export function createAppSurfaceHost(options: AppSurfaceHostOptions): AppSurface
   const registerReseeder = options.registerReseeder ?? setAppReseeder
   const registerRefresher = options.registerRefresher ?? setAppRefresher
   const showAgain = options.showAgain ?? dispatchAppShowAgain
+  const restartScript = options.restartScript ?? dispatchAppRestartScript
   const live: AppLiveData = options.liveData ?? { snapshot: liveAppState, subscribe: onAppState }
   const dispatchAction = options.dispatchAction ?? dispatchAppAction
   const now = options.now ?? Date.now
@@ -460,20 +463,20 @@ export function createAppSurfaceHost(options: AppSurfaceHostOptions): AppSurface
   const releaseActor = registerActor(sessionId, action)
   const releaseReseeder = registerReseeder(sessionId, app.appId, reseedAll)
 
-  /** Refresh: the entry built again and `app.show` raised. Reinstall: the seed copied first; a failed build keeps the previous page and raises nothing. */
+  /** Refresh: the entry built again and `app.show` raised; a failed build keeps the previous page and raises nothing. Reinstall: the seed copied, then the app's running script loaded again from its files. */
   const refresh: AppRefresh = async reinstall => {
-    let result: ModsBuildAppResult
     if (reinstall) {
       try {
         await reseedAll()
       } catch (error) {
         return { ok: false, message: error instanceof Error ? error.message : String(error) }
       }
-      result = { ok: true, surfaceIds: built?.surfaceIds ?? [] }
-    } else {
-      result = await build()
-      if (!result.ok) return result
+      // The script's files may have changed in place too: it loads again, and hears app.show once loaded.
+      await restartScript(app.appId).catch(error => console.warn('[mods/app] the app script did not restart', error))
+      return { ok: true, surfaceIds: built?.surfaceIds ?? [] }
     }
+    const result = await build()
+    if (!result.ok) return result
     await showAgain(app.appId).catch(error => console.warn('[mods/app] app.show failed', error))
     return result
   }

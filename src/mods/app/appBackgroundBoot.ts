@@ -13,7 +13,7 @@ import { readConsentedGrants } from '../../pluginHost/providerPluginConsent'
 import { getNexusAppDir } from '../../utils/conversationStoragePaths'
 import { joinRuntimePath } from '../../utils/runtimePaths'
 import { getModUiContributionsHost, type AppBackgroundTemplate } from '../ui/contributionsHost'
-import { setAppActionDispatch, setAppPressDispatch, setAppShowAgainDispatch, setAppViewDispatch } from './appActionBus'
+import { setAppActionDispatch, setAppPressDispatch, setAppRestartScriptDispatch, setAppShowAgainDispatch, setAppViewDispatch } from './appActionBus'
 import { reseedRegisteredApp, replayAppViews } from './appSurfaceRegistry'
 import type { AppAgentRunner } from './appAgentRun'
 import type { AppBackgroundRef, AppBackgroundRuntime, AppBackgroundRuntimeOptions } from './AppBackgroundRuntime'
@@ -190,6 +190,7 @@ export async function bootAppBackground(deps: AppBackgroundBootDeps, seams: AppB
         const runtime = state.runtime
         setAppActionDispatch((appId, action, context, sessionId) => runtime.action(appId, action, context, sessionId))
         setAppShowAgainDispatch(appId => runtime.showAgain(appId))
+        setAppRestartScriptDispatch(appId => runtime.restartScript(appId))
         setAppPressDispatch((appId, trigger, item, client) => runtime.press(appId, trigger, item, client))
         setAppViewDispatch({
           view: (appId, sessionId, client, layout) => runtime.view(appId, sessionId, client, layout),
@@ -221,6 +222,7 @@ export async function resetAppBackgroundBootForTests(): Promise<void> {
   booted = null
   setAppActionDispatch(undefined)
   setAppShowAgainDispatch(undefined)
+  setAppRestartScriptDispatch(undefined)
   setAppPressDispatch(undefined)
   setAppViewDispatch(undefined)
   if (!state) return

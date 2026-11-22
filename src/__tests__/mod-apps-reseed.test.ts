@@ -117,6 +117,7 @@ function hostRig() {
   let registeredFor: string | undefined
   let refresh: ((reinstall: boolean) => Promise<ModsBuildAppResult>) | undefined
   const shownAgain: string[] = []
+  const restarted: string[] = []
   const info: AppSessionInfo = {
     appId: 'router',
     plugin: 'router',
@@ -144,9 +145,10 @@ function hostRig() {
       return () => true
     },
     showAgain: async appId => void shownAgain.push(appId),
+    restartScript: async appId => void restarted.push(appId),
     liveData: { snapshot: () => undefined, subscribe: () => () => undefined } as never,
   })
-  return { disk, host, published, shownAgain, refresh: (reinstall: boolean) => refresh!(reinstall), reseed: () => reseed!(), registeredFor: () => registeredFor }
+  return { disk, host, published, shownAgain, restarted, refresh: (reinstall: boolean) => refresh!(reinstall), reseed: () => reseed!(), registeredFor: () => registeredFor }
 }
 
 describe('the surface host reseed', () => {
@@ -207,9 +209,10 @@ describe('Refresh and Reinstall in the pane header', () => {
     rig.disk.write(`${APP}/app.a2ui`, 'surface("edited")\n')
     expect(await rig.refresh(false)).toEqual({ ok: true, surfaceIds: ['edited'] })
     expect(rig.shownAgain).toEqual(['router'])
+    expect(rig.restarted).toEqual([])
   })
 
-  it('Reinstall copies the seed, keeps config and data, redraws, then raises app.show', async () => {
+  it('Reinstall copies the seed, keeps config and data, redraws, then loads the script again', async () => {
     const rig = hostRig()
     await seedAppFolder(base(rig.disk.fs))
     await rig.host.start()
@@ -219,7 +222,9 @@ describe('Refresh and Reinstall in the pane header', () => {
     expect(await rig.refresh(true)).toEqual({ ok: true, surfaceIds: ['fresh'] })
     expect(rig.disk.text(`${APP}/config.json`)).toBe('{"mine":1}')
     expect(rig.disk.text(`${APP}/data/state.json`)).toBe('{"mine":2}')
-    expect(rig.shownAgain).toEqual(['router'])
+    // The reloaded script hears app.show itself, once loaded.
+    expect(rig.restarted).toEqual(['router'])
+    expect(rig.shownAgain).toEqual([])
   })
 
   it('a Reinstall that does not build keeps the page, gives the error, and raises nothing', async () => {
@@ -233,6 +238,7 @@ describe('Refresh and Reinstall in the pane header', () => {
     expect(rig.published.at(-1)?.surface?.surfaceIds).toEqual(['main'])
     expect(rig.published.at(-1)?.errors?.[0]?.kind).toBe('build')
     expect(rig.shownAgain).toEqual([])
+    expect(rig.restarted).toEqual([])
   })
 
   it('mods.appRefresh is a control action with an optional boolean reinstall', () => {

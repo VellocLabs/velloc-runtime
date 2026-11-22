@@ -462,6 +462,25 @@ export class AppBackgroundRuntime {
     await this.raiseView(module, 'app.show', { appId, ...shown })
   }
 
+  /**
+   * The app's Reinstall: its running script stops and loads again from its
+   * files, so code changed in place (a plugin linked to a working folder)
+   * runs at once; the new load hears `app.show` after its `app.start` when
+   * the app is on screen. A script not running is as at Refresh.
+   */
+  async restartScript(appId: string): Promise<void> {
+    const module = this.modules.get(appId)
+    if (!module) return this.showAgain(appId)
+    const { ref } = module
+    await this.stop(module, 'the app was reinstalled')
+    if (this.disposed || this.modules.has(appId)) return
+    if (ref.lifetime === 'shown') {
+      if (this.views.current(appId)) this.wake(appId)
+      return
+    }
+    this.start(ref)
+  }
+
   private raiseViews(events: readonly AppViewEvent[]): void {
     for (const { event, payload } of events) {
       // A script started here hears the view after its app.start, as any module loaded while shown does.

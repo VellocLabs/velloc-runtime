@@ -28,6 +28,19 @@ export function dispatchAppShowAgain(appId: string): Promise<void> {
   return seatedShowAgain ? seatedShowAgain(appId) : Promise.resolve()
 }
 
+/** Loads the app's running script again from its files; resolves once the old one stopped. */
+export type AppRestartScriptDispatch = (appId: string) => Promise<void>
+
+let seatedRestartScript: AppRestartScriptDispatch | undefined
+
+export function setAppRestartScriptDispatch(dispatch: AppRestartScriptDispatch | undefined): void {
+  seatedRestartScript = dispatch
+}
+
+export function dispatchAppRestartScript(appId: string): Promise<void> {
+  return seatedRestartScript ? seatedRestartScript(appId) : dispatchAppShowAgain(appId)
+}
+
 export function setAppActionDispatch(dispatch: AppActionDispatch | undefined): void {
   seated = dispatch
 }

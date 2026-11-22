@@ -157,7 +157,8 @@ describe('AppBackgroundRuntime — the app on screen', () => {
       }
     }`
 
-  function world(source: string) {
+  function world(initial: string) {
+    let source = initial
     const runtime = new AppBackgroundRuntime({
       readModule: async () => source,
       openWorker: async (): Promise<ModWorkerHandle> => {
@@ -176,7 +177,7 @@ describe('AppBackgroundRuntime — the app on screen', () => {
     runtimes.push(runtime)
     const ref: AppBackgroundRef = { plugin: 'pay', path: '/plugins/pay/bg.js', root: '/plugins/pay', appId: 'pay-board', folder: 'C:/app', stateFile: 'C:/app/data/state.json' }
     const seen = () => (appState() as { seen?: unknown[] } | undefined)?.seen ?? []
-    return { runtime, ref, seen }
+    return { runtime, ref, seen, edit: (next: string) => void (source = next) }
   }
 
   it('admits the three view events', () => {
@@ -235,5 +236,26 @@ describe('AppBackgroundRuntime — the app on screen', () => {
     runtime.view('pay-board', 's1', 'c1', 'beside')
     runtime.sync([ref])
     await vi.waitFor(() => expect(seen()).toEqual(['start', ['app.show', 's1', 'beside']]))
+  })
+
+  it('restartScript loads the running script again from its file, and the new load hears app.show after its start', async () => {
+    const { runtime, ref, seen, edit } = world(WATCHER)
+    runtime.view('pay-board', 's1', 'c1', 'beside')
+    runtime.sync([ref])
+    await vi.waitFor(() => expect(seen()).toEqual(['start', ['app.show', 's1', 'beside']]))
+    edit(`
+      export function register(on) {
+        on('app.start', async ($) => { await $.app.state.set({ seen: ['start v2'] }) })
+        on('app.show', async ($, e) => { await $.app.state.update(s => { s.seen.push(['show v2', e.sessionId]) }) })
+      }`)
+    await runtime.restartScript('pay-board')
+    await vi.waitFor(() => expect(seen()).toEqual(['start v2', ['show v2', 's1']]))
+    expect(runtime.status().map(s => s.state)).toEqual(['ready'])
+  })
+
+  it('restartScript of an app whose script is not running only raises app.show, as Refresh does', async () => {
+    const { runtime } = world(WATCHER)
+    await expect(runtime.restartScript('pay-board')).resolves.toBeUndefined()
+    expect(runtime.status()).toEqual([])
   })
 })
