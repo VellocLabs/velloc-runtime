@@ -58,7 +58,7 @@ describe('A2UI pane slot ownership', () => {
     expect(getOwner()).toBe('main')
   })
 
-  it("an app session's Help, Refresh and Reinstall go in the header actions slot, only for the session the slot names", () => {
+  it("an app session's Help and Refresh go in the header actions slot, only for the session the slot names", () => {
     const slot = document.createElement('div')
     const actions = document.createElement('div')
     document.body.append(slot, actions)
@@ -73,7 +73,7 @@ describe('A2UI pane slot ownership', () => {
     setActionsSlot(actions)
     const view = render(createElement('div', null, app('main', false), app('side', false)))
     expect(actions.querySelectorAll('[data-slot="app-refresh"]')).toHaveLength(1)
-    expect([...actions.querySelectorAll('button')].map(b => b.getAttribute('data-slot'))).toEqual(['app-help', 'app-refresh', 'app-reinstall'])
+    expect([...actions.querySelectorAll('button')].map(b => b.getAttribute('data-slot'))).toEqual(['app-help', 'app-refresh'])
     expect(slot.querySelector('[data-slot="app-refresh"]'), 'not in the body').toBeNull()
     view.rerender(createElement('div', null, app('main', true), app('side', false)))
     expect(actions.querySelector<HTMLButtonElement>('[data-slot="app-refresh"]')!.disabled, 'busy').toBe(true)

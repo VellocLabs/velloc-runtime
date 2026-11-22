@@ -251,26 +251,42 @@ describe('the app bar', () => {
   const actions = (refresh: (reinstall: boolean) => Promise<unknown>, busy = false) =>
     render(h(AppPaneActions, { board: { state: board(BOARD, 'h1'), reload: async () => undefined, act: actOn, refresh: refresh as never }, sessionId: 's1', busy }))
 
-  it('Help, Refresh and Reinstall come in that order with their labels', () => {
+  it('Help then Refresh, with their labels; Refresh names its Ctrl+click', () => {
     const { container } = actions(async () => ({ ok: true }))
     const slots = [...container.querySelectorAll('button')].map(button => button.getAttribute('data-slot'))
-    expect(slots).toEqual(['app-help', 'app-refresh', 'app-reinstall'])
+    expect(slots).toEqual(['app-help', 'app-refresh'])
     expect(container.querySelector('[data-slot="app-help-label"]')!.textContent).toBe('Need a hand?')
     expect(container.querySelector('[data-slot="app-help-label"]')!.className).toContain('max-sm:hidden')
     expect(container.querySelector('[data-slot="app-help"]')!.getAttribute('aria-label')).toBe('Chat beside this app: ask how to use it, or let the assistant do it for you')
-    expect(container.querySelector('[data-slot="app-refresh"]')!.getAttribute('aria-label')).toBe('Refresh')
-    expect(container.querySelector('[data-slot="app-reinstall"]')!.getAttribute('aria-label')).toBe('Reinstall page: copy it from the plugin again (your settings and data are kept)')
+    expect(container.querySelector('[data-slot="app-refresh"]')!.getAttribute('aria-label')).toBe('Refresh · Ctrl+click: reinstall page from the plugin (settings and data are kept)')
   })
 
-  it('Refresh asks for a refresh, Reinstall for a reinstall', async () => {
+  it('a click refreshes; a Ctrl+click reinstalls', async () => {
     const refresh = vi.fn(async () => ({ ok: true as const, surfaceIds: ['dashboard'] }))
     const { container } = actions(refresh)
-    await act(async () => container.querySelector<HTMLButtonElement>('[data-slot="app-refresh"]')!.click())
-    await act(async () => container.querySelector<HTMLButtonElement>('[data-slot="app-reinstall"]')!.click())
-    expect(refresh.mock.calls).toEqual([[false], [true]])
+    const button = container.querySelector<HTMLButtonElement>('[data-slot="app-refresh"]')!
+    await act(async () => button.click())
+    await act(async () => void button.dispatchEvent(new MouseEvent('click', { bubbles: true, ctrlKey: true })))
+    await act(async () => void button.dispatchEvent(new MouseEvent('click', { bubbles: true, metaKey: true })))
+    expect(refresh.mock.calls, 'Cmd is the key on macOS only').toEqual([[false], [true], [false]])
   })
 
-  it('Refresh and Reinstall wait while a turn is running', async () => {
+  it('on macOS the key is Cmd, in the click and the tooltip', async () => {
+    const platform = vi.spyOn(navigator, 'platform', 'get').mockReturnValue('MacIntel')
+    try {
+      const refresh = vi.fn(async () => ({ ok: true as const, surfaceIds: [] }))
+      const { container } = actions(refresh)
+      const button = container.querySelector<HTMLButtonElement>('[data-slot="app-refresh"]')!
+      expect(button.getAttribute('aria-label')).toBe('Refresh · Cmd+click: reinstall page from the plugin (settings and data are kept)')
+      await act(async () => void button.dispatchEvent(new MouseEvent('click', { bubbles: true, ctrlKey: true })))
+      await act(async () => void button.dispatchEvent(new MouseEvent('click', { bubbles: true, metaKey: true })))
+      expect(refresh.mock.calls).toEqual([[false], [true]])
+    } finally {
+      platform.mockRestore()
+    }
+  })
+
+  it('Refresh waits while a turn is running', async () => {
     const refresh = vi.fn(async () => ({ ok: true as const, surfaceIds: [] }))
     const { container } = actions(refresh, true)
     const button = container.querySelector<HTMLButtonElement>('[data-slot="app-refresh"]')!
