@@ -28,6 +28,21 @@ export type AppSeedRequest = {
   /** Compare every file with the seed even when the folder already holds this
    *  version: a hand-placed plugin's seed is edited in place (F-40). */
   everyOpen?: boolean
+  /**
+   * Copy every seed file again, edited or not, except the app-relative paths
+   * in `keep` (a path ending in `/` keeps that folder). The person's data and
+   * config are kept this way.
+   */
+  reseed?: { keep: readonly string[] }
+}
+
+/** Whether `rel` is one of `keep`'s files or inside one of its folders; compared without case. */
+export function keptBySeed(rel: string, keep: readonly string[]): boolean {
+  const path = rel.toLowerCase()
+  return keep.some(entry => {
+    const kept = entry.toLowerCase().replace(/^\.\//, '')
+    return kept.endsWith('/') ? path.startsWith(kept) : path === kept
+  })
 }
 
 export type AppSeedResult = {
@@ -123,7 +138,7 @@ export function seedAppFolder(request: AppSeedRequest): Promise<AppSeedResult> {
   return run
 }
 
-async function seedNow({ fs, seedDir, appDir, appId, plugin, seedVersion, everyOpen }: AppSeedRequest): Promise<AppSeedResult> {
+async function seedNow({ fs, seedDir, appDir, appId, plugin, seedVersion, everyOpen, reseed }: AppSeedRequest): Promise<AppSeedResult> {
   const recordPath = joinRuntimePath(appDir, ...APP_RECORD_PATH.split('/'))
   let recordText: string | undefined
   try {
@@ -133,7 +148,7 @@ async function seedNow({ fs, seedDir, appDir, appId, plugin, seedVersion, everyO
   }
   const record = readRecord(recordText)
   if (record && record.plugin !== plugin) throw new AppSeedError(`the folder belongs to the plugin ${record.plugin}`)
-  if (record && record.seedVersion >= seedVersion && !everyOpen) return { version: record.seedVersion, written: [], conflicts: [] }
+  if (record && record.seedVersion >= seedVersion && !everyOpen && !reseed) return { version: record.seedVersion, written: [], conflicts: [] }
   const version = Math.max(seedVersion, record?.seedVersion ?? 0)
 
   const files = await listSeed(fs, seedDir)
@@ -141,6 +156,7 @@ async function seedNow({ fs, seedDir, appDir, appId, plugin, seedVersion, everyO
   const conflicts: string[] = []
   const hashes: Record<string, string> = {}
   for (const rel of files) {
+    if (reseed && keptBySeed(rel, reseed.keep)) continue
     const source = joinRuntimePath(seedDir, ...rel.split('/'))
     const target = joinRuntimePath(appDir, ...rel.split('/'))
     const stat = await fs.stat(source)
@@ -159,7 +175,7 @@ async function seedNow({ fs, seedDir, appDir, appId, plugin, seedVersion, everyO
     const currentHash = await hashOf(current)
     if (currentHash === seedHash) {
       hashes[rel] = seedHash
-    } else if (record?.files[rel] === currentHash) {
+    } else if (reseed || record?.files[rel] === currentHash) {
       await fs.writeFile(target, bytes)
       written.push(rel)
       hashes[rel] = seedHash

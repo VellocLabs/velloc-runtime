@@ -150,3 +150,46 @@ export function appViewClientGone(client: string): void {
   }
   appViewsClientGone(client)
 }
+
+/** Copies an app's seed into its folder again and rebuilds its page (`$.app.reseed()`). */
+export type AppReseed = () => Promise<void>
+
+const reseeders = new Map<string, { appId: string; reseed: AppReseed }>()
+
+/** Records how `sessionId`'s app of `appId` is seeded again; the result forgets it while it is still this one. */
+export function setAppReseeder(sessionId: string, appId: string, reseed: AppReseed): () => boolean {
+  const entry = { appId, reseed }
+  reseeders.set(sessionId, entry)
+  return () => {
+    if (reseeders.get(sessionId) !== entry) return false
+    reseeders.delete(sessionId)
+    return true
+  }
+}
+
+/** Seeds every open session of `appId` again; undefined when none is open. Rejects with the first failure. */
+export function reseedRegisteredApp(appId: string): Promise<void> | undefined {
+  const runs = [...reseeders.values()].filter(entry => entry.appId === appId).map(entry => entry.reseed())
+  if (runs.length === 0) return undefined
+  return Promise.all(runs).then(() => undefined)
+}
+
+/** Refreshes `sessionId`'s app: draws it again and raises `app.show`; `reinstall` copies the seed first. */
+export type AppRefresh = (reinstall: boolean) => Promise<ModsBuildAppResult>
+
+const refreshers = new Map<string, AppRefresh>()
+
+/** Records how `sessionId`'s app is refreshed; the result forgets it while it is still this one. */
+export function setAppRefresher(sessionId: string, refresh: AppRefresh): () => boolean {
+  refreshers.set(sessionId, refresh)
+  return () => {
+    if (refreshers.get(sessionId) !== refresh) return false
+    refreshers.delete(sessionId)
+    return true
+  }
+}
+
+/** Refreshes `sessionId`'s app; undefined when the session is not an open app's. */
+export function refreshRegisteredApp(sessionId: string, reinstall: boolean): Promise<ModsBuildAppResult> | undefined {
+  return refreshers.get(sessionId)?.(reinstall)
+}

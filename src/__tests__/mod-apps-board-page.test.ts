@@ -16,7 +16,8 @@ import { AppSurfaceFeeder } from '../browser/webview/a2ui/AppSurfaceFeeder'
 import { withAppBoard } from '../browser/webview/a2ui/A2uiPresentationContext'
 import { EMPTY_A2UI_PANE_STATE, stepA2uiPane } from '../browser/webview/a2ui/a2uiPaneModel'
 import { holdAppSurface, useAppBoard } from '../browser/webview/apps/appSurfaceView'
-import { AppReloadButton, AppSurfaceBar } from '../browser/webview/apps/AppSurfaceBar'
+import { AppPaneActions, AppSurfaceBar } from '../browser/webview/apps/AppSurfaceBar'
+import { onPaneRequest } from '../browser/webview/a2ui/a2uiPaneBus'
 import { setModContributions } from '../browser/webview/mods/modContributionsView'
 import { EMPTY_MOD_CONTRIBUTIONS } from '../browser/runtimeProtocol/modContributions'
 import { MODS_APP_STATE_EVENT, type AppSurfaceState } from '../browser/runtimeProtocol/modApps'
@@ -247,29 +248,51 @@ describe('the app bar', () => {
     element: h(AppSurfaceBar, { board: { state, reload, act: actOn } }),
   })
 
-  it('Reload builds the app again', async () => {
-    const reload = vi.fn(async () => ({ ok: true as const, surfaceIds: ['dashboard'] }))
-    const { container } = render(h(AppReloadButton, { board: { state: board(BOARD, 'h1'), reload, act: actOn } }))
-    const button = container.querySelector<HTMLButtonElement>('[data-slot="app-reload"]')!
-    expect(button.getAttribute('aria-label')).toBe('Reload app')
-    await act(async () => button.click())
-    expect(reload).toHaveBeenCalledTimes(1)
+  const actions = (refresh: (reinstall: boolean) => Promise<unknown>, busy = false) =>
+    render(h(AppPaneActions, { board: { state: board(BOARD, 'h1'), reload: async () => undefined, act: actOn, refresh: refresh as never }, sessionId: 's1', busy }))
+
+  it('Help, Refresh and Reinstall come in that order with their labels', () => {
+    const { container } = actions(async () => ({ ok: true }))
+    const slots = [...container.querySelectorAll('button')].map(button => button.getAttribute('data-slot'))
+    expect(slots).toEqual(['app-help', 'app-refresh', 'app-reinstall'])
+    expect(container.querySelector('[data-slot="app-help-label"]')!.textContent).toBe('Need a hand?')
+    expect(container.querySelector('[data-slot="app-help-label"]')!.className).toContain('max-sm:hidden')
+    expect(container.querySelector('[data-slot="app-help"]')!.getAttribute('aria-label')).toBe('Chat beside this app: ask how to use it, or let the assistant do it for you')
+    expect(container.querySelector('[data-slot="app-refresh"]')!.getAttribute('aria-label')).toBe('Refresh')
+    expect(container.querySelector('[data-slot="app-reinstall"]')!.getAttribute('aria-label')).toBe('Reinstall page: copy it from the plugin again (your settings and data are kept)')
   })
 
-  it('Reload waits while a turn is running', async () => {
-    const reload = vi.fn(async () => ({ ok: true as const, surfaceIds: ['dashboard'] }))
-    const { container } = render(h(AppReloadButton, { board: { state: board(BOARD, 'h1'), reload, act: actOn }, busy: true }))
-    const button = container.querySelector<HTMLButtonElement>('[data-slot="app-reload"]')!
+  it('Refresh asks for a refresh, Reinstall for a reinstall', async () => {
+    const refresh = vi.fn(async () => ({ ok: true as const, surfaceIds: ['dashboard'] }))
+    const { container } = actions(refresh)
+    await act(async () => container.querySelector<HTMLButtonElement>('[data-slot="app-refresh"]')!.click())
+    await act(async () => container.querySelector<HTMLButtonElement>('[data-slot="app-reinstall"]')!.click())
+    expect(refresh.mock.calls).toEqual([[false], [true]])
+  })
+
+  it('Refresh and Reinstall wait while a turn is running', async () => {
+    const refresh = vi.fn(async () => ({ ok: true as const, surfaceIds: [] }))
+    const { container } = actions(refresh, true)
+    const button = container.querySelector<HTMLButtonElement>('[data-slot="app-refresh"]')!
     expect(button.disabled).toBe(true)
     await act(async () => button.click())
-    expect(reload).not.toHaveBeenCalled()
+    expect(refresh).not.toHaveBeenCalled()
+  })
+
+  it('Help restores the pane so the chat shows beside the app', async () => {
+    const seen: unknown[] = []
+    const off = onPaneRequest(request => void seen.push(request))
+    const { container } = actions(async () => undefined)
+    await act(async () => container.querySelector<HTMLButtonElement>('[data-slot="app-help"]')!.click())
+    off()
+    expect(seen).toContainEqual({ sessionId: 's1', restore: true })
   })
 
   it('the bar is drawn only for an error: a build error shows its message; a data error its line', async () => {
     const plain = view(board(BOARD, 'h1'))
     const { container, rerender } = render(plain.element)
     expect(container.querySelector('[data-slot="app-surface-bar"]')).toBeNull()
-    expect(container.querySelector('[data-slot="app-reload"]'), 'Reload is in the pane header').toBeNull()
+    expect(container.querySelector('[data-slot="app-refresh"]'), 'Refresh is in the pane header').toBeNull()
     const failed = { ...board(BOARD, 'h1'), errors: [{ kind: 'build' as const, message: 'app.a2ui did not build: line 2' }] }
     rerender(view(failed).element)
     const error = container.querySelector('[data-slot="app-board-error"]')!

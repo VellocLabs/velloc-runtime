@@ -131,6 +131,8 @@ export type AppBackgroundRuntimeOptions = {
   busyMaxMs?: number
   /** `$.app.view`: the pages are asked to open the app or close its pane; `client` undefined is every page. */
   onView?: (appId: string, want: 'open' | 'closed', client: string | undefined) => void
+  /** `$.app.reseed()`: copies the app's seed again and rebuilds its page; undefined when no page of the app is open. */
+  reseed?: (appId: string) => Promise<void> | undefined
   /** `$.app.analyze`: the realm's headless spawn. Absent: a run fails as unavailable. */
   runAgent?: AppAgentRunner
   agentDailyLimit?: number
@@ -442,6 +444,22 @@ export class AppBackgroundRuntime {
   /** An app's session ended: it is no longer on screen anywhere. */
   viewSessionGone(appId: string, sessionId: string): void {
     this.raiseViews(this.views.sessionGone(appId, sessionId))
+  }
+
+  /**
+   * The app's Refresh: raises `app.show` again with what is shown now, as
+   * when the app comes back on screen. A script not running is started, and
+   * hears it after its `app.start`. Nothing when the app is not on screen.
+   */
+  async showAgain(appId: string): Promise<void> {
+    const shown = this.views.current(appId)
+    if (!shown) return
+    const module = this.modules.get(appId)
+    if (!module?.loaded || module.starting) {
+      this.wake(appId)
+      return
+    }
+    await this.raiseView(module, 'app.show', { appId, ...shown })
   }
 
   private raiseViews(events: readonly AppViewEvent[]): void {
@@ -891,6 +909,12 @@ export class AppBackgroundRuntime {
       if (call.method === 'busy') return this.setBusy(module, call.args[0])
       if (call.method === 'analyze') return await this.analyze(module, call.args[0])
       if (call.method === 'view') return this.askView(module, call.args[0], call.args[1])
+      if (call.method === 'reseed') {
+        const run = this.options.reseed?.(module.ref.appId)
+        if (!run) throw named('NotFoundError', `$.app.reseed(): no page of ${module.ref.appId} is open`)
+        await run
+        return undefined
+      }
       return module.relay.relay(call.args[0], call.args[1])
     }
     if (call.noun === 'log') {

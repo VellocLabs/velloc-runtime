@@ -13,8 +13,8 @@ import { readConsentedGrants } from '../../pluginHost/providerPluginConsent'
 import { getNexusAppDir } from '../../utils/conversationStoragePaths'
 import { joinRuntimePath } from '../../utils/runtimePaths'
 import { getModUiContributionsHost, type AppBackgroundTemplate } from '../ui/contributionsHost'
-import { setAppActionDispatch, setAppPressDispatch, setAppViewDispatch } from './appActionBus'
-import { replayAppViews } from './appSurfaceRegistry'
+import { setAppActionDispatch, setAppPressDispatch, setAppShowAgainDispatch, setAppViewDispatch } from './appActionBus'
+import { reseedRegisteredApp, replayAppViews } from './appSurfaceRegistry'
 import type { AppAgentRunner } from './appAgentRun'
 import type { AppBackgroundRef, AppBackgroundRuntime, AppBackgroundRuntimeOptions } from './AppBackgroundRuntime'
 import { coversFolderScopes, expandScopeFolder, type FolderScopes } from './appFolderScopes'
@@ -50,7 +50,7 @@ export type AppBackgroundBootSeams = {
 }
 
 /** Where a module's badge, at-work mark and asks of the pages go. */
-type AppIconSinks = Required<Pick<AppBackgroundRuntimeOptions, 'onBadge' | 'onBusy' | 'onView'>>
+type AppIconSinks = Required<Pick<AppBackgroundRuntimeOptions, 'onBadge' | 'onBusy' | 'onView'>> & Pick<AppBackgroundRuntimeOptions, 'reseed'>
 
 /** The folders the person approved for a plugin; `'exempt'` for a hand-placed one. */
 export type ApprovedFolders = FolderScopes | 'exempt' | undefined
@@ -175,7 +175,7 @@ export async function bootAppBackground(deps: AppBackgroundBootDeps, seams: AppB
       const refs = await refsOf()
       if (refs.length === 0 && !state.runtime && !state.creating) return
       if (!state.runtime) {
-        state.creating ??= createRuntime({ ...deps, onBadge, onBusy, onView })
+        state.creating ??= createRuntime({ ...deps, onBadge, onBusy, onView, reseed: appId => reseedRegisteredApp(appId) })
         try {
           state.runtime = await state.creating
         } catch (error) {
@@ -189,6 +189,7 @@ export async function bootAppBackground(deps: AppBackgroundBootDeps, seams: AppB
         }
         const runtime = state.runtime
         setAppActionDispatch((appId, action, context, sessionId) => runtime.action(appId, action, context, sessionId))
+        setAppShowAgainDispatch(appId => runtime.showAgain(appId))
         setAppPressDispatch((appId, trigger, item, client) => runtime.press(appId, trigger, item, client))
         setAppViewDispatch({
           view: (appId, sessionId, client, layout) => runtime.view(appId, sessionId, client, layout),
@@ -219,6 +220,7 @@ export async function resetAppBackgroundBootForTests(): Promise<void> {
   const state = booted
   booted = null
   setAppActionDispatch(undefined)
+  setAppShowAgainDispatch(undefined)
   setAppPressDispatch(undefined)
   setAppViewDispatch(undefined)
   if (!state) return

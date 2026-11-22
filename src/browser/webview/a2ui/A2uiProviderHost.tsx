@@ -49,7 +49,7 @@ import { getActionsSlot, getOwner, getSlot, setOwner, subscribeSlot } from './a2
 import { AppSurfaceFeeder, appSurfaceIds } from './AppSurfaceFeeder'
 import { A2uiPaneSkeleton } from './A2uiPaneSkeleton'
 import type { AppBoard } from '../apps/appSurfaceView'
-import { AppReloadButton, AppSurfaceBar } from '../apps/AppSurfaceBar'
+import { AppPaneActions, AppSurfaceBar } from '../apps/AppSurfaceBar'
 import { APP_COMPOSE_EVENT, composeDraftOf, composeIntoSession, composeQuoteOf } from '../apps/appCompose'
 import { createSurfacePressLine } from './surfacePressLine'
 import { useComposerPassages } from '@/components/assistant-ui/composer-passages'
@@ -325,7 +325,7 @@ function A2uiPanePortal({
     )
   }
   const reload =
-    showsBar && board && actionsSlot ? createPortal(<AppReloadButton board={board} busy={busy} />, actionsSlot) : null
+    showsBar && board && actionsSlot ? createPortal(<AppPaneActions board={board} busy={busy} sessionId={sessionId} />, actionsSlot) : null
   if (board && board.state === null && !selectedSurfaceId) {
     return (
       <>

@@ -15,6 +15,19 @@ export type AppActionDispatch = (appId: string, action: string, context: unknown
 
 let seated: AppActionDispatch | undefined
 
+/** Raises the app's `app.show` again where it is on screen; resolves once its hook settled. */
+export type AppShowAgainDispatch = (appId: string) => Promise<void>
+
+let seatedShowAgain: AppShowAgainDispatch | undefined
+
+export function setAppShowAgainDispatch(dispatch: AppShowAgainDispatch | undefined): void {
+  seatedShowAgain = dispatch
+}
+
+export function dispatchAppShowAgain(appId: string): Promise<void> {
+  return seatedShowAgain ? seatedShowAgain(appId) : Promise.resolve()
+}
+
 export function setAppActionDispatch(dispatch: AppActionDispatch | undefined): void {
   seated = dispatch
 }

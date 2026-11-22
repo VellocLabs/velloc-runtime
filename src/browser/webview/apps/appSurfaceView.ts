@@ -117,6 +117,8 @@ export type AppBoard = {
   reload(): Promise<ModsBuildAppResult | undefined>
   /** `mods.appAction`: offers a surface action to the app's background module; undefined when there is no connection. */
   act(action: string, context: unknown): Promise<ModsAppActionResult | undefined>
+  /** `mods.appRefresh`: Refresh, or Reinstall with `reinstall`; undefined when there is no connection. */
+  refresh?: (reinstall: boolean) => Promise<ModsBuildAppResult | undefined>
   /** Set when the app's pane is one sandboxed page (F-42): `mods.appPage` for it. */
   readPage?: () => Promise<ModsAppPageResult | undefined>
 }
@@ -148,14 +150,22 @@ export function useAppBoard(
     },
     [runtimeConnection, sessionId],
   )
+  const refresh = useCallback(
+    async (reinstall: boolean): Promise<ModsBuildAppResult | undefined> => {
+      if (!runtimeConnection || !sessionId) return undefined
+      const connection = await runtimeConnection()
+      return connection.request<ModsBuildAppResult>('mods.appRefresh', { sessionId, ...(reinstall ? { reinstall: true } : {}) })
+    },
+    [runtimeConnection, sessionId],
+  )
   const readPage = useCallback(async (): Promise<ModsAppPageResult | undefined> => {
     if (!runtimeConnection || pageAppId === undefined) return undefined
     const connection = await runtimeConnection()
     return connection.request<ModsAppPageResult>('mods.appPage', { appId: pageAppId })
   }, [runtimeConnection, pageAppId])
   const board = useMemo(
-    () => ({ state, reload, act, ...(pageAppId !== undefined ? { readPage } : {}) }),
-    [state, reload, act, pageAppId, readPage],
+    () => ({ state, reload, act, refresh, ...(pageAppId !== undefined ? { readPage } : {}) }),
+    [state, reload, act, refresh, pageAppId, readPage],
   )
   return isApp ? board : undefined
 }

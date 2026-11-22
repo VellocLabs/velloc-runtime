@@ -99,6 +99,8 @@ export function makeWorkerAppState(): WorkerAppState {
       /** A headless agent run in the app's folder: `{ ok: true, text }` or `{ ok: false, reason }`. Not serialized with the state. */
       analyze: (request: unknown) => call('analyze', [request]),
       /** The app on the pages: `open` shows it, `close` closes its pane; `{ client }` names one page. Resolves once asked. */
+      /** The plugin's seed copied over the app's folder again, `config.json` and the data kept, and the page rebuilt. Resolves once the new page is live; rejects with `AppBuildError` when it does not build. */
+      reseed: () => call('reseed', []),
       view: Object.freeze({
         open: (options?: unknown) => call('view', ['open', options]),
         close: (options?: unknown) => call('view', ['closed', options]),

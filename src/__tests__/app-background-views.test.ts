@@ -183,6 +183,17 @@ describe('AppBackgroundRuntime — the app on screen', () => {
     expect(refuseAppBackgroundRegistrations([{ pattern: 'app.show' }, { pattern: 'app.layout' }, { pattern: 'app.hide' }] as never)).toBeNull()
   })
 
+  it('showAgain raises app.show again with what is shown now, and nothing when the app is off screen', async () => {
+    const { runtime, ref, seen } = world(WATCHER)
+    runtime.sync([ref])
+    await vi.waitFor(() => expect(seen()).toEqual(['start']))
+    await runtime.showAgain('pay-board')
+    runtime.view('pay-board', 's1', 'c1', 'beside')
+    await vi.waitFor(() => expect(seen()).toHaveLength(2))
+    await runtime.showAgain('pay-board')
+    expect(seen()).toEqual(['start', ['app.show', 's1', 'beside'], ['app.show', 's1', 'beside']])
+  })
+
   it('raises show, layout and hide in the order the views changed', async () => {
     const { runtime, ref, seen } = world(WATCHER)
     runtime.sync([ref])

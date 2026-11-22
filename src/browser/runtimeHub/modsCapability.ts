@@ -81,13 +81,14 @@ import { scopeAllows, type CapabilityRegistry } from './CapabilityRegistry'
 import { registerModsAppTopic } from './modsAppTopic'
 import { dispatchAppPress } from '../../mods/app/appActionBus'
 import { MCP_AUTH_ACTION_SCOPES } from '../../mcp/oauth/mcpAuthProtocol'
-import { buildRegisteredApp, runRegisteredAppAction, viewRegisteredApp } from '../../mods/app/appSurfaceRegistry'
+import { buildRegisteredApp, refreshRegisteredApp, runRegisteredAppAction, viewRegisteredApp } from '../../mods/app/appSurfaceRegistry'
 import {
   isModsAppActionPayload,
   isModsAppPagePayload,
   isModsAppPressPayload,
   isModsAppViewPayload,
   isModsBuildAppPayload,
+  isModsAppRefreshPayload,
   type ModsAppActionPayload,
   type AppPressIntent,
   type ModsAppPressPayload,
@@ -95,6 +96,7 @@ import {
   type ModsAppViewPayload,
   type ModsAppActionResult,
   type ModsBuildAppPayload,
+  type ModsAppRefreshPayload,
   type ModsBuildAppResult,
   type ModsAppPagePayload,
   type ModsAppPageResult,
@@ -284,6 +286,8 @@ export function registerModsCapability(
     resolveTopbar?: (id: string) => TopbarResolution
     /** `mods.buildApp`: build a session's app; defaults to the realm's registry. */
     buildApp?: (sessionId: string) => Promise<ModsBuildAppResult> | undefined
+    /** `mods.appRefresh`: refresh or reinstall a session's app; defaults to the realm's registry. */
+    appRefresh?: (sessionId: string, reinstall: boolean) => Promise<ModsBuildAppResult> | undefined
     /** `mods.appAction`: offer a surface action to a session's app; defaults to the realm's registry. */
     appAction?: (sessionId: string, action: string, context: unknown) => Promise<ModsAppActionResult> | undefined
     /** `mods.appView`: what a client shows of a session's app; defaults to the realm's registry. */
@@ -336,6 +340,11 @@ export function registerModsCapability(
         scope: MODS_ACTION_SCOPES.buildApp,
         guard: isModsBuildAppPayload,
         sessionOf: payload => (payload as ModsBuildAppPayload).sessionId,
+      },
+      appRefresh: {
+        scope: MODS_ACTION_SCOPES.appRefresh,
+        guard: isModsAppRefreshPayload,
+        sessionOf: payload => (payload as ModsAppRefreshPayload).sessionId,
       },
       appAction: {
         scope: MODS_ACTION_SCOPES.appAction,
@@ -484,6 +493,14 @@ export function registerModsCapability(
           }
           const built = (options.buildApp ?? buildRegisteredApp)(sessionId)
           return (await built) ?? ({ ok: false, message: 'this session is not an open app' } satisfies ModsBuildAppResult)
+        }
+        case 'appRefresh': {
+          const { sessionId, reinstall } = request.payload as ModsAppRefreshPayload
+          if (!inScope(request.conn, sessionId)) {
+            throw wireError('forbidden_scope', `session ${sessionId} is not in this connection's scope`)
+          }
+          const done = (options.appRefresh ?? refreshRegisteredApp)(sessionId, reinstall === true)
+          return (await done) ?? ({ ok: false, message: 'this session is not an open app' } satisfies ModsBuildAppResult)
         }
         case 'appAction': {
           const { sessionId, action, context } = request.payload as ModsAppActionPayload

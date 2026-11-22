@@ -198,6 +198,13 @@ export function isAppSurfaceState(value: unknown): value is AppSurfaceState {
   return true
 }
 
+/** `mods.appRefresh`: draw the app again and raise its `app.show`; `reinstall` copies the seed over the folder first, config and data kept. */
+export type ModsAppRefreshPayload = { sessionId: string; reinstall?: boolean }
+
+export function isModsAppRefreshPayload(value: unknown): value is ModsAppRefreshPayload {
+  return isRecord(value) && typeof value.sessionId === 'string' && value.sessionId.length > 0 && (value.reinstall === undefined || typeof value.reinstall === 'boolean')
+}
+
 export function isModsBuildAppPayload(value: unknown): value is ModsBuildAppPayload {
   return isRecord(value) && typeof value.sessionId === 'string' && value.sessionId.length > 0
 }

@@ -75,6 +75,10 @@ export const MODS_ACTION_SCOPES = {
   pressTopbar: 'control',
   /** A press on an app's Reload: builds its entry file again — `control`. */
   buildApp: 'control',
+  /** A press on an app's Refresh or Reinstall: builds the entry again (after
+   *  copying the seed again, for Reinstall) and raises the app's `app.show`
+   *  again — `control`, as it runs the plugin's own handlers. */
+  appRefresh: 'control',
   /** A press on one of an app's own surfaces, offered to the app's
    *  background module before the model: runs the plugin's own handler, as
    *  a press on an element a mod drew does — `control`. */

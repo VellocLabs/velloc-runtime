@@ -19,6 +19,8 @@ export type AppSessionInfo = {
   folder: string
   decl: PluginAppDecl
   seed: AppSeedResult
+  /** The plugin's seed folder, absolute: what `$.app.reseed()` copies again. */
+  seedDir?: string
   /** The plugin's directory, absolute: where its language files are. */
   root?: string
   /** Set for a hand-placed plugin: where its seed is read again at each press. */
@@ -51,6 +53,7 @@ export async function openAppFolder(args: {
       folder,
       decl: app.decl,
       seed,
+      seedDir: app.seedDir,
       ...(app.root !== undefined ? { root: app.root } : {}),
       ...(app.devSeed ? { devSeedDir: app.seedDir } : {}),
     }

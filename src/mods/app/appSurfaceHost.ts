@@ -21,12 +21,13 @@ import type {
   AppCatalogName,
 } from '../../browser/runtimeProtocol/modApps'
 import { blockSurfaceIds, hasA2uiBlock, splitA2uiText } from '../../toolkit/builtin/a2ui/express/a2uiBlocks'
-import { dispatchAppAction, type AppActionDispatch } from './appActionBus'
+import { dispatchAppAction, dispatchAppShowAgain, type AppActionDispatch } from './appActionBus'
 import { hashOf, seedAppFolder, SEED_MAX_FILE_BYTES, type AppSeedFs } from './appSeed'
 import type { AppSessionInfo } from './appSession'
 import { liveAppState, onAppState, type AppStateEvent, type AppStateSource } from './appStateBus'
 import { appSurfaceDelta } from './appSurfaceDelta'
-import { setAppActor, setAppBuilder, setAppSurfaceState, type AppActor, type AppSurfaceLiveData } from './appSurfaceRegistry'
+import { setAppActor, setAppBuilder, setAppRefresher, setAppReseeder, setAppSurfaceState, type AppActor, type AppRefresh, type AppReseed, type AppSurfaceLiveData } from './appSurfaceRegistry'
+import { appReseedKeep, namedError } from './appReseed'
 import { readAppText } from './appText'
 
 /** The app's live state, while its background module holds one. */
@@ -56,6 +57,12 @@ export type AppSurfaceHostOptions = {
   registerBuild?: (sessionId: string, build: () => Promise<ModsBuildAppResult>) => () => boolean
   /** Where `mods.appAction` finds this host; defaults to the realm registry, released as the build is. */
   registerActor?: (sessionId: string, act: AppActor) => () => boolean
+  /** Where `$.app.reseed()` finds this host; defaults to the realm registry, released as the build is. */
+  registerReseeder?: (sessionId: string, appId: string, reseed: AppReseed) => () => boolean
+  /** Where `mods.appRefresh` finds this host; defaults to the realm registry, released as the build is. */
+  registerRefresher?: (sessionId: string, refresh: AppRefresh) => () => boolean
+  /** Raises the app's `app.show` again; defaults to the realm bus. */
+  showAgain?: (appId: string) => Promise<void>
   /** The background module's state, read in place of the data file while there is one; defaults to the realm bus. */
   liveData?: AppLiveData
   /** Offers a local action to the app's background module; defaults to the realm bus. */
@@ -208,6 +215,9 @@ export function createAppSurfaceHost(options: AppSurfaceHostOptions): AppSurface
   const publish = options.publish ?? setAppSurfaceState
   const registerBuild = options.registerBuild ?? setAppBuilder
   const registerActor = options.registerActor ?? setAppActor
+  const registerReseeder = options.registerReseeder ?? setAppReseeder
+  const registerRefresher = options.registerRefresher ?? setAppRefresher
+  const showAgain = options.showAgain ?? dispatchAppShowAgain
   const live: AppLiveData = options.liveData ?? { snapshot: liveAppState, subscribe: onAppState }
   const dispatchAction = options.dispatchAction ?? dispatchAppAction
   const now = options.now ?? Date.now
@@ -423,8 +433,51 @@ export function createAppSurfaceHost(options: AppSurfaceHostOptions): AppSurface
     }
   }
 
+  /**
+   * `$.app.reseed()`: the seed's files over the folder again, the person's
+   * config and data kept, then a build. Rejects with `AppBuildError` when the
+   * entry does not build; the person keeps the previous page.
+   */
+  const reseedAll = async (): Promise<void> => {
+    const seedDir = app.devSeedDir ?? app.seedDir
+    if (disposed) throw namedError('AbortError', 'the app is closed')
+    if (!seedDir || !options.seedFs) throw namedError('NotSupportedError', 'this app has no seed folder to copy again')
+    const result = await seedAppFolder({
+      fs: options.seedFs,
+      seedDir,
+      appDir: app.folder,
+      appId: app.appId,
+      plugin: app.plugin,
+      seedVersion: app.decl.seedVersion,
+      reseed: { keep: appReseedKeep(app.decl) },
+    })
+    seedConflicts = result.conflicts
+    const built = await build()
+    if (!built.ok) throw namedError('AppBuildError', built.message)
+  }
+
   const releaseBuild = registerBuild(sessionId, build)
   const releaseActor = registerActor(sessionId, action)
+  const releaseReseeder = registerReseeder(sessionId, app.appId, reseedAll)
+
+  /** Refresh: the entry built again and `app.show` raised. Reinstall: the seed copied first; a failed build keeps the previous page and raises nothing. */
+  const refresh: AppRefresh = async reinstall => {
+    let result: ModsBuildAppResult
+    if (reinstall) {
+      try {
+        await reseedAll()
+      } catch (error) {
+        return { ok: false, message: error instanceof Error ? error.message : String(error) }
+      }
+      result = { ok: true, surfaceIds: built?.surfaceIds ?? [] }
+    } else {
+      result = await build()
+      if (!result.ok) return result
+    }
+    await showAgain(app.appId).catch(error => console.warn('[mods/app] app.show failed', error))
+    return result
+  }
+  const releaseRefresher = registerRefresher(sessionId, refresh)
 
   return {
     async start() {
@@ -482,6 +535,8 @@ export function createAppSurfaceHost(options: AppSurfaceHostOptions): AppSurface
       unsubscribeLive = undefined
       // A newer runtime of the same session may own the entry by now.
       releaseActor()
+      releaseReseeder()
+      releaseRefresher()
       if (releaseBuild()) publish(sessionId, null)
     },
   }

@@ -405,6 +405,38 @@ describe('AppBackgroundRuntime — app.action', () => {
     expect(reports).toContainEqual(expect.stringMatching(/pay: the background module's app\.action hook failed \(throw\)/))
   })
 
+  it('$.app.reseed() runs the reseed of the open page, passes its build error by name, and is NotFoundError with no page', async () => {
+    const asked: string[] = []
+    let outcome: 'ok' | 'broken' | 'none' = 'ok'
+    const { runtime } = await ready(
+      `
+      export function register(on) {
+        on('app.start', async ($) => { await $.app.state.set({ results: [] }) })
+        on('app.action', async ($, e) => {
+          let result
+          try { await $.app.reseed(); result = 'ok' } catch (error) { result = error.name }
+          await $.app.state.update(s => { s.results.push(result) })
+          return true
+        })
+      }`,
+      {
+        reseed: appId => {
+          asked.push(appId)
+          if (outcome === 'none') return undefined
+          if (outcome === 'broken') return Promise.reject(Object.assign(new Error('line 2: BROKEN'), { name: 'AppBuildError' }))
+          return Promise.resolve()
+        },
+      },
+    )
+    await runtime.action('pay-board', 'refresh', null, 's1')
+    outcome = 'broken'
+    await runtime.action('pay-board', 'refresh', null, 's1')
+    outcome = 'none'
+    await runtime.action('pay-board', 'refresh', null, 's1')
+    expect(asked).toEqual(['pay-board', 'pay-board', 'pay-board'])
+    expect(((await stateOf(runtime)) as { results: unknown[] }).results).toEqual(['ok', 'AppBuildError', 'NotFoundError'])
+  })
+
   it('a handler past its budget is false and reported; a module without the hook is false without a dispatch', async () => {
     const { runtime, reports } = await ready(ACTOR, { actionTimeoutMs: 40 })
     expect(await runtime.action('pay-board', 'slow', null, 's1')).toBe(false)
