@@ -1,5 +1,5 @@
-// An app's controls in the side pane (F-40): Help, Refresh and Reinstall in
-// the pane header, which every app gets, and the bar above the surface with
+// An app's controls in the side pane (F-40): Help and Refresh in the pane
+// header, which every app gets, and the bar above the surface with
 // the latest build or data error. A build error's text is the compiler's own,
 // shown as written.
 
