@@ -87,7 +87,7 @@ describe('the router registry', () => {
     expect(providerRouterFor('mod.a.r')).toBeUndefined()
   })
 
-  it('gives a call four target answers for each target it is sent to', () => {
+  it('gives a call four target answers for each distinct target named', () => {
     expect(ROUTE_SENDS_PER_TARGET).toBe(4)
   })
 })

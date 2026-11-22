@@ -14,9 +14,10 @@ import { getProviderErrorFields, type ProviderConnectivityIssue, type ProviderEr
 import type { ProviderPolicy } from './providerPolicy'
 import type { ProviderOutcomeEvent } from './providerOutcome'
 
-/** The target answers one call may take for each target it has been sent to.
- *  A call's bound grows with the targets its router names, so a route of any
- *  size is walked, and a router that keeps naming the same ones runs out. */
+/** The target answers one call may take for each distinct target its router
+ *  names, a provider and model pair; a target named at a broken reply counts. A
+ *  call's bound grows with those names, so a route of any size is walked, and a
+ *  router that keeps naming the same ones runs out. */
 export const ROUTE_SENDS_PER_TARGET = 4
 /** A router's own time to answer one `route`, ms. */
 export const ROUTE_BUDGET_MS = 2_000

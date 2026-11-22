@@ -56,14 +56,17 @@ export function shareRouteCall(copy: object, original: object): void {
   if (call) calls.set(copy, call)
 }
 
+/** The identity of a target: its provider and model. */
+const targetKey = (target: { provider: string; model: string }): string => JSON.stringify([target.provider, target.model])
+
 const sameTarget = (a: { provider: string; model: string }, b: { provider: string; model: string }): boolean =>
-  a.provider === b.provider && a.model === b.model
+  targetKey(a) === targetKey(b)
 
 /** A target answer was accepted, and with `sent` the request goes to it;
  *  without, it is the target of the call's next send. */
 export function acceptRouteTarget(call: RouteCall, target: RouteTarget, sent: boolean): void {
   call.hops += 1
-  call.targets.add(JSON.stringify([target.provider, target.model]))
+  call.targets.add(targetKey(target))
   if (sent) sendRouteTo(call, target)
   else call.switchTo = target
 }
