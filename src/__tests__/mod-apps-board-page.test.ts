@@ -258,7 +258,7 @@ describe('the app bar', () => {
     expect(container.querySelector('[data-slot="app-help-label"]')!.textContent).toBe('Need a hand?')
     expect(container.querySelector('[data-slot="app-help-label"]')!.className).toContain('max-sm:hidden')
     expect(container.querySelector('[data-slot="app-help"]')!.getAttribute('aria-label')).toBe('Chat beside this app: ask how to use it, or let the assistant do it for you')
-    expect(container.querySelector('[data-slot="app-refresh"]')!.getAttribute('aria-label')).toBe('Refresh · Ctrl+click: reinstall page from the plugin (settings and data are kept)')
+    expect(container.querySelector('[data-slot="app-refresh"]')!.getAttribute('aria-label')).toBe('Refresh (F5) · Ctrl+click or Ctrl+F5: reinstall page from the plugin (settings and data are kept)')
   })
 
   it('a click refreshes; a Ctrl+click reinstalls', async () => {
@@ -277,13 +277,62 @@ describe('the app bar', () => {
       const refresh = vi.fn(async () => ({ ok: true as const, surfaceIds: [] }))
       const { container } = actions(refresh)
       const button = container.querySelector<HTMLButtonElement>('[data-slot="app-refresh"]')!
-      expect(button.getAttribute('aria-label')).toBe('Refresh · Cmd+click: reinstall page from the plugin (settings and data are kept)')
+      expect(button.getAttribute('aria-label')).toBe('Refresh (F5) · Cmd+click or Cmd+F5: reinstall page from the plugin (settings and data are kept)')
       await act(async () => void button.dispatchEvent(new MouseEvent('click', { bubbles: true, ctrlKey: true })))
       await act(async () => void button.dispatchEvent(new MouseEvent('click', { bubbles: true, metaKey: true })))
       expect(refresh.mock.calls).toEqual([[false], [true]])
     } finally {
       platform.mockRestore()
     }
+  })
+
+  /** The actions inside a pane, beside a focusable body, as the pane header draws them. */
+  const inPane = (refresh: (reinstall: boolean) => Promise<unknown>) => {
+    const outside = document.createElement('button')
+    document.body.append(outside)
+    const view = render(
+      h('section', { 'data-pane': 'a2ui' }, [
+        h('div', { key: 'actions' }, h(AppPaneActions, { board: { state: board(BOARD, 'h1'), reload: async () => undefined, act: actOn, refresh: refresh as never }, sessionId: 's1' })),
+        h('input', { key: 'body', 'data-slot': 'app-body' }),
+      ]),
+    )
+    const press = (init: KeyboardEventInit) => {
+      const event = new KeyboardEvent('keydown', { key: 'F5', bubbles: true, cancelable: true, ...init })
+      ;(document.activeElement ?? document.body).dispatchEvent(event)
+      return event
+    }
+    return { view, outside, press, body: view.container.querySelector<HTMLInputElement>('[data-slot="app-body"]')! }
+  }
+
+  it('F5 in the pane refreshes and Ctrl+F5 or Cmd+F5 reinstalls; both are swallowed', async () => {
+    const refresh = vi.fn(async () => ({ ok: true as const, surfaceIds: [] }))
+    const { body, outside, press } = inPane(refresh)
+    body.focus()
+    let event!: KeyboardEvent
+    await act(async () => void (event = press({})))
+    expect(event.defaultPrevented, 'no page reload').toBe(true)
+    await act(async () => void press({ ctrlKey: true }))
+    await act(async () => void press({ metaKey: true }))
+    await act(async () => void press({ repeat: true }))
+    expect(refresh.mock.calls).toEqual([[false], [true], [true]])
+    // Focus outside the pane: the key is left alone.
+    outside.focus()
+    await act(async () => void (event = press({})))
+    expect(event.defaultPrevented).toBe(false)
+    expect(refresh).toHaveBeenCalledTimes(3)
+    outside.remove()
+  })
+
+  it('with nothing focused, F5 counts for the pane last pressed in', async () => {
+    const refresh = vi.fn(async () => ({ ok: true as const, surfaceIds: [] }))
+    const { body, outside, press } = inPane(refresh)
+    ;(document.activeElement as HTMLElement | null)?.blur()
+    body.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }))
+    await act(async () => void press({}))
+    outside.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }))
+    await act(async () => void press({}))
+    expect(refresh.mock.calls).toEqual([[false]])
+    outside.remove()
   })
 
   it('Refresh waits while a turn is running', async () => {

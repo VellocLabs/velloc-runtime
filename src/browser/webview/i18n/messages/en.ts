@@ -911,7 +911,7 @@ export const en = {
   'apps.dataFileError': "The app's data file could not be read, so its last data is shown.",
   'apps.help': 'Need a hand?',
   'apps.helpTooltip': 'Chat beside this app: ask how to use it, or let the assistant do it for you',
-  'apps.refreshTooltip': 'Refresh · {key}+click: reinstall page from the plugin (settings and data are kept)',
+  'apps.refreshTooltip': 'Refresh (F5) · {key}+click or {key}+F5: reinstall page from the plugin (settings and data are kept)',
   'apps.pageFrame': 'App page',
   'apps.pageFailed': 'The app page could not be opened.',
   'topbar.pluginItemWaiting': 'This plugin needs its provider set up first',

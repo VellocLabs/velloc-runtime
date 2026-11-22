@@ -869,7 +869,7 @@ export const zh: Messages = {
   'apps.dataFileError': '无法读取应用的数据文件，正在显示上一次的数据。',
   'apps.help': '需要帮忙？',
   'apps.helpTooltip': '在旁边打开聊天：问怎么用，或让助手帮你操作',
-  'apps.refreshTooltip': '刷新 · {key}+点击：从插件重新安装页面（设置和数据保留）',
+  'apps.refreshTooltip': '刷新（F5）· {key}+点击或 {key}+F5：从插件重新安装页面（设置和数据保留）',
   'apps.pageFrame': '应用页面',
   'apps.pageFailed': '无法打开应用页面。',
   'topbar.pluginItemWaiting': '请先设置此插件的服务商',

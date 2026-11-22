@@ -874,7 +874,7 @@ export const ja: Messages = {
   'apps.dataFileError': 'アプリのデータファイルを読み込めなかったため、前回のデータを表示しています。',
   'apps.help': 'お手伝いしましょうか？',
   'apps.helpTooltip': 'このアプリの横でチャット：使い方を聞くか、アシスタントに代わりに操作してもらえます',
-  'apps.refreshTooltip': '更新 · {key}+クリック：プラグインからページを再インストール（設定とデータは保持されます）',
+  'apps.refreshTooltip': '更新（F5）· {key}+クリックまたは {key}+F5：プラグインからページを再インストール（設定とデータは保持されます）',
   'apps.pageFrame': 'アプリのページ',
   'apps.pageFailed': 'アプリのページを開けませんでした。',
   'topbar.pluginItemWaiting': 'このプラグインは先にプロバイダーの設定が必要です',

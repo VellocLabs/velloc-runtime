@@ -3,7 +3,7 @@
 // the latest build or data error. A build error's text is the compiler's own,
 // shown as written.
 
-import { useState, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode, type RefObject } from 'react'
 import { MessageCircleIcon, RefreshCwIcon } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
@@ -38,10 +38,46 @@ function Tip({ label, children }: { label: string; children: ReactNode }) {
 /**
  * Help and Refresh, before the pane's own Expand and Close. Refresh builds
  * the entry again and raises the app's `app.show`; a Ctrl+click (Cmd+click on
- * macOS) reinstalls the page: the plugin's seed is copied over the app folder
+ * macOS), or Ctrl+F5, reinstalls the page; F5 refreshes: the plugin's seed is copied over the app folder
  * first, config and data kept. A failed build keeps the previous page; the
  * bar below shows the error.
  */
+/**
+ * F5 and Ctrl+F5 (Cmd+F5 on macOS) while the app's pane has the focus, or
+ * was last pressed in: `refresh(false)` and `refresh(true)`. Either key is
+ * swallowed there, so the page itself never reloads.
+ */
+export function useAppRefreshKeys(anchor: RefObject<HTMLElement | null>, refresh: (reinstall: boolean) => void): void {
+  const latest = useRef(refresh)
+  latest.current = refresh
+  useEffect(() => {
+    let pressedInPane = false
+    const paneOf = () => anchor.current?.closest('[data-pane]') ?? null
+    const onPointer = (event: PointerEvent) => {
+      const pane = paneOf()
+      pressedInPane = !!pane && event.target instanceof Node && pane.contains(event.target)
+    }
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== 'F5') return
+      const pane = paneOf()
+      if (!pane) return
+      const focused = document.activeElement
+      const inPane = focused && focused !== document.body ? pane.contains(focused) : pressedInPane
+      if (!inPane) return
+      event.preventDefault()
+      event.stopPropagation()
+      if (event.repeat) return
+      latest.current(event.ctrlKey || event.metaKey)
+    }
+    window.addEventListener('pointerdown', onPointer, true)
+    window.addEventListener('keydown', onKey, true)
+    return () => {
+      window.removeEventListener('pointerdown', onPointer, true)
+      window.removeEventListener('keydown', onKey, true)
+    }
+  }, [anchor])
+}
+
 export function AppPaneActions({ board, sessionId, busy = false }: { board: AppBoard; sessionId: string; busy?: boolean }) {
   const t = useT()
   const [pending, setPending] = useState<'refresh' | 'reinstall' | null>(null)
@@ -57,6 +93,8 @@ export function AppPaneActions({ board, sessionId, busy = false }: { board: AppB
       .finally(() => setPending(null))
   }
   const help = t('apps.help')
+  const refreshButton = useRef<HTMLButtonElement>(null)
+  useAppRefreshKeys(refreshButton, reinstall => run(reinstall ? 'reinstall' : 'refresh'))
   const mac = typeof navigator !== 'undefined' && isMacPlatform(navigator.platform)
   const refresh = t('apps.refreshTooltip', { key: mac ? 'Cmd' : 'Ctrl' })
   // Portaled into the pane header, so outside the pane's own provider.
@@ -84,6 +122,7 @@ export function AppPaneActions({ board, sessionId, busy = false }: { board: AppB
           variant="ghost"
           size="icon-xs"
           className="size-7"
+          ref={refreshButton}
           data-slot="app-refresh"
           aria-label={refresh}
           disabled={pending !== null || busy}

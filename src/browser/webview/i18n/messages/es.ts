@@ -881,7 +881,7 @@ export const es: Messages = {
   'apps.dataFileError': 'No se pudo leer el archivo de datos de la aplicación, así que se muestran los últimos datos.',
   'apps.help': '¿Necesitas ayuda?',
   'apps.helpTooltip': 'Chat junto a esta app: pregunta cómo usarla o deja que el asistente lo haga por ti',
-  'apps.refreshTooltip': 'Actualizar · {key}+clic: reinstalar la página desde el complemento (se conservan la configuración y los datos)',
+  'apps.refreshTooltip': 'Actualizar (F5) · {key}+clic o {key}+F5: reinstalar la página desde el complemento (se conservan la configuración y los datos)',
   'apps.pageFrame': 'Página de la aplicación',
   'apps.pageFailed': 'No se pudo abrir la página de la aplicación.',
   'topbar.pluginItemWaiting': 'Este complemento necesita que configures antes su proveedor',

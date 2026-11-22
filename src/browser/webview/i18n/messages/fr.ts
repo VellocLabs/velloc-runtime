@@ -881,7 +881,7 @@ export const fr: Messages = {
   'apps.dataFileError': "Le fichier de données de l'application est illisible, les dernières données sont affichées.",
   'apps.help': "Besoin d'un coup de main ?",
   'apps.helpTooltip': "Discuter à côté de cette app : demandez comment l'utiliser, ou laissez l'assistant le faire pour vous",
-  'apps.refreshTooltip': 'Actualiser · {key}+clic : réinstaller la page depuis l’extension (réglages et données conservés)',
+  'apps.refreshTooltip': 'Actualiser (F5) · {key}+clic ou {key}+F5 : réinstaller la page depuis l’extension (réglages et données conservés)',
   'apps.pageFrame': "Page de l'application",
   'apps.pageFailed': "Impossible d'ouvrir la page de l'application.",
   'topbar.pluginItemWaiting': "Cette extension a d'abord besoin que son fournisseur soit configuré",
