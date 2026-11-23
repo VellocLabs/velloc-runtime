@@ -48,11 +48,16 @@ function resultText(action: string, result: unknown): string {
   if (encoder.encode(json).byteLength <= APP_ACTION_CONTEXT_MAX_BYTES) {
     return `The app's script handled "${action}" and answered:\n${json}`
   }
-  // Cut the JSON at a byte boundary; slicing the string by code units would
-  // leave a partial code point or overshoot the budget for multibyte text.
-  let cut = APP_ACTION_CONTEXT_MAX_BYTES
-  while (cut > 0 && encoder.encode(json.slice(0, cut)).byteLength > APP_ACTION_CONTEXT_MAX_BYTES) cut -= 1
-  return `The app's script handled "${action}" and answered:\n${json.slice(0, cut)}… (cut)`
+  // Walk the string once and stop on the last code point that fits the byte
+  // budget; a code-unit slice can leave half of an astral character.
+  let cut = 0
+  for (const character of json) {
+    const bytes = encoder.encode(character).byteLength
+    if (cut + bytes > APP_ACTION_CONTEXT_MAX_BYTES) break
+    cut += bytes
+  }
+  const text = new TextDecoder().decode(encoder.encode(json).slice(0, cut))
+  return `The app's script handled "${action}" and answered:\n${text}… (cut)`
 }
 
 export function createAppActionTool(options: AppActionToolOptions): ToolContract<AppActionToolInput, string> {

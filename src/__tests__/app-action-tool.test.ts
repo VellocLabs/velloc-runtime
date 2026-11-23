@@ -135,13 +135,15 @@ describe('AppAction', () => {
     expect(offered).toEqual([])
   })
 
-  it('cuts a multibyte script answer at the byte limit, not at a code-unit count', async () => {
-    const answer = '中'.repeat(APP_ACTION_CONTEXT_MAX_BYTES / 3)
-    const { call } = rig(['save'], () => ({ status: 'handled', result: answer }))
-    const result = await call({ action: 'save' })
-    expect(result.data).toMatch(/… \(cut\)$/)
-    const text = result.data.slice(result.data.indexOf('answered:') + 'answered:'.length + 1)
-    expect(new TextEncoder().encode(text.slice(0, text.indexOf('…'))).byteLength).toBeLessThanOrEqual(APP_ACTION_CONTEXT_MAX_BYTES)
+  it('cuts a multibyte script answer at the byte limit, on a code-point boundary', async () => {
+    for (const answer of ['中'.repeat(APP_ACTION_CONTEXT_MAX_BYTES / 3), '😀'.repeat(APP_ACTION_CONTEXT_MAX_BYTES / 4)]) {
+      const { call } = rig(['save'], () => ({ status: 'handled', result: answer }))
+      const result = await call({ action: 'save' })
+      expect(result.data.endsWith('… (cut)')).toBe(true)
+      const text = result.data.slice(result.data.indexOf('answered:') + 'answered:'.length + 1, -'… (cut)'.length - 1)
+      expect(new TextEncoder().encode(text).byteLength).toBeLessThanOrEqual(APP_ACTION_CONTEXT_MAX_BYTES)
+      expect([...text].every(character => character.codePointAt(0)! > 0xFFFF || character.length === 1)).toBe(true)
+    }
   })
 
   it('a closed session offers nothing; with no dispatch seated the script is unavailable', async () => {
