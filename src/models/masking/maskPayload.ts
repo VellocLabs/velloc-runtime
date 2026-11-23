@@ -6,7 +6,8 @@
  * calls and their arguments, tool results, thinking text), the system prompt,
  * the user / system context values, tool definitions (name, description and
  * every string and object key in the schema and examples), the body extension
- * and the tool-use context. Object keys are masked like values. A part is
+ * and the tool-use context. Object keys are masked like values, except inside
+ * a host replay envelope's `value`. A part is
  * judged by its `type` wherever it sits (a tool result's content too): an
  * image and redacted thinking are left whole, a thinking part's `signature`
  * is left as is (a host replay envelope's `value` text excepted, its signed
@@ -31,7 +32,7 @@ import type { CompiledMasking, MaskingHit } from './maskingRules'
 import { MaskingResidualError, MaskingUndecodableError } from './egressGuard'
 import { traceEntries, type ReplacementEntry } from './replacementTrace'
 import { REASONING_REPLAY_PREFIX } from '../drivers/hostCallOptions'
-import { isHostDict, parseHostJson, writeHostJson, type HostValue } from '../drivers/hostValue'
+import { findString, isHostDict, parseHostJson, writeHostJson, type HostValue } from '../drivers/hostValue'
 
 export type MaskingWhere = 'messages' | 'system' | 'tools' | 'extension'
 
@@ -139,10 +140,10 @@ export class PayloadMasker {
   /**
    * A provider-signed field is left as is, except a host replay envelope
    * (`velloc-replay-v1:{…}`): its `value` is reasoning text the provider will
-   * read, so its text is masked while the signatures and encrypted blobs it
-   * carries stay byte-exact; `provider`, `model` and `field` are kept so the
-   * envelope still matches its target. An envelope that is not JSON is left
-   * whole for the egress guard to judge.
+   * read, so its text is masked while the signatures, encrypted blobs and
+   * opaque parts it carries stay byte-exact; `provider`, `model` and `field`
+   * are kept so the envelope still matches its target. An envelope that is
+   * not JSON is left whole for the egress guard to judge.
    */
   private opaqueField(item: unknown, where: string): unknown {
     if (typeof item !== 'string' || !item.startsWith(REASONING_REPLAY_PREFIX)) return item
@@ -157,9 +158,13 @@ export class PayloadMasker {
   }
 
   /** A replay value with its reasoning text masked; signed or encrypted
-   *  members and object keys stay as they are. */
+   *  members, object keys and opaque parts stay as they are. */
   private replayValue(value: HostValue, where: string): HostValue {
     if (typeof value === 'string') return this.text(value, where)
+    if (isHostDict(value)) {
+      const type = findString(value, 'type')
+      if (type !== undefined && (OPAQUE_PARTS.has(type) || type === 'document')) return value
+    }
     if (Array.isArray(value)) {
       let changed = false
       const out = value.map(item => {

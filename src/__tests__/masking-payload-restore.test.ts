@@ -170,6 +170,25 @@ describe('maskPayload: what counts as opaque', () => {
     ])
   })
 
+  it('leaves opaque parts inside a replay envelope value whole', () => {
+    const image = { type: 'image', data: 'AcmeCo', mimeType: 'image/png' }
+    const signature = encodeReasoningReplaySignature('gw', 'gpt-x', hostDict([
+      ['type', 'reasoning-replay'],
+      ['field', 'reasoning_details'],
+      ['value', hostValueFromJs([image, { type: 'redacted_thinking', data: 'widget' }, { type: 'text', text: 'AcmeCo' }])!],
+    ]))!
+    const original: BridgeModelRequestPayload = {
+      messages: [{ role: 'assistant', content: [{ type: 'thinking', thinking: 'a', signature }] }],
+    }
+    const sent = (maskPayload(original, new PayloadMasker(masking, [])).messages[0]!.content as any[])[0].signature as string
+    const replay = decodeReasoningReplaySignatureFor(sent, 'gw', 'gpt-x')
+    expect(hostValueToJs(replay!.get('value')!)).toEqual([
+      image,
+      { type: 'redacted_thinking', data: 'widget' },
+      { type: 'text', text: 'Northwind' },
+    ])
+  })
+
   it('leaves a replay envelope with nothing to mask, or one that is not JSON, unchanged', () => {
     const signatures = encodeReasoningReplaySignature('gw', 'gpt-x', hostDict([
       ['type', 'reasoning-replay'],
