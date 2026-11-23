@@ -26,12 +26,14 @@
 import type { BrowserBridgeTransport } from '../../browser/bridge/browserBridgeProtocol'
 import { createBridgeRoute } from '../../browser/bridge/browserBridgeProtocol'
 import type { RuntimeConfig } from '../../runtime/interfaces/RuntimeConfig'
-import { userDataRoot } from '../../utils/conversationStoragePaths'
+import { SqliteSessionMetaStore } from '../../browser/storage/SqliteSessionMetaStore'
+import { getSessionMetaDbPath, projectsHome, userDataRoot } from '../../utils/conversationStoragePaths'
 import { traceLine } from '../../utils/debugLog'
 import { resolveHomeDirViaBridge } from '../../utils/resolveHomeDirViaBridge'
 import { joinRuntimePath } from '../../utils/runtimePaths'
 import { DAY_MS } from './requestLogSchema'
 import { RequestLogStore, type FileOpRow, type RequestLogRow } from './requestLogStore'
+import { projectKeyOf } from './sessionProjects'
 
 export const REQUEST_LOG_QUEUE_MAX = 256
 export const REOPEN_AFTER_MS = 60_000
@@ -51,11 +53,13 @@ export function requestLogPath(homeDir: string): string {
 }
 
 type CapStep = 'count' | 'trim'
+/** A step the writer runs on its own, with no row: the row cap's, or the one-time project backfill. */
+type OwnStep = CapStep | 'projects'
 
 type Waiting =
   | { row: RequestLogRow; via?: BrowserBridgeTransport }
   | { fileOps: readonly FileOpRow[]; via?: BrowserBridgeTransport }
-  | { cap: CapStep }
+  | { cap: OwnStep }
 
 let attached: BrowserBridgeTransport | undefined
 let config: RuntimeConfig | undefined
@@ -65,6 +69,8 @@ let current: BrowserBridgeTransport | undefined
  *  names none, falls back to it when no bridge is attached. */
 let lastWritten: BrowserBridgeTransport | undefined
 let store: RequestLogStore | undefined
+/** The home the open store's file is under. */
+let storeHome: string | undefined
 let closedUntil = 0
 let queue: Waiting[] = []
 let draining: Promise<void> | undefined
@@ -153,9 +159,10 @@ async function openStore(transport: BrowserBridgeTransport): Promise<RequestLogS
   })
   await opened.ensureSchema()
   store = opened
+  storeHome = home
   if (!capStarted) {
     capStarted = true
-    queue.push({ cap: 'count' })
+    queue.push({ cap: 'projects' }, { cap: 'count' })
     drain()
   }
   return opened
@@ -208,9 +215,28 @@ async function capStep(opened: RequestLogStore, step: CapStep): Promise<void> {
   }
 }
 
+/** Fills the project of rows written before it was recorded, once per file,
+ *  from the session metadata beside the transcripts. */
+async function projectStep(opened: RequestLogStore, transport: BrowserBridgeTransport): Promise<void> {
+  if (!storeHome) return
+  const meta = new SqliteSessionMetaStore({ transport, dbPath: getSessionMetaDbPath(projectsHome(storeHome)) })
+  try {
+    await opened.backfillProjects(async () => {
+      const keyed = new Map<string, string>()
+      for (const [sessionId, root] of await meta.readProjectRoots()) {
+        const key = projectKeyOf(root)
+        if (key) keyed.set(sessionId, key)
+      }
+      return keyed
+    })
+  } catch (error) {
+    warn('the projects of earlier rows were not filled', error)
+  }
+}
+
 /** Drops the waiting entries. A row-cap step among them comes again later. */
 function dropWaiting(entries: Waiting[]): void {
-  if (entries.some(entry => 'cap' in entry)) armCap('count', ROW_RECHECK_MS)
+  if (entries.some(entry => 'cap' in entry && entry.cap !== 'projects')) armCap('count', ROW_RECHECK_MS)
   queue = queue.filter(entry => !entries.includes(entry))
 }
 
@@ -257,6 +283,7 @@ async function writeWaiting(): Promise<void> {
     try {
       if ('row' in next) await opened.record(next.row)
       else if ('fileOps' in next) await opened.recordFileOps(next.fileOps)
+      else if (next.cap === 'projects') await projectStep(opened, transport)
       else await capStep(opened, next.cap)
       lastWritten = transport
     } catch (error) {
@@ -325,6 +352,7 @@ export function resetRequestLog(): void {
   current = undefined
   lastWritten = undefined
   store = undefined
+  storeHome = undefined
   closedUntil = 0
   queue = []
   dropped = 0

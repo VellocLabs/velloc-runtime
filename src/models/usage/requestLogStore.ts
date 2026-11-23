@@ -47,6 +47,7 @@ import {
   TRIM_STATEMENTS,
   WRITE_VERSION_SQL,
 } from './requestLogSchema'
+import { sessionProjectOf } from './sessionProjects'
 
 export type RequestLogUsage = {
   inputTokens?: number
@@ -105,9 +106,9 @@ export type RequestLogRow = {
 }
 
 /** Who asked, as a request's context names it. */
-export type RequestLogCaller = Pick<RequestLogRow, 'sessionId' | 'purpose' | 'source' | 'agentId'>
+export type RequestLogCaller = Pick<RequestLogRow, 'sessionId' | 'purpose' | 'source' | 'agentId' | 'project'>
 
-/** The caller fields of a request context; a field it does not name as text is left out. */
+/** The caller fields of a request context, with the project its session registered; a field it does not name as text is left out. */
 export function requestLogCallerOf(context: unknown): RequestLogCaller {
   const named = context && typeof context === 'object' ? (context as Record<string, unknown>) : {}
   const caller: RequestLogCaller = {}
@@ -115,6 +116,8 @@ export function requestLogCallerOf(context: unknown): RequestLogCaller {
   if (typeof named.purpose === 'string' && named.purpose) caller.purpose = named.purpose
   if (typeof named.querySource === 'string' && named.querySource) caller.source = named.querySource
   if (typeof named.agentId === 'string' && named.agentId) caller.agentId = named.agentId
+  const project = sessionProjectOf(caller.sessionId)
+  if (project) caller.project = project
   return caller
 }
 
@@ -259,6 +262,12 @@ function readText(value: SqlValue | undefined): string | undefined {
 
 let nextRequest = 0
 const requestPrefix = `reqlog-${Math.random().toString(36).slice(2, 8)}`
+
+const READ_BACKFILL_SQL = "SELECT value FROM log_meta WHERE key = 'project_backfill'"
+const MARK_BACKFILL_SQL = "INSERT OR REPLACE INTO log_meta (key, value) VALUES ('project_backfill', 1)"
+const UNFILLED_SESSIONS_SQL =
+  'SELECT DISTINCT n.text FROM sends s JOIN names n ON n.id = s.session WHERE s.project IS NULL ORDER BY n.text'
+const FILL_PROJECT_SQL = `UPDATE sends SET project = ${NAME_ID} WHERE project IS NULL AND session = ${NAME_ID}`
 
 /** A call id no other call of this or another runtime is likely to share. */
 let callCounter = Math.floor(Math.random() * 4096)
@@ -457,6 +466,31 @@ export class RequestLogStore {
     if (rows.length === 0) return
     await this.ensureSchema()
     await this.write(fileOpStatements(rows))
+  }
+
+  /** Fills `sends.project` once for rows written before it was recorded:
+   *  each session's project from `readRoots` (session id to project, in the
+   *  form `projectKeyOf` gives), in one transaction with the mark that it ran.
+   *  A session `readRoots` does not name stays without; when it names none,
+   *  nothing is marked. Answers the sessions filled, or null when it had
+   *  already run. */
+  async backfillProjects(readRoots: () => Promise<ReadonlyMap<string, string>>): Promise<number | null> {
+    await this.ensureSchema()
+    if ((await this.read(READ_BACKFILL_SQL)).rows.length > 0) return null
+    const sessions = (await this.read(UNFILLED_SESSIONS_SQL)).rows.map(row => readText(row[0])).filter((id): id is string => id !== undefined)
+    const roots = sessions.length > 0 ? await readRoots() : new Map<string, string>()
+    // No metadata at all for rows that need it: likely an unreadable file, so the next open tries again.
+    if (sessions.length > 0 && roots.size === 0) return 0
+    const statements: Statement[] = []
+    let filled = 0
+    for (const session of sessions) {
+      const project = roots.get(session)
+      if (!project) continue
+      filled += 1
+      statements.push({ sql: INTERN_NAME_SQL, params: [project] }, { sql: FILL_PROJECT_SQL, params: [project, session] })
+    }
+    await this.write([...statements, { sql: MARK_BACKFILL_SQL }])
+    return filled
   }
 
   /** Rows of both tables together. */

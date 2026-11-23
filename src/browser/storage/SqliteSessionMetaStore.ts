@@ -285,6 +285,7 @@ const SEED_SQL =
   `INSERT OR IGNORE INTO session_meta (${COLUMN_LIST}) VALUES (${PLACEHOLDERS})`
 const SELECT_ONE_SQL = `SELECT ${COLUMN_LIST} FROM session_meta WHERE session_id = ?`
 const SELECT_ALL_SQL = `SELECT ${COLUMN_LIST} FROM session_meta`
+const SELECT_PROJECT_ROOTS_SQL = 'SELECT session_id, project_root FROM session_meta WHERE project_root IS NOT NULL'
 const DELETE_SQL = 'DELETE FROM session_meta WHERE session_id = ?'
 const DELETE_BY_PARENT_SQL =
   'DELETE FROM session_meta WHERE parent_session_id = ?'
@@ -513,6 +514,18 @@ export class SqliteSessionMetaStore {
    *  rows are filtered out (they live in the DB but never list). Each entry
    *  carries its stored routing dir (`project_dir`) so the router can restore a
    *  projectRoot-less session's folder without a per-folder scan. */
+  /** Every stored session's `project_root` as written, read only: no schema
+   *  step runs, and a file that does not exist yet answers none. */
+  async readProjectRoots(): Promise<Map<string, string>> {
+    const roots = new Map<string, string>()
+    for (const row of await this.query(SELECT_PROJECT_ROOTS_SQL, [])) {
+      const sessionId = readText(row[0])
+      const projectRoot = readText(row[1])
+      if (sessionId && projectRoot) roots.set(sessionId, projectRoot)
+    }
+    return roots
+  }
+
   async listAll(): Promise<Array<{ sessionId: string } & StoredSessionMeta>> {
     await this.ensureSchema()
     const rows = await this.query(SELECT_ALL_SQL, [])
