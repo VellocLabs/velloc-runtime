@@ -69,8 +69,8 @@
   bottom: 0;
 }
 
-/* A bar whose children rendered nothing (an empty template list) takes no room and shows nothing. */
-.a2-sticky-bar:not(:has(:not(div))) {
+/* A bar whose only elements are empty divs (an empty template list) takes no room and shows nothing. */
+.a2-sticky-bar:not(:has(:not(div:empty))) {
   padding-block: 0;
   background: transparent;
 }

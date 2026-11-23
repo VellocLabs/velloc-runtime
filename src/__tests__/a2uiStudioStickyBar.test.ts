@@ -1,10 +1,15 @@
+// @vitest-environment happy-dom
 // StickyBar (F-1): a studio layout that stays at the top or bottom edge of the
 // page while the page scrolls.
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { createElement, type ReactElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
+import { cleanup, render as mount, waitFor } from '@testing-library/react'
+import { exportA2UICatalog } from '@copilotkit/react-core/v2/generative-ui'
+import { studioUI } from '../browser/webview/a2ui/studio/studioCatalog'
+import { StudioSurfaceHost } from '../browser/webview/a2ui/studio/StudioSurfaceHost'
 import description from '../toolkit/builtin/a2ui/express/studio-catalog.json'
 import { createStudioExpressCompiler } from '../toolkit/builtin/a2ui/express/studioExpress'
 import { layoutRenderers } from '../browser/webview/a2ui/studio/vendor/catalog/renderers/layout'
@@ -54,8 +59,50 @@ describe('studio StickyBar (F-1)', () => {
     expect(rule).toMatch(/background:\s*var\(--background\)/)
     expect(CSS).toMatch(/\.a2-sticky-bar\[data-edge="top"\] \{\s*top:\s*0/)
     expect(CSS).toMatch(/\.a2-sticky-bar\[data-edge="bottom"\] \{\s*bottom:\s*0/)
-    const empty = /\.a2-sticky-bar:not\(:has\(:not\(div\)\)\) \{([^}]*)\}/.exec(CSS)?.[1] ?? ''
-    expect(empty).toMatch(/padding-block:\s*0/)
-    expect(empty).toMatch(/background:\s*transparent/)
+  })
+})
+
+describe('an empty studio StickyBar (F-1)', () => {
+  const surfaceCompiler = createStudioExpressCompiler(exportA2UICatalog(studioUI as never) as Record<string, unknown>)
+  const emptyRule = /\.a2-sticky-bar(:[^{]+?)\s*\{([^}]*)\}/.exec(CSS)
+  const emptySelector = emptyRule?.[1] ?? ''
+
+  afterEach(() => cleanup())
+
+  async function bar(lines: string[], rows: unknown[] = []): Promise<Element> {
+    const result = surfaceCompiler.compile(['surface("p")', 'root = Column([body, bar])', 'body = Text("page")', ...lines].join('\n'))
+    if (!result.ok) throw new Error(result.message)
+    const operations = [...result.messages, { version: '1.0', updateDataModel: { surfaceId: 'p', path: '/data', value: { rows } } }]
+    const view = mount(createElement(StudioSurfaceHost, { surfaceId: 'p', operations }))
+    return waitFor(() => {
+      const found = view.container.querySelector('.a2-sticky-bar')
+      if (!found) throw new Error('no bar yet')
+      return found
+    })
+  }
+
+  it('drops its padding and background', () => {
+    expect(emptySelector).not.toBe('')
+    expect(emptyRule?.[2]).toMatch(/padding-block:\s*0/)
+    expect(emptyRule?.[2]).toMatch(/background:\s*transparent/)
+  })
+
+  it('is empty when its template list has no rows, directly or inside a Column', async () => {
+    const direct = await bar(['bar = StickyBar(_template($/data/rows, row), edge="bottom")', 'row = Alert("note")'])
+    expect(direct.matches(emptySelector)).toBe(true)
+    cleanup()
+    const nested = await bar(['bar = StickyBar([list], edge="bottom")', 'list = Column(_template($/data/rows, row))', 'row = Alert("note")'])
+    expect(nested.matches(emptySelector)).toBe(true)
+  })
+
+  it('is not empty when it shows something, even something drawn only with divs', async () => {
+    const notice = await bar(['bar = StickyBar(_template($/data/rows, row), edge="bottom")', 'row = Alert("note")'], [{ id: 1 }])
+    expect(notice.matches(emptySelector)).toBe(false)
+    cleanup()
+    const loading = await bar(['bar = StickyBar([s])', 's = Skeleton()'])
+    expect(loading.matches(emptySelector)).toBe(false)
+    cleanup()
+    const rule = await bar(['bar = StickyBar([d])', 'd = Divider()'])
+    expect(rule.matches(emptySelector)).toBe(false)
   })
 })
