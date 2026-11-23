@@ -399,21 +399,46 @@ export type { RegistryData }
 export const APP_SESSION_TOOL_TYPE = 'code'
 
 /**
- * The template of an app's own session (F-40): the plugin's prompt, title and
- * model on the tool and skill config of `APP_SESSION_TOOL_TYPE`. Security: the
- * plugin's `tools`, `skills`, `mcp` and the other config keys are not read, so
- * a plugin neither narrows nor widens what such a session is offered.
+ * Security: the MCP boundary a plugin's template declares (F-25, F-40). An
+ * app's own session runs on the Code tools and skills, but `mcp` and
+ * `noExecution` stay the plugin's: a template that confined itself to its own
+ * plugin's servers, or ran nothing, stays confined.
+ */
+function mcpBoundaryOf(config: TemplateConfig | undefined): Pick<TemplateConfig, 'mcp' | 'noExecution'> {
+  return { mcp: config?.mcp, noExecution: config?.noExecution }
+}
+
+/**
+ * The template of an app's own session (F-40): the plugin's prompt, title,
+ * model and MCP boundary on the tool and skill config of
+ * `APP_SESSION_TOOL_TYPE`. Security: the plugin's `tools`, `skills` and agent
+ * roster are not read, so a plugin neither narrows nor widens the tools such
+ * a session is offered.
  */
 export function appSessionTemplate(own: ParsedTemplate | undefined): ParsedTemplate | undefined {
   const base = getTemplate(APP_SESSION_TOOL_TYPE)
   if (!own || !base) return own
   return {
     ...own,
-    config: { ...base.config, type: own.config.type, description: own.config.description, model: own.config.model },
+    config: {
+      ...base.config,
+      ...mcpBoundaryOf(own.config),
+      type: own.config.type,
+      description: own.config.description,
+      model: own.config.model,
+    },
   }
 }
 
-/** A session's tool and skill config: its own type's, or that of the type it takes them from. */
+/**
+ * A session's tool and skill config: its own type's, or that of the type it
+ * takes them from. Security: a session that takes its tools from another type
+ * keeps its own `mcp` / `noExecution`, so the MCP scope and a skill body's
+ * inline shell follow the session's own template (F-40).
+ */
 export function sessionToolConfig(session: { templateType?: string; toolTemplateType?: string }): TemplateConfig | undefined {
-  return getTemplate(session.toolTemplateType ?? session.templateType ?? '')?.config
+  const own = session.templateType ? getTemplate(session.templateType)?.config : undefined
+  const tool = getTemplate(session.toolTemplateType ?? session.templateType ?? '')?.config
+  if (!tool || session.toolTemplateType === undefined) return tool
+  return { ...tool, ...mcpBoundaryOf(own) }
 }

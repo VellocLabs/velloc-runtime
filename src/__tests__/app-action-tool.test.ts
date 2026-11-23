@@ -23,6 +23,7 @@ import {
   registerPluginType,
   sessionToolConfig,
   templateAllowsInlineShell,
+  templateMcpScope,
 } from '../prompting/templateRegistry'
 
 const FOLDER = 'C:/home/.velloc/shared-workspace/app-pay-board'
@@ -176,16 +177,23 @@ describe("an app session's tools and skills are the Code type's", () => {
   const TEMPLATE = ['---', 'type: pay:board', 'description: The pay board.', 'tools: [read]', 'skills: []', 'mcp: plugin', '---', '', '## prompt', 'You run the pay board.', ''].join('\n')
   const NAMES = ['Read', 'Bash', 'Edit', 'Write', 'Grep', 'Glob', 'Skill', 'Agent', 'WebFetch', 'TodoWrite'].map(name => ({ name }))
 
-  it('the template of an app session keeps the plugin prompt and takes the Code config in place of its own', async () => {
+  it('the template of an app session keeps the plugin prompt and MCP boundary, and takes the Code config otherwise', async () => {
     await registerPluginType('pay:board', [['pay:board/template.md', TEMPLATE]])
     const own = getTemplate('pay:board')!
     const code = getTemplate(APP_SESSION_TOOL_TYPE)!
     expect(own.config.tools).not.toEqual(code.config.tools)
     const session = appSessionTemplate(own)!
     expect(session.prompt).toEqual(own.prompt)
-    expect(session.config).toEqual({ ...code.config, type: 'pay:board', description: 'The pay board.', model: own.config.model })
+    expect(session.config).toEqual({
+      ...code.config,
+      mcp: 'plugin',
+      noExecution: false,
+      type: 'pay:board',
+      description: 'The pay board.',
+      model: own.config.model,
+    })
     expect(session.config.skills).toEqual(code.config.skills)
-    expect(session.config.mcp).toEqual(code.config.mcp)
+    expect(session.config.tools).toEqual(code.config.tools)
     // The same tools pass as in a Code session, the shell among them; the plugin's own list would keep fewer.
     const kept = applyTemplateToolAllowlist(NAMES, session.config, () => false).map(tool => tool.name)
     expect(kept).toEqual(applyTemplateToolAllowlist(NAMES, code.config, () => false).map(tool => tool.name))
@@ -193,13 +201,25 @@ describe("an app session's tools and skills are the Code type's", () => {
     expect(applyTemplateToolAllowlist(NAMES, own.config, () => false).map(tool => tool.name)).not.toContain('Bash')
   })
 
-  it("a session that names a tool type reads that type's config; any other reads its own", async () => {
+  it("a session that names a tool type reads that type's tools and its own MCP scope", async () => {
     await registerPluginType('pay:board', [['pay:board/template.md', TEMPLATE]])
     const code = getTemplate(APP_SESSION_TOOL_TYPE)!.config
-    expect(sessionToolConfig({ templateType: 'pay:board', toolTemplateType: APP_SESSION_TOOL_TYPE })).toBe(code)
+    const appSession = sessionToolConfig({ templateType: 'pay:board', toolTemplateType: APP_SESSION_TOOL_TYPE })!
+    expect(appSession.tools).toBe(code.tools)
+    expect(appSession.skills).toBe(code.skills)
+    expect(templateMcpScope(appSession)).toBe('plugin')
     expect(sessionToolConfig({ templateType: 'pay:board' })).toBe(getTemplate('pay:board')!.config)
     expect(sessionToolConfig({})).toBeUndefined()
     expect(templateAllowsInlineShell(sessionToolConfig({ templateType: 'pay:board' }))).toBe(false)
+    expect(templateAllowsInlineShell(appSession)).toBe(false)
+  })
+
+  it("an app session whose plugin template declares no MCP scope takes the Code tools and the every-source scope", async () => {
+    const open = ['---', 'type: pay:board', 'description: The pay board, open.', 'tools: [read]', '---', '', '## prompt', 'You run the pay board.', ''].join('\n')
+    await registerPluginType('pay:board', [['pay:board/template.md', open]])
+    const session = appSessionTemplate(getTemplate('pay:board'))!
+    expect(session.config.mcp).toBeUndefined()
+    expect(templateMcpScope(session.config)).toBe('all')
     expect(templateAllowsInlineShell(sessionToolConfig({ templateType: 'pay:board', toolTemplateType: APP_SESSION_TOOL_TYPE }))).toBe(true)
   })
 })
