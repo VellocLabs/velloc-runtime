@@ -265,9 +265,20 @@ const requestPrefix = `reqlog-${Math.random().toString(36).slice(2, 8)}`
 
 const READ_BACKFILL_SQL = "SELECT value FROM log_meta WHERE key = 'project_backfill'"
 const MARK_BACKFILL_SQL = "INSERT OR REPLACE INTO log_meta (key, value) VALUES ('project_backfill', 1)"
-const UNFILLED_SESSIONS_SQL =
-  'SELECT DISTINCT n.text FROM sends s JOIN names n ON n.id = s.session WHERE s.project IS NULL ORDER BY n.text'
-const FILL_PROJECT_SQL = `UPDATE sends SET project = ${NAME_ID} WHERE project IS NULL AND session = ${NAME_ID}`
+const ANY_UNFILLED_SQL = 'SELECT 1 FROM sends WHERE project IS NULL AND session IS NOT NULL LIMIT 1'
+const BACKFILL_ROOTS_SQL = [
+  'CREATE TEMP TABLE IF NOT EXISTS backfill_roots (session TEXT PRIMARY KEY, project TEXT NOT NULL)',
+  'DELETE FROM temp.backfill_roots',
+]
+const ADD_BACKFILL_ROOT_SQL = 'INSERT OR REPLACE INTO temp.backfill_roots (session, project) VALUES (?, ?)'
+const INTERN_BACKFILL_PROJECTS_SQL =
+  'INSERT OR IGNORE INTO names (text) SELECT DISTINCT r.project FROM temp.backfill_roots r JOIN names n ON n.text = r.session'
+// One pass over `sends`: it has no index on `session`.
+const FILL_PROJECTS_SQL = `UPDATE sends SET project = (
+    SELECT p.id FROM names n JOIN temp.backfill_roots r ON r.session = n.text JOIN names p ON p.text = r.project
+    WHERE n.id = sends.session)
+  WHERE project IS NULL AND session IN (SELECT n.id FROM names n JOIN temp.backfill_roots r ON r.session = n.text)`
+const DROP_BACKFILL_ROOTS_SQL = 'DROP TABLE temp.backfill_roots'
 
 /** A call id no other call of this or another runtime is likely to share. */
 let callCounter = Math.floor(Math.random() * 4096)
@@ -472,25 +483,25 @@ export class RequestLogStore {
    *  each session's project from `readRoots` (session id to project, in the
    *  form `projectKeyOf` gives), in one transaction with the mark that it ran.
    *  A session `readRoots` does not name stays without; when it names none,
-   *  nothing is marked. Answers the sessions filled, or null when it had
-   *  already run. */
+   *  nothing is marked. Answers the rows filled, or null when it had already
+   *  run. */
   async backfillProjects(readRoots: () => Promise<ReadonlyMap<string, string>>): Promise<number | null> {
     await this.ensureSchema()
     if ((await this.read(READ_BACKFILL_SQL)).rows.length > 0) return null
-    const sessions = (await this.read(UNFILLED_SESSIONS_SQL)).rows.map(row => readText(row[0])).filter((id): id is string => id !== undefined)
-    const roots = sessions.length > 0 ? await readRoots() : new Map<string, string>()
+    const unfilled = (await this.read(ANY_UNFILLED_SQL)).rows.length > 0
+    const roots = unfilled ? await readRoots() : new Map<string, string>()
     // No metadata at all for rows that need it: likely an unreadable file, so the next open tries again.
-    if (sessions.length > 0 && roots.size === 0) return 0
+    if (unfilled && roots.size === 0) return 0
     const statements: Statement[] = []
-    let filled = 0
-    for (const session of sessions) {
-      const project = roots.get(session)
-      if (!project) continue
-      filled += 1
-      statements.push({ sql: INTERN_NAME_SQL, params: [project] }, { sql: FILL_PROJECT_SQL, params: [project, session] })
+    let fillAt = -1
+    if (roots.size > 0) {
+      statements.push(...BACKFILL_ROOTS_SQL.map(sql => ({ sql })))
+      for (const [session, project] of roots) statements.push({ sql: ADD_BACKFILL_ROOT_SQL, params: [session, project] })
+      fillAt = statements.push({ sql: INTERN_BACKFILL_PROJECTS_SQL }, { sql: FILL_PROJECTS_SQL }) - 1
+      statements.push({ sql: DROP_BACKFILL_ROOTS_SQL })
     }
-    await this.write([...statements, { sql: MARK_BACKFILL_SQL }])
-    return filled
+    const written = await this.write([...statements, { sql: MARK_BACKFILL_SQL }])
+    return fillAt < 0 ? 0 : (written.results[fillAt]?.rowsAffected ?? 0)
   }
 
   /** Rows of both tables together. */
@@ -659,7 +670,7 @@ export class RequestLogStore {
   }
 
   /** One transaction: every statement, or none. */
-  private async write(statements: Statement[], mode: 'rw' | 'rwc' = 'rw'): Promise<void> {
+  private async write(statements: Statement[], mode: 'rw' | 'rwc' = 'rw') {
     const response = await this.sqlite(createBridgeRoute('sqlite', 'batch'), {
       path: this.dbPath,
       mode,
@@ -667,6 +678,7 @@ export class RequestLogStore {
       statements,
     })
     if (!response.ok) throw new Error(`${response.error.code}: ${response.error.message}`)
+    return response.result
   }
 
   private async sqlite<A extends BrowserBridgeAction<'sqlite'>>(

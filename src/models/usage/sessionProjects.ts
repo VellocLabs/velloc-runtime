@@ -7,7 +7,7 @@
 
 import { normalizeProjectPath } from '../../utils/workspaceState'
 
-const projects = new Map<string, string>()
+const projects = new Map<string, { key: string }>()
 
 /** A project root as the sidebar groups sessions by it. */
 export function projectKeyOf(projectRoot: string): string {
@@ -15,16 +15,26 @@ export function projectKeyOf(projectRoot: string): string {
 }
 
 /** Record the project of `sessionId`; the returned function drops it again,
- *  and only while it is still this entry. */
+ *  and only while it is still this registration. */
 export function registerSessionProject(sessionId: string, projectRoot: string): () => void {
   const key = projectKeyOf(projectRoot)
   if (!key) return () => {}
-  projects.set(sessionId, key)
+  const entry = { key }
+  projects.set(sessionId, entry)
   return () => {
-    if (projects.get(sessionId) === key) projects.delete(sessionId)
+    if (projects.get(sessionId) === entry) projects.delete(sessionId)
   }
 }
 
+/** Record the project of `sessionId` for as long as `scope` lasts. A scope
+ *  already ended registers nothing: it would replace a newer runtime's entry
+ *  and then drop it. */
+export function registerSessionProjectWhile(sessionId: string, projectRoot: string, scope: AbortSignal | undefined): void {
+  if (scope?.aborted) return
+  const drop = registerSessionProject(sessionId, projectRoot)
+  scope?.addEventListener('abort', drop, { once: true })
+}
+
 export function sessionProjectOf(sessionId: string | undefined): string | undefined {
-  return sessionId === undefined ? undefined : projects.get(sessionId)
+  return sessionId === undefined ? undefined : projects.get(sessionId)?.key
 }

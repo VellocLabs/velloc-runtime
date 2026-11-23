@@ -5,7 +5,7 @@ import { normalizeProjectPath } from '../utils/workspaceState'
 import { getSessionMetaDbPath, projectsHome } from '../utils/conversationStoragePaths'
 import { RequestLogStore, requestLogCallerOf, type RequestLogRow } from '../models/usage/requestLogStore'
 import { attachRequestLogBridge, recordRequest, requestLogIdle, requestLogPath, resetRequestLog } from '../models/usage/requestLogWriter'
-import { projectKeyOf, registerSessionProject, sessionProjectOf } from '../models/usage/sessionProjects'
+import { projectKeyOf, registerSessionProject, registerSessionProjectWhile, sessionProjectOf } from '../models/usage/sessionProjects'
 
 type SqlValue = null | number | string
 
@@ -40,9 +40,11 @@ function makeBridge() {
           return ok({ rows, rowCount: rows.length, truncated: false })
         }
         db.exec('BEGIN')
-        for (const s of payload.statements as Array<{ sql: string; params?: SqlValue[] }>) db.prepare(s.sql).run(...(s.params ?? []))
+        const results = (payload.statements as Array<{ sql: string; params?: SqlValue[] }>).map(s => ({
+          rowsAffected: Number(db.prepare(s.sql).run(...(s.params ?? [])).changes),
+        }))
         db.exec('COMMIT')
-        return ok({ results: [] })
+        return ok({ results })
       } catch (error) {
         if (db.isTransaction) db.exec('ROLLBACK')
         return err('SQLITE_ERROR', error instanceof Error ? error.message : String(error))
@@ -95,6 +97,19 @@ describe("a session's project in the usage log", () => {
     expect(sessionProjectOf(undefined)).toBeUndefined()
   })
 
+  it('keeps a project for the life of its scope, and a scope already ended does not take a newer one', () => {
+    const older = new AbortController()
+    const newer = new AbortController()
+    registerSessionProjectWhile('s1', 'D:\\ws\\app', older.signal)
+    older.abort()
+    expect(sessionProjectOf('s1')).toBeUndefined()
+    registerSessionProjectWhile('s1', 'D:\\ws\\app', newer.signal)
+    registerSessionProjectWhile('s1', 'D:\\ws\\app', older.signal)
+    expect(sessionProjectOf('s1')).toBe(projectKeyOf('D:\\ws\\app'))
+    newer.abort()
+    expect(sessionProjectOf('s1')).toBeUndefined()
+  })
+
   it("fills a request's project from its session, never from the request context", () => {
     const drop = registerSessionProject('s1', 'D:\\ws\\app')
     try {
@@ -122,6 +137,17 @@ describe("a session's project in the usage log", () => {
     expect(bridge.projects()).toEqual([['s1', 'D:/ws'], ['s2', null], ['s3', 'D:/kept']])
     expect(await store.backfillProjects(readRoots)).toBeNull()
     expect(readRoots).toHaveBeenCalledTimes(1)
+  })
+
+  it('fills every row of many sessions in one pass, each with its own project', async () => {
+    const bridge = makeBridge()
+    const store = new RequestLogStore({ transport: () => bridge.transport, dbPath: LOG })
+    for (const session of ['a', 'b', 'a', 'c', 'b']) await store.record(send(session))
+    const roots = new Map([['a', 'D:/one'], ['b', 'D:/two'], ['c', 'D:/one'], ['never-sent', 'D:/three']])
+    expect(await store.backfillProjects(async () => roots)).toBe(5)
+    expect(bridge.projects()).toEqual([['a', 'D:/one'], ['b', 'D:/two'], ['a', 'D:/one'], ['c', 'D:/one'], ['b', 'D:/two']])
+    const names = bridge.dbOf(LOG, false)!.prepare('SELECT text FROM names').all().map(row => (row as { text: string }).text)
+    expect(names).not.toContain('D:/three')
   })
 
   it('does not mark the backfill done when the metadata names none of the sessions it needs', async () => {

@@ -510,10 +510,6 @@ export class SqliteSessionMetaStore {
     await this.execute(DELETE_BY_PARENT_SQL, [spawnerSessionId])
   }
 
-  /** Every session's meta in one query — the sidebar's whole read. Sub-agent
-   *  rows are filtered out (they live in the DB but never list). Each entry
-   *  carries its stored routing dir (`project_dir`) so the router can restore a
-   *  projectRoot-less session's folder without a per-folder scan. */
   /** Every stored session's `project_root` as written, read only: no schema
    *  step runs, and a file that does not exist yet answers none. */
   async readProjectRoots(): Promise<Map<string, string>> {
@@ -526,6 +522,10 @@ export class SqliteSessionMetaStore {
     return roots
   }
 
+  /** Every session's meta in one query — the sidebar's whole read. Sub-agent
+   *  rows are filtered out (they live in the DB but never list). Each entry
+   *  carries its stored routing dir (`project_dir`) so the router can restore a
+   *  projectRoot-less session's folder without a per-folder scan. */
   async listAll(): Promise<Array<{ sessionId: string } & StoredSessionMeta>> {
     await this.ensureSchema()
     const rows = await this.query(SELECT_ALL_SQL, [])

@@ -133,7 +133,7 @@ import {
 } from '../../mods/modSlotRegistry'
 import { modFaultsAttachmentOf } from '../../mods/modFault'
 import { registerSessionWorkingDir } from '../../models/drivers/sessionWorkingDirs'
-import { registerSessionProject } from '../../models/usage/sessionProjects'
+import { registerSessionProjectWhile } from '../../models/usage/sessionProjects'
 import { createBridgeBackedFetch } from '../../pluginHost/bridgeBackedFetch'
 import { loadEffectiveEnabledPlugins } from '../../pluginHost/enabledStore'
 import { registerPluginHooks } from '../../pluginHost/registerPluginHooks'
@@ -379,7 +379,7 @@ export async function createBrowserRuntime(
   // a teammate's requests carry its lead's id.
   if (!options.spawnerSessionId) {
     undoWhenScopeEnds(registerSessionWorkingDir(resolvedSessionId, resolvedCwd), options.runtimeScopeSignal)
-    undoWhenScopeEnds(registerSessionProject(resolvedSessionId, resolvedProjectRoot), options.runtimeScopeSignal)
+    registerSessionProjectWhile(resolvedSessionId, resolvedProjectRoot, options.runtimeScopeSignal)
   }
 
   const hostBridge = new BrowserHostBridge({
