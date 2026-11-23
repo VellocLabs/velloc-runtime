@@ -10,6 +10,9 @@
 import type { SqlValue } from '../../browser/bridge/protocol/sqlite'
 import { FILE_OP_CODES, HOUR_MS, DAY_MS, NAME_ID, OUTCOME_FAILED, OUTCOME_OK } from './requestLogSchema'
 
+/** The groupings that read `sends` alone and carry no path, project root or agent id. */
+export const SEND_BY = ['hour', 'day', 'switch', 'request'] as const
+
 /** The groupings that read file rows or project roots. */
 export const INSIGHT_BY = ['total', 'project', 'purpose', 'file_hour', 'file_day', 'file_read', 'file_edit', 'reread'] as const
 export type InsightBy = (typeof INSIGHT_BY)[number]
@@ -18,7 +21,8 @@ export type InsightBy = (typeof INSIGHT_BY)[number]
 export const FILE_ROWS_MAX = 50
 /** Projects a `project` answer lists at most, most tokens first. */
 export const PROJECT_ROWS_MAX = 500
-const PURPOSE_ROWS_MAX = 500
+/** Purpose rows a `purpose` answer lists at most. */
+export const PURPOSE_ROWS_MAX = 500
 const FILE_BUCKET_ROWS_MAX = 5_000
 
 export type InsightQuery = {
@@ -65,7 +69,7 @@ export type InsightReread = { sessionId: string; repo?: string; path: string; re
 export type InsightResult =
   | { by: 'total'; total: InsightTotal }
   | { by: 'project'; projects: InsightProject[]; truncated: boolean }
-  | { by: 'purpose'; purposes: InsightPurpose[] }
+  | { by: 'purpose'; purposes: InsightPurpose[]; truncated: boolean }
   | { by: 'file_hour' | 'file_day'; buckets: InsightFileBucket[]; truncated: boolean }
   | { by: 'file_read' | 'file_edit'; files: InsightFile[] }
   | { by: 'reread'; rereads: InsightReread[] }
@@ -137,16 +141,18 @@ export async function insightQuery(read: InsightRead, query: InsightQuery): Prom
 
 async function total(read: InsightRead, query: InsightQuery): Promise<InsightResult> {
   const sendParams: SqlValue[] = []
-  const sends = await read(`SELECT ${TOKEN_COLUMNS} FROM sends s WHERE ${where('s', query, sendParams)}`, sendParams)
   const fileParams: SqlValue[] = []
-  const fileRows = await read(
+  const [sends, fileRows] = await Promise.all([
+    read(`SELECT ${TOKEN_COLUMNS} FROM sends s WHERE ${where('s', query, sendParams)}`, sendParams),
+    read(
     `SELECT ${FILE_COLUMNS},
       COUNT(DISTINCT CASE WHEN f.op = ${READ} THEN COALESCE(f.repo, 0) * 4294967296 + f.path END),
       COUNT(DISTINCT CASE WHEN f.op <> ${READ} THEN COALESCE(f.repo, 0) * 4294967296 + f.path END)
     FROM file_ops f INDEXED BY ${fileIndex(query)}
     WHERE ${where('f', query, fileParams)}`,
-    fileParams,
-  )
+      fileParams,
+    ),
+  ])
   const s = sends.rows[0] ?? []
   const f = fileRows.rows[0] ?? []
   return { by: 'total', total: { ...tokensAt(s, 0), ...filesAt(f, 0), filesRead: num(f[7]), filesChanged: num(f[8]) } }
@@ -170,15 +176,14 @@ async function projects(read: InsightRead, query: InsightQuery): Promise<Insight
     ) t LEFT JOIN names n ON n.id = t.project
     GROUP BY t.project
     ORDER BY SUM(t.c2) + SUM(t.c3) + SUM(t.c4) + SUM(t.c5) DESC, SUM(t.d5) DESC, n.text
-    LIMIT ${PROJECT_ROWS_MAX}`,
+    LIMIT ${PROJECT_ROWS_MAX + 1}`,
     params,
-    PROJECT_ROWS_MAX,
   )
-  const list = result.rows.map((row): InsightProject => {
+  const list = result.rows.slice(0, PROJECT_ROWS_MAX).map((row): InsightProject => {
     const project = text(row[0])
     return { ...(project !== undefined ? { project } : {}), ...tokensAt(row, 1), ...filesAt(row, 7) }
   })
-  return { by: 'project', projects: list, truncated: result.truncated }
+  return { by: 'project', projects: list, truncated: result.rows.length > PROJECT_ROWS_MAX }
 }
 
 async function purposes(read: InsightRead, query: InsightQuery): Promise<InsightResult> {
@@ -190,11 +195,11 @@ async function purposes(read: InsightRead, query: InsightQuery): Promise<Insight
       LEFT JOIN names so ON so.id = s.source
     WHERE ${where('s', query, params)}
     GROUP BY s.purpose, s.source, sub
-    ORDER BY pu.text, so.text, sub`,
+    ORDER BY pu.text, so.text, sub
+    LIMIT ${PURPOSE_ROWS_MAX + 1}`,
     params,
-    PURPOSE_ROWS_MAX,
   )
-  const list = result.rows.map((row): InsightPurpose => {
+  const list = result.rows.slice(0, PURPOSE_ROWS_MAX).map((row): InsightPurpose => {
     const purpose = text(row[0])
     const source = text(row[1])
     return {
@@ -204,7 +209,7 @@ async function purposes(read: InsightRead, query: InsightQuery): Promise<Insight
       ...tokensAt(row, 3),
     }
   })
-  return { by: 'purpose', purposes: list }
+  return { by: 'purpose', purposes: list, truncated: result.rows.length > PURPOSE_ROWS_MAX }
 }
 
 async function fileBuckets(read: InsightRead, query: InsightQuery): Promise<InsightResult> {

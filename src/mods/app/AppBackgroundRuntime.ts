@@ -130,7 +130,7 @@ export type AppBackgroundRuntimeOptions = {
   onBadge?: (appId: string, count: number | null) => void
   /** `$.app.busy`: whether the app's icon shows the module at work; false too when the module stops, crashes or fails to load, and once a busy runs past its limit. */
   onBusy?: (appId: string, busy: boolean) => void
-  /** `$.provider` of a settings app's module. Absent: `peers`, `clearState` and `usage` fail as unavailable, `reload` does nothing. `dispose` runs once, with the runtime's. */
+  /** `$.provider` of a settings app's module. Absent: `peers` and `clearState` fail as unavailable, `reload` does nothing. `dispose` runs once, with the runtime's. */
   providerCalls?: Partial<SettingsAppProviderDeps> & { dispose?: () => void }
   /** The usage log's read for `$.usage.query`; absent, or answering nothing: the call fails as unavailable. */
   usage?: (query: RequestLogQuery) => Promise<RequestLogQueryResult | undefined>

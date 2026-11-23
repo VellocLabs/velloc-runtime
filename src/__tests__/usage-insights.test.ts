@@ -2,7 +2,7 @@ import { DatabaseSync } from 'node:sqlite'
 import { describe, expect, it, vi } from 'vitest'
 import type { BrowserBridgeTransport } from '../browser/bridge/browserBridgeProtocol'
 import { HOUR_MS } from '../models/usage/requestLogSchema'
-import { FILE_ROWS_MAX } from '../models/usage/requestLogInsights'
+import { FILE_ROWS_MAX, PROJECT_ROWS_MAX, PURPOSE_ROWS_MAX } from '../models/usage/requestLogInsights'
 import { RequestLogQueryError, RequestLogStore, type FileOpRow, type RequestLogRow } from '../models/usage/requestLogStore'
 import { readUsageQuery, refuseUsageCall, serveUsageCall, usageGrantOf, USAGE_ALL_BY } from '../mods/app/appUsageCalls'
 
@@ -193,6 +193,19 @@ describe('usage log insights', () => {
     await store.recordFileOps(Array.from({ length: FILE_ROWS_MAX + 5 }, (_, i) => op(T0 + i, { path: `f${i}.ts` })))
     const answer = await store.query({ ...range, by: 'file_read' })
     expect(answer.by === 'file_read' && answer.files).toHaveLength(FILE_ROWS_MAX)
+  })
+
+  it('says when a project or purpose list was cut at its cap, and not when it fits', async () => {
+    const { store } = makeStore()
+    for (let i = 0; i <= Math.max(PROJECT_ROWS_MAX, PURPOSE_ROWS_MAX); i++) {
+      await store.record(send(T0 + i, { project: `D:/p${i}`, purpose: `p${i}` }))
+    }
+    const projects = await store.query({ ...range, by: 'project' })
+    expect(projects.by === 'project' && [projects.projects.length, projects.truncated]).toEqual([PROJECT_ROWS_MAX, true])
+    const purposes = await store.query({ ...range, by: 'purpose' })
+    expect(purposes.by === 'purpose' && [purposes.purposes.length, purposes.truncated]).toEqual([PURPOSE_ROWS_MAX, true])
+    const narrow = await store.query({ ...range, by: 'project', project: 'D:/p0' })
+    expect(narrow.by === 'project' && [narrow.projects.length, narrow.truncated]).toEqual([1, false])
   })
 
   it('walks file rows by time, or by project when narrowed, never by the file index', async () => {

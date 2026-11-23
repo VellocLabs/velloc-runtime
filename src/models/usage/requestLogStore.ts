@@ -25,7 +25,7 @@ import { createBridgeRoute } from '../../browser/bridge/browserBridgeProtocol'
 import type { SqlValue } from '../../browser/bridge/protocol/sqlite'
 import { isContendedSqliteError } from '../../browser/storage/SqliteSessionMetaStore'
 import { dirnameRuntimePath } from '../../utils/runtimePaths'
-import { insightQuery, type InsightBy, type InsightResult } from './requestLogInsights'
+import { insightQuery, SEND_BY, type InsightBy, type InsightResult } from './requestLogInsights'
 import {
   COUNT_ROWS_SQL,
   CREATE_META_SQL,
@@ -372,8 +372,6 @@ export function fileOpStatements(rows: readonly FileOpRow[]): Statement[] {
   ]
 }
 
-const SEND_BY: ReadonlySet<string> = new Set(['hour', 'day', 'switch', 'request'])
-
 /** The router and project clauses of a `sends` read, with their params appended. */
 function sendFilters(query: RequestLogQuery, params: SqlValue[]): string {
   let clause = ''
@@ -395,7 +393,7 @@ function checkedRange(query: RequestLogQuery): void {
   if (query.to - query.from > QUERY_SPAN_MAX_MS) {
     throw new RequestLogQueryError('the range is longer than 90 days')
   }
-  if (query.router !== undefined && !SEND_BY.has(query.by)) {
+  if (query.router !== undefined && !(SEND_BY as readonly string[]).includes(query.by)) {
     throw new RequestLogQueryError(`a ${query.by} answer is not narrowed by router`)
   }
   const offset = query.tzOffsetMinutes ?? 0

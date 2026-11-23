@@ -10,14 +10,22 @@
  */
 
 import type { BrowserBridgeTransport } from '../../browser/bridge/browserBridgeProtocol'
-import { INSIGHT_BY } from '../../models/usage/requestLogInsights'
+import { INSIGHT_BY, SEND_BY } from '../../models/usage/requestLogInsights'
 import type { RequestLogQuery, RequestLogQueryResult } from '../../models/usage/requestLogStore'
 import type { SettingsAppBinding } from './appProviderCalls'
 
 /** The groupings with no path, project root or agent id in them. */
-export const USAGE_ROUTER_BY: readonly string[] = Object.freeze(['hour', 'day', 'switch', 'request'])
+export const USAGE_ROUTER_BY: readonly string[] = Object.freeze([...SEND_BY])
 /** Every grouping. */
 export const USAGE_ALL_BY: readonly string[] = Object.freeze([...USAGE_ROUTER_BY, ...INSIGHT_BY])
+
+const named = (name: string, message: string): Error => {
+  const error = new Error(message)
+  error.name = name
+  return error
+}
+
+const notAllowed = (message: string): Error => named('NotAllowedError', message)
 
 export const USAGE_METHODS: readonly string[] = Object.freeze(['query'])
 
@@ -38,12 +46,6 @@ export function refuseUsageCall(method: string, grant: UsageGrant | null): strin
   }
   if (!USAGE_METHODS.includes(method)) return `$.usage.${method} does not exist — $.usage offers ${USAGE_METHODS.join(', ')}`
   return null
-}
-
-const notAllowed = (message: string): Error => {
-  const error = new Error(message)
-  error.name = 'NotAllowedError'
-  return error
 }
 
 /** Reads the query as the module passed it, under its grant; throws a `TypeError` for a malformed one, `NotAllowedError` for one outside the grant. */
@@ -80,12 +82,6 @@ export async function runtimeAppUsage(
 ): Promise<RequestLogQueryResult | undefined> {
   const { openRequestLog } = await import('../../models/usage/requestLogWriter')
   return (await openRequestLog(transport))?.query(query)
-}
-
-const named = (name: string, message: string): Error => {
-  const error = new Error(message)
-  error.name = name
-  return error
 }
 
 /** Serves one call; `read` absent, or answering nothing: the log is unavailable. */
