@@ -62,7 +62,7 @@ import {
   getConditionalSkills,
   resolveInvocationForSession,
 } from '../skillLibrary/skillDiscovery'
-import { getTemplate, templateAllowsSkill } from '../prompting/templateRegistry'
+import { sessionToolConfig, templateAllowsSkill } from '../prompting/templateRegistry'
 import {
   type BrowserSlashCommand,
   BUILTIN_SLASH_COMMAND_DESCRIPTION_KEYS,
@@ -1076,18 +1076,13 @@ export async function dispatchCommandInput(
               params.context.options.commands,
               getConditionalSkills().filter(
                 command =>
-                  templateAllowsSkill(
-                    params.context.options.templateType
-                      ? getTemplate(params.context.options.templateType)?.config
-                      : undefined,
-                    command,
-                  )
+                  templateAllowsSkill(sessionToolConfig(params.context.options), command)
                   // Same reason as the allowlist: the map is module-global,
                   // so a co-resident session's type-restricted path-gated
                   // skill must not be listed as this one's.
                   && resolveInvocationForSession(
                     command,
-                    params.context.options.templateType,
+                    params.context.options.toolTemplateType ?? params.context.options.templateType,
                   ).present,
               ),
             ),

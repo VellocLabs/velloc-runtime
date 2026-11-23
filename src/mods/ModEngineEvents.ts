@@ -148,6 +148,7 @@ import {
   type SessionSendResult,
 } from './sessionMessageEvents'
 import { measureChangedUnits, type MeasuredFigures, type SessionUsage } from './sessionNouns'
+import { isAppBuiltinTool } from './app/appToolNames'
 
 export abstract class ModEngineEvents {
   abstract readonly dispatcher: ModDispatcher
@@ -750,9 +751,10 @@ export abstract class ModEngineEvents {
    * tool's schema in a session; `next(e)` resolves to `{ description,
    * isDeferred? }`." Resolves to the description the model reads, cached by
    * tool name. `isDeferred` is reported, not applied. Never rejects.
+   * Security: an app session's own tools are not raised, so their text is the host's.
    */
   async toolDescribe(input: ToolDescribeInput, signal?: AbortSignal): Promise<string> {
-    if (this.disposed || !this.dispatcher.hasHooksFor('tool.describe')) return input.description
+    if (this.disposed || isAppBuiltinTool(input.tool) || !this.dispatcher.hasHooksFor('tool.describe')) return input.description
     const cached = this.toolDescriptions.get(input.tool)
     if (cached !== undefined && cached.from === input.description) return cached.answer
     let answer = input.description

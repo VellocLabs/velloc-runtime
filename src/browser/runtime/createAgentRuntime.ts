@@ -65,6 +65,8 @@ import {
 } from '../../utils/sidechainTranscripts'
 import {
   applyTemplateToolAllowlist,
+  APP_SESSION_TOOL_TYPE,
+  appSessionTemplate,
   getTemplate,
   resolveDeferrableSkills,
   templateListedToolNames,
@@ -230,7 +232,11 @@ export async function createBrowserRuntime(
     pluginRequiresProjectFolder = opened.requiresProjectFolder
     pluginApp = opened.app
   }
-  const sessionTemplate = getTemplate(templateType)
+  // An app's agent run (F-40) is headless: it has no surface, and keeps only the app-run tools.
+  const appAgentRun = (options as { appAgentRun?: string }).appAgentRun
+  // An app's own session runs on the Code type's tools and skills, whatever the plugin's template lists (F-40).
+  const toolTemplateType = pluginApp && !appAgentRun ? APP_SESSION_TOOL_TYPE : undefined
+  const sessionTemplate = toolTemplateType ? appSessionTemplate(getTemplate(templateType)) : getTemplate(templateType)
   // Precedence: explicit option → host-mode default. (With a host manifest the
   // preset is moot — getToolsForHostManifest ignores it — so this only bites the
   // mock-host / manifest-less path, where 'default' and 'nexus' yield the same
@@ -293,8 +299,6 @@ export async function createBrowserRuntime(
   const appSession = pluginApp
     ? await (await import('../../mods/app/appSession')).openAppFolder({ fs: installedFs, homeDir, app: pluginApp })
     : undefined
-  // An app's agent run (F-40) is headless: it has no surface, and keeps only the app-run tools.
-  const appAgentRun = (options as { appAgentRun?: string }).appAgentRun
   const appSurfaceModule = appSession && options.isSubAgent !== true && !appAgentRun ? await import('../../mods/app/appSurfaceHost') : undefined
   // A superseded build registers nothing: its host would take the session's entry from the newer one.
   const appSurface = appSurfaceModule && appSession && options.runtimeScopeSignal?.aborted !== true
@@ -687,7 +691,7 @@ export async function createBrowserRuntime(
       // whitelist. A skill registered with `type: 'agent'` is dropped
       // from a `'chat'`/`'code'` session's command list.
       // Untyped skills are unaffected.
-      templateType,
+      templateType: toolTemplateType ?? templateType,
     }))
 
   // Host-supplied skills (C++ *.skill.json via catalog.listSkills) join
@@ -895,8 +899,8 @@ export async function createBrowserRuntime(
   // The servers whose tools this runtime's list holds. A plugin reload re-reads the pool
   // (`refreshMcpOffering`), so a server a plugin brings or takes mid-session follows.
   const mcpServersOffered = new Set(mcpOffering.servers)
-  // An app session builds its entry file with BuildApp, past the template's allowlist.
-  const appTools = appSurface ? [appSurface.tool] : []
+  // An app session's own tools (BuildApp, AppAction) join past the allowlist.
+  const appTools = appSurface ? appSurface.tools : []
   const allTools = [...baseTools, ...snapshotTools, ...appTools, ...mcpOffering.tools]
   // After a plugin reload: the engine's MCP tools, the deferral units, the Skill commands and the
   // offered set follow the pool, so the prompt, the tool list and the server views agree.
@@ -1045,7 +1049,7 @@ export async function createBrowserRuntime(
     runtimeConfig,
     settingsHome,
     enabledPlugins,
-    templateType,
+    templateType: toolTemplateType ?? templateType,
     sessionTemplate,
     sessionTypeDeniedNames,
     coreState,
@@ -1295,6 +1299,7 @@ ${teammateAddendum}`
     // prompt skeleton + tool config come from the SAME template). Defaults to
     // 'chat' — byte-identical to the legacy path.
     templateType,
+    ...(toolTemplateType ? { toolTemplateType } : {}),
     // Messaging only — the denied skills are already absent from `commands`.
     deniedSkillNames,
     userSpecifiedProviderId: coreState.options.userSpecifiedProviderId,

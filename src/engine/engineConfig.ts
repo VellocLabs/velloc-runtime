@@ -158,6 +158,8 @@ export type ConversationEngineConfig = {
   promptSuffix?: string
   /** The session type, which picks the prompt skeleton and tool set. */
   templateType?: string
+  /** The type whose tool and skill config the session runs on, when not its own (an app's session, F-40). */
+  toolTemplateType?: string
   /** Skills this session type withholds, so a call to one reads "denied
    *  here" rather than "unknown". */
   deniedSkillNames?: readonly string[]

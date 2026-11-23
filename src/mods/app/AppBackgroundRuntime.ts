@@ -49,6 +49,7 @@ import {
 } from '../../browser/workerKernel/IsolatedWorkerKernel'
 import type { RuntimeFs } from '../../utils/fs/runtimeFs'
 import { joinRuntimePath } from '../../utils/runtimePaths'
+import type { AppActionOutcome } from './appActionBus'
 import { AppAgentRuns, readAnalyzeRequest, type AppAgentRunner, type AppAnalyzeResult } from './appAgentRun'
 import { APP_BACKGROUND_ABI, refuseAppBackgroundCall, refuseAppBackgroundRegistrations, refuseAppBackgroundUses } from './appBackgroundEvents'
 import { sameMcpOwner, type AppBackgroundMcp, type AppBackgroundMcpOwner } from './appBackgroundMcp'
@@ -210,6 +211,13 @@ const handledBy = (result: unknown): boolean => {
   return Boolean(result)
 }
 
+/** What a handled `app.action` answer hands back: the `result` of a `{handled: true, result}` answer, else nothing. */
+const resultOf = (answer: unknown): { result?: unknown } => {
+  if (typeof answer !== 'object' || answer === null || !('result' in answer)) return {}
+  const result = (answer as { result: unknown }).result
+  return result === undefined ? {} : { result }
+}
+
 class WorkerGoneWhileLoading extends Error {}
 
 const KERNEL_WINDOW: AppBackgroundWindow = {
@@ -363,9 +371,18 @@ export class AppBackgroundRuntime {
    * Offers a surface action of the person's to the app's module as `app.action`.
    * True when a hook answered `{handled: true}` or another truthy value; false
    * when the app has no running module or hook, or the hook answered falsy,
-   * failed, or ran past its budget — the action then goes to the model.
+   * failed, or ran past its budget — a person's press then goes to the model.
    */
   async action(appId: string, action: string, context: unknown, sessionId: string): Promise<boolean> {
+    return (await this.actionOutcome(appId, action, context, sessionId)).status === 'handled'
+  }
+
+  /**
+   * `action`, with how it ended: `handled` carries the `result` of a
+   * `{handled: true, result}` answer; `timeout` is a module that was not
+   * ready, or a hook that had not answered, when the budget ran out.
+   */
+  async actionOutcome(appId: string, action: string, context: unknown, sessionId: string): Promise<AppActionOutcome> {
     const budget = this.options.actionTimeoutMs ?? APP_ACTION_TIMEOUT_MS
     let left = budget
     const woken = this.wake(appId)
@@ -375,8 +392,10 @@ export class AppBackgroundRuntime {
       left = budget - (this.now() - began)
     }
     const module = this.modules.get(appId)
-    if (!module || !module.loaded || !module.dispatcher.hasHooksFor('app.action')) return false
-    if (left <= 0) return false
+    if (!module || !module.loaded) return { status: left <= 0 ? 'timeout' : 'unavailable' }
+    if (!module.dispatcher.hasHooksFor('app.action')) return { status: 'unavailable' }
+    if (left <= 0) return { status: 'timeout' }
+    const fate: { late?: boolean } = {}
     const raised = await this.raise(
       module,
       'app.action',
@@ -384,8 +403,10 @@ export class AppBackgroundRuntime {
       left,
       `app.action "${action}" of ${appId}`,
       '; the model takes it',
+      fate,
     )
-    return raised !== undefined && handledBy(raised.result)
+    if (raised !== undefined && handledBy(raised.result)) return { status: 'handled', ...resultOf(raised.result) }
+    return { status: fate.late ? 'timeout' : 'declined' }
   }
 
   /**
@@ -699,7 +720,7 @@ export class AppBackgroundRuntime {
   /**
    * Raises an event on a loaded module under a budget, ended early when the
    * module goes. The hooks' answer, or undefined after a failure or the budget,
-   * reported unless the module is gone.
+   * reported unless the module is gone. `fate.late` is set when the budget ended it.
    */
   private async raise(
     module: Module,
@@ -708,6 +729,7 @@ export class AppBackgroundRuntime {
     timeoutMs: number,
     label: string,
     after = '',
+    fate?: { late?: boolean },
   ): Promise<{ result: unknown } | undefined> {
     const controller = new AbortController()
     const timer = setTimeout(() => controller.abort(), timeoutMs)
@@ -730,6 +752,7 @@ export class AppBackgroundRuntime {
       }
       return undefined
     } finally {
+      if (fate) fate.late = controller.signal.aborted && !module.gone.signal.aborted
       clearTimeout(timer)
       module.gone.signal.removeEventListener('abort', onGone)
     }

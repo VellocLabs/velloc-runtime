@@ -378,6 +378,7 @@ describe('AppBackgroundRuntime — app.action', () => {
         if (e.action === 'boom') throw new Error('no such case')
         if (e.action === 'slow') await new Promise(resolve => setTimeout(resolve, 200))
         if (e.action === 'plain') return 1
+        if (e.action === 'apply') return { handled: true, result: { routes: 2 } }
         return { handled: e.action === 'refresh' }
       })
     }`
@@ -403,6 +404,19 @@ describe('AppBackgroundRuntime — app.action', () => {
       ['pay-board', 'boom', null, 's1'],
     ])
     expect(reports).toContainEqual(expect.stringMatching(/pay: the background module's app\.action hook failed \(throw\)/))
+  })
+
+  it('actionOutcome says how the action ended: handled with the result of the script, declined, timed out, or no script to take it', async () => {
+    const { runtime } = await ready(ACTOR, { actionTimeoutMs: 40 })
+    expect(await runtime.actionOutcome('pay-board', 'apply', { file: 'config.json' }, 's1')).toEqual({ status: 'handled', result: { routes: 2 } })
+    expect(await runtime.actionOutcome('pay-board', 'refresh', null, 's1')).toEqual({ status: 'handled' })
+    expect(await runtime.actionOutcome('pay-board', 'plain', null, 's1')).toEqual({ status: 'handled' })
+    expect(await runtime.actionOutcome('pay-board', 'other', null, 's1')).toEqual({ status: 'declined' })
+    expect(await runtime.actionOutcome('pay-board', 'boom', null, 's1')).toEqual({ status: 'declined' })
+    expect(await runtime.actionOutcome('pay-board', 'slow', null, 's1')).toEqual({ status: 'timeout' })
+    expect(await runtime.actionOutcome('pay-other', 'apply', null, 's1')).toEqual({ status: 'unavailable' })
+    const quiet = await ready(COUNTER)
+    expect(await quiet.runtime.actionOutcome('pay-board', 'apply', null, 's1')).toEqual({ status: 'unavailable' })
   })
 
   it('$.app.reseed() runs the reseed of the open page, passes its build error by name, and is NotFoundError with no page', async () => {

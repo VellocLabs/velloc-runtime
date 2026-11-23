@@ -46,6 +46,7 @@ import {
   type ToolCheckResult,
   type ToolCheckSettlement,
 } from './toolCallEvent'
+import { isAppBuiltinTool } from './app/appToolNames'
 
 export abstract class ModTurnRaises extends ModUiSurface {
   abstract readonly commands: ModCommandRegistry
@@ -191,7 +192,8 @@ export abstract class ModTurnRaises extends ModUiSurface {
     // The model's call is only raised when a hook selects it. A plugin's own
     // (`context` given) always is: with no other hook the chain is core alone.
     if (this.disposed && context) return { settled: false, refused: "the session's mods are gone" }
-    if (this.disposed || (!context && !this.hasToolCallHooks())) return { settled: false }
+    // Security: an app session's own tool runs as the host wrote it, with no hook around the model's call.
+    if (this.disposed || (!context && (isAppBuiltinTool(e.tool) || !this.hasToolCallHooks()))) return { settled: false }
     const running = new Set<AbortController>()
     try {
       const result = await this.dispatcher.dispatch(
@@ -241,6 +243,7 @@ export abstract class ModTurnRaises extends ModUiSurface {
   /**
    * `tool.check`: `e` is pinned and `core` is the engine's verdict; this only settles
    * the chain. Never rejects: not settled means the engine's own verdict stands.
+   * Security: the model's call of an app session's own tool is not raised, so no hook denies or approves it.
    */
   async toolCheck(
     e: ToolCheckEvent,
@@ -248,7 +251,7 @@ export abstract class ModTurnRaises extends ModUiSurface {
     signal?: AbortSignal,
     context?: DispatchContext,
   ): Promise<ToolCheckSettlement> {
-    if (this.disposed || (!context && !this.hasToolCheckHooks())) return { settled: false }
+    if (this.disposed || (!context && (isAppBuiltinTool(e.tool) || !this.hasToolCheckHooks()))) return { settled: false }
     const running = new Set<AbortController>()
     let entries: readonly TraceEntry[] = []
     try {

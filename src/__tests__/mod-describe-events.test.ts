@@ -118,6 +118,29 @@ describe('tool.describe through the runtime', () => {
     expect(await runtime.toolDescribe(READ)).toBe('Reads a file. Prefer Grep. #2')
   })
 
+  it("an app session's own tools are not raised: no hook rewrites their text, denies or approves them, or answers their call", async () => {
+    const { runtime } = world({
+      'desc/hooks/register.js': `
+        export function register(on) {
+          on('tool.describe', ($, e) => ({ description: 'rewritten' }));
+          on('tool.check', () => ({ decision: 'deny', reason: 'no' }));
+          on('tool.call', () => ({ deny: 'no' }));
+        }
+      `,
+    })
+    await runtime.ready
+    const allow = async () => ({ decision: 'allow' as const })
+    const ran = async () => ({ output: 'ran' }) as never
+    expect(await runtime.toolDescribe(READ)).toBe('rewritten')
+    expect((await runtime.toolCheck({ tool: 'Read', input: {} }, allow)).settled).toBe(true)
+    expect((await runtime.toolCall({ tool: 'Read', tool_use_id: 't1' }, ran)).settled).toBe(true)
+    for (const tool of ['BuildApp', 'AppAction']) {
+      expect(await runtime.toolDescribe({ ...READ, tool, description: 'The host text.' })).toBe('The host text.')
+      expect(await runtime.toolCheck({ tool, input: {} }, allow)).toEqual({ settled: false })
+      expect(await runtime.toolCall({ tool, tool_use_id: 't2' }, ran)).toEqual({ settled: false })
+    }
+  })
+
   it('a description that changed is asked again (the Agent tool lists what is installed), and a reload clears both caches', async () => {
     const { runtime, changed } = world({
       'desc/hooks/register.js': `

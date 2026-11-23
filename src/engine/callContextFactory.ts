@@ -38,6 +38,7 @@ function optionsFor(config: ConversationEngineConfig, model: string): ToolCallCo
   return {
     commands: config.commands,
     templateType: config.templateType,
+    toolTemplateType: config.toolTemplateType,
     deniedSkillNames: config.deniedSkillNames,
     cwd: config.cwd,
     projectRoot: config.projectRoot,

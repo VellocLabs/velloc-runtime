@@ -2,7 +2,7 @@
 import type { ToolCallContext } from '../toolkit/toolCallContext'
 import { createBashHookCommandRunner } from '../lifecycleHooks/hookCommandRunner'
 import { isLocalAccessConfined } from '../permissions/chatLocalAccess'
-import { getTemplate, templateAllowsInlineShell } from '../prompting/templateRegistry'
+import { sessionToolConfig, templateAllowsInlineShell } from '../prompting/templateRegistry'
 
 export type PromptShellRunner = (
   command: string,
@@ -88,7 +88,7 @@ export async function expandSkillBodyShell(
   // Security: a snippet runs on this machine through the host shell, outside
   // the type's `tools:` allowlist; only a type open to every MCP source may
   // run one (F-25).
-  if (!templateAllowsInlineShell(getTemplate(context.options.templateType ?? '')?.config)) {
+  if (!templateAllowsInlineShell(sessionToolConfig(context.options))) {
     return body
   }
 

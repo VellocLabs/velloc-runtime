@@ -49,6 +49,29 @@ export function dispatchAppAction(appId: string, action: string, context: unknow
   return seated ? seated(appId, action, context, sessionId) : Promise.resolve(false)
 }
 
+/**
+ * How an action offered to the app's module ended: `handled` with what the
+ * hook answered as `result`, `declined` when the hook answered falsy or
+ * failed, `unavailable` with no running module or hook, `timeout` past the
+ * action budget.
+ */
+export type AppActionOutcome =
+  | { status: 'handled'; result?: unknown }
+  | { status: 'declined' | 'unavailable' | 'timeout' }
+
+/** Offers an action to the app's module and says how it ended (the `AppAction` tool). */
+export type AppActionOutcomeDispatch = (appId: string, action: string, context: unknown, sessionId: string) => Promise<AppActionOutcome>
+
+let seatedOutcome: AppActionOutcomeDispatch | undefined
+
+export function setAppActionOutcomeDispatch(dispatch: AppActionOutcomeDispatch | undefined): void {
+  seatedOutcome = dispatch
+}
+
+export function dispatchAppActionOutcome(appId: string, action: string, context: unknown, sessionId: string): Promise<AppActionOutcome> {
+  return seatedOutcome ? seatedOutcome(appId, action, context, sessionId) : Promise.resolve({ status: 'unavailable' })
+}
+
 /** Offers a press on an app's topbar icon to the app's module; resolves with its intent, or null for none. */
 export type AppPressDispatch = (appId: string, trigger: AppPressTrigger, item: string | undefined, client: string) => Promise<AppPressIntent | null>
 

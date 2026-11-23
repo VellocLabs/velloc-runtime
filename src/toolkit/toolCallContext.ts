@@ -54,6 +54,8 @@ export type ToolCallContext = {
      *  type-restricted bundled skills the model may invoke on its own; the
      *  user's slash commands ignore it. Absent: no restriction. */
     templateType?: string
+    /** The type whose tool and skill config the session runs on, when not its own (an app's session). */
+    toolTemplateType?: string
     /** Skills this session type's allowlist removed. They are already gone
      *  from `commands`; the names are kept only so both dispatch paths can
      *  answer "not available in this session type" rather than "unknown". */

@@ -394,3 +394,26 @@ export function __templateBundleForTest(): {
 
 // Keep `RegistryData` importable from here for existing type-only consumers.
 export type { RegistryData }
+
+/** The bundled type whose tools and skills an app's own session runs on (F-40). */
+export const APP_SESSION_TOOL_TYPE = 'code'
+
+/**
+ * The template of an app's own session (F-40): the plugin's prompt, title and
+ * model on the tool and skill config of `APP_SESSION_TOOL_TYPE`. Security: the
+ * plugin's `tools`, `skills`, `mcp` and the other config keys are not read, so
+ * a plugin neither narrows nor widens what such a session is offered.
+ */
+export function appSessionTemplate(own: ParsedTemplate | undefined): ParsedTemplate | undefined {
+  const base = getTemplate(APP_SESSION_TOOL_TYPE)
+  if (!own || !base) return own
+  return {
+    ...own,
+    config: { ...base.config, type: own.config.type, description: own.config.description, model: own.config.model },
+  }
+}
+
+/** A session's tool and skill config: its own type's, or that of the type it takes them from. */
+export function sessionToolConfig(session: { templateType?: string; toolTemplateType?: string }): TemplateConfig | undefined {
+  return getTemplate(session.toolTemplateType ?? session.templateType ?? '')?.config
+}

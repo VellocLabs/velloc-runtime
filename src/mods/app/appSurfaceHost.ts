@@ -21,7 +21,8 @@ import type {
   AppCatalogName,
 } from '../../browser/runtimeProtocol/modApps'
 import { blockSurfaceIds, hasA2uiBlock, splitA2uiText } from '../../toolkit/builtin/a2ui/express/a2uiBlocks'
-import { dispatchAppAction, dispatchAppRestartScript, dispatchAppShowAgain, type AppActionDispatch } from './appActionBus'
+import { dispatchAppAction, dispatchAppActionOutcome, dispatchAppRestartScript, dispatchAppShowAgain, type AppActionDispatch, type AppActionOutcomeDispatch } from './appActionBus'
+import { appActionPromptLine, createAppActionTool, type AppActionToolInput } from './appActionTool'
 import { hashOf, seedAppFolder, SEED_MAX_FILE_BYTES, type AppSeedFs } from './appSeed'
 import type { AppSessionInfo } from './appSession'
 import { liveAppState, onAppState, type AppStateEvent, type AppStateSource } from './appStateBus'
@@ -29,6 +30,7 @@ import { appSurfaceDelta } from './appSurfaceDelta'
 import { setAppActor, setAppBuilder, setAppRefresher, setAppReseeder, setAppSurfaceState, type AppActor, type AppRefresh, type AppReseed, type AppSurfaceLiveData } from './appSurfaceRegistry'
 import { appReseedKeep, namedError } from './appReseed'
 import { readAppText } from './appText'
+import { BUILD_APP_TOOL_NAME } from './appToolNames'
 
 /** The app's live state, while its background module holds one. */
 export type AppLiveData = {
@@ -36,7 +38,7 @@ export type AppLiveData = {
   subscribe(appId: string, listener: (event: AppStateEvent) => void): () => void
 }
 
-export const BUILD_APP_TOOL_NAME = 'BuildApp'
+export { BUILD_APP_TOOL_NAME }
 
 export type AppEntryCompile = (body: string) => Promise<{ ok: true; surfaceIds: string[] } | { ok: false; message: string }>
 
@@ -69,6 +71,8 @@ export type AppSurfaceHostOptions = {
   liveData?: AppLiveData
   /** Offers a local action to the app's background module; defaults to the realm bus. */
   dispatchAction?: AppActionDispatch
+  /** Offers an action of the model's (`AppAction`) to the app's background module; defaults to the realm bus. */
+  dispatchActionOutcome?: AppActionOutcomeDispatch
   /** The session's language: the plugin's text for it is set under `/text`. */
   locale?: string
   now?: () => number
@@ -94,6 +98,10 @@ export type AppSurfaceHost = {
   promptBlock: string
   /** The model's way to build the app: offered in this session alone. */
   tool: ToolContract<Record<string, never>, string>
+  /** The model's way to run one of the app's declared actions; absent when the app declares none. */
+  actionTool?: ToolContract<AppActionToolInput, string>
+  /** The session's app tools, added by the host: a plugin neither removes nor replaces them. */
+  tools: ToolContract[]
   /**
    * The turn-end check of an app session: `inner`'s notes, then a build when
    * the entry changed since the last one, then a note when the reply drew one
@@ -183,6 +191,7 @@ export function appPromptBlock(app: AppSessionInfo): string {
     `# This session is an app`,
     `This session runs the app "${app.appId}" of the plugin "${app.plugin}". Its folder is the project root; AGENTS.md there says what the app is for.`,
   ]
+  const actionLine = appActionPromptLine(app.decl.localActions ?? [])
   const dataLine = data
     ? `- The app's data is \`${data}\`, set under $/data on each of its surfaces: bind to $/data/... . A2UI does no arithmetic, so every figure shown must already be in the data.`
     : `- The app has no data file; its values are written in \`${entry}\`.`
@@ -192,6 +201,7 @@ export function appPromptBlock(app: AppSessionInfo): string {
       `- What the person sees is built from \`${entry}\`, an A2UI Express file with one surface("..."), written for the studio component set. Load the a2ui skill before you edit it: in this session it lists that set's components and their arguments, and the file may use no other.`,
       `- After you change the app's files, call ${BUILD_APP_TOOL_NAME}: it builds \`${entry}\`, shows the result to the person and returns any error to fix. Never write an <a2ui> block in chat in this session: the app's surface is the one place it draws.`,
       dataLine,
+      ...actionLine,
     ].join('\n')
   }
   return [
@@ -199,6 +209,7 @@ export function appPromptBlock(app: AppSessionInfo): string {
     `- What the person sees is built from \`${entry}\`, an A2UI Express file with one surface("..."). The app's pages are a Tabs component in that surface, as in \`root = Tabs([{title: "Overview", child: overview}, {title: "Refunds", child: refunds}])\`: the person switches between them, and a new build keeps the tab they are on. Load the a2ui skill before you edit it: it has the grammar and the components.`,
     `- After you change the app's files, call ${BUILD_APP_TOOL_NAME}: it builds \`${entry}\`, shows the result to the person and returns any error to fix. Never write an <a2ui> block in chat for one of the app's surfaces; a chart that answers a question in chat is fine.`,
     dataLine,
+    ...actionLine,
   ].join('\n')
 }
 
@@ -223,6 +234,7 @@ export function createAppSurfaceHost(options: AppSurfaceHostOptions): AppSurface
   const restartScript = options.restartScript ?? dispatchAppRestartScript
   const live: AppLiveData = options.liveData ?? { snapshot: liveAppState, subscribe: onAppState }
   const dispatchAction = options.dispatchAction ?? dispatchAppAction
+  const dispatchActionOutcome = options.dispatchActionOutcome ?? dispatchAppActionOutcome
   const now = options.now ?? Date.now
   const entry = app.decl.entry
   const localActions = app.decl.localActions ?? []
@@ -420,21 +432,36 @@ export function createAppSurfaceHost(options: AppSurfaceHostOptions): AppSurface
     }
   }
 
-  const action = async (name: string, context: unknown): Promise<ModsAppActionResult> => {
-    if (disposed || !localActions.includes(name)) return { handled: false }
+  /** One action in the module's hands: `refreshing` is published around it, and a hand-placed plugin's seed is read before and built after. */
+  const offer = async <T>(run: () => Promise<T>): Promise<T> => {
     acting += 1
     emit()
     try {
       if (app.devSeedDir && options.seedFs) await reseed()
-      return { handled: (await dispatchAction(app.appId, name, context, sessionId)) === true }
-    } catch {
-      return { handled: false }
+      return await run()
     } finally {
       acting -= 1
       if (app.devSeedDir && options.seedFs && !disposed) await buildIfChanged().catch(() => undefined)
       emit()
     }
   }
+
+  const action = async (name: string, context: unknown): Promise<ModsAppActionResult> => {
+    if (disposed || !localActions.includes(name)) return { handled: false }
+    try {
+      return { handled: (await offer(() => dispatchAction(app.appId, name, context, sessionId))) === true }
+    } catch {
+      return { handled: false }
+    }
+  }
+
+  const actionTool = localActions.length > 0
+    ? createAppActionTool({
+        actions: localActions,
+        run: (name, context) =>
+          disposed ? Promise.resolve({ status: 'unavailable' }) : offer(() => dispatchActionOutcome(app.appId, name, context, sessionId)),
+      })
+    : undefined
 
   /**
    * `$.app.reseed()`: the seed's files over the folder again, the person's
@@ -520,6 +547,8 @@ export function createAppSurfaceHost(options: AppSurfaceHostOptions): AppSurface
     action,
     promptBlock: appPromptBlock(app),
     tool,
+    ...(actionTool ? { actionTool } : {}),
+    tools: [tool, ...(actionTool ? [actionTool] : [])] as ToolContract[],
     wrapTurnEndCheck(inner, makeNote) {
       return async params => {
         const notes = await inner(params)

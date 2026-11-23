@@ -11,7 +11,7 @@ import type {
   SystemPromptParts,
 } from '../runtime/interfaces/PromptContextProvider'
 import { buildMemorySystemPrompt } from '../memory/memoryPrompt'
-import { getTemplate, templateWriteToolName } from '../prompting/templateRegistry'
+import { sessionToolConfig, templateWriteToolName } from '../prompting/templateRegistry'
 import { getScratchpadDirectoryPath, resolveSessionStorageBase } from '../utils/conversationStoragePaths'
 import {
   formatMemoryFilesForPrompt,
@@ -96,7 +96,7 @@ function loadMemory(ledger: SessionLedger): Promise<[string | null, InstructionF
       runtimeConfig: config.runtimeConfig,
       // The section explains how to save a memory, so it names the write
       // tool this session type registers.
-      writeToolName: templateWriteToolName(getTemplate(config.templateType ?? '')?.config),
+      writeToolName: templateWriteToolName(sessionToolConfig(config)),
     }),
     instructionFilesOf(ledger),
   ]) as Promise<[string | null, InstructionFile[]]>
