@@ -231,14 +231,15 @@ export function cleanupDetail(text: string): string {
     .trim()
 }
 
+/** The words that mark a status number in error text: `HTTP 429`, `status: 500`, `Error code: 429`. */
+const STATUS_MARKER = String.raw`\b(?:HTTP(?:\/\d(?:\.\d)?)?|status(?:\s*code)?|error\s*code)\b[\s:/-]*`
+
 /**
  * The HTTP status from a provider error string: only a marker-prefixed status
  * (`HTTP 429`, `status: 500`, `Error code: 429`) or a leading one, in 1xx-5xx.
  */
 function extractStatus(text: string): number | undefined {
-  const marked = text.match(
-    /\b(?:HTTP(?:\/\d(?:\.\d)?)?|status(?:\s*code)?|error\s*code)\b[\s:/-]*(\d{3})\b/i,
-  )
+  const marked = text.match(new RegExp(`${STATUS_MARKER}(\\d{3})\\b`, 'i'))
   const leading = text.match(/^\s*(\d{3})\b/)
   const raw = marked?.[1] ?? leading?.[1]
   if (!raw) return undefined
@@ -252,21 +253,21 @@ function extractStatus(text: string): number | undefined {
 /**
  * An error status a 2xx reply carried inside its stream, as in
  * `HTTP 200: Streaming response failed: [502] error code: 502`: the first
- * marked or bracketed 4xx/5xx in the text.
+ * marked 4xx/5xx, or one standing alone in brackets. An index such as
+ * `input[503]` or a bracket holding more than the number is not a status.
  */
 function streamedErrorStatus(text: string): number | undefined {
-  const pattern = /(?:\b(?:HTTP(?:\/\d(?:\.\d)?)?|status(?:\s*code)?|error\s*code)\b[\s:/-]*|\[)([45]\d\d)\b/gi
-  for (const match of text.matchAll(pattern)) {
-    const status = Number.parseInt(match[1] ?? '', 10)
-    if (status >= 400 && status <= 599) return status
-  }
-  return undefined
+  const match = text.match(
+    new RegExp(`(?:${STATUS_MARKER}([45]\\d\\d)\\b|(?<![\\w\\]])\\[([45]\\d\\d)\\])`, 'i'),
+  )
+  const raw = match?.[1] ?? match?.[2]
+  return raw ? Number.parseInt(raw, 10) : undefined
 }
 
 /** The status a failure is judged by: a 2xx reply that failed is judged by the status its stream carried. */
 function failureStatus(typedStatus: number | undefined, detail: string): number | undefined {
   const opened = typedStatus ?? extractStatus(detail)
-  return opened !== undefined && opened < 300 ? (streamedErrorStatus(detail) ?? opened) : opened
+  return opened !== undefined && opened >= 200 && opened < 300 ? (streamedErrorStatus(detail) ?? opened) : opened
 }
 
 /**
