@@ -439,6 +439,6 @@ export function appSessionTemplate(own: ParsedTemplate | undefined): ParsedTempl
 export function sessionToolConfig(session: { templateType?: string; toolTemplateType?: string }): TemplateConfig | undefined {
   const own = session.templateType ? getTemplate(session.templateType)?.config : undefined
   const tool = getTemplate(session.toolTemplateType ?? session.templateType ?? '')?.config
-  if (!tool || session.toolTemplateType === undefined) return tool
+  if (!tool || !own || session.toolTemplateType === undefined) return tool
   return { ...tool, ...mcpBoundaryOf(own) }
 }
