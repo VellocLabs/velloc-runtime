@@ -61,6 +61,9 @@ let attached: BrowserBridgeTransport | undefined
 let config: RuntimeConfig | undefined
 /** The transport the entry being written arrived on. */
 let current: BrowserBridgeTransport | undefined
+/** The transport the last written entry went through; a row-cap step, which
+ *  names none, falls back to it when no bridge is attached. */
+let lastWritten: BrowserBridgeTransport | undefined
 let store: RequestLogStore | undefined
 let closedUntil = 0
 let queue: Waiting[] = []
@@ -211,10 +214,21 @@ function dropWaiting(entries: Waiting[]): void {
   queue = queue.filter(entry => !entries.includes(entry))
 }
 
+/** The transport an entry is written through; undefined while there is none. */
+function transportOf(entry: Waiting): BrowserBridgeTransport | undefined {
+  if ('cap' in entry) return attached ?? lastWritten
+  return entry.via ?? attached
+}
+
 async function writeWaiting(): Promise<void> {
   for (;;) {
     const next = queue[0]
-    const transport = (next && 'via' in next ? next.via : undefined) ?? attached
+    const transport = next && transportOf(next)
+    if (next && !transport && 'cap' in next && queue.length > 1) {
+      // A row-cap step with no bridge must not hold back rows that name theirs.
+      dropWaiting([next])
+      continue
+    }
     if (!next || !transport) return
     if (Date.now() < closedUntil) {
       dropWaiting(queue)
@@ -231,6 +245,7 @@ async function writeWaiting(): Promise<void> {
         dropWaiting([next])
         warn('a row was dropped, its bridge is closed')
         if (attached === transport) attached = undefined
+        if (lastWritten === transport) lastWritten = undefined
         continue
       }
       closedUntil = Date.now() + REOPEN_AFTER_MS
@@ -243,6 +258,7 @@ async function writeWaiting(): Promise<void> {
       if ('row' in next) await opened.record(next.row)
       else if ('fileOps' in next) await opened.recordFileOps(next.fileOps)
       else await capStep(opened, next.cap)
+      lastWritten = transport
     } catch (error) {
       warn('a row was not written', error)
     } finally {
@@ -258,7 +274,7 @@ function drain(): void {
     .finally(() => {
       draining = undefined
       const next = queue[0]
-      if (next && (('via' in next ? next.via : undefined) ?? attached) && Date.now() >= closedUntil) drain()
+      if (next && transportOf(next) && Date.now() >= closedUntil) drain()
     })
 }
 
@@ -307,6 +323,7 @@ export function resetRequestLog(): void {
   attached = undefined
   config = undefined
   current = undefined
+  lastWritten = undefined
   store = undefined
   closedUntil = 0
   queue = []

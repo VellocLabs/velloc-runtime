@@ -500,7 +500,7 @@ describe('request log queries', () => {
 
   it('answers no question with a path, a project or an agent', async () => {
     const { store } = await seeded()
-    await store.record(row({ ...viaRouter, project: '/work/secret-site', purpose: 'turn', source: 'agent_tool', agentId: 'agent-7' }))
+    await store.record(row({ ...viaRouter, project: '/work/secret-site', purpose: 'compaction', source: 'agent_tool', agentId: 'agent-7' }))
     await store.record(row({
       ...viaRouter,
       startedMs: T0 + 9,
@@ -514,7 +514,7 @@ describe('request log queries', () => {
     for (const by of ['hour', 'day', 'switch', 'request'] satisfies Array<RequestLogQuery['by']>) {
       const answer = JSON.stringify(await store.query({ from: T0, to: T0 + 40 * HOUR_MS, by }))
       expect(answer).toContain('acme')
-      for (const kept of ['secret-site', '.env.production', 'agent-7', 'agent_tool']) {
+      for (const kept of ['secret-site', '.env.production', 'agent-7', 'agent_tool', 'compaction']) {
         expect(answer).not.toContain(kept)
       }
     }
@@ -854,6 +854,26 @@ describe('the row cap', () => {
     await openRequestLog()
     await requestLogIdle()
     expect(bridge.requests.filter(r => r.action === 'query' && String(r.payload.sql).includes('MAX(id)'))).toHaveLength(1)
+  })
+
+  it('keeps writing rows that name their bridge after the attached one closed', async () => {
+    vi.useFakeTimers()
+    const closed = {
+      request: vi.fn(async () => { throw new DOMException('Runtime scope was disposed.', 'AbortError') }),
+    } as unknown as BrowserBridgeTransport
+    const config = { getEnv: (name: string) => (name === 'HOME' ? '/home/tester' : undefined) } as unknown as RuntimeConfig
+    attachRequestLogBridge(closed, config)
+    recordRequest(row({ durationMs: 1 }))
+    await requestLogIdle()
+    const bridge = makeBridge()
+    recordRequest(row({ durationMs: 2 }), bridge.transport)
+    await requestLogIdle()
+    await vi.advanceTimersByTimeAsync(ROW_RECHECK_MS)
+    await requestLogIdle()
+    recordRequest(row({ durationMs: 3 }), bridge.transport)
+    await requestLogIdle()
+    expect(bridge.all('SELECT duration_ms FROM sends ORDER BY id').map(r => r[0])).toEqual([2, 3])
+    expect(requestLogQueueLength()).toBe(0)
   })
 
   it('checks again a day later when a count fails', async () => {
