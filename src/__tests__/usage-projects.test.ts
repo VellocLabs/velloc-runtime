@@ -1,6 +1,7 @@
 import { DatabaseSync } from 'node:sqlite'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { BrowserBridgeTransport } from '../browser/bridge/browserBridgeProtocol'
+import { SqliteSessionMetaStore } from '../browser/storage/SqliteSessionMetaStore'
 import { normalizeProjectPath } from '../utils/workspaceState'
 import { getSessionMetaDbPath, projectsHome } from '../utils/conversationStoragePaths'
 import { RequestLogStore, requestLogCallerOf, type RequestLogRow } from '../models/usage/requestLogStore'
@@ -36,8 +37,9 @@ function makeBridge() {
         if (action === 'query') {
           const statement = db.prepare(String(payload.sql))
           statement.setReturnArrays(true)
-          const rows = statement.all(...((payload.params ?? []) as SqlValue[])) as unknown as SqlValue[][]
-          return ok({ rows, rowCount: rows.length, truncated: false })
+          const all = statement.all(...((payload.params ?? []) as SqlValue[])) as unknown as SqlValue[][]
+          const rows = all.slice(0, Number(payload.maxRows ?? 10_000))
+          return ok({ rows, rowCount: rows.length, truncated: rows.length < all.length })
         }
         db.exec('BEGIN')
         const results = (payload.statements as Array<{ sql: string; params?: SqlValue[] }>).map(s => ({
@@ -148,6 +150,15 @@ describe("a session's project in the usage log", () => {
     expect(bridge.projects()).toEqual([['a', 'D:/one'], ['b', 'D:/two'], ['a', 'D:/one'], ['c', 'D:/one'], ['b', 'D:/two']])
     const names = bridge.dbOf(LOG, false)!.prepare('SELECT text FROM names').all().map(row => (row as { text: string }).text)
     expect(names).not.toContain('D:/three')
+  })
+
+  it('reads every project root, however many sessions the metadata holds', async () => {
+    const bridge = makeBridge()
+    const many = Array.from({ length: 12_001 }, (_, i): [string, string] => [`s${String(i).padStart(5, '0')}`, `D:/p${i % 3}`])
+    bridge.meta(many)
+    const roots = await new SqliteSessionMetaStore({ transport: bridge.transport, dbPath: META }).readProjectRoots()
+    expect(roots.size).toBe(12_001)
+    expect(roots.get('s12000')).toBe('D:/p0')
   })
 
   it('does not mark the backfill done when the metadata names none of the sessions it needs', async () => {

@@ -285,7 +285,10 @@ const SEED_SQL =
   `INSERT OR IGNORE INTO session_meta (${COLUMN_LIST}) VALUES (${PLACEHOLDERS})`
 const SELECT_ONE_SQL = `SELECT ${COLUMN_LIST} FROM session_meta WHERE session_id = ?`
 const SELECT_ALL_SQL = `SELECT ${COLUMN_LIST} FROM session_meta`
-const SELECT_PROJECT_ROOTS_SQL = 'SELECT session_id, project_root FROM session_meta WHERE project_root IS NOT NULL'
+const SELECT_PROJECT_ROOTS_SQL =
+  'SELECT session_id, project_root FROM session_meta WHERE project_root IS NOT NULL AND session_id > ? ORDER BY session_id LIMIT ?'
+/** Below the host's default row cap, so a page is never cut short. */
+const PROJECT_ROOTS_PAGE = 5_000
 const DELETE_SQL = 'DELETE FROM session_meta WHERE session_id = ?'
 const DELETE_BY_PARENT_SQL =
   'DELETE FROM session_meta WHERE parent_session_id = ?'
@@ -514,12 +517,18 @@ export class SqliteSessionMetaStore {
    *  step runs, and a file that does not exist yet answers none. */
   async readProjectRoots(): Promise<Map<string, string>> {
     const roots = new Map<string, string>()
-    for (const row of await this.query(SELECT_PROJECT_ROOTS_SQL, [])) {
-      const sessionId = readText(row[0])
-      const projectRoot = readText(row[1])
-      if (sessionId && projectRoot) roots.set(sessionId, projectRoot)
+    let after = ''
+    for (;;) {
+      const rows = await this.query(SELECT_PROJECT_ROOTS_SQL, [after, PROJECT_ROOTS_PAGE])
+      for (const row of rows) {
+        const sessionId = readText(row[0])
+        const projectRoot = readText(row[1])
+        if (sessionId && projectRoot) roots.set(sessionId, projectRoot)
+      }
+      const last = readText(rows[rows.length - 1]?.[0])
+      if (rows.length < PROJECT_ROOTS_PAGE || !last) return roots
+      after = last
     }
-    return roots
   }
 
   /** Every session's meta in one query — the sidebar's whole read. Sub-agent
