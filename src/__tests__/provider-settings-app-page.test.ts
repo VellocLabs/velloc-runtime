@@ -12,10 +12,15 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import type { BrowserLlmProvider } from '../browser/bridge/protocol/nexus_llm'
 import type { NexusProviderConfig } from '../settings/settingsTypes'
-import { createShellCloseSettings } from '../browser/webview/shellSettingsActions'
+import { createShellCloseSettings, createShellHandleOpenProviderSettings } from '../browser/webview/shellSettingsActions'
 import { EMPTY_MOD_CONTRIBUTIONS, type ModContributionsState } from '../browser/runtimeProtocol/modContributions'
 import type { AppPressPort } from '../browser/webview/apps/appPress'
-import { createProviderAppOpener, ProviderAppOpenerContext, type ProviderAppOpener } from '../browser/webview/apps/providerSettingsApp'
+import {
+  createProviderAppOpener,
+  openRouterSettingsApp,
+  ProviderAppOpenerContext,
+  type ProviderAppOpener,
+} from '../browser/webview/apps/providerSettingsApp'
 import { I18nProvider } from '../browser/webview/i18n'
 import { setModContributions } from '../browser/webview/mods/modContributionsView'
 import { ProviderSettingsAppEntry } from '../browser/webview/settings/sections/ProviderSettingsAppEntry'
@@ -188,5 +193,51 @@ describe('the opener', () => {
     const calls: string[] = []
     createProviderAppOpener({ port: undefined, signIn: undefined, openApp: type => calls.push(type), closeSettings: () => calls.push('close') }, () => BETA.apps)(app)
     expect(calls).toEqual(['close', 'switch:console'])
+  })
+})
+
+describe("the quick picker's provider gear", () => {
+  const provider = (mod: BrowserLlmProvider['mod']): BrowserLlmProvider =>
+    ({ id: 'mod.switch.route', label: 'Switchboard', iconSvg: '', enabled: true, models: [], mod }) as BrowserLlmProvider
+
+  function press(providers: BrowserLlmProvider[], open: ProviderAppOpener | undefined) {
+    const requests: unknown[] = []
+    const sections: unknown[] = []
+    const gear = createShellHandleOpenProviderSettings(
+      ((update: unknown) => requests.push(typeof update === 'function' ? update(null) : update)) as never,
+      ((section: unknown) => sections.push(section)) as never,
+      { current: { providers, open } },
+    )
+    act(() => setModContributions(BETA))
+    gear('mod.switch.route')
+    return { requests, sections }
+  }
+
+  it("opens a ready router's settings app and leaves Settings closed", () => {
+    const open = vi.fn()
+    const { requests, sections } = press([provider({ state: 'ready', plugin: 'switch', kind: 'router', settingsApp: 'switch-console' })], open)
+    expect(open).toHaveBeenCalledTimes(1)
+    expect(open.mock.calls[0]![0]).toMatchObject({ appId: 'switch-console', type: 'switch:console' })
+    expect(requests).toEqual([])
+    expect(sections).toEqual([])
+  })
+
+  it.each([
+    ['a provider that is not a router', { state: 'ready', plugin: 'switch', settingsApp: 'switch-console' }],
+    ['a router that names no app', { state: 'ready', plugin: 'switch', kind: 'router' }],
+    ['a router whose app is not published', { state: 'ready', plugin: 'switch', kind: 'router', settingsApp: 'missing' }],
+    ['a router whose plugin is missing', { state: 'plugin-missing', plugin: 'switch', kind: 'router', settingsApp: 'switch-console' }],
+  ] as const)('opens Settings → Models for %s', (_name, mod) => {
+    const open = vi.fn()
+    const { requests, sections } = press([provider(mod as BrowserLlmProvider['mod'])], open)
+    expect(open).not.toHaveBeenCalled()
+    expect(requests).toEqual([{ providerId: 'mod.switch.route', seq: 1 }])
+    expect(sections).toEqual(['models'])
+  })
+
+  it('opens Settings → Models when apps cannot open', () => {
+    const { requests, sections } = press([provider({ state: 'ready', plugin: 'switch', kind: 'router', settingsApp: 'switch-console' })], undefined)
+    expect(requests).toEqual([{ providerId: 'mod.switch.route', seq: 1 }])
+    expect(sections).toEqual(['models'])
   })
 })

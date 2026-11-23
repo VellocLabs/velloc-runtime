@@ -7,6 +7,8 @@
 
 import * as React from 'react'
 import type { ContributedApp } from '../../runtimeProtocol/modContributions'
+import type { BrowserLlmProvider } from '../../bridge/protocol/nexus_llm'
+import { isRouterMod } from '../settings/modRouterView'
 import { runAppPress, type AppPressPort } from './appPress'
 import { getModContributions } from '../mods/modContributionsView'
 
@@ -49,6 +51,26 @@ export type ProviderAppOpenerDeps = {
 }
 
 const publishedApps = (): readonly ContributedApp[] | undefined => getModContributions().apps
+
+/**
+ * A ready router that names a settings app is configured in that app alone
+ * (F-27, F-40): opens it and returns true. Any other provider, or a router
+ * whose plugin publishes no such app, opens nothing and returns false.
+ */
+export function openRouterSettingsApp(
+  providerId: string,
+  providers: readonly BrowserLlmProvider[] | undefined,
+  open: ProviderAppOpener | undefined,
+  apps: readonly ContributedApp[] | undefined = publishedApps(),
+): boolean {
+  if (!open) return false
+  const mod = providers?.find(p => p.id === providerId)?.mod
+  if (mod?.state !== 'ready' || !isRouterMod(mod)) return false
+  const app = providerSettingsApp(mod.settingsApp, mod.plugin, apps)
+  if (!app) return false
+  open(app)
+  return true
+}
 
 /** Plain-name inputs, so the shell's memo holds no render scope. */
 export function createProviderAppOpener(

@@ -10,6 +10,14 @@ import { type SessionLayoutsStore } from './layout/sessionLayouts'
 import type { OpenSidePane } from './openSidePane'
 import { forgetAskedPane, modsPaneWeight } from './layout/modsPane'
 import { saveModPanesAsked } from './layout/layoutStorage'
+import type { BrowserLlmProvider } from '../bridge/protocol/nexus_llm'
+import { openRouterSettingsApp, type ProviderAppOpener } from './apps/providerSettingsApp'
+
+/** The catalog rows and app opener a provider gear consults. */
+export type RouterAppSource = {
+  providers: readonly BrowserLlmProvider[] | undefined
+  open: ProviderAppOpener | undefined
+}
 import { getProviderMissingPrompt, revealProjectFolder, setWindowDragRegions } from './nexusBridgeActions'
 import type { WindowDragRect } from '../bridge/protocol/ui'
 import type { SettingsSectionId } from './settings/SettingsScreen'
@@ -161,8 +169,12 @@ export function createShellInterceptMarketplaceAdd(
 export function createShellHandleOpenProviderSettings(
   setProviderSettingsRequest: Dispatch<SetStateAction<{ providerId: string; seq: number; } | null>>,
   setSettingsSection: Dispatch<SetStateAction<SettingsSectionId | null>>,
+  /** Read at press time: a router's settings app opens straight away, never via Settings → Models (F-27, F-40). */
+  routerApps?: RefObject<RouterAppSource>,
 ) {
   return (providerId: string) => {
+    const source = routerApps?.current
+    if (source && openRouterSettingsApp(providerId, source.providers, source.open)) return
     setProviderSettingsRequest(prev => ({ providerId, seq: (prev?.seq ?? 0) + 1 }))
     setSettingsSection('models')
   }

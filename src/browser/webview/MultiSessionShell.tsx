@@ -326,6 +326,7 @@ import {
   createShellHandleLoadProviderMissingPrompt,
   createShellSettingsHostActions,
   createShellCloseSettings,
+  type RouterAppSource,
 } from './shellSettingsActions'
 import {
   createShellHandleArchiveSessions,
@@ -2384,8 +2385,10 @@ export function MultiSessionShell({
         : undefined,
     [runtimeConnection, providerAppPort, handleOpenApp, providerAppSignIn, closeSettings],
   )
+  const routerAppsRef = useRef<RouterAppSource>({ providers: undefined, open: undefined })
+  routerAppsRef.current = { providers: orderedActiveCatalog?.providers, open: providerAppOpener }
   const handleOpenProviderSettings = useMemo(
-    () => createShellHandleOpenProviderSettings(setProviderSettingsRequest, setSettingsSection),
+    () => createShellHandleOpenProviderSettings(setProviderSettingsRequest, setSettingsSection, routerAppsRef),
     [],
   )
   // One host drag map at a time: the topbar's, or the settings header's while
