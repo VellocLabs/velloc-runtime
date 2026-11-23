@@ -16,6 +16,7 @@ import { EDIT_TOOL_ID, READ_TOOL_ID } from '../../../prompting/fileToolNames'
 import { createFileIdentityResolver, type FileIdentityResolver } from '../../../utils/fileIdentity'
 import type { FileChangeDiff } from '../../../utils/fileChangeHunks'
 import { fsForContext, type RuntimeFs } from '../../../utils/fs/runtimeFs'
+import { utf8ByteLength } from '../../../utils/utf8ByteLength'
 import type { ToolCallContext } from '../../toolCallContext'
 
 /** What a file row says went wrong. */
@@ -73,9 +74,12 @@ function record(context: ToolCallContext, filePath: unknown, facts: RowFacts): v
   void job.finally(() => pending.delete(job))
 }
 
-const textBytes = (text: string): number => new TextEncoder().encode(text).length
-
-const textLines = (text: string): number => (text.length === 0 ? 0 : text.split('\n').length - (text.endsWith('\n') ? 1 : 0))
+function textLines(text: string): number {
+  if (text.length === 0) return 0
+  let lines = 1
+  for (let at = text.indexOf('\n'); at !== -1; at = text.indexOf('\n', at + 1)) lines++
+  return text.endsWith('\n') ? lines - 1 : lines
+}
 
 const numberArg = (value: unknown): boolean => typeof value === 'number' && Number.isFinite(value)
 
@@ -90,7 +94,7 @@ export function recordFileRead(context: ToolCallContext, filePath: unknown, args
   let bytes = 0
   let lines = 0
   if (!notice && typeof data === 'string') {
-    bytes = textBytes(data)
+    bytes = utf8ByteLength(data)
     lines = textLines(data)
   } else if (!notice && host && typeof host === 'object') {
     const media = (host as { media?: { bytes?: unknown } }).media
@@ -100,25 +104,27 @@ export function recordFileRead(context: ToolCallContext, filePath: unknown, args
   record(context, filePath, { tool: READ_TOOL_ID, op: 'read', bytes, lines, ...(partial ? { partial } : {}), outcome: 'ok' })
 }
 
-/** A Read the untrusted read boundary refused before it reached the host. */
-export function recordFileReadDenied(context: ToolCallContext, filePath: unknown): void {
-  record(context, filePath, { tool: READ_TOOL_ID, op: 'read', outcome: 'failed', failureKind: 'denied' })
+const opOf = (tool: string): FileOpRow['op'] => (tool === READ_TOOL_ID ? 'read' : tool === EDIT_TOOL_ID ? 'edit' : 'write')
+
+/** A Read, Edit or Write the untrusted read boundary refused before it reached the host. */
+export function recordFileDenied(context: ToolCallContext, tool: string, filePath: unknown): void {
+  record(context, filePath, { tool, op: opOf(tool), outcome: 'failed', failureKind: 'denied' })
 }
 
 /** An Edit or Write the host carried out; `receipt.bytes` is the file's size afterwards. */
 export function recordFileChange(context: ToolCallContext, tool: string, receipt: Record<string, unknown>, diff: FileChangeDiff | undefined): void {
   record(context, receipt.path, {
     tool,
-    op: tool === EDIT_TOOL_ID ? 'edit' : 'write',
+    op: opOf(tool),
     bytes: typeof receipt.bytes === 'number' ? receipt.bytes : 0,
     added: diff?.plusLines ?? 0,
     removed: diff?.minusLines ?? 0,
-    ...(diff?.fileWasCreated || receipt.outcome === 'created' ? { created: true } : {}),
+    ...(receipt.outcome === 'created' ? { created: true } : {}),
     outcome: 'ok',
   })
 }
 
-/** A Read, Edit or Write the host refused or failed: from a thrown host error, or a receipt that names an error code. */
+/** A Read, Edit or Write the host refused or failed: from a thrown host error, or a receipt that did not pass as a success. */
 export function recordFileFailure(context: ToolCallContext, tool: string, filePath: unknown, failure: unknown): void {
   const code =
     failure instanceof HostToolError
@@ -126,8 +132,7 @@ export function recordFileFailure(context: ToolCallContext, tool: string, filePa
       : failure && typeof failure === 'object' && typeof (failure as { code?: unknown }).code === 'string'
         ? (failure as { code: string }).code
         : undefined
-  const op = tool === READ_TOOL_ID ? 'read' : tool === EDIT_TOOL_ID ? 'edit' : 'write'
-  record(context, filePath, { tool, op, outcome: 'failed', failureKind: fileFailureKindOf(code) })
+  record(context, filePath, { tool, op: opOf(tool), outcome: 'failed', failureKind: fileFailureKindOf(code) })
 }
 
 /** Settles once every row asked for so far has been handed to the writer. */

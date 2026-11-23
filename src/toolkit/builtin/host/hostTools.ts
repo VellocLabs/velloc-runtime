@@ -71,7 +71,7 @@ import {
   recordHostedReadState,
 } from './readState'
 import { buildHostEditDiff } from './editDiff'
-import { recordFileChange, recordFileFailure, recordFileRead, recordFileReadDenied } from './fileActivity'
+import { recordFileChange, recordFileDenied, recordFileFailure, recordFileRead } from './fileActivity'
 import { renderHostResult } from './resultText'
 import { captureWorkspaceMutation, observeWorkspaceMutation } from '../../../codeReview/mutation-observer'
 
@@ -385,7 +385,7 @@ function buildHostTool(
         context,
       )
       if (refusal !== undefined) {
-        if (definition.name === READ_TOOL_ID) recordFileReadDenied(context, (callArgs as Record<string, unknown>).file_path)
+        if (isFileActivityTool(definition.name)) recordFileDenied(context, definition.name, (callArgs as Record<string, unknown>).file_path)
         return { data: refusal }
       }
       if (definition.name === READ_TOOL_ID) {
@@ -473,10 +473,9 @@ function buildHostTool(
             && !('error' in receipt) && !('code' in receipt) && receipt.ok !== false && receipt.isError !== true) {
             await observeWorkspaceMutation(context, 'write', beforeMutation)
             changeReceipt = receipt
-          } else if (typeof receipt.code === 'string') {
-            recordFileFailure(context, definition.name, path, receipt)
           }
         }
+        if (!changeReceipt) recordFileFailure(context, definition.name, (callArgs as Record<string, unknown>).file_path, result)
       }
       let shellProbeHeld = false
       let data: ReturnType<typeof renderHostResult>

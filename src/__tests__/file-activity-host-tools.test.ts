@@ -138,6 +138,13 @@ describe('file rows from the hosted file tools', () => {
     ])
   })
 
+  it('never marks a write the host reported as an update as created, even without the earlier content', async () => {
+    const path = `${ROOT}/a.ts`
+    await call('Write', { file_path: path, content: 'a\n' }, async () => ({ outcome: 'updated', path, bytes: 2 }))
+    expect(written).toEqual([expect.objectContaining({ op: 'write', outcome: 'ok' })])
+    expect(written[0]).not.toHaveProperty('created')
+  })
+
   it('records an edit with the lines it added and removed', async () => {
     const path = `${ROOT}/a.ts`
     await call('Edit', { file_path: path, old_string: 'x', new_string: 'y\nz' }, async () => ({
@@ -164,6 +171,39 @@ describe('file rows from the hosted file tools', () => {
     await call('Read', { file_path: '/home/me/.ssh/id_rsa' }, callTool, context(callTool, { untrustedReadRoot: ROOT }))
     expect(callTool).not.toHaveBeenCalled()
     expect(written).toEqual([expect.objectContaining({ tool: 'Read', path: '/home/me/.ssh/id_rsa', outcome: 'failed', failureKind: 'denied' })])
+  })
+
+  it('records an edit or a write the untrusted boundary refused as denied, without reaching the host', async () => {
+    const callTool = vi.fn(async () => ({ outcome: 'updated', path: '/home/me/.bashrc', bytes: 1 }))
+    const ctx = context(callTool, { untrustedReadRoot: ROOT })
+    await call('Edit', { file_path: '/home/me/.bashrc', old_string: 'a', new_string: 'b' }, callTool, ctx)
+    await call('Write', { file_path: '/home/me/.bashrc', content: 'b' }, callTool, ctx)
+    expect(callTool).not.toHaveBeenCalled()
+    expect(written.map(row => [row.op, row.outcome, row.failureKind])).toEqual([
+      ['edit', 'failed', 'denied'],
+      ['write', 'failed', 'denied'],
+    ])
+  })
+
+  it('records a change receipt that did not pass as a success as a failed row, with or without a code', async () => {
+    const path = `${ROOT}/a.ts`
+    await call('Edit', { file_path: path, old_string: 'x', new_string: 'y' }, async () => ({ code: 'file_modified_since_read', path }))
+    await call('Edit', { file_path: path, old_string: 'x', new_string: 'y' }, async () => ({ ok: false, error: 'write failed' }))
+    await call('Write', { file_path: path, content: 'y' }, async () => ({ outcome: 'updated', path: `${ROOT}/other.ts`, bytes: 1 }))
+    expect(written.map(row => [row.op, row.path, row.outcome, row.failureKind])).toEqual([
+      ['edit', 'a.ts', 'failed', 'conflict'],
+      ['edit', 'a.ts', 'failed', 'other'],
+      ['write', 'a.ts', 'failed', 'other'],
+    ])
+    expect(written.every(row => row.bytes === undefined && row.added === undefined)).toBe(true)
+  })
+
+  it('counts an image read by the bytes the host reported', async () => {
+    await call('Read', { file_path: `${ROOT}/logo.png` }, async () => ({
+      media: { kind: 'image', path: `${ROOT}/logo.png`, bytes: 2048 },
+      content_parts: [{ type: 'image', data: 'AAAA', mimeType: 'image/png' }],
+    }))
+    expect(written).toEqual([expect.objectContaining({ op: 'read', path: 'logo.png', bytes: 2048, lines: 0, outcome: 'ok' })])
   })
 
   it("keeps a sub-agent's row under its session, with the agent", async () => {
