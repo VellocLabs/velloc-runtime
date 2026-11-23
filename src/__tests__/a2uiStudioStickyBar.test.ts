@@ -26,7 +26,7 @@ describe('studio StickyBar (F-1)', () => {
   it('compiles with its children and edge', () => {
     const result = compiler.compile([
       'surface("page")',
-      'root = Column([bar, body])',
+      'root = Column([body, bar])',
       'bar = StickyBar([save], edge="bottom")',
       'save = Button("Save")',
       'body = Text("long page")',

@@ -19,7 +19,7 @@ export const layoutDefinitions = {
   ),
   StickyBar: def(
     "Layout",
-    "A bar that stays in view while the page scrolls, for what must stay reachable on a long page: unsaved changes with Save and Discard, a filter row. Put it directly in the root Column or in a Tabs child, never in a Card or a Row: it stays only while its parent is on screen. At most one per edge.",
+    "A bar that stays in view while the page scrolls, for what must stay reachable on a long page: unsaved changes with Save and Discard, a filter row. Put it directly in the root Column or in a Tabs child, never in a Card or a Row: it stays only while its parent is on screen. A top bar goes first in that parent; a bottom bar goes last, after the content it sits below. At most one per edge.",
     z.object({
       children: childList(),
       edge: z
