@@ -71,6 +71,7 @@ import {
   recordHostedReadState,
 } from './readState'
 import { buildHostEditDiff } from './editDiff'
+import { recordFileChange, recordFileFailure, recordFileRead, recordFileReadDenied } from './fileActivity'
 import { renderHostResult } from './resultText'
 import { captureWorkspaceMutation, observeWorkspaceMutation } from '../../../codeReview/mutation-observer'
 
@@ -383,7 +384,10 @@ function buildHostTool(
         callArgs as Record<string, unknown>,
         context,
       )
-      if (refusal !== undefined) return { data: refusal }
+      if (refusal !== undefined) {
+        if (definition.name === READ_TOOL_ID) recordFileReadDenied(context, (callArgs as Record<string, unknown>).file_path)
+        return { data: refusal }
+      }
       if (definition.name === READ_TOOL_ID) {
         const restoredStub = await maybeBuildPostCompactReadStub(
           context,
@@ -454,8 +458,10 @@ function buildHostTool(
       } catch (err) {
         // The command may have run before the failure: keep what changed.
         await shellProbe?.settle()
+        if (isFileActivityTool(definition.name)) recordFileFailure(context, definition.name, (callArgs as Record<string, unknown>).file_path, err)
         throw err
       }
+      let changeReceipt: Record<string, unknown> | undefined
       if (definition.name === EDIT_TOOL_ID || definition.name === WRITE_TOOL_ID) {
         const result = unwrapData(rawResult)
         if (result && typeof result === 'object' && !Array.isArray(result)) {
@@ -466,6 +472,9 @@ function buildHostTool(
             && normalizePathKey(receipt.path) === normalizePathKey(path) && outcomes.includes(String(receipt.outcome))
             && !('error' in receipt) && !('code' in receipt) && receipt.ok !== false && receipt.isError !== true) {
             await observeWorkspaceMutation(context, 'write', beforeMutation)
+            changeReceipt = receipt
+          } else if (typeof receipt.code === 'string') {
+            recordFileFailure(context, definition.name, path, receipt)
           }
         }
       }
@@ -629,6 +638,7 @@ function buildHostTool(
             callArgs as Record<string, unknown>,
             data,
           )
+          recordFileRead(context, fp, callArgs as Record<string, unknown>, unwrapData(rawResult), data)
           // Memory staleness caveat (`staleMemoryReminder` for files in
           // the memory directory). Prepended AFTER
           // recordHostedReadState so the cached read state holds the file's
@@ -648,6 +658,7 @@ function buildHostTool(
         definition.name === WRITE_TOOL_ID
       ) {
         const enriched = buildHostEditDiff(definition.name, callArgs, data)
+        if (changeReceipt) recordFileChange(context, definition.name, changeReceipt, enriched?.editDiff)
         if (enriched) {
           return agentMeta
             ? {
@@ -664,6 +675,9 @@ function buildHostTool(
     parallelSafe: () => definition.concurrencySafe === true,
   })
 }
+
+const isFileActivityTool = (name: string): boolean =>
+  name === READ_TOOL_ID || name === EDIT_TOOL_ID || name === WRITE_TOOL_ID
 
 export function buildHostTools(
   definitions: readonly HostedToolDefinition[],
