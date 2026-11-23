@@ -9,7 +9,8 @@
  * and the tool-use context. Object keys are masked like values. A part is
  * judged by its `type` wherever it sits (a tool result's content too): an
  * image and redacted thinking are left whole, a thinking part's `signature`
- * is left as is (a host replay envelope's `value` excepted), and a document is masked after decoding when its media type
+ * is left as is (a host replay envelope's `value` text excepted, its signed
+ * and encrypted members still whole), and a document is masked after decoding when its media type
  * is `text/*` (other documents, PDF included, are sent whole). Never masked:
  * `requestContext`, `model`, `providerId`. The egress guard catches what is
  * left.
@@ -30,6 +31,7 @@ import type { CompiledMasking, MaskingHit } from './maskingRules'
 import { MaskingResidualError, MaskingUndecodableError } from './egressGuard'
 import { traceEntries, type ReplacementEntry } from './replacementTrace'
 import { REASONING_REPLAY_PREFIX } from '../drivers/hostCallOptions'
+import { isHostDict, parseHostJson, writeHostJson, type HostValue } from '../drivers/hostValue'
 
 export type MaskingWhere = 'messages' | 'system' | 'tools' | 'extension'
 
@@ -40,6 +42,15 @@ const OPAQUE_PART_FIELDS: Readonly<Record<string, ReadonlySet<string>>> = {
   thinking: new Set(['signature']),
   reasoning: new Set(['signature', 'encrypted_content', 'encryptedContent']),
 }
+
+/** Replay-envelope value fields a provider signed or encrypted: the reasoning
+ *  text beside them is masked, these stay byte-exact. (F-39) */
+const REPLAY_SIGNED_FIELDS: ReadonlySet<string> = new Set([
+  'signature',
+  'data',
+  'encrypted_content',
+  'encryptedContent',
+])
 
 const UTF8_DECODER = new TextDecoder('utf-8', { fatal: true })
 const UTF8_ENCODER = new TextEncoder()
@@ -128,24 +139,49 @@ export class PayloadMasker {
   /**
    * A provider-signed field is left as is, except a host replay envelope
    * (`velloc-replay-v1:{…}`): its `value` is reasoning text the provider will
-   * read, so it is masked; `provider`, `model` and `field` are kept so the
+   * read, so its text is masked while the signatures and encrypted blobs it
+   * carries stay byte-exact; `provider`, `model` and `field` are kept so the
    * envelope still matches its target. An envelope that is not JSON is left
    * whole for the egress guard to judge.
    */
   private opaqueField(item: unknown, where: string): unknown {
     if (typeof item !== 'string' || !item.startsWith(REASONING_REPLAY_PREFIX)) return item
-    let envelope: unknown
-    try {
-      envelope = JSON.parse(item.slice(REASONING_REPLAY_PREFIX.length))
-    } catch {
-      return item
+    const envelope = parseHostJson(item.slice(REASONING_REPLAY_PREFIX.length))
+    if (!isHostDict(envelope) || !envelope.has('value')) return item
+    const value = envelope.get('value') as HostValue
+    const masked = this.replayValue(value, where)
+    if (masked === value) return item
+    const out = new Map(envelope)
+    out.set('value', masked)
+    return REASONING_REPLAY_PREFIX + writeHostJson(out)
+  }
+
+  /** A replay value with its reasoning text masked; signed or encrypted
+   *  members and object keys stay as they are. */
+  private replayValue(value: HostValue, where: string): HostValue {
+    if (typeof value === 'string') return this.text(value, where)
+    if (Array.isArray(value)) {
+      let changed = false
+      const out = value.map(item => {
+        const next = this.replayValue(item, where)
+        if (next !== item) changed = true
+        return next
+      })
+      return changed ? out : value
     }
-    if (!envelope || typeof envelope !== 'object' || Array.isArray(envelope)) return item
-    const fields = envelope as Record<string, unknown>
-    if (!('value' in fields)) return item
-    const value = this.deep(fields.value, where)
-    if (value === fields.value) return item
-    return REASONING_REPLAY_PREFIX + JSON.stringify({ ...fields, value })
+    if (isHostDict(value)) {
+      let out: Map<string, HostValue> | undefined
+      for (const [key, item] of value) {
+        if (REPLAY_SIGNED_FIELDS.has(key)) continue
+        const next = this.replayValue(item, where)
+        if (next !== item) {
+          out ??= new Map(value)
+          out.set(key, next)
+        }
+      }
+      return out ?? value
+    }
+    return value
   }
 
   /** A `text/*` document is masked inside its base64; any other is left whole.

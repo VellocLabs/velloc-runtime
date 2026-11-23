@@ -6,8 +6,8 @@ import { maskPayload, PayloadMasker } from '../models/masking/maskPayload'
 import { MaskingUndecodableError } from '../models/masking/egressGuard'
 import { createRestoreFilter } from '../models/masking/restoreStream'
 import type { ReplacementEntry } from '../models/masking/replacementTrace'
-import { decodeReasoningReplaySignatureFor } from '../models/drivers/hostCallOptions'
-import { hostValueToJs } from '../models/drivers/hostValue'
+import { decodeReasoningReplaySignatureFor, encodeReasoningReplaySignature } from '../models/drivers/hostCallOptions'
+import { hostDict, hostValueFromJs, hostValueToJs } from '../models/drivers/hostValue'
 
 const RULES: MaskingRule[] = [
   { match: 'AcmeCo', alias: 'Northwind' },
@@ -148,32 +148,47 @@ describe('maskPayload: what counts as opaque', () => {
     expect((out.messages[2]!.content as any[])[0]).toEqual({ type: 'thinking', thinking: 'Northwind', signature: 'AcmeCo-sig' })
   })
 
-  it('masks the reasoning inside a host replay envelope signature, keeping its provider, model and field', () => {
-    const envelope = (value: unknown) => `velloc-replay-v1:${JSON.stringify({ field: 'reasoning_details', model: 'widget-1', provider: 'gw', value })}`
-    const signature = envelope([{ type: 'reasoning.text', text: 'look in the AcmeCo repo' }])
+  it('masks the reasoning inside a host replay envelope, keeping its provider, model, field and signed members', () => {
+    const signature = encodeReasoningReplaySignature('gw', 'gpt-x', hostDict([
+      ['type', 'reasoning-replay'],
+      ['field', 'reasoning_details'],
+      ['value', hostValueFromJs([
+        { index: 0, type: 'reasoning.text', text: 'look in the AcmeCo repo', signature: 'sig-AcmeCo' },
+        { index: 1, type: 'reasoning.encrypted', data: 'AcmeCo-cipher' },
+      ])!],
+    ]))!
     const original: BridgeModelRequestPayload = {
       messages: [{ role: 'assistant', content: [{ type: 'thinking', thinking: 'AcmeCo', signature }] }],
     }
     const out = maskPayload(original, new PayloadMasker(masking, []))
     const sent = (out.messages[0]!.content as any[])[0].signature as string
-    expect(sent).toBe(envelope([{ type: 'reasoning.text', text: 'look in the Northwind repo' }]))
-    expect(masking.residualIn(sent.replace('widget-1', ''))).toBeUndefined()
-    const replay = decodeReasoningReplaySignatureFor(sent, 'gw', 'widget-1')
-    expect(hostValueToJs(replay!.get('value')!)).toEqual([{ type: 'reasoning.text', text: 'look in the Northwind repo' }])
+    expect(sent).not.toContain('look in the AcmeCo repo')
+    const replay = decodeReasoningReplaySignatureFor(sent, 'gw', 'gpt-x')
+    expect(hostValueToJs(replay!.get('value')!)).toEqual([
+      { index: 0, signature: 'sig-AcmeCo', text: 'look in the Northwind repo', type: 'reasoning.text' },
+      { data: 'AcmeCo-cipher', index: 1, type: 'reasoning.encrypted' },
+    ])
   })
 
   it('leaves a replay envelope with nothing to mask, or one that is not JSON, unchanged', () => {
-    const clean = `velloc-replay-v1:${JSON.stringify({ field: 'f', model: 'm', provider: 'p', value: 'plain' })}`
+    const signatures = encodeReasoningReplaySignature('gw', 'gpt-x', hostDict([
+      ['type', 'reasoning-replay'],
+      ['field', 'thoughtSignatures'],
+      ['value', hostValueFromJs([{ call: 0, signature: 'sig-AcmeCo' }])!],
+    ]))!
+    const clean = 'velloc-replay-v1:{"field":"f","model":"m","provider":"p","value":"plain"}'
     const broken = 'velloc-replay-v1:{AcmeCo'
     const original: BridgeModelRequestPayload = {
       messages: [{ role: 'assistant', content: [
         { type: 'thinking', thinking: 'a', signature: clean },
         { type: 'thinking', thinking: 'b', signature: broken },
+        { type: 'thinking', thinking: 'c', signature: signatures },
       ] }],
     }
-    const [first, second] = maskPayload(original, new PayloadMasker(masking, [])).messages[0]!.content as any[]
+    const [first, second, third] = maskPayload(original, new PayloadMasker(masking, [])).messages[0]!.content as any[]
     expect(first.signature).toBe(clean)
     expect(second.signature).toBe(broken)
+    expect(third.signature).toBe(signatures)
   })
 
   it('masks object keys in tool arguments and results, and restore puts them back', () => {
