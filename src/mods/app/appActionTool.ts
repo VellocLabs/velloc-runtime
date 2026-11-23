@@ -45,8 +45,14 @@ function resultText(action: string, result: unknown): string {
     json = undefined
   }
   if (json === undefined) return `The app's script handled "${action}"; its answer is not JSON and is not shown.`
-  const text = json.length > APP_ACTION_CONTEXT_MAX_BYTES ? `${json.slice(0, APP_ACTION_CONTEXT_MAX_BYTES)}… (cut)` : json
-  return `The app's script handled "${action}" and answered:\n${text}`
+  if (encoder.encode(json).byteLength <= APP_ACTION_CONTEXT_MAX_BYTES) {
+    return `The app's script handled "${action}" and answered:\n${json}`
+  }
+  // Cut the JSON at a byte boundary; slicing the string by code units would
+  // leave a partial code point or overshoot the budget for multibyte text.
+  let cut = APP_ACTION_CONTEXT_MAX_BYTES
+  while (cut > 0 && encoder.encode(json.slice(0, cut)).byteLength > APP_ACTION_CONTEXT_MAX_BYTES) cut -= 1
+  return `The app's script handled "${action}" and answered:\n${json.slice(0, cut)}… (cut)`
 }
 
 export function createAppActionTool(options: AppActionToolOptions): ToolContract<AppActionToolInput, string> {
@@ -69,10 +75,17 @@ export function createAppActionTool(options: AppActionToolOptions): ToolContract
       if (!actions.includes(action)) {
         return failure(`"${action}" is not an action of this app. Its actions: ${named(actions)}.`)
       }
-      const context = input.context
+      const context = input && typeof input === 'object' ? (input as { context?: unknown }).context : undefined
       if (context !== undefined) {
         if (typeof context !== 'object' || context === null || Array.isArray(context)) return failure('context must be an object.')
-        if (encoder.encode(JSON.stringify(context)).byteLength > APP_ACTION_CONTEXT_MAX_BYTES) {
+        let contextJson: string
+        try {
+          contextJson = JSON.stringify(context)
+        } catch {
+          return failure('context is not JSON-serializable.')
+        }
+        if (contextJson === undefined) return failure('context is not JSON-serializable.')
+        if (encoder.encode(contextJson).byteLength > APP_ACTION_CONTEXT_MAX_BYTES) {
           return failure(`context is over the ${APP_ACTION_CONTEXT_MAX_BYTES}-byte limit.`)
         }
       }

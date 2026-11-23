@@ -402,10 +402,11 @@ export class AppBackgroundRuntime {
       { appId, action, context: context ?? null, sessionId },
       left,
       `app.action "${action}" of ${appId}`,
-      '; the model takes it',
+      '; nothing else is done with it',
       fate,
     )
     if (raised !== undefined && handledBy(raised.result)) return { status: 'handled', ...resultOf(raised.result) }
+    if (module.gone.signal.aborted) return { status: 'unavailable' }
     return { status: fate.late ? 'timeout' : 'declined' }
   }
 

@@ -128,6 +128,22 @@ describe('AppAction', () => {
     expect(offered).toEqual([])
   })
 
+  it('a missing or unserializable context is an error result, not a thrown call', async () => {
+    const { call, offered } = rig(['save'], () => ({ status: 'handled' }))
+    expect((await call(undefined)).data).toMatch(/is not an action of this app/)
+    expect((await call({ action: 'save', context: { big: 1n } })).data).toBe('context is not JSON-serializable.')
+    expect(offered).toEqual([])
+  })
+
+  it('cuts a multibyte script answer at the byte limit, not at a code-unit count', async () => {
+    const answer = '中'.repeat(APP_ACTION_CONTEXT_MAX_BYTES / 3)
+    const { call } = rig(['save'], () => ({ status: 'handled', result: answer }))
+    const result = await call({ action: 'save' })
+    expect(result.data).toMatch(/… \(cut\)$/)
+    const text = result.data.slice(result.data.indexOf('answered:') + 'answered:'.length + 1)
+    expect(new TextEncoder().encode(text.slice(0, text.indexOf('…'))).byteLength).toBeLessThanOrEqual(APP_ACTION_CONTEXT_MAX_BYTES)
+  })
+
   it('a closed session offers nothing; with no dispatch seated the script is unavailable', async () => {
     const { host, call, offered } = rig(['save'], () => ({ status: 'handled' }))
     host.dispose()
