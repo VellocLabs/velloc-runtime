@@ -17,7 +17,6 @@ import { EMPTY_MOD_CONTRIBUTIONS, type ModContributionsState } from '../browser/
 import type { AppPressPort } from '../browser/webview/apps/appPress'
 import {
   createProviderAppOpener,
-  openRouterSettingsApp,
   ProviderAppOpenerContext,
   type ProviderAppOpener,
 } from '../browser/webview/apps/providerSettingsApp'
