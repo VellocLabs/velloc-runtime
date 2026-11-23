@@ -17,7 +17,13 @@ import type { RuntimeConfig } from '../../runtime/interfaces/RuntimeConfig'
 import { classifyProviderConnectivityIssue, ProviderApiError } from '../../utils/providerConnectivity'
 import type { DeclaredVerdict } from '../../utils/providerVerdict'
 import { providerRouterFor } from '../drivers/providerRouter'
-import { foldUsage, type RequestLogRow, type RequestLogUsage } from './requestLogStore'
+import {
+  foldUsage,
+  requestLogCallerOf,
+  type RequestLogCaller,
+  type RequestLogRow,
+  type RequestLogUsage,
+} from './requestLogStore'
 import { attachRequestLogBridge, recordRequest } from './requestLogWriter'
 
 /** Streams watched at once; past it the oldest is recorded as abandoned. */
@@ -27,7 +33,7 @@ type Open = {
   startedMs: number
   provider: string
   model: string
-  sessionId?: string
+  caller: RequestLogCaller
   usage: RequestLogUsage
 }
 
@@ -83,7 +89,7 @@ export function withRequestLog(
       {
         startedMs: stream.startedMs,
         durationMs: Date.now() - stream.startedMs,
-        ...(stream.sessionId ? { sessionId: stream.sessionId } : {}),
+        ...stream.caller,
         provider: stream.provider,
         model: stream.model,
         usage: stream.usage,
@@ -106,8 +112,7 @@ export function withRequestLog(
     if (!provider || !requested || providerRouterFor(provider)) return undefined
     // The concrete id the request was sent for, so a send that never reports its model is counted with the rest.
     const model = resolveModelId(provider, requested)
-    const sessionId = text(fields(payload.requestContext).sessionId)
-    return { startedMs, provider, model, ...(sessionId ? { sessionId } : {}), usage: {} }
+    return { startedMs, provider, model, caller: requestLogCallerOf(payload.requestContext), usage: {} }
   }
 
   const observe = (action: string, payload: Fields, response: Fields, startedMs: number): void => {

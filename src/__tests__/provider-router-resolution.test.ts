@@ -1125,8 +1125,8 @@ describe('logRowOf', () => {
 
   it('a re-send to the same target is the next hop and names no switch', () => {
     const call = routeCallOf({})
-    const first = logRowOf('r', 'row', undefined, call, send('a', 'm', 'failed', 503))
-    const again = logRowOf('r', 'row', undefined, call, send('a', 'm', 'ok'))
+    const first = logRowOf('r', 'row', {}, call, send('a', 'm', 'failed', 503))
+    const again = logRowOf('r', 'row', {}, call, send('a', 'm', 'ok'))
     expect([first.hop, again.hop]).toEqual([1, 2])
     expect(again.callId).toBe(first.callId)
     expect(again).not.toHaveProperty('switchedFrom')
@@ -1136,8 +1136,8 @@ describe('logRowOf', () => {
 
   it('a move off a cancelled send names the kind as error', () => {
     const call = routeCallOf({})
-    logRowOf('r', 'row', 's', call, send('a', 'm', 'aborted'))
-    const moved = logRowOf('r', 'row', 's', call, send('b', 'n', 'ok'))
+    logRowOf('r', 'row', { sessionId: 's' }, call, send('a', 'm', 'aborted'))
+    const moved = logRowOf('r', 'row', { sessionId: 's' }, call, send('b', 'n', 'ok'))
     expect(moved.switchedFrom).toEqual({ provider: 'a', model: 'm', kind: 'error' })
     expect(moved.sessionId).toBe('s')
   })

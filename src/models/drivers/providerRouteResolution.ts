@@ -50,7 +50,7 @@ import {
   type MediaKinds,
 } from './routedMedia'
 import type { RouteDecision, RouteLeg, RoutedSend, StreamRouting } from './routedStream'
-import type { RequestLogRow } from '../usage/requestLogStore'
+import { requestLogCallerOf, type RequestLogCaller, type RequestLogRow } from '../usage/requestLogStore'
 import { recordRequest } from '../usage/requestLogWriter'
 import { isProviderSetUp, mergedModels, providerEntries, runtimeProviderConfigs } from './runtimeProviders'
 import { providerModelPool } from '../../config/nexusModelConfig/providerModelPool'
@@ -148,7 +148,7 @@ const text = (error: unknown): string => (error instanceof Error ? error.message
 export function logRowOf(
   routerId: string,
   rowModel: string,
-  sessionId: string | undefined,
+  caller: RequestLogCaller,
   call: RouteCall,
   send: RoutedSend,
 ): RequestLogRow {
@@ -163,7 +163,7 @@ export function logRowOf(
   return {
     startedMs: send.startedMs,
     durationMs: send.durationMs,
-    ...(sessionId ? { sessionId } : {}),
+    ...caller,
     callId: call.logCallId,
     hop: logged.sends,
     provider: send.target.provider,
@@ -338,7 +338,7 @@ export function routeCall(
       return { kind: 'none' }
     },
     sent(send) {
-      recordRequest(logRowOf(routerId, rowModel, payload.requestContext?.sessionId, call, send), deps.logVia)
+      recordRequest(logRowOf(routerId, rowModel, requestLogCallerOf(payload.requestContext), call, send), deps.logVia)
     },
     ended(ending) {
       if (!router.outcome || !ending.target) return

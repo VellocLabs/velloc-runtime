@@ -4,7 +4,8 @@ import type { BrowserBridgeTransport } from '../browser/bridge/browserBridgeProt
 import { recordEntryResolution, resetEntryResolutions } from '../config/nexusModelConfig/modelEntryResolution'
 import type { RuntimeConfig } from '../runtime/interfaces/RuntimeConfig'
 import {
-  HOURLY_COLUMNS,
+  DAY_MS,
+  FILE_OP_COLUMNS,
   HOUR_MS,
   REQUEST_LOG_SCHEMA_VERSION,
   SEND_COLUMNS,
@@ -12,18 +13,24 @@ import {
 import {
   RequestLogQueryError,
   RequestLogStore,
+  type FileOpRow,
+  type RequestLogQuery,
   type RequestLogRow,
 } from '../models/usage/requestLogStore'
 import { withRequestLog } from '../models/usage/requestLogTransport'
 import {
   attachRequestLogBridge,
   openRequestLog,
+  recordFileOps,
   recordRequest,
   REQUEST_LOG_QUEUE_MAX,
   requestLogIdle,
   requestLogPath,
   requestLogQueueLength,
   resetRequestLog,
+  ROW_CAP,
+  ROW_RECHECK_MS,
+  TRIM_DELAY_MS,
 } from '../models/usage/requestLogWriter'
 
 type SqlValue = null | number | string
@@ -33,7 +40,15 @@ type SqlValue = null | number | string
  * the store's own SQL runs. A statement the host's engine does not have (an
  * upsert) is refused as the host refuses it.
  */
-function makeBridge(options: { failBatches?: () => boolean; gate?: Promise<void> } = {}) {
+function makeBridge(
+  options: {
+    failBatches?: () => boolean
+    failQuery?: (sql: string) => boolean
+    gate?: Promise<void>
+    files?: Set<string>
+    failRename?: boolean
+  } = {},
+) {
   const db = new DatabaseSync(':memory:')
   const requests: Array<{ capability: string; action: string; payload: Record<string, unknown> }> = []
   const ok = (result: unknown) => ({ ok: true as const, result })
@@ -49,10 +64,22 @@ function makeBridge(options: { failBatches?: () => boolean; gate?: Promise<void>
       requests.push({ capability, action, payload })
       if (options.gate) await options.gate
       if (capability === 'fs' && action === 'userHome') return ok('/home/tester')
+      if (capability === 'fs' && options.files && action === 'exists') return ok(options.files.has(String(payload.path)))
+      if (capability === 'fs' && options.files && action === 'rename') {
+        const from = String(payload.oldPath)
+        const to = String(payload.newPath)
+        if (options.failRename) return err('EBUSY', 'The file is in use')
+        if (!options.files.has(from)) return err('ENOENT', 'Source does not exist')
+        if (options.files.has(to)) return err('EEXIST', 'Destination already exists')
+        options.files.delete(from)
+        options.files.add(to)
+        return ok({ ok: true })
+      }
       if (capability === 'fs') return ok({ ok: true })
       if (capability !== 'sqlite') return err('UNKNOWN_CAPABILITY')
       try {
         if (action === 'query') {
+          if (options.failQuery?.(String(payload.sql))) return err('SQLITE_ERROR', 'disk I/O error')
           const statement = db.prepare(String(payload.sql))
           statement.setReturnArrays(true)
           const rows = statement.all(...((payload.params ?? []) as SqlValue[])) as unknown as SqlValue[][]
@@ -86,7 +113,7 @@ function makeBridge(options: { failBatches?: () => boolean; gate?: Promise<void>
 }
 
 function makeStore(bridge = makeBridge()) {
-  const store = new RequestLogStore({ transport: () => bridge.transport, dbPath: '/home/tester/.velloc/usage/requests.sqlite' })
+  const store = new RequestLogStore({ transport: () => bridge.transport, dbPath: '/home/tester/.velloc/usage/usage.sqlite' })
   return { ...bridge, store }
 }
 
@@ -113,32 +140,86 @@ afterEach(async () => {
   await requestLogIdle()
   resetRequestLog()
   resetEntryResolutions()
+  vi.useRealTimers()
 })
+
+/** The tables as the first version of the file had them. */
+const VERSION_1_STATEMENTS = [
+  'CREATE TABLE log_meta (key TEXT PRIMARY KEY, value INTEGER NOT NULL)',
+  'CREATE TABLE names (id INTEGER PRIMARY KEY, text TEXT NOT NULL UNIQUE)',
+  `CREATE TABLE sends (id INTEGER PRIMARY KEY, started_ms INTEGER NOT NULL, duration_ms INTEGER NOT NULL,
+    session INTEGER, call_id INTEGER NOT NULL, hop INTEGER NOT NULL, provider INTEGER NOT NULL,
+    model INTEGER NOT NULL, router INTEGER, router_row INTEGER, from_provider INTEGER, from_model INTEGER,
+    switch_kind INTEGER, input_tokens INTEGER NOT NULL, output_tokens INTEGER NOT NULL,
+    cache_read_tokens INTEGER NOT NULL, cache_write_tokens INTEGER NOT NULL, outcome INTEGER NOT NULL,
+    failure INTEGER, http_status INTEGER)`,
+  'CREATE INDEX sends_started ON sends (started_ms)',
+  `CREATE TABLE hourly (hour INTEGER NOT NULL, provider INTEGER NOT NULL, model INTEGER NOT NULL,
+    router INTEGER NOT NULL DEFAULT 0, router_row INTEGER NOT NULL DEFAULT 0, requests INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (hour, provider, model, router, router_row))`,
+  "INSERT INTO log_meta (key, value) VALUES ('schema_version', 1)",
+  "INSERT INTO names (id, text) VALUES (1, 'acme'), (2, 'acme-large')",
+  'INSERT INTO sends VALUES (1, 1000, 20, NULL, 5, 1, 1, 2, NULL, NULL, NULL, NULL, NULL, 11, 12, 13, 14, 0, NULL, NULL)',
+  'INSERT INTO hourly (hour, provider, model, requests) VALUES (0, 1, 2, 1)',
+]
+
+function fileOp(over: Partial<FileOpRow> = {}): FileOpRow {
+  return {
+    atMs: T0 + 60_000,
+    sessionId: 'session-a',
+    project: '/work/site',
+    repo: '/work/site/app',
+    path: 'src/a.ts',
+    tool: 'Read',
+    op: 'read',
+    bytes: 4096,
+    lines: 120,
+    outcome: 'ok',
+    ...over,
+  }
+}
 
 describe('request log schema', () => {
   it('creates the tables and stamps the version', async () => {
     const { store, all, requests } = makeStore()
     expect(await store.schemaVersion()).toBe(REQUEST_LOG_SCHEMA_VERSION)
     const tables = all("SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name").map(r => r[0])
-    expect(tables).toEqual(['hourly', 'log_meta', 'names', 'sends'])
+    expect(tables).toEqual(['file_ops', 'log_meta', 'names', 'sends'])
     expect(requests[0]).toMatchObject({ capability: 'fs', action: 'mkdir', payload: { path: '/home/tester/.velloc/usage' } })
     expect(requests[1]).toMatchObject({ action: 'batch', payload: { mode: 'rwc', atomic: true } })
   })
 
-  it('raises an older file to this version and refuses a newer one', async () => {
+  it('raises a version 1 file to this version with its rows, and drops its rollup', async () => {
+    const older = makeBridge()
+    for (const sql of VERSION_1_STATEMENTS) older.db.exec(sql)
+    const store = new RequestLogStore({ transport: () => older.transport, dbPath: '/home/tester/.velloc/usage/usage.sqlite' })
+    expect(await store.schemaVersion()).toBe(REQUEST_LOG_SCHEMA_VERSION)
+    expect(older.all(`SELECT ${SEND_COLUMNS.join(', ')} FROM sends`)).toEqual([
+      [1, 1000, 20, null, 5, 1, 1, 2, null, null, null, null, null, 11, 12, 13, 14, 0, null, null, null, null, null, null],
+    ])
+    const tables = older.all("SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name").map(r => r[0])
+    expect(tables).toEqual(['file_ops', 'log_meta', 'names', 'sends'])
+    // The raised file takes rows of both kinds.
+    await store.record(row({ project: '/work/site' }))
+    await store.recordFileOps([fileOp()])
+    expect(older.all('SELECT COUNT(*) FROM sends')[0]![0]).toBe(2)
+    expect(older.all('SELECT COUNT(*) FROM file_ops')[0]![0]).toBe(1)
+    // A second open finds nothing left to do.
+    const again = new RequestLogStore({ transport: () => older.transport, dbPath: store.dbPath })
+    expect(await again.schemaVersion()).toBe(REQUEST_LOG_SCHEMA_VERSION)
+  })
+
+  it('refuses a file a newer build wrote and writes nothing into it', async () => {
     const older = makeStore()
     await older.store.ensureSchema()
-    older.db.exec("UPDATE log_meta SET value = 0 WHERE key = 'schema_version'")
-    const reopened = new RequestLogStore({ transport: () => older.transport, dbPath: older.store.dbPath })
-    expect(await reopened.schemaVersion()).toBe(REQUEST_LOG_SCHEMA_VERSION)
-
     older.db.exec(`UPDATE log_meta SET value = ${REQUEST_LOG_SCHEMA_VERSION + 1} WHERE key = 'schema_version'`)
-    older.db.exec('DROP TABLE hourly')
+    older.db.exec('DROP TABLE file_ops')
     const newer = new RequestLogStore({ transport: () => older.transport, dbPath: older.store.dbPath })
     await expect(newer.record(row())).rejects.toThrow(/newer build/)
+    await expect(newer.recordFileOps([fileOp()])).rejects.toThrow(/newer build/)
     expect(older.all('SELECT COUNT(*) FROM sends')[0]![0]).toBe(0)
     // Nothing of this version's is written into a newer file.
-    expect(older.all("SELECT COUNT(*) FROM sqlite_master WHERE name = 'hourly'")[0]![0]).toBe(0)
+    expect(older.all("SELECT COUNT(*) FROM sqlite_master WHERE name = 'file_ops'")[0]![0]).toBe(0)
   })
 
   it('holds exactly these columns', async () => {
@@ -150,23 +231,35 @@ describe('request log schema', () => {
       'id', 'started_ms', 'duration_ms', 'session', 'call_id', 'hop', 'provider', 'model',
       'router', 'router_row', 'from_provider', 'from_model', 'switch_kind',
       'input_tokens', 'output_tokens', 'cache_read_tokens', 'cache_write_tokens',
-      'outcome', 'failure', 'http_status',
+      'outcome', 'failure', 'http_status', 'project', 'purpose', 'source', 'agent',
     ])
-    expect(columns('hourly')).toEqual([...HOURLY_COLUMNS])
+    expect(columns('file_ops')).toEqual([...FILE_OP_COLUMNS])
+    expect([...FILE_OP_COLUMNS]).toEqual([
+      'id', 'at_ms', 'session', 'agent', 'call_id', 'project', 'repo', 'worktree', 'path', 'from_path',
+      'tool', 'op', 'bytes', 'lines', 'added', 'removed', 'partial', 'created', 'outcome', 'failure',
+    ])
     expect(columns('names')).toEqual(['id', 'text'])
     // Every text column of the file is a lookup string or the version key.
-    const textColumns = ['sends', 'hourly', 'names', 'log_meta'].flatMap(table =>
+    const textColumns = ['sends', 'file_ops', 'names', 'log_meta'].flatMap(table =>
       all(`PRAGMA table_info(${table})`).filter(r => r[2] === 'TEXT').map(r => `${table}.${r[1]}`))
     expect(textColumns).toEqual(['names.text', 'log_meta.key'])
   })
 })
 
 describe('request log rows', () => {
-  it('writes a row and its rollup in one transaction', async () => {
+  it('writes a row in one transaction', async () => {
     const { store, all, requests } = makeStore()
     await store.ensureSchema()
     const before = requests.length
-    await store.record(row({ outcome: 'failed', failureKind: 'rate_limit', httpStatus: 429 }))
+    await store.record(row({
+      outcome: 'failed',
+      failureKind: 'rate_limit',
+      httpStatus: 429,
+      project: '/work/site',
+      purpose: 'turn',
+      source: 'agent_tool',
+      agentId: 'agent-7',
+    }))
     const writes = requests.slice(before)
     expect(writes).toHaveLength(1)
     expect(writes[0]).toMatchObject({ action: 'batch', payload: { atomic: true } })
@@ -175,24 +268,31 @@ describe('request log rows', () => {
     const sends = all(`SELECT ${SEND_COLUMNS.slice(1).join(', ')} FROM sends`)
     expect(sends).toHaveLength(1)
     const [started, duration, session, callId, hop, provider, model, router, routerRow, fromProvider, fromModel,
-      switchKind, input, output, cacheRead, cacheWrite, outcome, failure, status] = sends[0]!
+      switchKind, input, output, cacheRead, cacheWrite, outcome, failure, status, project, purpose, source,
+      agent] = sends[0]!
     expect([started, duration, hop]).toEqual([T0 + 5 * 60_000, 1200, 1])
     expect(typeof callId).toBe('number')
     expect([session, provider, model]).toEqual([name('session-a'), name('acme'), name('acme-large')])
     expect([router, routerRow, fromProvider, fromModel, switchKind]).toEqual([null, null, null, null, null])
     expect([input, output, cacheRead, cacheWrite]).toEqual([100, 20, 7, 3])
     expect([outcome, failure, status]).toEqual([1, name('rate_limit'), 429])
-    expect(all('SELECT * FROM hourly')).toEqual([
-      [T0 / HOUR_MS, name('acme'), name('acme-large'), 0, 0, 1, 1, 100, 20, 7, 3, 0],
+    expect([project, purpose, source, agent]).toEqual([
+      name('/work/site'), name('turn'), name('agent_tool'), name('agent-7'),
     ])
   })
 
-  it('leaves neither the row nor the rollup when a statement fails', async () => {
+  it('leaves the caller columns empty for a request that names none', async () => {
+    const { store, all } = makeStore()
+    await store.record(row())
+    expect(all('SELECT project, purpose, source, agent FROM sends')).toEqual([[null, null, null, null]])
+  })
+
+  it('leaves neither the row nor its strings when a statement fails', async () => {
     const { store, db, all } = makeStore()
     await store.ensureSchema()
-    db.exec('DROP TABLE hourly')
+    db.exec('ALTER TABLE sends RENAME TO moved')
     await expect(store.record(row())).rejects.toThrow(/SQLITE_ERROR/)
-    expect(all('SELECT COUNT(*) FROM sends')[0]![0]).toBe(0)
+    expect(all('SELECT COUNT(*) FROM moved')[0]![0]).toBe(0)
     expect(all('SELECT COUNT(*) FROM names')[0]![0]).toBe(0)
   })
 
@@ -212,7 +312,8 @@ describe('request log rows', () => {
     const { sessionId: _none, ...sessionless } = row({ outcome: 'aborted', failureKind: 'ignored', httpStatus: 500 })
     await store.record(sessionless)
     expect(all('SELECT session, outcome, failure, http_status FROM sends')).toEqual([[null, 2, null, null]])
-    expect(all('SELECT requests, failures FROM hourly')).toEqual([[1, 0]])
+    const summed = await store.query({ from: T0, to: T0 + HOUR_MS, by: 'hour' })
+    expect(summed.by === 'hour' && summed.buckets.map(b => [b.requests, b.failures])).toEqual([[1, 0]])
   })
 
   it('writes two sends of one call as two rows', async () => {
@@ -230,7 +331,10 @@ describe('request log rows', () => {
     await store.record(first)
     await store.record(second)
     expect(all('SELECT call_id, hop FROM sends ORDER BY id')).toEqual([[4242, 1], [4242, 2]])
-    expect(all('SELECT requests, failures, switches FROM hourly ORDER BY provider')).toEqual([[1, 1, 0], [1, 0, 1]])
+    const summed = await store.query({ from: T0, to: T0 + HOUR_MS, by: 'hour' })
+    expect(summed.by === 'hour' && summed.buckets.map(b => [b.provider, b.requests, b.failures, b.switches])).toEqual([
+      ['acme', 1, 1, 0], ['zeta', 1, 0, 1],
+    ])
     const text = (id: SqlValue) => all(`SELECT text FROM names WHERE id = ${id}`)[0]![0]
     const [fromProvider, fromModel, kind, router, routerRow] =
       all('SELECT from_provider, from_model, switch_kind, router, router_row FROM sends WHERE hop = 2')[0]!
@@ -384,20 +488,145 @@ describe('request log queries', () => {
     await expect(store.query({ from: T0, to: T0 + 90 * day, by: 'switch' })).resolves.toEqual({ by: 'switch', switches: [] })
   })
 
-  it('rebuilds the rollup from the rows to the same table', async () => {
-    const { store, db, all } = await seeded()
-    const incremental = all('SELECT * FROM hourly ORDER BY hour, provider, model, router, router_row')
-    expect(incremental.length).toBeGreaterThan(3)
-    db.exec('UPDATE hourly SET requests = 99, switches = 5')
-    db.exec('DELETE FROM hourly WHERE router = 0')
-    await store.rebuildRollup()
-    expect(all('SELECT * FROM hourly ORDER BY hour, provider, model, router, router_row')).toEqual(incremental)
+  it('sums whole hours, whatever part of an hour the range names', async () => {
+    const { store } = await seeded()
+    const whole = await store.query({ from: T0, to: T0 + HOUR_MS, by: 'hour' })
+    const part = await store.query({ from: T0 + 10 * 60_000, to: T0 + 20 * 60_000, by: 'hour' })
+    expect(part).toEqual(whole)
+    expect(whole.by === 'hour' && whole.buckets.map(b => [b.start, b.requests, b.failures, b.inputTokens])).toEqual([
+      [T0, 2, 1, 110],
+    ])
+  })
+
+  it('answers no question with a path, a project or an agent', async () => {
+    const { store } = await seeded()
+    await store.record(row({ ...viaRouter, project: '/work/secret-site', purpose: 'turn', source: 'agent_tool', agentId: 'agent-7' }))
+    await store.record(row({
+      ...viaRouter,
+      startedMs: T0 + 9,
+      callId: 9,
+      hop: 2,
+      project: '/work/secret-site',
+      agentId: 'agent-7',
+      switchedFrom: { provider: 'zeta', model: 'zeta-pro', kind: 'quota' },
+    }))
+    await store.recordFileOps([fileOp({ project: '/work/secret-site', repo: '/work/secret-site/app', path: 'src/.env.production', agentId: 'agent-7' })])
+    for (const by of ['hour', 'day', 'switch', 'request'] satisfies Array<RequestLogQuery['by']>) {
+      const answer = JSON.stringify(await store.query({ from: T0, to: T0 + 40 * HOUR_MS, by }))
+      expect(answer).toContain('acme')
+      for (const kept of ['secret-site', '.env.production', 'agent-7', 'agent_tool']) {
+        expect(answer).not.toContain(kept)
+      }
+    }
+  })
+})
+
+describe('file rows', () => {
+  it('writes a batch in one transaction, each string once', async () => {
+    const { store, all, requests } = makeStore()
+    await store.ensureSchema()
+    const before = requests.length
+    await store.recordFileOps([
+      fileOp({ agentId: 'agent-7', callId: 31, partial: true }),
+      fileOp({ atMs: T0 + 61_000, tool: 'Edit', op: 'edit', bytes: 5000, lines: 0, added: 4, removed: 2 }),
+      fileOp({
+        atMs: T0 + 62_000,
+        tool: 'Write',
+        op: 'write',
+        path: 'docs/new.md',
+        worktree: '/work/wt/fix/app',
+        bytes: 90,
+        lines: 0,
+        added: 3,
+        created: true,
+      }),
+      fileOp({ atMs: T0 + 63_000, tool: 'Edit', op: 'edit', bytes: 0, lines: 0, outcome: 'failed', failureKind: 'no_match' }),
+      fileOp({ atMs: T0 + 64_000, tool: 'SuperEdit', op: 'move', path: 'src/b.ts', fromPath: 'src/a.ts', bytes: 5000, lines: 0 }),
+    ])
+    const writes = requests.slice(before)
+    expect(writes).toHaveLength(1)
+    expect(writes[0]).toMatchObject({ action: 'batch', payload: { atomic: true } })
+
+    const text = (id: SqlValue) => (id === null ? null : all(`SELECT text FROM names WHERE id = ${id}`)[0]![0])
+    const rows = all(`SELECT ${FILE_OP_COLUMNS.slice(1).join(', ')} FROM file_ops ORDER BY id`).map(r => {
+      const [at, session, agent, callId, project, repo, worktree, path, fromPath, tool, ...rest] = r
+      const failure = rest.pop()!
+      return [at, ...[session, agent].map(text), callId, ...[project, repo, worktree, path, fromPath, tool].map(text), ...rest, text(failure)]
+    })
+    expect(rows).toEqual([
+      [T0 + 60_000, 'session-a', 'agent-7', 31, '/work/site', '/work/site/app', null, 'src/a.ts', null, 'Read', 1, 4096, 120, 0, 0, 1, 0, 0, null],
+      [T0 + 61_000, 'session-a', null, null, '/work/site', '/work/site/app', null, 'src/a.ts', null, 'Edit', 2, 5000, 0, 4, 2, 0, 0, 0, null],
+      [T0 + 62_000, 'session-a', null, null, '/work/site', '/work/site/app', '/work/wt/fix/app', 'docs/new.md', null, 'Write', 3, 90, 0, 3, 0, 0, 1, 0, null],
+      [T0 + 63_000, 'session-a', null, null, '/work/site', '/work/site/app', null, 'src/a.ts', null, 'Edit', 2, 0, 0, 0, 0, 0, 0, 1, 'no_match'],
+      [T0 + 64_000, 'session-a', null, null, '/work/site', '/work/site/app', null, 'src/b.ts', 'src/a.ts', 'SuperEdit', 5, 5000, 0, 0, 0, 0, 0, 0, null],
+    ])
+    const names = all('SELECT text FROM names').map(r => r[0])
+    expect(new Set(names).size).toBe(names.length)
+    expect(names.filter(n => n === 'src/a.ts')).toHaveLength(1)
+  })
+
+  it('shares its session and project strings with the requests', async () => {
+    const { store, all } = makeStore()
+    await store.record(row({ project: '/work/site' }))
+    await store.recordFileOps([fileOp()])
+    expect(all('SELECT s.session = f.session, s.project = f.project FROM sends s, file_ops f')).toEqual([[1, 1]])
+  })
+
+  it('writes none of a batch when one row fails, and nothing for an empty batch', async () => {
+    const { store, all, requests } = makeStore()
+    await store.ensureSchema()
+    const broken = { ...fileOp({ path: 'src/c.ts' }), tool: null } as unknown as FileOpRow
+    await expect(store.recordFileOps([fileOp(), broken])).rejects.toThrow(/SQLITE_ERROR/)
+    expect(all('SELECT COUNT(*) FROM file_ops')[0]![0]).toBe(0)
+    expect(all('SELECT COUNT(*) FROM names')[0]![0]).toBe(0)
+    const before = requests.length
+    await store.recordFileOps([])
+    expect(requests.length).toBe(before)
+  })
+
+  it('keeps a failure kind only on a failed row and stores no negative amount', async () => {
+    const { store, all } = makeStore()
+    await store.recordFileOps([fileOp({ failureKind: 'ignored', bytes: -5, lines: Number.NaN })])
+    expect(all('SELECT bytes, lines, outcome, failure FROM file_ops')).toEqual([[0, 0, 0, null]])
   })
 })
 
 describe('request log writer', () => {
   it('names the file under the usage directory of the user data', () => {
-    expect(requestLogPath('/home/tester')).toBe('/home/tester/.velloc/usage/requests.sqlite')
+    expect(requestLogPath('/home/tester')).toBe('/home/tester/.velloc/usage/usage.sqlite')
+  })
+
+  it('writes a batch of file rows larger than the queue as one entry and one transaction', async () => {
+    const bridge = makeBridge()
+    attachRequestLogBridge(bridge.transport)
+    const many = Array.from({ length: REQUEST_LOG_QUEUE_MAX + 50 }, (_, i) => fileOp({ path: `src/f${i}.ts` }))
+    recordFileOps(many)
+    recordFileOps([])
+    expect(requestLogQueueLength()).toBe(1)
+    recordRequest(row())
+    await requestLogIdle()
+    expect(bridge.all('SELECT COUNT(*) FROM file_ops')[0]![0]).toBe(many.length)
+    expect(bridge.all('SELECT COUNT(*) FROM sends')[0]![0]).toBe(1)
+    const fileBatches = bridge.requests.filter(r =>
+      r.action === 'batch' && (r.payload.statements as Array<{ sql: string }>).some(st => st.sql.includes('INTO file_ops')))
+    expect(fileBatches).toHaveLength(1)
+  })
+
+  it('keeps a failed batch of file rows from its caller', async () => {
+    let failing = false
+    const bridge = makeBridge({ failBatches: () => failing })
+    attachRequestLogBridge(bridge.transport)
+    recordFileOps([fileOp()])
+    await requestLogIdle()
+    failing = true
+    expect(() => recordFileOps([fileOp({ path: 'src/lost.ts' })])).not.toThrow()
+    await requestLogIdle()
+    failing = false
+    recordFileOps([fileOp({ path: 'src/later.ts' })])
+    await requestLogIdle()
+    expect(bridge.all('SELECT n.text FROM file_ops f JOIN names n ON n.id = f.path ORDER BY f.id').map(r => r[0])).toEqual([
+      'src/a.ts', 'src/later.ts',
+    ])
   })
 
   it('writes rows in the order recorded, one at a time', async () => {
@@ -460,6 +689,186 @@ describe('request log writer', () => {
     recordRequest(row())
     await requestLogIdle()
     expect((transport.request as ReturnType<typeof vi.fn>).mock.calls.length).toBe(asked)
+  })
+})
+
+describe('the file under its earlier name', () => {
+  const dir = '/home/tester/.velloc/usage'
+  const renames = (bridge: ReturnType<typeof makeBridge>) =>
+    bridge.requests.filter(r => r.action === 'rename').map(r => [r.payload.oldPath, r.payload.newPath])
+
+  it('is renamed once before the writer opens, its journal first', async () => {
+    const files = new Set([`${dir}/requests.sqlite`, `${dir}/requests.sqlite-journal`])
+    const bridge = makeBridge({ files })
+    attachRequestLogBridge(bridge.transport)
+    recordRequest(row())
+    await requestLogIdle()
+    expect(renames(bridge)).toEqual([
+      [`${dir}/requests.sqlite-journal`, `${dir}/usage.sqlite-journal`],
+      [`${dir}/requests.sqlite`, `${dir}/usage.sqlite`],
+    ])
+    expect([...files].sort()).toEqual([`${dir}/usage.sqlite`, `${dir}/usage.sqlite-journal`])
+    const firstRename = bridge.requests.findIndex(r => r.action === 'rename')
+    expect(bridge.requests.slice(0, firstRename).some(r => r.capability === 'sqlite')).toBe(false)
+    // A reader on another bridge and a later row move nothing again.
+    await openRequestLog(makeBridge({ files }).transport)
+    recordRequest(row())
+    await requestLogIdle()
+    expect(renames(bridge)).toHaveLength(2)
+  })
+
+  it('is renamed by a reader that opens first', async () => {
+    const files = new Set([`${dir}/requests.sqlite`])
+    const reader = makeBridge({ files })
+    expect(await openRequestLog(reader.transport)).toBeDefined()
+    expect(renames(reader)).toEqual([[`${dir}/requests.sqlite`, `${dir}/usage.sqlite`]])
+    const firstSql = reader.requests.findIndex(r => r.capability === 'sqlite')
+    expect(reader.requests.findIndex(r => r.action === 'rename')).toBeLessThan(firstSql)
+  })
+
+  it('is left as it is when the file exists under its own name', async () => {
+    const files = new Set([`${dir}/requests.sqlite`, `${dir}/usage.sqlite`])
+    const bridge = makeBridge({ files })
+    attachRequestLogBridge(bridge.transport)
+    recordRequest(row())
+    await requestLogIdle()
+    expect(renames(bridge)).toEqual([])
+    expect([...files].sort()).toEqual([`${dir}/requests.sqlite`, `${dir}/usage.sqlite`])
+    expect(bridge.all('SELECT COUNT(*) FROM sends')[0]![0]).toBe(1)
+  })
+
+  it('opens nothing when the rename fails, for the writer and for a reader', async () => {
+    const files = new Set([`${dir}/requests.sqlite`])
+    const bridge = makeBridge({ files, failRename: true })
+    attachRequestLogBridge(bridge.transport)
+    recordRequest(row())
+    await requestLogIdle()
+    expect(bridge.requests.some(r => r.capability === 'sqlite' || r.action === 'mkdir')).toBe(false)
+    expect([...files]).toEqual([`${dir}/requests.sqlite`])
+    expect(await openRequestLog(makeBridge({ files, failRename: true }).transport)).toBeUndefined()
+  })
+
+  it('moves nothing when there is no earlier file', async () => {
+    const bridge = makeBridge({ files: new Set() })
+    attachRequestLogBridge(bridge.transport)
+    recordRequest(row())
+    await requestLogIdle()
+    expect(renames(bridge)).toEqual([])
+    expect(bridge.all('SELECT COUNT(*) FROM sends')[0]![0]).toBe(1)
+  })
+})
+
+describe('the row cap', () => {
+  const deletes = (bridge: ReturnType<typeof makeBridge>) =>
+    bridge.requests.filter(r =>
+      r.action === 'batch' && (r.payload.statements as Array<{ sql: string }>).some(st => st.sql.startsWith('DELETE')))
+  const send = (id: number, startedMs: number) =>
+    `INSERT INTO sends (id, started_ms, duration_ms, call_id, hop, provider, model, input_tokens, output_tokens,
+      cache_read_tokens, cache_write_tokens, outcome) VALUES (${id}, ${startedMs}, 1, ${id}, 1, 1, 1, 0, 0, 0, 0, 0)`
+  const fileRow = (id: number, atMs: number) =>
+    `INSERT INTO file_ops (id, at_ms, path, tool, op, bytes, lines, outcome) VALUES (${id}, ${atMs}, 1, 1, 1, 0, 0, 0)`
+
+  /** A file holding `statements`, and its writer opened under fake timers. */
+  async function opened(statements: string[]) {
+    vi.useFakeTimers()
+    const bridge = makeBridge()
+    await new RequestLogStore({ transport: () => bridge.transport, dbPath: '/x/usage.sqlite' }).ensureSchema()
+    for (const sql of statements) bridge.db.exec(sql)
+    attachRequestLogBridge(bridge.transport)
+    expect(await openRequestLog()).toBeDefined()
+    await requestLogIdle()
+    return bridge
+  }
+
+  it('deletes nothing at the cap or under it', async () => {
+    const bridge = await opened([send(1, T0), send(ROW_CAP - 1, T0 + DAY_MS), fileRow(1, T0)])
+    await vi.advanceTimersByTimeAsync(TRIM_DELAY_MS * 3)
+    await requestLogIdle()
+    expect(deletes(bridge)).toHaveLength(0)
+    expect(bridge.all('SELECT COUNT(*) FROM sends')[0]![0]).toBe(2)
+  })
+
+  it('above the cap, waits and then deletes the oldest seven days of both tables at one cutoff', async () => {
+    const bridge = await opened([
+      send(1, T0),
+      send(2, T0 + 3 * DAY_MS),
+      send(3, T0 + 7 * DAY_MS),
+      send(ROW_CAP + 5, T0 + 9 * DAY_MS),
+      fileRow(1, T0 + DAY_MS),
+      fileRow(2, T0 + 7 * DAY_MS - 1),
+      fileRow(3, T0 + 8 * DAY_MS),
+    ])
+    await vi.advanceTimersByTimeAsync(TRIM_DELAY_MS - 1)
+    await requestLogIdle()
+    expect(deletes(bridge)).toHaveLength(0)
+    await vi.advanceTimersByTimeAsync(1)
+    await requestLogIdle()
+    const trims = deletes(bridge)
+    expect(trims).toHaveLength(1)
+    expect(trims[0]!.payload).toMatchObject({ atomic: true })
+    expect((trims[0]!.payload.statements as Array<{ params: number[] }>).map(st => st.params)).toEqual([
+      [T0 + 7 * DAY_MS], [T0 + 7 * DAY_MS],
+    ])
+    expect(bridge.all('SELECT id FROM sends ORDER BY id').map(r => r[0])).toEqual([3, ROW_CAP + 5])
+    expect(bridge.all('SELECT id FROM file_ops ORDER BY id').map(r => r[0])).toEqual([3])
+  })
+
+  it('deletes again after each wait while the count stays above the cap, then stops', async () => {
+    const bridge = await opened([
+      send(1, T0),
+      send(2, T0 + 8 * DAY_MS),
+      send(ROW_CAP + 9, T0 + 20 * DAY_MS),
+    ])
+    await vi.advanceTimersByTimeAsync(TRIM_DELAY_MS)
+    await requestLogIdle()
+    expect(bridge.all('SELECT id FROM sends ORDER BY id').map(r => r[0])).toEqual([2, ROW_CAP + 9])
+    await vi.advanceTimersByTimeAsync(TRIM_DELAY_MS - 1)
+    await requestLogIdle()
+    expect(deletes(bridge)).toHaveLength(1)
+    await vi.advanceTimersByTimeAsync(1)
+    await requestLogIdle()
+    expect(bridge.all('SELECT id FROM sends ORDER BY id').map(r => r[0])).toEqual([ROW_CAP + 9])
+    await vi.advanceTimersByTimeAsync(TRIM_DELAY_MS * 4)
+    await requestLogIdle()
+    expect(deletes(bridge)).toHaveLength(2)
+  })
+
+  it('counts again a day later, and deletes once the file has grown past the cap', async () => {
+    const bridge = await opened([send(1, T0)])
+    bridge.db.exec(send(ROW_CAP + 2, T0 + 9 * DAY_MS))
+    await vi.advanceTimersByTimeAsync(ROW_RECHECK_MS - 1)
+    await requestLogIdle()
+    expect(deletes(bridge)).toHaveLength(0)
+    await vi.advanceTimersByTimeAsync(1 + TRIM_DELAY_MS)
+    await requestLogIdle()
+    expect(deletes(bridge)).toHaveLength(1)
+    expect(bridge.all('SELECT id FROM sends').map(r => r[0])).toEqual([ROW_CAP + 2])
+  })
+
+  it('counts once for a runtime, however many rows open the file', async () => {
+    vi.useFakeTimers()
+    const bridge = makeBridge()
+    attachRequestLogBridge(bridge.transport)
+    for (let i = 0; i < 4; i += 1) recordRequest(row())
+    await requestLogIdle()
+    await openRequestLog()
+    await requestLogIdle()
+    expect(bridge.requests.filter(r => r.action === 'query' && String(r.payload.sql).includes('MAX(id)'))).toHaveLength(1)
+  })
+
+  it('checks again a day later when a count fails', async () => {
+    vi.useFakeTimers()
+    let failing = true
+    const bridge = makeBridge({ failQuery: sql => failing && sql.includes('MAX(id)') })
+    attachRequestLogBridge(bridge.transport)
+    expect(await openRequestLog()).toBeDefined()
+    await requestLogIdle()
+    failing = false
+    bridge.db.exec(send(1, T0))
+    bridge.db.exec(send(ROW_CAP + 2, T0 + 9 * DAY_MS))
+    await vi.advanceTimersByTimeAsync(ROW_RECHECK_MS + TRIM_DELAY_MS)
+    await requestLogIdle()
+    expect(deletes(bridge)).toHaveLength(1)
   })
 })
 
@@ -543,6 +952,18 @@ describe('request log transport', () => {
     expect(await sends()).toEqual([])
     await send('streamRead', { streamId: 's1' })
     expect(await sends()).toEqual([['acme', 'acme-large', 'session-a', 1, 50, 12, 9, 4, 0, null, null]])
+  })
+
+  it('records what the request was for and the loop that asked', async () => {
+    const { bridge, send, sends } = serving(() => ({ ok: true, result: { content: [] } }))
+    await send('call', { ...start, requestContext: { sessionId: 'session-a', agentId: 'agent-7', purpose: 'turn', querySource: 'agent_tool' } })
+    await send('call', { ...start, requestContext: { sessionId: 'session-a', purpose: 'title', querySource: 'rename_generate_name' } })
+    expect(await sends()).toHaveLength(2)
+    expect(bridge.all(`SELECT p.text, q.text, a.text FROM sends LEFT JOIN names p ON p.id = purpose
+      LEFT JOIN names q ON q.id = source LEFT JOIN names a ON a.id = agent ORDER BY sends.id`)).toEqual([
+      ['turn', 'agent_tool', 'agent-7'],
+      ['title', 'rename_generate_name', null],
+    ])
   })
 
   it('records a provider that hooks nothing, a failed stream and a cancelled one', async () => {

@@ -1,18 +1,26 @@
 /**
- * The request log's tables (F-27): one `sends` row per model request sent,
- * an hourly rollup beside it, and one lookup table for every string.
- *
- * Security: the column lists below are everything the file holds. No prompt
- * or reply text, tool argument, header, credential, base URL or account name
- * has a column, and none may be added to a lookup string.
+ * Security: the usage log's tables (F-27), one `sends` row per model request,
+ * one `file_ops` row per file a file tool touched, and one lookup table for
+ * every string. These column lists are everything the file holds: no prompt
+ * or reply text, file content, tool argument, header, credential or base URL
+ * has a column or may become a lookup string. A lookup string may be a file
+ * path or a project root, which can carry an account name.
  */
 
 /** Raised when a later build changes a table; `SCHEMA_STEPS` then carries the
  *  statements that take a file from each older version to the next. */
-export const REQUEST_LOG_SCHEMA_VERSION = 1
+export const REQUEST_LOG_SCHEMA_VERSION = 2
 
 /** `SCHEMA_STEPS[n]`: the statements that take a version `n` file to `n + 1`. */
-export const SCHEMA_STEPS: Readonly<Record<number, readonly string[]>> = {}
+export const SCHEMA_STEPS: Readonly<Record<number, readonly string[]>> = {
+  1: [
+    'ALTER TABLE sends ADD COLUMN project INTEGER',
+    'ALTER TABLE sends ADD COLUMN purpose INTEGER',
+    'ALTER TABLE sends ADD COLUMN source INTEGER',
+    'ALTER TABLE sends ADD COLUMN agent INTEGER',
+    'DROP TABLE IF EXISTS hourly',
+  ],
+}
 
 /** `sends.outcome`. An aborted request (cancelled, or left by its reader) is
  *  not a failure. */
@@ -24,7 +32,9 @@ export const OUTCOME_ABORTED = 2
  * The detail table's columns, in order. A string column holds a `names.id`.
  * `router`, `router_row`, `from_provider`, `from_model` and `switch_kind` are
  * NULL for a request no router sent or moved; `failure` and `http_status` are
- * NULL unless the provider reported them.
+ * NULL unless the provider reported them. `project`, `purpose`, `source` (the
+ * caller tag) and `agent` (the loop under the session: a sub-agent or a side
+ * run) are NULL when the request did not name them.
  */
 export const SEND_COLUMNS = [
   'id',
@@ -47,23 +57,44 @@ export const SEND_COLUMNS = [
   'outcome',
   'failure',
   'http_status',
+  'project',
+  'purpose',
+  'source',
+  'agent',
 ] as const
 
-/** The rollup's columns, in order. `router` and `router_row` are 0, not NULL,
- *  for a request no router sent: a NULL would not be unique in the key. */
-export const HOURLY_COLUMNS = [
-  'hour',
-  'provider',
-  'model',
-  'router',
-  'router_row',
-  'requests',
-  'failures',
-  'input_tokens',
-  'output_tokens',
-  'cache_read_tokens',
-  'cache_write_tokens',
-  'switches',
+/** `file_ops.op`. */
+export const FILE_OP_CODES = { read: 1, edit: 2, write: 3, remove: 4, move: 5 } as const
+
+/**
+ * The file table's columns, in order. A string column holds a `names.id`.
+ * `project` is the session's project root; `repo` and `path` name the file by
+ * its own repository, and `path` is absolute when `repo` is NULL. `bytes` and
+ * `lines` are what a read returned; for a change `bytes` is the file's size
+ * afterwards. `added` and `removed` count every call, so a change made and
+ * undone counts twice.
+ */
+export const FILE_OP_COLUMNS = [
+  'id',
+  'at_ms',
+  'session',
+  'agent',
+  'call_id',
+  'project',
+  'repo',
+  'worktree',
+  'path',
+  'from_path',
+  'tool',
+  'op',
+  'bytes',
+  'lines',
+  'added',
+  'removed',
+  'partial',
+  'created',
+  'outcome',
+  'failure',
 ] as const
 
 export const HOUR_MS = 3_600_000
@@ -95,24 +126,38 @@ export const CREATE_STATEMENTS: readonly string[] = [
     cache_write_tokens INTEGER NOT NULL,
     outcome INTEGER NOT NULL,
     failure INTEGER,
-    http_status INTEGER
+    http_status INTEGER,
+    project INTEGER,
+    purpose INTEGER,
+    source INTEGER,
+    agent INTEGER
   )`,
   'CREATE INDEX IF NOT EXISTS sends_started ON sends (started_ms)',
-  `CREATE TABLE IF NOT EXISTS hourly (
-    hour INTEGER NOT NULL,
-    provider INTEGER NOT NULL,
-    model INTEGER NOT NULL,
-    router INTEGER NOT NULL DEFAULT 0,
-    router_row INTEGER NOT NULL DEFAULT 0,
-    requests INTEGER NOT NULL DEFAULT 0,
-    failures INTEGER NOT NULL DEFAULT 0,
-    input_tokens INTEGER NOT NULL DEFAULT 0,
-    output_tokens INTEGER NOT NULL DEFAULT 0,
-    cache_read_tokens INTEGER NOT NULL DEFAULT 0,
-    cache_write_tokens INTEGER NOT NULL DEFAULT 0,
-    switches INTEGER NOT NULL DEFAULT 0,
-    PRIMARY KEY (hour, provider, model, router, router_row)
+  `CREATE TABLE IF NOT EXISTS file_ops (
+    id INTEGER PRIMARY KEY,
+    at_ms INTEGER NOT NULL,
+    session INTEGER,
+    agent INTEGER,
+    call_id INTEGER,
+    project INTEGER,
+    repo INTEGER,
+    worktree INTEGER,
+    path INTEGER NOT NULL,
+    from_path INTEGER,
+    tool INTEGER NOT NULL,
+    op INTEGER NOT NULL,
+    bytes INTEGER NOT NULL,
+    lines INTEGER NOT NULL,
+    added INTEGER NOT NULL DEFAULT 0,
+    removed INTEGER NOT NULL DEFAULT 0,
+    partial INTEGER NOT NULL DEFAULT 0,
+    created INTEGER NOT NULL DEFAULT 0,
+    outcome INTEGER NOT NULL,
+    failure INTEGER
   )`,
+  'CREATE INDEX IF NOT EXISTS file_ops_at ON file_ops (at_ms)',
+  'CREATE INDEX IF NOT EXISTS file_ops_file ON file_ops (repo, path)',
+  'CREATE INDEX IF NOT EXISTS file_ops_project ON file_ops (project, at_ms)',
   `INSERT OR IGNORE INTO log_meta (key, value) VALUES ('schema_version', ${REQUEST_LOG_SCHEMA_VERSION})`,
 ]
 
@@ -126,39 +171,31 @@ export const INTERN_NAME_SQL = 'INSERT OR IGNORE INTO names (text) VALUES (?)'
 
 /** Parameters, in order: started_ms, duration_ms, session, call_id, hop,
  *  provider, model, router, router_row, from_provider, from_model,
- *  switch_kind, the four token counts, outcome, failure, http_status. */
+ *  switch_kind, the four token counts, outcome, failure, http_status,
+ *  project, purpose, source, agent. */
 export const INSERT_SEND_SQL = `INSERT INTO sends (${SEND_COLUMNS.slice(1).join(', ')}) VALUES (
   ?, ?, ${NAME_ID}, ?, ?, ${NAME_ID}, ${NAME_ID}, ${NAME_ID}, ${NAME_ID}, ${NAME_ID}, ${NAME_ID}, ${NAME_ID},
-  ?, ?, ?, ?, ?, ${NAME_ID}, ?)`
+  ?, ?, ?, ?, ?, ${NAME_ID}, ?, ${NAME_ID}, ${NAME_ID}, ${NAME_ID}, ${NAME_ID})`
 
-const HOURLY_KEY = `hour = ? AND provider = ${NAME_ID} AND model = ${NAME_ID}
-  AND router = COALESCE(${NAME_ID}, 0) AND router_row = COALESCE(${NAME_ID}, 0)`
+/** Parameters, in order: at_ms, session, agent, call_id, project, repo, worktree,
+ *  path, from_path, tool, op, bytes, lines, added, removed, partial, created,
+ *  outcome, failure. */
+export const INSERT_FILE_OP_SQL = `INSERT INTO file_ops (${FILE_OP_COLUMNS.slice(1).join(', ')}) VALUES (
+  ?, ${NAME_ID}, ${NAME_ID}, ?, ${NAME_ID}, ${NAME_ID}, ${NAME_ID}, ${NAME_ID}, ${NAME_ID}, ${NAME_ID},
+  ?, ?, ?, ?, ?, ?, ?, ?, ${NAME_ID})`
 
-/** Parameters: hour, provider, model, router, router_row. */
-export const SEED_HOURLY_SQL = `INSERT OR IGNORE INTO hourly (hour, provider, model, router, router_row)
-  VALUES (?, ${NAME_ID}, ${NAME_ID}, COALESCE(${NAME_ID}, 0), COALESCE(${NAME_ID}, 0))`
+/** Rows of both tables. Only the oldest rows are ever deleted, so the span of
+ *  a table's ids is its count. */
+export const COUNT_ROWS_SQL = `SELECT
+  COALESCE((SELECT MAX(id) - MIN(id) + 1 FROM sends), 0) +
+  COALESCE((SELECT MAX(id) - MIN(id) + 1 FROM file_ops), 0)`
 
-/** Parameters: failures, the four token counts, switches, then the key as in
- *  `SEED_HOURLY_SQL`. */
-export const ADD_HOURLY_SQL = `UPDATE hourly SET
-  requests = requests + 1,
-  failures = failures + ?,
-  input_tokens = input_tokens + ?,
-  output_tokens = output_tokens + ?,
-  cache_read_tokens = cache_read_tokens + ?,
-  cache_write_tokens = cache_write_tokens + ?,
-  switches = switches + ?
-  WHERE ${HOURLY_KEY}`
+/** The time of the oldest row of either table; NULL when both are empty. */
+export const OLDEST_ROW_SQL = `SELECT MIN(t) FROM (
+  SELECT MIN(started_ms) AS t FROM sends UNION ALL SELECT MIN(at_ms) FROM file_ops)`
 
-/** The rollup, computed again from the detail rows. */
-export const REBUILD_HOURLY_STATEMENTS: readonly string[] = [
-  'DELETE FROM hourly',
-  `INSERT INTO hourly (${HOURLY_COLUMNS.join(', ')})
-    SELECT started_ms / ${HOUR_MS}, provider, model, COALESCE(router, 0), COALESCE(router_row, 0),
-      COUNT(*),
-      SUM(CASE WHEN outcome = ${OUTCOME_FAILED} THEN 1 ELSE 0 END),
-      SUM(input_tokens), SUM(output_tokens), SUM(cache_read_tokens), SUM(cache_write_tokens),
-      SUM(CASE WHEN from_provider IS NOT NULL THEN 1 ELSE 0 END)
-    FROM sends
-    GROUP BY started_ms / ${HOUR_MS}, provider, model, COALESCE(router, 0), COALESCE(router_row, 0)`,
+/** Each takes one parameter: rows older than it are deleted. */
+export const TRIM_STATEMENTS: readonly string[] = [
+  'DELETE FROM sends WHERE started_ms < ?',
+  'DELETE FROM file_ops WHERE at_ms < ?',
 ]

@@ -1,14 +1,16 @@
 /**
- * Contract: the request log's file (F-27), one row per model request sent
- * and an hourly rollup beside the rows. `record` writes the row and its rollup in one transaction, or
- * neither. `query` reads; a span over `QUERY_SPAN_MAX_MS` or a malformed
+ * Contract: the usage log's file (F-27), one row per model request sent and
+ * one per file a file tool read or changed. `record` writes one request;
+ * `recordFileOps` writes its rows in one transaction, all or none. `query`
+ * reads requests, summed when asked; a span over `QUERY_SPAN_MAX_MS` or a malformed
  * range throws `RequestLogQueryError` before anything is read. Every method
  * rejects on a failed bridge request; nothing here retries beyond a short
  * wait on a locked file. Callers serialize writes (requestLogWriter.ts).
  *
  * Security: a provider id is an opaque instance id; it is stored and
  * compared whole, never parsed. Nothing but the fields of `RequestLogRow`
- * reaches the file.
+ * and `FileOpRow` reaches the file, and `query` answers from `sends` alone:
+ * no file path, project root or agent id is in any answer.
  */
 import type {
   BrowserBridgeAction,
@@ -23,22 +25,24 @@ import type { SqlValue } from '../../browser/bridge/protocol/sqlite'
 import { isContendedSqliteError } from '../../browser/storage/SqliteSessionMetaStore'
 import { dirnameRuntimePath } from '../../utils/runtimePaths'
 import {
-  ADD_HOURLY_SQL,
+  COUNT_ROWS_SQL,
   CREATE_META_SQL,
   CREATE_STATEMENTS,
   DAY_MS,
+  FILE_OP_CODES,
   HOUR_MS,
+  INSERT_FILE_OP_SQL,
   INSERT_SEND_SQL,
   INTERN_NAME_SQL,
   NAME_ID,
+  OLDEST_ROW_SQL,
   OUTCOME_ABORTED,
   OUTCOME_FAILED,
   OUTCOME_OK,
   READ_VERSION_SQL,
-  REBUILD_HOURLY_STATEMENTS,
   REQUEST_LOG_SCHEMA_VERSION,
   SCHEMA_STEPS,
-  SEED_HOURLY_SQL,
+  TRIM_STATEMENTS,
   WRITE_VERSION_SQL,
 } from './requestLogSchema'
 
@@ -89,6 +93,60 @@ export type RequestLogRow = {
   /** On `failed`: the verdict kind, or a transport word when none was found. */
   failureKind?: string
   httpStatus?: number
+  /** The session's project root. */
+  project?: string
+  /** What the request was for, and the caller tag behind that. */
+  purpose?: string
+  source?: string
+  /** The loop under the session that asked: a sub-agent or a side run. */
+  agentId?: string
+}
+
+/** Who asked, as a request's context names it. */
+export type RequestLogCaller = Pick<RequestLogRow, 'sessionId' | 'purpose' | 'source' | 'agentId'>
+
+/** The caller fields of a request context; a field it does not name as text is left out. */
+export function requestLogCallerOf(context: unknown): RequestLogCaller {
+  const named = context && typeof context === 'object' ? (context as Record<string, unknown>) : {}
+  const caller: RequestLogCaller = {}
+  if (typeof named.sessionId === 'string' && named.sessionId) caller.sessionId = named.sessionId
+  if (typeof named.purpose === 'string' && named.purpose) caller.purpose = named.purpose
+  if (typeof named.querySource === 'string' && named.querySource) caller.source = named.querySource
+  if (typeof named.agentId === 'string' && named.agentId) caller.agentId = named.agentId
+  return caller
+}
+
+/** One file a file tool read or changed, or tried to. */
+export type FileOpRow = {
+  atMs: number
+  sessionId?: string
+  agentId?: string
+  /** The model call that asked for it. */
+  callId?: number
+  /** The session's project root. */
+  project?: string
+  /** The file's own main repository root; absent outside a repository. */
+  repo?: string
+  /** The linked worktree the file is in; absent in the main checkout. */
+  worktree?: string
+  /** Relative to the file's working tree root; absolute without `repo`. */
+  path: string
+  /** A move's source, in the form of `path`. */
+  fromPath?: string
+  tool: string
+  op: keyof typeof FILE_OP_CODES
+  /** A read: what it returned. A change: the file's size afterwards. */
+  bytes?: number
+  /** A read: the lines it returned. */
+  lines?: number
+  added?: number
+  removed?: number
+  /** A read of part of the file. */
+  partial?: boolean
+  /** The file did not exist before. */
+  created?: boolean
+  outcome: 'ok' | 'failed'
+  failureKind?: string
 }
 
 export type RequestLogQuery = {
@@ -204,11 +262,15 @@ export function newRequestLogCallId(nowMs: number = Date.now()): number {
   return nowMs * 4096 + callCounter
 }
 
-/** The statements that write one row and its rollup. */
+/** The statements that write one request. */
 export function recordStatements(row: RequestLogRow): Statement[] {
   const names = new Set<string>([row.provider, row.model])
   for (const name of [
     row.sessionId,
+    row.project,
+    row.purpose,
+    row.source,
+    row.agentId,
     row.router?.provider,
     row.router?.row,
     row.switchedFrom?.provider,
@@ -227,13 +289,6 @@ export function recordStatements(row: RequestLogRow): Statement[] {
   ]
   const startedMs = Math.floor(row.startedMs)
   const failed = row.outcome === 'failed'
-  const key: SqlValue[] = [
-    Math.floor(startedMs / HOUR_MS),
-    row.provider,
-    row.model,
-    row.router?.provider ?? null,
-    row.router?.row ?? null,
-  ]
   return [
     ...[...names].map(name => ({ sql: INTERN_NAME_SQL, params: [name] })),
     {
@@ -255,10 +310,60 @@ export function recordStatements(row: RequestLogRow): Statement[] {
         failed ? OUTCOME_FAILED : row.outcome === 'aborted' ? OUTCOME_ABORTED : OUTCOME_OK,
         failed ? (row.failureKind ?? null) : null,
         failed ? (row.httpStatus ?? null) : null,
+        row.project ?? null,
+        row.purpose ?? null,
+        row.source ?? null,
+        row.agentId ?? null,
       ],
     },
-    { sql: SEED_HOURLY_SQL, params: key },
-    { sql: ADD_HOURLY_SQL, params: [failed ? 1 : 0, ...tokens, row.switchedFrom ? 1 : 0, ...key] },
+  ]
+}
+
+/** The statements that write a batch of file rows: each string once, then the rows in order. */
+export function fileOpStatements(rows: readonly FileOpRow[]): Statement[] {
+  const names = new Set<string>()
+  for (const row of rows) {
+    names.add(row.path)
+    names.add(row.tool)
+    for (const name of [
+      row.sessionId,
+      row.agentId,
+      row.project,
+      row.repo,
+      row.worktree,
+      row.fromPath,
+      row.outcome === 'failed' ? row.failureKind : undefined,
+    ]) {
+      if (name !== undefined) names.add(name)
+    }
+  }
+  return [
+    ...[...names].map(name => ({ sql: INTERN_NAME_SQL, params: [name] })),
+    ...rows.map(row => {
+      const failed = row.outcome === 'failed'
+      const params: SqlValue[] = [
+        Math.floor(row.atMs),
+        row.sessionId ?? null,
+        row.agentId ?? null,
+        row.callId ?? null,
+        row.project ?? null,
+        row.repo ?? null,
+        row.worktree ?? null,
+        row.path,
+        row.fromPath ?? null,
+        row.tool,
+        FILE_OP_CODES[row.op],
+        count(row.bytes),
+        count(row.lines),
+        count(row.added),
+        count(row.removed),
+        row.partial ? 1 : 0,
+        row.created ? 1 : 0,
+        failed ? OUTCOME_FAILED : OUTCOME_OK,
+        failed ? (row.failureKind ?? null) : null,
+      ]
+      return { sql: INSERT_FILE_OP_SQL, params }
+    }),
   ]
 }
 
@@ -326,10 +431,27 @@ export class RequestLogStore {
     await this.write(recordStatements(row))
   }
 
-  /** Replaces the rollup with one computed from the detail rows. */
-  async rebuildRollup(): Promise<void> {
+  async recordFileOps(rows: readonly FileOpRow[]): Promise<void> {
+    if (rows.length === 0) return
     await this.ensureSchema()
-    await this.write(REBUILD_HOURLY_STATEMENTS.map(sql => ({ sql })))
+    await this.write(fileOpStatements(rows))
+  }
+
+  /** Rows of both tables together. */
+  async rowCount(): Promise<number> {
+    await this.ensureSchema()
+    return readNumber((await this.read(COUNT_ROWS_SQL)).rows[0]?.[0])
+  }
+
+  /** Deletes the rows of both tables older than the oldest row's time plus
+   *  `spanMs`, in one transaction. False when there was no row to delete. */
+  async trimOldest(spanMs: number): Promise<boolean> {
+    await this.ensureSchema()
+    const oldest = (await this.read(OLDEST_ROW_SQL)).rows[0]?.[0]
+    if (oldest === null || oldest === undefined) return false
+    const cutoff = readNumber(oldest) + spanMs
+    await this.write(TRIM_STATEMENTS.map(sql => ({ sql, params: [cutoff] })))
+    return true
   }
 
   async query(query: RequestLogQuery): Promise<RequestLogQueryResult> {
@@ -343,20 +465,26 @@ export class RequestLogStore {
   private async buckets(query: RequestLogQuery): Promise<RequestLogQueryResult> {
     const unit = query.by === 'day' ? DAY_MS : HOUR_MS
     const offsetMs = query.by === 'day' ? (query.tzOffsetMinutes ?? 0) * 60_000 : 0
-    const params: SqlValue[] = [offsetMs, Math.floor(query.from / HOUR_MS), Math.ceil(query.to / HOUR_MS)]
+    const params: SqlValue[] = [
+      offsetMs,
+      Math.floor(query.from / HOUR_MS) * HOUR_MS,
+      Math.ceil(query.to / HOUR_MS) * HOUR_MS,
+    ]
     if (query.router !== undefined) params.push(query.router)
     const result = await this.read(
-      `SELECT (h.hour * ${HOUR_MS} + CAST(? AS INTEGER)) / ${unit} AS bucket, p.text, m.text, r.text, w.text,
-        SUM(h.requests), SUM(h.failures), SUM(h.input_tokens), SUM(h.output_tokens),
-        SUM(h.cache_read_tokens), SUM(h.cache_write_tokens), SUM(h.switches)
-      FROM hourly h
-        JOIN names p ON p.id = h.provider
-        JOIN names m ON m.id = h.model
-        LEFT JOIN names r ON r.id = h.router
-        LEFT JOIN names w ON w.id = h.router_row
-      WHERE h.hour >= ? AND h.hour < ?
-        ${query.router !== undefined ? `AND h.router = COALESCE(${NAME_ID}, -1)` : ''}
-      GROUP BY bucket, h.provider, h.model, h.router, h.router_row
+      `SELECT ((s.started_ms / ${HOUR_MS}) * ${HOUR_MS} + CAST(? AS INTEGER)) / ${unit} AS bucket,
+        p.text, m.text, r.text, w.text,
+        COUNT(*), SUM(CASE WHEN s.outcome = ${OUTCOME_FAILED} THEN 1 ELSE 0 END),
+        SUM(s.input_tokens), SUM(s.output_tokens), SUM(s.cache_read_tokens), SUM(s.cache_write_tokens),
+        SUM(CASE WHEN s.from_provider IS NOT NULL THEN 1 ELSE 0 END)
+      FROM sends s
+        JOIN names p ON p.id = s.provider
+        JOIN names m ON m.id = s.model
+        LEFT JOIN names r ON r.id = s.router
+        LEFT JOIN names w ON w.id = s.router_row
+      WHERE s.started_ms >= ? AND s.started_ms < ?
+        ${query.router !== undefined ? `AND s.router = COALESCE(${NAME_ID}, -1)` : ''}
+      GROUP BY bucket, s.provider, s.model, s.router, s.router_row
       ORDER BY bucket, p.text, m.text, r.text, w.text`,
       params,
       BUCKET_ROWS_MAX,
