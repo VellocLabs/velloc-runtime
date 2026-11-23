@@ -3,7 +3,7 @@
  * file the commit wrote, removed or moved, handed to the log as one batch
  * when the commit ends, whether it finished or stopped part way; a `mkdir`
  * writes no row, and an op that did not land writes none. A write's
- * `added`/`removed` are a line diff of the file's bytes before the commit
+ * `added`/`removed` are a line diff of the file's bytes just before the op
  * against the bytes written; a file removal counts its lines as removed. The
  * earlier bytes are the commit's own earlier op on that path, else those the
  * script read through the overlay, else one read from disk just before the
