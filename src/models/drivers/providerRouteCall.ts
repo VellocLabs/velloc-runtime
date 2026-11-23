@@ -6,7 +6,7 @@
  * retries send the same payload object, so they find the same record; a new
  * call starts a new one. Nothing here is serialized or reaches the host.
  */
-import { newRequestLogCallId } from '../usage/requestLogStore'
+import { modelCallIdOf, shareModelCallId } from '../usage/modelCallIds'
 import { ROUTE_SENDS_PER_TARGET, routeErrorOf, type RouteErrorMark, type RoutedVia, type RouteFailure } from './providerRouter'
 import type { RouteTarget } from './providerRouteAnswer'
 
@@ -43,7 +43,7 @@ const calls = new WeakMap<object, RouteCall>()
 export function routeCallOf(payload: object): RouteCall {
   let call = calls.get(payload)
   if (!call) {
-    const logCallId = newRequestLogCallId()
+    const logCallId = modelCallIdOf(payload)
     call = { id: String(logCallId), logCallId, sends: 0, hops: 0, targets: new Set() }
     calls.set(payload, call)
   }
@@ -52,6 +52,7 @@ export function routeCallOf(payload: object): RouteCall {
 
 /** A copy of a call's payload (the blocking route's) belongs to the same call. */
 export function shareRouteCall(copy: object, original: object): void {
+  shareModelCallId(copy, original)
   const call = calls.get(original)
   if (call) calls.set(copy, call)
 }

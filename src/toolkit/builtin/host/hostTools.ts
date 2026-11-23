@@ -249,7 +249,7 @@ function buildHostTool(
       input,
       context,
       _canUseTool,
-      _parentMessage,
+      parentMessage,
       onProgress?: ToolCallStepUpdate,
     ) => {
       // A pure `cd <path>` is handled JS-side so it persists across Bash calls;
@@ -385,7 +385,7 @@ function buildHostTool(
         context,
       )
       if (refusal !== undefined) {
-        if (isFileActivityTool(definition.name)) recordFileDenied(context, definition.name, (callArgs as Record<string, unknown>).file_path)
+        if (isFileActivityTool(definition.name)) recordFileDenied(context, definition.name, (callArgs as Record<string, unknown>).file_path, parentMessage)
         return { data: refusal }
       }
       if (definition.name === READ_TOOL_ID) {
@@ -458,7 +458,7 @@ function buildHostTool(
       } catch (err) {
         // The command may have run before the failure: keep what changed.
         await shellProbe?.settle()
-        if (isFileActivityTool(definition.name)) recordFileFailure(context, definition.name, (callArgs as Record<string, unknown>).file_path, err)
+        if (isFileActivityTool(definition.name)) recordFileFailure(context, definition.name, (callArgs as Record<string, unknown>).file_path, err, parentMessage)
         throw err
       }
       let changeReceipt: Record<string, unknown> | undefined
@@ -475,7 +475,7 @@ function buildHostTool(
             changeReceipt = receipt
           }
         }
-        if (!changeReceipt) recordFileFailure(context, definition.name, (callArgs as Record<string, unknown>).file_path, result)
+        if (!changeReceipt) recordFileFailure(context, definition.name, (callArgs as Record<string, unknown>).file_path, result, parentMessage)
       }
       let shellProbeHeld = false
       let data: ReturnType<typeof renderHostResult>
@@ -637,7 +637,7 @@ function buildHostTool(
             callArgs as Record<string, unknown>,
             data,
           )
-          recordFileRead(context, fp, callArgs as Record<string, unknown>, unwrapData(rawResult), data)
+          recordFileRead(context, fp, callArgs as Record<string, unknown>, unwrapData(rawResult), data, parentMessage)
           // Memory staleness caveat (`staleMemoryReminder` for files in
           // the memory directory). Prepended AFTER
           // recordHostedReadState so the cached read state holds the file's
@@ -657,7 +657,7 @@ function buildHostTool(
         definition.name === WRITE_TOOL_ID
       ) {
         const enriched = buildHostEditDiff(definition.name, callArgs, data)
-        if (changeReceipt) recordFileChange(context, definition.name, changeReceipt, enriched?.editDiff)
+        if (changeReceipt) recordFileChange(context, definition.name, changeReceipt, enriched?.editDiff, parentMessage)
         if (enriched) {
           return agentMeta
             ? {

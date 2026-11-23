@@ -84,6 +84,7 @@ import { raisesTurnRecover, recoverThroughMods } from './recoverThroughMods'
 import { observeProviderCall, type CallEnding } from './providerOutcomeCall'
 import { providerRouterBoundsFor, RouteSwitchError, type RoutedVia } from '../../models/drivers/providerRouter'
 import { routeCallOf, routedViaOf, routeErrorOfCall, shareRouteCall } from '../../models/drivers/providerRouteCall'
+import { modelCallIdOf, noteReplyCallId } from '../../models/usage/modelCallIds'
 import { routeMemberFacts } from '../../models/drivers/providerRouteResolution'
 import { sessionUsageOf } from '../../mods/sessionNouns'
 import type { StoredRow } from '../../mods/sessionAppendEvent'
@@ -561,6 +562,15 @@ async function* routedReplies(call: ModelCall, previous: RoutedVia | undefined):
   }
 }
 
+/** The attempt's messages, each reply row noted as coming from the call `callId`. */
+async function* notingReplies(messages: AsyncGenerator<Message, void, unknown>, callId: number): AsyncGenerator<Message, void, unknown> {
+  for await (const message of messages) {
+    const uuid = (message as { uuid?: unknown }).uuid
+    if (message.type === MSG_TYPE_ASSISTANT && typeof uuid === 'string') noteReplyCallId(uuid, callId)
+    yield message
+  }
+}
+
 /**
  * The bridge-backed `callModel`. Providers served by in-runtime drivers are
  * layered over the transport here, so retries, idle handling, cancellation
@@ -598,6 +608,7 @@ export function bridgeModelTransport(
       ? routed.retry
       : params.providerId ? providerRequestSeamFor(params.providerId)?.policy?.retry : undefined
     const previousRoute = routed ? openRouteCall(call.payload, params) : undefined
+    const modelCallId = modelCallIdOf(call.payload)
     const retryOverride = runtimeConfig?.getEnv('e2eProviderMaxRetries')
     const platformMaxRetries = getProviderConnectivityMaxRetries(retryOverride)
     const maxRetries = retriesAllowed(
@@ -614,7 +625,7 @@ export function bridgeModelTransport(
         const startedAt = Date.now()
         attempts = attempt
         try {
-          yield* (routed ? routedReplies(call, previousRoute) : performRequest(call))
+          yield* notingReplies(routed ? routedReplies(call, previousRoute) : performRequest(call), modelCallId)
           ending = { ok: true, attempts }
           return
         } catch (error) {

@@ -25,6 +25,7 @@ import {
   type RequestLogUsage,
 } from './requestLogStore'
 import { attachRequestLogBridge, recordRequest } from './requestLogWriter'
+import { modelCallIdOf, nextModelCallSend } from './modelCallIds'
 
 /** Streams watched at once; past it the oldest is recorded as abandoned. */
 export const OPEN_STREAMS_MAX = 512
@@ -34,6 +35,9 @@ type Open = {
   provider: string
   model: string
   caller: RequestLogCaller
+  /** The model call the send belongs to, and which of its sends it is. */
+  callId: number
+  hop: number
   usage: RequestLogUsage
 }
 
@@ -90,6 +94,8 @@ export function withRequestLog(
         startedMs: stream.startedMs,
         durationMs: Date.now() - stream.startedMs,
         ...stream.caller,
+        callId: stream.callId,
+        hop: stream.hop,
         provider: stream.provider,
         model: stream.model,
         usage: stream.usage,
@@ -112,7 +118,15 @@ export function withRequestLog(
     if (!provider || !requested || providerRouterFor(provider)) return undefined
     // The concrete id the request was sent for, so a send that never reports its model is counted with the rest.
     const model = resolveModelId(provider, requested)
-    return { startedMs, provider, model, caller: requestLogCallerOf(payload.requestContext), usage: {} }
+    return {
+      startedMs,
+      provider,
+      model,
+      caller: requestLogCallerOf(payload.requestContext),
+      callId: modelCallIdOf(payload),
+      hop: 0,
+      usage: {},
+    }
   }
 
   const observe = (action: string, payload: Fields, response: Fields, startedMs: number): void => {
@@ -121,6 +135,7 @@ export function withRequestLog(
       const streamId = text(result.streamId)
       const stream = response.ok === true && streamId ? started(payload, startedMs) : undefined
       if (!stream || !streamId) return
+      stream.hop = nextModelCallSend(payload)
       if (open.size >= OPEN_STREAMS_MAX) finish(open.keys().next().value as string, { outcome: 'aborted' })
       open.set(streamId, stream)
       return
@@ -131,6 +146,7 @@ export function withRequestLog(
       const error = fields(response.error)
       // A refused request never left.
       if (response.ok !== true && error.code === 'provider_error') return
+      stream.hop = nextModelCallSend(payload)
       const message = fields(result.message)
       foldUsage(stream.usage, message.usage)
       stream.model = text(message.model) ?? stream.model

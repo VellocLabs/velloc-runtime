@@ -854,7 +854,7 @@ export async function commitOverlay(
 
   // 3. Execute verbatim, with snapshots. Only disk failure can interrupt now.
   const committed: string[] = []
-  const fileRows = startCommitFileRows(context, fs, overlay)
+  const fileRows = startCommitFileRows(context, fs, overlay, invokingRow)
   try {
   for (const opEntry of plan.ops) {
     if (context.cancelSource?.signal.aborted) {

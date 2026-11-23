@@ -55,7 +55,7 @@ const afterSide = (bytes: Uint8Array | null): SnapshotSideContent =>
 
 const textOf = (side: SnapshotSideContent): string | undefined => (side.kind === 'absent' ? '' : side.kind === 'text' ? side.text : undefined)
 
-export function startCommitFileRows(context: ToolCallContext, fs: RuntimeFs, overlay: OverlayFs): CommitFileRows {
+export function startCommitFileRows(context: ToolCallContext, fs: RuntimeFs, overlay: OverlayFs, reply?: unknown): CommitFileRows {
   /** A path's bytes as this commit's own earlier ops left them. */
   const written = new Map<string, Before>()
   /** Paths this commit removed or moved: the script's reads under them no longer match the disk. */
@@ -160,7 +160,7 @@ export function startCommitFileRows(context: ToolCallContext, fs: RuntimeFs, ove
     },
     flush() {
       try {
-        recordFileBatch(context, items.splice(0))
+        recordFileBatch(context, items.splice(0), reply)
       } catch {
         // Runs in the commit's `finally`: a throw here would replace the commit's outcome.
       }

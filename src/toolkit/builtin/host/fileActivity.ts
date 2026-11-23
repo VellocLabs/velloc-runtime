@@ -11,6 +11,7 @@ import { HostToolError } from '../../../browser/bridge/hostToolError'
 import { requestIdentityOf } from '../../../models/drivers/requestContext'
 import type { FileOpRow } from '../../../models/usage/requestLogStore'
 import { recordFileOps } from '../../../models/usage/requestLogWriter'
+import { replyCallIdOf } from '../../../models/usage/modelCallIds'
 import { sessionProjectOf } from '../../../models/usage/sessionProjects'
 import { EDIT_TOOL_ID, READ_TOOL_ID } from '../../../prompting/fileToolNames'
 import { createFileIdentityResolver, type FileIdentityResolver } from '../../../utils/fileIdentity'
@@ -39,7 +40,7 @@ export function fileFailureKindOf(code: string | undefined): FileFailureKind {
 }
 
 /** What a row says beyond who asked and which file. */
-export type FileRowFacts = Omit<FileOpRow, 'atMs' | 'sessionId' | 'agentId' | 'project' | 'repo' | 'worktree' | 'path' | 'fromPath'>
+export type FileRowFacts = Omit<FileOpRow, 'atMs' | 'sessionId' | 'agentId' | 'callId' | 'project' | 'repo' | 'worktree' | 'path' | 'fromPath'>
 
 const resolvers = new WeakMap<RuntimeFs, Map<string, FileIdentityResolver>>()
 const pending = new Set<Promise<void>>()
@@ -61,14 +62,18 @@ function resolverFor(context: ToolCallContext): FileIdentityResolver {
  */
 export type FileBatchItem = { filePath: string; fromPath?: string; facts: FileRowFacts }
 
-function recordBatch(context: ToolCallContext, items: readonly FileBatchItem[]): void {
+function recordBatch(context: ToolCallContext, items: readonly FileBatchItem[], reply: unknown): void {
   if (items.length === 0) return
   const atMs = Date.now()
-  const who = requestIdentityOf({
-    sessionId: context.options.sessionId,
-    spawnerSessionId: context.options.spawnerSessionId,
-    agentId: context.agentId,
-  })
+  const callId = replyCallIdOf(reply)
+  const who = {
+    ...requestIdentityOf({
+      sessionId: context.options.sessionId,
+      spawnerSessionId: context.options.spawnerSessionId,
+      agentId: context.agentId,
+    }),
+    ...(callId !== undefined ? { callId } : {}),
+  }
   const project = sessionProjectOf(who.sessionId)
   const job = (async () => {
     try {
@@ -90,14 +95,18 @@ function recordBatch(context: ToolCallContext, items: readonly FileBatchItem[]):
   void job.finally(() => pending.delete(job))
 }
 
-function record(context: ToolCallContext, filePath: unknown, facts: FileRowFacts): void {
+function record(context: ToolCallContext, filePath: unknown, facts: FileRowFacts, reply: unknown): void {
   if (typeof filePath !== 'string' || filePath.length === 0) return
-  recordBatch(context, [{ filePath, facts }])
+  recordBatch(context, [{ filePath, facts }], reply)
 }
 
-/** Rows for several files written as one batch, in one transaction: a commit that changes many files. */
-export function recordFileBatch(context: ToolCallContext, items: readonly FileBatchItem[]): void {
-  recordBatch(context, items.filter(item => item.filePath.length > 0))
+/**
+ * Rows for several files written as one batch, in one transaction: a commit
+ * that changes many files. Every `record*` takes the model reply row that
+ * asked for the tool call; its model call's id becomes the rows' `callId`.
+ */
+export function recordFileBatch(context: ToolCallContext, items: readonly FileBatchItem[], reply?: unknown): void {
+  recordBatch(context, items.filter(item => item.filePath.length > 0), reply)
 }
 
 function textLines(text: string): number {
@@ -115,7 +124,7 @@ const numberArg = (value: unknown): boolean => typeof value === 'number' && Numb
  * the model, before any note is prepended; non-text results count their
  * reported image bytes only.
  */
-export function recordFileRead(context: ToolCallContext, filePath: unknown, args: Record<string, unknown>, host: unknown, data: unknown): void {
+export function recordFileRead(context: ToolCallContext, filePath: unknown, args: Record<string, unknown>, host: unknown, data: unknown, reply?: unknown): void {
   const notice = !!host && typeof host === 'object' && 'notice' in host
   let bytes = 0
   let lines = 0
@@ -127,18 +136,24 @@ export function recordFileRead(context: ToolCallContext, filePath: unknown, args
     if (media && typeof media.bytes === 'number') bytes = media.bytes
   }
   const partial = numberArg(args.offset) || numberArg(args.limit)
-  record(context, filePath, { tool: READ_TOOL_ID, op: 'read', bytes, lines, ...(partial ? { partial } : {}), outcome: 'ok' })
+  record(context, filePath, { tool: READ_TOOL_ID, op: 'read', bytes, lines, ...(partial ? { partial } : {}), outcome: 'ok' }, reply)
 }
 
 const opOf = (tool: string): FileOpRow['op'] => (tool === READ_TOOL_ID ? 'read' : tool === EDIT_TOOL_ID ? 'edit' : 'write')
 
 /** A Read, Edit or Write the untrusted read boundary refused before it reached the host. */
-export function recordFileDenied(context: ToolCallContext, tool: string, filePath: unknown): void {
-  record(context, filePath, { tool, op: opOf(tool), outcome: 'failed', failureKind: 'denied' })
+export function recordFileDenied(context: ToolCallContext, tool: string, filePath: unknown, reply?: unknown): void {
+  record(context, filePath, { tool, op: opOf(tool), outcome: 'failed', failureKind: 'denied' }, reply)
 }
 
 /** An Edit or Write the host carried out; `receipt.bytes` is the file's size afterwards. */
-export function recordFileChange(context: ToolCallContext, tool: string, receipt: Record<string, unknown>, diff: FileChangeDiff | undefined): void {
+export function recordFileChange(
+  context: ToolCallContext,
+  tool: string,
+  receipt: Record<string, unknown>,
+  diff: FileChangeDiff | undefined,
+  reply?: unknown,
+): void {
   record(context, receipt.path, {
     tool,
     op: opOf(tool),
@@ -147,18 +162,18 @@ export function recordFileChange(context: ToolCallContext, tool: string, receipt
     removed: diff?.minusLines ?? 0,
     ...(receipt.outcome === 'created' ? { created: true } : {}),
     outcome: 'ok',
-  })
+  }, reply)
 }
 
 /** A Read, Edit or Write the host refused or failed: from a thrown host error, or a receipt that did not pass as a success. */
-export function recordFileFailure(context: ToolCallContext, tool: string, filePath: unknown, failure: unknown): void {
+export function recordFileFailure(context: ToolCallContext, tool: string, filePath: unknown, failure: unknown, reply?: unknown): void {
   const code =
     failure instanceof HostToolError
       ? failure.code
       : failure && typeof failure === 'object' && typeof (failure as { code?: unknown }).code === 'string'
         ? (failure as { code: string }).code
         : undefined
-  record(context, filePath, { tool, op: opOf(tool), outcome: 'failed', failureKind: fileFailureKindOf(code) })
+  record(context, filePath, { tool, op: opOf(tool), outcome: 'failed', failureKind: fileFailureKindOf(code) }, reply)
 }
 
 /** Settles once every row asked for so far has been handed to the writer. */

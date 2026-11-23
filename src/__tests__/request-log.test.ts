@@ -1014,10 +1014,8 @@ describe('request log transport', () => {
       { ok: true, result: { status: 'timeout', message: { role: 'assistant', content: [] } } },
     ]
     const { send, sends } = serving(() => replies.shift())
-    await send('call', start)
-    await send('call', start)
-    await send('streamStart', start)
-    await send('call', start)
+    // Four requests, each a call of its own.
+    for (const action of ['call', 'call', 'streamStart', 'call']) await send(action, { ...start })
     expect(await sends()).toEqual([
       ['acme', 'acme-large', 'session-a', 1, 5, 6, 0, 0, 0, null, null],
       ['acme', 'acme@latest', 'session-a', 1, 0, 0, 0, 0, 1, 'timeout', null],
