@@ -111,7 +111,15 @@ export function modProviderDefinition(options: ModProviderDefinitionOptions): Pr
   }
   const router = manifest.kind === 'router'
   // A router has no wire: each request goes out as its target's.
-  if (!router) config.wire = { format: manifest.format, ...manifest.wire }
+  if (!router) {
+    config.wire = {
+      format: manifest.format,
+      ...manifest.wire,
+      // A keyless provider with no key stored sends `{{secret:api_key}}` empty;
+      // the host refuses a template naming a missing secret.
+      ...(manifest.credentials.methods?.includes('anonymous') ? { apiKeyOptional: true } : {}),
+    }
+  }
   const tiers = manifest.modelsUi?.tierModels
   if (tiers?.best) config.bestModel = tiers.best
   if (tiers?.balanced) config.balancedModel = tiers.balanced
