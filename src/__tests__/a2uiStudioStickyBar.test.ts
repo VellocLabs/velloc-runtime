@@ -54,5 +54,8 @@ describe('studio StickyBar (F-1)', () => {
     expect(rule).toMatch(/background:\s*var\(--background\)/)
     expect(CSS).toMatch(/\.a2-sticky-bar\[data-edge="top"\] \{\s*top:\s*0/)
     expect(CSS).toMatch(/\.a2-sticky-bar\[data-edge="bottom"\] \{\s*bottom:\s*0/)
+    const empty = /\.a2-sticky-bar:not\(:has\(:not\(div\)\)\) \{([^}]*)\}/.exec(CSS)?.[1] ?? ''
+    expect(empty).toMatch(/padding-block:\s*0/)
+    expect(empty).toMatch(/background:\s*transparent/)
   })
 })

@@ -68,3 +68,9 @@
 .a2-sticky-bar[data-edge="bottom"] {
   bottom: 0;
 }
+
+/* A bar whose children rendered nothing (an empty template list) takes no room and shows nothing. */
+.a2-sticky-bar:not(:has(:not(div))) {
+  padding-block: 0;
+  background: transparent;
+}
