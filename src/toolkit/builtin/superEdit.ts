@@ -59,6 +59,7 @@ import {
 } from '../../prompting/fileToolNames'
 import { snapshotTurnForCall } from '../../utils/turnDiffs'
 import { captureWorkspaceMutation, observeWorkspaceMutation } from '../../codeReview/mutation-observer'
+import { startCommitFileRows } from './superEditFileRows'
 
 export type SuperEditInput = {
   code?: string
@@ -853,6 +854,8 @@ export async function commitOverlay(
 
   // 3. Execute verbatim, with snapshots. Only disk failure can interrupt now.
   const committed: string[] = []
+  const fileRows = startCommitFileRows(context, fs, overlay)
+  try {
   for (const opEntry of plan.ops) {
     if (context.cancelSource?.signal.aborted) {
       return {
@@ -870,8 +873,10 @@ export async function commitOverlay(
       await captureSnapshotForOp(opEntry, context, fs)
       const beforeMutation = opEntry.op === 'mkdir' ? undefined : await captureWorkspaceMutation(context,
         opEntry.op === 'move' ? [opEntry.from, opEntry.to] : [opEntry.path])
+      await fileRows.before(opEntry)
       mutationIssued = true
       await executeOpOnDisk(opEntry, fs)
+      fileRows.landed(opEntry)
       if (opEntry.op !== 'mkdir') {
         await observeWorkspaceMutation(context,
           opEntry.op === 'move' ? 'move' : opEntry.op === 'remove' ? 'unlink' : 'write', beforeMutation)
@@ -899,6 +904,9 @@ export async function commitOverlay(
     }
   }
   return { status: 'ok', committed: [...granted] }
+  } finally {
+    fileRows.flush()
+  }
 }
 
 function commitOpPath(opEntry: CommitOp): string {

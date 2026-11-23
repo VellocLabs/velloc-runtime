@@ -74,6 +74,10 @@ type Classified =
 
 const NOT_FOUND = 'NotFoundError'
 
+/** The largest read the overlay keeps for the commit's line counts, and the total it keeps. */
+export const PRISTINE_FILE_MAX_BYTES = 2 * 1024 * 1024
+export const PRISTINE_TOTAL_MAX_BYTES = 16 * 1024 * 1024
+
 function overlayError(name: string, message: string): Error {
   const err = new Error(message)
   err.name = name
@@ -101,8 +105,16 @@ export class OverlayFs {
   /** Distinct mutation targets, in first-seen order, for the commit gate. */
   private readonly targetOrder: string[] = []
   private readonly seenTargets = new Set<string>()
+  /** Disk bytes a script read, kept for the commit's line counts within a budget. */
+  private readonly pristine = new Map<string, Uint8Array>()
+  private pristineBytes = 0
 
   constructor(private readonly disk: OverlayDisk) {}
+
+  /** The bytes a script read of `abs` from disk, or undefined when it read none or they were over the budget. */
+  pristineBytesOf(abs: string): Uint8Array | undefined {
+    return this.pristine.get(abs)
+  }
 
   // ── plan (consumed by SuperEdit's commit pipeline) ────────────────────────
 
@@ -167,6 +179,10 @@ export class OverlayFs {
     }
     // 'disk'
     const bytes = await this.readDiskBytesOrThrow(abs)
+    if (!this.pristine.has(abs) && bytes.length <= PRISTINE_FILE_MAX_BYTES && this.pristineBytes + bytes.length <= PRISTINE_TOTAL_MAX_BYTES) {
+      this.pristine.set(abs, bytes.slice())
+      this.pristineBytes += bytes.length
+    }
     let mtimeMs: number | undefined
     try {
       const st = await this.disk.stat(abs)

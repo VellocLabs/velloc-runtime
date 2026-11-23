@@ -38,7 +38,9 @@ export function fileFailureKindOf(code: string | undefined): FileFailureKind {
   return (code !== undefined && Object.prototype.hasOwnProperty.call(FAILURE_BY_CODE, code) && FAILURE_BY_CODE[code]) || 'other'
 }
 
-type RowFacts = Omit<FileOpRow, 'atMs' | 'sessionId' | 'agentId' | 'project' | 'repo' | 'worktree' | 'path'>
+/** What a row says beyond who asked and which file. */
+export type FileRowFacts = Omit<FileOpRow, 'atMs' | 'sessionId' | 'agentId' | 'project' | 'repo' | 'worktree' | 'path' | 'fromPath'>
+type RowFacts = FileRowFacts
 
 const resolvers = new WeakMap<RuntimeFs, Map<string, FileIdentityResolver>>()
 const pending = new Set<Promise<void>>()
@@ -53,8 +55,11 @@ function resolverFor(context: ToolCallContext): FileIdentityResolver {
   return resolver
 }
 
-function record(context: ToolCallContext, filePath: unknown, facts: RowFacts): void {
-  if (typeof filePath !== 'string' || filePath.length === 0) return
+/** One file of a batch: its absolute path, a move's absolute source, and the row's facts. */
+export type FileBatchItem = { filePath: string; fromPath?: string; facts: FileRowFacts }
+
+function recordBatch(context: ToolCallContext, items: readonly FileBatchItem[]): void {
+  if (items.length === 0) return
   const atMs = Date.now()
   const who = requestIdentityOf({
     sessionId: context.options.sessionId,
@@ -64,14 +69,30 @@ function record(context: ToolCallContext, filePath: unknown, facts: RowFacts): v
   const project = sessionProjectOf(who.sessionId)
   const job = (async () => {
     try {
-      const identity = await resolverFor(context)(filePath)
-      recordFileOps([{ atMs, ...who, ...(project ? { project } : {}), ...identity, ...facts }])
+      const resolve = resolverFor(context)
+      const rows: FileOpRow[] = []
+      for (const item of items) {
+        const identity = await resolve(item.filePath)
+        const from = item.fromPath !== undefined ? (await resolve(item.fromPath)).path : undefined
+        rows.push({ atMs, ...who, ...(project ? { project } : {}), ...identity, ...(from !== undefined ? { fromPath: from } : {}), ...item.facts })
+      }
+      recordFileOps(rows)
     } catch {
-      // A row that cannot be built is dropped; the tool call is never affected.
+      // A batch that cannot be built is dropped; the tool call is never affected.
     }
   })()
   pending.add(job)
   void job.finally(() => pending.delete(job))
+}
+
+function record(context: ToolCallContext, filePath: unknown, facts: RowFacts): void {
+  if (typeof filePath !== 'string' || filePath.length === 0) return
+  recordBatch(context, [{ filePath, facts }])
+}
+
+/** Rows for several files written as one batch, in one transaction: a commit that changes many files. */
+export function recordFileBatch(context: ToolCallContext, items: readonly FileBatchItem[]): void {
+  recordBatch(context, items.filter(item => item.filePath.length > 0))
 }
 
 function textLines(text: string): number {
