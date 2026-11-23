@@ -2056,6 +2056,7 @@ export const ko: Messages = {
   'settings.models.mod.methodLogin': '로그인',
   'settings.models.mod.anonymousHint': '키나 계정 없이 이 제공업체를 사용합니다. 한도는 제공업체가 정합니다.',
   'settings.models.mod.anonymousUse': '키 없이 {name} 사용',
+  'settings.models.mod.anonymousFailed': '{name}을(를) 켤 수 없습니다: {error}',
   'settings.models.mod.anonymousOn': '키 없이 이 제공업체를 사용하고 있습니다.',
   'settings.models.mod.signOut': '로그아웃',
   'settings.models.mod.signInAgain': '다시 로그인',

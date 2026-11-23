@@ -562,3 +562,70 @@ describe('status card', () => {
     expect(screen.queryByTestId('mod-provider-model-count')).toBeNull()
   })
 })
+
+describe('a provider whose only method is keyless', () => {
+  const keylessOnly = () => withRow(modRow({ credentialMethods: ['anonymous'], prompts: [], secrets: [], settings: {} }))
+
+  it('is turned on when picked from the Add menu, with no button to press', async () => {
+    const h = harness({}, keylessOnly())
+    mount(h)
+    await openFromAddMenu()
+    await screen.findByTestId('mod-anonymous-on')
+    expect(h.upserts).toHaveLength(1)
+    expect(h.upserts[0]).toMatchObject({ source: 'mod', modVersion: '1.2.0', credentialMode: 'anonymous' })
+    expect(screen.queryByTestId('mod-anonymous-use')).toBeNull()
+    expect(screen.queryByTestId('mod-method-group')).toBeNull()
+  })
+
+  it('is not written again when it is already on', async () => {
+    const h = harness({ [ID]: { source: 'mod', modVersion: '1.2.0', credentialMode: 'anonymous' } }, keylessOnly())
+    mount(h)
+    fireEvent.click(await screen.findByTestId(`models-provider-settings-${ID}`))
+    await screen.findByTestId('mod-anonymous-on')
+    expect(h.upserts).toHaveLength(0)
+    expect(screen.queryByTestId('mod-anonymous-use')).toBeNull()
+  })
+
+  it('a reset is not undone in the background; adding it again turns it on again', async () => {
+    const h = harness({ [ID]: { source: 'mod', modVersion: '1.2.0', credentialMode: 'anonymous' } }, keylessOnly())
+    mount(h)
+    fireEvent.click(await screen.findByTestId(`models-provider-settings-${ID}`))
+    fireEvent.click(await screen.findByTestId('mod-reset-connection'))
+    fireEvent.click(await screen.findByTestId('mod-reset-confirm'))
+    await waitFor(() => expect(h.removes).toEqual([ID]))
+    await new Promise(resolve => setTimeout(resolve, 50))
+    expect(h.upserts).toHaveLength(0)
+    cleanup()
+    mount(h)
+    await openFromAddMenu()
+    await screen.findByTestId('mod-anonymous-on')
+    expect(h.upserts).toHaveLength(1)
+    expect(h.upserts[0]).toMatchObject({ source: 'mod', modVersion: '1.2.0', credentialMode: 'anonymous' })
+  })
+
+  it('a failed save shows the error and offers the button to try again', async () => {
+    const h = harness({}, keylessOnly())
+    const pass = h.bridge.request
+    let fail = true
+    ;(h.bridge as { request: unknown }).request = vi.fn(async (route: { action: string }, payload: Record<string, unknown>) => {
+      if (route.action === 'upsert' && fail) throw new Error('disk full')
+      return pass(route as never, payload as never)
+    })
+    mount(h)
+    await openFromAddMenu()
+    expect((await screen.findByTestId('mod-anonymous-failed')).textContent).toContain('disk full')
+    fail = false
+    fireEvent.click(await screen.findByTestId('mod-anonymous-use'))
+    await screen.findByTestId('mod-anonymous-on')
+    expect(screen.queryByTestId('mod-anonymous-failed')).toBeNull()
+  })
+
+  it('a provider offering a key as well still asks for the keyless choice', async () => {
+    const h = harness({}, withRow(modRow()))
+    mount(h)
+    await openFromAddMenu()
+    fireEvent.click(await screen.findByTestId('mod-method-anonymous'))
+    await screen.findByTestId('mod-anonymous-use')
+    expect(h.upserts).toHaveLength(0)
+  })
+})

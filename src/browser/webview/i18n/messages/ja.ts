@@ -2059,6 +2059,7 @@ export const ja: Messages = {
   'settings.models.mod.methodLogin': 'ログイン',
   'settings.models.mod.anonymousHint': 'キーもアカウントも使わずにこのプロバイダを利用します。制限はプロバイダが定めます。',
   'settings.models.mod.anonymousUse': 'キーなしで {name} を使う',
+  'settings.models.mod.anonymousFailed': '{name} をオンにできませんでした: {error}',
   'settings.models.mod.anonymousOn': 'このプロバイダをキーなしで利用しています。',
   'settings.models.mod.signOut': 'ログアウト',
   'settings.models.mod.signInAgain': '再ログイン',

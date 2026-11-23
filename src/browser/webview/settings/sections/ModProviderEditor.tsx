@@ -395,13 +395,37 @@ function ReadyEditor({
   const chooseAnonymous = async () => {
     // Nothing to check without a key.
     setVerifyFailed(null);
-    await providersUpsert(
-      bridge,
-      providerId,
-      modProviderConfig(stored, { credentialMode: "anonymous" }),
-    );
+    setAnonymousError(null);
+    try {
+      await providersUpsert(
+        bridge,
+        providerId,
+        modProviderConfig(stored, { credentialMode: "anonymous" }),
+      );
+    } catch (error) {
+      setAnonymousError(error instanceof Error ? error.message : String(error));
+      return;
+    }
     await onChanged();
   };
+
+  // A provider whose only method is keyless is on once it is opened: there is
+  // no choice to confirm. Tried once per editor, so a reset is not undone; after
+  // that (or a failed save) the button is the way to turn it on.
+  const anonymousOnly = !router && methods.length === 1 && methods[0] === "anonymous";
+  const [autoAnonymous, setAutoAnonymous] = React.useState<"pending" | "saving" | "done">("pending");
+  const [anonymousError, setAnonymousError] = React.useState<string | null>(null);
+  const autoTried = React.useRef(false);
+  React.useEffect(() => {
+    if (!anonymousOnly || autoTried.current) return;
+    autoTried.current = true;
+    if (saved?.credentialMode === "anonymous") {
+      setAutoAnonymous("done");
+      return;
+    }
+    setAutoAnonymous("saving");
+    void chooseAnonymous().finally(() => setAutoAnonymous("done"));
+  });
 
   return (
     <div
@@ -458,7 +482,7 @@ function ReadyEditor({
               <CheckIcon className="size-3.5" />
               {t("settings.models.mod.anonymousOn")}
             </span>
-          ) : (
+          ) : anonymousOnly && autoAnonymous !== "done" ? null : (
             <Button
               type="button"
               size="sm"
@@ -470,6 +494,11 @@ function ReadyEditor({
             </Button>
           )}
         </div>
+      ) : null}
+      {anonymousError ? (
+        <span className="text-destructive text-xs" data-testid="mod-anonymous-failed">
+          {t("settings.models.mod.anonymousFailed", { name, error: anonymousError })}
+        </span>
       ) : null}
 
       {!router && method === "login" ? (

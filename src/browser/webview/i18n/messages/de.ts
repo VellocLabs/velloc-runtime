@@ -2082,6 +2082,7 @@ export const de: Messages = {
   'settings.models.mod.methodLogin': 'Anmelden',
   'settings.models.mod.anonymousHint': 'Nutze diesen Anbieter ohne Schlüssel und ohne Konto. Die Grenzen legt der Anbieter fest.',
   'settings.models.mod.anonymousUse': '{name} ohne Schlüssel nutzen',
+  'settings.models.mod.anonymousFailed': '{name} konnte nicht eingeschaltet werden: {error}',
   'settings.models.mod.anonymousOn': 'Dieser Anbieter wird ohne Schlüssel genutzt.',
   'settings.models.mod.signOut': 'Abmelden',
   'settings.models.mod.signInAgain': 'Erneut anmelden',

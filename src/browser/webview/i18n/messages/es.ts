@@ -2086,6 +2086,7 @@ export const es: Messages = {
   'settings.models.mod.methodLogin': 'Iniciar sesión',
   'settings.models.mod.anonymousHint': 'Use este proveedor sin clave ni cuenta. Los límites los fija el proveedor.',
   'settings.models.mod.anonymousUse': 'Usar {name} sin clave',
+  'settings.models.mod.anonymousFailed': 'No se pudo activar {name}: {error}',
   'settings.models.mod.anonymousOn': 'Se usa este proveedor sin clave.',
   'settings.models.mod.signOut': 'Cerrar sesión',
   'settings.models.mod.signInAgain': 'Iniciar sesión de nuevo',

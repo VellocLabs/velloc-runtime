@@ -2039,6 +2039,7 @@ export const zh: Messages = {
   'settings.models.mod.methodLogin': '登录',
   'settings.models.mod.anonymousHint': '无需密钥或账号即可使用该服务商，限额由服务商决定。',
   'settings.models.mod.anonymousUse': '无需密钥使用 {name}',
+  'settings.models.mod.anonymousFailed': '无法启用 {name}：{error}',
   'settings.models.mod.anonymousOn': '正在不使用密钥的情况下使用该服务商。',
   'settings.models.mod.signOut': '退出登录',
   'settings.models.mod.signInAgain': '重新登录',

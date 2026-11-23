@@ -2135,6 +2135,7 @@ export const en = {
   'settings.models.mod.methodLogin': 'Sign in',
   'settings.models.mod.anonymousHint': 'Use this provider without a key or an account. The provider sets the limits.',
   'settings.models.mod.anonymousUse': 'Use {name} without a key',
+  'settings.models.mod.anonymousFailed': 'Could not turn on {name}: {error}',
   'settings.models.mod.anonymousOn': 'Using this provider without a key.',
   'settings.models.mod.signOut': 'Sign out',
   'settings.models.mod.signInAgain': 'Sign in again',

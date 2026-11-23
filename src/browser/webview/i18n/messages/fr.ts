@@ -2088,6 +2088,7 @@ export const fr: Messages = {
   'settings.models.mod.methodLogin': 'Se connecter',
   'settings.models.mod.anonymousHint': 'Utilisez ce fournisseur sans clé ni compte. Les limites sont fixées par le fournisseur.',
   'settings.models.mod.anonymousUse': 'Utiliser {name} sans clé',
+  'settings.models.mod.anonymousFailed': 'Impossible d’activer {name} : {error}',
   'settings.models.mod.anonymousOn': 'Ce fournisseur est utilisé sans clé.',
   'settings.models.mod.signOut': 'Se déconnecter',
   'settings.models.mod.signInAgain': 'Se reconnecter',
