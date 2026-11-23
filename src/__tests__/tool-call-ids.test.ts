@@ -8,7 +8,11 @@ import type { FileOpRow, RequestLogRow } from '../models/usage/requestLogStore'
 import { withRequestLog } from '../models/usage/requestLogTransport'
 import type { Message } from '../runtime/RuntimeTypes'
 import { createEmptyAppState, createNoopToolUseContext, DefaultRuntimeConfig, NoopPlatformCapabilities } from '../runtime/testing/noopAdapters'
-import { fileActivityIdle, recordFileBatch } from '../toolkit/builtin/host/fileActivity'
+import { fileActivityIdle, recordFileBatch, recordFileRead } from '../toolkit/builtin/host/fileActivity'
+import { runToolBatch } from '../toolkit/run/toolBatchRunner'
+import { declareTool } from '../toolkit/toolContract'
+import type { QueryRuntimeDeps } from '../runtime/interfaces/QueryRuntimeDeps'
+import type { ModelReplyRow } from '../runtime/RuntimeTypes'
 import { buildHostTools } from '../toolkit/builtin/host/hostTools'
 import type { ToolCallContext } from '../toolkit/toolCallContext'
 import type { ToolContractList } from '../toolkit/toolContract'
@@ -177,6 +181,61 @@ describe("the model call's id on sends and file rows", () => {
     )
     await fileActivityIdle()
     expect(logged.files.map(row => row.callId)).toEqual([99, 99])
+  })
+
+  it('gives each call of one parallel batch the id of its own reply, when the calls came from different replies', async () => {
+    noteReplyCallId('reply-a', 101)
+    noteReplyCallId('reply-b', 202)
+    let bothStarted!: () => void
+    const started = new Promise<void>(resolve => (bothStarted = resolve))
+    let running = 0
+    const tool = declareTool({
+      name: 'Peek',
+      argsSchema: { type: 'object' as const, properties: { path: { type: 'string' } } },
+      description: async () => 'peeks',
+      call: async (input: { path: string }, context: ToolCallContext, _can: unknown, parent: unknown) => {
+        running += 1
+        if (running === 2) bothStarted()
+        await started
+        recordFileRead(context, input.path, {}, undefined, 'x', parent)
+        return { data: 'ok' }
+      },
+      parallelSafe: () => true,
+      readsOnly: () => true,
+    })
+    const context = createNoopToolUseContext({
+      tools: [tool] as unknown as ToolContractList,
+      platformCapabilities: new NoopPlatformCapabilities(),
+      appState: createEmptyAppState(),
+      setAppState: () => {},
+      sessionId: 's1',
+    })
+    ;(context.options as { fsOperations?: RuntimeFs }).fsOperations = {
+      stat: async () => Promise.reject(new Error('ENOENT')),
+    } as unknown as RuntimeFs
+    context.markCallsInFlight = () => {}
+    const replyWith = (uuid: string, toolCallId: string, path: string): ModelReplyRow =>
+      ({
+        type: 'assistant',
+        uuid,
+        message: { role: 'assistant', content: [{ type: 'tool-call', toolCallId, toolName: 'Peek', args: { path } }] },
+      }) as ModelReplyRow
+    const calls = [
+      { type: 'tool-call' as const, toolCallId: 't-a', toolName: 'Peek', args: { path: '/p/a' } },
+      { type: 'tool-call' as const, toolCallId: 't-b', toolName: 'Peek', args: { path: '/p/b' } },
+    ]
+    const replies = [replyWith('reply-a', 't-a', '/p/a'), replyWith('reply-b', 't-b', '/p/b')]
+    let n = 0
+    const deps = { uuid: () => `u${(n += 1)}` } as QueryRuntimeDeps
+    for await (const _ of runToolBatch(calls, replies, async () => ({ behavior: 'allow' as const }), context, deps)) {
+      // drained
+    }
+    await fileActivityIdle()
+    expect(running).toBe(2)
+    expect(logged.files.map(row => [row.path, row.callId]).sort()).toEqual([
+      ['/p/a', 101],
+      ['/p/b', 202],
+    ])
   })
 
   it('forgets the oldest reply past its limit', () => {

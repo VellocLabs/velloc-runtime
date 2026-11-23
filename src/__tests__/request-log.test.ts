@@ -966,7 +966,7 @@ describe('request log transport', () => {
       ] } },
     ]
     const { send, sends } = serving(() => replies.shift())
-    const opened = await send('streamStart', start)
+    const opened = await send('streamStart', { ...start })
     expect(opened).toEqual({ ok: true, result: { streamId: 's1' } })
     await send('streamRead', { streamId: 's1' })
     expect(await sends()).toEqual([])
@@ -1028,7 +1028,7 @@ describe('request log transport', () => {
       if (request.route.capability !== 'model') throw new Error('offline')
       return request.route.action === 'streamStart' ? { ok: true, result: { streamId: 's1' } } : reply
     })
-    await send('streamStart', start)
+    await send('streamStart', { ...start })
     expect(await send('streamRead', { streamId: 's1' })).toBe(reply)
     expect(await send('catalog', {})).toBe(reply)
     expect(served.request).toHaveBeenCalledTimes(3)
@@ -1041,8 +1041,8 @@ describe('request log transport', () => {
       { ok: true, result: { status: 'timeout', message: { role: 'assistant', content: [] } } },
     ]
     const { send, sends } = serving(() => replies.shift())
-    await send('call', start)
-    await send('call', start)
+    await send('call', { ...start })
+    await send('call', { ...start })
     expect((await sends()).map(r => [r[1], r[8]])).toEqual([['acme-large', 0], ['acme-large', 1]])
   })
 

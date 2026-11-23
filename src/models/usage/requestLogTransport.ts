@@ -41,6 +41,9 @@ type Open = {
   usage: RequestLogUsage
 }
 
+/** A send being watched before it is known to have left. */
+type Starting = Omit<Open, 'hop'>
+
 type Fields = Record<string, unknown>
 
 function fields(value: unknown): Fields {
@@ -112,7 +115,7 @@ export function withRequestLog(
     write(stream, ending)
   }
 
-  const started = (payload: Fields, startedMs: number): Open | undefined => {
+  const started = (payload: Fields, startedMs: number): Starting | undefined => {
     const provider = text(payload.providerId)
     const requested = text(payload.model)
     if (!provider || !requested || providerRouterFor(provider)) return undefined
@@ -124,7 +127,6 @@ export function withRequestLog(
       model,
       caller: requestLogCallerOf(payload.requestContext),
       callId: modelCallIdOf(payload),
-      hop: 0,
       usage: {},
     }
   }
@@ -133,20 +135,20 @@ export function withRequestLog(
     const result = fields(response.result)
     if (action === 'streamStart') {
       const streamId = text(result.streamId)
-      const stream = response.ok === true && streamId ? started(payload, startedMs) : undefined
-      if (!stream || !streamId) return
-      stream.hop = nextModelCallSend(payload)
+      const starting = response.ok === true && streamId ? started(payload, startedMs) : undefined
+      if (!starting || !streamId) return
+      const stream: Open = { ...starting, hop: nextModelCallSend(payload) }
       if (open.size >= OPEN_STREAMS_MAX) finish(open.keys().next().value as string, { outcome: 'aborted' })
       open.set(streamId, stream)
       return
     }
     if (action === 'call') {
-      const stream = started(payload, startedMs)
-      if (!stream) return
+      const starting = started(payload, startedMs)
+      if (!starting) return
       const error = fields(response.error)
       // A refused request never left.
       if (response.ok !== true && error.code === 'provider_error') return
-      stream.hop = nextModelCallSend(payload)
+      const stream: Open = { ...starting, hop: nextModelCallSend(payload) }
       const message = fields(result.message)
       foldUsage(stream.usage, message.usage)
       stream.model = text(message.model) ?? stream.model
