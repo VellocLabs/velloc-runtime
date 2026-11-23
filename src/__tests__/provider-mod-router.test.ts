@@ -102,14 +102,14 @@ const first = (context = CONTEXT, callId = 'call-1'): RouteEvent => ({
   requestContext: context,
   callId,
   attempt: 1,
-  request: { tools: false },
+  request: { tools: false, images: false, documents: false },
 })
 const afterFailure = (context = CONTEXT, callId = 'call-1'): RouteEvent => ({
   model: 'row',
   requestContext: context,
   callId,
   attempt: 2,
-  request: { tools: false },
+  request: { tools: false, images: false, documents: false },
   lastFailure: {
     provider: 'relay-a',
     model: 'm-a',
@@ -146,9 +146,9 @@ describe('createModProviderRouter over the provider mod runtime', () => {
       }
     `)
     const router = createModProviderRouter(runtime, ROUTER, () => PEERS)
-    expect(await router.route({ ...first(), callId: 'call-7', request: { tools: true } }, signal())).toMatchObject({
+    expect(await router.route({ ...first(), callId: 'call-7', request: { tools: true, images: false, documents: false } }, signal())).toMatchObject({
       callId: 'call-7',
-      request: { tools: true },
+      request: { tools: true, images: false, documents: false },
     })
   })
 

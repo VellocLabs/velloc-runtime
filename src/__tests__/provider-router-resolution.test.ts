@@ -302,7 +302,7 @@ describe('a request to a router provider', () => {
     expect(hooks.calls.request).toHaveLength(1)
     expect(hooks.calls.request[0]!.provider).toBe(A)
     expect(events).toEqual([
-      { model: 'route-row', requestContext: CONTEXT, callId: expect.any(String), attempt: 1, request: { tools: false } },
+      { model: 'route-row', requestContext: CONTEXT, callId: expect.any(String), attempt: 1, request: { tools: false, images: false, documents: false } },
     ])
     // The reply's first chunk names the target's model, as a request of its own would.
     expect(chunks[0]).toMatchObject({ type: 'message_start', message: { model: 'm-a' } })
@@ -373,7 +373,11 @@ describe('a request to a router provider', () => {
     await stream(wrapped, payload({ tools: [] }))
     await stream(wrapped)
 
-    expect(events.map(e => e.request)).toEqual([{ tools: true }, { tools: false }, { tools: false }])
+    expect(events.map(e => e.request)).toEqual([
+      { tools: true, images: false, documents: false },
+      { tools: false, images: false, documents: false },
+      { tools: false, images: false, documents: false },
+    ])
   })
 
   it('writes one request-log row per send, the sends of a call under one call id', async () => {

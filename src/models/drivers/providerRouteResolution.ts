@@ -40,6 +40,15 @@ import {
   type RouteEvent,
   type RouteFailure,
 } from './providerRouter'
+import {
+  mediaIn,
+  mediaOmittedFor,
+  mediaRefusedBy,
+  rememberMediaRefusal,
+  statedMediaSupport,
+  withoutMedia,
+  type MediaKinds,
+} from './routedMedia'
 import type { RouteDecision, RouteLeg, RoutedSend, StreamRouting } from './routedStream'
 import type { RequestLogRow } from '../usage/requestLogStore'
 import { recordRequest } from '../usage/requestLogWriter'
@@ -189,12 +198,16 @@ export function routeCall(
     knownModel,
   }
 
+  const media = mediaIn(payload.messages)
+  /** The media the latest leg was sent with. */
+  let mediaSent: MediaKinds = { images: false, documents: false }
+
   const event = (): RouteEvent => ({
     model: rowModel,
     requestContext: requestContextOf(call, payload),
     callId: call.id,
     attempt: call.sends + 1,
-    request: { tools: (payload.tools?.length ?? 0) > 0 },
+    request: { tools: (payload.tools?.length ?? 0) > 0, images: media.images, documents: media.documents },
     ...(call.lastFailure ? { lastFailure: call.lastFailure } : {}),
     ...(call.contextTokens !== undefined ? { usage: { contextTokens: call.contextTokens } } : {}),
   })
@@ -222,8 +235,17 @@ export function routeCall(
       payload as BridgeModelRequestPayload & Record<string, unknown>
     const tier = tierForTarget(target.effort ?? thinkingTierOf(payload), listedTiers(target.provider, model))
     const extension = buildThinkingBodyExtension(target.provider, tier, payload.maxOutputTokens ?? 0, model)
+    // The row takes media when any member does; this target may not.
+    const stated = statedMediaSupport(target.provider, target.model)
+    const omit = mediaOmittedFor(
+      target.provider,
+      target.model,
+      stated.images === undefined && stated.documents === undefined ? statedMediaSupport(target.provider, model) : stated,
+    )
+    mediaSent = { images: media.images && !omit.images, documents: media.documents && !omit.documents }
     const sent = {
       ...rest,
+      ...(payload.messages ? { messages: withoutMedia(payload.messages, omit) } : {}),
       providerId: target.provider,
       model,
       ...(tier ? { thinkingTier: tier } : {}),
@@ -282,6 +304,17 @@ export function routeCall(
       throw new ProviderConfigError(`provider.route of ${routerId}: ${reason}; the request was not sent`)
     },
     async after(failure, streamStarted, signal): Promise<RouteDecision> {
+      // A target that did not state its media input refused the request for
+      // it: the same target is sent the request once more without. Not a
+      // failure of the target, so the router is not asked and nothing is
+      // recorded against it.
+      const refusedFor = streamStarted || !call.target ? undefined : mediaRefusedBy(failure, mediaSent)
+      if (call.target && refusedFor && (refusedFor.images || refusedFor.documents)) {
+        rememberMediaRefusal(call.target.provider, call.target.model, refusedFor)
+        traceLine(`[providers] ${routerId}: ${call.target.provider} refused the request for its ${refusedFor.images ? 'images' : 'documents'}; it is sent again without them`, { level: 'warn' })
+        call.sends += 1
+        return { kind: 'switch', leg: legFor(call.target) }
+      }
       const failed = failureOf(failure, streamStarted)
       // A failure nothing classifies is not put to the router.
       if (!failed) return { kind: 'none' }

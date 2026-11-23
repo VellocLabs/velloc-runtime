@@ -40,6 +40,7 @@ import {
 } from '../../runtime/VercelModelConstants'
 import { PLAN_OFF_TOOL_ID } from '../../toolkit/builtin/planExit'
 import { shouldTraceModelRequests } from './modelTrace'
+import { omitMediaPart } from '../../runtime/mediaPlaceholders'
 function cloneToolInputSchema(schema: ToolArgsJsonShape): ToolArgsJsonShape {
   if (typeof structuredClone === 'function') {
     return structuredClone(schema)
@@ -64,23 +65,6 @@ function normalizeToolName(name: string, tools: ToolContractList): string {
  */
 type SerializeMessagesForBridgeOptions = {
   allowImageParts?: boolean
-}
-
-const IMAGE_OMITTED_PLACEHOLDER =
-  '[image omitted: the selected model does not support image input]'
-const DOCUMENT_OMITTED_PLACEHOLDER =
-  '[document omitted: the selected model does not support document input]'
-
-/** An image/document part as its text placeholder; anything else as-is. */
-function omitMediaPart(part: unknown): unknown {
-  const type = asRecord(part)?.type
-  if (type === PART_IMAGE) {
-    return { type: PART_TEXT, text: IMAGE_OMITTED_PLACEHOLDER }
-  }
-  if (type === PART_DOCUMENT) {
-    return { type: PART_TEXT, text: DOCUMENT_OMITTED_PLACEHOLDER }
-  }
-  return part
 }
 
 function normalizeMessageContentPartForBridge(

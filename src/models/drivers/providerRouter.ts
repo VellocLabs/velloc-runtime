@@ -53,8 +53,9 @@ export type RouteEvent = {
   /** 1 for the first send of this call. */
   attempt: number
   /** What the request asks of the model that serves it. `tools`: it carries
-   *  tool definitions. */
-  request: { tools: boolean }
+   *  tool definitions. `images`, `documents`: its messages carry such parts;
+   *  a target that states no support for a kind is sent placeholders. */
+  request: { tools: boolean; images: boolean; documents: boolean }
   lastFailure?: RouteFailure
   /** The session's context in tokens, as its usage meter counts it. Absent
    *  for a request that belongs to no session. */
