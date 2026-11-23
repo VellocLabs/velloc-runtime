@@ -171,22 +171,24 @@ describe('maskPayload: what counts as opaque', () => {
   })
 
   it('leaves opaque parts inside a replay envelope value whole', () => {
-    const image = { type: 'image', data: 'AcmeCo', mimeType: 'image/png' }
+    const image = { type: 'image', image: 'AcmeCo', mimeType: 'image/png' }
+    const b64 = (text: string) => btoa(String.fromCharCode(...new TextEncoder().encode(text)))
+    const document = { type: 'document', data: b64('notes about AcmeCo'), mimeType: 'text/plain' }
     const signature = encodeReasoningReplaySignature('gw', 'gpt-x', hostDict([
       ['type', 'reasoning-replay'],
       ['field', 'reasoning_details'],
-      ['value', hostValueFromJs([image, { type: 'redacted_thinking', data: 'widget' }, { type: 'text', text: 'AcmeCo' }])!],
+      ['value', hostValueFromJs([image, { type: 'redacted_thinking', text: 'widget' }, document, { type: 'text', text: 'AcmeCo' }])!],
     ]))!
     const original: BridgeModelRequestPayload = {
       messages: [{ role: 'assistant', content: [{ type: 'thinking', thinking: 'a', signature }] }],
     }
     const sent = (maskPayload(original, new PayloadMasker(masking, [])).messages[0]!.content as any[])[0].signature as string
     const replay = decodeReasoningReplaySignatureFor(sent, 'gw', 'gpt-x')
-    expect(hostValueToJs(replay!.get('value')!)).toEqual([
-      image,
-      { type: 'redacted_thinking', data: 'widget' },
-      { type: 'text', text: 'Northwind' },
-    ])
+    const parts = hostValueToJs(replay!.get('value')!) as any[]
+    expect(parts[0]).toEqual(image)
+    expect(parts[1]).toEqual({ type: 'redacted_thinking', text: 'widget' })
+    expect(new TextDecoder().decode(Uint8Array.from(atob(parts[2].data), c => c.charCodeAt(0)))).toBe('notes about Northwind')
+    expect(parts[3]).toEqual({ type: 'text', text: 'Northwind' })
   })
 
   it('leaves a replay envelope with nothing to mask, or one that is not JSON, unchanged', () => {
