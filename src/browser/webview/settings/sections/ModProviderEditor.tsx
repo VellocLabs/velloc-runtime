@@ -121,6 +121,7 @@ export function ModProviderEditor({
   }
   return (
     <ReadyEditor
+      key={provider.id}
       provider={provider}
       saved={saved}
       bridge={bridge}
@@ -396,16 +397,11 @@ function ReadyEditor({
     // Nothing to check without a key.
     setVerifyFailed(null);
     setAnonymousError(null);
-    try {
-      await providersUpsert(
-        bridge,
-        providerId,
-        modProviderConfig(stored, { credentialMode: "anonymous" }),
-      );
-    } catch (error) {
-      setAnonymousError(error instanceof Error ? error.message : String(error));
-      return;
-    }
+    await providersUpsert(
+      bridge,
+      providerId,
+      modProviderConfig(stored, { credentialMode: "anonymous" }),
+    );
     await onChanged();
   };
 
@@ -424,7 +420,9 @@ function ReadyEditor({
       return;
     }
     setAutoAnonymous("saving");
-    void chooseAnonymous().finally(() => setAutoAnonymous("done"));
+    void chooseAnonymous()
+      .catch((error: unknown) => setAnonymousError(error instanceof Error ? error.message : String(error)))
+      .finally(() => setAutoAnonymous("done"));
   });
 
   return (
@@ -488,7 +486,7 @@ function ReadyEditor({
               size="sm"
               className="self-start"
               data-testid="mod-anonymous-use"
-              onClick={() => void chooseAnonymous()}
+              onClick={() => void chooseAnonymous().catch((error: unknown) => setAnonymousError(error instanceof Error ? error.message : String(error)))}
             >
               {t("settings.models.mod.anonymousUse", { name })}
             </Button>

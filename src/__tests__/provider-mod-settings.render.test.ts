@@ -620,6 +620,37 @@ describe('a provider whose only method is keyless', () => {
     expect(screen.queryByTestId('mod-anonymous-failed')).toBeNull()
   })
 
+  it('the auto-on applies to the next keyless provider opened in the same editor', async () => {
+    const first = keylessOnly().providers[0]!;
+    const second: BrowserLlmProvider = {
+      ...first,
+      id: 'mod.acme.second',
+      label: 'Second',
+      mod: { ...first.mod!, version: '2.0.0', displayName: { en: 'Second' } },
+    };
+    const h = harness({}, { providers: [first, second] });
+    const tree = (providerId: string, seq: number) =>
+      createElement(
+        I18nProvider,
+        { locale: 'en' },
+        createElement(
+          SettingsBridgeContext.Provider,
+          { value: h.bridge },
+          createElement(ModelsSection, {
+            catalog: { providers: [first, second] },
+            transport: h.transport,
+            openProviderRequest: { providerId, seq },
+          }),
+        ),
+      );
+    const view = render(tree(ID, 1));
+    await waitFor(() => expect(h.upserts.map(config => config.modVersion)).toEqual(['1.2.0']));
+    view.rerender(tree(second.id, 2));
+    await waitFor(() => expect(h.upserts.map(config => config.modVersion)).toEqual(['1.2.0', '2.0.0']));
+    await screen.findByTestId('mod-anonymous-on');
+    expect(screen.queryByTestId('mod-anonymous-use')).toBeNull();
+  });
+
   it('a provider offering a key as well still asks for the keyless choice', async () => {
     const h = harness({}, withRow(modRow()))
     mount(h)

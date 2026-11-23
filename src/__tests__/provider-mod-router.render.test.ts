@@ -164,6 +164,21 @@ describe('the router editor', () => {
     expect(h.verifies).toEqual([])
   })
 
+  it('a failed add is reported in the panel', async () => {
+    const h = harness({}, [modRow(ALPHA, 'Alpha'), routerRow('*')]);
+    const pass = h.bridge.request;
+    vi.mocked(h.bridge).request = vi.fn(async (route: { action: string }, payload: Record<string, unknown>) => {
+      if (route.action === 'upsert') throw new Error('disk full');
+      return pass(route as never, payload as never);
+    }) as never;
+    mount(h);
+    fireEvent.keyDown(await screen.findByTestId('models-add-provider'), { key: 'Enter' });
+    fireEvent.click(await screen.findByTestId(`models-provider-select-option-${ROUTER}`));
+    fireEvent.click(await screen.findByTestId('mod-router-use'));
+    expect((await screen.findByTestId('mod-router-use-failed')).textContent).toContain('disk full');
+    expect(screen.queryByTestId('mod-anonymous-failed')).toBeNull();
+  });
+
   it('"*": any set-up provider, named by its label; not-set-up ones and routers are left out', async () => {
     const other = { ...routerRow('*'), id: 'mod.other.main' }
     mount(
