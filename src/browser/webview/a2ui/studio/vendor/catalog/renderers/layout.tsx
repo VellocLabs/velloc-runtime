@@ -10,7 +10,9 @@ import type { RendererMap } from "./types";
  * Column, Row, Grid, Card, Tabs, Divider and Carousel render with the Gen UI
  * 2.0 standard components. Child references arrive already rendered.
  */
-export const layoutRenderers: RendererMap<"Section" | "Accordion"> = {
+export const layoutRenderers: RendererMap<
+  "Section" | "StickyBar" | "Accordion"
+> = {
   Section: ({ props }) => (
     <section className="a2-enter flex w-full min-w-0 flex-col gap-3">
       <header className="flex flex-col gap-1">
@@ -30,6 +32,17 @@ export const layoutRenderers: RendererMap<"Section" | "Accordion"> = {
       </header>
       <div className="flex min-w-0 flex-col gap-3">{props.children}</div>
     </section>
+  ),
+
+  // Positioned by renderers.css: it stays at its edge of the nearest scrolling ancestor, the page.
+  StickyBar: ({ props }) => (
+    <div
+      data-slot="a2-sticky-bar"
+      data-edge={props.edge === "bottom" ? "bottom" : "top"}
+      className="a2-sticky-bar flex w-full min-w-0 flex-col gap-3"
+    >
+      {props.children}
+    </div>
   ),
 
   Accordion: ({ props }) => {

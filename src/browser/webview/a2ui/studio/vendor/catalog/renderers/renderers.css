@@ -54,3 +54,17 @@
   background: oklch(0.32 0.06 var(--a2-hue));
   color: oklch(0.9 0.06 var(--a2-hue));
 }
+
+/* StickyBar (layout.tsx): stays at its edge of the page's scroll area. Opaque, so the page does not show through it. */
+.a2-sticky-bar {
+  position: sticky;
+  z-index: 5;
+  padding-block: 8px;
+  background: var(--background);
+}
+.a2-sticky-bar[data-edge="top"] {
+  top: 0;
+}
+.a2-sticky-bar[data-edge="bottom"] {
+  bottom: 0;
+}
