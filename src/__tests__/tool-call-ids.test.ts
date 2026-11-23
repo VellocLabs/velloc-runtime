@@ -6,16 +6,14 @@ import { shareRouteCall } from '../models/drivers/providerRouteCall'
 import { modelCallIdOf, noteReplyCallId, REPLY_CALL_IDS_MAX, replyCallIdOf } from '../models/usage/modelCallIds'
 import type { FileOpRow, RequestLogRow } from '../models/usage/requestLogStore'
 import { withRequestLog } from '../models/usage/requestLogTransport'
-import type { Message } from '../runtime/RuntimeTypes'
+import type { QueryRuntimeDeps } from '../runtime/interfaces/QueryRuntimeDeps'
+import type { Message, ModelReplyRow } from '../runtime/RuntimeTypes'
 import { createEmptyAppState, createNoopToolUseContext, DefaultRuntimeConfig, NoopPlatformCapabilities } from '../runtime/testing/noopAdapters'
 import { fileActivityIdle, recordFileBatch, recordFileRead } from '../toolkit/builtin/host/fileActivity'
-import { runToolBatch } from '../toolkit/run/toolBatchRunner'
-import { declareTool } from '../toolkit/toolContract'
-import type { QueryRuntimeDeps } from '../runtime/interfaces/QueryRuntimeDeps'
-import type { ModelReplyRow } from '../runtime/RuntimeTypes'
 import { buildHostTools } from '../toolkit/builtin/host/hostTools'
+import { runToolBatch } from '../toolkit/run/toolBatchRunner'
 import type { ToolCallContext } from '../toolkit/toolCallContext'
-import type { ToolContractList } from '../toolkit/toolContract'
+import { declareTool, type ToolContractList } from '../toolkit/toolContract'
 import type { RuntimeFs } from '../utils/fs/runtimeFs'
 
 const logged = vi.hoisted(() => ({ sends: [] as RequestLogRow[], files: [] as FileOpRow[] }))
@@ -189,15 +187,21 @@ describe("the model call's id on sends and file rows", () => {
     let bothStarted!: () => void
     const started = new Promise<void>(resolve => (bothStarted = resolve))
     let running = 0
+    let overlapped = false
+    const serial = setTimeout(() => bothStarted(), 1000)
     const tool = declareTool({
       name: 'Peek',
       argsSchema: { type: 'object' as const, properties: { path: { type: 'string' } } },
       description: async () => 'peeks',
       call: async (input: { path: string }, context: ToolCallContext, _can: unknown, parent: unknown) => {
         running += 1
-        if (running === 2) bothStarted()
+        if (running === 2) {
+          overlapped = true
+          bothStarted()
+        }
         await started
         recordFileRead(context, input.path, {}, undefined, 'x', parent)
+        running -= 1
         return { data: 'ok' }
       },
       parallelSafe: () => true,
@@ -230,8 +234,9 @@ describe("the model call's id on sends and file rows", () => {
     for await (const _ of runToolBatch(calls, replies, async () => ({ behavior: 'allow' as const }), context, deps)) {
       // drained
     }
+    clearTimeout(serial)
     await fileActivityIdle()
-    expect(running).toBe(2)
+    expect(overlapped).toBe(true)
     expect(logged.files.map(row => [row.path, row.callId]).sort()).toEqual([
       ['/p/a', 101],
       ['/p/b', 202],
