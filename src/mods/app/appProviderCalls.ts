@@ -1,16 +1,12 @@
 /**
  * `$.provider` in the background module of a provider's settings app (F-27,
- * F-40): `peers()`, `reload()`, `clearState({ provider, model? })`,
- * `usage({ from, to, by })`, each on the one provider that names the app as
- * its `settingsApp`.
+ * F-40): `peers()`, `reload()`, `clearState({ provider, model? })`, each on
+ * the one provider that names the app as its `settingsApp`.
  * Security: the bound provider is fixed by the manifest, never by the module;
- * `peers` and `clearState` are a router's and stay inside its `routesTo`;
- * `usage` is a router's and reads the requests made through that router alone.
+ * `peers` and `clearState` are a router's and stay inside its `routesTo`.
  */
 
 import { insideRoutesTo } from '../../models/drivers/providerRouter'
-import type { BrowserBridgeTransport } from '../../browser/bridge/browserBridgeProtocol'
-import type { RequestLogQuery, RequestLogQueryResult } from '../../models/usage/requestLogStore'
 import type {
   ClearPeerStatePayload,
   ClearPeerStateResult,
@@ -27,9 +23,9 @@ export type SettingsAppBinding = {
 }
 
 /** The `$.provider` methods a settings app's background module may call. */
-export const SETTINGS_APP_PROVIDER_METHODS: readonly string[] = Object.freeze(['peers', 'reload', 'clearState', 'usage'])
+export const SETTINGS_APP_PROVIDER_METHODS: readonly string[] = Object.freeze(['peers', 'reload', 'clearState'])
 
-const ROUTER_ONLY: readonly string[] = Object.freeze(['peers', 'clearState', 'usage'])
+const ROUTER_ONLY: readonly string[] = Object.freeze(['peers', 'clearState'])
 
 /** How long `reload()` calls are folded into one run. */
 export const SETTINGS_APP_RELOAD_FOLD_MS = 10_000
@@ -93,32 +89,7 @@ function readClearTarget(value: unknown): ClearPeerStatePayload {
   return { provider, ...(model !== undefined ? { model } : {}) }
 }
 
-const USAGE_BY: readonly string[] = Object.freeze(['hour', 'day', 'switch', 'request'])
-
-/** Reads `{ from, to, by, tzOffsetMinutes? }` as the module passed it; throws a `TypeError` naming what is wrong. */
-function readUsageQuery(value: unknown): Omit<RequestLogQuery, 'router'> {
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
-    throw new TypeError('$.provider.usage({ from, to, by }): expected an object')
-  }
-  const { from, to, by, tzOffsetMinutes } = value as Record<string, unknown>
-  if (typeof from !== 'number' || typeof to !== 'number') throw new TypeError('$.provider.usage: from and to must be times in epoch milliseconds')
-  if (typeof by !== 'string' || !USAGE_BY.includes(by)) throw new TypeError(`$.provider.usage: by must be one of ${USAGE_BY.join(', ')}`)
-  if (tzOffsetMinutes !== undefined && typeof tzOffsetMinutes !== 'number') throw new TypeError('$.provider.usage: tzOffsetMinutes must be a number of minutes')
-  return { from, to, by: by as RequestLogQuery['by'], ...(tzOffsetMinutes !== undefined ? { tzOffsetMinutes } : {}) }
-}
-
-/** The request log as a settings app reads it; the module is loaded only with the background runtime. */
-export async function runtimeSettingsAppUsage(
-  query: RequestLogQuery,
-  transport: BrowserBridgeTransport | undefined,
-): Promise<RequestLogQueryResult | undefined> {
-  const { openRequestLog } = await import('../../models/usage/requestLogWriter')
-  return (await openRequestLog(transport))?.query(query)
-}
-
 export type SettingsAppProviderDeps = {
-  /** The request log's read; absent, or answering nothing: `usage` fails as unavailable. */
-  usage?: (query: RequestLogQuery) => Promise<RequestLogQueryResult | undefined>
   /** The peers table and ledger clear; absent: `peers` and `clearState` fail as unavailable. */
   peers?: () => SettingsAppPeerSource | undefined | Promise<SettingsAppPeerSource | undefined>
   /** Folded per provider (`createReloadFolder`). */
@@ -137,13 +108,6 @@ export async function serveSettingsAppProviderCall(
   if (method === 'reload') {
     await deps.reload(binding.providerId)
     return undefined
-  }
-  if (method === 'usage') {
-    // The router is the bound provider's id, whatever the module passed.
-    const query = { ...readUsageQuery(args[0]), router: binding.providerId }
-    const answer = await deps.usage?.(query)
-    if (!answer) throw named('NotSupportedError', '$.provider.usage: the request log is not available')
-    return answer
   }
   const source = await deps.peers?.()
   if (!source) throw named('NotSupportedError', `$.provider.${method}: the peers table is not available in this build`)

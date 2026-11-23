@@ -2,15 +2,16 @@
  * Contract: the usage log's file (F-27), one row per model request sent and
  * one per file a file tool read or changed. `record` writes one request;
  * `recordFileOps` writes its rows in one transaction, all or none. `query`
- * reads requests, summed when asked; a span over `QUERY_SPAN_MAX_MS` or a malformed
+ * reads both tables, summed when asked; a span over `QUERY_SPAN_MAX_MS` or a malformed
  * range throws `RequestLogQueryError` before anything is read. Every method
  * rejects on a failed bridge request; nothing here retries beyond a short
  * wait on a locked file. Callers serialize writes (requestLogWriter.ts).
  *
  * Security: a provider id is an opaque instance id; it is stored and
  * compared whole, never parsed. Nothing but the fields of `RequestLogRow`
- * and `FileOpRow` reaches the file, and `query` answers from `sends` alone:
- * no file path, project root or agent id is in any answer.
+ * and `FileOpRow` reaches the file. The `hour`, `day`, `switch` and `request`
+ * answers read `sends` alone and carry no file path, project root or agent id;
+ * the `INSIGHT_BY` answers carry paths and project roots.
  */
 import type {
   BrowserBridgeAction,
@@ -24,6 +25,7 @@ import { createBridgeRoute } from '../../browser/bridge/browserBridgeProtocol'
 import type { SqlValue } from '../../browser/bridge/protocol/sqlite'
 import { isContendedSqliteError } from '../../browser/storage/SqliteSessionMetaStore'
 import { dirnameRuntimePath } from '../../utils/runtimePaths'
+import { insightQuery, type InsightBy, type InsightResult } from './requestLogInsights'
 import {
   COUNT_ROWS_SQL,
   CREATE_META_SQL,
@@ -154,10 +156,12 @@ export type RequestLogQuery = {
   from: number
   /** Epoch ms, exclusive. */
   to: number
-  by: 'hour' | 'day' | 'switch' | 'request'
-  /** Only requests that went through this router provider. */
+  by: 'hour' | 'day' | 'switch' | 'request' | InsightBy
+  /** Only requests that went through this router provider; not with an `INSIGHT_BY` grouping. */
   router?: string
-  /** `day` only: minutes east of UTC of the days to sum into. An hour belongs
+  /** Only rows of sessions whose project root is this string, as stored. */
+  project?: string
+  /** `day` and `file_day` only: minutes east of UTC of the days to sum into. An hour belongs
    *  to the day its first minute falls in. */
   tzOffsetMinutes?: number
 }
@@ -210,6 +214,7 @@ export type RequestLogQueryResult =
   | { by: 'hour' | 'day'; buckets: RequestLogBucket[]; truncated: boolean }
   | { by: 'switch'; switches: RequestLogSwitch[] }
   | { by: 'request'; requests: RequestLogRequest[] }
+  | InsightResult
 
 export const QUERY_SPAN_MAX_MS = 90 * DAY_MS
 export const SWITCH_ROWS_MAX = 100
@@ -367,12 +372,31 @@ export function fileOpStatements(rows: readonly FileOpRow[]): Statement[] {
   ]
 }
 
+const SEND_BY: ReadonlySet<string> = new Set(['hour', 'day', 'switch', 'request'])
+
+/** The router and project clauses of a `sends` read, with their params appended. */
+function sendFilters(query: RequestLogQuery, params: SqlValue[]): string {
+  let clause = ''
+  if (query.router !== undefined) {
+    params.push(query.router)
+    clause += ` AND s.router = COALESCE(${NAME_ID}, -1)`
+  }
+  if (query.project !== undefined) {
+    params.push(query.project)
+    clause += ` AND s.project = COALESCE(${NAME_ID}, -1)`
+  }
+  return clause
+}
+
 function checkedRange(query: RequestLogQuery): void {
   if (!Number.isFinite(query.from) || !Number.isFinite(query.to) || query.from < 0 || query.to <= query.from) {
     throw new RequestLogQueryError('the range needs a start before its end')
   }
   if (query.to - query.from > QUERY_SPAN_MAX_MS) {
     throw new RequestLogQueryError('the range is longer than 90 days')
+  }
+  if (query.router !== undefined && !SEND_BY.has(query.by)) {
+    throw new RequestLogQueryError(`a ${query.by} answer is not narrowed by router`)
   }
   const offset = query.tzOffsetMinutes ?? 0
   if (!Number.isInteger(offset) || Math.abs(offset) > 24 * 60) {
@@ -459,7 +483,8 @@ export class RequestLogStore {
     await this.ensureSchema()
     if (query.by === 'switch') return this.switches(query)
     if (query.by === 'request') return this.requests(query)
-    return this.buckets(query)
+    if (query.by === 'hour' || query.by === 'day') return this.buckets(query)
+    return insightQuery((sql, params, maxRows) => this.read(sql, params, maxRows), { ...query, by: query.by })
   }
 
   private async buckets(query: RequestLogQuery): Promise<RequestLogQueryResult> {
@@ -470,7 +495,7 @@ export class RequestLogStore {
       Math.floor(query.from / HOUR_MS) * HOUR_MS,
       Math.ceil(query.to / HOUR_MS) * HOUR_MS,
     ]
-    if (query.router !== undefined) params.push(query.router)
+    const filters = sendFilters(query, params)
     const result = await this.read(
       `SELECT ((s.started_ms / ${HOUR_MS}) * ${HOUR_MS} + CAST(? AS INTEGER)) / ${unit} AS bucket,
         p.text, m.text, r.text, w.text,
@@ -483,7 +508,7 @@ export class RequestLogStore {
         LEFT JOIN names r ON r.id = s.router
         LEFT JOIN names w ON w.id = s.router_row
       WHERE s.started_ms >= ? AND s.started_ms < ?
-        ${query.router !== undefined ? `AND s.router = COALESCE(${NAME_ID}, -1)` : ''}
+        ${filters}
       GROUP BY bucket, s.provider, s.model, s.router, s.router_row
       ORDER BY bucket, p.text, m.text, r.text, w.text`,
       params,
@@ -512,7 +537,7 @@ export class RequestLogStore {
 
   private async switches(query: RequestLogQuery): Promise<RequestLogQueryResult> {
     const params: SqlValue[] = [Math.floor(query.from), Math.floor(query.to)]
-    if (query.router !== undefined) params.push(query.router)
+    const filters = sendFilters(query, params)
     const result = await this.read(
       `SELECT s.started_ms, s.call_id, s.hop, p.text, m.text, r.text, w.text, fp.text, fm.text, k.text
       FROM sends s
@@ -524,7 +549,7 @@ export class RequestLogStore {
         LEFT JOIN names w ON w.id = s.router_row
         LEFT JOIN names k ON k.id = s.switch_kind
       WHERE s.started_ms >= ? AND s.started_ms < ?
-        ${query.router !== undefined ? `AND s.router = COALESCE(${NAME_ID}, -1)` : ''}
+        ${filters}
       ORDER BY s.started_ms DESC, s.id DESC
       LIMIT ${SWITCH_ROWS_MAX}`,
       params,
@@ -551,7 +576,7 @@ export class RequestLogStore {
 
   private async requests(query: RequestLogQuery): Promise<RequestLogQueryResult> {
     const params: SqlValue[] = [Math.floor(query.from), Math.floor(query.to)]
-    if (query.router !== undefined) params.push(query.router)
+    const filters = sendFilters(query, params)
     const result = await this.read(
       `SELECT s.started_ms, s.duration_ms, s.call_id, s.hop, p.text, m.text, r.text, w.text,
         s.input_tokens, s.output_tokens, s.cache_read_tokens, s.cache_write_tokens
@@ -561,7 +586,7 @@ export class RequestLogStore {
         LEFT JOIN names r ON r.id = s.router
         LEFT JOIN names w ON w.id = s.router_row
       WHERE s.started_ms >= ? AND s.started_ms < ? AND s.outcome = ${OUTCOME_OK}
-        ${query.router !== undefined ? `AND s.router = COALESCE(${NAME_ID}, -1)` : ''}
+        ${filters}
       ORDER BY s.started_ms DESC, s.id DESC
       LIMIT ${REQUEST_ROWS_MAX}`,
       params,

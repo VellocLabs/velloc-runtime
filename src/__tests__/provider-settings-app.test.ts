@@ -2,7 +2,7 @@
  * A provider's settings app (F-27, F-40), runtime side: `settingsApp` in the
  * provider manifest checked against the plugin's templates, `app.topbar`, the
  * app bound to its provider, and the three `$.provider` calls of its
- * background module.
+ * background module, and `$.usage.query` as a router's app reads it.
  */
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
@@ -20,6 +20,7 @@ import {
   type SettingsAppBinding,
   type SettingsAppPeerSource,
 } from '../mods/app/appProviderCalls'
+import { serveUsageCall, usageGrantOf } from '../mods/app/appUsageCalls'
 import { resetAppStateBusForTests } from '../mods/app/appStateBus'
 import type { Peer } from '../mods/provider/nouns/providerPeersTypes'
 import { peersTableFor, type PeerInstance } from '../mods/provider/nouns/providerPeersNoun'
@@ -223,23 +224,25 @@ function fakeSource(rows: Peer[]) {
 }
 
 describe('$.provider calls behind the seam', () => {
-  it('usage reads the request log for the bound router alone, whatever the module passes', async () => {
+  it('$.usage.query reads the request log for the bound router alone, whatever the module passes', async () => {
     const asked: unknown[] = []
     const answer = { by: 'hour' as const, buckets: [], truncated: false }
-    const deps = { reload: async () => {}, usage: async (query: unknown) => (asked.push(query), answer) }
+    const read = async (query: unknown) => (asked.push(query), answer)
     const query = { from: 0, to: 3_600_000, by: 'hour', router: 'mod.other.route', tzOffsetMinutes: 60 }
-    expect(await serveSettingsAppProviderCall(ROUTER_BINDING, 'usage', [query], deps)).toBe(answer)
+    expect(await serveUsageCall(usageGrantOf(ROUTER_BINDING, false), 'query', [query], read)).toBe(answer)
     expect(asked).toEqual([{ from: 0, to: 3_600_000, by: 'hour', tzOffsetMinutes: 60, router: 'mod.switch.route' }])
   })
 
-  it('usage refuses a malformed query, a provider that is not a router, and a build with no log', async () => {
-    const deps = { reload: async () => {}, usage: async () => undefined }
-    await expect(serveSettingsAppProviderCall(ROUTER_BINDING, 'usage', [], deps)).rejects.toThrow(/expected an object/)
-    await expect(serveSettingsAppProviderCall(ROUTER_BINDING, 'usage', [{ from: 0, to: 1, by: 'week' }], deps)).rejects.toThrow(/by must be one of hour, day, switch, request/)
-    await expect(serveSettingsAppProviderCall(ROUTER_BINDING, 'usage', [{ from: '0', to: 1, by: 'hour' }], deps)).rejects.toThrow(/epoch milliseconds/)
-    await expect(serveSettingsAppProviderCall(ROUTER_BINDING, 'usage', [{ from: 0, to: 1, by: 'hour' }], deps)).rejects.toThrow(/the request log is not available/)
-    await expect(serveSettingsAppProviderCall(ROUTER_BINDING, 'usage', [{ from: 0, to: 1, by: 'hour' }], { reload: async () => {} })).rejects.toThrow(/not available/)
-    await expect(serveSettingsAppProviderCall(PLAIN_BINDING, 'usage', [{ from: 0, to: 1, by: 'hour' }], deps)).rejects.toThrow(/is a router's/)
+  it('$.usage.query refuses a malformed query, a provider that is not a router, and a build with no log; $.provider.usage is gone', async () => {
+    const grant = usageGrantOf(ROUTER_BINDING, false)
+    const none = async () => undefined
+    await expect(serveUsageCall(grant, 'query', [], none)).rejects.toThrow(/expected an object/)
+    await expect(serveUsageCall(grant, 'query', [{ from: 0, to: 1, by: 'week' }], none)).rejects.toThrow(/by must be one of hour, day, switch, request, total/)
+    await expect(serveUsageCall(grant, 'query', [{ from: '0', to: 1, by: 'hour' }], none)).rejects.toThrow(/epoch milliseconds/)
+    await expect(serveUsageCall(grant, 'query', [{ from: 0, to: 1, by: 'hour' }], none)).rejects.toThrow(/the usage log is not available/)
+    await expect(serveUsageCall(grant, 'query', [{ from: 0, to: 1, by: 'hour' }], undefined)).rejects.toThrow(/not available/)
+    await expect(serveUsageCall(usageGrantOf(PLAIN_BINDING, false), 'query', [{ from: 0, to: 1, by: 'hour' }], none)).rejects.toThrow(/open to a router's settings app/)
+    await expect(serveSettingsAppProviderCall(ROUTER_BINDING, 'usage', [{ from: 0, to: 1, by: 'hour' }], { reload: async () => {} })).rejects.toThrow(/\$\.provider\.usage is not available/)
   })
 
   it('peers reads the bound router\'s table, bounded by its routesTo', async () => {

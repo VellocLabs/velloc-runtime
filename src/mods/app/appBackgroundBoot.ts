@@ -82,6 +82,7 @@ export function appBackgroundRef(
     stateFile,
     ...(app.shown ? { lifetime: 'shown' as const } : { mcpOwner: app.mcp }),
     ...(app.settingsFor ? { settingsFor: app.settingsFor } : {}),
+    ...(app.builtin ? { builtin: true as const } : {}),
     ...(app.decl.backgroundAgent && agentApproved ? { agentType: app.type } : {}),
     ...(granted
       ? {

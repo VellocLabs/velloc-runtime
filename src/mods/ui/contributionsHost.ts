@@ -90,6 +90,8 @@ export type AppBackgroundTemplate = {
   consentId?: string
   /** The provider that names this app as its settings app (F-27). */
   settingsFor?: SettingsAppBinding
+  /** An app Velloc ships; never read from a manifest. */
+  builtin?: true
 }
 
 const MARKETPLACE_SOURCE = 'marketplace:'

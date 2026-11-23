@@ -13,6 +13,7 @@ import type { HookRegistration } from '../modTypes'
 import type { ModUses } from '../modScan'
 import { isValidPattern } from '../eventPattern'
 import { refuseSettingsAppProviderCall, type SettingsAppBinding } from './appProviderCalls'
+import { refuseUsageCall, usageGrantOf } from './appUsageCalls'
 
 export const APP_BACKGROUND_ABI = 'Velloc app background ABI 0.1'
 
@@ -66,9 +67,10 @@ export function refuseAppBackgroundRegistrations(hooks: readonly HookRegistratio
   return reasons.length > 0 ? reasons.join('; ') : null
 }
 
-/** Why a background module may not call `$.<noun>.<method>`, or null. `binding`: the provider whose settings app this is; `resident` false: an app's script. */
-export function refuseAppBackgroundCall(noun: string, method: string, binding?: SettingsAppBinding, resident = true): string | null {
+/** Why a background module may not call `$.<noun>.<method>`, or null. `binding`: the provider whose settings app this is; `resident` false: an app's script; `builtin`: an app Velloc ships. */
+export function refuseAppBackgroundCall(noun: string, method: string, binding?: SettingsAppBinding, resident = true, builtin = false): string | null {
   if (noun === 'provider') return refuseSettingsAppProviderCall(method, binding)
+  if (noun === 'usage') return refuseUsageCall(method, usageGrantOf(binding, builtin))
   if (!resident && (noun === 'mcp' || NOT_FOR_SCRIPT[`${noun}.${method}`] !== undefined)) {
     const what = noun === 'mcp' ? "a connection to the plugin's MCP servers" : NOT_FOR_SCRIPT[`${noun}.${method}`]
     return (
@@ -90,11 +92,11 @@ export function refuseAppBackgroundCall(noun: string, method: string, binding?: 
 }
 
 /** Why what the module calls (as scanned before it runs) is not what it may call, or null. */
-export function refuseAppBackgroundUses(uses: ModUses, binding?: SettingsAppBinding, resident = true): string | null {
+export function refuseAppBackgroundUses(uses: ModUses, binding?: SettingsAppBinding, resident = true, builtin = false): string | null {
   const reasons: string[] = []
   for (const call of uses.calls) {
     const dot = call.indexOf('.')
-    const reason = refuseAppBackgroundCall(dot === -1 ? call : call.slice(0, dot), dot === -1 ? '' : call.slice(dot + 1), binding, resident)
+    const reason = refuseAppBackgroundCall(dot === -1 ? call : call.slice(0, dot), dot === -1 ? '' : call.slice(dot + 1), binding, resident, builtin)
     if (reason && !reasons.includes(reason)) reasons.push(reason)
   }
   return reasons.length > 0 ? reasons.join('; ') : null

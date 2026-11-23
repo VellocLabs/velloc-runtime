@@ -162,7 +162,7 @@ describe('AppBackgroundRuntime — an app script', () => {
       on('app.press', async ($, e) => { await $.app.state.update(s => { s.seen.push(['press', e.trigger]) }); return { open: true } })
     }`
 
-  type Extra = Partial<Pick<ConstructorParameters<typeof AppBackgroundRuntime>[0], 'pressTimeoutMs' | 'pressStartTimeoutMs' | 'actionTimeoutMs' | 'respawnBackoffMs' | 'providerCalls'>> & {
+  type Extra = Partial<Pick<ConstructorParameters<typeof AppBackgroundRuntime>[0], 'pressTimeoutMs' | 'pressStartTimeoutMs' | 'actionTimeoutMs' | 'respawnBackoffMs' | 'providerCalls' | 'usage'>> & {
     /** How long the worker takes to open. */
     slowOpenMs?: number
   }
@@ -405,14 +405,14 @@ describe('AppBackgroundRuntime — an app script', () => {
     expect(workers().opened).toBe(0)
   })
 
-  it("serves a settings app's $.provider calls to a script", async () => {
+  it("serves a settings app's $.provider and $.usage calls to a script", async () => {
     const PROVIDER = `
       export function register(on) {
         on('app.start', async ($) => {
           const peers = (await $.provider.peers()).map(p => p.id)
           await $.provider.reload()
           const clear = await $.provider.clearState({ provider: 'vendor-a' })
-          const usage = await $.provider.usage({ from: 0, to: 3600000, by: 'hour' })
+          const usage = await $.usage.query({ from: 0, to: 3600000, by: 'hour' })
           await $.app.state.set({ peers, clear, usage })
         })
       }`
@@ -426,8 +426,8 @@ describe('AppBackgroundRuntime — an app script', () => {
       providerCalls: {
         peers: () => source,
         reload: async (id: string) => void reloads.push(id),
-        usage: async (query: unknown) => (asked.push(query), { by: 'hour', buckets: [], truncated: false }) as never,
       },
+      usage: async (query: unknown) => (asked.push(query), { by: 'hour', buckets: [], truncated: false }) as never,
     })
     const bound: AppBackgroundRef = { ...ref, settingsFor: { providerId: 'mod.pay.route', router: true, routesTo: '*' } }
     runtime.sync([bound])
@@ -436,6 +436,31 @@ describe('AppBackgroundRuntime — an app script', () => {
     expect(appState()).toEqual({ peers: ['vendor-a'], clear: { ok: true }, usage: { by: 'hour', buckets: [], truncated: false } })
     expect(reloads).toEqual(['mod.pay.route'])
     expect(asked).toEqual([expect.objectContaining({ router: 'mod.pay.route', by: 'hour' })])
+  })
+
+  it('serves every $.usage grouping to an app Velloc ships, and none to another app', async () => {
+    const READS = `
+      export function register(on) {
+        on('app.start', async ($) => {
+          const files = await $.usage.query({ from: 0, to: 3600000, by: 'file_read', project: 'D:/ws/app' })
+          await $.app.state.set({ files })
+        })
+      }`
+    const asked: unknown[] = []
+    const usage = async (query: unknown) => (asked.push(query), { by: 'file_read', files: [] }) as never
+    const shipped = world(READS, 1_000, true, { usage })
+    shipped.runtime.sync([{ ...shipped.ref, builtin: true }])
+    shipped.runtime.view('pay-board', 's1', 'c1', 'full')
+    await vi.waitFor(() => expect(appState()).toHaveProperty('files'))
+    expect(asked).toEqual([{ from: 0, to: 3600000, by: 'file_read', project: 'D:/ws/app' }])
+    shipped.runtime.dispose()
+
+    const other = world(READS, 1_000, true, { usage })
+    other.runtime.sync([other.ref])
+    other.runtime.view('pay-board', 's1', 'c1', 'full')
+    await vi.waitFor(() => expect(other.runtime.status().map(each => each.state)).toEqual(['refused']))
+    expect(other.runtime.status()[0]?.reason).toContain("$.usage is open to a router's settings app and to the apps Velloc ships")
+    expect(asked).toHaveLength(1)
   })
 
   it('runs on for a minute by default', () => {

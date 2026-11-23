@@ -68,6 +68,8 @@ import { AppStateRelay, type AppStateRelayFs } from './appStateRelay'
 import { APP_STATE_TEXT_METHOD } from './workerAppNoun'
 import { AppViews, type AppViewEvent, type AppViewLayout } from './appViews'
 import { serveSettingsAppProviderCall, type SettingsAppBinding, type SettingsAppProviderDeps } from './appProviderCalls'
+import { serveUsageCall, usageGrantOf } from './appUsageCalls'
+import type { RequestLogQuery, RequestLogQueryResult } from '../../models/usage/requestLogStore'
 import { APP_SCRIPT_IDLE_MS, APP_SCRIPT_PRESS_START_MS, AppScriptLifetimes, untilReady } from './appScriptLifetime'
 
 /** How long the runtime waits for a script to give its state's text; a busy hook cannot hold a write or a stop past it. */
@@ -90,6 +92,8 @@ export type AppBackgroundRef = ModModuleRef & {
   readonly agentType?: string
   /** The provider that names this app as its settings app: `$.provider` acts on it alone. Absent: `$.provider` is refused. */
   readonly settingsFor?: SettingsAppBinding
+  /** An app Velloc ships, set by the host alone: `$.usage` reads every grouping. */
+  readonly builtin?: true
   /** `'shown'`: the app's script, run only while the app is on screen. Absent: resident. */
   readonly lifetime?: 'shown'
 }
@@ -128,6 +132,8 @@ export type AppBackgroundRuntimeOptions = {
   onBusy?: (appId: string, busy: boolean) => void
   /** `$.provider` of a settings app's module. Absent: `peers`, `clearState` and `usage` fail as unavailable, `reload` does nothing. `dispose` runs once, with the runtime's. */
   providerCalls?: Partial<SettingsAppProviderDeps> & { dispose?: () => void }
+  /** The usage log's read for `$.usage.query`; absent, or answering nothing: the call fails as unavailable. */
+  usage?: (query: RequestLogQuery) => Promise<RequestLogQueryResult | undefined>
   /** How long a busy lasts unless the module says it again. */
   busyMaxMs?: number
   /** `$.app.view`: the pages are asked to open the app or close its pane; `client` undefined is every page. */
@@ -245,6 +251,7 @@ const sameRef = (a: AppBackgroundRef, b: AppBackgroundRef): boolean =>
   sameMcpOwner(a.mcpOwner, b.mcpOwner) &&
   a.agentType === b.agentType &&
   a.lifetime === b.lifetime &&
+  a.builtin === b.builtin &&
   JSON.stringify(a.settingsFor ?? null) === JSON.stringify(b.settingsFor ?? null) &&
   JSON.stringify(a.folders ?? null) === JSON.stringify(b.folders ?? null)
 
@@ -698,7 +705,7 @@ export class AppBackgroundRuntime {
 
   /** Read, admit, compile and scan the module; unchanged files come from the build store. */
   private async prepare(module: Module): Promise<string> {
-    return (await prepareModule(module.ref, this.options, uses => refuseAppBackgroundUses(uses, module.ref.settingsFor, module.ref.lifetime !== 'shown'))).source
+    return (await prepareModule(module.ref, this.options, uses => refuseAppBackgroundUses(uses, module.ref.settingsFor, module.ref.lifetime !== 'shown', module.ref.builtin === true))).source
   }
 
   private async raiseStart(module: Module): Promise<void> {
@@ -933,7 +940,7 @@ export class AppBackgroundRuntime {
 
   /** Serve a `$` call of a background module: its nouns alone. */
   private async serveCall(module: Module, call: ModCall): Promise<unknown> {
-    const refused = refuseAppBackgroundCall(call.noun, call.method, module.ref.settingsFor, module.ref.lifetime !== 'shown')
+    const refused = refuseAppBackgroundCall(call.noun, call.method, module.ref.settingsFor, module.ref.lifetime !== 'shown', module.ref.builtin === true)
     if (refused) throw named('NotAllowedError', refused)
     if (call.noun !== 'log' && call.signal?.aborted) {
       throw named('AbortError', `$.${call.noun}.${call.method}: the calling hook was abandoned`)
@@ -943,8 +950,10 @@ export class AppBackgroundRuntime {
       return await serveSettingsAppProviderCall(module.ref.settingsFor, call.method, call.args, {
         reload: calls?.reload ?? (() => Promise.resolve()),
         ...(calls?.peers ? { peers: calls.peers } : {}),
-        ...(calls?.usage ? { usage: calls.usage } : {}),
       })
+    }
+    if (call.noun === 'usage') {
+      return await serveUsageCall(usageGrantOf(module.ref.settingsFor, module.ref.builtin), call.method, call.args, this.options.usage)
     }
     if (call.noun === 'app') {
       if (call.method === 'state') return await module.relay.load()
