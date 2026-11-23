@@ -40,10 +40,10 @@ function fromDiffForm(line: string): string {
 }
 
 /** Line-diff two texts already in diff form and restore the emitted lines. */
-function diffPrepared(label: string, before: string, after: string): StructuredPatchHunk[] {
+function diffPrepared(label: string, before: string, after: string, budgetMs = DIFF_BUDGET_MS): StructuredPatchHunk[] {
   const patch = structuredPatch(label, label, before, after, undefined, undefined, {
     context: CONTEXT_ROWS,
-    timeout: DIFF_BUDGET_MS,
+    timeout: budgetMs,
   })
   if (!patch) return []
   return patch.hunks.map(h => Object.assign({}, h, { lines: h.lines.map(fromDiffForm) }))
@@ -51,10 +51,11 @@ function diffPrepared(label: string, before: string, after: string): StructuredP
 
 /**
  * Hunks between two texts. Given whole files the line numbers are file
- * positions; given an edit's two snippets they count from 1.
+ * positions; given an edit's two snippets they count from 1. No hunks once
+ * `budgetMs` has passed.
  */
-export function hunksBetween(label: string, before: string, after: string): StructuredPatchHunk[] {
-  return diffPrepared(label, toDiffForm(before), toDiffForm(after))
+export function hunksBetween(label: string, before: string, after: string, budgetMs = DIFF_BUDGET_MS): StructuredPatchHunk[] {
+  return diffPrepared(label, toDiffForm(before), toDiffForm(after), budgetMs)
 }
 
 /** A literal search-and-replace on a file's text. */

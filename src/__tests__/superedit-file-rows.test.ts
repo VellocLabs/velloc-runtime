@@ -1,11 +1,12 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { OverlayFs, PRISTINE_FILE_MAX_BYTES } from '../browser/runJs/overlayFs'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { OverlayFs, PRISTINE_FILE_MAX_BYTES, PRISTINE_TOTAL_MAX_BYTES } from '../browser/runJs/overlayFs'
 import type { RunJsFsOp } from '../browser/runJs/runJsProtocol'
 import type { FileOpRow } from '../models/usage/requestLogStore'
 import type { Message } from '../runtime/RuntimeTypes'
 import { fileActivityIdle } from '../toolkit/builtin/host/fileActivity'
 import { commitOverlay, handleScriptFsOp } from '../toolkit/builtin/superEdit'
-import { LINE_COUNT_MAX_BYTES } from '../toolkit/builtin/superEditFileRows'
+import { LINE_COUNT_BUDGET_MS, LINE_COUNT_MAX_BYTES } from '../toolkit/builtin/superEditFileRows'
+import * as hunks from '../utils/fileChangeHunks'
 import type { ToolCallContext } from '../toolkit/toolCallContext'
 import type { RuntimeFs } from '../utils/fs/runtimeFs'
 
@@ -15,14 +16,18 @@ vi.mock('../models/usage/requestLogWriter', () => ({
     batches.push([...rows])
   },
 }))
+vi.mock('../utils/fileChangeHunks', async importOriginal => {
+  const actual = await importOriginal<typeof import('../utils/fileChangeHunks')>()
+  return { ...actual, hunksBetween: vi.fn(actual.hunksBetween) }
+})
 
 const enc = (text: string) => new TextEncoder().encode(text)
 const notFound = () => new Error('FS_ERROR: ENOENT: no such file or directory')
 
 /** An in-memory disk under `/proj` (a repository), counting the reads of each file. */
-function makeDisk(files: Record<string, string | Uint8Array>) {
+function makeDisk(files: Record<string, string | Uint8Array>, extraDirs: string[] = []) {
   const bytes = new Map(Object.entries(files).map(([path, value]) => [path, typeof value === 'string' ? enc(value) : value]))
-  const dirs = new Set(['/proj', '/proj/.git'])
+  const dirs = new Set(['/proj', '/proj/.git', ...extraDirs])
   const reads = new Map<string, number>()
   const failWrite = new Set<string>()
   const stat = async (path: string) => {
@@ -54,6 +59,7 @@ function makeDisk(files: Record<string, string | Uint8Array>) {
     },
     rm: async (path: string) => {
       dirs.delete(path)
+      for (const key of [...bytes.keys()]) if (key.startsWith(`${path}/`)) bytes.delete(key)
     },
     rename: async (from: string, to: string) => {
       bytes.set(to, bytes.get(from)!)
@@ -90,6 +96,10 @@ async function run(fs: RuntimeFs, ops: Array<[RunJsFsOp, Record<string, unknown>
 
 beforeEach(() => {
   batches.length = 0
+})
+
+afterEach(() => {
+  vi.restoreAllMocks()
 })
 
 describe('file rows from a SuperEdit commit', () => {
@@ -129,6 +139,116 @@ describe('file rows from a SuperEdit commit', () => {
       expect.objectContaining({ path: 'img.bin', bytes: 4, added: 0, removed: 0 }),
       expect.objectContaining({ path: 'big.txt', bytes: 6, added: 0, removed: 0 }),
     ])
+  })
+
+  it('a write to the destination of an earlier move counts against what the move placed there', async () => {
+    const { fs } = makeDisk({ '/proj/a.txt': 'x\ny\n' })
+    await run(fs, [
+      ['move', { path: 'a.txt', newPath: 'b.txt' }],
+      ['writeFile', { path: 'b.txt', bytes: enc('x\ny\nz\n') }],
+    ])
+    expect(batches[0]).toEqual([
+      expect.objectContaining({ path: 'b.txt', fromPath: 'a.txt', op: 'move' }),
+      expect.objectContaining({ path: 'b.txt', op: 'write', added: 1, removed: 0 }),
+    ])
+    expect(batches[0]![1]).not.toHaveProperty('created')
+  })
+
+  it('a write under a directory the commit removed is a creation, not an edit of what the script read there', async () => {
+    const { fs } = makeDisk({ '/proj/d/x.txt': 'a\n' }, ['/proj/d'])
+    await run(fs, [
+      ['readFile', { path: 'd/x.txt' }],
+      ['remove', { path: 'd' }],
+      ['writeFile', { path: 'd/x.txt', bytes: enc('b\n') }],
+    ])
+    expect(batches[0]).toEqual([
+      expect.objectContaining({ path: 'd', op: 'remove', removed: 0 }),
+      expect.objectContaining({ path: 'd/x.txt', op: 'write', added: 1, removed: 0, created: true }),
+    ])
+  })
+
+  it('records the source of a move out of its working tree as an absolute path', async () => {
+    const { fs } = makeDisk({ '/proj/a.txt': 'a\n' }, ['/proj/sub', '/proj/sub/.git'])
+    await run(fs, [
+      ['move', { path: 'a.txt', newPath: 'sub/b.txt' }],
+      ['move', { path: 'sub/b.txt', newPath: 'sub/c.txt' }],
+    ])
+    expect(batches[0]).toEqual([
+      expect.objectContaining({ repo: '/proj/sub', path: 'b.txt', fromPath: '/proj/a.txt' }),
+      expect.objectContaining({ repo: '/proj/sub', path: 'c.txt', fromPath: 'b.txt' }),
+    ])
+  })
+
+  it('stops counting the lines of edits once the commit has spent its diff budget, and still counts creations', async () => {
+    let now = 1_000_000
+    vi.spyOn(Date, 'now').mockImplementation(() => now)
+    const between = vi.mocked(hunks.hunksBetween)
+    between.mockImplementationOnce(() => {
+      now += LINE_COUNT_BUDGET_MS + 1
+      return [{ oldStart: 1, oldLines: 1, newStart: 1, newLines: 1, lines: ['-a', '+b'] }]
+    })
+    const { fs } = makeDisk({ '/proj/a.txt': 'a\n', '/proj/b.txt': 'a\n' })
+    await run(fs, [
+      ['writeFile', { path: 'a.txt', bytes: enc('b\n') }],
+      ['writeFile', { path: 'b.txt', bytes: enc('b\n') }],
+      ['writeFile', { path: 'c.txt', bytes: enc('c\n') }],
+    ])
+    expect(between.mock.calls.filter(call => call[0] === '/proj/a.txt').map(call => call[3])).toEqual([LINE_COUNT_BUDGET_MS])
+    expect(batches[0]!.map(row => [row.path, row.added, row.removed])).toEqual([
+      ['a.txt', 1, 1],
+      ['b.txt', 0, 0],
+      ['c.txt', 1, 0],
+    ])
+  })
+
+  it('counts no lines for a written side over the line-count size, nor for a binary one, against a text file', async () => {
+    const { fs } = makeDisk({ '/proj/a.txt': 'a\n', '/proj/b.txt': 'b\n' })
+    await run(fs, [
+      ['writeFile', { path: 'a.txt', bytes: enc('x\n'.repeat(LINE_COUNT_MAX_BYTES / 2 + 1)) }],
+      ['writeFile', { path: 'b.txt', bytes: new Uint8Array([98, 0, 10]) }],
+    ])
+    expect(batches[0]).toEqual([
+      expect.objectContaining({ path: 'a.txt', added: 0, removed: 0 }),
+      expect.objectContaining({ path: 'b.txt', added: 0, removed: 0 }),
+    ])
+  })
+
+  it('a disk read that fails before an op counts no lines and leaves the commit ok', async () => {
+    const { fs } = makeDisk({ '/proj/a.txt': 'a\n' })
+    ;(fs as unknown as { readFileBytes: unknown }).readFileBytes = async () => {
+      throw new Error('EACCES: permission denied')
+    }
+    expect((await run(fs, [['writeFile', { path: 'a.txt', bytes: enc('b\n') }]])).status).toBe('ok')
+    expect(batches[0]).toEqual([expect.objectContaining({ path: 'a.txt', added: 0, removed: 0 })])
+    expect(batches[0]![0]).not.toHaveProperty('created')
+  })
+
+  it('a log hand-off that throws leaves the commit outcome alone', async () => {
+    const { fs } = makeDisk({})
+    const ctx = context(fs)
+    Object.defineProperty(ctx.options, 'spawnerSessionId', {
+      get() {
+        throw new Error('boom')
+      },
+    })
+    const outcome = await run(fs, [['writeFile', { path: 'a.txt', bytes: enc('a\n') }]], ctx)
+    expect(outcome.status).toBe('ok')
+    expect(batches).toEqual([])
+  })
+
+  it('the overlay keeps a read only within its per-file and total sizes', async () => {
+    const per = PRISTINE_FILE_MAX_BYTES
+    const count = PRISTINE_TOTAL_MAX_BYTES / per
+    const files: Record<string, Uint8Array> = { '/proj/over.bin': new Uint8Array(per + 1) }
+    for (let i = 0; i <= count; i++) files[`/proj/f${i}.bin`] = new Uint8Array(per)
+    const { fs } = makeDisk(files)
+    const overlay = new OverlayFs({ stat: p => fs.stat(p), readFileBytes: p => fs.readFileBytes(p), readdir: p => fs.readdir(p) })
+    const ctx = context(fs)
+    await handleScriptFsOp(overlay, 'readFile', { path: 'over.bin' }, ctx, invokingRow)
+    for (let i = 0; i <= count; i++) await handleScriptFsOp(overlay, 'readFile', { path: `f${i}.bin` }, ctx, invokingRow)
+    expect(overlay.pristineBytesOf('/proj/over.bin')).toBeUndefined()
+    expect(overlay.pristineBytesOf(`/proj/f${count - 1}.bin`)).toBeDefined()
+    expect(overlay.pristineBytesOf(`/proj/f${count}.bin`)).toBeUndefined()
   })
 
   it('reads a file the script already read no second time, and diffs against the bytes it read', async () => {

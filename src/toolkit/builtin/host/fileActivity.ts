@@ -40,7 +40,6 @@ export function fileFailureKindOf(code: string | undefined): FileFailureKind {
 
 /** What a row says beyond who asked and which file. */
 export type FileRowFacts = Omit<FileOpRow, 'atMs' | 'sessionId' | 'agentId' | 'project' | 'repo' | 'worktree' | 'path' | 'fromPath'>
-type RowFacts = FileRowFacts
 
 const resolvers = new WeakMap<RuntimeFs, Map<string, FileIdentityResolver>>()
 const pending = new Set<Promise<void>>()
@@ -55,7 +54,11 @@ function resolverFor(context: ToolCallContext): FileIdentityResolver {
   return resolver
 }
 
-/** One file of a batch: its absolute path, a move's absolute source, and the row's facts. */
+/**
+ * One file of a batch: its absolute path, a move's absolute source, and the
+ * row's facts. A source in the destination's working tree is recorded
+ * relative to it, any other source as its absolute path.
+ */
 export type FileBatchItem = { filePath: string; fromPath?: string; facts: FileRowFacts }
 
 function recordBatch(context: ToolCallContext, items: readonly FileBatchItem[]): void {
@@ -73,7 +76,9 @@ function recordBatch(context: ToolCallContext, items: readonly FileBatchItem[]):
       const rows: FileOpRow[] = []
       for (const item of items) {
         const identity = await resolve(item.filePath)
-        const from = item.fromPath !== undefined ? (await resolve(item.fromPath)).path : undefined
+        const source = item.fromPath !== undefined ? await resolve(item.fromPath) : undefined
+        const from = source === undefined ? undefined
+          : source.repo === identity.repo && source.worktree === identity.worktree ? source.path : item.fromPath
         rows.push({ atMs, ...who, ...(project ? { project } : {}), ...identity, ...(from !== undefined ? { fromPath: from } : {}), ...item.facts })
       }
       recordFileOps(rows)
@@ -85,7 +90,7 @@ function recordBatch(context: ToolCallContext, items: readonly FileBatchItem[]):
   void job.finally(() => pending.delete(job))
 }
 
-function record(context: ToolCallContext, filePath: unknown, facts: RowFacts): void {
+function record(context: ToolCallContext, filePath: unknown, facts: FileRowFacts): void {
   if (typeof filePath !== 'string' || filePath.length === 0) return
   recordBatch(context, [{ filePath, facts }])
 }

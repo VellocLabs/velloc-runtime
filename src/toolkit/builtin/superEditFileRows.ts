@@ -5,9 +5,11 @@
  * writes no row, and an op that did not land writes none. A write's
  * `added`/`removed` are a line diff of the file's bytes before the commit
  * against the bytes written; a file removal counts its lines as removed. The
- * earlier bytes are those the script read through the overlay, else one read
- * from disk just before the op. A binary side, or a side over
- * `LINE_COUNT_MAX_BYTES`, counts no lines. Nothing here throws.
+ * earlier bytes are the commit's own earlier op on that path, else those the
+ * script read through the overlay, else one read from disk just before the
+ * op. A binary side, or a side over `LINE_COUNT_MAX_BYTES`, counts no lines;
+ * once a commit has spent `LINE_COUNT_BUDGET_MS` diffing, an edit counts no
+ * lines. Nothing here throws.
  */
 
 import type { CommitOp, OverlayFs } from '../../browser/runJs/overlayFs'
@@ -22,6 +24,9 @@ import { recordFileBatch, type FileBatchItem } from './host/fileActivity'
 /** The largest side a commit row diffs for its line counts. */
 export const LINE_COUNT_MAX_BYTES = 2 * 1024 * 1024
 
+/** The time one commit may spend diffing edited files, in all. */
+export const LINE_COUNT_BUDGET_MS = 1_000
+
 /** What a file held before an op: its bytes, absent, a directory, or not known. */
 type Before = { kind: 'bytes'; bytes: Uint8Array } | { kind: 'absent' } | { kind: 'dir' } | { kind: 'unknown' }
 
@@ -35,6 +40,9 @@ export type CommitFileRows = {
 }
 
 const UNKNOWN: Before = { kind: 'unknown' }
+const NO_LINES = { added: 0, removed: 0 }
+
+const isUnder = (root: string, path: string): boolean => path === root || path.startsWith(`${root}/`)
 
 function sideOf(before: Before): SnapshotSideContent {
   if (before.kind === 'absent') return { kind: 'absent' }
@@ -45,30 +53,48 @@ function sideOf(before: Before): SnapshotSideContent {
 const afterSide = (bytes: Uint8Array | null): SnapshotSideContent =>
   bytes !== null && bytes.length > LINE_COUNT_MAX_BYTES ? { kind: 'notCaptured' } : decodeSnapshotBytes(bytes)
 
-/** Lines added and removed from `before` to `after`; none when either side is binary or not known. An absent side is empty. */
-function lineCounts(path: string, before: SnapshotSideContent, after: SnapshotSideContent): { added: number; removed: number } {
-  const textOf = (side: SnapshotSideContent): string | undefined => (side.kind === 'absent' ? '' : side.kind === 'text' ? side.text : undefined)
-  const from = textOf(before)
-  const to = textOf(after)
-  if (from === undefined || to === undefined || from === to) return { added: 0, removed: 0 }
-  try {
-    return tallyHunkRows(hunksBetween(path, from, to))
-  } catch {
-    return { added: 0, removed: 0 }
-  }
-}
+const textOf = (side: SnapshotSideContent): string | undefined => (side.kind === 'absent' ? '' : side.kind === 'text' ? side.text : undefined)
 
 export function startCommitFileRows(context: ToolCallContext, fs: RuntimeFs, overlay: OverlayFs): CommitFileRows {
   /** A path's bytes as this commit's own earlier ops left them. */
   const written = new Map<string, Before>()
+  /** Paths this commit removed or moved: the script's reads under them no longer match the disk. */
+  const gone: string[] = []
   const items: FileBatchItem[] = []
   let current: { op: CommitOp; before: Before } | undefined
+  let budgetMs = LINE_COUNT_BUDGET_MS
+
+  /** Lines added and removed from `before` to `after`; none when either side is binary or not known. An absent side is empty. */
+  function lineCounts(path: string, before: SnapshotSideContent, after: SnapshotSideContent): { added: number; removed: number } {
+    const from = textOf(before)
+    const to = textOf(after)
+    if (from === undefined || to === undefined || from === to) return NO_LINES
+    const edit = from !== '' && to !== ''
+    if (edit && budgetMs <= 0) return NO_LINES
+    const start = Date.now()
+    try {
+      return tallyHunkRows(edit ? hunksBetween(path, from, to, budgetMs) : hunksBetween(path, from, to))
+    } catch {
+      return NO_LINES
+    } finally {
+      if (edit) budgetMs -= Date.now() - start
+    }
+  }
+
+  function keptOf(path: string): Before | undefined {
+    if (gone.some(root => isUnder(root, path))) return undefined
+    const kept = overlay.pristineBytesOf(path)
+    return kept ? { kind: 'bytes', bytes: kept } : undefined
+  }
+
+  function forget(root: string): void {
+    for (const key of [...written.keys()]) if (isUnder(root, key)) written.delete(key)
+    gone.push(root)
+  }
 
   async function diskBefore(path: string): Promise<Before> {
-    const own = written.get(path)
+    const own = written.get(path) ?? keptOf(path)
     if (own) return own
-    const kept = overlay.pristineBytesOf(path)
-    if (kept) return { kind: 'bytes', bytes: kept }
     try {
       const stat = await fs.stat(path)
       if (stat.isDirectory()) return { kind: 'dir' }
@@ -83,12 +109,15 @@ export function startCommitFileRows(context: ToolCallContext, fs: RuntimeFs, ove
   function rowFor(op: CommitOp, before: Before): void {
     if (op.op === 'mkdir') return
     if (op.op === 'move') {
-      written.set(op.to, before)
+      forget(op.from)
+      forget(op.to)
+      if (before.kind === 'bytes') written.set(op.to, before)
       written.set(op.from, { kind: 'absent' })
       items.push({ filePath: op.to, fromPath: op.from, facts: { tool: SUPER_EDIT_TOOL_NAME, op: 'move', outcome: 'ok' } })
       return
     }
     if (op.op === 'remove') {
+      forget(op.path)
       written.set(op.path, { kind: 'absent' })
       const removed = before.kind === 'dir' ? 0 : lineCounts(op.path, sideOf(before), { kind: 'absent' }).removed
       items.push({ filePath: op.path, facts: { tool: SUPER_EDIT_TOOL_NAME, op: 'remove', removed, outcome: 'ok' } })
@@ -115,7 +144,7 @@ export function startCommitFileRows(context: ToolCallContext, fs: RuntimeFs, ove
       current = undefined
       try {
         if (op.op === 'writeFile' || op.op === 'remove') current = { op, before: await diskBefore(op.path) }
-        else if (op.op === 'move') current = { op, before: written.get(op.from) ?? UNKNOWN }
+        else if (op.op === 'move') current = { op, before: written.get(op.from) ?? keptOf(op.from) ?? UNKNOWN }
       } catch {
         current = { op, before: UNKNOWN }
       }
@@ -130,7 +159,11 @@ export function startCommitFileRows(context: ToolCallContext, fs: RuntimeFs, ove
       }
     },
     flush() {
-      recordFileBatch(context, items.splice(0))
+      try {
+        recordFileBatch(context, items.splice(0))
+      } catch {
+        // Runs in the commit's `finally`: a throw here would replace the commit's outcome.
+      }
     },
   }
 }
