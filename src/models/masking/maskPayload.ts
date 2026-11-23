@@ -61,10 +61,6 @@ const REPLAY_SIGNED_FIELDS: ReadonlySet<string> = new Set([
   'encryptedContent',
 ])
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === 'object' && !Array.isArray(value)
-}
-
 const UTF8_DECODER = new TextDecoder('utf-8', { fatal: true })
 const UTF8_ENCODER = new TextEncoder()
 
@@ -177,6 +173,11 @@ export class PayloadMasker {
     if (isHostDict(value)) {
       const type = findString(value, 'type')
       if (type !== undefined && OPAQUE_PARTS.has(type)) return value
+      if (type === 'document') {
+        const part = hostValueToJs(value) as Record<string, unknown>
+        const masked = this.document(part, where)
+        return masked === part ? value : (hostValueFromJs(masked) ?? value)
+      }
     }
     if (Array.isArray(value)) {
       let changed = false
@@ -188,10 +189,6 @@ export class PayloadMasker {
       return changed ? out : value
     }
     if (isHostDict(value)) {
-      const part = hostValueToJs(value)
-      if (isRecord(part) && part.type === 'document') {
-        return hostValueFromJs(this.document(part, where))!
-      }
       let out: Map<string, HostValue> | undefined
       for (const [key, item] of value) {
         if (REPLAY_SIGNED_FIELDS.has(key)) continue
