@@ -250,6 +250,26 @@ function extractStatus(text: string): number | undefined {
 }
 
 /**
+ * An error status a 2xx reply carried inside its stream, as in
+ * `HTTP 200: Streaming response failed: [502] error code: 502`: the first
+ * marked or bracketed 4xx/5xx in the text.
+ */
+function streamedErrorStatus(text: string): number | undefined {
+  const pattern = /(?:\b(?:HTTP(?:\/\d(?:\.\d)?)?|status(?:\s*code)?|error\s*code)\b[\s:/-]*|\[)([45]\d\d)\b/gi
+  for (const match of text.matchAll(pattern)) {
+    const status = Number.parseInt(match[1] ?? '', 10)
+    if (status >= 400 && status <= 599) return status
+  }
+  return undefined
+}
+
+/** The status a failure is judged by: a 2xx reply that failed is judged by the status its stream carried. */
+function failureStatus(typedStatus: number | undefined, detail: string): number | undefined {
+  const opened = typedStatus ?? extractStatus(detail)
+  return opened !== undefined && opened < 300 ? (streamedErrorStatus(detail) ?? opened) : opened
+}
+
+/**
  * The verdict on a failed provider call: the platform's own classification,
  * then what a rule of the provider's manifest declared for the response (it
  * rides the error as a typed field), then the platform's limits on that.
@@ -267,7 +287,7 @@ export function classifyProviderConnectivityIssue(
   return clampVerdict(
     overlayDeclaredVerdict(platform, typed.declared, {
       detail,
-      status: typed.httpStatus ?? extractStatus(detail),
+      status: failureStatus(typed.httpStatus, detail),
       retryAfterMs: typed.retryAfterMs ?? parseRetryAfterMs(detail) ?? undefined,
     }),
     now,
@@ -284,7 +304,7 @@ function classifyPlatformIssue(value: unknown): PlatformIssue | null {
   // Typed fields first (ProviderApiError / duck-typed carriers) — the string
   // regexes below are the compatibility fallback, not the primary channel.
   const typed = getProviderErrorFields(value)
-  const status = typed.httpStatus ?? extractStatus(detail)
+  const status = failureStatus(typed.httpStatus, detail)
   const retryAfterMs = typed.retryAfterMs ?? parseRetryAfterMs(detail) ?? undefined
 
   // The host refused to send: the provider has no usable stored key. Nothing
