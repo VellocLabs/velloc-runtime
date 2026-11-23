@@ -9,7 +9,7 @@
  * and the tool-use context. Object keys are masked like values. A part is
  * judged by its `type` wherever it sits (a tool result's content too): an
  * image and redacted thinking are left whole, a thinking part's `signature`
- * is left as is, and a document is masked after decoding when its media type
+ * is left as is (a host replay envelope's `value` excepted), and a document is masked after decoding when its media type
  * is `text/*` (other documents, PDF included, are sent whole). Never masked:
  * `requestContext`, `model`, `providerId`. The egress guard catches what is
  * left.
@@ -29,6 +29,7 @@ import type {
 import type { CompiledMasking, MaskingHit } from './maskingRules'
 import { MaskingResidualError, MaskingUndecodableError } from './egressGuard'
 import { traceEntries, type ReplacementEntry } from './replacementTrace'
+import { REASONING_REPLAY_PREFIX } from '../drivers/hostCallOptions'
 
 export type MaskingWhere = 'messages' | 'system' | 'tools' | 'extension'
 
@@ -110,7 +111,7 @@ export class PayloadMasker {
     const sourceKey = new Map<string, string>()
     for (const [key, item] of Object.entries(value)) {
       const nextKey = this.text(key, where)
-      const next = keep?.has(key) ? item : this.deep(item, where)
+      const next = keep?.has(key) ? this.opaqueField(item, where) : this.deep(item, where)
       if (nextKey !== key || next !== item) changed = true
       // Two keys that mask to one would merge and lose a value: refuse.
       const earlier = sourceKey.get(nextKey)
@@ -122,6 +123,29 @@ export class PayloadMasker {
       out[nextKey] = next
     }
     return changed ? out : value
+  }
+
+  /**
+   * A provider-signed field is left as is, except a host replay envelope
+   * (`velloc-replay-v1:{…}`): its `value` is reasoning text the provider will
+   * read, so it is masked; `provider`, `model` and `field` are kept so the
+   * envelope still matches its target. An envelope that is not JSON is left
+   * whole for the egress guard to judge.
+   */
+  private opaqueField(item: unknown, where: string): unknown {
+    if (typeof item !== 'string' || !item.startsWith(REASONING_REPLAY_PREFIX)) return item
+    let envelope: unknown
+    try {
+      envelope = JSON.parse(item.slice(REASONING_REPLAY_PREFIX.length))
+    } catch {
+      return item
+    }
+    if (!envelope || typeof envelope !== 'object' || Array.isArray(envelope)) return item
+    const fields = envelope as Record<string, unknown>
+    if (!('value' in fields)) return item
+    const value = this.deep(fields.value, where)
+    if (value === fields.value) return item
+    return REASONING_REPLAY_PREFIX + JSON.stringify({ ...fields, value })
   }
 
   /** A `text/*` document is masked inside its base64; any other is left whole.

@@ -6,6 +6,8 @@ import { maskPayload, PayloadMasker } from '../models/masking/maskPayload'
 import { MaskingUndecodableError } from '../models/masking/egressGuard'
 import { createRestoreFilter } from '../models/masking/restoreStream'
 import type { ReplacementEntry } from '../models/masking/replacementTrace'
+import { decodeReasoningReplaySignatureFor } from '../models/drivers/hostCallOptions'
+import { hostValueToJs } from '../models/drivers/hostValue'
 
 const RULES: MaskingRule[] = [
   { match: 'AcmeCo', alias: 'Northwind' },
@@ -144,6 +146,34 @@ describe('maskPayload: what counts as opaque', () => {
     expect(nested[0]).toBe(image)
     expect(nested[1].text).toBe('Northwind')
     expect((out.messages[2]!.content as any[])[0]).toEqual({ type: 'thinking', thinking: 'Northwind', signature: 'AcmeCo-sig' })
+  })
+
+  it('masks the reasoning inside a host replay envelope signature, keeping its provider, model and field', () => {
+    const envelope = (value: unknown) => `velloc-replay-v1:${JSON.stringify({ field: 'reasoning_details', model: 'widget-1', provider: 'gw', value })}`
+    const signature = envelope([{ type: 'reasoning.text', text: 'look in the AcmeCo repo' }])
+    const original: BridgeModelRequestPayload = {
+      messages: [{ role: 'assistant', content: [{ type: 'thinking', thinking: 'AcmeCo', signature }] }],
+    }
+    const out = maskPayload(original, new PayloadMasker(masking, []))
+    const sent = (out.messages[0]!.content as any[])[0].signature as string
+    expect(sent).toBe(envelope([{ type: 'reasoning.text', text: 'look in the Northwind repo' }]))
+    expect(masking.residualIn(sent.replace('widget-1', ''))).toBeUndefined()
+    const replay = decodeReasoningReplaySignatureFor(sent, 'gw', 'widget-1')
+    expect(hostValueToJs(replay!.get('value')!)).toEqual([{ type: 'reasoning.text', text: 'look in the Northwind repo' }])
+  })
+
+  it('leaves a replay envelope with nothing to mask, or one that is not JSON, unchanged', () => {
+    const clean = `velloc-replay-v1:${JSON.stringify({ field: 'f', model: 'm', provider: 'p', value: 'plain' })}`
+    const broken = 'velloc-replay-v1:{AcmeCo'
+    const original: BridgeModelRequestPayload = {
+      messages: [{ role: 'assistant', content: [
+        { type: 'thinking', thinking: 'a', signature: clean },
+        { type: 'thinking', thinking: 'b', signature: broken },
+      ] }],
+    }
+    const [first, second] = maskPayload(original, new PayloadMasker(masking, [])).messages[0]!.content as any[]
+    expect(first.signature).toBe(clean)
+    expect(second.signature).toBe(broken)
   })
 
   it('masks object keys in tool arguments and results, and restore puts them back', () => {
