@@ -187,6 +187,11 @@ async function baseFor(options: ScopeResolverOptions, ref: string, head: string,
   }
   return { base: oneOid(parents[1]), source: 'parent' }
 }
+/** A named target its base branch already contains reviews its own commit: first parent, or the empty tree for a root commit. */
+async function ownCommitBase(git: ReviewGitRunner, head: string, signal?: AbortSignal): Promise<{ base: string; source: string }> {
+  const parent = (await gitText(git, { kind: 'parents', oid: head }, signal)).trim().split(/\s+/)[1]
+  return parent ? { base: oneOid(parent), source: 'commit-parent' } : { base: oneOid(await gitText(git, { kind: 'empty-tree' }, signal)), source: 'initial-commit' }
+}
 function matches(path: string, paths: string[]): boolean { return !paths.length || paths.some(p => p === path || path.startsWith(p + '/')) }
 function utf8(bytes: Uint8Array): string | undefined {
   if (bytes.includes(0)) return undefined
@@ -230,6 +235,7 @@ export async function resolveLocalReviewScope(options: ScopeResolverOptions, tar
       if (!workspace) throw new ScopeError('missing-ref')
       head = base = oneOid(await gitText(git, { kind: 'empty-tree' }, signal)); source = 'unborn'
     } else { head = oneOid(resolved); const selected = await baseFor(options, ref, head, signal); base = selected.base; source = selected.source }
+    if (target.kind === 'branch' && base === head) ({ base, source } = await ownCommitBase(git, head, signal))
   }
   const scope: ReviewScope = { kind: target.kind, workspaceKey: options.workspaceKey, repository: { projectKey: options.projectKey }, revision: { base, head }, pathFilter: paths }
   const maxFileBytes = options.maxFileBytes ?? 512 * 1024

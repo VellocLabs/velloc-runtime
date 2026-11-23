@@ -88,6 +88,22 @@ describe('local scope', () => {
     const result = await resolveLocalReviewScope(fixture({ refs: { 'refs/heads/main': head }, before: 'same\nnew\n' }).options)
     expect(result.baseSource).toBe('refs/heads/main'); expect(result.status).toBe('empty')
   })
+  it('reviews a named commit the default branch already contains against its first parent', async () => {
+    const commit = head.slice(0, 9)
+    const f = fixture({ refs: { [commit]: head, 'refs/heads/main': head } })
+    const result = await resolveLocalReviewScope(f.options, { kind: 'branch', ref: commit })
+    expect(result.baseSource).toBe('commit-parent')
+    expect(result.scope.revision).toMatchObject({ base, head })
+    expect(result.status).toBe('reviewable'); expect(result.files.map(file => file.path)).toEqual(['a.ts'])
+  })
+  it('reviews a contained root commit against the empty tree', async () => {
+    const result = await resolveLocalReviewScope(fixture({ initial: true, upstream: head, refs: { topic: head } }).options, { kind: 'branch', ref: 'topic' })
+    expect(result.baseSource).toBe('initial-commit'); expect(result.scope.revision.base).toBe(empty)
+  })
+  it('keeps the merge-base of a branch target that adds commits', async () => {
+    const result = await resolveLocalReviewScope(fixture({ refs: { topic: head, 'refs/heads/main': other } }).options, { kind: 'branch', ref: 'topic' })
+    expect(result.baseSource).toBe('refs/heads/main'); expect(result.scope.revision.base).toBe(other)
+  })
   it('retains mode-only changes without inventing line anchors', async () => {
     const result = await resolveLocalReviewScope(fixture({ before: 'same\nnew\n', files: { 'a.ts': { kind: 'file', bytes: encode('same\nnew\n'), gitMode: '100755' } } }).options)
     expect(result.status).toBe('reviewable'); expect(result.files).toHaveLength(1)
