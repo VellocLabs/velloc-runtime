@@ -203,8 +203,9 @@ export class AgentTranscriptService {
   // session-list path (SharedWorkerSessionManager) never computes diffs, so
   // sidebar entries that aren't open cost nothing. Completed turns are cached by
   // turnIndex; the current (last) turn is always recomputed since it may still
-  // be growing. `turnDiffHistoryFull` holds the latest full computation (with
-  // hunks) so worker.getTurnDiffDetail serves a turn's hunks without recomputing.
+  // be growing. For an edit-based session `turnDiffHistoryFull` holds the latest
+  // full computation (with hunks) so worker.getTurnDiffDetail serves a turn's
+  // hunks without recomputing; a snapshot-backed session holds none.
 
   /**
    * Recompute and push the turn-diff history; best-effort, after the boot-critical messages emit.
@@ -378,14 +379,18 @@ export class AgentTranscriptService {
       this.runtime === runtime && revision === this.diffRevision
     const fingerprint = transcriptFingerprint(runtime.engine.transcriptRows())
     const idle = this.host.isBusy ? !this.host.isBusy() : false
-    const commit = (metas: TurnDiffMeta[], settled: boolean): void => {
+    const commit = (
+      metas: TurnDiffMeta[],
+      settled: boolean,
+      full: TurnFullDiff[],
+    ): void => {
       this.computedFingerprint = fingerprint
       this.computedMetas = metas
       this.host.emit({
         type: 'worker.turnDiffHistory',
         payload: {
           turns: metas,
-          ...(this.host.includeHunks?.() ? { full: this.turnDiffHistoryFull } : {}),
+          ...(this.host.includeHunks?.() ? { full } : {}),
         },
       })
       void this.storeDigest(runtime, fingerprint, metas, settled && idle)
@@ -419,7 +424,10 @@ export class AgentTranscriptService {
             stats: { touchedFiles: files.length, plusLines, minusLines },
           })
         }
-        this.turnDiffHistoryFull = history
+        // The recorder can rebuild any turn's hunks (`getTurnFiles`), so none
+        // are held here: a session that rewrites large files would keep
+        // every turn's full content.
+        this.turnDiffHistoryFull = []
         const metas = history.map(toTurnDiffMeta).sort(byTurnStartDesc)
         // Whole-session total row (sentinel turnIndex 0), only when more than one turn changed
         // files; its diffs come from `getSessionSnapshotDiff`.
@@ -430,7 +438,7 @@ export class AgentTranscriptService {
         }
         // An open turn diffs against live disk, so only a fully finalized
         // history is fixed by the transcript it was computed for.
-        commit(metas, turns.every(turn => turn.finalized))
+        commit(metas, turns.every(turn => turn.finalized), history)
         return
       }
 
@@ -467,9 +475,36 @@ export class AgentTranscriptService {
       // changes" view repeated intermediate states (a line added in turn 1
       // and replaced in turn 2 showed up as +, then -/+ again), which read
       // as duplicate changes. The per-turn rows are the honest unit.
-      commit(history.map(toTurnDiffMeta).sort(byTurnStartDesc), true)
+      commit(history.map(toTurnDiffMeta).sort(byTurnStartDesc), true, history)
     } catch {
       // best-effort — never let a history failure disrupt the turn
+    }
+  }
+
+  /**
+   * One turn's file diffs for `worker.getTurnDiffDetail`, `null` when there is
+   * no such turn. A snapshot-backed session reads them from its recorder; an
+   * edit-based one serves them from the computed history.
+   */
+  async getTurnFiles(turnIndex: number): Promise<TurnFullDiff['files'] | null> {
+    const runtime = this.runtime
+    if (!runtime) return null
+    const recorder = runtime.fileSnapshotRecorder
+    if (!recorder) {
+      // The history is computed on first need, not on open.
+      await this.ensureTurnDiffHistory()
+      if (this.runtime !== runtime) return null
+      return (
+        this.turnDiffHistoryFull.find(t => t.turnIndex === turnIndex)?.files ??
+        null
+      )
+    }
+    try {
+      const diffs = await recorder.getTurnDiff(turnIndex)
+      if (this.runtime !== runtime || !diffs || diffs.length === 0) return null
+      return diffs.map(snapshotDiffToTurnFileDiff)
+    } catch {
+      return null
     }
   }
 

@@ -77,6 +77,8 @@ export function isSnapshotIgnoredPath(pathKey: string, rootKeys: readonly string
     .some(seg => SNAPSHOT_IGNORED_DIR_NAMES.has(seg))
 }
 
+function settledVoid(): void {}
+
 function toRootKey(root: string): string {
   return normalizePathKey(root).replace(/\/+$/, '')
 }
@@ -176,7 +178,7 @@ export class FileSnapshotRecorder {
   private readonly hostCwd: string
   /** Serializes every recorder op — the store is single-writer per session
    *  and this chain is what makes that true under concurrent tool calls. */
-  private tail: Promise<unknown> = Promise.resolve()
+  private tail: Promise<void> = Promise.resolve()
   /** (turnSeq → set of captured path keys) — the fast idempotency check so
    *  a script writing one file in a loop pays one capture, not N queries. */
   private readonly capturedByTurn = new Map<number, Set<string>>()
@@ -202,11 +204,12 @@ export class FileSnapshotRecorder {
   }
 
   /** Serialize an op onto the recorder's single-writer chain. The stored
-   *  tail never rejects (one failed capture must not poison later ones);
+   *  tail never rejects (one failed capture must not poison later ones) and
+   *  holds no result, so a large diff is freed once its caller drops it;
    *  callers still get the real promise. */
   private enqueue<T>(op: () => Promise<T>): Promise<T> {
     const run = this.tail.then(op, op)
-    this.tail = run.catch(() => {})
+    this.tail = run.then(settledVoid, settledVoid)
     return run
   }
 
@@ -550,30 +553,47 @@ export class FileSnapshotRecorder {
         files: SnapshotFileDiff[]
       }> = []
       for (const turn of turns) {
-        const rows = await this.store.listTurnFiles(turn.turnSeq)
-        const files: SnapshotFileDiff[] = []
-        for (const row of rows) {
-          const before = await this.resolveContent(row.before)
-          const after = row.after
-            ? await this.resolveContent(row.after)
-            : await this.diskContent(row.displayPath)
-          const diff = computeSnapshotFileDiff({
-            displayPath: row.displayPath,
-            before: snapshotContentToSide(before),
-            after: snapshotContentToSide(after),
-          })
-          if (diff.kind !== 'unchanged') files.push(diff)
-        }
         out.push({
           turnSeq: turn.turnSeq,
           promptPreview: turn.promptPreview,
           startedAt: turn.startedAt,
           finalized: turn.finalized,
-          files,
+          files: await this.diffTurnFiles(turn.turnSeq),
         })
       }
       return out
     })
+  }
+
+  /**
+   * One turn's file diffs, as {@link getTurnDiffs} computes them; null when
+   * the store has no such turn. Store failures throw.
+   */
+  getTurnDiff(turnSeq: number): Promise<SnapshotFileDiff[] | null> {
+    return this.enqueue(async () => {
+      if (!(await this.store.hasPersistedState())) return null
+      const turns = await this.store.listTurns()
+      if (!turns.some(turn => turn.turnSeq === turnSeq)) return null
+      return this.diffTurnFiles(turnSeq)
+    })
+  }
+
+  private async diffTurnFiles(turnSeq: number): Promise<SnapshotFileDiff[]> {
+    const rows = await this.store.listTurnFiles(turnSeq)
+    const files: SnapshotFileDiff[] = []
+    for (const row of rows) {
+      const before = await this.resolveContent(row.before)
+      const after = row.after
+        ? await this.resolveContent(row.after)
+        : await this.diskContent(row.displayPath)
+      const diff = computeSnapshotFileDiff({
+        displayPath: row.displayPath,
+        before: snapshotContentToSide(before),
+        after: snapshotContentToSide(after),
+      })
+      if (diff.kind !== 'unchanged') files.push(diff)
+    }
+    return files
   }
 
   /**

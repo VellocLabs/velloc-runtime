@@ -146,7 +146,8 @@ describe('session change digest — worker history', () => {
     expect(await reopened.service.ensureTurnDiffHistory()).toBe(true)
     expect(reopened.getTurnDiffs).toHaveBeenCalledTimes(1)
     expect(reopened.emitted.at(-1)?.type).toBe('worker.turnDiffHistory')
-    expect(reopened.service.getHistoryFull()).toHaveLength(1)
+    const last = reopened.emitted.at(-1) as { payload?: { turns?: unknown[] } }
+    expect(last.payload?.turns).toHaveLength(1)
   })
 
   it('computes in full when the transcript moved past the digest', async () => {

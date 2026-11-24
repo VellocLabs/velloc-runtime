@@ -187,9 +187,74 @@ describe('AgentTranscriptService — snapshot-backed history (fileSnapshots sess
       stats: { touchedFiles: 1, plusLines: 1, minusLines: 0 },
     })
     expect(turns[0]!.files[0]!.filePath).toBe('/ws/snap.txt')
-    // The full history (WITH hunks) backs worker.getTurnDiffDetail.
-    expect(service.getHistoryFull()).toHaveLength(1)
-    expect(service.getHistoryFull()[0]!.files[0]!.hunks).toHaveLength(1)
+    // No hunks are held: the recorder serves a turn's hunks on demand.
+    expect(service.getHistoryFull()).toEqual([])
+  })
+
+  it('reads a turn\'s hunks from the recorder on demand', async () => {
+    const getTurnDiff = vi.fn(async (turnSeq: number) =>
+      turnSeq === 1 ? RECORDER_TURNS[0]!.files : turnSeq === 2 ? [] : null,
+    )
+    const getTurnDiffs = vi.fn(async () => RECORDER_TURNS)
+    const { service } = makeSnapshotService({
+      getTurnDiffs,
+      getTurnDiff,
+      getSessionTotalDiffs: async () => [],
+    })
+
+    const files = await service.getTurnFiles(1)
+    expect(files).toEqual([
+      {
+        filePath: '/ws/snap.txt',
+        hunks: RECORDER_TURNS[0]!.files[0]!.hunks,
+        fileWasCreated: true,
+        plusLines: 1,
+        minusLines: 0,
+      },
+    ])
+    // A turn with no changed files and an unknown turn both answer null.
+    expect(await service.getTurnFiles(2)).toBeNull()
+    expect(await service.getTurnFiles(9)).toBeNull()
+    // Serving one turn never computes the whole history.
+    expect(getTurnDiffs).not.toHaveBeenCalled()
+  })
+
+  it('answers null when the recorder read fails', async () => {
+    const { service } = makeSnapshotService({
+      getTurnDiffs: async () => RECORDER_TURNS,
+      getTurnDiff: async () => {
+        throw new Error('store gone')
+      },
+    })
+    expect(await service.getTurnFiles(1)).toBeNull()
+  })
+
+  it('still sends a sub-agent\'s hunks with the history', async () => {
+    const emitted: Emitted[] = []
+    const service = new AgentTranscriptService({
+      emit: message => emitted.push(message as never),
+      includeHunks: () => true,
+    })
+    service.bindRuntime({
+      engine: { transcriptRows: () => [] },
+      conversationStore: {
+        getToolCallDetail: async () => null,
+        saveToolCallDetail: async () => {},
+      },
+      fileSnapshotRecorder: {
+        getTurnDiffs: async () => RECORDER_TURNS,
+        getSessionTotalDiffs: async () => [],
+      },
+    } as never)
+    await service.emitTurnDiffHistory()
+
+    const payload = historyEmits(emitted)[0]!.payload as { full?: unknown }
+    const full = payload.full as Array<{
+      files: Array<{ hunks: unknown[] }>
+    }>
+    expect(full).toHaveLength(1)
+    expect(full[0]!.files[0]!.hunks).toHaveLength(1)
+    expect(service.getHistoryFull()).toEqual([])
   })
 
   it('refreshes the recorder-derived history mid-turn when a SuperEdit sidecar persists', async () => {

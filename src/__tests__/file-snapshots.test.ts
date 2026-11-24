@@ -909,6 +909,36 @@ describe('FileSnapshotRecorder — computed diffs (Diff-panel sources)', () => {
     const { recorder } = makeHarness()
     expect(await recorder.getTurnDiffs()).toEqual([])
     expect(await recorder.getSessionFileDiffs()).toEqual([])
+    expect(await recorder.getTurnDiff(1)).toBeNull()
+  })
+
+  it('getTurnDiff: one turn equals its getTurnDiffs entry; an unknown turn is null', async () => {
+    const { recorder, disk } = makeHarness({
+      initialFiles: { '/ws/a.txt': 'one\n', '/ws/b.txt': 'b\n' },
+    })
+    await recorder.trackBeforeMutation('/ws/a.txt', T1)
+    disk.write('/ws/a.txt', 'one\ntwo\n')
+    await recorder.finalizeOpenTurns()
+    await recorder.trackBeforeMutation('/ws/b.txt', T2)
+    disk.write('/ws/b.txt', 'b\nlive\n')
+
+    const turns = await recorder.getTurnDiffs()
+    expect(turns).toHaveLength(2)
+    expect(await recorder.getTurnDiff(1)).toEqual(turns[0]!.files)
+    // The open turn diffs against current disk, as in getTurnDiffs.
+    expect(await recorder.getTurnDiff(2)).toEqual(turns[1]!.files)
+    expect(await recorder.getTurnDiff(7)).toBeNull()
+  })
+
+  it('the op chain keeps no result once an op settles', async () => {
+    const { recorder, disk } = makeHarness({
+      initialFiles: { '/ws/a.txt': 'one\n' },
+    })
+    await recorder.trackBeforeMutation('/ws/a.txt', T1)
+    disk.write('/ws/a.txt', 'one\ntwo\n')
+    expect(await recorder.getTurnDiffs()).toHaveLength(1)
+    const tail = (recorder as unknown as { tail: Promise<unknown> }).tail
+    expect(await tail).toBeUndefined()
   })
 })
 

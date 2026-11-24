@@ -807,20 +807,15 @@ export class AgentRuntimeWorker {
       case 'worker.getTurnDiffDetail': {
         // Same display-tier read as getToolCallDetail above.
         await this.waitForDisplay()
-        // Serve a turn's hunks from the history cache (computed by
-        // emitTurnDiffHistory). The UI fetches this lazily on expand.
+        // A turn's hunks, fetched lazily by the UI on expand.
         // Sentinel turnIndex 0 (real turns are 1-based): the WHOLE-SESSION
         // snapshot diff of a fileSnapshots session — the WorkspaceDiff
         // card's file jump reads it; null for sessions without a recorder.
         const turnIndex = message.payload.turnIndex
-        // The history is computed on first need, not on open.
-        if (turnIndex !== 0) await this.scopeTranscript.ensureTurnDiffHistory()
         const files =
           turnIndex === 0
             ? await this.scopeTranscript.getSessionSnapshotDiff()
-            : (this.scopeTranscript
-                .getHistoryFull()
-                .find(t => t.turnIndex === turnIndex)?.files ?? null)
+            : await this.scopeTranscript.getTurnFiles(turnIndex)
         this.emit({
           type: 'worker.turnDiffDetail',
           payload: { turnIndex, files },
