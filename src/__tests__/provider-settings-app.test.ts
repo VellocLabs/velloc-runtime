@@ -172,6 +172,43 @@ describe('the published app and its binding', () => {
       routesTo: ['vendor-a', 'vendor-b'],
     })
     expect(background.find(app => app.appId === 'switch-board')).not.toHaveProperty('settingsFor')
+    expect(background.find(app => app.appId === 'switch-board')).not.toHaveProperty('builtin')
+  })
+
+  it("reads every usage grouping from a plugin the person placed or Velloc's own marketplace installed, and no other", async () => {
+    const shipped = (source: string): ContributingPlugin => ({ ...plugin({}), source })
+    for (const [source, builtin] of [
+      ['user:/home/me/.velloc/plugins/switch', true],
+      ['marketplace:switch@velloc', true],
+      ['marketplace:switch@Velloc', true],
+      ['marketplace:switch@mkt', false],
+      ['marketplace:velloc@mkt', false],
+      ['project:/repo/.velloc/plugins/switch', false],
+    ] as const) {
+      const contributions = host()
+      await contributions.sync({ enabled: [shipped(source)] })
+      const board = contributions.backgroundApps().find(app => app.appId === 'switch-board')
+      expect(board?.builtin === true, source).toBe(builtin)
+      resetModContributionsState()
+    }
+  })
+
+  it('never takes built in from the manifest', async () => {
+    const { manifest } = check({ templates: { board: { title: 'Board', builtin: true, app: { seed: './board', background: './board-bg.js', builtin: true } } } })
+    const contributions = host()
+    await contributions.sync({
+      enabled: [
+        {
+          name: 'switch',
+          path: '/plugins/switch',
+          source: 'marketplace:switch@mkt',
+          installIdentifier: 'switch@mkt',
+          manifest: manifest!,
+          templates: Object.entries(manifest?.templates ?? {}).map(([key, decl]) => ({ key, type: `switch:${key}`, decl, dir: `/plugins/switch/templates/${key}` })),
+        } as unknown as ContributingPlugin,
+      ],
+    })
+    for (const app of contributions.backgroundApps()) expect(app).not.toHaveProperty('builtin')
   })
 })
 

@@ -459,7 +459,7 @@ describe('AppBackgroundRuntime — an app script', () => {
     other.runtime.sync([other.ref])
     other.runtime.view('pay-board', 's1', 'c1', 'full')
     await vi.waitFor(() => expect(other.runtime.status().map(each => each.state)).toEqual(['refused']))
-    expect(other.runtime.status()[0]?.reason).toContain("$.usage is open to a router's settings app and to the apps Velloc ships")
+    expect(other.runtime.status()[0]?.reason).toContain("$.usage is open to a router's settings app and to the apps of plugins in your own plugins folder")
     expect(asked).toHaveLength(1)
   })
 

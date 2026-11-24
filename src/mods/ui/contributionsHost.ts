@@ -17,6 +17,7 @@ import type {
   WaitingPlugin,
 } from '../../browser/runtimeProtocol/modContributions'
 import { joinRuntimePath } from '../../utils/runtimePaths'
+import { isBuiltinMarketplace } from '../../pluginHost/builtinMarketplace'
 import { normalizeMcpServerUrl } from '../../mcp/oauth/oauthKeys'
 import { pluginMcpServerListings } from '../../pluginHost/pluginMcpServerList'
 import type { ActivePlugin } from '../../pluginHost/pluginModel'
@@ -90,11 +91,26 @@ export type AppBackgroundTemplate = {
   consentId?: string
   /** The provider that names this app as its settings app (F-27). */
   settingsFor?: SettingsAppBinding
-  /** An app Velloc ships; never read from a manifest. */
+  /** An app that reads every usage grouping (`readsAllUsage`); never read from a manifest. */
   builtin?: true
 }
 
 const MARKETPLACE_SOURCE = 'marketplace:'
+
+/**
+ * Security: the apps that read every usage grouping. A plugin the person
+ * placed in their own plugins folder (`user:`, the same plugins that need no
+ * consent), and one installed from the built-in marketplace (`<name>@velloc`),
+ * which only the product's origin may register. A plugin from a project's
+ * folder or any other marketplace is not one, and no manifest field can claim it.
+ */
+function readsAllUsage(source: string): boolean {
+  if (source.startsWith('user:')) return true
+  if (!source.startsWith(MARKETPLACE_SOURCE)) return false
+  const id = source.slice(MARKETPLACE_SOURCE.length)
+  const at = id.lastIndexOf('@')
+  return at > 0 && isBuiltinMarketplace(id.slice(at + 1))
+}
 
 /** The provider of `plugin` whose `settingsApp` is the template of `type`; the manifest check lets one provider at most name it. */
 function settingsBindingOf(
@@ -355,6 +371,7 @@ export class ModUiContributionsHost {
         mcp: appBackgroundMcpOwner(owner),
         ...settingsBindingOf(owner.name, owner.manifest.providers, app.type),
         ...(owner.source.startsWith(MARKETPLACE_SOURCE) ? { consentId: owner.source.slice(MARKETPLACE_SOURCE.length) } : {}),
+        ...(readsAllUsage(owner.source) ? { builtin: true as const } : {}),
       })
     }
     return list

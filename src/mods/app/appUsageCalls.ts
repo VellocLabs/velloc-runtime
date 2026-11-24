@@ -4,7 +4,8 @@
  * Security: what a module may read is fixed by the host, never by the module.
  * A router's settings app reads the `hour`, `day`, `switch` and `request`
  * groupings of the requests made through that router alone, and never a
- * project. An app Velloc ships reads every grouping across all routers,
+ * project. An app of a plugin in the person's own plugins folder, or one
+ * installed from Velloc's built-in marketplace, reads every grouping across all routers,
  * including those that carry project roots and file paths. Any other app is
  * refused.
  */
@@ -42,7 +43,7 @@ export function usageGrantOf(settingsFor: SettingsAppBinding | undefined, builti
 /** Why the module may not call `$.usage.<method>`, or null. */
 export function refuseUsageCall(method: string, grant: UsageGrant | null): string | null {
   if (!grant) {
-    return "$.usage is open to a router's settings app and to the apps Velloc ships, and this app is neither"
+    return "$.usage is open to a router's settings app and to the apps of plugins in your own plugins folder or Velloc's built-in marketplace, and this app is none of them"
   }
   if (!USAGE_METHODS.includes(method)) return `$.usage.${method} does not exist — $.usage offers ${USAGE_METHODS.join(', ')}`
   return null
