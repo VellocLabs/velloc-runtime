@@ -27,6 +27,7 @@ import type { TaskKindCoordinator } from './KindTaskCoordinator'
 import type { TaskDeliveryQueue } from './TaskDeliveryQueue'
 import type { TaskRegistry } from './TaskRegistry'
 import { SESSION_TITLE_QUERY_SOURCE } from './recoverTitleRows'
+import { readTaskOutputTail } from './taskOutputTail'
 import {
   extractFinalAssistantText,
   fastCallDisplayLabel,
@@ -377,6 +378,22 @@ export class TaskControlSurface {
     return this.host.getFs?.() ?? processFs()
   }
 
+  /** `info` with the tail of its output file; null when the file is empty or unreadable. */
+  private async withOutputTail(
+    info: NexusTaskInfo,
+    path: string,
+  ): Promise<NexusTaskInfo | null> {
+    try {
+      const tail = await readTaskOutputTail(this.outputFs(), path)
+      if (!tail.text) return null
+      return tail.truncated
+        ? { ...info, outputText: tail.text, outputTruncated: true, outputBytes: tail.size }
+        : { ...info, outputText: tail.text }
+    } catch {
+      return null
+    }
+  }
+
   async loadInfoWithOutput(publicId: string): Promise<NexusTaskInfo | null> {
     const info = this.loadInfo(publicId)
     const fork = info?.type === 'local_fork' ? this.finishedFork(this.resolveNative(publicId)) : undefined
@@ -385,14 +402,7 @@ export class TaskControlSurface {
       return prompt ? { ...info, task: prompt } : info
     }
     if (info?.outputFilePath) {
-      try {
-        const text = await this.outputFs().readFile(info.outputFilePath, {
-          encoding: 'utf-8',
-        })
-        return text ? { ...info, outputText: text } : info
-      } catch {
-        return info
-      }
+      return (await this.withOutputTail(info, info.outputFilePath)) ?? info
     }
     if (info) {
       return info
@@ -425,14 +435,8 @@ export class TaskControlSurface {
         outputFilePath,
       }
       if (outputFilePath) {
-        try {
-          const text = await this.outputFs().readFile(outputFilePath, {
-            encoding: 'utf-8',
-          })
-          if (text) return { ...shellInfo, outputText: text }
-        } catch {
-          // best-effort — a missing/rotated output file just yields no log
-        }
+        const withOutput = await this.withOutputTail(shellInfo, outputFilePath)
+        if (withOutput) return withOutput
       }
       if (inlineOutput) return { ...shellInfo, outputText: inlineOutput }
       return shellInfo

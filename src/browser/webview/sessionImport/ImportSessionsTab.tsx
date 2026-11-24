@@ -4,6 +4,7 @@ import { CheckIcon, Loader2Icon, RefreshCwIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 import { useLocale, useT } from "../i18n";
+import { formatByteSize } from "../formatByteSize";
 import type {
   ImportSessionListRow,
   ImportSource,
@@ -206,7 +207,7 @@ function SessionRow({
         : "",
     [locale, row.mtimeMs],
   );
-  const size = React.useMemo(() => formatSize(locale, row.size), [locale, row.size]);
+  const size = React.useMemo(() => formatByteSize(locale, row.size), [locale, row.size]);
 
   return (
     <li
@@ -277,20 +278,4 @@ function SessionRow({
       </div>
     </li>
   );
-}
-
-function formatSize(locale: string, bytes: number): string {
-  const mb = bytes / (1024 * 1024);
-  if (mb >= 1) {
-    return new Intl.NumberFormat(locale, {
-      style: "unit",
-      unit: "megabyte",
-      maximumFractionDigits: 1,
-    }).format(mb);
-  }
-  return new Intl.NumberFormat(locale, {
-    style: "unit",
-    unit: "kilobyte",
-    maximumFractionDigits: 0,
-  }).format(Math.max(1, bytes / 1024));
 }

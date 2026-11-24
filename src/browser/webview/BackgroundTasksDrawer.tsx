@@ -53,6 +53,7 @@ import {
 import { loopTimerCountdown, loopTimerScheduleText } from './loopTimers'
 import { useT } from "./i18n";
 import { TaskRunStats } from "./TaskRunStats";
+import { TaskOutputCutNotice } from "./TaskOutputCutNotice";
 import { hasRunStats } from "../../utils/taskRunStats";
 import { AgentTypePill, TaskMetaLine } from "./TaskRowMeta";
 import { reviewTaskSummaryMessage } from '@/codeReview/messages'
@@ -849,7 +850,7 @@ export function BackgroundTasksDrawer({
                     <p className="mb-0.5 font-semibold">
                       {info.type === 'local_js' || info.type === 'local_supershell' || info.type === 'local_plugin'
                         ? t('backgroundTasks.resultHeader')
-                        : 'Output'}
+                        : t('backgroundTasks.outputHeader')}
                     </p>
                     {info.outputFilePath ? (
                       <p
@@ -858,6 +859,9 @@ export function BackgroundTasksDrawer({
                       >
                         {info.outputFilePath}
                       </p>
+                    ) : null}
+                    {info.outputTruncated && typeof info.outputBytes === 'number' ? (
+                      <TaskOutputCutNotice totalBytes={info.outputBytes} path={info.outputFilePath} />
                     ) : null}
                     <pre className="whitespace-pre-wrap break-words rounded bg-background/60 p-1.5 font-mono text-[11px] leading-4 text-foreground/90">
                       {detailOutputText}

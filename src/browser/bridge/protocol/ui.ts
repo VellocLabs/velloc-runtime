@@ -401,8 +401,13 @@ export type NexusTaskInfo = {
   /** For a 'local_bash' task: the mirror file its output is written to. */
   outputFilePath?: string
   /** For a 'local_bash' task: the mirror file's current contents, read when the
-   *  detail view opens/refreshes. Preferred over `summary` when present. */
+   *  detail view opens/refreshes. Preferred over `summary` when present. Only
+   *  the file's tail when `outputTruncated` is set. */
   outputText?: string
+  /** Set when `outputText` holds only the tail of a larger output file. */
+  outputTruncated?: boolean
+  /** The output file's full size in bytes; set with `outputTruncated`. */
+  outputBytes?: number
   /** For a 'local_bash' task: its invoke parameters (timeout, background mode,
    *  cwd, description), surfaced read-only in the detail view. */
   shellParams?: NexusShellInvokeParams
