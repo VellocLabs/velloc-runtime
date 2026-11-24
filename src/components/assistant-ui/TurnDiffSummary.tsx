@@ -467,7 +467,10 @@ function DiffFileDetail({
       ) : state.status === "error" ? (
         <div className="px-1 py-2 text-destructive text-xs">{state.message}</div>
       ) : state.hunks.length > 0 ? (
-        <DiffHunks hunks={state.hunks} />
+        <DiffHunks
+          hunks={state.hunks}
+          onOpenFile={onOpenFile ? () => onOpenFile({ path: filePath }) : undefined}
+        />
       ) : (
         <p className="px-1 text-muted-foreground text-xs">
           {t("diff.noChanges")}

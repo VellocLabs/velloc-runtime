@@ -39,14 +39,18 @@ function fromDiffForm(line: string): string {
   return line.replace(PLACEHOLDER_WORDS, word => CHAR_FOR[word]!)
 }
 
-/** Line-diff two texts already in diff form and restore the emitted lines. */
-function diffPrepared(label: string, before: string, after: string, budgetMs = DIFF_BUDGET_MS): StructuredPatchHunk[] {
+/** Line-diff two texts already in diff form and restore the emitted lines; null past the budget. */
+function diffPreparedOrNull(label: string, before: string, after: string, budgetMs: number): StructuredPatchHunk[] | null {
   const patch = structuredPatch(label, label, before, after, undefined, undefined, {
     context: CONTEXT_ROWS,
     timeout: budgetMs,
   })
-  if (!patch) return []
+  if (!patch) return null
   return patch.hunks.map(h => Object.assign({}, h, { lines: h.lines.map(fromDiffForm) }))
+}
+
+function diffPrepared(label: string, before: string, after: string, budgetMs = DIFF_BUDGET_MS): StructuredPatchHunk[] {
+  return diffPreparedOrNull(label, before, after, budgetMs) ?? []
 }
 
 /**
@@ -56,6 +60,41 @@ function diffPrepared(label: string, before: string, after: string, budgetMs = D
  */
 export function hunksBetween(label: string, before: string, after: string, budgetMs = DIFF_BUDGET_MS): StructuredPatchHunk[] {
   return diffPrepared(label, toDiffForm(before), toDiffForm(after), budgetMs)
+}
+
+/** Line budget for a diff computed on the UI thread. */
+export const UI_DIFF_BUDGET_MS = 200
+
+/** Lines of `text` as git counts them: a final `\n` ends the last line. */
+function linesOf(text: string): string[] {
+  if (text === '') return []
+  return (text.endsWith('\n') ? text.slice(0, -1) : text).split('\n')
+}
+
+/**
+ * Contract: like `hunksBetween`, for callers on the UI thread. Past `budgetMs`
+ * the result is one hunk removing every line of `before` and adding every line
+ * of `after` (linear time) instead of no hunks, so a slow diff still shows.
+ */
+export function boundedHunksBetween(
+  label: string,
+  before: string,
+  after: string,
+  budgetMs = UI_DIFF_BUDGET_MS,
+): StructuredPatchHunk[] {
+  const hunks = diffPreparedOrNull(label, toDiffForm(before), toDiffForm(after), budgetMs)
+  if (hunks) return hunks
+  const removed = linesOf(expandIndentTabs(before))
+  const added = linesOf(expandIndentTabs(after))
+  return [
+    {
+      oldStart: removed.length > 0 ? 1 : 0,
+      oldLines: removed.length,
+      newStart: added.length > 0 ? 1 : 0,
+      newLines: added.length,
+      lines: [...removed.map(line => `-${line}`), ...added.map(line => `+${line}`)],
+    },
+  ]
 }
 
 /** A literal search-and-replace on a file's text. */

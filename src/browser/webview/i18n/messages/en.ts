@@ -1439,6 +1439,10 @@ export const en = {
   'diff.openDiffAria': 'Show changes to {path}',
   'diff.newFileBadge': 'new',
   'diff.replaceAll': 'Replace all',
+  // Notice under a diff cut at its row limit. {n} is a line count, NOT translated.
+  'diff.moreLines': '{n} more lines not shown.',
+  'diff.moreLinesOne': '{n} more line not shown.',
+  'diff.openFile': 'Open file',
   'diff.backToChanges': 'Back to changes',
   'diff.noChangesYet': 'No changes yet.',
   // Label of the synthetic "Whole session" total row at the top of the history.

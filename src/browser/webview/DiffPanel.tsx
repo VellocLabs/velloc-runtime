@@ -91,7 +91,14 @@ export function DiffPanel({
         onOpenFile={onOpenFile}
       >
         {fileTarget.hunks.length > 0 ? (
-          <DiffHunks hunks={fileTarget.hunks} />
+          <DiffHunks
+            hunks={fileTarget.hunks}
+            onOpenFile={
+              onOpenFile
+                ? () => onOpenFile({ path: fileTarget.filePath })
+                : undefined
+            }
+          />
         ) : (
           <p className="px-1 text-muted-foreground text-body">
             {t("diff.noChanges")}

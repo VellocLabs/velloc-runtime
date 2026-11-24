@@ -1,4 +1,4 @@
-import { useMemo, type ReactNode } from "react";
+import { memo, useMemo, type ReactNode } from "react";
 import type { StructuredPatchHunk } from "diff";
 import { cn } from "@/lib/utils";
 import { ToolDetailTree } from "@/components/assistant-ui/tool-detail-tree";
@@ -13,11 +13,11 @@ import {
   type RightPanelDiffTarget,
 } from "@/components/assistant-ui/right-panel-content-context";
 import {
-  hunksBetween,
+  boundedHunksBetween,
   tallyHunkRows,
   type FileChangeDiff,
 } from "@/utils/fileChangeHunks";
-import { hunkToRows, type HunkRow } from "@/utils/hunkRows";
+import { diffRowsModel, type DiffRowsModel, type HunkRow } from "@/utils/hunkRows";
 
 /**
  * Diff view for the `Edit` tool: line numbers, +/- colored lines, word-level
@@ -56,7 +56,7 @@ export function buildEditDiffTarget(
   const hunks =
     editDiff?.patchHunks ??
     (edit
-      ? hunksBetween(filePath, edit.old_string ?? "", edit.new_string ?? "")
+      ? boundedHunksBetween(filePath, edit.old_string ?? "", edit.new_string ?? "")
       : []);
   const { added, removed } = editDiff
     ? { added: editDiff.plusLines, removed: editDiff.minusLines }
@@ -70,7 +70,7 @@ const SIGIL: Record<HunkRow["type"], string> = {
   nochange: " ",
 };
 
-function DiffRowView({
+const DiffRowView = memo(function DiffRowView({
   row,
   gutterWidth,
 }: {
@@ -115,14 +115,14 @@ function DiffRowView({
       </span>
     </div>
   );
-}
+});
 
 function intersperseHunks(
-  hunks: StructuredPatchHunk[],
+  model: DiffRowsModel,
   gutterWidth: number,
 ): ReactNode[] {
   const out: ReactNode[] = [];
-  hunks.forEach((hunk, hi) => {
+  model.shown.forEach(({ hunk, rows }, hi) => {
     if (hi > 0) {
       out.push(
         <div
@@ -136,7 +136,7 @@ function intersperseHunks(
     }
     out.push(
       <div key={`hunk-${hunk.newStart}-${hi}`}>
-        {hunkToRows(hunk).map((row, ri) => (
+        {rows.map((row, ri) => (
           <DiffRowView
             key={`${hunk.newStart}-${ri}`}
             row={row}
@@ -170,7 +170,7 @@ export function EditToolDiff({
   const hunks = useMemo(() => {
     if (editDiff?.patchHunks) return editDiff.patchHunks;
     return edit
-      ? hunksBetween(filePath ?? "file", oldString, newString)
+      ? boundedHunksBetween(filePath ?? "file", oldString, newString)
       : [];
   }, [editDiff, edit, filePath, oldString, newString]);
 
@@ -215,6 +215,9 @@ export function EditToolDiff({
         <DiffHunks
           hunks={hunks}
           maxLines={MAX_INLINE_FILE_LINES}
+          onOpenFile={
+            openFile && filePath ? () => openFile({ path: filePath }) : undefined
+          }
         />
       ) : (
         <p className="text-muted-foreground text-body">
@@ -229,10 +232,13 @@ export function EditToolDiff({
  * Renders a list of structured-patch hunks as a bordered diff block
  * (line-number gutter + `...` separators). Shared by the per-edit
  * `EditToolDiff` and the turn-changes summary so both look identical.
+ * Mounts at most MAX_DIFF_ROWS rows; past that a notice counts the lines
+ * left out and offers `onOpenFile` (F-9).
  */
 export function DiffHunks({
   hunks,
   maxLines,
+  onOpenFile,
 }: {
   hunks: StructuredPatchHunk[];
   /** Inline cards pass a cap in code-line heights (scroll past it) — a
@@ -240,7 +246,11 @@ export function DiffHunks({
    *  `rowsMaxHeight`; the right-panel Diff view omits it to take the panel's
    *  full height. */
   maxLines?: number;
+  /** Opens the changed file; offered by the notice when rows are left out. */
+  onOpenFile?: () => void;
 }) {
+  const t = useT();
+  const model = useMemo(() => diffRowsModel(hunks), [hunks]);
   const maxLineNumber = hunks.reduce(
     (max, h) =>
       Math.max(max, h.oldStart + h.oldLines - 1, h.newStart + h.newLines - 1),
@@ -252,7 +262,29 @@ export function DiffHunks({
       className="aui-edit-diff-body overflow-auto rounded-md border bg-muted/30 py-1 font-mono text-code"
       style={maxLines != null ? { maxHeight: rowsMaxHeight(maxLines) } : undefined}
     >
-      {intersperseHunks(hunks, gutterWidth)}
+      {intersperseHunks(model, gutterWidth)}
+      {model.hiddenLines > 0 && (
+        <div
+          data-testid="diff-rows-truncated"
+          className="aui-edit-diff-more flex flex-wrap items-center gap-2 px-2 py-1 font-sans text-caption text-muted-foreground"
+        >
+          <span>
+            {model.hiddenLines === 1
+              ? t("diff.moreLinesOne", { n: model.hiddenLines })
+              : t("diff.moreLines", { n: model.hiddenLines })}
+          </span>
+          {onOpenFile && (
+            <button
+              type="button"
+              data-testid="diff-rows-open-file"
+              className="underline underline-offset-2 hover:text-foreground"
+              onClick={onOpenFile}
+            >
+              {t("diff.openFile")}
+            </button>
+          )}
+        </div>
+      )}
     </div>
   );
 }

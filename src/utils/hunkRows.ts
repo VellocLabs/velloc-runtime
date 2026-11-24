@@ -6,6 +6,8 @@ import { diffWordsWithSpace, type StructuredPatchHunk } from 'diff'
  * advance it, so a replaced block shares numbers with its replacement. Adjacent
  * removed/added blocks pair in order; a pair with at most 40% changed characters
  * becomes `word` rows with highlighted spans, otherwise both stay plain.
+ * Word spans are skipped for a pair over WORD_PAIR_MAX_CHARS and for a whole
+ * diff over WORD_DIFF_MAX_LINES; `diffRowsModel` shows at most MAX_DIFF_ROWS.
  */
 
 export type RowSide = 'add' | 'remove' | 'nochange'
@@ -20,6 +22,20 @@ export type HunkRow =
 const MAX_CHANGED_NUM = 2
 const MAX_CHANGED_DEN = 5
 
+/** Rows a diff view mounts; the rest is counted, not built. */
+export const MAX_DIFF_ROWS = 2_000
+/** Diff size (hunk lines) above which no pair gets word spans. */
+export const WORD_DIFF_MAX_LINES = 1_000
+/** Combined length of a pair above which it stays plain. */
+export const WORD_PAIR_MAX_CHARS = 2_000
+
+export type HunkRowOptions = {
+  /** Compute word spans for removed/added pairs (default true). */
+  words?: boolean
+  /** Build rows for at most this many leading lines of the hunk. */
+  limit?: number
+}
+
 function sideOf(line: string): RowSide {
   const sign = line.charAt(0)
   return sign === '+' ? 'add' : sign === '-' ? 'remove' : 'nochange'
@@ -31,7 +47,7 @@ function pairSpans(
   addedText: string,
 ): { removed: RowSpan[]; added: RowSpan[] } | null {
   const total = removedText.length + addedText.length
-  if (total === 0) return null
+  if (total === 0 || total > WORD_PAIR_MAX_CHARS) return null
   const pieces = diffWordsWithSpace(removedText, addedText, { ignoreCase: false })
   let changed = 0
   for (const piece of pieces) {
@@ -54,14 +70,16 @@ function pairSpans(
   return { removed, added }
 }
 
-export function hunkToRows(hunk: StructuredPatchHunk): HunkRow[] {
-  const sides = hunk.lines.map(sideOf)
-  const texts = hunk.lines.map(line => line.slice(1))
+export function hunkToRows(hunk: StructuredPatchHunk, options: HunkRowOptions = {}): HunkRow[] {
+  const { words = true, limit } = options
+  const lines = limit !== undefined && limit < hunk.lines.length ? hunk.lines.slice(0, Math.max(0, limit)) : hunk.lines
+  const sides = lines.map(sideOf)
+  const texts = lines.map(line => line.slice(1))
   const count = sides.length
 
   // spansAt[i] is set for both members of a pair that qualifies for word rows.
   const spansAt: Array<RowSpan[] | undefined> = new Array(count)
-  let at = 0
+  let at = words ? 0 : count
   while (at < count) {
     if (sides[at] !== 'remove') {
       at += 1
@@ -104,4 +122,34 @@ export function hunkToRows(hunk: StructuredPatchHunk): HunkRow[] {
     }
   }
   return rows
+}
+
+/** One hunk's rows as a diff view shows them. */
+export type ShownHunk = { hunk: StructuredPatchHunk; rows: HunkRow[] }
+
+/** Rows to mount for a diff, and how many hunk lines were left out. */
+export type DiffRowsModel = { shown: ShownHunk[]; hiddenLines: number }
+
+/**
+ * Contract: rows for `hunks` up to `maxRows` in order; later lines and hunks
+ * are counted in `hiddenLines`, never converted. Pure; cost is bounded by
+ * `maxRows`, not by the diff's size.
+ */
+export function diffRowsModel(
+  hunks: readonly StructuredPatchHunk[],
+  maxRows: number = MAX_DIFF_ROWS,
+): DiffRowsModel {
+  let total = 0
+  for (const hunk of hunks) total += hunk.lines.length
+  const words = total <= WORD_DIFF_MAX_LINES
+  const shown: ShownHunk[] = []
+  let budget = Math.max(0, maxRows)
+  for (const hunk of hunks) {
+    if (budget === 0) break
+    const rows = hunkToRows(hunk, { words, limit: budget })
+    shown.push({ hunk, rows })
+    budget -= rows.length
+  }
+  const built = shown.reduce((sum, item) => sum + item.rows.length, 0)
+  return { shown, hiddenLines: total - built }
 }

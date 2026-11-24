@@ -131,6 +131,7 @@ export function FileEntryRow({
             <DiffHunks
               hunks={payload.hunks}
               maxLines={cap}
+              onOpenFile={onOpenPath}
             />
           ) : payload?.kind === "file" && payload.content.length > 0 ? (
             <FileContentView
