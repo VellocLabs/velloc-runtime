@@ -2,7 +2,8 @@
  * Size measures of a loaded text file; a heavy file skips the synchronous
  * Markdown renderer (F-9).
  * Contract: one linear pass, no allocation per line. `bytes` is the UTF-8
- * length (a lone surrogate is counted approximately); `lines` counts line breaks plus a final unterminated line;
+ * length, a lone surrogate counted as the 3-byte replacement character (as
+ * `utf8ByteLength`); `lines` counts line breaks plus a final unterminated line;
  * `tableRows` counts lines whose first non-blank character is `|`, inside
  * fences too.
  */
@@ -29,9 +30,16 @@ export function measureText(text: string): TextHeaviness {
     const code = text.charCodeAt(i);
     if (code < 0x80) bytes += 1;
     else if (code < 0x800) bytes += 2;
-    else if (code >= 0xd800 && code <= 0xdbff) bytes += 4;
-    else if (code >= 0xdc00 && code <= 0xdfff) bytes += 0;
-    else bytes += 3;
+    else if (code >= 0xd800 && code <= 0xdbff && i + 1 < text.length) {
+      const next = text.charCodeAt(i + 1);
+      if (next >= 0xdc00 && next <= 0xdfff) {
+        bytes += 4;
+        i++;
+        atLineStart = false;
+        continue;
+      }
+      bytes += 3;
+    } else bytes += 3;
 
     if (code === NEWLINE) {
       lines += 1;

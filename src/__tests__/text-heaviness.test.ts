@@ -8,6 +8,12 @@ describe("measureText", () => {
     }
   });
 
+  it("counts a lone surrogate as the 3-byte replacement character, like TextEncoder", () => {
+    for (const s of ["\ud83d", "a\ud83dx", "\ude00", "x\ude00\ud83d"]) {
+      expect(measureText(s).bytes).toBe(new TextEncoder().encode(s).byteLength);
+    }
+  });
+
   it("counts lines with and without a trailing newline", () => {
     expect(measureText("").lines).toBe(0);
     expect(measureText("a").lines).toBe(1);

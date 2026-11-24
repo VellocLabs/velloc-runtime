@@ -606,6 +606,13 @@ export function FilePanel({
       </div>
     ) : undefined;
 
+  const loadingRow = (
+    <div className="flex items-center gap-2 px-1 py-2 text-muted-foreground text-body">
+      <LoaderIcon className="size-3 animate-spin" />
+      <span>{t("filePanel.loadingFile")}</span>
+    </div>
+  );
+
   return (
     <div
       data-testid="file-panel"
@@ -654,10 +661,7 @@ export function FilePanel({
       ) : null}
       <div className="min-h-0 flex-1">
         {state.status === "loading" ? (
-          <div className="flex items-center gap-2 px-1 py-2 text-muted-foreground text-body">
-            <LoaderIcon className="size-3 animate-spin" />
-            <span>{t("filePanel.loadingFile")}</span>
-          </div>
+          loadingRow
         ) : state.status === "error" ? (
           <div className="px-1 py-2 text-destructive text-body">
             {state.message}
@@ -690,10 +694,7 @@ export function FilePanel({
             <Suspense
               fallback={
                 heavy ? (
-                  <div className="flex items-center gap-2 px-1 py-2 text-muted-foreground text-body">
-                    <LoaderIcon className="size-3 animate-spin" />
-                    <span>{t("filePanel.loadingFile")}</span>
-                  </div>
+                  loadingRow
                 ) : (
                   <FileContentView content={state.content} numbered={false} fill />
                 )
