@@ -832,3 +832,47 @@ describe("FilePanel — path row", () => {
     expect(bar.contains(screen.getByTestId("file-panel-search"))).toBe(true);
   });
 });
+
+describe("FilePanel — large Markdown (F-9)", () => {
+  const heavyTable = "| a | b |\n".repeat(1501);
+
+  it("shows a heavy Markdown file as source only, with the notice and no Rendered toggle", async () => {
+    const readFileText = vi.fn(async () => heavyTable);
+    render(createElement(FilePanel, { target: { path: "/repo/data.md" }, readFileText }));
+    expect(await screen.findByTestId("cm-view")).toBeTruthy();
+    expect(screen.queryByTestId("static-md")).toBeNull();
+    expect(screen.getByTestId("file-panel-large-notice").textContent).toBe(
+      "This file is too large to render, so its source is shown.",
+    );
+    expect(document.querySelector('[data-slot="file-panel-view-toggle"]')).toBeNull();
+    expect(screen.getByTestId("file-panel-search")).toBeTruthy();
+  });
+
+  it("opens a light Markdown file Rendered with no notice", async () => {
+    const readFileText = vi.fn(async () => "| a | b |\n".repeat(1500));
+    render(createElement(FilePanel, { target: { path: "/repo/data.md" }, readFileText }));
+    expect(await screen.findByTestId("static-md")).toBeTruthy();
+    expect(screen.queryByTestId("file-panel-large-notice")).toBeNull();
+    expect(document.querySelector('[data-slot="file-panel-view-toggle"]')).toBeTruthy();
+  });
+
+  it("a re-read that crosses the limit moves a Rendered file to Raw", async () => {
+    let disk = "# small\n";
+    const readFileText = vi.fn(async () => disk);
+    render(createElement(FilePanel, { target: { path: "/repo/data.md" }, readFileText }));
+    await screen.findByTestId("static-md");
+    disk = heavyTable;
+    fireEvent.click(screen.getByTestId("file-panel-refresh"));
+    expect(await screen.findByTestId("file-panel-large-notice")).toBeTruthy();
+    expect(screen.queryByTestId("static-md")).toBeNull();
+    expect(screen.getByTestId("cm-view")).toBeTruthy();
+    expect(document.querySelector('[data-slot="file-panel-view-toggle"]')).toBeNull();
+  });
+
+  it("never holds a heavy non-Markdown file behind the notice", async () => {
+    const readFileText = vi.fn(async () => heavyTable);
+    render(createElement(FilePanel, { target: { path: "/repo/data.txt" }, readFileText }));
+    expect(await screen.findByTestId("cm-view")).toBeTruthy();
+    expect(screen.queryByTestId("file-panel-large-notice")).toBeNull();
+  });
+});

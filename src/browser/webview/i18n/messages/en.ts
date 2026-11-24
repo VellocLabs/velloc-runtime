@@ -1461,6 +1461,7 @@ export const en = {
   'filePanel.readFailed': 'Failed to read file.',
   'filePanel.binaryFile': "This file is binary, so it isn't shown here.",
   'filePanel.fileTooLarge': 'This file is too large to show here.',
+  'filePanel.largeFileShowingSource': 'This file is too large to render, so its source is shown.',
   'filePanel.mediaFile': 'This file opens in its own window.',
   'filePanel.unsupportedFile': "{product} doesn't open this kind of file.",
   'filePanel.openInWindow': 'Open in window',

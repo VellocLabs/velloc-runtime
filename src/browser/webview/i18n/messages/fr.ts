@@ -1426,6 +1426,7 @@ export const fr: Messages = {
   'filePanel.readFailed': 'Échec de la lecture du fichier.',
   'filePanel.binaryFile': "Ce fichier est binaire ; il n'est donc pas affiché ici.",
   'filePanel.fileTooLarge': 'Ce fichier est trop volumineux pour être affiché ici.',
+  'filePanel.largeFileShowingSource': 'Ce fichier est trop volumineux pour être rendu ; sa source est affichée.',
   'filePanel.mediaFile': "Ce fichier s'ouvre dans sa propre fenêtre.",
   'filePanel.unsupportedFile': "{product} n'ouvre pas ce type de fichier.",
   'filePanel.openInWindow': 'Ouvrir dans une fenêtre',

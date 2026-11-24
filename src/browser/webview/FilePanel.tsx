@@ -3,6 +3,7 @@ import {
   Suspense,
   useEffect,
   useImperativeHandle,
+  useMemo,
   useRef,
   useState,
   type ReactElement,
@@ -30,6 +31,7 @@ import type { CodeMirrorApi } from "@/components/assistant-ui/CodeMirrorView";
 import { isRuntimeRequestError } from "../runtimeClient/RuntimeConnection";
 import { isFsxNotTextData, type FsxNotTextData } from "../runtimeProtocol";
 import { fileOpenKind } from "@/utils/fileOpenKind";
+import { isHeavyText, measureText } from "@/utils/textHeaviness";
 import { Button } from "@/components/ui/button";
 import { useT } from "./i18n";
 import type { FilesListDir } from "./panes/FilesBrowse";
@@ -353,10 +355,19 @@ export function FilePanel({
   const prevLockedRef = useRef(editingLocked);
   const path = target?.path;
   const isMarkdown = !!path && MARKDOWN_FILE.test(path);
+  const readyContent = state.status === "ready" ? state.content : null;
+  const heavy = useMemo(
+    () => readyContent !== null && isHeavyText(measureText(readyContent)),
+    [readyContent],
+  );
+  // A heavy Markdown file shows only its source: the Rendered view parses and
+  // mounts the whole document in one synchronous task (F-9).
+  const heldOnRaw = isMarkdown && heavy;
+  const effectiveView = heldOnRaw ? "raw" : view;
   // The syntax-highlighted editor body is shown for every ready file except
   // markdown in its Rendered view (which uses the markdown renderer instead).
   const showEditorBody =
-    state.status === "ready" && !(isMarkdown && view === "rendered");
+    state.status === "ready" && !(isMarkdown && effectiveView === "rendered");
   // Editing is offered for non-markdown files when the host provides a writer.
   // Markdown stays a viewer (its Rendered/Raw preview would drop edits on a
   // toggle), and the editor is locked read-only while a turn runs.
@@ -575,8 +586,8 @@ export function FilePanel({
   const trailing =
     isMarkdown || showEditorBody ? (
       <div className="flex shrink-0 items-center gap-1.5">
-        {isMarkdown ? (
-          <MarkdownViewToggle view={view} onChange={setView} />
+        {isMarkdown && !heldOnRaw ? (
+          <MarkdownViewToggle view={effectiveView} onChange={setView} />
         ) : null}
         {canEdit ? (
           <FileSaveButton
@@ -625,6 +636,14 @@ export function FilePanel({
           onKeepMine={handleKeepMine}
         />
       ) : null}
+      {heldOnRaw ? (
+        <div
+          data-testid="file-panel-large-notice"
+          className="rounded-md border px-2 py-1 text-muted-foreground text-body"
+        >
+          {t("filePanel.largeFileShowingSource")}
+        </div>
+      ) : null}
       {saveError ? (
         <div
           data-testid="file-panel-save-error"
@@ -663,14 +682,21 @@ export function FilePanel({
             ) : null}
           </div>
         ) : state.status === "ready" ? (
-          isMarkdown && view === "rendered" ? (
+          isMarkdown && effectiveView === "rendered" ? (
             <div className="h-full overflow-auto rounded-md border bg-background px-3 py-2">
               <StaticMarkdown content={state.content} />
             </div>
           ) : (
             <Suspense
               fallback={
-                <FileContentView content={state.content} numbered={false} fill />
+                heavy ? (
+                  <div className="flex items-center gap-2 px-1 py-2 text-muted-foreground text-body">
+                    <LoaderIcon className="size-3 animate-spin" />
+                    <span>{t("filePanel.loadingFile")}</span>
+                  </div>
+                ) : (
+                  <FileContentView content={state.content} numbered={false} fill />
+                )
               }
             >
               <CodeMirrorView

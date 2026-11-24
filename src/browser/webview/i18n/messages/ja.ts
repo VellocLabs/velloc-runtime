@@ -1414,6 +1414,7 @@ export const ja: Messages = {
   'filePanel.readFailed': 'ファイルを読み取れませんでした。',
   'filePanel.binaryFile': 'このファイルはバイナリのため、ここには表示されません。',
   'filePanel.fileTooLarge': 'このファイルは大きすぎるため、ここには表示できません。',
+  'filePanel.largeFileShowingSource': 'このファイルは大きすぎてレンダリングできないため、ソースを表示しています。',
   'filePanel.mediaFile': 'このファイルは専用のウィンドウで開きます。',
   'filePanel.unsupportedFile': '{product} はこの種類のファイルを開きません。',
   'filePanel.openInWindow': 'ウィンドウで開く',

@@ -1424,6 +1424,7 @@ export const de: Messages = {
   'filePanel.readFailed': 'Die Datei konnte nicht gelesen werden.',
   'filePanel.binaryFile': 'Diese Datei ist binär und wird hier nicht angezeigt.',
   'filePanel.fileTooLarge': 'Diese Datei ist zu groß, um hier angezeigt zu werden.',
+  'filePanel.largeFileShowingSource': 'Diese Datei ist zu groß zum Rendern, daher wird ihr Quelltext angezeigt.',
   'filePanel.mediaFile': 'Diese Datei wird in einem eigenen Fenster geöffnet.',
   'filePanel.unsupportedFile': '{product} öffnet diese Art von Datei nicht.',
   'filePanel.openInWindow': 'In Fenster öffnen',
