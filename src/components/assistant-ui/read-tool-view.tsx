@@ -2,6 +2,7 @@ import {
   coerceFileText,
   FileContentView,
   FilePathHeader,
+  headLines,
   MAX_INLINE_FILE_LINES,
 } from "@/components/assistant-ui/file-content-view";
 import { useRightPanelContent } from "@/components/assistant-ui/right-panel-content-context";
@@ -13,6 +14,9 @@ import { useT } from "@/browser/webview/i18n";
  * capped to {@link MAX_INLINE_FILE_LINES}. Mounted only inside the expanded card;
  * `args`/`result` are undefined until the lazy sidecar loads.
  */
+
+/** Lines the card mounts; the rest are counted and left to the Files pane (F-9). */
+export const READ_CARD_MOUNTED_LINES = 200;
 
 export type ReadArgs = { file_path?: string };
 
@@ -41,6 +45,7 @@ export function ReadToolView({
   const { openFile } = useRightPanelContent();
   const t = useT();
   const content = coerceFileText(result);
+  const { head, more } = headLines(content, READ_CARD_MOUNTED_LINES);
 
   // No path AND no content to show — nothing read-specific to render; fall back
   // to the generic tree so the user still sees whatever came back.
@@ -59,12 +64,47 @@ export function ReadToolView({
         />
       )}
       {content.length > 0 ? (
-        <FileContentView content={content} maxLines={MAX_INLINE_FILE_LINES} />
+        <>
+          <FileContentView content={head} maxLines={MAX_INLINE_FILE_LINES} />
+          {more > 0 && (
+            <MoreLinesRow
+              more={more}
+              onOpen={filePath && openFile ? () => openFile({ path: filePath }) : undefined}
+            />
+          )}
+        </>
       ) : (
         <p className="text-muted-foreground text-body">
           {t("filePanel.noContent")}
         </p>
       )}
     </div>
+  );
+}
+
+function MoreLinesRow({ more, onOpen }: { more: number; onOpen?: () => void }) {
+  const t = useT();
+  const label = t(more === 1 ? "filePanel.moreLinesOne" : "filePanel.moreLines", {
+    n: more.toLocaleString(),
+  });
+  if (!onOpen) {
+    return (
+      <p data-slot="read-more-lines" className="text-muted-foreground text-body">
+        {label}
+      </p>
+    );
+  }
+  return (
+    <button
+      type="button"
+      data-slot="read-more-lines"
+      onClick={(event) => {
+        event.stopPropagation();
+        onOpen();
+      }}
+      className="self-start text-left text-muted-foreground text-body hover:text-foreground hover:underline"
+    >
+      {label}
+    </button>
   );
 }

@@ -6,6 +6,9 @@
  * frames and embeds are removed, so the copy never loads or runs anything.
  */
 
+import { isHeavyText, measureText } from '@/utils/textHeaviness'
+import { writeClipboard, writeRichClipboard } from '@/utils/clipboard'
+
 const KEEP_ELEMENTS = new Set([
   'P', 'BR', 'HR', 'STRONG', 'B', 'EM', 'I', 'DEL', 'S', 'CODE', 'PRE', 'BLOCKQUOTE',
   'UL', 'OL', 'LI', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'A',
@@ -60,4 +63,13 @@ export function sanitizeClipboardHtml(html: string): string {
 export async function markdownToClipboardHtml(markdown: string): Promise<string> {
   const { renderMarkdownHtml } = await import('./markdownHtml')
   return sanitizeClipboardHtml(renderMarkdownHtml(markdown))
+}
+
+/**
+ * Copies `markdown` as text and as rendered HTML; heavy text (F-9) goes as
+ * text alone, since rendering it to HTML blocks the window. Never throws.
+ */
+export function writeMarkdownClipboard(markdown: string): Promise<boolean> {
+  if (isHeavyText(measureText(markdown))) return writeClipboard(markdown)
+  return writeRichClipboard(markdown, markdownToClipboardHtml(markdown))
 }

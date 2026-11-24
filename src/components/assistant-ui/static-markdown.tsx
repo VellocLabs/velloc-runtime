@@ -15,6 +15,7 @@ import {
   looksLikeDot,
 } from "@/components/assistant-ui/graphviz-diagram";
 import { remarkFilePaths } from "@/components/assistant-ui/remarkFilePaths";
+import { HeavyTextBlock, useHeavyText } from "@/components/assistant-ui/heavy-text-block";
 
 /**
  * Markdown renderer for non-message surfaces, using `react-markdown` with the shared
@@ -97,6 +98,9 @@ function StaticMarkdownImpl({
   content: string;
   className?: string;
 }) {
+  // Heavy text is never parsed: the parse and mount run in one task (F-9).
+  const heavy = useHeavyText(content);
+  if (heavy) return <HeavyTextBlock text={content} className={className} />;
   return (
     <div className={cn("aui-md text-body", className)}>
       {/* remarkFilePaths marks prose file paths; `sharedMarkdownComponents`

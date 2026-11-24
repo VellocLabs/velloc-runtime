@@ -20,6 +20,7 @@ import {
 } from "@/components/assistant-ui/shell-command-block";
 import { SHELL_FENCE_LANGUAGES } from "@/components/assistant-ui/shell-command";
 import { usePartLineAttrs, useRevealSelf } from "./part-line-context";
+import { HeavyTextBlock, useHeavyText } from "./heavy-text-block";
 
 // ```mermaid / ```dot / ```graphviz fences render as SVG diagrams. The
 // SyntaxHighlighter return value is mounted unwrapped (no enclosing <pre>), and
@@ -81,6 +82,20 @@ const MarkdownTextImpl = () => {
   const lineAttrs = usePartLineAttrs();
   const revealRef = useRevealSelf<HTMLDivElement>();
   const smooth = useSmoothText();
+  const text = useAssistantState((s) => {
+    const value = (s.part as { text?: unknown }).text;
+    return typeof value === "string" ? value : "";
+  });
+  // A heavy part is never handed to the Markdown parser, which re-parses the
+  // whole text on every streamed update (F-9).
+  const heavy = useHeavyText(text);
+  if (heavy) {
+    return (
+      <div ref={revealRef} className="min-w-0 max-w-full" {...lineAttrs}>
+        <HeavyTextBlock text={text} />
+      </div>
+    );
+  }
   return (
     // `min-w-0` lets the bubble shrink; `wrap-break-word` keeps long tokens
     // (CJK runs, URLs, base64 — common in pasted formatted paragraphs) from

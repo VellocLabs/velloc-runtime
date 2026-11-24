@@ -1466,6 +1466,10 @@ export const en = {
   'filePanel.binaryFile': "This file is binary, so it isn't shown here.",
   'filePanel.fileTooLarge': 'This file is too large to show here.',
   'filePanel.largeFileShowingSource': 'This file is too large to render, so its source is shown.',
+  'markdown.tooLargeShowingText': 'This text is too large to format, so it is shown as plain text.',
+  // `{n}` may be 1 — keep the singular/plural key pair distinct.
+  'filePanel.moreLines': '{n} more lines — open in Files',
+  'filePanel.moreLinesOne': '{n} more line — open in Files',
   'filePanel.mediaFile': 'This file opens in its own window.',
   'filePanel.unsupportedFile': "{product} doesn't open this kind of file.",
   'filePanel.openInWindow': 'Open in window',

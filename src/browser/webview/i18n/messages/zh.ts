@@ -1412,6 +1412,10 @@ export const zh: Messages = {
   'filePanel.binaryFile': '此文件是二进制文件，不在此处显示。',
   'filePanel.fileTooLarge': '此文件过大，无法在此处显示。',
   'filePanel.largeFileShowingSource': '此文件过大，无法渲染，已显示源码。',
+  'markdown.tooLargeShowingText': '此文本过大，无法排版，已以纯文本显示。',
+  // `{n}` may be 1 — keep the singular/plural key pair distinct.
+  'filePanel.moreLines': '还有 {n} 行 — 在文件中打开',
+  'filePanel.moreLinesOne': '还有 {n} 行 — 在文件中打开',
   'filePanel.mediaFile': '此文件会在单独的窗口中打开。',
   'filePanel.unsupportedFile': '{product} 不打开此类文件。',
   'filePanel.openInWindow': '在窗口中打开',

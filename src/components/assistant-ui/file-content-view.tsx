@@ -86,6 +86,27 @@ export function toNumberedLines(
   return raw.map((line, i) => ({ num: startLine + i, text: line }));
 }
 
+/**
+ * The first `max` lines of `content` and how many lines follow them; line
+ * counting matches {@link toNumberedLines} (one trailing newline ends the last
+ * line). Scans only up to the cut, then counts the rest without splitting.
+ */
+export function headLines(content: string, max: number): { head: string; more: number } {
+  let cut = 0;
+  for (let i = 0; i < max; i++) {
+    const newline = content.indexOf("\n", cut);
+    if (newline === -1) return { head: content, more: 0 };
+    cut = newline + 1;
+  }
+  if (cut >= content.length) return { head: content, more: 0 };
+  let more = 1;
+  const last = content.length - 1;
+  for (let at = content.indexOf("\n", cut); at !== -1 && at < last; at = content.indexOf("\n", at + 1)) {
+    more += 1;
+  }
+  return { head: content.slice(0, cut), more };
+}
+
 /** Best-effort string view of a tool result for file display (unwraps the
  *  common `{ text }` / text-part shapes before falling back to JSON). */
 export function coerceFileText(result: unknown): string {

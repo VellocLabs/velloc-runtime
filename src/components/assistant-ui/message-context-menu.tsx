@@ -15,10 +15,10 @@ import {
   type MenuOperation,
   type MenuTargetFacts,
 } from "@/browser/webview/messageContextMenuModel";
-import { markdownToClipboardHtml } from "@/browser/webview/richClipboard";
+import { writeMarkdownClipboard } from "@/browser/webview/richClipboard";
 import { useT } from "@/browser/webview/i18n";
 import type { MessageKey } from "@/browser/webview/i18n/messages/en";
-import { writeClipboard, writeRichClipboard } from "@/utils/clipboard";
+import { writeClipboard } from "@/utils/clipboard";
 import { markAt, useChapterMarks } from "./chapter-marks";
 import { composerShortcutModifiers } from "./composer-send-shortcuts";
 import { focusComposerNear, useComposerPassages } from "./composer-passages";
@@ -177,7 +177,7 @@ export const MessageContextMenu: FC<{
         const material = operation.material;
         const write =
           material.scope === "entry" && material.output === "rich"
-            ? writeRichClipboard(material.body, markdownToClipboardHtml(material.body))
+            ? writeMarkdownClipboard(material.body)
             : writeClipboard(material.body);
         void write.then(
           (ok) => say(ok ? "messageMenu.copied" : "messageMenu.copyFailed"),

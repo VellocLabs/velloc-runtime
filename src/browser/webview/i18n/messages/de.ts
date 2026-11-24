@@ -1428,6 +1428,10 @@ export const de: Messages = {
   'filePanel.binaryFile': 'Diese Datei ist binär und wird hier nicht angezeigt.',
   'filePanel.fileTooLarge': 'Diese Datei ist zu groß, um hier angezeigt zu werden.',
   'filePanel.largeFileShowingSource': 'Diese Datei ist zu groß zum Rendern, daher wird ihr Quelltext angezeigt.',
+  'markdown.tooLargeShowingText': 'Dieser Text ist zu groß zum Formatieren und wird daher als reiner Text angezeigt.',
+  // `{n}` may be 1 — keep the singular/plural key pair distinct.
+  'filePanel.moreLines': '{n} weitere Zeilen – in Dateien öffnen',
+  'filePanel.moreLinesOne': '{n} weitere Zeile – in Dateien öffnen',
   'filePanel.mediaFile': 'Diese Datei wird in einem eigenen Fenster geöffnet.',
   'filePanel.unsupportedFile': '{product} öffnet diese Art von Datei nicht.',
   'filePanel.openInWindow': 'In Fenster öffnen',

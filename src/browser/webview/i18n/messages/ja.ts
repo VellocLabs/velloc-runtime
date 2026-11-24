@@ -1418,6 +1418,10 @@ export const ja: Messages = {
   'filePanel.binaryFile': 'このファイルはバイナリのため、ここには表示されません。',
   'filePanel.fileTooLarge': 'このファイルは大きすぎるため、ここには表示できません。',
   'filePanel.largeFileShowingSource': 'このファイルは大きすぎてレンダリングできないため、ソースを表示しています。',
+  'markdown.tooLargeShowingText': 'このテキストは大きすぎて書式設定できないため、プレーンテキストで表示しています。',
+  // `{n}` may be 1 — keep the singular/plural key pair distinct.
+  'filePanel.moreLines': '残り {n} 行 — ファイルで開く',
+  'filePanel.moreLinesOne': '残り {n} 行 — ファイルで開く',
   'filePanel.mediaFile': 'このファイルは専用のウィンドウで開きます。',
   'filePanel.unsupportedFile': '{product} はこの種類のファイルを開きません。',
   'filePanel.openInWindow': 'ウィンドウで開く',

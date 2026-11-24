@@ -1415,6 +1415,10 @@ export const ko: Messages = {
   'filePanel.binaryFile': '이 파일은 바이너리 파일이라 여기에 표시되지 않습니다.',
   'filePanel.fileTooLarge': '이 파일은 너무 커서 여기에 표시할 수 없습니다.',
   'filePanel.largeFileShowingSource': '이 파일은 너무 커서 렌더링할 수 없어 원본을 표시합니다.',
+  'markdown.tooLargeShowingText': '이 텍스트는 너무 커서 서식을 적용할 수 없어 일반 텍스트로 표시합니다.',
+  // `{n}` may be 1 — keep the singular/plural key pair distinct.
+  'filePanel.moreLines': '{n}줄 더 있음 — 파일에서 열기',
+  'filePanel.moreLinesOne': '{n}줄 더 있음 — 파일에서 열기',
   'filePanel.mediaFile': '이 파일은 별도의 창에서 열립니다.',
   'filePanel.unsupportedFile': '{product}에서는 이 종류의 파일을 열 수 없습니다.',
   'filePanel.openInWindow': '창에서 열기',

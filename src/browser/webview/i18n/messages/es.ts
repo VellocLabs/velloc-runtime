@@ -1430,6 +1430,10 @@ export const es: Messages = {
   'filePanel.binaryFile': 'Este archivo es binario, por lo que no se muestra aquí.',
   'filePanel.fileTooLarge': 'Este archivo es demasiado grande para mostrarlo aquí.',
   'filePanel.largeFileShowingSource': 'Este archivo es demasiado grande para renderizarlo, así que se muestra su código fuente.',
+  'markdown.tooLargeShowingText': 'Este texto es demasiado grande para darle formato, así que se muestra como texto sin formato.',
+  // `{n}` may be 1 — keep the singular/plural key pair distinct.
+  'filePanel.moreLines': '{n} líneas más: abrir en Archivos',
+  'filePanel.moreLinesOne': '{n} línea más: abrir en Archivos',
   'filePanel.mediaFile': 'Este archivo se abre en su propia ventana.',
   'filePanel.unsupportedFile': '{product} no abre este tipo de archivo.',
   'filePanel.openInWindow': 'Abrir en una ventana',
