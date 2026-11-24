@@ -21,6 +21,7 @@ import {
 import { SHELL_FENCE_LANGUAGES } from "@/components/assistant-ui/shell-command";
 import { usePartLineAttrs, useRevealSelf } from "./part-line-context";
 import { HeavyTextBlock, useHeavyText } from "./heavy-text-block";
+import { isHeavyText, measureText } from "@/utils/textHeaviness";
 
 // ```mermaid / ```dot / ```graphviz fences render as SVG diagrams. The
 // SyntaxHighlighter return value is mounted unwrapped (no enclosing <pre>), and
@@ -109,6 +110,7 @@ const MarkdownTextImpl = () => {
         remarkPlugins={[remarkGfm, remarkFilePaths]}
         className="aui-md"
         smooth={smooth}
+        preprocess={parsableText}
         components={defaultComponents}
         componentsByLanguage={componentsByLanguage}
       />
@@ -117,5 +119,11 @@ const MarkdownTextImpl = () => {
 };
 
 export const MarkdownText = memo(MarkdownTextImpl);
+
+// The primitive reads the part on its own, so a render can hand it text newer
+// than the check above saw; it parses nothing heavy either way (F-9).
+function parsableText(text: string): string {
+  return isHeavyText(measureText(text)) ? "" : text;
+}
 
 const defaultComponents = memoizeMarkdownComponents(sharedMarkdownComponents);
