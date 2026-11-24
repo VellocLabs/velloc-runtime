@@ -19,7 +19,7 @@ const MEDIA_EXTENSIONS: ReadonlySet<string> = new Set([
 
 const TEXT_EXTENSIONS: ReadonlySet<string> = new Set([
   // Prose, data and config.
-  'txt', 'text', 'md', 'markdown', 'mdx', 'rst', 'adoc', 'org', 'tex', 'bib', 'log',
+  'txt', 'text', 'md', 'markdown', 'mdx', 'rst', 'adoc', 'org', 'tex', 'bib', 'log', 'output',
   'csv', 'tsv', 'json', 'jsonc', 'json5', 'jsonl', 'ndjson', 'ipynb', 'yaml', 'yml', 'toml',
   'ini', 'cfg', 'conf', 'properties', 'env', 'xml', 'xsd', 'xsl', 'plist', 'srt', 'vtt',
   'lock', 'patch', 'diff', 'sql', 'graphql', 'gql', 'proto', 'thrift',

@@ -11,7 +11,14 @@ export const TASK_OUTPUT_VIEW_BYTES = 256 * 1024
 /** The tail of an output file, its full size in bytes, and whether it was cut. */
 export type TaskOutputTail = { text: string; size: number; truncated: boolean }
 
+/** Leading U+FFFD left by a tail read that began inside a multi-byte char. */
 const LEADING_REPLACEMENT = /^�{1,3}/
+
+/** Decodes the bytes of a log tail as UTF-8; a cut tail loses a broken lead character. */
+export function decodeLogTail(bytes: Uint8Array, cut: boolean): string {
+  const text = new TextDecoder('utf-8').decode(bytes)
+  return cut ? text.replace(LEADING_REPLACEMENT, '') : text
+}
 
 /**
  * Contract: reads at most `maxBytes` from the end of `path`, decoded as UTF-8.
@@ -38,6 +45,5 @@ export async function readTaskOutputTail(
 }
 
 function decodeTail(bytes: Uint8Array, size: number, truncated: boolean): TaskOutputTail {
-  const text = new TextDecoder('utf-8').decode(bytes)
-  return { text: truncated ? text.replace(LEADING_REPLACEMENT, '') : text, size, truncated }
+  return { text: decodeLogTail(bytes, truncated), size, truncated }
 }

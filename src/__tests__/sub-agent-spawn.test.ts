@@ -3576,6 +3576,7 @@ describe('SharedWorkerSessionManager — background shells (local_bash)', () => 
         if (text === undefined) throw new Error('ENOENT')
         return text
       },
+      readRange: undefined,
     } as RuntimeFs)
     try {
       manager.registerBackgroundShell({
@@ -3671,6 +3672,7 @@ describe('SharedWorkerSessionManager — background shells (local_bash)', () => 
         if (text === undefined) throw new Error('ENOENT')
         return text
       },
+      readRange: undefined,
     } as RuntimeFs)
     try {
       manager.toolDetailLoader.recoverBashRowsFromTranscript(

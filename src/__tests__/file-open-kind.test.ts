@@ -7,6 +7,7 @@ describe('fileOpenKind', () => {
     for (const path of [
       'src/main.ts', 'README.md', 'C:\\work\\notes.TXT', 'pkg/config.yaml', 'index.html', 'logo.svg',
       'Makefile', 'Dockerfile', 'LICENSE', '.gitignore', '.env.local', 'BUILD.gn', 'data.csv',
+      '/tasks/b1a2b3c4d.output',
     ]) {
       expect(fileOpenKind(path), path).toBe('text')
     }

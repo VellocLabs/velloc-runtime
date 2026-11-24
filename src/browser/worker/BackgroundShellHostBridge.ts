@@ -27,6 +27,7 @@ import {
   taskLogFile,
 } from '../../utils/conversationStoragePaths'
 import { DEFAULT_TEMPLATE_TYPE } from './workerProtocol'
+import { decodeLogTail } from './taskOutputTail'
 
 /** The manifest entries the worker's registry needs, all of them. */
 export const PERSISTENT_SHELL_PRIMITIVES = [
@@ -50,9 +51,6 @@ function isTerminalListError(err: unknown): boolean {
 function isMissingFileError(error: { code: string; message: string }): boolean {
   return error.code === 'ENOENT' || /ENOENT|no such file/i.test(error.message)
 }
-
-/** Leading U+FFFD left by a tail read that began inside a multi-byte char. */
-const LEADING_REPLACEMENT = /^�{1,3}/
 
 export interface BackgroundShellHostBridgeHost {
   /** Read lazily — the direct port installs after construction. */
@@ -196,9 +194,7 @@ export class BackgroundShellHostBridge implements BackgroundShellBridge {
       const bytes = data instanceof Uint8Array
         ? data.subarray(0, typeof bytesRead === 'number' ? bytesRead : data.length)
         : new Uint8Array(0)
-      let text = new TextDecoder('utf-8').decode(bytes)
-      if (offset > 0) text = text.replace(LEADING_REPLACEMENT, '')
-      return { ok: true, size, text, truncated: offset > 0 }
+      return { ok: true, size, text: decodeLogTail(bytes, offset > 0), truncated: offset > 0 }
     } catch (err) {
       return { ok: false, message: errorMessage(err) }
     }
