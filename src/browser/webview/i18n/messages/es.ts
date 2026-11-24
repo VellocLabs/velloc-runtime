@@ -1434,6 +1434,8 @@ export const es: Messages = {
   // `{n}` may be 1 — keep the singular/plural key pair distinct.
   'filePanel.moreLines': '{n} líneas más: abrir en Archivos',
   'filePanel.moreLinesOne': '{n} línea más: abrir en Archivos',
+  'filePanel.moreLinesHidden': '{n} líneas más sin mostrar',
+  'filePanel.moreLinesHiddenOne': '{n} línea más sin mostrar',
   'filePanel.mediaFile': 'Este archivo se abre en su propia ventana.',
   'filePanel.unsupportedFile': '{product} no abre este tipo de archivo.',
   'filePanel.openInWindow': 'Abrir en una ventana',

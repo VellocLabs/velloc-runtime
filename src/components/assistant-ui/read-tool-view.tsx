@@ -7,7 +7,7 @@ import {
 } from "@/components/assistant-ui/file-content-view";
 import { useRightPanelContent } from "@/components/assistant-ui/right-panel-content-context";
 import { ToolDetailTree } from "@/components/assistant-ui/tool-detail-tree";
-import { useT } from "@/browser/webview/i18n";
+import { useLocale, useT } from "@/browser/webview/i18n";
 
 /**
  * Inline view for the `Read` tool: a clickable path header over the line-numbered slice,
@@ -84,16 +84,15 @@ export function ReadToolView({
 
 function MoreLinesRow({ more, onOpen }: { more: number; onOpen?: () => void }) {
   const t = useT();
-  const label = t(more === 1 ? "filePanel.moreLinesOne" : "filePanel.moreLines", {
-    n: more.toLocaleString(),
-  });
+  const n = more.toLocaleString(useLocale());
   if (!onOpen) {
     return (
       <p data-slot="read-more-lines" className="text-muted-foreground text-body">
-        {label}
+        {t(more === 1 ? "filePanel.moreLinesHiddenOne" : "filePanel.moreLinesHidden", { n })}
       </p>
     );
   }
+  const label = t(more === 1 ? "filePanel.moreLinesOne" : "filePanel.moreLines", { n });
   return (
     <button
       type="button"

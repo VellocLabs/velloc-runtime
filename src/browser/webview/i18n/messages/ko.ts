@@ -1419,6 +1419,8 @@ export const ko: Messages = {
   // `{n}` may be 1 — keep the singular/plural key pair distinct.
   'filePanel.moreLines': '{n}줄 더 있음 — 파일에서 열기',
   'filePanel.moreLinesOne': '{n}줄 더 있음 — 파일에서 열기',
+  'filePanel.moreLinesHidden': '표시되지 않은 줄 {n}개',
+  'filePanel.moreLinesHiddenOne': '표시되지 않은 줄 {n}개',
   'filePanel.mediaFile': '이 파일은 별도의 창에서 열립니다.',
   'filePanel.unsupportedFile': '{product}에서는 이 종류의 파일을 열 수 없습니다.',
   'filePanel.openInWindow': '창에서 열기',

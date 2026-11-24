@@ -1470,6 +1470,8 @@ export const en = {
   // `{n}` may be 1 — keep the singular/plural key pair distinct.
   'filePanel.moreLines': '{n} more lines — open in Files',
   'filePanel.moreLinesOne': '{n} more line — open in Files',
+  'filePanel.moreLinesHidden': '{n} more lines not shown',
+  'filePanel.moreLinesHiddenOne': '{n} more line not shown',
   'filePanel.mediaFile': 'This file opens in its own window.',
   'filePanel.unsupportedFile': "{product} doesn't open this kind of file.",
   'filePanel.openInWindow': 'Open in window',

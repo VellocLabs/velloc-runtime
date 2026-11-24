@@ -1422,6 +1422,8 @@ export const ja: Messages = {
   // `{n}` may be 1 — keep the singular/plural key pair distinct.
   'filePanel.moreLines': '残り {n} 行 — ファイルで開く',
   'filePanel.moreLinesOne': '残り {n} 行 — ファイルで開く',
+  'filePanel.moreLinesHidden': '残り {n} 行は表示されていません',
+  'filePanel.moreLinesHiddenOne': '残り {n} 行は表示されていません',
   'filePanel.mediaFile': 'このファイルは専用のウィンドウで開きます。',
   'filePanel.unsupportedFile': '{product} はこの種類のファイルを開きません。',
   'filePanel.openInWindow': 'ウィンドウで開く',

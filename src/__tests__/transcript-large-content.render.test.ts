@@ -15,6 +15,7 @@ import { MarkdownText } from '../components/assistant-ui/markdown-text'
 import { headLines, toNumberedLines } from '../components/assistant-ui/file-content-view'
 import { READ_CARD_MOUNTED_LINES, ReadToolView } from '../components/assistant-ui/read-tool-view'
 import { RightPanelContentContext } from '../components/assistant-ui/right-panel-content-context'
+import { I18nProvider } from '../browser/webview/i18n'
 import { writeMarkdownClipboard } from '../browser/webview/richClipboard'
 import { HEAVY_TEXT_LIMITS } from '../utils/textHeaviness'
 
@@ -133,7 +134,7 @@ describe('Read card', () => {
     expect(openFile).toHaveBeenCalledWith({ path: '/repo/big.ts' })
   })
 
-  it('says "line" for one remaining line, as text when Files cannot open', () => {
+  it('says "line" for one remaining line, as text without the Files action when Files cannot open', () => {
     const { container } = render(
       createElement(ReadToolView, {
         args: { file_path: '/repo/a.ts' },
@@ -142,7 +143,26 @@ describe('Read card', () => {
     )
     const more = container.querySelector('[data-slot="read-more-lines"]')!
     expect(more.tagName).toBe('P')
-    expect(more.textContent).toBe('1 more line — open in Files')
+    expect(more.textContent).toBe('1 more line not shown')
+  })
+
+  it('formats the remaining count in the app locale', () => {
+    const { container } = render(
+      createElement(
+        I18nProvider,
+        { locale: 'de' },
+        createElement(
+          RightPanelContentContext.Provider,
+          { value: { openFile: vi.fn() } },
+          createElement(ReadToolView, {
+            args: { file_path: '/repo/big.ts' },
+            result: lines(READ_CARD_MOUNTED_LINES + 1300),
+          }),
+        ),
+      ),
+    )
+    const more = container.querySelector('button[data-slot="read-more-lines"]')!
+    expect(more.textContent).toBe('1.300 weitere Zeilen – in Dateien öffnen')
   })
 
   it('shows a file within the limit whole, with no remainder row', () => {

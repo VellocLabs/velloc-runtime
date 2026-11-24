@@ -1416,6 +1416,8 @@ export const zh: Messages = {
   // `{n}` may be 1 — keep the singular/plural key pair distinct.
   'filePanel.moreLines': '还有 {n} 行 — 在文件中打开',
   'filePanel.moreLinesOne': '还有 {n} 行 — 在文件中打开',
+  'filePanel.moreLinesHidden': '还有 {n} 行未显示',
+  'filePanel.moreLinesHiddenOne': '还有 {n} 行未显示',
   'filePanel.mediaFile': '此文件会在单独的窗口中打开。',
   'filePanel.unsupportedFile': '{product} 不打开此类文件。',
   'filePanel.openInWindow': '在窗口中打开',
