@@ -92,7 +92,7 @@ export type AppBackgroundRef = ModModuleRef & {
   readonly agentType?: string
   /** The provider that names this app as its settings app: `$.provider` acts on it alone. Absent: `$.provider` is refused. */
   readonly settingsFor?: SettingsAppBinding
-  /** An app Velloc ships, set by the host alone: `$.usage` reads every grouping. */
+  /** Set by the host alone from the plugin's source, never by a manifest: `$.usage` reads every grouping. */
   readonly builtin?: true
   /** `'shown'`: the app's script, run only while the app is on screen. Absent: resident. */
   readonly lifetime?: 'shown'

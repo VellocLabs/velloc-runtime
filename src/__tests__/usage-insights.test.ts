@@ -235,7 +235,7 @@ describe('usage log insights', () => {
 describe('$.usage grants', () => {
   const router = { providerId: 'mod.sr.route', router: true }
 
-  it('grants a router its own requests, an app Velloc ships everything, and nothing to others', () => {
+  it('grants a router its own requests, an app marked to read all usage everything, and nothing to others', () => {
     expect(usageGrantOf(router, false)).toEqual({ router: 'mod.sr.route' })
     expect(usageGrantOf(undefined, true)).toEqual({ all: true })
     expect(usageGrantOf(router, true)).toEqual({ all: true })
@@ -255,7 +255,7 @@ describe('$.usage grants', () => {
     expect(() => readUsageQuery({ from: 0, to: 1, by: 'hour', project: 'D:/ws' }, grant)).toThrow(expect.objectContaining({ name: 'NotAllowedError' }))
   })
 
-  it('reads every grouping, with a project, for an app Velloc ships, across all routers', () => {
+  it('reads every grouping, with a project, for an app marked to read all usage, across all routers', () => {
     for (const by of USAGE_ALL_BY) {
       expect(readUsageQuery({ from: 0, to: 1, by, project: 'D:/ws', router: 'r' }, { all: true })).toEqual({ from: 0, to: 1, by, project: 'D:/ws' })
     }

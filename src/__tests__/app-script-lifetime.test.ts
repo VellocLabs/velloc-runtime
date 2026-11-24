@@ -438,7 +438,7 @@ describe('AppBackgroundRuntime — an app script', () => {
     expect(asked).toEqual([expect.objectContaining({ router: 'mod.pay.route', by: 'hour' })])
   })
 
-  it('serves every $.usage grouping to an app Velloc ships, and none to another app', async () => {
+  it('serves every $.usage grouping to an app marked to read all usage, and none to another app', async () => {
     const READS = `
       export function register(on) {
         on('app.start', async ($) => {

@@ -18,6 +18,7 @@ import type {
 } from '../../browser/runtimeProtocol/modContributions'
 import { joinRuntimePath } from '../../utils/runtimePaths'
 import { isBuiltinMarketplace } from '../../pluginHost/builtinMarketplace'
+import { readStrictPluginRef } from '../../pluginHost/pluginRef'
 import { normalizeMcpServerUrl } from '../../mcp/oauth/oauthKeys'
 import { pluginMcpServerListings } from '../../pluginHost/pluginMcpServerList'
 import type { ActivePlugin } from '../../pluginHost/pluginModel'
@@ -103,13 +104,15 @@ const MARKETPLACE_SOURCE = 'marketplace:'
  * consent), and one installed from the built-in marketplace (`<name>@velloc`),
  * which only the product's origin may register. A plugin from a project's
  * folder or any other marketplace is not one, and no manifest field can claim it.
+ * A router's settings app stays narrowed to its own router.
  */
-function readsAllUsage(source: string): boolean {
+function readsAllUsage(source: string, binding: { settingsFor?: SettingsAppBinding }): boolean {
+  if (binding.settingsFor?.router) return false
   if (source.startsWith('user:')) return true
   if (!source.startsWith(MARKETPLACE_SOURCE)) return false
   const id = source.slice(MARKETPLACE_SOURCE.length)
-  const at = id.lastIndexOf('@')
-  return at > 0 && isBuiltinMarketplace(id.slice(at + 1))
+  const ref = readStrictPluginRef(id)
+  return ref.ok && `${ref.value.name}@${ref.value.marketplace}` === id && isBuiltinMarketplace(ref.value.marketplace)
 }
 
 /** The provider of `plugin` whose `settingsApp` is the template of `type`; the manifest check lets one provider at most name it. */
@@ -359,6 +362,7 @@ export class ModUiContributionsHost {
       const decl = owner?.templates?.find(entry => entry.type === app.type)?.decl.app
       const module = decl?.background ?? decl?.script
       if (!owner || !decl || !module) continue
+      const binding = settingsBindingOf(owner.name, owner.manifest.providers, app.type)
       list.push({
         appId: app.appId,
         type: app.type,
@@ -369,9 +373,9 @@ export class ModUiContributionsHost {
         owner: pluginOwnerId(owner),
         decl,
         mcp: appBackgroundMcpOwner(owner),
-        ...settingsBindingOf(owner.name, owner.manifest.providers, app.type),
+        ...binding,
         ...(owner.source.startsWith(MARKETPLACE_SOURCE) ? { consentId: owner.source.slice(MARKETPLACE_SOURCE.length) } : {}),
-        ...(readsAllUsage(owner.source) ? { builtin: true as const } : {}),
+        ...(readsAllUsage(owner.source, binding) ? { builtin: true as const } : {}),
       })
     }
     return list

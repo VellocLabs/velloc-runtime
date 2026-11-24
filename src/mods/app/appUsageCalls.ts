@@ -4,10 +4,10 @@
  * Security: what a module may read is fixed by the host, never by the module.
  * A router's settings app reads the `hour`, `day`, `switch` and `request`
  * groupings of the requests made through that router alone, and never a
- * project. An app of a plugin in the person's own plugins folder, or one
- * installed from Velloc's built-in marketplace, reads every grouping across all routers,
- * including those that carry project roots and file paths. Any other app is
- * refused.
+ * project. Any other app of a plugin in the person's own plugins folder, or
+ * one installed from Velloc's built-in marketplace, reads every grouping
+ * across all routers, including those that carry project roots and file
+ * paths. Any other app is refused.
  */
 
 import type { BrowserBridgeTransport } from '../../browser/bridge/browserBridgeProtocol'

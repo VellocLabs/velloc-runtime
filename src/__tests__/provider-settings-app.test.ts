@@ -183,12 +183,29 @@ describe('the published app and its binding', () => {
       ['marketplace:switch@Velloc', true],
       ['marketplace:switch@mkt', false],
       ['marketplace:velloc@mkt', false],
-      ['project:/repo/.velloc/plugins/switch', false],
+      ['marketplace:switch@velloc ', false],
+      ['marketplace:switch@x@velloc', false],
+      ['marketplace:switch', false],
     ] as const) {
       const contributions = host()
       await contributions.sync({ enabled: [shipped(source)] })
       const board = contributions.backgroundApps().find(app => app.appId === 'switch-board')
+      expect(board, source).toBeDefined()
       expect(board?.builtin === true, source).toBe(builtin)
+      resetModContributionsState()
+    }
+    const contributions = host()
+    await contributions.sync({ enabled: [shipped('project:/repo/.velloc/plugins/switch')] })
+    expect(contributions.backgroundApps()).toEqual([])
+  })
+
+  it("keeps a router's settings app narrowed to its router, whatever the plugin's source", async () => {
+    for (const source of ['user:/home/me/.velloc/plugins/switch', 'marketplace:switch@velloc']) {
+      const contributions = host()
+      await contributions.sync({ enabled: [{ ...plugin({ route: { ...ROUTER, settingsApp: 'console' } }), source }] })
+      const settingsApp = contributions.backgroundApps().find(app => app.appId === 'switch-console')
+      expect(settingsApp?.settingsFor, source).toMatchObject({ router: true })
+      expect(settingsApp, source).not.toHaveProperty('builtin')
       resetModContributionsState()
     }
   })
@@ -208,7 +225,9 @@ describe('the published app and its binding', () => {
         } as unknown as ContributingPlugin,
       ],
     })
-    for (const app of contributions.backgroundApps()) expect(app).not.toHaveProperty('builtin')
+    const apps = contributions.backgroundApps()
+    expect(apps).toHaveLength(1)
+    for (const app of apps) expect(app).not.toHaveProperty('builtin')
   })
 })
 

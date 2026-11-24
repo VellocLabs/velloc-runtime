@@ -67,7 +67,7 @@ export function refuseAppBackgroundRegistrations(hooks: readonly HookRegistratio
   return reasons.length > 0 ? reasons.join('; ') : null
 }
 
-/** Why a background module may not call `$.<noun>.<method>`, or null. `binding`: the provider whose settings app this is; `resident` false: an app's script; `builtin`: an app Velloc ships. */
+/** Why a background module may not call `$.<noun>.<method>`, or null. `binding`: the provider whose settings app this is; `resident` false: an app's script; `builtin`: an app the host lets read every usage grouping. */
 export function refuseAppBackgroundCall(noun: string, method: string, binding?: SettingsAppBinding, resident = true, builtin = false): string | null {
   if (noun === 'provider') return refuseSettingsAppProviderCall(method, binding)
   if (noun === 'usage') return refuseUsageCall(method, usageGrantOf(binding, builtin))
