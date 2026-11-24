@@ -80,9 +80,15 @@ export function hunksForReplacement(
   return diffPrepared(label, before, after)
 }
 
-/** One all-added hunk for a file created with `text`. */
+/**
+ * One all-added hunk for a file created with `text`, counted as git counts: a
+ * final `\n` ends the last line rather than starting an empty one, so
+ * `one\ntwo\n` and `one\ntwo` are two lines and an empty file has no hunk.
+ */
 export function hunksForCreation(text: string): StructuredPatchHunk[] {
-  const added = text.split('\n').map(line => `+${line}`)
+  if (text === '') return []
+  const body = text.endsWith('\n') ? text.slice(0, -1) : text
+  const added = body.split('\n').map(line => `+${line}`)
   return [{ oldStart: 0, oldLines: 0, newStart: 1, newLines: added.length, lines: added }]
 }
 

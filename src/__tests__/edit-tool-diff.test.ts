@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
-import { EditToolDiff, isEditArgs } from '../components/assistant-ui/edit-tool-diff'
+import { buildEditDiffTarget, EditToolDiff, isEditArgs } from '../components/assistant-ui/edit-tool-diff'
+import { buildHostEditDiff } from '../toolkit/builtin/host/editDiff'
 
 // The Edit card's diff view. Hunk and row logic is pinned in
 // file-change-diff.test.ts; these cover the component's own guard and output.
@@ -13,6 +14,19 @@ describe('isEditArgs', () => {
     expect(isEditArgs({ file_path: 'x' })).toBe(false)
     expect(isEditArgs(null)).toBe(false)
     expect(isEditArgs('x')).toBe(false)
+  })
+})
+
+describe('Write diff target', () => {
+  it('shows the lines a new file holds, a final newline not counted as a line', () => {
+    const args = { file_path: 'src/n.ts', content: 'one\ntwo\n' }
+    const built = buildHostEditDiff('Write', args, { message: 'File created.', path: 'src/n.ts' })!
+    expect(buildEditDiffTarget(args, built.editDiff)).toMatchObject({
+      kind: 'file',
+      filePath: 'src/n.ts',
+      plusLines: 2,
+      minusLines: 0,
+    })
   })
 })
 

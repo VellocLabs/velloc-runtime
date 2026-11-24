@@ -119,13 +119,26 @@ describe('line tallies and new-file hunks', () => {
     expect(tallyHunkRows([])).toEqual({ added: 0, removed: 0 })
   })
 
-  it('builds a single all-added hunk for a created file, one row per split line', () => {
+  it('builds a single all-added hunk for a created file, counting lines as git does', () => {
     expect(hunksForCreation('one\ntwo\n')).toEqual([
-      { oldStart: 0, oldLines: 0, newStart: 1, newLines: 3, lines: ['+one', '+two', '+'] },
+      { oldStart: 0, oldLines: 0, newStart: 1, newLines: 2, lines: ['+one', '+two'] },
     ])
-    expect(hunksForCreation('')).toEqual([
+    expect(hunksForCreation('one\ntwo')).toEqual([
+      { oldStart: 0, oldLines: 0, newStart: 1, newLines: 2, lines: ['+one', '+two'] },
+    ])
+    expect(hunksForCreation('\n')).toEqual([
       { oldStart: 0, oldLines: 0, newStart: 1, newLines: 1, lines: ['+'] },
     ])
+    expect(hunksForCreation('one\n\n')).toEqual([
+      { oldStart: 0, oldLines: 0, newStart: 1, newLines: 2, lines: ['+one', '+'] },
+    ])
+    expect(hunksForCreation('')).toEqual([])
+  })
+
+  it('a created file tallies the same as a diff from empty text', () => {
+    for (const text of ['one\ntwo\n', 'one\ntwo', '', '\n', 'one\n\n', 'a\r\nb\r\n']) {
+      expect(tallyHunkRows(hunksForCreation(text))).toEqual(tallyHunkRows(hunksBetween('f', '', text)))
+    }
   })
 })
 
@@ -175,12 +188,34 @@ describe('diff summary for one Edit/Write call', () => {
     expect(summarizeFileChange({ op: 'overwrite', path: 'n.ts', text: 'one\ntwo\n' })).toEqual({
       filePath: 'n.ts',
       patchHunks: [
-        { oldStart: 0, oldLines: 0, newStart: 1, newLines: 3, lines: ['+one', '+two', '+'] },
+        { oldStart: 0, oldLines: 0, newStart: 1, newLines: 2, lines: ['+one', '+two'] },
       ],
       fileWasCreated: true,
-      plusLines: 3,
+      plusLines: 2,
       minusLines: 0,
     })
+  })
+
+  it('a created file counts its last line once, newline or not, and an empty one as none', () => {
+    const counts = (text: string) => {
+      const d = summarizeFileChange({ op: 'overwrite', path: 'n.ts', text })
+      return [d.plusLines, d.minusLines, d.fileWasCreated]
+    }
+    expect(counts('one\ntwo\n')).toEqual([2, 0, true])
+    expect(counts('one\ntwo')).toEqual([2, 0, true])
+    expect(counts('')).toEqual([0, 0, true])
+  })
+
+  it('an edit counts added and removed lines as git does', () => {
+    const counts = (before: string, find: string, put: string) => {
+      const d = summarizeFileChange({ op: 'replace', path: 'f.ts', find, put, everywhere: false, before })
+      return [d.plusLines, d.minusLines]
+    }
+    expect(counts('a\n', 'a\n', 'a\nb\nc\n')).toEqual([2, 0])
+    // The old last line had no newline, so git reports it changed too.
+    expect(counts('a', 'a', 'a\nb\nc')).toEqual([3, 1])
+    expect(counts('', '', 'one\ntwo\n')).toEqual([2, 0])
+    expect(counts('', '', 'one\ntwo')).toEqual([2, 0])
   })
 
   it('write over an existing file: diffs old content against new', () => {

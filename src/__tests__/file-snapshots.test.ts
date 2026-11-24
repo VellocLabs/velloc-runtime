@@ -1282,6 +1282,14 @@ describe('snapshotDiff', () => {
     expect(created.kind).toBe('text')
     expect(created.fileWasCreated).toBe(true)
     expect(created.hunks[0]!.lines[0]).toBe('+fresh')
+    expect(created.plusLines).toBe(1)
+
+    const createdEmpty = computeSnapshotFileDiff({
+      displayPath: 'e.txt',
+      before: { kind: 'absent' },
+      after: { kind: 'text', text: '' },
+    })
+    expect(createdEmpty).toMatchObject({ kind: 'text', fileWasCreated: true, hunks: [], plusLines: 0 })
 
     const deleted = computeSnapshotFileDiff({
       displayPath: 'c.txt',

@@ -82,7 +82,7 @@ export function computeSnapshotFileDiff(args: {
   } else {
     hunks = hunksBetween(displayPath, beforeText, afterText ?? '')
   }
-  if (hunks.length === 0) {
+  if (hunks.length === 0 && beforeText !== null) {
     // Contents differ only in ways the patch normalizes (e.g. leading-tab
     // rendering) — report unchanged rather than an empty diff body.
     return { ...base, kind: 'unchanged' }
