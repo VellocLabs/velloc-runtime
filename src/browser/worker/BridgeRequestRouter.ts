@@ -110,6 +110,15 @@ export class BridgeRequestRouter {
     if (!opts.fromRuntimeHost && this.runtimeHostPort) {
       this.standbyWindowPort?.close()
       this.standbyWindowPort = port
+      if (typeof port.addEventListener === 'function') {
+        port.addEventListener(
+          'close',
+          () => {
+            if (this.standbyWindowPort === port) this.standbyWindowPort = null
+          },
+          { once: true },
+        )
+      }
       return
     }
     if (opts.fromRuntimeHost) {

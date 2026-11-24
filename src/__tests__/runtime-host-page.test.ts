@@ -199,6 +199,19 @@ describe('the runtime host page owns the host bridge port', () => {
     expect(changed).toHaveBeenLastCalledWith(null)
   })
 
+  it('a standby window port that closes is not taken over', () => {
+    const { router, changed } = setup()
+    const hostChannel = new MessageChannel()
+    const windowChannel = new MessageChannel()
+    opened.push(hostChannel, windowChannel)
+    router.setHostPort(hostChannel.port1, { fromRuntimeHost: true })
+    router.setHostPort(windowChannel.port1)
+    windowChannel.port1.dispatchEvent(new Event('close'))
+    hostChannel.port1.dispatchEvent(new Event('close'))
+    expect(router.getDirectTransport()).toBeNull()
+    expect(changed).toHaveBeenLastCalledWith(null)
+  })
+
   it("the runtime host page's port drops a window port held on standby", () => {
     const { router, port } = setup()
     router.setHostPort(port(), { fromRuntimeHost: true })
