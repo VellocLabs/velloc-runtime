@@ -42,6 +42,15 @@ describe('rows a diff view builds', () => {
     expect(model.hiddenLines).toBe(10)
   })
 
+  it('does not count a no-newline marker as a hidden line', () => {
+    const hunk = createdFile(MAX_DIFF_ROWS)[0]!
+    const marked: StructuredPatchHunk = { ...hunk, lines: [...hunk.lines, '\\ No newline at end of file'] }
+    expect(diffRowsModel([marked]).hiddenLines).toBe(0)
+    const longer = createdFile(MAX_DIFF_ROWS + 3)[0]!
+    const cut: StructuredPatchHunk = { ...longer, lines: [...longer.lines, '\\ No newline at end of file'] }
+    expect(diffRowsModel([cut]).hiddenLines).toBe(3)
+  })
+
   it('keeps every row of a diff under the limit', () => {
     const model = diffRowsModel(createdFile(5))
     expect(model.shown[0]!.rows).toHaveLength(5)

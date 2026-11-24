@@ -125,9 +125,8 @@ export function hunksForReplacement(
  * `one\ntwo\n` and `one\ntwo` are two lines and an empty file has no hunk.
  */
 export function hunksForCreation(text: string): StructuredPatchHunk[] {
-  if (text === '') return []
-  const body = text.endsWith('\n') ? text.slice(0, -1) : text
-  const added = body.split('\n').map(line => `+${line}`)
+  const added = linesOf(text).map(line => `+${line}`)
+  if (added.length === 0) return []
   return [{ oldStart: 0, oldLines: 0, newStart: 1, newLines: added.length, lines: added }]
 }
 

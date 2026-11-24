@@ -127,7 +127,7 @@ export function hunkToRows(hunk: StructuredPatchHunk, options: HunkRowOptions = 
 /** One hunk's rows as a diff view shows them. */
 export type ShownHunk = { hunk: StructuredPatchHunk; rows: HunkRow[] }
 
-/** Rows to mount for a diff, and how many hunk lines were left out. */
+/** Rows to mount for a diff, and how many hunk lines (markers excluded) were left out. */
 export type DiffRowsModel = { shown: ShownHunk[]; hiddenLines: number }
 
 /**
@@ -140,16 +140,29 @@ export function diffRowsModel(
   maxRows: number = MAX_DIFF_ROWS,
 ): DiffRowsModel {
   let total = 0
-  for (const hunk of hunks) total += hunk.lines.length
+  for (const hunk of hunks) total += countContentLines(hunk.lines, 0)
   const words = total <= WORD_DIFF_MAX_LINES
   const shown: ShownHunk[] = []
   let budget = Math.max(0, maxRows)
+  let hiddenLines = 0
   for (const hunk of hunks) {
-    if (budget === 0) break
+    if (budget === 0) {
+      hiddenLines += countContentLines(hunk.lines, 0)
+      continue
+    }
     const rows = hunkToRows(hunk, { words, limit: budget })
     shown.push({ hunk, rows })
     budget -= rows.length
+    hiddenLines += countContentLines(hunk.lines, rows.length)
   }
-  const built = shown.reduce((sum, item) => sum + item.rows.length, 0)
-  return { shown, hiddenLines: total - built }
+  return { shown, hiddenLines }
+}
+
+/** Lines of `lines` from `from` on, `\ No newline at end of file` markers skipped. */
+function countContentLines(lines: readonly string[], from: number): number {
+  let n = 0
+  for (let i = from; i < lines.length; i += 1) {
+    if (lines[i]!.charAt(0) !== '\\') n += 1
+  }
+  return n
 }
