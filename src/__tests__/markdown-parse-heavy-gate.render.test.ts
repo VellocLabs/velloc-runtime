@@ -10,6 +10,7 @@ import {
   type ThreadMessageLike,
 } from '@assistant-ui/react'
 
+import { MarkdownText } from '../components/assistant-ui/markdown-text'
 import { HEAVY_TEXT_LIMITS } from '../utils/textHeaviness'
 
 // The enclosing check reads the part through one subscription and the Markdown
@@ -19,8 +20,6 @@ vi.mock('../components/assistant-ui/heavy-text-block', async (importOriginal) =>
   ...(await importOriginal<typeof import('../components/assistant-ui/heavy-text-block')>()),
   useHeavyText: () => false,
 }))
-
-const { MarkdownText } = await import('../components/assistant-ui/markdown-text')
 
 /**
  * The Markdown parser never receives a part's text once it is over a
@@ -68,6 +67,7 @@ function Thread({ running }: { running: boolean }) {
 afterEach(() => {
   cleanup()
   vi.unstubAllGlobals()
+  vi.restoreAllMocks()
 })
 
 const markdownRows = (container: HTMLElement) => container.querySelectorAll('.aui-md tr').length
