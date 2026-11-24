@@ -693,8 +693,8 @@ export type AgentWorkerInboundMessage =
       }
     }
   | {
-      // Fetch one turn's full diff (hunks) from the worker history cache, on
-      // expand. Replies with worker.turnDiffDetail.
+      // Fetch one turn's full diff (hunks), on expand. Replies with
+      // worker.turnDiffDetail.
       type: 'worker.getTurnDiffDetail'
       payload: {
         turnIndex: number
@@ -818,7 +818,8 @@ export type AgentWorkerOutboundMessage =
     }
   | {
       // On-demand reply to worker.getTurnDiffDetail: the hunks for one turn,
-      // served from the worker history cache. `files: null` when not found.
+      // from the edit history or the snapshot recorder. `files: null` when not
+      // found.
       type: 'worker.turnDiffDetail'
       payload: {
         turnIndex: number

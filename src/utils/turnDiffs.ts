@@ -59,8 +59,8 @@ export type TurnEditCallGroup = {
   calls: TurnEditCall[]
 }
 
-/** A fully computed turn diff (WITH hunks). Cached in the worker; its hunks are
- *  served on demand via `worker.getTurnDiffDetail`. */
+/** A fully computed turn diff (WITH hunks). Its hunks are served on demand via
+ *  `worker.getTurnDiffDetail`. */
 export type TurnFullDiff = {
   turnIndex: number
   promptPreview: string

@@ -399,9 +399,9 @@ export class AgentTranscriptService {
       // Snapshot-backed sessions (`fileSnapshots: true` — SafeCode) mutate
       // through run_js's workspace facade, which the edit-call scan below is
       // blind to — their history comes from the snapshot store instead
-      // (the feature doc's designed source switch). Same TurnFullDiff shape,
-      // so the whole downstream pipe (meta push, getTurnDiffDetail, panel)
-      // is unchanged.
+      // (the feature doc's designed source switch). Same TurnFullDiff shape
+      // for the meta push; a turn's hunks are read from the recorder on
+      // expand (`getTurnFiles`).
       const recorder = runtime.fileSnapshotRecorder
       if (recorder) {
         const turns = await recorder.getTurnDiffs()

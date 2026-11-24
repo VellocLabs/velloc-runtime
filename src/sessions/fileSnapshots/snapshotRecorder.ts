@@ -567,19 +567,22 @@ export class FileSnapshotRecorder {
 
   /**
    * One turn's file diffs, as {@link getTurnDiffs} computes them; null when
-   * the store has no such turn. Store failures throw.
+   * the store records no file for that turn. Store failures throw.
    */
   getTurnDiff(turnSeq: number): Promise<SnapshotFileDiff[] | null> {
     return this.enqueue(async () => {
       if (!(await this.store.hasPersistedState())) return null
-      const turns = await this.store.listTurns()
-      if (!turns.some(turn => turn.turnSeq === turnSeq)) return null
-      return this.diffTurnFiles(turnSeq)
+      const rows = await this.store.listTurnFiles(turnSeq)
+      if (rows.length === 0) return null
+      return this.diffRows(rows)
     })
   }
 
   private async diffTurnFiles(turnSeq: number): Promise<SnapshotFileDiff[]> {
-    const rows = await this.store.listTurnFiles(turnSeq)
+    return this.diffRows(await this.store.listTurnFiles(turnSeq))
+  }
+
+  private async diffRows(rows: SnapshotTurnFileRow[]): Promise<SnapshotFileDiff[]> {
     const files: SnapshotFileDiff[] = []
     for (const row of rows) {
       const before = await this.resolveContent(row.before)

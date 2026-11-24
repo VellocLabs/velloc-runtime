@@ -99,10 +99,10 @@ export class RuntimeClientDetailRequests {
   }
 
   /**
-   * Fetch one turn's hunks from the worker history cache, on expand. Cached
-   * client-side after the first fetch (cleared whenever a new history pushes).
+   * Fetch one turn's hunks from the worker, on expand. Cached client-side
+   * after the first fetch (cleared whenever a new history pushes).
    * Point-to-point request/response (`worker.getTurnDiffDetail` →
-   * `worker.turnDiffDetail`) — the worker serves it from memory.
+   * `worker.turnDiffDetail`).
    */
   async loadTurnDiffDetail(
     turnIndex: number,
