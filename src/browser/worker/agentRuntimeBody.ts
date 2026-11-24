@@ -9,12 +9,9 @@
 import { SharedWorkerSessionManager } from './SharedWorkerSessionManager'
 import { AgentRuntimeWorker } from './AgentRuntimeWorker'
 import type { PortAcceptor } from './agentRuntimeConnectGate'
-import { holdRuntimeAliveLock } from './runtimeAliveLock'
 
 /** Build the session manager and return the acceptor the gate hands ports to. */
 export function startAgentRuntime(): PortAcceptor {
-  // Pages in other processes watch this lock to learn that the runtime is gone.
-  holdRuntimeAliveLock()
   const manager = new SharedWorkerSessionManager({
     createWorker: (options) => new AgentRuntimeWorker(options),
   })

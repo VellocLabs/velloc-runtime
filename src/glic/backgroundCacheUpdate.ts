@@ -201,6 +201,13 @@ function pageBuildId(): string {
  */
 type RestartGate = () => Promise<boolean>
 
+/**
+ * Ends the runtime before the reload: it lives outside this page and would
+ * otherwise keep running the old build. Registered beside the gate; `true` =
+ * the runtime agreed to end. Absent means the page reloads without it.
+ */
+type RuntimeRetire = () => Promise<boolean>
+
 // Per page lifetime. A fresh boot starts over from the page's own meta, so
 // nothing here can outlive the page it describes (a localStorage record could
 // outlive a cleared HTTP cache and pin the page to the old build).
@@ -344,8 +351,16 @@ function maybeReload(): Promise<void> {
         pageHasUnsavedEdits()
       ) return
       reloading = true
-      try { sessionStorage.setItem(RELOADED_FOR_KEY, build) } catch { /* noop */ }
-      location.reload()
+      const apply = () => {
+        try { sessionStorage.setItem(RELOADED_FOR_KEY, build) } catch { /* noop */ }
+        location.reload()
+      }
+      const retire = (window as { __nexusRuntimeRetire?: RuntimeRetire }).__nexusRuntimeRetire
+      if (typeof retire !== 'function') return apply()
+      return retire().then(
+        (retired) => { if (retired === true) apply(); else reloading = false },
+        () => { reloading = false },
+      )
     },
     () => { /* gate failed — treat as not ready */ },
   )

@@ -148,6 +148,10 @@ class FakeManager implements SessionSurfaceHost {
   getRestartReadinessInputs(): RestartWorkInputs {
     return this.restartInputs
   }
+  retired = 0
+  retireRuntime(): void {
+    this.retired += 1
+  }
   /** What `knownProjectRoots` answers, and the session scopes it was asked for. */
   known: string[] = []
   knownAskedFor: Array<'all' | readonly string[]> = []

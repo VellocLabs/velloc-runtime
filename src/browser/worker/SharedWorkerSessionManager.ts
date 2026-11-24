@@ -164,6 +164,7 @@ import { TaskDeliveryQueue } from './TaskDeliveryQueue'
 import { SideTaskCoordinator } from './SideTaskCoordinator'
 import { RoutineCoordinator } from './RoutineCoordinator'
 import type { RestartWorkInputs } from '../runtimeHub/restartReadiness'
+import { retireRuntimeRealm } from './runtimeAliveLock'
 import type { DeliverRoutineToSession } from '../../routines/SessionDeliveryRunner'
 import { getRoutineRegistry } from '../../routines/RoutineRegistry'
 import { listSessionTimers } from '../../routines/sessionTimers'
@@ -1117,6 +1118,7 @@ export class SharedWorkerSessionManager {
         this.maybeAdoptPersistentShells()
       },
       getRestartReadinessInputs: () => this.restartReadinessInputs(),
+      retireRuntime: () => retireRuntimeRealm(),
       flushTrace: () => ({
         records: this.tracer.drain(),
         logEntries: this.workerLogBuffer.drain(),

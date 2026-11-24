@@ -660,6 +660,7 @@ async function prepareNexusBoot(
   nexusTrace('created shared worker for direct bridge')
   const sharedWorkerPort = sharedWorker.port
   sharedWorker.port.start()
+  sharedWorker.port.postMessage({ type: 'runtime.build', build: getBuildTime() })
   // The runtime runs in another process: if that process ends, load again.
   void reloadWhenRuntimeLost()
   sharedWorker.port.postMessage(

@@ -55,6 +55,8 @@ async function bootUpdater({
   visibility = 'visible' as 'visible' | 'hidden',
   // null = no gate registered (undefined would take this default).
   gate = vi.fn(async () => true) as ReturnType<typeof vi.fn> | null,
+  // null = no retire call registered: the page reloads without one.
+  retire = null as ReturnType<typeof vi.fn> | null,
   session = memoryStorage(),
 } = {}): Promise<Harness> {
   const fetched: string[] = []
@@ -72,6 +74,7 @@ async function bootUpdater({
     addEventListener: (type: string, fn: Listener) => { (winListeners[type] ??= []).push(fn) },
   }
   if (gate) win.__nexusRestartGate = gate
+  if (retire) win.__nexusRuntimeRetire = retire
 
   vi.spyOn(Date, 'now').mockImplementation(() => now)
   vi.stubGlobal('window', win)
@@ -276,6 +279,23 @@ describe('backgroundCacheUpdate — apply', () => {
     await h.run()
     expect(h.gate).toHaveBeenCalled()
     expect(h.reload).toHaveBeenCalledTimes(1)
+    expect(h.session.getItem('nexus.updateReloadedFor')).toBe(NEW_BUILD)
+  })
+
+  it('ends the runtime before the reload, and does not reload when it would not end', async () => {
+    const order: string[] = []
+    let agrees = false
+    const retire = vi.fn(async () => { order.push('retire'); return agrees })
+    const h = await bootUpdater({ servedBuild: NEW_BUILD, visibility: 'hidden', retire })
+    h.reload.mockImplementation(() => { order.push('reload') })
+    await h.run()
+    expect(retire).toHaveBeenCalledTimes(1)
+    expect(h.reload).not.toHaveBeenCalled()
+    expect(h.session.getItem('nexus.updateReloadedFor')).toBeNull()
+
+    agrees = true
+    await h.fire('blur')
+    expect(order).toEqual(['retire', 'retire', 'reload'])
     expect(h.session.getItem('nexus.updateReloadedFor')).toBe(NEW_BUILD)
   })
 

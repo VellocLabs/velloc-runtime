@@ -36,6 +36,12 @@ export type SharedWorkerInboundMessage =
    */
   | { type: 'bridge.setPort'; owner?: 'runtime-host' }
   /**
+   * The build-time stamp of the page's web build, which is the worker's own: every page that
+   * creates the worker says it first. The worker names its alive lock after it. `''` on a dev
+   * server. nexus_web-internal — never routed to C++.
+   */
+  | { type: 'runtime.build'; build: string }
+  /**
    * Attach the isolated-worker kernel's control channel: the guest window
    * transfers one end of a MessageChannel (its `WindowWorkerHost` keeps the
    * other). The SharedWorker's `IsolatedWorkerKernel` uses it to ask the

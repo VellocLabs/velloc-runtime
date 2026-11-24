@@ -141,6 +141,11 @@ export type SessionSurfaceHost = {
    * the manager cannot read comes back `null`, which counts as blocking.
    */
   getRestartReadinessInputs(): RestartWorkInputs
+  /**
+   * `runtime.retireForUpdate`: end this runtime so the next page load starts the staged build's.
+   * Gives up the alive lock at once and ends the realm shortly after.
+   */
+  retireRuntime(): void
 }
 
 // ---- classification of manager → port messages onto topics ---------------------------
@@ -782,9 +787,17 @@ export function installSessionSurface(
       // answer reveals the activity of EVERY session and every connected
       // client, so `full`. (P-3: a new action's scope is justified in a comment.)
       getRestartReadiness: { scope: 'full' },
+      // Ends the runtime so a staged web build can take over, and only when
+      // the readiness above holds for the caller. It stops every session's
+      // runtime for every client, so `full`; the desktop's own page is the
+      // one caller. (P-3: a new action's scope is justified in a comment.)
+      retireForUpdate: { scope: 'full' },
     },
     handle: async request => {
-      if (request.route.act === 'getRestartReadiness') {
+      if (
+        request.route.act === 'getRestartReadiness' ||
+        request.route.act === 'retireForUpdate'
+      ) {
         let work: RestartWorkInputs
         try {
           work = host.getRestartReadinessInputs()
@@ -797,7 +810,10 @@ export function installSessionSurface(
         } catch {
           connections = null
         }
-        return computeRestartReadiness({ ...work, caller: request.conn, connections })
+        const readiness = computeRestartReadiness({ ...work, caller: request.conn, connections })
+        if (request.route.act === 'getRestartReadiness') return readiness
+        if (readiness.ready) host.retireRuntime()
+        return { retired: readiness.ready, reasons: readiness.reasons }
       }
       if (request.route.act === 'getBuildEntry') {
         const build = hub.bootBuild ?? null

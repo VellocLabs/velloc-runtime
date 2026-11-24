@@ -82,11 +82,11 @@ describe('computeRestartReadiness', () => {
 
 // ---- the action over the hub ---------------------------------------------------
 
-function makeRig(work: () => RestartWorkInputs, withConnections = true) {
+function makeRig(work: () => RestartWorkInputs, withConnections = true, retireRuntime = vi.fn()) {
   const registry = new CapabilityRegistry()
   const broker = new TopicBroker()
   let hub!: ConnectionHub
-  const host = { getRestartReadinessInputs: work } as unknown as SessionSurfaceHost
+  const host = { getRestartReadinessInputs: work, retireRuntime } as unknown as SessionSurfaceHost
   installSessionSurface(
     { registry, broker, ...(withConnections ? { connections: { list: () => hub.list() } } : {}) },
     host,
@@ -98,7 +98,7 @@ function makeRig(work: () => RestartWorkInputs, withConnections = true) {
     webUiBridge: { homeDir: '/h', fs: {} as RuntimeFs, broadcastEvent: vi.fn(), directBridge: null },
   }
   hub = new ConnectionHub({ registry, broker, context, runtimeVersion: 'rr', bootstrap: () => undefined })
-  return { registry, hub }
+  return { registry, hub, retireRuntime }
 }
 
 let seq = 0
@@ -149,5 +149,48 @@ describe('runtime.getRestartReadiness', () => {
       'turn_running', 'task_running', 'awaiting_answer', 'team_live', 'routine_running', 'other_clients',
     ])
     b.close()
+  })
+})
+
+describe('runtime.retireForUpdate', () => {
+  it('is registered at scope full only', () => {
+    const { registry } = makeRig(() => IDLE_WORK)
+    const acts = (mode: 'observe' | 'control' | 'manager' | 'full') =>
+      registry.advertise({ mode, sessions: 'all' }).find(c => c.cap === 'runtime')?.acts ?? []
+    expect(acts('full')).toContain('retireForUpdate')
+    for (const mode of ['manager', 'control', 'observe'] as const) {
+      expect(acts(mode)).not.toContain('retireForUpdate')
+    }
+  })
+
+  it('retires an idle runtime for its only window', async () => {
+    const rig = makeRig(() => IDLE_WORK)
+    const a = await connect(rig.hub, 'p1')
+    expect(await a.request('runtime.retireForUpdate', {})).toEqual({ retired: true, reasons: [] })
+    expect(rig.retireRuntime).toHaveBeenCalledTimes(1)
+    a.close()
+  })
+
+  it('leaves a busy runtime, or one with another client, running', async () => {
+    const busy = makeRig(() => ({ ...IDLE_WORK, liveTaskCount: 1 }))
+    const a = await connect(busy.hub, 'p1')
+    expect(await a.request('runtime.retireForUpdate', {})).toEqual({ retired: false, reasons: ['task_running'] })
+    expect(busy.retireRuntime).not.toHaveBeenCalled()
+    a.close()
+
+    const shared = makeRig(() => IDLE_WORK)
+    const b = await connect(shared.hub, 'p1')
+    const c = await connect(shared.hub, 'p2')
+    expect(await b.request('runtime.retireForUpdate', {})).toEqual({ retired: false, reasons: ['other_clients'] })
+    expect(shared.retireRuntime).not.toHaveBeenCalled()
+    for (const x of [b, c]) x.close()
+  })
+
+  it('asking for readiness never retires', async () => {
+    const rig = makeRig(() => IDLE_WORK)
+    const a = await connect(rig.hub, 'p1')
+    await a.request('runtime.getRestartReadiness', {})
+    expect(rig.retireRuntime).not.toHaveBeenCalled()
+    a.close()
   })
 })

@@ -12,6 +12,7 @@ import {
 } from '../runtimeHub/portDelegation'
 import { traceLine } from '../../utils/debugLog'
 import { setKernelControlPort } from '../workerKernel/IsolatedWorkerKernel'
+import { runtimeAliveLock } from './runtimeAliveLock'
 
 /**
  * The Manager-side capabilities the router dispatches into.
@@ -149,6 +150,12 @@ export class PortMessageRouter {
     }
 
     switch (message.type) {
+      case 'runtime.build': {
+        // Pages in other processes read this lock to learn which build's runtime is alive.
+        runtimeAliveLock.hold(typeof message.build === 'string' ? message.build : null)
+        return
+      }
+
       case 'bridge.setPort': {
         const bridgePort = event.ports?.[0]
         if (bridgePort) {

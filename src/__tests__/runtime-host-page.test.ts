@@ -6,7 +6,6 @@ import {
   reloadWhenRuntimeLost,
 } from '../browser/boot/runtimeLossReload'
 import { BridgeRequestRouter } from '../browser/worker/BridgeRequestRouter'
-import { RUNTIME_ALIVE_LOCK, holdRuntimeAliveLock } from '../browser/worker/runtimeAliveLock'
 import {
   kernelControlPortsNewestFirst,
   openInstance,
@@ -287,23 +286,7 @@ describe('worker spawns prefer the runtime host page', () => {
   })
 })
 
-describe('holdRuntimeAliveLock', () => {
-  it('requests the exclusive alive lock and never lets go', async () => {
-    const request = vi.fn((_name: string, _hold: () => Promise<never>) => new Promise<never>(() => {}))
-    expect(holdRuntimeAliveLock({ request } as unknown as LockManager)).toBe(true)
-    expect(request).toHaveBeenCalledTimes(1)
-    expect(request.mock.calls[0][0]).toBe(RUNTIME_ALIVE_LOCK)
-    const held = request.mock.calls[0][1]()
-    const settled = vi.fn()
-    held.then(settled, settled)
-    await Promise.resolve()
-    expect(settled).not.toHaveBeenCalled()
-  })
-
-  it('is a no-op where Web Locks does not exist', () => {
-    expect(holdRuntimeAliveLock(null)).toBe(false)
-  })
-})
+const RUNTIME_ALIVE_LOCK = 'velloc-runtime-alive:20260917T103000000Z'
 
 describe('reloadWhenRuntimeLost', () => {
   function harness(heldAfterPolls = 0) {
@@ -332,7 +315,7 @@ describe('reloadWhenRuntimeLost', () => {
     const reload = vi.fn()
     const sleep = vi.fn(async () => {})
     let clock = 1_000_000
-    const watch = () => reloadWhenRuntimeLost({ locks, reload, storage, sleep, now: () => clock })
+    const watch = () => reloadWhenRuntimeLost({ locks, reload, storage, sleep, now: () => clock, lockName: RUNTIME_ALIVE_LOCK })
     const settle = async () => {
       for (let i = 0; i < 20; i++) await Promise.resolve()
     }
