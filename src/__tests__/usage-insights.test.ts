@@ -115,6 +115,8 @@ describe('usage log insights', () => {
         removed: 2,
         filesRead: 3,
         filesChanged: 2,
+        filesCreated: 1,
+        filesReadBeforeChange: 1,
       },
     })
   })
@@ -179,6 +181,52 @@ describe('usage log insights', () => {
     ])
   })
 
+  it('counts files created and files read before their first applied change', async () => {
+    const { store } = makeStore()
+    const edit = { tool: 'Edit', op: 'edit', bytes: undefined, lines: undefined, added: 1, removed: 1 } as const
+    await store.recordFileOps([
+      op(T0, { path: 'after.ts', ...edit }),
+      op(T0 + 1, { path: 'after.ts' }),
+      op(T0, { path: 'before.ts' }),
+      op(T0 + 1, { path: 'before.ts', ...edit }),
+      op(T0, { path: 'made.ts', tool: 'Write', op: 'write', bytes: undefined, lines: undefined, added: 3, removed: 0, created: true }),
+      op(T0 + 2, { path: 'made.ts', ...edit }),
+      op(T0, { path: 'unread.ts', ...edit }),
+      op(T0, { path: 'failed-read.ts', outcome: 'failed', failureKind: 'not_found' }),
+      op(T0 + 1, { path: 'failed-read.ts', ...edit }),
+      op(T0, { path: 'failed-edit.ts' }),
+      op(T0 + 1, { path: 'failed-edit.ts', ...edit, outcome: 'failed', failureKind: 'no_match' }),
+      op(T0, { path: 'failed-write.ts', tool: 'Write', op: 'write', bytes: undefined, lines: undefined, outcome: 'failed', failureKind: 'denied', created: true }),
+    ])
+    const answer = await store.query({ ...range, by: 'total' })
+    expect(answer).toMatchObject({ total: { filesRead: 4, filesChanged: 7, filesCreated: 1, filesReadBeforeChange: 1 } })
+    const none = await store.query({ from: T0 + HOUR_MS, to: T0 + 2 * HOUR_MS, by: 'total' })
+    expect(none).toMatchObject({ total: { filesCreated: 0, filesReadBeforeChange: 0 } })
+  })
+
+  it('counts partial reads per file and keeps the largest applied whole-file read', async () => {
+    const { store } = makeStore()
+    await store.recordFileOps([
+      op(T0, { path: 'big.ts', bytes: 1000 }),
+      op(T0 + 1, { path: 'big.ts', bytes: 4000 }),
+      op(T0 + 2, { path: 'big.ts', partial: true, bytes: 9000 }),
+      op(T0 + 3, { path: 'big.ts', tool: 'Edit', op: 'edit', bytes: 12000, lines: undefined, added: 1, removed: 0 }),
+      op(T0, { path: 'slices.ts', partial: true, bytes: 200 }),
+      op(T0 + 1, { path: 'slices.ts', partial: true, bytes: 300 }),
+      op(T0 + 2, { path: 'slices.ts', tool: 'Edit', op: 'edit', bytes: undefined, lines: undefined, added: 1, removed: 0 }),
+    ])
+    const read = await store.query({ ...range, by: 'file_read' })
+    expect(read.by === 'file_read' && read.files.map(f => [f.path, f.reads, f.partialReads, f.maxReadBytes])).toEqual([
+      ['big.ts', 3, 1, 4000],
+      ['slices.ts', 2, 2, 0],
+    ])
+    const edited = await store.query({ ...range, by: 'file_edit' })
+    expect(edited.by === 'file_edit' && edited.files.map(f => [f.path, f.partialReads, f.maxReadBytes]).sort()).toEqual([
+      ['big.ts', 1, 4000],
+      ['slices.ts', 2, 0],
+    ])
+  })
+
   it('lists whole-file reads repeated in one session with the bytes read again', async () => {
     const { store } = await seeded()
     const answer = await store.query({ ...range, by: 'reread' })
@@ -216,6 +264,7 @@ describe('usage log insights', () => {
         await store.query({ ...range, by, ...(project ? { project } : {}) })
         const fileReads = queries.filter(q => q.sql.includes('FROM file_ops'))
         expect(fileReads.length).toBeGreaterThan(0)
+        if (by === 'total') expect(fileReads).toHaveLength(1)
         for (const q of fileReads) {
           const plan = db.prepare(`EXPLAIN QUERY PLAN ${q.sql}`).all(...q.params) as Array<{ detail: string }>
           const details = plan.map(row => row.detail).filter(detail => /file_ops/.test(detail))
