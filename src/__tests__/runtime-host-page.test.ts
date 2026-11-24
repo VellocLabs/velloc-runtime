@@ -166,8 +166,47 @@ describe('the runtime host page owns the host bridge port', () => {
     const lateClose = vi.spyOn(late, 'close')
     router.setHostPort(late)
     expect(router.getDirectTransport()).toBe(owned)
-    expect(lateClose).toHaveBeenCalledTimes(1)
+    expect(lateClose).not.toHaveBeenCalled()
     expect(changed).toHaveBeenCalledTimes(1)
+  })
+
+  it("a window's port held on standby takes over when the runtime host page's port closes", async () => {
+    const { router, changed, port } = setup()
+    const hostChannel = new MessageChannel()
+    opened.push(hostChannel)
+    router.setHostPort(hostChannel.port1, { fromRuntimeHost: true })
+    const owned = router.getDirectTransport()
+    const first = port()
+    const firstClose = vi.spyOn(first, 'close')
+    router.setHostPort(first)
+    router.setHostPort(port())
+    expect(firstClose).toHaveBeenCalledTimes(1)
+    hostChannel.port1.dispatchEvent(new Event('close'))
+    const next = router.getDirectTransport()
+    expect(next).not.toBeNull()
+    expect(next).not.toBe(owned)
+    expect(changed).toHaveBeenCalledTimes(2)
+    expect(changed.mock.calls[1][0]).toBe(next)
+  })
+
+  it("with no window port on standby, the runtime host page's port closing detaches the transport", () => {
+    const { router, changed } = setup()
+    const hostChannel = new MessageChannel()
+    opened.push(hostChannel)
+    router.setHostPort(hostChannel.port1, { fromRuntimeHost: true })
+    hostChannel.port1.dispatchEvent(new Event('close'))
+    expect(router.getDirectTransport()).toBeNull()
+    expect(changed).toHaveBeenLastCalledWith(null)
+  })
+
+  it("the runtime host page's port drops a window port held on standby", () => {
+    const { router, port } = setup()
+    router.setHostPort(port(), { fromRuntimeHost: true })
+    const standby = port()
+    const standbyClose = vi.spyOn(standby, 'close')
+    router.setHostPort(standby)
+    router.setHostPort(port(), { fromRuntimeHost: true })
+    expect(standbyClose).toHaveBeenCalledTimes(1)
   })
 
   it("the runtime host page's port replaces a window's, whichever came first", () => {
@@ -307,7 +346,7 @@ describe('reloadWhenRuntimeLost', () => {
     expect(h.reload).toHaveBeenCalledTimes(1)
   })
 
-  it('stops after the cap inside one window, and starts again once the window has passed', async () => {
+  it('past the cap inside one window, waits for the window to pass and then reloads', async () => {
     const h = harness()
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
     const loseOnce = async () => {
@@ -316,10 +355,12 @@ describe('reloadWhenRuntimeLost', () => {
       h.lose()
       await watching
     }
-    for (let i = 0; i < RUNTIME_LOSS_MAX_RELOADS + 2; i++) await loseOnce()
+    for (let i = 0; i < RUNTIME_LOSS_MAX_RELOADS; i++) await loseOnce()
     expect(h.reload).toHaveBeenCalledTimes(RUNTIME_LOSS_MAX_RELOADS)
-    h.advance(RUNTIME_LOSS_WINDOW_MS + 1)
+    expect(h.sleep).not.toHaveBeenCalledWith(expect.any(Number))
+    h.advance(10_000)
     await loseOnce()
+    expect(h.sleep).toHaveBeenLastCalledWith(RUNTIME_LOSS_WINDOW_MS - 10_000)
     expect(h.reload).toHaveBeenCalledTimes(RUNTIME_LOSS_MAX_RELOADS + 1)
     warn.mockRestore()
   })

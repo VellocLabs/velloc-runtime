@@ -5,7 +5,8 @@
  * worker's alive lock (`RUNTIME_ALIVE_LOCK`): the page waits until it is seen held, then queues
  * behind it; being granted it means the holder's realm ended. At most `RUNTIME_LOSS_MAX_RELOADS`
  * reloads happen inside `RUNTIME_LOSS_WINDOW_MS`, counted across reloads in `sessionStorage`, so a
- * runtime that keeps dying does not spin the page. (P-2)
+ * runtime that keeps dying does not spin the page; a loss over the cap reloads once the window has
+ * passed instead. (P-2)
  */
 import { RUNTIME_ALIVE_LOCK } from '../worker/runtimeAliveLock'
 
@@ -63,11 +64,14 @@ export async function reloadWhenRuntimeLost(deps: RuntimeLossDeps = {}): Promise
   }
   await locks.request(RUNTIME_ALIVE_LOCK, { mode: 'shared' }, () => undefined)
 
-  const at = now()
-  const recent = recentReloads(storage, at)
+  let at = now()
+  let recent = recentReloads(storage, at)
   if (recent.length >= RUNTIME_LOSS_MAX_RELOADS) {
-    console.warn('[NexusBoot] the runtime went away again; not reloading')
-    return
+    const wait = Math.max(0, Math.min(...recent) + RUNTIME_LOSS_WINDOW_MS - at)
+    console.warn(`[NexusBoot] the runtime went away again; reloading in ${wait} ms`)
+    await sleep(wait)
+    at = now()
+    recent = recentReloads(storage, at)
   }
   try {
     storage?.setItem(STORAGE_KEY, JSON.stringify([...recent, at]))

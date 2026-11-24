@@ -31,7 +31,8 @@ export type SharedWorkerInboundMessage =
    * The host's bridge port for the runtime (`event.ports[0]`): every host call
    * a session makes rides it (`BridgeRequestRouter`). A later one replaces it,
    * except that a window's port never replaces a live one owned by the runtime
-   * host page (`owner`), whose lifetime is the runtime's own.
+   * host page (`owner`), whose lifetime is the runtime's own: it is kept on
+   * standby and takes over if the host page's port closes.
    */
   | { type: 'bridge.setPort'; owner?: 'runtime-host' }
   /**

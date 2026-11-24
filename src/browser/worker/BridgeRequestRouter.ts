@@ -54,6 +54,8 @@ export class BridgeRequestRouter {
   private directTransport: DirectPortBridgeTransport | null = null
   /** The current host port when the runtime host page owns it, else null. */
   private runtimeHostPort: MessagePort | null = null
+  /** The latest window's port, held unused while the runtime host page's port is live. */
+  private standbyWindowPort: MessagePort | null = null
   private readonly sessionEventForwarders = new Map<
     string,
     SessionEventForwarder
@@ -99,21 +101,44 @@ export class BridgeRequestRouter {
 
   /**
    * `bridge.setPort`: the host's port for the runtime. A later one replaces it, with one exception:
-   * while a port from the runtime host page is live, a window's port is closed unused, so no
-   * window's reload or exit takes the runtime's host calls with it.
+   * while a port from the runtime host page is live, a window's port is held on standby instead, so
+   * no window's reload or exit takes the runtime's host calls with it. When the runtime host page's
+   * port closes, the standby port takes over; with none, the transport is detached so host calls
+   * fail at once instead of waiting on a dead port.
    */
   setHostPort(port: MessagePort, opts: { fromRuntimeHost?: boolean } = {}): void {
     if (!opts.fromRuntimeHost && this.runtimeHostPort) {
-      port.close()
+      this.standbyWindowPort?.close()
+      this.standbyWindowPort = port
       return
+    }
+    if (opts.fromRuntimeHost) {
+      this.standbyWindowPort?.close()
+      this.standbyWindowPort = null
     }
     this.runtimeHostPort = opts.fromRuntimeHost ? port : null
     if (opts.fromRuntimeHost && typeof port.addEventListener === 'function') {
-      // The runtime host page went away without a successor: the next window's port serves.
-      port.addEventListener('close', () => {
-        if (this.runtimeHostPort === port) this.runtimeHostPort = null
-      })
+      port.addEventListener('close', () => this.runtimeHostPortClosed(port), { once: true })
     }
+    this.attachTransport(port)
+  }
+
+  private runtimeHostPortClosed(port: MessagePort): void {
+    if (this.runtimeHostPort !== port) return
+    this.runtimeHostPort = null
+    const standby = this.standbyWindowPort
+    this.standbyWindowPort = null
+    if (standby) {
+      this.attachTransport(standby)
+      return
+    }
+    this.disposeSessionEventForwarders()
+    this.directTransport?.dispose()
+    this.directTransport = null
+    this.host.onDirectTransportChanged(null)
+  }
+
+  private attachTransport(port: MessagePort): void {
     this.disposeSessionEventForwarders()
     this.directTransport?.dispose()
     const transport = new DirectPortBridgeTransport({ port })
