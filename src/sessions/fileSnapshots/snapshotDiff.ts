@@ -47,6 +47,7 @@ export function decodeSnapshotBytes(
  * Diff one file's two sides: either notCaptured → 'notCaptured'; both absent
  * or equal text → 'unchanged'; a present binary side → 'binary' (no hunks);
  * else text hunks (create all-`+`, delete to empty, edit full-content patch).
+ * A created or deleted empty file is 'text' with no hunks.
  */
 export function computeSnapshotFileDiff(args: {
   displayPath: string
@@ -82,7 +83,7 @@ export function computeSnapshotFileDiff(args: {
   } else {
     hunks = hunksBetween(displayPath, beforeText, afterText ?? '')
   }
-  if (hunks.length === 0 && beforeText !== null) {
+  if (hunks.length === 0 && beforeText !== null && afterText !== null) {
     // Contents differ only in ways the patch normalizes (e.g. leading-tab
     // rendering) — report unchanged rather than an empty diff body.
     return { ...base, kind: 'unchanged' }

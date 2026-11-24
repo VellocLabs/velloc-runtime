@@ -5,7 +5,7 @@ import { structuredPatch, type StructuredPatchHunk } from 'diff'
  * 3 context lines; no hunks past 5 s. Leading tabs compare as two spaces;
  * `&` / `$` are placeholdered while diffing. A replacement is replayed on the
  * whole original (literal replacement), so line numbers are real; a created
- * file is one all-added hunk. Pure.
+ * file is one all-added hunk, none when it is empty. Pure.
  */
 
 const CONTEXT_ROWS = 3

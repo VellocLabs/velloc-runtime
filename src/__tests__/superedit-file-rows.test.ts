@@ -121,6 +121,17 @@ describe('file rows from a SuperEdit commit', () => {
     expect(batches[0]![1]).not.toHaveProperty('created')
   })
 
+  it('counts a created file the same as Write does, a final newline not counted as a line', async () => {
+    for (const [text, lines] of [['one\ntwo\n', 2], ['one\ntwo', 2], ['', 0]] as const) {
+      batches.length = 0
+      const { fs } = makeDisk({})
+      await run(fs, [['writeFile', { path: 'n.txt', bytes: enc(text) }]])
+      const write = hunks.summarizeFileChange({ op: 'overwrite', path: 'n.txt', text })
+      expect(batches[0]).toEqual([expect.objectContaining({ path: 'n.txt', created: true, added: lines, removed: 0 })])
+      expect(write).toMatchObject({ fileWasCreated: true, plusLines: lines, minusLines: 0 })
+    }
+  })
+
   it('records a move with its source, and counts no lines for it', async () => {
     const { fs } = makeDisk({ '/proj/a.txt': 'a\n' })
     await run(fs, [['move', { path: 'a.txt', newPath: 'b.txt' }]])
