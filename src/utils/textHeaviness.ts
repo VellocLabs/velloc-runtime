@@ -2,10 +2,9 @@
  * Size measures of a loaded text file; a heavy file skips the synchronous
  * Markdown renderer (F-9).
  * Contract: one linear pass, no allocation per line. `bytes` is the UTF-8
- * length, a lone surrogate counted as the 3-byte replacement character (as
- * `utf8ByteLength`); `lines` counts line breaks plus a final unterminated line;
- * `tableRows` counts lines whose first non-blank character is `|`, inside
- * fences too.
+ * length, a lone surrogate counted as the 3-byte replacement character;
+ * `lines` counts line breaks plus a final unterminated line; `tableRows`
+ * counts lines whose first non-blank character is `|`, fences included.
  */
 export type TextHeaviness = { bytes: number; lines: number; tableRows: number };
 
