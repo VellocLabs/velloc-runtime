@@ -6,6 +6,7 @@ import '@fontsource-variable/geist-mono'
 import { readBuildTimeFromDocument, setBuildTime } from '../branding/buildInfo'
 import { getProductName } from '../branding/productName'
 import { nexusBootAndRender } from '../browser/boot/nexusBoot'
+import { isRuntimeHostPage, runRuntimeHostPage } from '../browser/boot/runtimeHostPage'
 import {
   readRemotePairing,
   reloadOnPairingLink,
@@ -148,6 +149,18 @@ async function main(): Promise<void> {
   if (versionCheck.kind === 'mismatch') {
     console.error('[GlicEntry] bridge interface version mismatch', versionCheck)
     renderVersionBlock(container, versionCheck)
+    return
+  }
+
+  // The shell's runtime host page serves the worker and draws nothing.
+  if (isRuntimeHostPage(window.location.hash)) {
+    const [{ createBrowserRuntimeSharedWorker }, { installKernelWindowHost }] = await Promise.all([
+      import('../browser/webview/createBrowserRuntimeSharedWorker'),
+      import('../browser/workerKernel/KernelWindowHost'),
+    ])
+    const worker = createBrowserRuntimeSharedWorker()
+    worker.port.start()
+    void runRuntimeHostPage({ workerPort: worker.port, installKernelHost: installKernelWindowHost })
     return
   }
 

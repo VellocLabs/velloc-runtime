@@ -24,7 +24,7 @@ export interface PortMessageRouterHost {
   // Per-session envelope (worker.init / worker.submitMessage / …).
   handleSessionMessage(port: MessagePort, message: SessionWorkerInboundMessage): void
   // Bridge plumbing.
-  setHostBridgePort(port: MessagePort): void
+  setHostBridgePort(port: MessagePort, fromRuntimeHost: boolean): void
   // `port.disconnect`: the page is unloading — release everything this port
   // holds (hub subscriptions, session attachments, diagnostics).
   handlePortDisconnect(port: MessagePort): void
@@ -152,7 +152,7 @@ export class PortMessageRouter {
       case 'bridge.setPort': {
         const bridgePort = event.ports?.[0]
         if (bridgePort) {
-          this.host.setHostBridgePort(bridgePort)
+          this.host.setHostBridgePort(bridgePort, message.owner === 'runtime-host')
         }
         return
       }
@@ -189,7 +189,7 @@ export class PortMessageRouter {
         // ownership.
         const controlPort = event.ports?.[0]
         if (controlPort) {
-          setKernelControlPort(controlPort)
+          setKernelControlPort(controlPort, message.role === 'runtime-host' ? 'runtime-host' : 'window')
         }
         return
       }

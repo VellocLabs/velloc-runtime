@@ -572,7 +572,7 @@ export class SharedWorkerSessionManager {
   private readonly portRouter = new PortMessageRouter({
     handleSessionMessage: (port, message) =>
       this.frameRouter.handleSessionMessage(port, message),
-    setHostBridgePort: port => this.bridgeRouter.setHostPort(port),
+    setHostBridgePort: (port, fromRuntimeHost) => this.bridgeRouter.setHostPort(port, { fromRuntimeHost }),
     handlePortDisconnect: port => this.handlePortDisconnect(port),
     attachRuntimePort: (port, homeDir, panelId, delegate) =>
       this.runtimeHub.attachPort(port, homeDir, panelId, delegate),

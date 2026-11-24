@@ -29,9 +29,11 @@ export type SharedWorkerInboundMessage =
   | SessionWorkerInboundMessage
   /**
    * The host's bridge port for the runtime (`event.ports[0]`): every host call
-   * a session makes rides it (`BridgeRequestRouter`). A later one replaces it.
+   * a session makes rides it (`BridgeRequestRouter`). A later one replaces it,
+   * except that a window's port never replaces a live one owned by the runtime
+   * host page (`owner`), whose lifetime is the runtime's own.
    */
-  | { type: 'bridge.setPort' }
+  | { type: 'bridge.setPort'; owner?: 'runtime-host' }
   /**
    * Attach the isolated-worker kernel's control channel: the guest window
    * transfers one end of a MessageChannel (its `WindowWorkerHost` keeps the
@@ -40,7 +42,7 @@ export type SharedWorkerInboundMessage =
    * `new Worker()` itself. `run_js` is the one profile on it today.
    * nexus_web-internal — never routed to C++.
    */
-  | { type: 'workerHost.attachControlPort' }
+  | { type: 'workerHost.attachControlPort'; role?: 'runtime-host' }
     /**
      * Attach a UI ⇄ Runtime protocol client: `event.ports[0]` becomes one `ClientConnection` (the client
      * speaks `hello` first). `panelId` is optional. `delegate` caps a port meant for code the

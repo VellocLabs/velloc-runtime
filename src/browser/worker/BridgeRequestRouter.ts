@@ -52,6 +52,8 @@ type SessionEventForwarder = {
  */
 export class BridgeRequestRouter {
   private directTransport: DirectPortBridgeTransport | null = null
+  /** The current host port when the runtime host page owns it, else null. */
+  private runtimeHostPort: MessagePort | null = null
   private readonly sessionEventForwarders = new Map<
     string,
     SessionEventForwarder
@@ -95,8 +97,23 @@ export class BridgeRequestRouter {
     } as BrowserBridgeResponse)
   }
 
-  /** `bridge.setPort`: the host's port for the runtime. A later one replaces it. */
-  setHostPort(port: MessagePort): void {
+  /**
+   * `bridge.setPort`: the host's port for the runtime. A later one replaces it, with one exception:
+   * while a port from the runtime host page is live, a window's port is closed unused, so no
+   * window's reload or exit takes the runtime's host calls with it.
+   */
+  setHostPort(port: MessagePort, opts: { fromRuntimeHost?: boolean } = {}): void {
+    if (!opts.fromRuntimeHost && this.runtimeHostPort) {
+      port.close()
+      return
+    }
+    this.runtimeHostPort = opts.fromRuntimeHost ? port : null
+    if (opts.fromRuntimeHost && typeof port.addEventListener === 'function') {
+      // The runtime host page went away without a successor: the next window's port serves.
+      port.addEventListener('close', () => {
+        if (this.runtimeHostPort === port) this.runtimeHostPort = null
+      })
+    }
     this.disposeSessionEventForwarders()
     this.directTransport?.dispose()
     const transport = new DirectPortBridgeTransport({ port })

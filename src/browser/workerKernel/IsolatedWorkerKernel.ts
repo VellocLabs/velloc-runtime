@@ -10,8 +10,10 @@
  * the execution clock that pauses during nested calls, the log budget, the drain
  * of in-flight calls before settling, abort and teardown. `openInstance` only
  * brokers a long-lived worker (a mod) and hands over its data port.
- * Control ports form a pool, one per guest window (`workerHost.attachControlPort`):
- *   - spawns go through the newest live port;
+ * Control ports form a pool, one per document (`workerHost.attachControlPort`):
+ *   - spawns go through the runtime host page's port when it is attached, so
+ *     workers live beside the runtime and not in a window; else through the
+ *     newest window's port;
  *   - a port leaves on `window.leaving` or its `close` event, and its workers
  *     settle `crashed`;
  *   - a port that misses a spawn ack is demoted to oldest, and `openInstance`
@@ -141,10 +143,15 @@ export const KERNEL_DEFAULT_LOG_BUDGET: KernelLogBudget = {
   chars: 512 * 1024,
 }
 
+/** Which document a control port leads to: the runtime host page, or a window. */
+export type KernelPortRole = 'runtime-host' | 'window'
+
 let controlPort: MessagePort | null = null
-/** Every window's control port still attached, oldest first. The newest is
- *  `controlPort`; when it leaves, the one before it takes over. */
+/** Every control port still attached, least preferred first. The last is
+ *  `controlPort`; when it leaves, the one before it takes over. Runtime host
+ *  ports sit above every window's. */
 const attachedPorts: MessagePort[] = []
+const portRoles = new Map<MessagePort, KernelPortRole>()
 /** Owners waiting for a window to attach (`whenKernelControlPortAttached`). */
 const attachWaiters = new Set<() => void>()
 /** The `close` listener each pooled port carries, to take it off again. */
@@ -166,9 +173,10 @@ export function addKernelWindowListener(listener: KernelWindowListener): () => v
   }
 }
 
-/** Every attached window's port, the one new work goes to first. */
+/** Every attached window's port, the one new work goes to first. The runtime
+ *  host page is left out: it has no user to hear or see anything. */
 export function kernelControlPortsNewestFirst(): MessagePort[] {
-  return [...attachedPorts].reverse()
+  return attachedPorts.filter(port => portRoles.get(port) !== 'runtime-host').reverse()
 }
 let runSeq = 0
 
@@ -179,15 +187,21 @@ const controlHandlers = new Map<
   { port: MessagePort; workerError: (message: string) => void; spawned: () => void }
 >()
 
-/** Attach the control channel to the window (called from PortMessageRouter on
- *  `workerHost.attachControlPort`). A later attach (another window, or a
- *  reload re-running boot) becomes the port new workers are spawned through;
- *  the earlier one stays attached until its window leaves. */
-export function setKernelControlPort(port: MessagePort): void {
+/** Attach a document's control channel (called from PortMessageRouter on
+ *  `workerHost.attachControlPort`). A later attach of the same role (another
+ *  window, or a reload re-running boot) becomes the port new workers are
+ *  spawned through; a window's never goes above the runtime host page's. The
+ *  earlier ones stay attached until their documents leave. */
+export function setKernelControlPort(port: MessagePort, role: KernelPortRole = 'window'): void {
   const at = attachedPorts.indexOf(port)
   if (at !== -1) attachedPorts.splice(at, 1)
-  attachedPorts.push(port)
-  controlPort = port
+  portRoles.set(port, role)
+  let insertAt = attachedPorts.length
+  if (role === 'window') {
+    while (insertAt > 0 && portRoles.get(attachedPorts[insertAt - 1]) === 'runtime-host') insertAt--
+  }
+  attachedPorts.splice(insertAt, 0, port)
+  controlPort = attachedPorts.at(-1) ?? null
   port.onmessage = (event: MessageEvent) => {
     const msg = event.data as WorkerControlToKernel | null
     if (!msg) return
@@ -220,6 +234,7 @@ export function setKernelControlPort(port: MessagePort): void {
 function windowLeft(port: MessagePort): void {
   const at = attachedPorts.indexOf(port)
   if (at !== -1) attachedPorts.splice(at, 1)
+  portRoles.delete(port)
   if (controlPort === port) controlPort = attachedPorts.at(-1) ?? null
   port.onmessage = null
   const onClose = closeListeners.get(port)
@@ -287,6 +302,7 @@ export function resetKernelForTests(): void {
   closeListeners.clear()
   controlPort = null
   attachedPorts.length = 0
+  portRoles.clear()
   attachWaiters.clear()
   runSeq = 0
   controlHandlers.clear()
@@ -675,7 +691,7 @@ export async function openInstance(opts: KernelInstanceOptions): Promise<KernelI
   const tried = new Set<MessagePort>()
   let lastError: Error | undefined
   for (;;) {
-    // Newest first, each window once.
+    // Most preferred first, each document once.
     const control = [...attachedPorts].reverse().find(port => !tried.has(port))
     if (!control) {
       throw (
