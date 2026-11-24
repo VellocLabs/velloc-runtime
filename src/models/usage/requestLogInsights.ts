@@ -65,8 +65,8 @@ export type InsightTotal = TokenSums &
 export type InsightProject = TokenSums & FileSums & { project?: string }
 export type InsightPurpose = TokenSums & { purpose?: string; source?: string; subAgent: boolean }
 export type InsightFileBucket = FileSums & { start: number }
-/** `repo` absent: `path` is absolute, outside any repository. */
-/** `partialReads`: reads given an offset or a limit. `maxReadBytes`: the largest applied whole-file read, 0 when none. */
+/** `repo` absent: `path` is absolute, outside any repository. `partialReads`: reads given an offset or a limit.
+ *  `maxReadBytes`: the largest applied whole-file read, 0 when none. */
 export type InsightFile = FileSums & { repo?: string; path: string; partialReads: number; maxReadBytes: number }
 export type InsightReread = { sessionId: string; repo?: string; path: string; reads: number; readBytes: number; extraBytes: number }
 
@@ -98,6 +98,7 @@ const FILE_SUMS = [
   `TOTAL(CASE WHEN f.op <> ${READ} AND f.outcome = ${OUTCOME_OK} THEN f.removed END)`,
 ]
 const FILE_COLUMNS = FILE_SUMS.join(', ')
+const WHOLE_READ = `f.op = ${READ} AND f.outcome = ${OUTCOME_OK} AND f.partial = 0`
 
 const tokensAt = (row: SqlValue[], at: number): TokenSums => ({
   requests: num(row[at]),
@@ -177,10 +178,10 @@ async function total(read: InsightRead, query: InsightQuery): Promise<InsightRes
     total: {
       ...tokensAt(s, 0),
       ...filesAt(f, 0),
-      filesRead: num(f[7]),
-      filesChanged: num(f[8]),
-      filesCreated: num(f[9]),
-      filesReadBeforeChange: num(f[10]),
+      filesRead: num(f[FILE_SUMS.length]),
+      filesChanged: num(f[FILE_SUMS.length + 1]),
+      filesCreated: num(f[FILE_SUMS.length + 2]),
+      filesReadBeforeChange: num(f[FILE_SUMS.length + 3]),
     },
   }
 }
@@ -262,7 +263,7 @@ async function files(read: InsightRead, query: InsightQuery): Promise<InsightRes
   const result = await read(
     `SELECT r.text, p.text, ${FILE_COLUMNS},
       SUM(f.op = ${READ} AND f.partial = 1),
-      MAX(CASE WHEN f.op = ${READ} AND f.outcome = ${OUTCOME_OK} AND f.partial = 0 THEN f.bytes END)
+      MAX(CASE WHEN ${WHOLE_READ} THEN f.bytes END)
     FROM file_ops f INDEXED BY ${fileIndex(query)}
       LEFT JOIN names r ON r.id = f.repo
       JOIN names p ON p.id = f.path
@@ -284,8 +285,8 @@ async function files(read: InsightRead, query: InsightQuery): Promise<InsightRes
       ...(repo !== undefined ? { repo } : {}),
       path: text(row[1]) ?? '',
       ...filesAt(row, 2),
-      partialReads: num(row[9]),
-      maxReadBytes: num(row[10]),
+      partialReads: num(row[2 + FILE_SUMS.length]),
+      maxReadBytes: num(row[3 + FILE_SUMS.length]),
     }
   })
   return { by: query.by as 'file_read' | 'file_edit', files: list }
@@ -299,7 +300,7 @@ async function rereads(read: InsightRead, query: InsightQuery): Promise<InsightR
       JOIN names se ON se.id = f.session
       LEFT JOIN names r ON r.id = f.repo
       JOIN names p ON p.id = f.path
-    WHERE ${where('f', query, params)} AND f.op = ${READ} AND f.outcome = ${OUTCOME_OK} AND f.partial = 0
+    WHERE ${where('f', query, params)} AND ${WHOLE_READ}
     GROUP BY f.session, f.repo, f.path
     HAVING COUNT(*) > 1
     ORDER BY TOTAL(f.bytes) - MAX(f.bytes) DESC, COUNT(*) DESC, p.text
