@@ -483,6 +483,14 @@ describe('the sign-in window says when it is gone', () => {
     expect(gone).toBe(1)
   })
 
+  it('at once when the host cannot open it in the session asked for', async () => {
+    const host = fakeHost(['webWindow.captureRedirect'])
+    let gone = 0
+    await openSignInWindow(host.webWindow, host.manifest, { ...request(() => (gone += 1)), partition: 'vellocprofileb' }).catch(() => {})
+    await openSignInWindow(host.webWindow, host.manifest, { ...request(() => (gone += 1)), isolated: true }).catch(() => {})
+    expect(gone).toBe(2)
+  })
+
   it('at once when the window never opened', async () => {
     const host = fakeHost(['webWindow.captureRedirect'])
     const aborted = new AbortController()

@@ -26,6 +26,7 @@ import {
 import { listLocalPlugins, localCopiesShadowing } from '../../../pluginHost/localPluginList'
 import { forgetModBuilds } from '../../../mods/modBuildStore'
 import { forgetPluginWebProfiles } from '../../../mods/provider/webProfilesRuntime'
+import { pluginNamed } from '../../../pluginHost/pluginNamed'
 import { RUNTIME_DIR_NAME } from '../../../branding/runtimeDir'
 import { joinRuntimePath } from '../../../utils/runtimePaths'
 import { sanitizeWorkspaceState } from '../../../utils/workspaceState'
@@ -400,17 +401,6 @@ function settleThemeSwitch(ctx: PluginsAdapterContext, run: ThemeSwitchRun | und
 
 /** `<name>@<marketplace>` → `<name>`. */
 const pluginNameOf = (identifier: string) => identifier.slice(0, Math.max(0, identifier.lastIndexOf('@'))) || identifier
-
-/** Whether a plugin named `name` is still installed from a marketplace or
- *  as a directory plugin of the user or a sidebar project. */
-async function pluginNamed(ctx: PluginsAdapterContext, name: string): Promise<boolean> {
-  const { registry } = await loadInstalledPlugins(pathContextOf(ctx), ctx.fs)
-  if (Object.entries(registry.plugins).some(([id, entries]) => (entries?.length ?? 0) > 0 && pluginNameOf(id) === name)) {
-    return true
-  }
-  const roots = await listLocalPlugins({ homeDir: ctx.homeDir, projects: await sidebarProjects(ctx), fs: ctx.fs })
-  return roots.some(root => root.plugins.some(plugin => plugin.name === name))
-}
 
 async function handleUninstall(
   payload: PluginsBridgeActionMap['uninstall']['payload'],

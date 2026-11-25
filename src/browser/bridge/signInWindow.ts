@@ -96,11 +96,13 @@ export function openSignInWindow(
   if (request.isolated && manifest?.primitives?.includes(ISOLATED_SESSION_PRIMITIVE) !== true) {
     const error = new Error('this Velloc cannot open a sign-in window in a session of its own')
     error.name = 'NotSupportedError'
+    request.onGone?.()
     return Promise.reject(error)
   }
   if (request.partition !== undefined && manifest?.primitives?.includes(STORAGE_PARTITION_PRIMITIVE) !== true) {
     const error = new Error('this Velloc cannot open a sign-in window in a kept session')
     error.name = 'NotSupportedError'
+    request.onGone?.()
     return Promise.reject(error)
   }
   const closed = request.closed ?? (() => new SignInWindowClosedError())

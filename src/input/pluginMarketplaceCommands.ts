@@ -47,6 +47,7 @@ import {
 import { pluginBlockReason } from '../pluginHost/blocklist'
 import { keepOneThemePlugin } from '../mods/themePlugins'
 import { forgetPluginWebProfiles } from '../mods/provider/webProfilesRuntime'
+import { pluginNamed } from '../pluginHost/pluginNamed'
 import type { MessageKey } from '../browser/webview/i18n/messages/en'
 import {
   BLOCK,
@@ -291,12 +292,7 @@ async function runPluginUninstall(
     {
       homeDir: pathCtx.homeDir,
       fs: ctx.fs,
-      stillInstalled: async plugin => {
-        const { registry } = await loadInstalledPlugins(pathCtx, ctx.fs)
-        return Object.entries(registry.plugins).some(
-          ([key, entries]) => (entries?.length ?? 0) > 0 && key.slice(0, key.lastIndexOf('@')) === plugin,
-        )
-      },
+      stillInstalled: plugin => pluginNamed({ homeDir: pathCtx.homeDir, fs: ctx.fs }, plugin),
     },
     name,
   )

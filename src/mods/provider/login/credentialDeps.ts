@@ -31,6 +31,7 @@ export function defaultCredentialDeps(): CredentialDeps {
       if (!host || !hostOpensSignInWindows(host.manifest)) {
         const error = new Error('interact.openWindow: this Velloc has no sign-in windows')
         error.name = 'NotSupportedError'
+        request.onGone?.()
         return Promise.reject(error)
       }
       const primitives = createNativePrimitives({
