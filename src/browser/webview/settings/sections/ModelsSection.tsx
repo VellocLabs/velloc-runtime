@@ -40,7 +40,8 @@ import {
 import { getProviderUsageStore } from "../../providerUsageStore";
 import { ModProviderEditor, modProviderName } from "./ModProviderEditor";
 import { isModProviderAdded, isModProviderConnected } from "../modProviderForm";
-import { isManagedProvider, isRouterMod, type RouterPeerRow } from "../modRouterView";
+import { isManagedProvider } from "../../../../models/drivers/providerRouter";
+import { isRouterMod, type RouterPeerRow } from "../modRouterView";
 import { useRouterAppShortcut } from "./models/routerAppShortcut";
 import { orderByProviderIds } from "../../modelCatalog";
 import { mergeProviderConfigForSave } from "../providerConfigMerge";
@@ -623,7 +624,7 @@ export function ModelsSection({
   const guidedEmptyProviders = React.useRef(false);
   React.useEffect(() => {
     if (!configsLoaded || !registryLoaded || !catalog || view !== "home" || openProviderRequest) return;
-    if (guidedEmptyProviders.current || addedRows.length > 0 || catalog.providers.some((p) => p.enabled)) return;
+    if (guidedEmptyProviders.current || addedRows.length > 0 || catalog.providers.some((p) => p.enabled && !isManagedProvider(p))) return;
     guidedEmptyProviders.current = true;
     setHighlightAddMenu(true);
     setAddMenuOpen(true);
@@ -1355,7 +1356,8 @@ export function ModelsSection({
       },
     );
 
-  // A router's possible targets: every provider on the page, by its shown name.
+  // A router's possible targets: every provider on the page, by its shown
+  // name, and the managed ones the card counts for their own router.
   const addedIds = new Set(addedRows.map((row) => row.id));
   const routerPeers: RouterPeerRow[] = [
     ...builtInProviders.map((p) => ({
@@ -1364,6 +1366,15 @@ export function ModelsSection({
       setUp: addedIds.has(p.id) && p.mod?.state !== "plugin-missing",
       router: isRouterMod(p.mod),
     })),
+    ...providers
+      .filter((p) => isManagedProvider(p))
+      .map((p) => ({
+        id: p.id,
+        label: modProviderName(p, locale),
+        setUp: isProviderAdded(p) && p.enabled,
+        router: false,
+        managedBy: p.mod?.managedBy,
+      })),
     ...customRecords.map((record) => ({
       id: record.id,
       label: record.displayName,

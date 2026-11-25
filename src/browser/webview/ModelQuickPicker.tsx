@@ -38,7 +38,7 @@ import { activeModelLabel, findActiveModel } from "./activeModel";
 import { useProviderUsage } from "./providerUsageStore";
 import { ProviderIcon } from "./ProviderIcon";
 import { isRouterProvider, routeMemberName } from "./routeDisplay";
-import { isManagedProvider } from "./settings/modRouterView";
+import { isManagedProvider } from "../../models/drivers/providerRouter";
 import { CUSTOM_PROVIDER_ID_PREFIX } from "../../config/customProviderRegistry";
 import type {
   BrowserLlmCatalog,
@@ -284,7 +284,7 @@ function ModelQuickPickerImpl({
   // room (the model list scrolls). The trigger is never covered.
   const anchored = !!leadingOptions?.length;
   const [side, setSide] = React.useState<"top" | "bottom">("bottom");
-  const noProviders = !!catalog && !catalog.providers.some((p) => p.enabled);
+  const noProviders = !!catalog && !catalog.providers.some((p) => p.enabled && !isManagedProvider(p));
   const openPopover = (next: boolean) => {
     if (next && noProviders && onNoProviders) {
       onNoProviders();

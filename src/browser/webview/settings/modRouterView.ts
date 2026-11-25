@@ -15,15 +15,6 @@ export function isRouterMod(mod: BrowserLlmModProvider | undefined): boolean {
   return mod?.kind === 'router'
 }
 
-/**
- * Whether a router manages the row's provider. Such a row stays in the
- * catalog (a route's members are named from it) and is left out wherever
- * providers or their models are listed for the person to pick.
- */
-export function isManagedProvider(provider: { mod?: BrowserLlmModProvider } | undefined): boolean {
-  return provider?.mod?.managedBy !== undefined
-}
-
 /** A provider the page knows, as the card needs it. */
 export type RouterPeerRow = {
   id: string
@@ -33,6 +24,8 @@ export type RouterPeerRow = {
   setUp: boolean
   /** Itself a router: never a target, a router sends through providers only. */
   router: boolean
+  /** The provider id of the router that manages it, if one does. */
+  managedBy?: string
 }
 
 /** Below this many providers to send through, a router has nothing to choose between. */
@@ -46,7 +39,8 @@ export type SendsThroughView = {
   targets: Array<{ id: string; label: string; setUp: boolean }>
   /** Declared providers the page has no row for (their plugin is not installed). */
   unknown: number
-  /** How many providers a request can go through today. */
+  /** How many providers a request can go through today, the ones the router
+   *  manages included. */
   reachable: number
   /** Too few to route between: the card explains and offers to connect one. */
   needsProviders: boolean
@@ -63,10 +57,13 @@ export function sendsThroughView(
   rows: readonly RouterPeerRow[],
 ): SendsThroughView {
   const boundary: '*' | string[] = routesTo === '*' ? '*' : [...(routesTo ?? [])]
-  const candidates = rows.filter(row => row.id !== selfId && !row.router)
+  // A managed provider is reached by its own router alone, whatever the
+  // boundary says; it is counted, not listed.
+  const managed = rows.filter(row => row.managedBy === selfId && row.setUp).length
+  const candidates = rows.filter(row => row.id !== selfId && !row.router && row.managedBy === undefined)
   if (boundary === '*') {
     const targets = candidates.filter(row => row.setUp).map(({ id, label, setUp }) => ({ id, label, setUp }))
-    return view('any', targets, 0)
+    return view('any', targets, 0, managed)
   }
   const targets: SendsThroughView['targets'] = []
   let unknown = 0
@@ -75,14 +72,19 @@ export function sendsThroughView(
     const inside = rows.filter(row => insideRoutesTo([definition], { definition: row.id }))
     if (inside.length === 0) unknown += 1
     for (const row of inside) {
-      if (row.id === selfId || row.router) continue
+      if (row.id === selfId || row.router || row.managedBy !== undefined) continue
       targets.push({ id: row.id, label: row.label, setUp: row.setUp })
     }
   }
-  return view('list', targets, unknown)
+  return view('list', targets, unknown, managed)
 }
 
-function view(scope: SendsThroughView['scope'], targets: SendsThroughView['targets'], unknown: number): SendsThroughView {
-  const reachable = targets.filter(target => target.setUp).length
+function view(
+  scope: SendsThroughView['scope'],
+  targets: SendsThroughView['targets'],
+  unknown: number,
+  managed: number,
+): SendsThroughView {
+  const reachable = targets.filter(target => target.setUp).length + managed
   return { scope, targets, unknown, reachable, needsProviders: reachable < ROUTER_MIN_TARGETS }
 }

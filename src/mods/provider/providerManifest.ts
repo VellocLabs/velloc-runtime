@@ -982,6 +982,8 @@ function checkProvider(key: string, id: string, raw: unknown, errors: string[]):
       bad('managedBy: expected the key of a router ("kind": "router") of this plugin')
     } else if (raw.settingsApp !== undefined) {
       bad('managedBy: a managed provider has no settingsApp of its own; its router\'s app is where it is set up')
+    } else if (modelsUi?.starterModels !== undefined || modelsUi?.tierModels !== undefined) {
+      bad('managedBy: a managed provider has no modelsUi.starterModels or modelsUi.tierModels; its models are its router\'s to use')
     } else managedBy = raw.managedBy
   }
   const egress =
@@ -1065,10 +1067,23 @@ export function checkProviderManifests(
       delete out[key]
     }
   }
-  // After the module check, so a router that was just left out manages nothing.
-  for (const [key, provider] of Object.entries(out)) {
+  return Object.keys(out).length > 0 ? out : undefined
+}
+
+/**
+ * Leaves out every provider whose `managedBy` names no router still in
+ * `providers`. Runs after every check that may leave a provider out, so a
+ * router that was left out manages nothing.
+ */
+export function checkManagedBy(
+  providers: Readonly<Record<string, ProviderManifest>> | undefined,
+  errors: string[],
+): Record<string, ProviderManifest> | undefined {
+  if (!providers) return undefined
+  const out: Record<string, ProviderManifest> = { ...providers }
+  for (const [key, provider] of Object.entries(providers)) {
     if (provider.managedBy === undefined) continue
-    if (out[provider.managedBy]?.kind !== 'router') {
+    if (providers[provider.managedBy]?.kind !== 'router') {
       errors.push(`providers.${key}.managedBy: "${provider.managedBy}" is not a router of this plugin`)
       delete out[key]
     }

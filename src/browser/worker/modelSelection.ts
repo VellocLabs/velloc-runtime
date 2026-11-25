@@ -14,7 +14,13 @@ import {
 } from '../../config/nexusModelConfig/modelEntries'
 import { providerModelPool } from '../../config/nexusModelConfig/providerModelPool'
 import { losslessEntryRow } from '../../models/drivers/modelEntryCatalog'
+import { isManagedProvider } from '../../models/drivers/providerRouter'
 import { concreteSuccessorId, withSuccessorModel } from '../../config/nexusModelConfig/retiredModels'
+
+/** A provider a session may run on: enabled, and not one a router manages. */
+function isSelectableProvider(provider: BrowserLlmProvider | undefined): provider is BrowserLlmProvider {
+  return !!provider?.enabled && !isManagedProvider(provider)
+}
 
 export function getFirstEnabledSelection(
   catalog: BrowserLlmCatalog | null,
@@ -24,7 +30,7 @@ export function getFirstEnabledSelection(
   }
 
   for (const provider of catalog.providers) {
-    if (!provider.enabled) {
+    if (!isSelectableProvider(provider)) {
       continue
     }
 
@@ -68,7 +74,7 @@ export function isSelectionEnabled(
   }
 
   const provider = getProviderById(catalog, selection.providerId)
-  if (!provider?.enabled) {
+  if (!isSelectableProvider(provider)) {
     return false
   }
 
@@ -86,7 +92,7 @@ function isPooledSelection(
   selection: BrowserLlmSelection | null | undefined,
 ): selection is BrowserLlmSelection {
   if (!catalog || !selection) return false
-  if (!getProviderById(catalog, selection.providerId)?.enabled) return false
+  if (!isSelectableProvider(getProviderById(catalog, selection.providerId))) return false
   return providerModelPool(selection.providerId).includes(selection.modelId)
 }
 
@@ -128,7 +134,7 @@ export function resolveSelectionByModelId(
   }
 
   for (const provider of catalog.providers) {
-    if (!provider.enabled) {
+    if (!isSelectableProvider(provider)) {
       continue
     }
 

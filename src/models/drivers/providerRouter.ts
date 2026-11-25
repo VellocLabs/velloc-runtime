@@ -184,6 +184,15 @@ export function routerReaches(
   return insideRoutesTo(routesTo, peer)
 }
 
+/**
+ * Whether a router manages a catalog row's provider. The row stays in the
+ * catalog (a route's members are named from it), but it is never a session's
+ * model and is left out wherever providers or models are listed for a pick.
+ */
+export function isManagedProvider(provider: { readonly mod?: { readonly managedBy?: string } } | undefined): boolean {
+  return provider?.mod?.managedBy !== undefined
+}
+
 // ── registry ────────────────────────────────────────────────────────────────
 
 export type ProviderRouterBounds = {

@@ -10,7 +10,7 @@ import type { NexusMcpServerLaunchConfig } from '../mcp/nativeBridge'
 import type { MCPServerConfig } from '../mcp/types'
 import { currentTemplateChannel, type UpdateChannel } from '../branding/updateChannels'
 import { parseHooksSettings } from '../lifecycleHooks/hookTypes'
-import { checkProviderManifests } from '../mods/provider/providerManifest'
+import { checkManagedBy, checkProviderManifests } from '../mods/provider/providerManifest'
 import { checkTemplateDecls, checkUiDecl } from '../mods/ui/uiManifest'
 import { checkSettingsApps } from '../mods/provider/providerSettingsApp'
 import { checkRequires } from './pluginRequirements'
@@ -176,7 +176,7 @@ export function checkPluginDescriptor(value: unknown, channel: UpdateChannel = c
   }
   if (value.templates !== undefined) set('templates', checkTemplateDecls(name, value.templates, errors, channel))
   if (manifest.providers) {
-    const kept = checkSettingsApps(manifest.providers, manifest.templates, errors, channel)
+    const kept = checkManagedBy(checkSettingsApps(manifest.providers, manifest.templates, errors, channel), errors)
     if (kept) manifest.providers = kept
     else delete manifest.providers
   }

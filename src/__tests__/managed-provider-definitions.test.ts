@@ -6,14 +6,17 @@
  */
 import { createElement as h } from 'react'
 import { cleanup, render, screen } from '@testing-library/react'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import type { BrowserLlmCatalog, BrowserLlmProvider } from '../browser/bridge/protocol/nexus_llm'
-import { isSelectionEnabled } from '../browser/webview/modelCatalog'
-import { isManagedProvider } from '../browser/webview/settings/modRouterView'
+import { createConfiguredModelCatalog, isSelectionEnabled } from '../browser/webview/modelCatalog'
+import { sendsThroughView } from '../browser/webview/settings/modRouterView'
+import { resolveSelection, isSelectionEnabled as isWorkerSelectionEnabled } from '../browser/worker/modelSelection'
+import { hostModelIdsFor, publishHostModelCatalog, resetHostModelCatalog } from '../config/hostModelCatalog'
+import { MobileModelSheet } from '../mobile/MobileModelSheet'
 import { NexusModelPicker } from '../browser/webview/topbar/NexusModelPicker'
 import { checkRouteAnswer, type RouteAnswerFacts } from '../models/drivers/providerRouteAnswer'
-import { routerReaches } from '../models/drivers/providerRouter'
+import { isManagedProvider, routerReaches } from '../models/drivers/providerRouter'
 import { modProviderDefinition } from '../mods/provider/modProviderDefinition'
 import { peersTableFor, type PeerInstance } from '../mods/provider/nouns/providerPeersNoun'
 import { PROVIDER_WIRE_FORMATS, resolveProviders } from '../mods/provider/providerManifest'
@@ -68,7 +71,19 @@ describe('manifest: managedBy', () => {
     expect(errors).toMatch(/providers\.pool\.managedBy: "router" is not a router of this plugin/)
   })
 
+  it('refuses a router left out by its settings app, beta channel', () => {
+    const { manifest, errors } = checkPluginDescriptor(
+      { name: 'hub', version: '1.0.0', providers: { router: { ...ROUTER, settingsApp: 'console' }, pool: { ...POOL, managedBy: 'router' } } },
+      'beta',
+    )
+    expect(manifest?.providers).toBeUndefined()
+    expect(errors.join('\n')).toMatch(/providers\.router\.settingsApp: "console" is not a template of this plugin/)
+    expect(errors.join('\n')).toMatch(/providers\.pool\.managedBy: "router" is not a router of this plugin/)
+  })
+
   it.each([
+    ['starter models', { managedBy: 'router', modelsUi: { starterModels: ['m'] } }, /managedBy: a managed provider has no modelsUi\.starterModels/],
+    ['tier models', { managedBy: 'router', modelsUi: { tierModels: { fast: 'm' } } }, /managedBy: a managed provider has no modelsUi\.starterModels/],
     ['a value that is not a key', { managedBy: 'mod.hub.router' }, /managedBy: expected the key of a router/],
     ['a list', { managedBy: ['router'] }, /managedBy: expected the key of a router/],
     ['a settings app of its own', { managedBy: 'router', settingsApp: 'console' }, /managedBy: a managed provider has no settingsApp of its own/],
@@ -168,6 +183,55 @@ describe('what the person picks from', () => {
     expect(isSelectionEnabled(catalog, { providerId: 'mod.hub.pool', modelId: 'pool-model' })).toBe(false)
   })
 
+  it('the runtime refuses its model as a session\'s selection, whichever way it is asked', () => {
+    const pool = { providerId: 'mod.hub.pool', modelId: 'pool-model' }
+    expect(isWorkerSelectionEnabled(catalog, pool)).toBe(false)
+    expect(isWorkerSelectionEnabled(catalog, { providerId: 'plain', modelId: 'plain-model' })).toBe(true)
+    expect(resolveSelection(catalog, { persistedSelection: pool })).toEqual(catalog.defaultSelection)
+    expect(resolveSelection(catalog, { requestedSelection: pool })).toEqual(catalog.defaultSelection)
+    expect(resolveSelection(catalog, { requestedModelId: 'pool-model' })).toEqual(catalog.defaultSelection)
+    expect(resolveSelection(catalog, { fallbackSelection: pool })).toEqual(catalog.defaultSelection)
+  })
+
+  it('no default falls on it, though it is the first enabled row', () => {
+    const managedFirst = {
+      providers: [providers[1], { ...providers[0], enabled: false }, providers[2]],
+      defaultSelection: { providerId: 'mod.hub.pool', modelId: 'pool-model' },
+    } as unknown as BrowserLlmCatalog
+    const plain = { providerId: 'plain', modelId: 'plain-model' }
+    expect(resolveSelection(managedFirst, {})).toEqual(plain)
+    expect(createConfiguredModelCatalog(managedFirst)?.defaultSelection).toEqual(plain)
+  })
+
+  it('the phone\'s model sheet does not list it', () => {
+    render(h(MobileModelSheet, { open: true, onOpenChange: () => {}, catalog, selection: null, onSelect: () => {} }))
+    const options = screen.getAllByTestId('mobile-model-option').map(option => option.getAttribute('data-provider-id'))
+    expect(options).toEqual(['mod.hub.router', 'plain'])
+  })
+
+  it('the host model list a teammate is told about leaves it out', () => {
+    resetHostModelCatalog()
+    publishHostModelCatalog(catalog)
+    expect(hostModelIdsFor('mod.hub.pool')).toEqual([])
+    expect(hostModelIdsFor('plain')).toEqual(['plain-model'])
+    resetHostModelCatalog()
+  })
+
+  it('a router\'s card counts its own set-up managed providers and no other router\'s', () => {
+    const rows = [
+      { id: 'a', label: 'A', setUp: true, router: false },
+      { id: 'pool', label: 'Pool', setUp: true, router: false, managedBy: 'hub' },
+      { id: 'idle', label: 'Idle', setUp: false, router: false, managedBy: 'hub' },
+    ]
+    const own = sendsThroughView([], 'hub', rows)
+    expect(own).toMatchObject({ targets: [], reachable: 1, needsProviders: true })
+    expect(sendsThroughView(['a'], 'hub', rows)).toMatchObject({ reachable: 2, needsProviders: false })
+    const other = sendsThroughView('*', 'other', rows)
+    expect(other.targets.map(target => target.id)).toEqual(['a'])
+    expect(other.reachable).toBe(1)
+    expect(sendsThroughView(['pool'], 'other', rows).targets).toEqual([])
+  })
+
   it('the model picker lists the router\'s route and not the managed provider\'s model', () => {
     render(h(NexusModelPicker, { catalog, selection: { providerId: 'mod.hub.router', modelId: 'free' }, onSelect: () => {}, onOpenSettings: () => {}, openToken: 1 }))
     expect(screen.queryAllByText('FreeRouter').length).toBeGreaterThan(0)
@@ -175,5 +239,37 @@ describe('what the person picks from', () => {
     expect(screen.queryAllByText('Plain model').length).toBeGreaterThan(0)
     expect(screen.queryByText('Pool model')).toBeNull()
     expect(screen.queryByText('Pool')).toBeNull()
+  })
+})
+
+describe('the providers a team lead is told about', () => {
+  it('leave out a provider a router manages', async () => {
+    vi.resetModules()
+    vi.doMock('../config/nexusModelConfig/providers', async () => {
+      const actual = await vi.importActual<typeof import('../config/nexusModelConfig/providers')>('../config/nexusModelConfig/providers')
+      return {
+        ...actual,
+        getProviderDefinition: (id: string | undefined) =>
+          id === 'mod.hub.pool' ? { catalogMod: { state: 'ready', managedBy: 'mod.hub.router' } } : actual.getProviderDefinition(id),
+      }
+    })
+    vi.doMock('../settings/settingsStore', async () => {
+      const actual = await vi.importActual<typeof import('../settings/settingsStore')>('../settings/settingsStore')
+      return {
+        ...actual,
+        readUserLayer: async () => ({
+          settings: { providers: { configs: { plain: { apiKey: 'k' }, 'mod.hub.pool': { source: 'mod', credentialMode: 'anonymous' } } } },
+        }),
+      }
+    })
+    try {
+      const { surveyProviderCatalog } = await import('../team/providerCatalog')
+      const survey = await surveyProviderCatalog({ options: { homeDir: '/home/test' } } as never)
+      expect(survey.providers.map(provider => provider.id)).toEqual(['plain'])
+    } finally {
+      vi.doUnmock('../config/nexusModelConfig/providers')
+      vi.doUnmock('../settings/settingsStore')
+      vi.resetModules()
+    }
   })
 })

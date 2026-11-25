@@ -8,6 +8,7 @@
 import type { ToolCallContext } from '../toolkit/toolCallContext'
 import { findConfiguredModel } from '../config/nexusModelConfig/findConfiguredModel'
 import { hostModelIdsFor } from '../config/hostModelCatalog'
+import { getProviderDefinition } from '../config/nexusModelConfig/providers'
 import { entryId } from '../config/nexusModelConfig/modelEntries'
 import { classifyEndpoint } from '../models/endpoints/endpointTrust'
 import type { EndpointTrustReason } from '../models/endpoints/endpointTrust'
@@ -117,7 +118,10 @@ export async function surveyProviderCatalog(
   const { settings } = await readUserLayer(homeDir, fsForContext(context))
   const configs = settings.providers?.configs ?? {}
 
-  const providers: CatalogProvider[] = Object.entries(configs).map(([id, config]) => {
+  // A provider a router manages is that router's alone, never a teammate's.
+  const providers: CatalogProvider[] = Object.entries(configs)
+    .filter(([id]) => getProviderDefinition(id)?.catalogMod?.managedBy === undefined)
+    .map(([id, config]) => {
     // `''` is the "no override" sentinel, so the verdict describes what is on disk,
     // not a stale publish.
     const endpoint = classifyEndpoint(id, config.baseUrl ?? '')
