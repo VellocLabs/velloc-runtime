@@ -2,6 +2,9 @@
  * The realm's one `ProviderCredentials`, wired to the realm's pieces; each is read
  * when USED, so a later runtime or re-registered plugin is the one that answers.
  */
+import { createNativePrimitives } from '../../../browser/bridge/nativePrimitives'
+import { hostOpensSignInWindows, openSignInWindow } from '../../../browser/bridge/signInWindow'
+import { getMcpHost } from '../../../mcp/mcpHost'
 import { runtimeProviderConfigs } from '../../../models/drivers/runtimeProviders'
 import { traceLine } from '../../../utils/debugLog'
 import { providerHostSources } from '../providerHostSources'
@@ -19,7 +22,22 @@ export function defaultCredentialDeps(): CredentialDeps {
       return {
         secrets: (registration.manifest.credentials.secrets ?? []).map(secret => secret.name),
         methods: registration.manifest.credentials.methods,
+        loginWindow: registration.manifest.credentials.loginWindow?.allow ?? [],
       }
+    },
+    openWindow: request => {
+      const host = getMcpHost()
+      if (!host || !hostOpensSignInWindows(host.manifest)) {
+        const error = new Error('interact.openWindow: this Velloc has no sign-in windows')
+        error.name = 'NotSupportedError'
+        return Promise.reject(error)
+      }
+      const primitives = createNativePrimitives({
+        transport: host.transport,
+        createRequestId: () => `provider-login-${crypto.randomUUID()}`,
+        manifest: host.manifest,
+      })
+      return openSignInWindow(primitives.webWindow, host.manifest, request)
     },
     storedConfigOf: providerId => runtimeProviderConfigs()[providerId],
     writeConfig: async (providerId, config) => {

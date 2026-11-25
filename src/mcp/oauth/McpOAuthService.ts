@@ -6,6 +6,7 @@
  * the token endpoint's) and later requests carry `{{secret:NAME}}`
  * placeholders the host fills, in headers and in the refresh's form body.
  */
+import type { SignInCapture } from '../../browser/bridge/signInWindow'
 import type { FetchLike } from '@modelcontextprotocol/sdk/shared/transport.js'
 import type { BridgeSecretName } from '../../browser/bridge/protocol/secrets'
 import type { RuntimeFs } from '../../utils/fs/runtimeFs'
@@ -71,16 +72,7 @@ function oauthErrorOf(error: unknown): string | undefined {
  *  replaced the tokens it was renewing. */
 type RefreshOutcome = 'renewed' | 'dropped' | 'failed' | 'superseded'
 
-/** The captured redirect of a sign-in window, and the window's last word. */
-export type McpSignInCapture = {
-  /** The full redirect URL, query included. */
-  url: string
-  /** Shows the outcome in the window: success closes it shortly after,
-   *  failure leaves it open with `reason` (shown as given). Never throws. */
-  finish(outcome: { ok: true } | { ok: false; reason?: string }): void
-  /** Closes the window without a result (the sign-in was cancelled). */
-  close(): void
-}
+export type McpSignInCapture = SignInCapture
 
 /** The host calls a sign-in needs, all made on the runtime's own port. */
 export type McpOAuthHost = {

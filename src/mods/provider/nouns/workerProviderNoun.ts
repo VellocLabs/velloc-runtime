@@ -51,6 +51,7 @@ export function makeInteractHandle(call: ProviderCaller, loginId: unknown): unkn
     prompt: (options: unknown): Promise<unknown> => call('interactPrompt', [loginId, options]),
     choose: (options: unknown): Promise<unknown> => call('interactChoose', [loginId, options]),
     progress: (text: unknown): Promise<unknown> => call('interactProgress', [loginId, text]),
+    openWindow: (options: unknown): Promise<unknown> => call('interactOpenWindow', [loginId, options]),
   })
 }
 

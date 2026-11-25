@@ -828,12 +828,16 @@ export function createNativePrimitives(options: CreateNativePrimitivesOptions) {
         /** With `captureRedirect`: keep the window on the host's
          *  "Finishing sign-in" page until `showSignInResult`. */
         awaitSignInResult?: boolean
+        /** A session of the window's own: nothing of the person's profile
+         *  in it, nothing of it kept once the window closes. */
+        isolatedSession?: boolean
       } & BridgeWebWindowBounds = {},
     ): Promise<number> {
       requireCapability('webWindow')
       if (options.captureRedirect !== undefined) requireListed('webWindow.captureRedirect')
       if (options.title !== undefined) requireListed('webWindow.title')
       if (options.awaitSignInResult !== undefined) requireListed('webWindow.signInResult')
+      if (options.isolatedSession !== undefined) requireListed('webWindow.isolatedSession')
       return (await send('webWindow', 'webWindow', 'open', { url, ...options })).windowId
     },
     /** Reports an `awaitSignInResult` window's sign-in outcome; `message` is

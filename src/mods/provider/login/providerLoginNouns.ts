@@ -11,7 +11,9 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
-export function createLoginNouns(service: Pick<ProviderCredentials, 'interact' | 'moduleFailed'>): ProviderNounTable {
+export function createLoginNouns(
+  service: Pick<ProviderCredentials, 'interact' | 'moduleFailed' | 'openWindow'>,
+): ProviderNounTable {
   const about = async <T>(call: ProviderNounCall, noun: string, run: (given: Record<string, unknown>) => Promise<T>) => {
     if (!isRecord(call.args[1])) throw new TypeError(`interact.${noun} takes an object`)
     return run(call.args[1])
@@ -31,6 +33,8 @@ export function createLoginNouns(service: Pick<ProviderCredentials, 'interact' |
       about(call, 'choose', given =>
         service.interact(call.args[0], call.providers, { kind: 'choose', label: given.label, options: given.options }),
       ),
+    // The window opens on a host the manifest allows; the module gets the captured URL only.
+    interactOpenWindow: (call: ProviderNounCall) => service.openWindow(call.args[0], call.providers, call.args[1]),
     interactProgress: (call: ProviderNounCall) =>
       service.interact(call.args[0], call.providers, { kind: 'progress', text: call.args[1] }),
     interactFail: (call: ProviderNounCall) => {

@@ -26,6 +26,8 @@ import {
 import type { LocalizedText } from '../../../config/localizedText'
 import type { NexusProviderConfig } from '../../../settings/settingsTypes'
 import { queueProviderEntryWrite } from './providerEntryWrites'
+import { loginWindowProblem } from './loginWindowRequest'
+import { SignInWindowClosedError, type SignInCapture, type SignInWindowRequest } from '../../../browser/bridge/signInWindow'
 import {
   ProviderSignInRequiredError,
   type ProviderSeamCredentials,
@@ -45,7 +47,13 @@ export interface CredentialRuntime {
 export type CredentialDeps = {
   runtime: () => CredentialRuntime | undefined
   /** A registered provider: the secret names it declares and its methods. */
-  describe: (providerId: string) => { secrets: readonly string[]; methods: readonly string[] } | undefined
+  describe: (
+    providerId: string,
+  ) => { secrets: readonly string[]; methods: readonly string[]; loginWindow?: readonly string[] } | undefined
+  /** Opens a sign-in window on the host and resolves with its captured
+   *  redirect; rejects `SignInWindowClosedError` when the person closes it.
+   *  Absent: this host has no such windows. */
+  openWindow?: (request: SignInWindowRequest) => Promise<SignInCapture>
   storedConfigOf: (providerId: string) => NexusProviderConfig | undefined
   /** The settings write path (`providers.upsert`: replaces the entry, seals secrets). */
   writeConfig: (providerId: string, config: NexusProviderConfig) => Promise<void>
@@ -164,6 +172,8 @@ type LoginRun = {
   terminal: boolean
   moduleFailure?: string
   wallTimer?: ReturnType<typeof setTimeout>
+  /** The one sign-in window of this run: aborting closes it while it waits. */
+  window?: { abort: AbortController; capture?: SignInCapture }
 }
 
 const SIGN_OUT_REASON_VENDOR = 'the vendor ended the sign-in'
@@ -333,6 +343,12 @@ export class ProviderCredentials {
     run.terminal = true
     if (run.wallTimer !== undefined) clearTimeout(run.wallTimer)
     this.rejectPending(run, named('AbortError', 'the sign-in is over'))
+    // The window shows how it ended; one still waiting for its redirect closes.
+    if (run.window?.capture) {
+      run.window.capture.finish(step.kind === 'done' ? { ok: true } : { ok: false, reason: step.kind === 'failed' ? step.reason : undefined })
+    } else {
+      run.window?.abort.abort(named('AbortError', 'the sign-in is over'))
+    }
     this.setStep(run, step)
   }
 
@@ -360,6 +376,8 @@ export class ProviderCredentials {
       if (run.wallTimer !== undefined) clearTimeout(run.wallTimer)
       this.rejectPending(run, named('AbortError', 'the person cancelled the sign-in'))
       run.abort.abort()
+      if (run.window?.capture) run.window.capture.close()
+      else run.window?.abort.abort(named('AbortError', 'the person cancelled the sign-in'))
     }
     this.dropRun(run)
     this.publish()
@@ -490,6 +508,58 @@ export class ProviderCredentials {
         reject,
       }
     })
+  }
+
+  /**
+   * `interact.openWindow` from the module: a sign-in window on a host the
+   * manifest allows, resolved with the URL of its captured redirect and
+   * nothing else. Security: the page's host comes from the manifest, the
+   * redirect is a loopback address that is never requested, one window per
+   * sign-in. The person closing the window cancels the sign-in.
+   */
+  openWindow(loginId: unknown, owned: readonly string[], spec: unknown): Promise<{ url: string }> {
+    if (typeof loginId !== 'string') return Promise.reject(new TypeError('interact: the login id is missing'))
+    const run = this.byId.get(loginId)
+    if (!run || !owned.includes(run.providerId)) {
+      return Promise.reject(named('NotAllowedError', 'interact: no sign-in of this module is running'))
+    }
+    if (run.terminal) return Promise.reject(named('AbortError', 'the sign-in is over'))
+    if (!isRecord(spec)) return Promise.reject(new TypeError('interact.openWindow takes { url, captureRedirect, title?, isolated? }'))
+    const allow = this.deps.describe(run.providerId)?.loginWindow ?? []
+    const problem = loginWindowProblem(spec, allow)
+    if (problem) return Promise.reject(problem)
+    if (run.window) {
+      return Promise.reject(named('NotAllowedError', 'interact.openWindow: a sign-in opens one window'))
+    }
+    const open = this.deps.openWindow
+    if (!open) return Promise.reject(named('NotSupportedError', 'interact.openWindow: this Velloc has no sign-in windows'))
+    const windowRun: NonNullable<LoginRun['window']> = { abort: new AbortController() }
+    run.window = windowRun
+    this.rejectPending(run, named('AbortError', 'a newer sign-in step replaced this one'))
+    this.setStep(run, { kind: 'working' })
+    return open({
+      url: spec.url as string,
+      redirectUri: spec.captureRedirect as string,
+      signal: windowRun.abort.signal,
+      ...(typeof spec.title === 'string' ? { title: spec.title } : {}),
+      ...(spec.isolated === true ? { isolated: true } : {}),
+    }).then(
+      capture => {
+        if (run.terminal) {
+          capture.close()
+          throw named('AbortError', 'the sign-in is over')
+        }
+        windowRun.capture = capture
+        return { url: capture.url }
+      },
+      error => {
+        if (!run.terminal && error instanceof SignInWindowClosedError) {
+          this.cancel(run.loginId)
+          throw named('AbortError', 'the person closed the sign-in window')
+        }
+        throw error
+      },
+    )
   }
 
   // ── writes ──

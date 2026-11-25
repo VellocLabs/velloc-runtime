@@ -17,7 +17,7 @@ import type { ModWorkerHandle } from '../mods/ModRuntime'
 import { installModWorkerHost } from '../mods/ModWorkerHost'
 import { ProviderModRuntime, type ProviderModuleRef } from '../mods/provider/ProviderModRuntime'
 import { createLoginNouns } from '../mods/provider/login/providerLoginNouns'
-import { ProviderCredentials } from '../mods/provider/login/providerCredentials'
+import { ProviderCredentials, type CredentialDeps } from '../mods/provider/login/providerCredentials'
 import type { ProviderLoginState } from '../mods/provider/login/loginProtocol'
 import { createProviderSeam } from '../mods/provider/providerSeamAdapter'
 import type { NexusProviderConfig } from '../settings/settingsTypes'
@@ -133,6 +133,7 @@ function setup(
     wallMs?: number
     idleMs?: number
     idleCheckMs?: number
+    openWindow?: CredentialDeps['openWindow']
   } = {},
 ) {
   const store = options.world ?? world()
@@ -160,6 +161,7 @@ function setup(
     providerNouns: createLoginNouns({
       interact: (id, owned, spec) => credentials.interact(id, owned, spec),
       moduleFailed: (id, owned, message) => credentials.moduleFailed(id, owned, message),
+      openWindow: (id, owned, spec) => credentials.openWindow(id, owned, spec),
     }),
     ...(options.idleMs !== undefined ? { idleMs: options.idleMs } : {}),
     ...(options.idleCheckMs !== undefined ? { idleCheckMs: options.idleCheckMs } : {}),
@@ -168,7 +170,11 @@ function setup(
   runtime.register('acme', [ref])
   credentials = new ProviderCredentials({
     runtime: () => runtime,
-    describe: id => (id === ID ? { secrets: ['access_token', 'refresh_token'], methods: ['login'] } : undefined),
+    describe: id =>
+      id === ID
+        ? { secrets: ['access_token', 'refresh_token'], methods: ['login'], loginWindow: ['auth.acme.example'] }
+        : undefined,
+    ...(options.openWindow ? { openWindow: options.openWindow } : {}),
     storedConfigOf: () => store.storedConfigOf(),
     writeConfig: store.writeConfig,
     report: line => log.push(line),
@@ -287,6 +293,43 @@ describe('provider.login with the interact handle', () => {
     await until(() => stepOf(t.credentials)?.kind === 'failed', 'failure')
     expect(stepOf(t.credentials)).toEqual({ kind: 'failed', code: 'module', reason: 'Your plan does not include this model' })
     expect(t.store.writes).toHaveLength(0)
+  })
+
+  it('interact.openWindow hands the module the captured URL; a host the manifest does not allow opens nothing', async () => {
+    const asked: Array<{ url: string; redirectUri: string; isolated?: boolean }> = []
+    const t = setup(
+      `
+      export function register(on) {
+        on('provider.login', async ($, e) => {
+          let refused = ''
+          try {
+            await e.interact.openWindow({ url: 'https://elsewhere.example/authorize', captureRedirect: 'http://127.0.0.1:53682/cb' })
+          } catch (error) {
+            refused = error.name
+          }
+          const { url, ...rest } = await e.interact.openWindow({
+            url: 'https://auth.acme.example/authorize',
+            captureRedirect: 'http://127.0.0.1:53682/cb',
+            isolated: true,
+          })
+          const code = new URL(url).searchParams.get('code')
+          return { secrets: { access_token: 'AT-' + code + '-' + refused + '-' + Object.keys(rest).length }, account: 'zed@acme.example' }
+        })
+      }
+    `,
+      {
+        openWindow: async request => {
+          asked.push({ url: request.url, redirectUri: request.redirectUri, ...(request.isolated ? { isolated: true } : {}) })
+          return { url: `${request.redirectUri}?code=c9`, finish: () => {}, close: () => {} }
+        },
+      },
+    )
+    t.credentials.startLogin(ID)
+    await until(() => stepOf(t.credentials)?.kind === 'done', 'done')
+    expect(asked).toEqual([
+      { url: 'https://auth.acme.example/authorize', redirectUri: 'http://127.0.0.1:53682/cb', isolated: true },
+    ])
+    expect(t.store.writes.at(-1)?.secrets).toMatchObject({ access_token: 'AT-c9-NotAllowedError-0' })
   })
 
   it('openUrl of another scheme is refused to the module, and the page never sees the link', async () => {

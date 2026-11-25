@@ -74,6 +74,11 @@ export type WebWindowBridgeActionMap = {
        *  the host's "Finishing sign-in" page until `showSignInResult`.
        *  Manifest primitive `webWindow.signInResult`. */
       awaitSignInResult?: boolean
+      /** The window gets a session of its own: no cookie, stored password or
+       *  site data of the person's profile, and everything it stored is
+       *  discarded when it closes. Absent: the person's profile. Manifest
+       *  primitive `webWindow.isolatedSession`. */
+      isolatedSession?: boolean
     } & BridgeWebWindowBounds
     result: { windowId: number }
   }

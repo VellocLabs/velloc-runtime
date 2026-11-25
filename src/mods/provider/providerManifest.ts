@@ -85,7 +85,12 @@ export type ProviderCredentials = {
   secrets?: ProviderSecretDecl[]
   prompts?: CredentialPrompt[]
   readsSecrets?: boolean
+  /** The hosts a `provider.login` hook may open its sign-in window on. */
+  loginWindow?: { allow: string[] }
 }
+
+/** The most hosts `credentials.loginWindow.allow` may name. */
+export const LOGIN_WINDOW_HOSTS_MAX = 8
 
 /** A settings field: `PluginUserConfigField` with text a vendor may localize. */
 export type ProviderSettingField = Omit<PluginUserConfigField, 'title' | 'description'> & SettingBinding & {
@@ -502,7 +507,7 @@ function checkCredentials(value: unknown, bad: Problems): ProviderCredentials | 
     bad('credentials: required and must be an object')
     return undefined
   }
-  onlyKeys(value, ['methods', 'secrets', 'prompts', 'readsSecrets'], 'credentials', bad)
+  onlyKeys(value, ['methods', 'secrets', 'prompts', 'readsSecrets', 'loginWindow'], 'credentials', bad)
   const { methods } = value
   if (!Array.isArray(methods) || methods.length === 0) {
     bad(`credentials.methods: expected a non-empty list of ${PROVIDER_CREDENTIAL_METHODS.join(' / ')}`)
@@ -535,6 +540,39 @@ function checkCredentials(value: unknown, bad: Problems): ProviderCredentials | 
       return undefined
     }
     if (value.readsSecrets) out.readsSecrets = true
+  }
+  if (value.loginWindow !== undefined) {
+    const allow = checkLoginWindow(value.loginWindow, kept, bad)
+    if (!allow) return undefined
+    out.loginWindow = { allow }
+  }
+  return out
+}
+
+function checkLoginWindow(value: unknown, methods: readonly ProviderCredentialMethod[], bad: Problems): string[] | undefined {
+  const at = 'credentials.loginWindow'
+  if (!isRecord(value)) {
+    bad(`${at}: expected { allow: [host names] }`)
+    return undefined
+  }
+  onlyKeys(value, ['allow'], at, bad)
+  if (!methods.includes('login')) {
+    bad(`${at}: only a provider whose credentials.methods include "login" opens a sign-in window`)
+    return undefined
+  }
+  const { allow } = value
+  if (!isStringList(allow) || allow.length === 0 || allow.length > LOGIN_WINDOW_HOSTS_MAX) {
+    bad(`${at}.allow: expected a list of 1 to ${LOGIN_WINDOW_HOSTS_MAX} host names`)
+    return undefined
+  }
+  const out: string[] = []
+  for (const entry of allow) {
+    const host = entry.trim().toLowerCase()
+    if (!HOST_NAME.test(host)) {
+      bad(`${at}.allow: "${entry}" is not a plain host name (no scheme, port, path or wildcard)`)
+      return undefined
+    }
+    if (!out.includes(host)) out.push(host)
   }
   return out
 }
@@ -953,6 +991,12 @@ function checkProvider(key: string, id: string, raw: unknown, errors: string[]):
   const defaultBaseUrl = router ? '' : checkBaseUrl(raw.defaultBaseUrl, domains, bad)
   const format = router ? WIRE_FORMATS[0] : checkFormat(raw.format, bad)
   const credentials = checkCredentials(raw.credentials, bad)
+  // Security: the sign-in page's hosts are among the hosts the person consented to.
+  for (const host of credentials?.loginWindow?.allow ?? []) {
+    if (!coveredBy(host, domains ?? [])) {
+      bad(`credentials.loginWindow.allow: "${host}" is not among the declared domains`)
+    }
+  }
 
   let icon: string | undefined
   if (raw.icon !== undefined) {

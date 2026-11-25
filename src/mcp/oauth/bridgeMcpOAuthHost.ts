@@ -4,9 +4,12 @@
  * are host-built form posts, and the tokens go straight into the secret store.
  */
 import { createNativePrimitives } from '../../browser/bridge/nativePrimitives'
+import { openSignInWindow, signInWindowTitle } from '../../browser/bridge/signInWindow'
 import type { McpHostAccess } from '../mcpHost'
 import { createPrimitiveFetch } from '../primitiveTransports'
-import { McpSignInClosedError, type McpOAuthHost, type McpSignInCapture } from './McpOAuthService'
+import { McpSignInClosedError, type McpOAuthHost } from './McpOAuthService'
+
+export { signInWindowTitle }
 
 /** Everything a sign-in needs from the host, by manifest entry. */
 export const MCP_OAUTH_PRIMITIVES = [
@@ -16,25 +19,6 @@ export const MCP_OAUTH_PRIMITIVES = [
   'webWindow.captureRedirect',
 ] as const
 export const MCP_OAUTH_CAPABILITIES = ['secrets', 'webWindow'] as const
-
-const SIGN_IN_WINDOW = { width: 520, height: 720 }
-/** The longest window title the host accepts, in UTF-16 units. */
-const MAX_WINDOW_TITLE = 120
-
-/**
- * `title` as the host takes it: whitespace runs collapsed, ends trimmed, cut
- * to the host's limit with an ellipsis. Null when nothing is left, so a blank
- * title never fails the sign-in.
- */
-export function signInWindowTitle(title: string | undefined): string | null {
-  const collapsed = title?.replace(/\s+/g, ' ').trim() ?? ''
-  if (!collapsed) return null
-  if (collapsed.length <= MAX_WINDOW_TITLE) return collapsed
-  let cut = collapsed.slice(0, MAX_WINDOW_TITLE - 1)
-  // Never leave half a surrogate pair before the ellipsis.
-  if (/[\uD800-\uDBFF]$/.test(cut)) cut = cut.slice(0, -1)
-  return `${cut.trimEnd()}\u2026`
-}
 
 /** Whether `host` can run a sign-in. */
 export function hostServesMcpOAuth(host: McpHostAccess | null): boolean {
@@ -111,85 +95,13 @@ export function createBridgeMcpOAuthHost(
     async deleteSecret(name) {
       await primitives.secrets.delete(name)
     },
-    openSignInWindow(url, redirectUri, signal, title) {
-      const listed = (name: string): boolean => host.manifest?.primitives?.includes(name) === true
-      // An older host has no fixed titles; it shows the page's own.
-      const fixedTitle = listed('webWindow.title') ? signInWindowTitle(title) : null
-      // An older host closes the window on the capture; it has no result pages.
-      const awaitResult = listed('webWindow.signInResult')
-      const captured = (windowId: number, capturedUrl: string): McpSignInCapture => {
-        let done = false
-        const once = (run: () => Promise<void>): void => {
-          if (done || !awaitResult) return
-          done = true
-          void run().catch(() => {})
-        }
-        return {
-          url: capturedUrl,
-          finish: outcome =>
-            once(() =>
-              primitives.webWindow.showSignInResult(
-                windowId,
-                outcome.ok,
-                !outcome.ok && outcome.reason ? outcome.reason : undefined,
-              ),
-            ),
-          close: () => once(() => primitives.webWindow.close(windowId)),
-        }
-      }
-      return new Promise<McpSignInCapture>((resolve, reject) => {
-        let windowId: number | null = null
-        let settled = false
-        const offs: Array<() => void> = []
-        const finish = (outcome: () => void): void => {
-          if (settled) return
-          settled = true
-          for (const off of offs) off()
-          signal.removeEventListener('abort', onAbort)
-          outcome()
-        }
-        const onAbort = (): void => {
-          if (windowId !== null) void primitives.webWindow.close(windowId).catch(() => {})
-          finish(() => reject(signal.reason ?? new McpSignInClosedError()))
-        }
-        // Listeners first: a redirect can be captured before `open` answers.
-        const early: Array<{ windowId: number; url?: string }> = []
-        offs.push(
-          primitives.webWindow.onRedirectCaptured(event => {
-            if (windowId === null) early.push({ windowId: event.windowId, url: event.url })
-            else if (event.windowId === windowId) finish(() => resolve(captured(event.windowId, event.url)))
-          }),
-          primitives.webWindow.onClosed(event => {
-            if (windowId === null) early.push({ windowId: event.windowId })
-            else if (event.windowId === windowId) finish(() => reject(new McpSignInClosedError()))
-          }),
-        )
-        if (signal.aborted) {
-          onAbort()
-          return
-        }
-        signal.addEventListener('abort', onAbort)
-        primitives.webWindow
-          .open(url, {
-            captureRedirect: redirectUri,
-            ...SIGN_IN_WINDOW,
-            ...(fixedTitle !== null ? { title: fixedTitle } : {}),
-            ...(awaitResult ? { awaitSignInResult: true } : {}),
-          })
-          .then(id => {
-            windowId = id
-            if (settled) {
-              void primitives.webWindow.close(id).catch(() => {})
-              return
-            }
-            for (const event of early) {
-              if (event.windowId !== id) continue
-              if (event.url !== undefined) finish(() => resolve(captured(id, event.url!)))
-              else finish(() => reject(new McpSignInClosedError()))
-            }
-          })
-          .catch(error => finish(() => reject(error)))
-      })
-    },
+    openSignInWindow: (url, redirectUri, signal, title) =>
+      openSignInWindow(primitives.webWindow, host.manifest, {
+        url,
+        redirectUri,
+        signal,
+        ...(title !== undefined ? { title } : {}),
+        closed: () => new McpSignInClosedError(),
+      }),
   }
 }
