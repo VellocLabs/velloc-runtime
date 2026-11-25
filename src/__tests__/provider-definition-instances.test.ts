@@ -527,7 +527,9 @@ describe('registration', () => {
         routesTo,
         isSetUp: () => true,
         isRouter: () => false,
+        routerId: 'mod.router-a.router',
         definitionOf: providerDefinitionId,
+        managedByOf: () => undefined,
         serves: () => true,
         knownModel: () => true,
       })
@@ -554,10 +556,12 @@ describe('registration', () => {
       expect(providerDefinitionId(WORK)).toBe(WORK)
       expect(providerDefinitionId(HOME_ACCOUNT)).toBe(HOME_ACCOUNT)
       const facts = {
+        routerId: 'mod.router-a.router',
         routesTo: [KEYED],
         isSetUp: () => true,
         isRouter: () => false,
         definitionOf: providerDefinitionId,
+        managedByOf: () => undefined,
         serves: () => true,
         knownModel: () => true,
       }
