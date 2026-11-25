@@ -2402,6 +2402,10 @@ export const es: Messages = {
   'settings.plugins.providers.consent.publisher': 'Publicado por {publisher}',
   'settings.plugins.providers.consent.publisherUnknown': 'No se indica el editor.',
   'settings.plugins.providers.consent.provider': 'Proveedor: {provider}',
+  'settings.plugins.providers.consent.manages': 'Configura sus propios proveedores y envía sus solicitudes a través de ellos: {providers}',
+  'settings.plugins.providers.consent.managedBy':
+    'Lo configura {router} y solo se usa a través de él. Al aceptar se incluyen todas las cuentas o claves que se le añadan.',
+  'settings.plugins.providers.consent.loginWindow': 'Su inicio de sesión abre una ventana en: {domains}',
   'settings.plugins.providers.consent.domains': 'Puede conectarse a: {domains}',
   'settings.plugins.providers.consent.noDomains': 'No declara dominios a los que conectarse.',
   'settings.plugins.providers.routes.any': 'Envía sus solicitudes a través de otros proveedores que haya configurado, con las credenciales de estos: cualquier proveedor.',
@@ -2470,6 +2474,7 @@ export const es: Messages = {
   'settings.plugins.providers.updates.waitingTitle': 'La versión {version} espera su aprobación',
   'settings.plugins.providers.updates.waitingBody': 'Solicita más de lo que usted aceptó. La versión actual sigue en uso hasta que usted decida.',
   'settings.plugins.providers.updates.addedProvider': 'Proveedor nuevo: {provider}',
+  'settings.plugins.providers.updates.addedLoginWindow': '{id} ahora puede abrir una ventana de inicio de sesión en: {domains}',
   'settings.plugins.providers.updates.addedDomains': '{id} ahora puede conectarse a: {domains}',
   'settings.plugins.providers.updates.addedProxyPools':
     '{id} ahora puede enviar solicitudes a través de servidores proxy que elige su código',

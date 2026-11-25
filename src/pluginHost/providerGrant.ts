@@ -1,5 +1,6 @@
 /**
- * Plugins: the GRANT a person consents to — each provider's `domains`,
+ * Plugins: the GRANT a person consents to — each provider's `domains`, the hosts of its sign-in
+ * window, the router that manages it (consent to a managed definition covers every instance of it),
  * `secrets`, `readsSecrets`, `requestNeeds`, `signNeeds`, the reach of its proxy pools, a router's
  * `routesTo` (provider definitions, so an added instance of a listed one asks for nothing new), the folders an
  * app's background module may reach, whether it may run the agent (F-40), and
@@ -28,6 +29,11 @@ export type ProviderGrant = {
   routesTo?: GrantRoutes
   /** Lower case, sorted, unique. */
   domains: string[]
+  /** The key of the router of this plugin that sets it up and alone sends
+   *  through it. Absent: the person sets it up on the Models page. */
+  managedBy?: string
+  /** The hosts its sign-in may open a window on (sorted, unique). Absent: none. */
+  loginWindow?: string[]
   /** Sorted, unique. */
   secrets: string[]
   readsSecrets: boolean
@@ -54,6 +60,8 @@ export type Grant = {
 /** What a provider asks for beyond what was consented to. Only the added parts. */
 export type ProviderGrantAddition = {
   domains: string[]
+  /** Hosts its sign-in window may newly open on. Absent: none. */
+  loginWindow?: string[]
   secrets: string[]
   readsSecrets: boolean
   requestNeeds: ProviderRequestNeed[]
@@ -110,12 +118,15 @@ function addedRoutes(consented: ProviderGrant | undefined, next: ProviderGrant):
 export function providerGrantOf(manifest: ProviderManifest): ProviderGrant {
   const needs = new Set(manifest.requestNeeds ?? [])
   const proxyPools = Object.keys(manifest.egressPools ?? {}).length > 0
+  const loginWindow = sortedUnique(listOf(manifest.credentials.loginWindow?.allow).map(host => host.trim().toLowerCase()))
   // A router whose boundary cannot be read is granted no provider at all.
   const routesTo: GrantRoutes | undefined =
     manifest.kind !== 'router' ? undefined : manifest.routesTo === '*' ? '*' : sortedUnique(listOf(manifest.routesTo))
   return {
     ...(routesTo !== undefined ? { kind: 'router' as const, routesTo } : {}),
     domains: sortedUnique(listOf(manifest.domains).map(domain => domain.trim().toLowerCase())),
+    ...(typeof manifest.managedBy === 'string' ? { managedBy: manifest.managedBy } : {}),
+    ...(loginWindow.length > 0 ? { loginWindow } : {}),
     secrets: sortedUnique((manifest.credentials.secrets ?? []).map(secret => secret.name)),
     readsSecrets: manifest.credentials.readsSecrets === true,
     requestNeeds: REQUEST_NEED_ORDER.filter(need => needs.has(need)),
@@ -162,11 +173,13 @@ function additionOf(consented: ProviderGrant | undefined, next: ProviderGrant): 
     next.signNeeds !== undefined && SIGN_RANK[next.signNeeds] > (consented?.signNeeds ? SIGN_RANK[consented.signNeeds] : 0)
   const widerPools = next.proxyPools === true && consented?.proxyPools !== true
   const routes = addedRoutes(consented, next)
-  if (domains.length === 0 && secrets.length === 0 && !readsSecrets && requestNeeds.length === 0 && !wider && !widerPools && routes === undefined) {
+  const loginWindow = (next.loginWindow ?? []).filter(host => !had(consented?.loginWindow, host))
+  if (loginWindow.length === 0 && domains.length === 0 && secrets.length === 0 && !readsSecrets && requestNeeds.length === 0 && !wider && !widerPools && routes === undefined) {
     return undefined
   }
   return {
     domains,
+    ...(loginWindow.length > 0 ? { loginWindow } : {}),
     secrets,
     readsSecrets,
     requestNeeds,
@@ -177,7 +190,8 @@ function additionOf(consented: ProviderGrant | undefined, next: ProviderGrant): 
 }
 
 /**
- * Whether `next` asks for more than `consented`. A new provider key, domain or secret name,
+ * Whether `next` asks for more than `consented`. A new provider key (a managed definition is one),
+ * domain, sign-in window host or secret name,
  * `readsSecrets` turned on, a new `requestNeeds` value, a first proxy pool, or a larger `signNeeds`
  * (none < digest < body) is wider, as is a provider turning into a router, a router's `routesTo`
  * gaining a provider or turning to `"*"`, a folder not consented to, a read-only one asked for

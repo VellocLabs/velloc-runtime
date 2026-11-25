@@ -2399,6 +2399,10 @@ export const de: Messages = {
   'settings.plugins.providers.consent.publisher': 'Veröffentlicht von {publisher}',
   'settings.plugins.providers.consent.publisherUnknown': 'Der Herausgeber ist nicht angegeben.',
   'settings.plugins.providers.consent.provider': 'Anbieter: {provider}',
+  'settings.plugins.providers.consent.manages': 'Richtet eigene Anbieter ein und sendet deine Anfragen über sie: {providers}',
+  'settings.plugins.providers.consent.managedBy':
+    'Wird von {router} eingerichtet und nur darüber verwendet. Deine Zustimmung gilt für jedes Konto und jeden Schlüssel, der ihm hinzugefügt wird.',
+  'settings.plugins.providers.consent.loginWindow': 'Die Anmeldung öffnet ein Fenster auf: {domains}',
   'settings.plugins.providers.consent.domains': 'Darf Verbindungen aufbauen zu: {domains}',
   'settings.plugins.providers.consent.noDomains': 'Gibt keine Domains an, zu denen es Verbindungen aufbaut.',
   'settings.plugins.providers.routes.any': 'Sendet deine Anfragen über andere Anbieter, die du eingerichtet hast, mit deren Zugangsdaten: jeden Anbieter.',
@@ -2467,6 +2471,7 @@ export const de: Messages = {
   'settings.plugins.providers.updates.waitingTitle': 'Version {version} wartet auf deine Zustimmung',
   'settings.plugins.providers.updates.waitingBody': 'Sie verlangt mehr, als du zugestimmt hast. Die aktuelle Version läuft weiter, bis du entscheidest.',
   'settings.plugins.providers.updates.addedProvider': 'Neuer Anbieter: {provider}',
+  'settings.plugins.providers.updates.addedLoginWindow': '{id} darf jetzt ein Anmeldefenster öffnen auf: {domains}',
   'settings.plugins.providers.updates.addedDomains': '{id} darf jetzt Verbindungen aufbauen zu: {domains}',
   'settings.plugins.providers.updates.addedProxyPools':
     '{id} darf Anfragen jetzt über Proxyserver senden, die sein Code auswählt',

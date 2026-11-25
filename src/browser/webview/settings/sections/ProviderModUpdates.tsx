@@ -91,7 +91,25 @@ function SessionDetailGrantBlock({ t }: { t: TranslateFn }) {
   );
 }
 
-function ProviderGrantBlock({ provider, grant, t }: { provider: string; grant: ProviderGrant; t: TranslateFn }) {
+/** `key (its domains)` of each definition `router` manages, in key order. */
+export function managedDefinitionsText(router: string, providers: ReadonlyArray<readonly [string, ProviderGrant]>): string[] {
+  return providers
+    .filter(([, grant]) => grant.managedBy === router)
+    .map(([key, grant]) => (grant.domains.length > 0 ? `${key} (${grant.domains.join(", ")})` : key));
+}
+
+function ProviderGrantBlock({
+  provider,
+  grant,
+  manages,
+  t,
+}: {
+  provider: string;
+  grant: ProviderGrant;
+  /** The definitions this router manages, as `managedDefinitionsText`. */
+  manages: string[];
+  t: TranslateFn;
+}) {
   return (
     <div className="rounded-lg border border-border/70 bg-muted/30 p-3" data-testid={`consent-provider-${provider}`}>
       <div className="font-medium text-sm">{t("settings.plugins.providers.consent.provider", { provider })}</div>
@@ -102,13 +120,29 @@ function ProviderGrantBlock({ provider, grant, t }: { provider: string; grant: P
               ? t("settings.plugins.providers.routes.any")
               : t("settings.plugins.providers.routes.list", { providers: (grant.routesTo ?? []).join(", ") })}
           </li>
-        ) : (
+        ) : null}
+        {manages.length > 0 ? (
+          <li data-testid={`consent-manages-${provider}`}>
+            {t("settings.plugins.providers.consent.manages", { providers: manages.join("; ") })}
+          </li>
+        ) : null}
+        {grant.managedBy !== undefined ? (
+          <li data-testid={`consent-managed-by-${provider}`}>
+            {t("settings.plugins.providers.consent.managedBy", { router: grant.managedBy })}
+          </li>
+        ) : null}
+        {grant.kind === "router" ? null : (
           <li data-testid={`consent-domains-${provider}`}>
             {grant.domains.length > 0
               ? t("settings.plugins.providers.consent.domains", { domains: grant.domains.join(", ") })
               : t("settings.plugins.providers.consent.noDomains")}
           </li>
         )}
+        {grant.loginWindow?.length ? (
+          <li data-testid={`consent-login-window-${provider}`}>
+            {t("settings.plugins.providers.consent.loginWindow", { domains: grant.loginWindow.join(", ") })}
+          </li>
+        ) : null}
         {grant.proxyPools ? (
           <li data-testid={`consent-proxy-pools-${provider}`}>
             {t("settings.plugins.providers.consent.proxyPools")}
@@ -195,7 +229,13 @@ export function ProviderConsentDialog({
               : t("settings.plugins.providers.consent.publisherUnknown")}
           </div>
           {providers.map(([provider, grant]) => (
-            <ProviderGrantBlock key={provider} provider={provider} grant={grant} t={t} />
+            <ProviderGrantBlock
+              key={provider}
+              provider={provider}
+              grant={grant}
+              manages={grant.kind === "router" ? managedDefinitionsText(provider, providers) : []}
+              t={t}
+            />
           ))}
           {folders ? <FolderGrantBlock folders={folders} t={t} /> : null}
           {agent ? <AgentGrantBlock t={t} /> : null}
@@ -263,6 +303,9 @@ export function grantDeltaLines(status: ProviderModUpdateStatus, t: TranslateFn)
     }
     if (added.domains.length > 0) {
       lines.push(t("settings.plugins.providers.updates.addedDomains", { id: provider, domains: added.domains.join(", ") }));
+    }
+    if (added.loginWindow?.length) {
+      lines.push(t("settings.plugins.providers.updates.addedLoginWindow", { id: provider, domains: added.loginWindow.join(", ") }));
     }
     if (added.proxyPools) {
       lines.push(t("settings.plugins.providers.updates.addedProxyPools", { id: provider }));

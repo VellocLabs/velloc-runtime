@@ -193,6 +193,9 @@ export type ProviderManifest = {
    *  that router sends through it, and the person meets it in the router's
    *  settings app, not in the Models page or the model picker. */
   managedBy?: string
+  /** A managed provider that needs no credential asks for one instance of
+   *  itself to exist without the person adding it. */
+  autoCreate?: true
   /** Package-relative module path, `./`-prefixed. */
   module: string
 }
@@ -1055,6 +1058,17 @@ function checkProvider(key: string, id: string, raw: unknown, errors: string[]):
       bad('managedBy: a managed provider has no modelsUi.starterModels or modelsUi.tierModels; its models are its router\'s to use')
     } else managedBy = raw.managedBy
   }
+  let autoCreate = false
+  if (raw.autoCreate !== undefined) {
+    const methods = isRecord(raw.credentials) ? raw.credentials.methods : undefined
+    if (typeof raw.autoCreate !== 'boolean') bad('autoCreate: expected true or false')
+    else if (raw.autoCreate && raw.managedBy === undefined) {
+      bad('autoCreate: only a provider a router manages (managedBy) is created without the person adding it')
+    } else if (raw.autoCreate && !(Array.isArray(methods) && methods.length === 1 && methods[0] === 'anonymous')) {
+      // Security: nothing that takes a key or a sign-in comes to exist unasked.
+      bad('autoCreate: only a provider whose credentials.methods are ["anonymous"] and nothing else')
+    } else autoCreate = raw.autoCreate
+  }
   const egress =
     raw.egress === undefined
       ? undefined
@@ -1087,6 +1101,7 @@ function checkProvider(key: string, id: string, raw: unknown, errors: string[]):
     ...(jobs && jobs.length > 0 ? { jobs } : {}),
     ...(settingsApp !== undefined ? { settingsApp } : {}),
     ...(managedBy !== undefined ? { managedBy } : {}),
+    ...(autoCreate ? { autoCreate: true as const } : {}),
     module: moduleRef,
   }
 }

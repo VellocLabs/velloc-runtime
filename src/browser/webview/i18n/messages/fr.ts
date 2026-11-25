@@ -2408,6 +2408,10 @@ export const fr: Messages = {
   'settings.plugins.providers.consent.publisher': 'Publié par {publisher}',
   'settings.plugins.providers.consent.publisherUnknown': 'L’éditeur n’est pas indiqué.',
   'settings.plugins.providers.consent.provider': 'Fournisseur : {provider}',
+  'settings.plugins.providers.consent.manages': 'Configure ses propres fournisseurs et envoie vos requêtes par leur intermédiaire : {providers}',
+  'settings.plugins.providers.consent.managedBy':
+    'Configuré par {router} et utilisé uniquement par son intermédiaire. Votre accord vaut pour chaque compte ou clé qui lui sera ajouté.',
+  'settings.plugins.providers.consent.loginWindow': 'Sa connexion ouvre une fenêtre sur : {domains}',
   'settings.plugins.providers.consent.domains': 'Peut contacter : {domains}',
   'settings.plugins.providers.consent.noDomains': 'Ne déclare aucun domaine à contacter.',
   'settings.plugins.providers.routes.any': 'Envoie vos requêtes via d’autres fournisseurs que vous avez configurés, avec leurs identifiants : n’importe quel fournisseur.',
@@ -2476,6 +2480,7 @@ export const fr: Messages = {
   'settings.plugins.providers.updates.waitingTitle': 'La version {version} attend votre approbation',
   'settings.plugins.providers.updates.waitingBody': 'Elle demande plus que ce que vous avez accepté. La version actuelle reste active jusqu’à votre décision.',
   'settings.plugins.providers.updates.addedProvider': 'Nouveau fournisseur : {provider}',
+  'settings.plugins.providers.updates.addedLoginWindow': '{id} peut désormais ouvrir une fenêtre de connexion sur : {domains}',
   'settings.plugins.providers.updates.addedDomains': '{id} peut désormais contacter : {domains}',
   'settings.plugins.providers.updates.addedProxyPools':
     '{id} peut désormais envoyer des requêtes via des serveurs proxy choisis par son code',

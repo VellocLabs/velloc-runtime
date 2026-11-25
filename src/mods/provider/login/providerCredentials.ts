@@ -50,7 +50,16 @@ export type CredentialDeps = {
   /** A registered provider: the secret names it declares and its methods. */
   describe: (
     providerId: string,
-  ) => { secrets: readonly string[]; methods: readonly string[]; loginWindow?: readonly string[] } | undefined
+  ) =>
+    | {
+        secrets: readonly string[]
+        methods: readonly string[]
+        loginWindow?: readonly string[]
+        /** A sign-in must answer `account`: a router manages the provider, and
+         *  its accounts are told apart by it. */
+        accountRequired?: boolean
+      }
+    | undefined
   /** Opens a sign-in window on the host and resolves with its captured
    *  redirect; rejects `SignInWindowClosedError` when the person closes it.
    *  Absent: this host has no such windows. */
@@ -292,6 +301,10 @@ export class ProviderCredentials {
     const parsed = parseCredentialResult(outcome.value, run.secrets, true)
     if (!parsed.ok) {
       this.fail(run, 'invalid_result', parsed.problem)
+      return
+    }
+    if (parsed.result.account === undefined && this.deps.describe(run.providerId)?.accountRequired) {
+      this.fail(run, 'invalid_result', 'the answer names no account; a provider a router manages must answer the account that signed in')
       return
     }
     // A new generation before the write: a refresh begun under the old one

@@ -2368,6 +2368,10 @@ export const ja: Messages = {
   'settings.plugins.providers.consent.publisher': '公開元: {publisher}',
   'settings.plugins.providers.consent.publisherUnknown': '公開元は記載されていません。',
   'settings.plugins.providers.consent.provider': 'プロバイダ: {provider}',
+  'settings.plugins.providers.consent.manages': '独自のプロバイダを設定し、それらを経由してリクエストを送信します: {providers}',
+  'settings.plugins.providers.consent.managedBy':
+    '{router} が設定し、{router} を通じてのみ使用されます。同意すると、今後追加されるすべてのアカウントやキーが対象になります。',
+  'settings.plugins.providers.consent.loginWindow': 'ログイン時にウィンドウを開く先: {domains}',
   'settings.plugins.providers.consent.domains': '接続できる先: {domains}',
   'settings.plugins.providers.consent.noDomains': '接続先のドメインは宣言されていません。',
   'settings.plugins.providers.routes.any': '設定済みのほかのプロバイダを経由して、その認証情報でリクエストを送信します: すべてのプロバイダ。',
@@ -2436,6 +2440,7 @@ export const ja: Messages = {
   'settings.plugins.providers.updates.waitingTitle': 'バージョン {version} はあなたの承認を待っています',
   'settings.plugins.providers.updates.waitingBody': '以前に同意した範囲を超える権限を求めています。あなたが決めるまで、現在のバージョンが引き続き動作します。',
   'settings.plugins.providers.updates.addedProvider': '新しいプロバイダ: {provider}',
+  'settings.plugins.providers.updates.addedLoginWindow': '{id} はログイン時に次の接続先でウィンドウを開けるようになります: {domains}',
   'settings.plugins.providers.updates.addedDomains': '{id} は次にも接続できるようになります: {domains}',
   'settings.plugins.providers.updates.addedProxyPools':
     '{id} は、自身のコードが選ぶプロキシサーバー経由でリクエストを送信できるようになります',

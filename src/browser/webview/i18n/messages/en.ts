@@ -2446,6 +2446,10 @@ export const en = {
   'settings.plugins.providers.consent.publisher': 'Published by {publisher}',
   'settings.plugins.providers.consent.publisherUnknown': 'The publisher is not stated.',
   'settings.plugins.providers.consent.provider': 'Provider: {provider}',
+  'settings.plugins.providers.consent.manages': 'Sets up providers of its own and sends your requests through them: {providers}',
+  'settings.plugins.providers.consent.managedBy':
+    'Set up by {router}, and used only through it. Agreeing covers every account or key added to it.',
+  'settings.plugins.providers.consent.loginWindow': 'Its sign-in opens a window on: {domains}',
   'settings.plugins.providers.consent.domains': 'May contact: {domains}',
   'settings.plugins.providers.consent.noDomains': 'Declares no domains to contact.',
   'settings.plugins.providers.routes.any': 'Sends your requests through other providers you have set up, with their credentials: any provider.',
@@ -2514,6 +2518,7 @@ export const en = {
   'settings.plugins.providers.updates.waitingTitle': 'Version {version} is waiting for your approval',
   'settings.plugins.providers.updates.waitingBody': 'It asks for more than you agreed to. The version you have keeps running until you decide.',
   'settings.plugins.providers.updates.addedProvider': 'New provider: {provider}',
+  'settings.plugins.providers.updates.addedLoginWindow': '{id} may now open a sign-in window on: {domains}',
   'settings.plugins.providers.updates.addedDomains': '{id} may now contact: {domains}',
   'settings.plugins.providers.updates.addedProxyPools':
     '{id} may now send requests through proxy servers its code chooses',

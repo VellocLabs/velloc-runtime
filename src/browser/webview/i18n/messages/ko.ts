@@ -2362,6 +2362,10 @@ export const ko: Messages = {
   'settings.plugins.providers.consent.publisher': '게시자: {publisher}',
   'settings.plugins.providers.consent.publisherUnknown': '게시자가 명시되어 있지 않습니다.',
   'settings.plugins.providers.consent.provider': '제공업체: {provider}',
+  'settings.plugins.providers.consent.manages': '자체 제공업체를 설정하고 이를 거쳐 요청을 보냅니다: {providers}',
+  'settings.plugins.providers.consent.managedBy':
+    '{router}이(가) 설정하며 {router}을(를) 통해서만 사용됩니다. 동의하면 이후 추가되는 모든 계정과 키에 적용됩니다.',
+  'settings.plugins.providers.consent.loginWindow': '로그인할 때 창을 여는 곳: {domains}',
   'settings.plugins.providers.consent.domains': '접속할 수 있는 곳: {domains}',
   'settings.plugins.providers.consent.noDomains': '접속할 도메인을 선언하지 않았습니다.',
   'settings.plugins.providers.routes.any': '설정해 둔 다른 제공업체를 거쳐 해당 제공업체의 자격 증명으로 요청을 보냅니다: 모든 제공업체.',
@@ -2430,6 +2434,7 @@ export const ko: Messages = {
   'settings.plugins.providers.updates.waitingTitle': '버전 {version}이(가) 승인을 기다리고 있습니다',
   'settings.plugins.providers.updates.waitingBody': '이전에 동의한 것보다 더 많은 권한을 요청합니다. 결정하기 전까지는 현재 버전이 계속 실행됩니다.',
   'settings.plugins.providers.updates.addedProvider': '새 제공업체: {provider}',
+  'settings.plugins.providers.updates.addedLoginWindow': '{id}이(가) 이제 로그인 창을 열 수 있는 곳: {domains}',
   'settings.plugins.providers.updates.addedDomains': '{id}이(가) 이제 접속할 수 있는 곳: {domains}',
   'settings.plugins.providers.updates.addedProxyPools':
     '{id}이(가) 이제 자체 코드가 선택하는 프록시 서버를 통해 요청을 보낼 수 있습니다',

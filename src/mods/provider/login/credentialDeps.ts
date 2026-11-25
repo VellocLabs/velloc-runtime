@@ -24,6 +24,7 @@ export function defaultCredentialDeps(): CredentialDeps {
         secrets: (registration.manifest.credentials.secrets ?? []).map(secret => secret.name),
         methods: registration.manifest.credentials.methods,
         loginWindow: registration.manifest.credentials.loginWindow?.allow ?? [],
+        accountRequired: registration.manifest.managedBy !== undefined,
       }
     },
     openWindow: request => {
