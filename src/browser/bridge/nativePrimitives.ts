@@ -831,6 +831,8 @@ export function createNativePrimitives(options: CreateNativePrimitivesOptions) {
         /** A session of the window's own: nothing of the person's profile
          *  in it, nothing of it kept once the window closes. */
         isolatedSession?: boolean
+        /** A named, lasting session of the window's own. */
+        storagePartition?: string
       } & BridgeWebWindowBounds = {},
     ): Promise<number> {
       requireCapability('webWindow')
@@ -838,6 +840,7 @@ export function createNativePrimitives(options: CreateNativePrimitivesOptions) {
       if (options.title !== undefined) requireListed('webWindow.title')
       if (options.awaitSignInResult !== undefined) requireListed('webWindow.signInResult')
       if (options.isolatedSession !== undefined) requireListed('webWindow.isolatedSession')
+      if (options.storagePartition !== undefined) requireListed('webWindow.storagePartition')
       return (await send('webWindow', 'webWindow', 'open', { url, ...options })).windowId
     },
     /** Reports an `awaitSignInResult` window's sign-in outcome; `message` is
@@ -913,6 +916,12 @@ export function createNativePrimitives(options: CreateNativePrimitivesOptions) {
         event => listener(event.payload as BridgeWebWindowOnClosedPayload),
         'webWindow',
       )
+    },
+    /** Deletes everything a named storage partition holds. */
+    async deleteStoragePartition(name: string): Promise<void> {
+      requireCapability('webWindow')
+      requireListed('webWindow.storagePartition')
+      await send('webWindow', 'webWindow', 'deleteStoragePartition', { name })
     },
     /** A navigation to an owned window's `captureRedirect` URL. Returns the unsubscribe. */
     onRedirectCaptured(listener: (event: BridgeWebWindowOnRedirectCapturedPayload) => void): () => void {

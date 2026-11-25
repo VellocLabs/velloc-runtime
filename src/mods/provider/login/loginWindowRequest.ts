@@ -48,8 +48,8 @@ export function loginWindowProblem(spec: Readonly<Record<string, unknown>>, allo
   if (spec.title !== undefined && (typeof spec.title !== 'string' || spec.title.length > MAX_TITLE_CHARS)) {
     return new TypeError(`interact.openWindow: title must be text of at most ${MAX_TITLE_CHARS} characters`)
   }
-  if (spec.isolated !== undefined && typeof spec.isolated !== 'boolean') {
-    return new TypeError('interact.openWindow: isolated must be true or false')
+  if (spec.profile !== undefined && (typeof spec.profile !== 'string' || spec.profile === '')) {
+    return new TypeError('interact.openWindow: profile must be a web profile id, "new" or "temporary"')
   }
   return null
 }

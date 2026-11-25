@@ -79,6 +79,12 @@ export type WebWindowBridgeActionMap = {
        *  discarded when it closes. Absent: the person's profile. Manifest
        *  primitive `webWindow.isolatedSession`. */
       isolatedSession?: boolean
+      /** The window runs in the named storage partition of the profile: a
+       *  session of its own (cookies, site data) that is kept on disk and is
+       *  there again the next time the name is used. 8 to 32 lower-case
+       *  letters. Not with `isolatedSession`. Manifest primitive
+       *  `webWindow.storagePartition`. */
+      storagePartition?: string
     } & BridgeWebWindowBounds
     result: { windowId: number }
   }
@@ -88,6 +94,13 @@ export type WebWindowBridgeActionMap = {
    *  Once per capture. Manifest primitive `webWindow.signInResult`. */
   showSignInResult: {
     payload: { windowId: number; ok: boolean; message?: string }
+    result: { ok: boolean }
+  }
+  /** Deletes everything stored in a named storage partition. Refused
+   *  (`partition_in_use`) while a window is open in it. Manifest primitive
+   *  `webWindow.storagePartition`. */
+  deleteStoragePartition: {
+    payload: { name: string }
     result: { ok: boolean }
   }
   close: WindowAction

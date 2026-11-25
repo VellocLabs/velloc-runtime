@@ -67,6 +67,12 @@ export function makeProviderNoun(call: ProviderCaller): unknown {
           call('keypairSign', options === undefined ? [name, bytes] : [name, bytes, options]),
       })
     },
+    // The kept browser sessions; `interact.openWindow({ profile })` opens one or makes one.
+    webProfiles: Object.freeze({
+      list: (): Promise<unknown> => call('webProfilesList', []),
+      setLogin: (id: unknown, login: unknown): Promise<unknown> => call('webProfilesSetLogin', [id, login]),
+      removeLogin: (id: unknown, site: unknown): Promise<unknown> => call('webProfilesRemoveLogin', [id, site]),
+    }),
     fetch: async (target: unknown, init?: unknown): Promise<unknown> =>
       fetchResponse((await call('fetch', init === undefined ? [target] : [target, init])) as FetchedAnswer),
     sessionStore: (sessionId: unknown, options?: unknown): unknown => {

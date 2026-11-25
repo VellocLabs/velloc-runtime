@@ -46,6 +46,7 @@ import {
 } from '../pluginHost/pluginRef'
 import { pluginBlockReason } from '../pluginHost/blocklist'
 import { keepOneThemePlugin } from '../mods/themePlugins'
+import { forgetPluginWebProfiles } from '../mods/provider/webProfilesRuntime'
 import type { MessageKey } from '../browser/webview/i18n/messages/en'
 import {
   BLOCK,
@@ -285,6 +286,7 @@ async function runPluginUninstall(
   if (!result.registryHadEntry) {
     return [key('slash.out.plugin.uninstall.notInstalled', { id })]
   }
+  await forgetPluginWebProfiles({ homeDir: pathCtx.homeDir, fs: ctx.fs }, id.slice(0, id.lastIndexOf('@')))
   const parts: SystemMessagePart[] = [key('slash.out.plugin.uninstall.success', { id })]
   if (result.formerInstallPath) {
     parts.push(

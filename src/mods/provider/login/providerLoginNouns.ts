@@ -5,10 +5,20 @@
  * module's provider is refused; all reject on cancel or timeout.
  */
 import type { ProviderNounCall, ProviderNounTable } from '../ProviderModRuntime'
+import type { WebProfiles } from '../webProfiles'
 import type { ProviderCredentials } from './providerCredentials'
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+/** `$.provider.webProfiles.*`: every plugin reads all profiles; a login record is the caller's own. */
+export function createWebProfileNouns(profiles: () => WebProfiles): ProviderNounTable {
+  return Object.freeze({
+    webProfilesList: (_call: ProviderNounCall) => profiles().list(),
+    webProfilesSetLogin: async (call: ProviderNounCall) => profiles().setLogin(call.plugin, call.args[0], call.args[1]),
+    webProfilesRemoveLogin: async (call: ProviderNounCall) => profiles().removeLogin(call.plugin, call.args[0], call.args[1]),
+  })
 }
 
 export function createLoginNouns(

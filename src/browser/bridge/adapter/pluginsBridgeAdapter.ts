@@ -25,6 +25,7 @@ import {
 } from '../../../pluginHost/localPluginRemove'
 import { listLocalPlugins, localCopiesShadowing } from '../../../pluginHost/localPluginList'
 import { forgetModBuilds } from '../../../mods/modBuildStore'
+import { forgetPluginWebProfiles } from '../../../mods/provider/webProfilesRuntime'
 import { RUNTIME_DIR_NAME } from '../../../branding/runtimeDir'
 import { joinRuntimePath } from '../../../utils/runtimePaths'
 import { sanitizeWorkspaceState } from '../../../utils/workspaceState'
@@ -413,6 +414,7 @@ async function handleUninstall(
     },
   )
   await forgetBuilds(ctx, { plugin: pluginNameOf(payload.identifier) })
+  if (result.registryHadEntry) await forgetPluginWebProfiles(ctx, pluginNameOf(payload.identifier))
   // The sessions already open drop it now — an uninstalled mod's hooks stop.
   ctx.reloadPluginsOnAllSessions?.()
   return { ok: true, registryHadEntry: result.registryHadEntry }
@@ -427,6 +429,7 @@ async function handleRemoveLocal(
 ): Promise<PluginsBridgeActionMap['removeLocal']['result']> {
   const { name } = await removeLocalPlugin(payload.path, ctx.fs)
   await forgetBuilds(ctx, { root: payload.path })
+  await forgetPluginWebProfiles(ctx, name)
   ctx.reloadPluginsOnAllSessions?.()
   return { ok: true, name }
 }

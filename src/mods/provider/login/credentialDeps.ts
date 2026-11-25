@@ -9,6 +9,7 @@ import { runtimeProviderConfigs } from '../../../models/drivers/runtimeProviders
 import { traceLine } from '../../../utils/debugLog'
 import { providerHostSources } from '../providerHostSources'
 import { getProviderModHost } from '../providerModHost'
+import { currentWebProfiles } from '../webProfilesRuntime'
 import { ProviderCredentials, type CredentialDeps } from './providerCredentials'
 
 export function defaultCredentialDeps(): CredentialDeps {
@@ -48,6 +49,15 @@ export function defaultCredentialDeps(): CredentialDeps {
         throw error
       }
       await write(providerId, config)
+    },
+    holdProfile: async profile => {
+      const profiles = currentWebProfiles()
+      if (!profiles) {
+        const error = new Error('interact.openWindow: this Velloc cannot keep web profiles')
+        error.name = 'NotSupportedError'
+        throw error
+      }
+      return profiles.hold(profile)
     },
     report: line => traceLine(`[provider-mods] ${line}`, { level: 'warn' }),
   }

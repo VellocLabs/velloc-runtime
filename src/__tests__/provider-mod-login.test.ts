@@ -16,8 +16,9 @@ import { registerProviderRequestSeam, resetProviderRequestSeams } from '../model
 import type { ModWorkerHandle } from '../mods/ModRuntime'
 import { installModWorkerHost } from '../mods/ModWorkerHost'
 import { ProviderModRuntime, type ProviderModuleRef } from '../mods/provider/ProviderModRuntime'
-import { createLoginNouns } from '../mods/provider/login/providerLoginNouns'
+import { createLoginNouns, createWebProfileNouns } from '../mods/provider/login/providerLoginNouns'
 import { ProviderCredentials, type CredentialDeps } from '../mods/provider/login/providerCredentials'
+import { WebProfiles } from '../mods/provider/webProfiles'
 import type { ProviderLoginState } from '../mods/provider/login/loginProtocol'
 import { createProviderSeam } from '../mods/provider/providerSeamAdapter'
 import type { NexusProviderConfig } from '../settings/settingsTypes'
@@ -139,6 +140,13 @@ function setup(
   const store = options.world ?? world()
   const log: string[] = []
   let opened = 0
+  let profileFile: string | null = null
+  const webProfiles = new WebProfiles({
+    load: async () => profileFile,
+    save: async text => void (profileFile = text),
+    hostKeepsProfiles: () => true,
+    deletePartition: async () => {},
+  })
   let credentials!: ProviderCredentials
   const ref: ProviderModuleRef = { plugin: 'acme', path: 'acme/providers/sso.js', providers: [ID] }
   const runtime = new ProviderModRuntime({
@@ -158,11 +166,14 @@ function setup(
     window: { available: () => true, attached: async () => {} },
     report: line => log.push(line),
     respawnBackoffMs: [10],
-    providerNouns: createLoginNouns({
-      interact: (id, owned, spec) => credentials.interact(id, owned, spec),
-      moduleFailed: (id, owned, message) => credentials.moduleFailed(id, owned, message),
-      openWindow: (id, owned, spec) => credentials.openWindow(id, owned, spec),
-    }),
+    providerNouns: {
+      ...createLoginNouns({
+        interact: (id, owned, spec) => credentials.interact(id, owned, spec),
+        moduleFailed: (id, owned, message) => credentials.moduleFailed(id, owned, message),
+        openWindow: (id, owned, spec) => credentials.openWindow(id, owned, spec),
+      }),
+      ...createWebProfileNouns(() => webProfiles),
+    },
     ...(options.idleMs !== undefined ? { idleMs: options.idleMs } : {}),
     ...(options.idleCheckMs !== undefined ? { idleCheckMs: options.idleCheckMs } : {}),
   })
@@ -175,6 +186,7 @@ function setup(
         ? { secrets: ['access_token', 'refresh_token'], methods: ['login'], loginWindow: ['auth.acme.example'] }
         : undefined,
     ...(options.openWindow ? { openWindow: options.openWindow } : {}),
+    holdProfile: profile => webProfiles.hold(profile),
     storedConfigOf: () => store.storedConfigOf(),
     writeConfig: store.writeConfig,
     report: line => log.push(line),
@@ -310,7 +322,7 @@ describe('provider.login with the interact handle', () => {
           const { url, ...rest } = await e.interact.openWindow({
             url: 'https://auth.acme.example/authorize',
             captureRedirect: 'http://127.0.0.1:53682/cb',
-            isolated: true,
+            profile: 'temporary',
           })
           const code = new URL(url).searchParams.get('code')
           return { secrets: { access_token: 'AT-' + code + '-' + refused + '-' + Object.keys(rest).length }, account: 'zed@acme.example' }
@@ -330,6 +342,40 @@ describe('provider.login with the interact handle', () => {
       { url: 'https://auth.acme.example/authorize', redirectUri: 'http://127.0.0.1:53682/cb', isolated: true },
     ])
     expect(t.store.writes.at(-1)?.secrets).toMatchObject({ access_token: 'AT-c9-NotAllowedError-0' })
+  })
+
+  it('$.provider.webProfiles: a module opens its window in a new profile and records who signed in there', async () => {
+    const asked: Array<string | undefined> = []
+    const t = setup(
+      `
+      export function register(on) {
+        on('provider.login', async ($, e) => {
+          const before = await $.provider.webProfiles.list()
+          const { profile } = await e.interact.openWindow({
+            url: 'https://auth.acme.example/authorize',
+            captureRedirect: 'http://127.0.0.1:53682/cb',
+            profile: 'new',
+          })
+          await $.provider.webProfiles.setLogin(profile, { site: 'acme.example', account: 'zed' })
+          const [row] = await $.provider.webProfiles.list()
+          const [login] = row.logins
+          return { secrets: { access_token: [before.length, profile, row.id, login.site, login.account, login.plugin].join('|') } }
+        })
+      }
+    `,
+      {
+        openWindow: async request => {
+          asked.push(request.partition)
+          return { url: `${request.redirectUri}?code=c9`, finish: () => {}, close: () => {} }
+        },
+      },
+    )
+    t.credentials.startLogin(ID)
+    await until(() => stepOf(t.credentials)?.kind === 'done', 'done')
+    expect(asked).toEqual(['vellocprofileb'])
+    expect(t.store.writes.at(-1)?.secrets).toMatchObject({
+      access_token: '0|velloc-profile-1|velloc-profile-1|acme.example|zed|acme',
+    })
   })
 
   it('openUrl of another scheme is refused to the module, and the page never sees the link', async () => {

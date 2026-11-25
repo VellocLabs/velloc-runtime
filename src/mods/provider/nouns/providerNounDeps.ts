@@ -22,7 +22,8 @@ import type { ProviderManifest } from '../providerManifest'
 import type { DeviceSource } from './deviceFacts'
 import { getProviderCredentials } from '../login/credentialDeps'
 import { queueProviderEntryWrite } from '../login/providerEntryWrites'
-import { createLoginNouns } from '../login/providerLoginNouns'
+import { runtimeWebProfiles } from '../webProfilesRuntime'
+import { createLoginNouns, createWebProfileNouns } from '../login/providerLoginNouns'
 import { createProviderFetch, type ProviderFetchTarget } from './providerFetchNoun'
 import { createProviderNouns, type ProviderNounDeps, type ProviderNouns } from './providerNounTable'
 import { egressMemberLookup, providerEgressPools } from '../providerEgressPools'
@@ -270,7 +271,10 @@ export function createProviderNounSet(options: ProviderNounSetOptions): Provider
       egressMember: egressMemberLookup(providerId, registration.manifest.egressPools ?? {}),
     }
   }
-  const extra = options.extraNouns ?? createLoginNouns(getProviderCredentials())
+  const extra = options.extraNouns ?? {
+    ...createLoginNouns(getProviderCredentials()),
+    ...createWebProfileNouns(() => runtimeWebProfiles({ homeDir: options.homeDir, fs: options.fs, report: options.report })),
+  }
   const table: ProviderNounTable = Object.freeze({
     ...extra,
     ...base.table,

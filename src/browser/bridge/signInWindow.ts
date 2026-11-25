@@ -12,6 +12,7 @@ import type { NativePrimitives } from './nativePrimitives'
 export const SIGN_IN_WINDOW_PRIMITIVE = 'webWindow.captureRedirect'
 export const SIGN_IN_WINDOW_CAPABILITY = 'webWindow'
 const ISOLATED_SESSION_PRIMITIVE = 'webWindow.isolatedSession'
+export const STORAGE_PARTITION_PRIMITIVE = 'webWindow.storagePartition'
 
 const SIGN_IN_WINDOW = { width: 520, height: 720 }
 /** The longest window title the host accepts, in UTF-16 units. */
@@ -70,6 +71,8 @@ export type SignInWindowRequest = {
   /** A session of the window's own, discarded when it closes. Absent: the
    *  person's profile, where a site they are signed in to stays signed in. */
   isolated?: boolean
+  /** A named session kept between windows. Not with `isolated`. */
+  partition?: string
   /** The error of a window closed before the capture. Default `SignInWindowClosedError`. */
   closed?: () => Error
 }
@@ -88,6 +91,11 @@ export function openSignInWindow(
   // instead; a host that cannot isolate refuses.
   if (request.isolated && manifest?.primitives?.includes(ISOLATED_SESSION_PRIMITIVE) !== true) {
     const error = new Error('this Velloc cannot open a sign-in window in a session of its own')
+    error.name = 'NotSupportedError'
+    return Promise.reject(error)
+  }
+  if (request.partition !== undefined && manifest?.primitives?.includes(STORAGE_PARTITION_PRIMITIVE) !== true) {
+    const error = new Error('this Velloc cannot open a sign-in window in a kept session')
     error.name = 'NotSupportedError'
     return Promise.reject(error)
   }
@@ -152,6 +160,7 @@ export function openSignInWindow(
         ...(fixedTitle !== null ? { title: fixedTitle } : {}),
         ...(awaitResult ? { awaitSignInResult: true } : {}),
         ...(request.isolated ? { isolatedSession: true } : {}),
+        ...(request.partition !== undefined ? { storagePartition: request.partition } : {}),
       })
       .then(id => {
         windowId = id

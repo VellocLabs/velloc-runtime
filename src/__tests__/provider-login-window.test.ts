@@ -36,7 +36,7 @@ describe('the request checks', () => {
 
   it('accepts a page on an allowed host, or a sub-domain of one, with a loopback redirect', () => {
     expect(loginWindowProblem(ok, allow)).toBeNull()
-    expect(loginWindowProblem({ ...ok, url: 'https://eu.accounts.vendor-a.test/a', title: 'Sign in', isolated: true }, allow)).toBeNull()
+    expect(loginWindowProblem({ ...ok, url: 'https://eu.accounts.vendor-a.test/a', title: 'Sign in', profile: 'temporary' }, allow)).toBeNull()
   })
 
   it('refuses a page on any other host, and a manifest that allows none', () => {
@@ -71,9 +71,9 @@ describe('the request checks', () => {
     for (const host of ['127.0.0.1', 'localhost', '[::1]']) expect(captureRedirectProblem(`http://${host}:8123/cb`)).toBeNull()
   })
 
-  it('refuses a title or an isolated flag of the wrong type', () => {
+  it('refuses a title or a profile of the wrong type', () => {
     expect(loginWindowProblem({ ...ok, title: 7 }, allow)).toBeInstanceOf(TypeError)
-    expect(loginWindowProblem({ ...ok, isolated: 'yes' }, allow)).toBeInstanceOf(TypeError)
+    expect(loginWindowProblem({ ...ok, profile: 7 }, allow)).toBeInstanceOf(TypeError)
   })
 })
 
@@ -161,9 +161,9 @@ describe('interact.openWindow in a sign-in', () => {
     expect(r.window.finished).toEqual([{ ok: true }])
   })
 
-  it('asks for a session of its own only when the module says isolated', async () => {
+  it('asks for a session of its own only when the module asks for the temporary profile', async () => {
     const r = rig(async e => {
-      await r.service.openWindow(e.loginId, OWN, { url: PAGE, captureRedirect: REDIRECT, isolated: true })
+      await r.service.openWindow(e.loginId, OWN, { url: PAGE, captureRedirect: REDIRECT, profile: 'temporary' })
       return pending()
     })
     r.service.startLogin(ID)
@@ -258,7 +258,7 @@ describe('interact.openWindow in a sign-in', () => {
         for (let i = 0; i < 2; i += 1) {
         outcomes.push(
           await r.service
-            .openWindow(e.loginId, OWN, { url: PAGE, captureRedirect: REDIRECT, isolated: refuse })
+            .openWindow(e.loginId, OWN, { url: PAGE, captureRedirect: REDIRECT, ...(refuse ? { profile: 'temporary' } : {}) })
             .catch(error => (error as Error).name),
         )
         refuse = false
