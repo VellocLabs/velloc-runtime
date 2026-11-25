@@ -74,10 +74,11 @@ export type WebWindowBridgeActionMap = {
        *  the host's "Finishing sign-in" page until `showSignInResult`.
        *  Manifest primitive `webWindow.signInResult`. */
       awaitSignInResult?: boolean
-      /** The window gets a session of its own: no cookie, stored password or
-       *  site data of the person's profile, and everything it stored is
-       *  discarded when it closes. Absent: the person's profile. Manifest
-       *  primitive `webWindow.isolatedSession`. */
+      /** The window gets a session of its own: no cookie or site data of the
+       *  person's profile, and everything it stored is discarded once it and
+       *  the popups its pages opened are closed. The profile's saved
+       *  passwords, autofill and extensions still apply. Absent: the person's
+       *  profile. Manifest primitive `webWindow.isolatedSession`. */
       isolatedSession?: boolean
       /** The window runs in the named storage partition of the profile: a
        *  session of its own (cookies, site data) that is kept on disk and is
@@ -97,7 +98,8 @@ export type WebWindowBridgeActionMap = {
     result: { ok: boolean }
   }
   /** Deletes everything stored in a named storage partition. Refused
-   *  (`partition_in_use`) while a window is open in it. Manifest primitive
+   *  (`invalid_args`) while a window or popup is open in it, or an earlier
+   *  delete of it has not answered. Manifest primitive
    *  `webWindow.storagePartition`. */
   deleteStoragePartition: {
     payload: { name: string }

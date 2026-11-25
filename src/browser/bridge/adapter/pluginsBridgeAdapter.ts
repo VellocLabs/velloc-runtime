@@ -401,6 +401,17 @@ function settleThemeSwitch(ctx: PluginsAdapterContext, run: ThemeSwitchRun | und
 /** `<name>@<marketplace>` → `<name>`. */
 const pluginNameOf = (identifier: string) => identifier.slice(0, Math.max(0, identifier.lastIndexOf('@'))) || identifier
 
+/** Whether a plugin named `name` is still installed from a marketplace or
+ *  as a directory plugin of the user or a sidebar project. */
+async function pluginNamed(ctx: PluginsAdapterContext, name: string): Promise<boolean> {
+  const { registry } = await loadInstalledPlugins(pathContextOf(ctx), ctx.fs)
+  if (Object.entries(registry.plugins).some(([id, entries]) => (entries?.length ?? 0) > 0 && pluginNameOf(id) === name)) {
+    return true
+  }
+  const roots = await listLocalPlugins({ homeDir: ctx.homeDir, projects: await sidebarProjects(ctx), fs: ctx.fs })
+  return roots.some(root => root.plugins.some(plugin => plugin.name === name))
+}
+
 async function handleUninstall(
   payload: PluginsBridgeActionMap['uninstall']['payload'],
   ctx: PluginsAdapterContext,
@@ -414,7 +425,9 @@ async function handleUninstall(
     },
   )
   await forgetBuilds(ctx, { plugin: pluginNameOf(payload.identifier) })
-  if (result.registryHadEntry) await forgetPluginWebProfiles(ctx, pluginNameOf(payload.identifier))
+  if (result.registryHadEntry) {
+    await forgetPluginWebProfiles({ ...ctx, stillInstalled: name => pluginNamed(ctx, name) }, pluginNameOf(payload.identifier))
+  }
   // The sessions already open drop it now — an uninstalled mod's hooks stop.
   ctx.reloadPluginsOnAllSessions?.()
   return { ok: true, registryHadEntry: result.registryHadEntry }
@@ -429,7 +442,7 @@ async function handleRemoveLocal(
 ): Promise<PluginsBridgeActionMap['removeLocal']['result']> {
   const { name } = await removeLocalPlugin(payload.path, ctx.fs)
   await forgetBuilds(ctx, { root: payload.path })
-  await forgetPluginWebProfiles(ctx, name)
+  await forgetPluginWebProfiles({ ...ctx, stillInstalled: plugin => pluginNamed(ctx, plugin) }, name)
   ctx.reloadPluginsOnAllSessions?.()
   return { ok: true, name }
 }

@@ -40,6 +40,7 @@ import { wireProviderStatus } from './providerStatusWiring'
 import { providerJobRunnerOf } from './providerJobRunnerAdapter'
 import { setProviderJobRunner } from './providerJobSeam'
 import { refreshProviderStatus } from './providerStatusService'
+import { keepWebProfilesAt } from './webProfilesRuntime'
 
 export type ProviderModRuntimeFactoryDeps = {
   homeDir: string
@@ -66,6 +67,7 @@ export function createProviderModRuntime(deps: ProviderModRuntimeFactoryDeps): P
       ? { manifest: registration.manifest, ...(registration.configId !== undefined ? { configId: registration.configId } : {}) }
       : undefined
   }
+  keepWebProfilesAt({ homeDir, fs, report })
   const nouns = createProviderNounSet({
     homeDir,
     fs,

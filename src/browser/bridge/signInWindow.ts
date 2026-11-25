@@ -68,13 +68,17 @@ export type SignInWindowRequest = {
   /** Aborted before the capture: the window closes and the promise rejects with the signal's reason. */
   signal: AbortSignal
   title?: string
-  /** A session of the window's own, discarded when it closes. Absent: the
-   *  person's profile, where a site they are signed in to stays signed in. */
+  /** A session of the window's own (cookies and site data), discarded when it
+   *  closes. Absent: the person's profile, where a site they are signed in to
+   *  stays signed in. */
   isolated?: boolean
   /** A named session kept between windows. Not with `isolated`. */
   partition?: string
   /** The error of a window closed before the capture. Default `SignInWindowClosedError`. */
   closed?: () => Error
+  /** Called once when the window is gone, however it ended, or at once when
+   *  it never opened. */
+  onGone?: () => void
 }
 
 /**
@@ -100,6 +104,14 @@ export function openSignInWindow(
     return Promise.reject(error)
   }
   const closed = request.closed ?? (() => new SignInWindowClosedError())
+  let gone = false
+  let offGone: (() => void) | undefined
+  const goneOnce = (): void => {
+    if (gone) return
+    gone = true
+    offGone?.()
+    request.onGone?.()
+  }
   const listed = (name: string): boolean => manifest?.primitives?.includes(name) === true
   // An older host has no fixed titles; it shows the page's own.
   const fixedTitle = listed('webWindow.title') ? signInWindowTitle(request.title) : null
@@ -150,9 +162,18 @@ export function openSignInWindow(
     )
     if (signal.aborted) {
       onAbort()
+      goneOnce()
       return
     }
     signal.addEventListener('abort', onAbort)
+    const closedBeforeOpen: number[] = []
+    let openedId: number | null = null
+    if (request.onGone) {
+      offGone = webWindow.onClosed(event => {
+        if (openedId === null) closedBeforeOpen.push(event.windowId)
+        else if (event.windowId === openedId) goneOnce()
+      })
+    }
     webWindow
       .open(url, {
         captureRedirect: redirectUri,
@@ -164,6 +185,8 @@ export function openSignInWindow(
       })
       .then(id => {
         windowId = id
+        openedId = id
+        if (closedBeforeOpen.includes(id)) goneOnce()
         if (settled) {
           void webWindow.close(id).catch(() => {})
           return
@@ -174,6 +197,9 @@ export function openSignInWindow(
           else finish(() => reject(closed()))
         }
       })
-      .catch(error => finish(() => reject(error)))
+      .catch(error => {
+        if (openedId === null) goneOnce()
+        finish(() => reject(error))
+      })
   })
 }

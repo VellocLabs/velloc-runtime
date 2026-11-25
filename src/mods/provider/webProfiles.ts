@@ -14,6 +14,8 @@
  * credentials. Nothing of a profile's session is readable here.
  */
 
+import { isPlainHostName } from './providerBaseUrlRule'
+
 export const WEB_PROFILES_MAX = 64
 export const WEB_PROFILE_LOGINS_PER_PLUGIN_MAX = 16
 export const WEB_PROFILE_ACCOUNT_MAX = 200
@@ -88,11 +90,9 @@ export function webProfilePartition(number: number): string {
   return PARTITION_PREFIX + letters
 }
 
-const SITE = /^(?=.{1,253}$)[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)*$/
-
 function readSite(method: string, value: unknown): string {
   const site = typeof value === 'string' ? value.trim().toLowerCase() : ''
-  if (!SITE.test(site)) throw new TypeError(`webProfiles.${method}: site must be a plain host name (no scheme, port or path)`)
+  if (!isPlainHostName(site)) throw new TypeError(`webProfiles.${method}: site must be a plain host name (no scheme, port or path)`)
   return site
 }
 

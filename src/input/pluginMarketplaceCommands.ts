@@ -286,7 +286,20 @@ async function runPluginUninstall(
   if (!result.registryHadEntry) {
     return [key('slash.out.plugin.uninstall.notInstalled', { id })]
   }
-  await forgetPluginWebProfiles({ homeDir: pathCtx.homeDir, fs: ctx.fs }, id.slice(0, id.lastIndexOf('@')))
+  const name = parsed.value.name
+  await forgetPluginWebProfiles(
+    {
+      homeDir: pathCtx.homeDir,
+      fs: ctx.fs,
+      stillInstalled: async plugin => {
+        const { registry } = await loadInstalledPlugins(pathCtx, ctx.fs)
+        return Object.entries(registry.plugins).some(
+          ([key, entries]) => (entries?.length ?? 0) > 0 && key.slice(0, key.lastIndexOf('@')) === plugin,
+        )
+      },
+    },
+    name,
+  )
   const parts: SystemMessagePart[] = [key('slash.out.plugin.uninstall.success', { id })]
   if (result.formerInstallPath) {
     parts.push(

@@ -16,6 +16,10 @@ import { WebProfiles } from './webProfiles'
 export const WEB_PROFILES_FILE_NAME = 'web-profiles.json'
 
 let instance: WebProfiles | undefined
+let where: { homeDir: string; fs: RuntimeFs; report?: (line: string) => void } | undefined
+
+const tablePath = (homeDir: string): string =>
+  `${joinRuntimePath(homeDir, RUNTIME_DIR_NAME).replace(/\\/g, '/')}/${WEB_PROFILES_FILE_NAME}`
 
 const hostKeepsProfiles = (): boolean => {
   const manifest = getMcpHost()?.manifest
@@ -30,9 +34,10 @@ export function runtimeWebProfiles(options: {
   fs: RuntimeFs
   report?: (line: string) => void
 }): WebProfiles {
+  where ??= options
   const { fs } = options
-  const dir = joinRuntimePath(options.homeDir, RUNTIME_DIR_NAME).replace(/\\/g, '/')
-  const path = `${dir}/${WEB_PROFILES_FILE_NAME}`
+  const path = tablePath(options.homeDir)
+  const dir = path.slice(0, path.lastIndexOf('/'))
   instance ??= new WebProfiles({
     load: async () => (fs.existsSync(path) ? fs.readFile(path, { encoding: 'utf8' }) : null),
     save: async text => {
@@ -61,28 +66,42 @@ export function runtimeWebProfiles(options: {
 
 /**
  * A plugin was uninstalled: what it recorded in the web profiles goes, and a
- * profile left with nothing is deleted. Never fails the uninstall; a table
- * that was never written is left unwritten.
+ * profile left with nothing is deleted. Records are filed by plugin name, so
+ * nothing goes while `stillInstalled` says a plugin of that name remains.
+ * Never fails the uninstall; a table that was never written is left unwritten.
  */
 export async function forgetPluginWebProfiles(
-  options: { homeDir: string; fs: RuntimeFs; report?: (line: string) => void },
+  options: {
+    homeDir: string
+    fs: RuntimeFs
+    report?: (line: string) => void
+    stillInstalled?: (plugin: string) => Promise<boolean>
+  },
   plugin: string,
 ): Promise<void> {
-  const path = `${joinRuntimePath(options.homeDir, RUNTIME_DIR_NAME).replace(/\\/g, '/')}/${WEB_PROFILES_FILE_NAME}`
+  const path = tablePath(options.homeDir)
   try {
     if (!instance && !options.fs.existsSync(path)) return
+    if (await options.stillInstalled?.(plugin)) return
     await runtimeWebProfiles(options).forgetPlugin(plugin)
   } catch (error) {
     options.report?.(`web profiles: could not clear what ${plugin} recorded: ${error instanceof Error ? error.message : String(error)}`)
   }
 }
 
-/** The realm's profiles once something has asked for them, else undefined. */
+/** The realm's profiles, made at the first use once the realm's provider
+ *  runtime has said where they are kept; undefined before that. */
 export function currentWebProfiles(): WebProfiles | undefined {
-  return instance
+  return instance ?? (where ? runtimeWebProfiles(where) : undefined)
+}
+
+/** Where the realm keeps its profiles; the provider runtime says so when made. */
+export function keepWebProfilesAt(options: { homeDir: string; fs: RuntimeFs; report?: (line: string) => void }): void {
+  where = options
 }
 
 /** Test seam. */
 export function setWebProfilesForTests(next: WebProfiles | undefined): void {
   instance = next
+  where = undefined
 }

@@ -17,7 +17,13 @@ import {
   WebProfiles,
   webProfilePartition,
 } from '../mods/provider/webProfiles'
-import { forgetPluginWebProfiles, setWebProfilesForTests, WEB_PROFILES_FILE_NAME } from '../mods/provider/webProfilesRuntime'
+import {
+  currentWebProfiles,
+  forgetPluginWebProfiles,
+  keepWebProfilesAt,
+  setWebProfilesForTests,
+  WEB_PROFILES_FILE_NAME,
+} from '../mods/provider/webProfilesRuntime'
 import type { RuntimeFs } from '../utils/fs/runtimeFs'
 
 const NOW = 1_800_000_000_000
@@ -328,13 +334,18 @@ function signIn(login: (e: Record<string, unknown>, service: ProviderCredentials
       requests.push(request)
       return new Promise<SignInCapture>((resolve, reject) => {
         settle = resolve
-        request.signal.addEventListener('abort', () => reject(request.signal.reason))
+        request.signal.addEventListener('abort', () => {
+          reject(request.signal.reason)
+          request.onGone?.()
+        })
       })
     },
     ...(withProfiles ? { holdProfile: profile => r.profiles.hold(profile) } : {}),
   })
   const capture = () => settle!({ url: `${REDIRECT}?code=c1`, finish: () => {}, close: () => {} })
-  return { ...r, service, requests, capture }
+  /** The host says the window is gone. */
+  const windowGone = () => requests.at(-1)?.onGone?.()
+  return { ...r, service, requests, capture, windowGone }
 }
 
 describe('a sign-in window in a web profile', () => {
@@ -360,7 +371,7 @@ describe('a sign-in window in a web profile', () => {
     expect(t.deleted).toEqual([])
   })
 
-  it('a cancelled sign-in leaves no new profile behind', async () => {
+  it('a cancelled sign-in leaves no new profile behind, once its window is gone', async () => {
     const t = signIn(async (e, service) => {
       await service.openWindow(e.loginId, [PROVIDER], spec('new'))
       return new Promise(() => {})
@@ -369,6 +380,26 @@ describe('a sign-in window in a web profile', () => {
     await flush()
     expect(await t.profiles.list()).toHaveLength(1)
     t.service.cancel(loginId)
+    t.windowGone()
+    await settled(t.profiles)
+    expect(await t.profiles.list()).toEqual([])
+    expect(t.deleted).toEqual(['vellocprofileb'])
+  })
+
+  it('a failed sign-in keeps its new profile while the window shows the failure, and deletes it once the window is gone', async () => {
+    const t = signIn(async (e, service) => {
+      await service.openWindow(e.loginId, [PROVIDER], spec('new'))
+      throw new Error('the token exchange was refused')
+    })
+    t.service.startLogin(PROVIDER)
+    await flush()
+    t.capture()
+    await flush()
+    expect(t.service.state().logins[PROVIDER]?.step.kind).toBe('failed')
+    await settled(t.profiles)
+    expect((await t.profiles.list()).map(row => row.id)).toEqual([P1])
+    expect(t.deleted).toEqual([])
+    t.windowGone()
     await settled(t.profiles)
     expect(await t.profiles.list()).toEqual([])
     expect(t.deleted).toEqual(['vellocprofileb'])
@@ -485,5 +516,39 @@ describe('the shared window and a kept session', () => {
     const old = fakeHost([])
     await expect(old.webWindow.deleteStoragePartition('vellocprofileb')).rejects.toThrow()
     expect(old.sent('deleteStoragePartition')).toEqual([])
+  })
+})
+
+describe('the realm\'s profiles', () => {
+  it('are there for a sign-in window before any module has asked for them', async () => {
+    const files = new Map<string, string>()
+    const fs = {
+      existsSync: (file: string) => files.has(file),
+      readFile: async (file: string) => files.get(file) ?? '',
+      writeFile: async (file: string, text: string) => void files.set(file, text),
+      mkdir: async () => {},
+      stat: async () => ({ isDirectory: () => true }),
+    } as unknown as RuntimeFs
+    setWebProfilesForTests(undefined)
+    expect(currentWebProfiles()).toBeUndefined()
+    keepWebProfilesAt({ homeDir: '/home/zed', fs })
+    expect(currentWebProfiles()).toBeInstanceOf(WebProfiles)
+    expect(currentWebProfiles()).toBe(currentWebProfiles())
+    setWebProfilesForTests(undefined)
+  })
+})
+
+describe('an uninstalled plugin whose name another installed plugin has', () => {
+  it('keeps the records filed under that name', async () => {
+    const r = rig()
+    const id = await signedIn(r.profiles, 'acme', 'vendor-a.test', 'one')
+    setWebProfilesForTests(r.profiles)
+    const fs = { existsSync: () => true } as unknown as RuntimeFs
+    await forgetPluginWebProfiles({ homeDir: '/home/zed', fs, stillInstalled: async name => name === 'acme' }, 'acme')
+    expect((await r.profiles.list()).map(row => row.id)).toEqual([id])
+    await forgetPluginWebProfiles({ homeDir: '/home/zed', fs, stillInstalled: async () => false }, 'acme')
+    await settled(r.profiles)
+    expect(await r.profiles.list()).toEqual([])
+    setWebProfilesForTests(undefined)
   })
 })

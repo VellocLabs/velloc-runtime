@@ -459,3 +459,36 @@ describe('credentials.loginWindow in the manifest', () => {
     expect(providers?.main).toBeUndefined()
   })
 })
+
+describe('the sign-in window says when it is gone', () => {
+  const request = (onGone: () => void, signal = new AbortController().signal) => ({
+    url: 'https://accounts.vendor-a.test/authorize',
+    redirectUri: 'http://127.0.0.1:53682/callback',
+    signal,
+    onGone,
+  })
+
+  it('after the capture, only when the window itself closes', async () => {
+    const host = fakeHost(['webWindow.captureRedirect', 'webWindow.signInResult'])
+    let gone = 0
+    const capture = openSignInWindow(host.webWindow, host.manifest, request(() => (gone += 1)))
+    await Promise.resolve()
+    await Promise.resolve()
+    host.emit('onRedirectCaptured', { windowId: 7, url: 'http://127.0.0.1:53682/callback?code=c' })
+    ;(await capture).finish({ ok: false, reason: 'no' })
+    host.emit('onClosed', { windowId: 8, reason: 'user' })
+    expect(gone).toBe(0)
+    host.emit('onClosed', { windowId: 7, reason: 'user' })
+    host.emit('onClosed', { windowId: 7, reason: 'user' })
+    expect(gone).toBe(1)
+  })
+
+  it('at once when the window never opened', async () => {
+    const host = fakeHost(['webWindow.captureRedirect'])
+    const aborted = new AbortController()
+    aborted.abort()
+    let gone = 0
+    await openSignInWindow(host.webWindow, host.manifest, request(() => (gone += 1), aborted.signal)).catch(() => {})
+    expect(gone).toBe(1)
+  })
+})

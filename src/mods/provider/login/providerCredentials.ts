@@ -178,8 +178,6 @@ type LoginRun = {
   wallTimer?: ReturnType<typeof setTimeout>
   /** The one sign-in window of this run: aborting closes it while it waits. */
   window?: { abort: AbortController; capture?: SignInCapture }
-  /** Lets go of the web profile the window is open in. */
-  releaseProfile?: () => void
 }
 
 const SIGN_OUT_REASON_VENDOR = 'the vendor ended the sign-in'
@@ -349,7 +347,6 @@ export class ProviderCredentials {
     run.terminal = true
     if (run.wallTimer !== undefined) clearTimeout(run.wallTimer)
     this.rejectPending(run, named('AbortError', 'the sign-in is over'))
-    this.letGoOfProfile(run)
     // The window shows how it ended; one still waiting for its redirect closes.
     // Only the module's own words are shown there, as in the dialog.
     if (run.window?.capture) {
@@ -388,7 +385,6 @@ export class ProviderCredentials {
       if (run.wallTimer !== undefined) clearTimeout(run.wallTimer)
       this.rejectPending(run, named('AbortError', 'the person cancelled the sign-in'))
       run.abort.abort()
-      this.letGoOfProfile(run)
       if (run.window?.capture) run.window.capture.close()
       else run.window?.abort.abort(named('AbortError', 'the person cancelled the sign-in'))
     }
@@ -552,14 +548,17 @@ export class ProviderCredentials {
     this.setStep(run, { kind: 'working' })
     let profileId: string | undefined
     return this.windowSession(run, spec.profile as string | undefined)
-      .then(({ id, ...session }) => {
+      .then(({ id, release, ...session }) => {
         profileId = id
+        // A kept profile is held while its window is open, whether the
+        // sign-in has ended or not: the host refuses to delete it before.
         return open({
           url: spec.url as string,
           redirectUri: spec.captureRedirect as string,
           signal: windowRun.abort.signal,
           ...(typeof spec.title === 'string' ? { title: spec.title } : {}),
           ...session,
+          ...(release ? { onGone: release } : {}),
         })
       })
       .then(
@@ -581,7 +580,6 @@ export class ProviderCredentials {
         // and the sign-in may then try another profile.
         if (run.window === windowRun && windowRun.capture === undefined) {
           run.window = undefined
-          if (!run.terminal) this.letGoOfProfile(run)
         }
         throw error
       },
@@ -593,7 +591,7 @@ export class ProviderCredentials {
   private async windowSession(
     run: LoginRun,
     profile: string | undefined,
-  ): Promise<{ id?: string; isolated?: true; partition?: string }> {
+  ): Promise<{ id?: string; isolated?: true; partition?: string; release?: () => void }> {
     if (profile === undefined) return {}
     if (profile === TEMPORARY_WEB_PROFILE) return { isolated: true }
     const hold = this.deps.holdProfile
@@ -603,14 +601,7 @@ export class ProviderCredentials {
       held.release()
       throw named('AbortError', 'the sign-in is over')
     }
-    run.releaseProfile = held.release
-    return { id: held.id, partition: held.partition }
-  }
-
-  private letGoOfProfile(run: LoginRun): void {
-    const release = run.releaseProfile
-    run.releaseProfile = undefined
-    release?.()
+    return { id: held.id, partition: held.partition, release: held.release }
   }
 
   // ── writes ──

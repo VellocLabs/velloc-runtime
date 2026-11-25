@@ -828,8 +828,9 @@ export function createNativePrimitives(options: CreateNativePrimitivesOptions) {
         /** With `captureRedirect`: keep the window on the host's
          *  "Finishing sign-in" page until `showSignInResult`. */
         awaitSignInResult?: boolean
-        /** A session of the window's own: nothing of the person's profile
-         *  in it, nothing of it kept once the window closes. */
+        /** A session of the window's own: no cookie or site data of the
+         *  person's profile in it, nothing of it kept once the window and its
+         *  popups close. Saved passwords, autofill and extensions still apply. */
         isolatedSession?: boolean
         /** A named, lasting session of the window's own. */
         storagePartition?: string
