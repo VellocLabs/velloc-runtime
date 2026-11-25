@@ -4,6 +4,7 @@
  * staged build reloads only while hidden, with no unsaved edits and the restart gate's yes, once per build per tab.
  */
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { BUILD_FOLLOWED_KEY } from '../browser/boot/runtimeBuildFollow'
 
 const ORIGIN = 'https://app.velloc.app'
 const ROOT = `${ORIGIN}/v1/`
@@ -307,7 +308,7 @@ describe('backgroundCacheUpdate — apply', () => {
   it('on the build entry it followed, checks the version root and applies by going back to it', async () => {
     const session = memoryStorage()
     const key = '20260925T043208561Z'
-    session.setItem('nexus.buildFollowedTo', key)
+    session.setItem(BUILD_FOLLOWED_KEY, key)
     const root = `${ORIGIN}/runtime/v12/`
     const address = `${root}b/${key}/`
     const h = await bootUpdater({ servedBuild: NEW_BUILD, visibility: 'hidden', session, address })

@@ -53,7 +53,12 @@ export function getBuildTime(): string {
 export function buildKeyFromBuildTime(iso: string): string {
   if (!iso) return ''
   const key = iso.replace(/[-:.]/g, '')
-  return /^[0-9]{8}T[0-9]{9}Z$/.test(key) ? key : ''
+  return isBuildKey(key) ? key : ''
+}
+
+/** True for a string of the build-key shape (`20260917T103000000Z`). Pure. */
+export function isBuildKey(key: string): boolean {
+  return /^[0-9]{8}T[0-9]{9}Z$/.test(key)
 }
 
 /**

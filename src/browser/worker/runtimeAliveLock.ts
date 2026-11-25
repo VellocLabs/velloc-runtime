@@ -1,12 +1,13 @@
 /**
  * Contract: the runtime SharedWorker's sign of life is one exclusive Web Lock named after the web
  * build it runs, `velloc-runtime-alive:<build key>`. The worker requests it once it is told its
- * build and holds it until its realm ends or it retires. A page in another process reads the held
- * names to learn which build's runtime is alive, and queues behind its own build's lock to learn
- * that the runtime it talks to is gone. Two runtimes of different builds hold different locks, so
- * neither is mistaken for the other. (P-2)
+ * build and holds it until its realm ends or it retires, and tells every page that posts
+ * `runtime.build` the lock it holds, or that it is retiring (`state`). A page in another process
+ * reads the held names to learn which build's runtime is alive, and queues behind the lock its
+ * runtime named to learn that the runtime is gone. Two runtimes of different builds hold different
+ * locks, so neither is mistaken for the other. (P-2)
  */
-import { buildKeyFromBuildTime } from '../../branding/buildInfo'
+import { buildKeyFromBuildTime, isBuildKey } from '../../branding/buildInfo'
 
 /** Every alive lock's name starts with this; the build key follows. */
 export const RUNTIME_ALIVE_LOCK_PREFIX = 'velloc-runtime-alive:'
@@ -22,11 +23,9 @@ export function runtimeAliveLockName(buildKey: string): string {
   return `${RUNTIME_ALIVE_LOCK_PREFIX}${buildKey}`
 }
 
-const BUILD_KEY = /^[0-9]{8}T[0-9]{9}Z$/
-
 /** Security: a key read from a lock name becomes a URL path segment, so only these two shapes pass. */
 export function isRuntimeBuildKey(key: string): boolean {
-  return key === RUNTIME_DEV_BUILD_KEY || BUILD_KEY.test(key)
+  return key === RUNTIME_DEV_BUILD_KEY || isBuildKey(key)
 }
 
 /** The build keys of the runtimes alive now, read from held lock names; malformed names are skipped. */

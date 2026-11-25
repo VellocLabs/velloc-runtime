@@ -9,7 +9,6 @@
  * build entries and never moves. (P-2)
  */
 import { readBuildTimeFromDocument } from '../../branding/buildInfo'
-import { buildEntryUrlForKey } from '../runtimeHub/buildEntry'
 import {
   RUNTIME_DEV_BUILD_KEY,
   liveRuntimeBuildKeys,
@@ -95,8 +94,8 @@ export async function followLiveRuntimeBuild(deps: BuildFollowDeps = {}): Promis
     // One try per target, while the page sits on that target's entry: a page that came back to
     // the version root may follow again.
     if (target === followed && path.entryKey === followed) return false
-    const entry = buildEntryUrlForKey(`${location.origin}${location.pathname}`, target)
-    if (!entry) return false
+    // Security: `target` passed `isRuntimeBuildKey`, so the entry stays under this origin's root.
+    const entry = `${location.origin}${path.root}b/${target}/`
     const probe = await (deps.fetch ?? ((url: string) => fetch(url, { credentials: 'same-origin' })))(entry)
     if (!probe.ok) return false
     write(storage, target)

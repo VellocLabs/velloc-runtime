@@ -427,13 +427,49 @@ describe('watchRuntimeAlive', () => {
     expect(JSON.parse(r.store.get('nexus.runtimeLossReloads') ?? '[]')).toHaveLength(1)
   })
 
-  it('watches the page\'s own lock when no answer comes in time, and only once', async () => {
+  it('watches the page\'s own lock when no answer comes in time', async () => {
     const r = rig()
     const watching = watchRuntimeAlive(r.port, '', r.deps)
     r.timeout()
-    r.answer({ type: 'runtime.alive', lock: OTHER_LOCK })
     await watching
     expect(r.watched).toEqual([RUNTIME_ALIVE_LOCK])
+    expect(r.reload).toHaveBeenCalledTimes(1)
+  })
+
+  it('switches to the lock of an answer that came after the wait, while that lock is not yet held', async () => {
+    const r = rig()
+    let held: string[] = ['other']
+    const sleeps: Array<() => void> = []
+    r.deps.locks = {
+      query: async () => ({ held: held.map(name => ({ name })) }),
+      request: vi.fn(async (name: string) => { r.watched.push(name) }),
+    } as unknown as Pick<LockManager, 'request' | 'query'>
+    r.deps.sleep = () => new Promise<void>(resolve => sleeps.push(resolve))
+    const watching = watchRuntimeAlive(r.port, '', r.deps)
+    r.timeout()
+    await vi.waitFor(() => expect(sleeps).toHaveLength(1))
+    r.answer({ type: 'runtime.alive', lock: OTHER_LOCK })
+    held = [OTHER_LOCK]
+    sleeps[0]()
+    await watching
+    expect(r.watched).toEqual([OTHER_LOCK])
+    expect(r.reload).toHaveBeenCalledTimes(1)
+  })
+
+  it('reloads when a late answer says the runtime is retiring', async () => {
+    const r = rig()
+    const sleeps: Array<() => void> = []
+    r.deps.locks = {
+      query: async () => ({ held: [] }),
+      request: vi.fn(),
+    } as unknown as Pick<LockManager, 'request' | 'query'>
+    r.deps.sleep = () => new Promise<void>(resolve => sleeps.push(resolve))
+    const watching = watchRuntimeAlive(r.port, '', r.deps)
+    r.timeout()
+    await vi.waitFor(() => expect(sleeps).toHaveLength(1))
+    r.answer({ type: 'runtime.alive', retiring: true })
+    sleeps[0]()
+    await watching
     expect(r.reload).toHaveBeenCalledTimes(1)
   })
 })

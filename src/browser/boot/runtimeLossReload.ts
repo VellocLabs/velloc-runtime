@@ -78,6 +78,35 @@ async function reloadForLoss(deps: RuntimeLossDeps): Promise<void> {
   reload()
 }
 
+function ownLockName(): string {
+  return runtimeAliveLockName(runtimeBuildKey(readBuildTimeFromDocument()))
+}
+
+/**
+ * Queue behind the lock `name()` names once it is seen held (an unheld one would be granted at
+ * once), re-reading the name on every poll, then reload. False when `stopped()` turned true first.
+ */
+async function watchLock(
+  locks: Pick<LockManager, 'request' | 'query'>,
+  name: () => string,
+  stopped: () => boolean,
+  deps: RuntimeLossDeps,
+): Promise<boolean> {
+  const sleep = sleeper(deps)
+  let lockName = name()
+  for (;;) {
+    if (stopped()) return false
+    lockName = name()
+    const state = await locks.query()
+    if (stopped()) return false
+    if (state.held?.some(lock => lock.name === lockName)) break
+    await sleep(RUNTIME_ALIVE_POLL_MS)
+  }
+  await locks.request(lockName, { mode: 'shared' }, () => undefined)
+  await reloadForLoss(deps)
+  return true
+}
+
 /**
  * Reload the page once the runtime SharedWorker it booted against is gone. Resolves after the
  * loss was handled (reloaded, or held back by the cap); never resolves while the runtime lives.
@@ -85,18 +114,8 @@ async function reloadForLoss(deps: RuntimeLossDeps): Promise<void> {
 export async function reloadWhenRuntimeLost(deps: RuntimeLossDeps = {}): Promise<void> {
   const locks = deps.locks === undefined ? globalThis.navigator?.locks : deps.locks
   if (!locks) return
-  const sleep = sleeper(deps)
-  const lockName =
-    deps.lockName ?? runtimeAliveLockName(runtimeBuildKey(readBuildTimeFromDocument()))
-
-  // Queue only behind a lock that is held: an unheld one would be granted at once.
-  for (;;) {
-    const state = await locks.query()
-    if (state.held?.some(lock => lock.name === lockName)) break
-    await sleep(RUNTIME_ALIVE_POLL_MS)
-  }
-  await locks.request(lockName, { mode: 'shared' }, () => undefined)
-  await reloadForLoss(deps)
+  const lockName = deps.lockName ?? ownLockName()
+  await watchLock(locks, () => lockName, () => false, deps)
 }
 
 type AlivePort = Pick<MessagePort, 'postMessage' | 'addEventListener' | 'removeEventListener'>
@@ -104,32 +123,43 @@ type AlivePort = Pick<MessagePort, 'postMessage' | 'addEventListener' | 'removeE
 /**
  * Tell the worker behind `port` this page's build (`runtime.build`) and reload when that runtime
  * is gone: watch the alive lock it names, which can be another build's; reload at once when it
- * answers that it is retiring; watch the page's own build's lock when no answer comes in time.
- * Resolves after the loss was handled. Never rejects.
+ * answers that it is retiring. Until an answer comes (at most `RUNTIME_ALIVE_ANSWER_MS` before the
+ * first look) the page's own build's lock is watched; an answer that comes later still switches
+ * the lock, up to the moment the page queues behind one. Resolves after the loss was handled.
+ * Never rejects.
  */
-export function watchRuntimeAlive(
+export async function watchRuntimeAlive(
   port: AlivePort,
   build: string,
   deps: RuntimeLossDeps & { setTimer?: (fn: () => void, ms: number) => unknown } = {},
 ): Promise<void> {
-  return new Promise<void>(resolve => {
-    let settled = false
-    const start = (lockName: string | undefined, retiring: boolean): void => {
-      if (settled) return
-      settled = true
-      port.removeEventListener('message', onMessage as EventListener)
-      const watching = retiring
-        ? reloadForLoss(deps)
-        : reloadWhenRuntimeLost(lockName ? { ...deps, lockName } : deps)
-      watching.then(resolve, () => resolve())
-    }
-    const onMessage = (event: MessageEvent): void => {
-      const data = event.data as { type?: unknown; lock?: unknown; retiring?: unknown } | null
-      if (data?.type !== 'runtime.alive') return
-      start(typeof data.lock === 'string' ? data.lock : undefined, data.retiring === true)
-    }
-    port.addEventListener('message', onMessage as EventListener)
-    ;(deps.setTimer ?? setTimeout)(() => start(undefined, false), RUNTIME_ALIVE_ANSWER_MS)
-    port.postMessage({ type: 'runtime.build', build })
+  let lockName = deps.lockName ?? ownLockName()
+  let retiring = false
+  let answered: () => void = () => {}
+  const firstAnswer = new Promise<void>(resolve => {
+    answered = resolve
   })
+  const onMessage = (event: MessageEvent): void => {
+    const data = event.data as { type?: unknown; lock?: unknown; retiring?: unknown } | null
+    if (data?.type !== 'runtime.alive') return
+    if (data.retiring === true) retiring = true
+    else if (typeof data.lock === 'string') lockName = data.lock
+    answered()
+  }
+  port.addEventListener('message', onMessage as EventListener)
+  ;(deps.setTimer ?? setTimeout)(() => answered(), RUNTIME_ALIVE_ANSWER_MS)
+  port.postMessage({ type: 'runtime.build', build })
+  try {
+    await firstAnswer
+    const locks = deps.locks === undefined ? globalThis.navigator?.locks : deps.locks
+    if (!retiring && locks) {
+      const done = await watchLock(locks, () => lockName, () => retiring, deps)
+      if (done) return
+    }
+    if (retiring) await reloadForLoss(deps)
+  } catch {
+    // Never rejects: a failed watch leaves the page as it is.
+  } finally {
+    port.removeEventListener('message', onMessage as EventListener)
+  }
 }
