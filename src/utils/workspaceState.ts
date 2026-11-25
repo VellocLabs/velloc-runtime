@@ -9,10 +9,10 @@ import { basenameRuntimePath, normalizeRuntimePath } from './runtimePaths'
 
 export type { AddedProject, RecentFolder, WorkspaceState }
 
-/** Hard cap on added projects — older additions fall off the tail. */
 /** The file in the runtime directory that holds this state. */
 export const WORKSPACE_STATE_FILE = 'workspace-state.json'
 
+/** Hard cap on added projects — older additions fall off the tail. */
 export const MAX_ADDED_PROJECTS = 50
 /** Hard cap on the recent-folders MRU. */
 export const MAX_RECENT_FOLDERS = 15

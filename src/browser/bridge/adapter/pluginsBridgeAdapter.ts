@@ -383,8 +383,6 @@ function settleThemeSwitch(ctx: PluginsAdapterContext, run: ThemeSwitchRun | und
   else run.finish({ ok: true })
 }
 
-const pluginNameOf = pluginNameOfKey
-
 async function handleUninstall(
   payload: PluginsBridgeActionMap['uninstall']['payload'],
   ctx: PluginsAdapterContext,
@@ -397,9 +395,9 @@ async function handleUninstall(
       clearEnabledOverride: payload.clearEnabledOverride !== false,
     },
   )
-  await forgetBuilds(ctx, { plugin: pluginNameOf(payload.identifier) })
+  await forgetBuilds(ctx, { plugin: pluginNameOfKey(payload.identifier) })
   if (result.registryHadEntry) {
-    await forgetPluginWebProfiles({ ...ctx, stillInstalled: name => pluginNamed(ctx, name) }, pluginNameOf(payload.identifier))
+    await forgetPluginWebProfiles({ ...ctx, stillInstalled: name => pluginNamed(ctx, name) }, pluginNameOfKey(payload.identifier))
   }
   // The sessions already open drop it now — an uninstalled mod's hooks stop.
   ctx.reloadPluginsOnAllSessions?.()
@@ -497,7 +495,7 @@ async function handleSetEnabled(
       throw new Error(blockReason)
     }
   }
-  const plugin = pluginNameOf(payload.identifier)
+  const plugin = pluginNameOfKey(payload.identifier)
   const enabling = payload.enabled !== false
   const run = await startThemeSwitch(ctx, enabling, { plugin })
   try {
