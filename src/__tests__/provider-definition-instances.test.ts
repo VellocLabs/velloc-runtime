@@ -537,7 +537,7 @@ describe('registration', () => {
     })
 
     it('a stored instance whose plugin is gone still names its definition', () => {
-      setRuntimeProviderConfigs({ [WORK]: stored() })
+      setRuntimeProviderConfigs({ [KEYED]: { source: 'mod', modOwner: OWNER }, [WORK]: stored() })
       expect(providerDefinitionId(WORK)).toBe(KEYED)
     })
 
@@ -546,10 +546,13 @@ describe('registration', () => {
         'custom-relay': { isCustomProvider: true, apiKey: 'k', definition: KEYED },
         'mod.other.thing.a1b2': stored(),
         [WORK]: stored({ source: undefined }),
+        [HOME_ACCOUNT]: stored({ modOwner: 'vendor-a@elsewhere' }),
+        [KEYED]: { source: 'mod', modOwner: OWNER },
       })
       expect(providerDefinitionId('custom-relay')).toBe('custom-relay')
       expect(providerDefinitionId('mod.other.thing.a1b2')).toBe('mod.other.thing.a1b2')
       expect(providerDefinitionId(WORK)).toBe(WORK)
+      expect(providerDefinitionId(HOME_ACCOUNT)).toBe(HOME_ACCOUNT)
       const facts = {
         routesTo: [KEYED],
         isSetUp: () => true,

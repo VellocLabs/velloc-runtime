@@ -202,8 +202,9 @@ export function modProviderOwner(providerId: string): string | undefined {
 /** The provider definition `providerId` is an instance of: what its catalog
  *  row states, else what its stored entry states (its plugin is gone), else
  *  itself. Security: a stored entry is believed only when it is a provider
- *  mod's and its id is shaped as an instance of the definition it names, so
- *  no other entry can claim a place inside a router's boundary. */
+ *  mod's, its id is shaped as an instance of the definition it names, and it
+ *  has the owner of that definition's own entry, so no other entry can claim
+ *  a place inside a router's boundary. */
 export function providerDefinitionId(providerId: string): string {
   const listed = getProviderDefinition(providerId)?.catalogMod?.definition
   if (listed !== undefined) return listed
@@ -212,7 +213,9 @@ export function providerDefinitionId(providerId: string): string {
     stored?.source === 'mod' &&
     stored.definition !== undefined &&
     isModProviderId(stored.definition) &&
-    instanceSlotOf(stored.definition, providerId) !== undefined
+    instanceSlotOf(stored.definition, providerId) !== undefined &&
+    stored.modOwner !== undefined &&
+    stored.modOwner === configs[stored.definition]?.modOwner
   ) {
     return stored.definition
   }
