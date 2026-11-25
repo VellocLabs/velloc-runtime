@@ -2,7 +2,11 @@ import { readFileSync } from 'node:fs'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 
-import { DOM_FREE_WORKER_ENTRIES, domFreeWorkerEntriesPlugin } from '../../vite/domFreeWorkerEntriesPlugin'
+import {
+  DOM_FREE_WORKER_ENTRIES,
+  domFreeWorkerEntriesPlugin,
+  domFreeWorkerEntriesWorkerPlugin,
+} from '../../vite/domFreeWorkerEntriesPlugin'
 
 describe('domFreeWorkerEntriesPlugin', () => {
   it.each(Object.entries(DOM_FREE_WORKER_ENTRIES))(
@@ -16,21 +20,20 @@ describe('domFreeWorkerEntriesPlugin', () => {
     },
   )
 
-  it('takes the DOM-free entry in a Worker build, and on the page only under a Worker module', async () => {
-    const [name, entry] = Object.entries(DOM_FREE_WORKER_ENTRIES)[0]!
-    const resolveIn = async (isWorker: boolean, chain: string[]) => {
-      const plugin = domFreeWorkerEntriesPlugin()
-      ;(plugin.configResolved as (c: { isWorker: boolean }) => void)({ isWorker })
-      const resolveId = plugin.resolveId as (
-        this: unknown, source: string, importer: string | undefined, options: object,
-      ) => Promise<unknown>
-      const ctx = { resolve: async (source: string) => ({ id: `/nm/${source}.js`, external: false }) }
-      for (let k = 0; k + 1 < chain.length; k++) await resolveId.call(ctx, chain[k + 1]!, chain[k], {})
-      return resolveId.call(ctx, name, chain.at(-1), {})
+  it('aliases each package on the dev server only, for page and Workers alike', () => {
+    const plugin = domFreeWorkerEntriesPlugin()
+    expect(plugin.apply).toBe('serve')
+    const config = (plugin.config as () => { resolve: { alias: Array<{ find: RegExp; replacement: string }> } })()
+    for (const [name, entry] of Object.entries(DOM_FREE_WORKER_ENTRIES)) {
+      const alias = config.resolve.alias.find((a) => a.find.test(name))!
+      expect(alias.replacement).toBe(entry)
+      expect(alias.find.test(`${name}/index.dom.js`)).toBe(false)
     }
-    expect(await resolveIn(true, ['/src/any.ts'])).toBe(entry)
-    expect(await resolveIn(false, ['/src/page.tsx'])).toBeNull()
-    expect(await resolveIn(false, ['/src/a/markdown-parse.worker.ts'])).toBe(entry)
-    expect(await resolveIn(false, ['/src/a/markdown-parse.worker.ts', 'micromark', '/nm/micromark.js'])).toBe(entry)
+  })
+
+  it('resolves each package to its DOM-free entry in a Worker build', () => {
+    const resolveId = domFreeWorkerEntriesWorkerPlugin().resolveId as (source: string) => string | null
+    for (const [name, entry] of Object.entries(DOM_FREE_WORKER_ENTRIES)) expect(resolveId(name)).toBe(entry)
+    expect(resolveId('react')).toBeNull()
   })
 })

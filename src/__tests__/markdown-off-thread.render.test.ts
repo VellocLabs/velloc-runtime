@@ -234,6 +234,20 @@ describe('the off-thread state of a part', () => {
     expect(parser.sent).toEqual([table(LARGE)])
   })
 
+  it('does not carry over to a reply that starts empty, or with the first words of the earlier one', async () => {
+    const parser = new HeldParser()
+    setMarkdownParseClient(parser)
+    const first = render(createElement(Thread, { initial: table(LARGE), running: true }))
+    await parser.finishAll()
+    first.unmount()
+
+    const { container } = render(createElement(Thread, { initial: '', running: true }))
+    await act(async () => setText('reply'))
+    await act(async () => setText('reply\n\n| n | v |'))
+    expect(container.querySelector('[data-slot="markdown-unparsed"]')).toBeNull()
+    expect(parser.sent).toEqual([table(LARGE)])
+  })
+
   it('parses nothing more for a part no longer drawn', async () => {
     const parser = new HeldParser()
     setMarkdownParseClient(parser)

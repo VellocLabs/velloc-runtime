@@ -127,18 +127,27 @@ class ParseQueue {
 
   constructor(private readonly parser: () => MarkdownParser) {}
 
-  /** The state of `key` when it is the same reply as `text`, else none. */
+  /**
+   * The state of `key` when `text` is the same reply, that is, it begins
+   * with the text the state was opened for; else none. A hit counts as use.
+   */
   find(key: string, text: string): PartState | undefined {
     const part = this.parts.get(key);
     if (!part) return undefined;
-    if (text.startsWith(part.head) || part.head.startsWith(text)) return part;
-    if (part.listeners.size === 0) this.parts.delete(key);
-    return undefined;
+    if (!text.startsWith(part.head)) {
+      if (part.listeners.size === 0) this.parts.delete(key);
+      return undefined;
+    }
+    this.parts.delete(key);
+    this.parts.set(key, part);
+    return part;
   }
 
   open(key: string, text: string): PartState {
-    const known = this.find(key, text);
-    if (known) return known;
+    return this.find(key, text) ?? this.create(key, text);
+  }
+
+  create(key: string, text: string): PartState {
     const part: PartState = {
       head: text.slice(0, HEAD_CHARS),
       parsed: null,
@@ -233,7 +242,7 @@ export function useOffThreadPath(
 ): boolean {
   if (parseQueue().find(key, text)) return true;
   if (!(large && streaming)) return false;
-  parseQueue().open(key, text);
+  parseQueue().create(key, text);
   return true;
 }
 
@@ -260,7 +269,7 @@ export function useOffThreadMarkdown(key: string, text: string | null): ParsedMa
         if (part.parsed) setParsed(part.parsed);
       }
     }
-    if (part && text !== null) parseQueue().want(part, text);
+    if (part) parseQueue().want(part, text!);
   }, [key, text]);
 
   useEffect(
