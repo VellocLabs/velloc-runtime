@@ -14,6 +14,7 @@ import { localeAssetsPlugin } from './vite/localeAssetsPlugin'
 import { devCatalogSnapshotPlugin } from './vite/devCatalogSnapshotPlugin'
 import { devServerWatch } from './vite/devServerWatch'
 import { xtermHeadlessWorkerPlugin } from './vite/xtermHeadlessWorkerPlugin'
+import { domFreeWorkerEntriesPlugin } from './vite/domFreeWorkerEntriesPlugin'
 import { thirdPartyNotices } from './vite/thirdPartyNoticesPlugin'
 import { normalizeModuleId, studioReach, type ModuleGraph } from './vite/studioChunks'
 import { asciiRegexLiteralsPlugin, BUNDLE_ESBUILD_OPTIONS } from './vite/bundleCharset'
@@ -341,6 +342,7 @@ export default defineConfig(({ mode }) => ({
       bundledTemplateRegistryPlugin(),
       builtinModsPlugin(),
       xtermHeadlessWorkerPlugin(),
+      domFreeWorkerEntriesPlugin(),
       notices.collector(),
       asciiRegexLiteralsPlugin(),
     ],

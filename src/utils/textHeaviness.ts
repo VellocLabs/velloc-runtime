@@ -55,6 +55,25 @@ export function measureText(text: string): TextHeaviness {
   return { bytes, lines, tableRows };
 }
 
+/**
+ * Past any of these, a conversation part that is still streaming is parsed
+ * as Markdown off the main thread instead of on every update (F-9).
+ */
+export const OFF_THREAD_PARSE_LIMITS = {
+  bytes: 8 * 1024,
+  lines: 300,
+  tableRows: 50,
+} as const;
+
+/** True when any measure is over its limit in `OFF_THREAD_PARSE_LIMITS`. */
+export function parsesOffThread(m: TextHeaviness): boolean {
+  return (
+    m.bytes > OFF_THREAD_PARSE_LIMITS.bytes ||
+    m.lines > OFF_THREAD_PARSE_LIMITS.lines ||
+    m.tableRows > OFF_THREAD_PARSE_LIMITS.tableRows
+  );
+}
+
 /** True when any measure is over its limit in `HEAVY_TEXT_LIMITS`. */
 export function isHeavyText(m: TextHeaviness): boolean {
   return (

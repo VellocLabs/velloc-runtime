@@ -6,8 +6,9 @@ import {
   unstable_memoizeMarkdownComponents as memoizeMarkdownComponents,
 } from "@assistant-ui/react-markdown";
 import remarkGfm from "remark-gfm";
-import { memo, useSyncExternalStore } from "react";
-import { useAssistantState } from "@assistant-ui/react";
+import { memo, useDeferredValue, useMemo, useRef, useSyncExternalStore } from "react";
+import { TextMessagePartProvider, useAssistantState } from "@assistant-ui/react";
+import type { Root } from "hast";
 
 import { sharedMarkdownComponents } from "@/components/assistant-ui/markdown-components";
 import { TURN_SETTLED_KEY } from "@/browser/webview/turnSettled";
@@ -21,7 +22,12 @@ import {
 import { SHELL_FENCE_LANGUAGES } from "@/components/assistant-ui/shell-command";
 import { usePartLineAttrs, useRevealSelf } from "./part-line-context";
 import { HeavyTextBlock, useHeavyText } from "./heavy-text-block";
-import { isHeavyText, measureText } from "@/utils/textHeaviness";
+import { isHeavyText, measureText, parsesOffThread } from "@/utils/textHeaviness";
+import {
+  type ParsedMarkdown,
+  hasParsedMarkdown,
+  useOffThreadMarkdown,
+} from "./off-thread-markdown";
 
 // ```mermaid / ```dot / ```graphviz fences render as SVG diagrams. The
 // SyntaxHighlighter return value is mounted unwrapped (no enclosing <pre>), and
@@ -90,10 +96,36 @@ const MarkdownTextImpl = () => {
   // A heavy part is never handed to the Markdown parser, which re-parses the
   // whole text on every streamed update (F-9).
   const heavy = useHeavyText(text);
+  // A large part that streams is parsed in a Worker and drawn from the newest
+  // tree, so no update re-parses it on the main thread. It stays there once it
+  // settles; a settled part loaded later renders inline, once (F-9).
+  const large = useMemo(() => parsesOffThread(measureText(text)), [text]);
+  const running = useAssistantState((s) => s.part.status?.type === "running");
+  const streamedOffThread = useRef(false);
+  if (large && !heavy && (running || hasParsedMarkdown(text))) streamedOffThread.current = true;
+  const offThread = large && !heavy && streamedOffThread.current;
+  // A landed tree or a status flip redraws the whole part; deferring both lets
+  // React split that render across tasks while the text keeps updating.
+  const parsed = useDeferredValue(useOffThreadMarkdown(offThread ? text : null));
+  const drawnRunning = useDeferredValue(running);
   if (heavy) {
     return (
       <div ref={revealRef} className="min-w-0 max-w-full" {...lineAttrs}>
         <HeavyTextBlock text={text} />
+      </div>
+    );
+  }
+  if (offThread) {
+    return (
+      <div
+        ref={revealRef}
+        className="min-w-0 max-w-full wrap-break-word"
+        {...lineAttrs}
+      >
+        {parsed ? (
+          <ParsedMarkdownText parsed={parsed} running={drawnRunning} />
+        ) : null}
+        <UnparsedText text={unparsedTail(text, parsed)} />
       </div>
     );
   }
@@ -127,3 +159,51 @@ function parsableText(text: string): string {
 }
 
 const defaultComponents = memoizeMarkdownComponents(sharedMarkdownComponents);
+
+/** Text that arrived after the newest parse, shown as-is until the next one. */
+function unparsedTail(text: string, parsed: ParsedMarkdown | null): string {
+  if (!parsed) return text;
+  return text.startsWith(parsed.text) ? text.slice(parsed.text.length) : "";
+}
+
+function UnparsedText({ text }: { text: string }) {
+  if (!text) return null;
+  return (
+    <div data-slot="markdown-unparsed" className="whitespace-pre-wrap">
+      {text}
+    </div>
+  );
+}
+
+const NO_PLUGINS: never[] = [];
+
+/** A rehype step that swaps in a tree parsed elsewhere. */
+function treeOf(tree: Root) {
+  return () => () => tree;
+}
+
+/**
+ * Draws a finished off-thread parse through the same primitive, components
+ * and status as the inline path; the primitive itself is handed no text.
+ */
+const ParsedMarkdownText = memo(function ParsedMarkdownText({
+  parsed,
+  running,
+}: {
+  parsed: ParsedMarkdown;
+  running: boolean;
+}) {
+  const rehypePlugins = useMemo(() => [treeOf(parsed.tree)], [parsed.tree]);
+  return (
+    <TextMessagePartProvider text="" isRunning={running}>
+      <MarkdownTextPrimitive
+        remarkPlugins={NO_PLUGINS}
+        rehypePlugins={rehypePlugins}
+        className="aui-md"
+        smooth={false}
+        components={defaultComponents}
+        componentsByLanguage={componentsByLanguage}
+      />
+    </TextMessagePartProvider>
+  );
+});
