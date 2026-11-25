@@ -11,7 +11,7 @@ import type { NexusProviderConfig, ProvidersBridgeActionMap } from '../protocol'
 import type { RuntimeFs } from '../../../utils/fs/runtimeFs'
 import { getProviderDefinition } from '../../../config/nexusModelConfig/providers'
 import { judgeBaseUrl } from '../../../mods/provider/providerBaseUrlRule'
-import { isModProviderId, MOD_PROVIDER_ID_PREFIX } from '../../../mods/provider/providerManifest'
+import { isModProviderId } from '../../../mods/provider/providerManifest'
 import { boundSettingName } from '../../../mods/provider/providerSettingBinds'
 import { readPersonHosts, storePersonHost } from '../../../pluginHost/personWidening'
 import { acquireProviderModUpdateService } from '../../../pluginHost/providerModUpdateHolder'
@@ -54,7 +54,8 @@ export async function handleSetModBaseUrl(payload: Payload, deps: ModBaseUrlDeps
   let confirmed: { pluginId: string; providerKey: string; host: string } | undefined
   if (payload.baseUrl !== null) {
     const pluginId = mod.configId
-    const providerKey = mod.plugin ? id.slice(`${MOD_PROVIDER_ID_PREFIX}${mod.plugin}.`.length) : ''
+    // The hosts the person added are kept per definition: its instances share them.
+    const providerKey = mod.definitionKey ?? ''
     const personHosts =
       pluginId && providerKey ? await readPersonHosts({ homeDir: deps.homeDir }, deps.fs, pluginId, providerKey) : []
     const verdict = judgeBaseUrl(payload.baseUrl, { domains: mod.domains ?? [], personHosts })

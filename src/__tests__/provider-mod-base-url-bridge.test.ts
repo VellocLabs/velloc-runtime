@@ -50,6 +50,8 @@ function register(settings: Record<string, unknown> = { gateway: { type: 'string
       state: 'ready',
       plugin: 'acme',
       configId: PLUGIN,
+      definition: ID,
+      definitionKey: 'main',
       defaultBaseUrl: DEFAULT,
       domains: ['acme.test'],
       settings,

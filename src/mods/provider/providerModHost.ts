@@ -20,10 +20,13 @@ import {
   modProviderOwner,
   onRuntimeProviderConfigsLoaded,
   publishModProvidersChanged,
+  runtimeProviderConfigs,
 } from '../../models/drivers/runtimeProviders'
 import type { ActivePlugin } from '../../pluginHost/pluginModel'
+import type { NexusProviderConfig } from '../../settings/settingsTypes'
 import { pluginConfigId } from '../modSlot'
 import { modProviderDefinition, safeIconSvg, type ModProviderDefinitionOptions } from './modProviderDefinition'
+import { withStoredInstances } from './providerInstances'
 import type { ProviderManifest, ResolvedProvider } from './providerManifest'
 // A TYPE only: the runtime's code must stay out of a realm with no provider mod.
 import type { ProviderModRuntime, ProviderModuleRef } from './ProviderModRuntime'
@@ -54,6 +57,9 @@ export function providerModuleRefs(plugin: ProviderPluginFacts): ProviderModuleR
     ...(description !== undefined ? { description } : {}),
     provenance: pluginConfigId(plugin),
     providers: providers.map(provider => provider.id),
+    definitions: Object.fromEntries(
+      providers.map(provider => [provider.id, { id: provider.definition ?? provider.id, key: provider.key }]),
+    ),
     // One module's providers are all of one kind: the manifest check refuses a mix.
     ...(providers.some(provider => provider.manifest.kind === 'router') ? { kind: 'router' as const } : {}),
   }))
@@ -66,7 +72,11 @@ export function isGlobalPluginSource(source: string): boolean {
 }
 
 export type ProviderRegistration = {
+  /** The instance id. */
   providerId: string
+  /** The definition the instance belongs to, and its key in the manifest. */
+  definition: string
+  definitionKey: string
   plugin: string
   /** The plugin's id in settings.json `pluginConfigs` (`pluginConfigId`). */
   configId?: string
@@ -111,6 +121,7 @@ export type ProviderModHostOptions = {
   ownerOf?: (providerId: string) => string | undefined
   publish?: () => Promise<void>
   hasStoredConfigs?: () => boolean
+  storedConfigs?: () => Readonly<Record<string, NexusProviderConfig>>
 }
 
 export type ProviderPluginScan = {
@@ -167,9 +178,7 @@ export class ProviderModHost {
     // The owners of the stored entries are known once settings.json is read:
     // a plugin registered before then is judged again.
     this.stopOwnerWatch?.()
-    this.stopOwnerWatch = onRuntimeProviderConfigsLoaded(() => {
-      if (this.lastScan && this.options) void this.sync(this.lastScan)
-    })
+    this.stopOwnerWatch = onRuntimeProviderConfigsLoaded(() => void this.resync())
   }
 
   private stopOwnerWatch: (() => void) | undefined
@@ -250,9 +259,26 @@ export class ProviderModHost {
     return run
   }
 
-  private async syncNow(scan: ProviderPluginScan): Promise<ProviderSyncResult> {
+  /** Bring the registrations to the last scan again: a provider instance
+   *  was stored or removed. Resolves undefined before the first scan. */
+  resync(): Promise<ProviderSyncResult | undefined> {
+    return this.lastScan && this.options ? this.sync(this.lastScan) : Promise.resolve(undefined)
+  }
+
+  private async syncNow(installed: ProviderPluginScan): Promise<ProviderSyncResult> {
     const options = this.options!
-    this.lastScan = scan
+    this.lastScan = installed
+    // One entry per instance from here on: a stored instance is registered,
+    // disabled and taken away with its definition.
+    const configs = (options.storedConfigs ?? runtimeProviderConfigs)()
+    const perInstance = (plugin: ProviderPluginFacts): ProviderPluginFacts =>
+      plugin.providers?.length
+        ? { ...plugin, providers: withStoredInstances(plugin.providers, pluginConfigId(plugin), configs, options.report) }
+        : plugin
+    const scan: ProviderPluginScan = {
+      enabled: installed.enabled.map(perInstance),
+      disabled: installed.disabled.map(perInstance),
+    }
     const result: ProviderSyncResult = { registered: [], removed: [], published: false }
 
     // The plugins that supply providers, and the ids they claim.
@@ -370,6 +396,8 @@ export class ProviderModHost {
         )
         const registration: ProviderRegistration = {
           providerId: provider.id,
+          definition: provider.definition ?? provider.id,
+          definitionKey: provider.key,
           plugin: name,
           configId: pluginConfigId(plugin),
           manifest: provider.manifest,

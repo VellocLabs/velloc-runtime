@@ -197,6 +197,13 @@ export function modProviderOwner(providerId: string): string | undefined {
   return configs[providerId]?.modOwner
 }
 
+/** The provider definition `providerId` is an instance of: what its catalog
+ *  row states, else what its stored entry states (its plugin is gone), else
+ *  itself. */
+export function providerDefinitionId(providerId: string): string {
+  return getProviderDefinition(providerId)?.catalogMod?.definition ?? configs[providerId]?.definition ?? providerId
+}
+
 /** Every provider's config as settings.json holds it (the model entries of
  *  built-in providers read it too — modelEntryCatalog.ts). */
 export function runtimeProviderConfigs(): Record<string, NexusProviderConfig> {

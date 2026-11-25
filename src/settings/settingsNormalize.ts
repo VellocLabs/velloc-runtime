@@ -352,6 +352,15 @@ export function normalizeSettings(
         if (typeof r.modOwner === 'string' && r.modOwner.length > 0) {
           config.modOwner = r.modOwner
         }
+        if (typeof r.definition === 'string' && r.definition.length > 0) {
+          config.definition = r.definition
+        }
+        if (typeof r.name === 'string' && r.name.length > 0) {
+          config.name = r.name
+        }
+        if (typeof r.createdAt === 'number' && Number.isFinite(r.createdAt) && r.createdAt > 0) {
+          config.createdAt = Math.floor(r.createdAt)
+        }
         if (typeof r.account === 'string' && r.account.length > 0) {
           config.account = r.account
         }

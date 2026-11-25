@@ -46,7 +46,7 @@ const ROUTER = 'mod.pool.router'
 const HOSTED = BUILTIN_PROVIDER_DEFINITIONS.find(d => !d.runtimeOnly && !d.models && !d.codeListing)!.config.providerId
 
 /** Every key a peer may carry, and every key one of its models may. */
-const PEER_KEYS = ['connected', 'defaultModel', 'definition', 'id', 'kind', 'label', 'models', 'name', 'source', 'state', 'usage']
+const PEER_KEYS = ['connected', 'createdAt', 'defaultModel', 'definition', 'definitionKey', 'id', 'kind', 'label', 'models', 'name', 'source', 'state', 'usage']
 const MODEL_KEYS = [
   'contextWindow',
   'deprecated',
@@ -167,7 +167,7 @@ describe('peersTableFor', () => {
 
   it('a peer and its models carry the known keys and nothing else, whatever the source holds', () => {
     const leaky = {
-      ...instance('alpha', { name: 'n', defaultModel: 'm', usage: USAGE }),
+      ...instance('alpha', { name: 'n', defaultModel: 'm', usage: USAGE, definitionKey: 'alpha', createdAt: NOW }),
       apiKey: 'sk-secret',
       baseUrl: 'https://private.test/v1',
       secrets: { management_key: 'sk-other' },

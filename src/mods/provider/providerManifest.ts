@@ -152,6 +152,9 @@ export type ProviderManifest = {
   providerApi: number
   /** Absent = `provider`. */
   kind?: ProviderKind
+  /** `multiple`: the person may set the definition up more than once, each
+   *  time as an instance of its own (`providerInstances.ts`). Absent = `single`. */
+  instances?: 'multiple'
   /** A router's boundary: any provider the person set up, or every instance
    *  of the listed provider definitions. Read on a router alone. */
   routesTo?: '*' | string[]
@@ -193,8 +196,10 @@ export type ProviderManifest = {
  *  module / icon as absolute paths inside the plugin directory. */
 export type ResolvedProvider = {
   key: string
-  /** `mod.<plugin>.<key>` */
+  /** `mod.<plugin>.<key>`; on an instance beyond the first, the instance id. */
   id: string
+  /** The definition's id, on an instance whose id is not the definition's. */
+  definition?: string
   manifest: ProviderManifest
   modulePath: string
   iconPath?: string
@@ -209,6 +214,11 @@ export const PROVIDER_ID_MAX_LENGTH = 64
 const ID_CHARS = /^[A-Za-z0-9_.-]+$/
 const PLUGIN_PART = /^[A-Za-z0-9_-]+$/
 const KEY_PART = /^[A-Za-z0-9_-]{1,32}$/
+/** What tells one instance of a definition from another: the last part of
+ *  an instance id, given out by the platform. */
+export const INSTANCE_SLOT = /^[a-z0-9]{4,8}$/
+/** The room a definition id leaves for `.<slot>`. */
+export const INSTANCE_ID_RESERVE = 9
 
 /** The registered id of a plugin's provider. */
 export function modProviderId(plugin: string, key: string): string {
@@ -923,6 +933,18 @@ function checkProvider(key: string, id: string, raw: unknown, errors: string[]):
     bad('routesTo: only a router ("kind": "router") declares routesTo')
   }
 
+  let multiple = false
+  if (raw.instances !== undefined && raw.instances !== 'single') {
+    if (raw.instances !== 'multiple') bad('instances: must be "single" or "multiple"')
+    else if (router) bad('instances: a router has one instance')
+    else if (id.length + INSTANCE_ID_RESERVE > PROVIDER_ID_MAX_LENGTH) {
+      bad(
+        `instances: the provider id "${id}" is ${id.length} characters; with "multiple" the most is ` +
+          `${PROVIDER_ID_MAX_LENGTH - INSTANCE_ID_RESERVE}, so that an instance id fits`,
+      )
+    } else multiple = true
+  }
+
   const displayName = localized(raw.displayName, 'displayName', bad)
   const domains = router ? [] : checkDomains(raw.domains, bad)
   const defaultBaseUrl = router ? '' : checkBaseUrl(raw.defaultBaseUrl, domains, bad)
@@ -997,6 +1019,7 @@ function checkProvider(key: string, id: string, raw: unknown, errors: string[]):
   return {
     providerApi: api,
     ...(router ? { kind, routesTo } : {}),
+    ...(multiple ? { instances: 'multiple' as const } : {}),
     displayName,
     ...(icon !== undefined ? { icon } : {}),
     defaultBaseUrl,

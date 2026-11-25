@@ -256,6 +256,14 @@ export type NexusProviderConfig = {
    *  owns this entry's sign-in, secrets and keys. Another plugin of the same
    *  name is not registered under it. */
   modOwner?: string
+  /** The provider definition (`mod.<plugin>.<key>`) this entry is an instance
+   *  of, on an instance whose id is not the definition's. Written once, when
+   *  the instance is made. */
+  definition?: string
+  /** The name the person sees for this instance. */
+  name?: string
+  /** When the instance was made, epoch milliseconds. */
+  createdAt?: number
   /** The account a sign-in returned, for display. */
   account?: string
   /** A finished sign-in that named no account (`account` marks one that did). */

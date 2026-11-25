@@ -20,6 +20,7 @@ import { cachedUsage } from '../../../models/drivers/providerUsageService'
 import {
   isProviderSetUp,
   mergedModels,
+  providerDefinitionId,
   providerEntries,
   runtimeProviderCatalogRows,
   runtimeProviderConfigs,
@@ -40,6 +41,8 @@ import type {
 export type PeerInstance = {
   id: string
   definition: string
+  definitionKey?: string
+  createdAt?: number
   label: string
   name?: string
   router: boolean
@@ -92,6 +95,8 @@ export function peersTableFor(routerId: string, deps: PeersTableDeps): Peer[] {
     peers.push({
       id: instance.id,
       definition: instance.definition,
+      ...(instance.definitionKey !== undefined ? { definitionKey: instance.definitionKey } : {}),
+      ...(instance.createdAt !== undefined ? { createdAt: instance.createdAt } : {}),
       label: instance.label,
       ...(instance.name !== undefined ? { name: instance.name } : {}),
       kind: 'provider',
@@ -159,8 +164,8 @@ function modelsOf(
 
 /**
  * Every provider instance the runtime knows: each definition (a built-in or
- * an enabled provider mod) and each custom provider. Today a definition has
- * one instance, whose id is the definition's.
+ * an enabled provider mod), each stored instance of a provider mod's
+ * definition, and each custom provider.
  */
 export function runtimePeerInstances(): PeerInstance[] {
   const configs = runtimeProviderConfigs()
@@ -182,12 +187,15 @@ export function runtimePeerInstances(): PeerInstance[] {
   return ids.map(id => {
     const definition = getProviderDefinition(id)
     const config = configs[id]
-    const name = config?.displayName?.trim()
+    const name = (config?.name ?? config?.displayName)?.trim()
+    const mod = definition?.catalogMod
     const defaultModel = config?.defaultModel ?? config?.model
     const usage = cachedUsage(id)
     return {
       id,
-      definition: id,
+      definition: providerDefinitionId(id),
+      ...(mod?.definitionKey !== undefined ? { definitionKey: mod.definitionKey } : {}),
+      ...(config?.createdAt !== undefined ? { createdAt: config.createdAt } : {}),
       label: definition ? runtimeProviderLabel(id) : name || id,
       ...(name ? { name } : {}),
       router: definition?.router === true || definition?.catalogMod?.kind === 'router',

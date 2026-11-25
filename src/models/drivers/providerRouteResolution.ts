@@ -52,7 +52,7 @@ import {
 import type { RouteDecision, RouteLeg, RoutedSend, StreamRouting } from './routedStream'
 import { requestLogCallerOf, type RequestLogCaller, type RequestLogRow } from '../usage/requestLogStore'
 import { recordRequest } from '../usage/requestLogWriter'
-import { isProviderSetUp, mergedModels, providerEntries, runtimeProviderConfigs } from './runtimeProviders'
+import { isProviderSetUp, mergedModels, providerDefinitionId, providerEntries, runtimeProviderConfigs } from './runtimeProviders'
 import { providerModelPool } from '../../config/nexusModelConfig/providerModelPool'
 
 const NO_REQUEST_CONTEXT: BridgeModelRequestContext = { purpose: 'other', querySource: '' }
@@ -192,8 +192,7 @@ export function routeCall(
     routesTo: bounds.routesTo,
     isSetUp: isProviderSetUp,
     isRouter,
-    // One instance per definition: an instance's definition is its own id.
-    definitionOf: provider => provider,
+    definitionOf: providerDefinitionId,
     managedByOf: provider => getProviderDefinition(provider)?.catalogMod?.managedBy,
     serves: (provider, model) =>
       resolveProviderSpec(provider, deps.runtimeConfig, resolveModelId(provider, model)) !== undefined,

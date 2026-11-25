@@ -133,6 +133,12 @@ export type BrowserLlmModProvider = {
   /** The plugin's id as settings.json `pluginConfigs` is keyed
    *  (`<name>@<marketplace>`, `<name>@inline`): where its options live. */
   configId?: string
+  /** The provider definition this row is an instance of (the row's own id
+   *  for a definition's first instance), and its key in the manifest. */
+  definition?: string
+  definitionKey?: string
+  /** `multiple`: the definition may be set up more than once. Absent = once. */
+  instances?: 'multiple'
   displayName?: LocalizedText
   defaultBaseUrl?: string
   /** The manifest's declared domains: the provider's boundary. */

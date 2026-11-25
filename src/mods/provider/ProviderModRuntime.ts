@@ -68,6 +68,9 @@ export function longestProviderEventMs(): number {
  *  provider ids it owns, as the manifest registered them. */
 export type ProviderModuleRef = ModModuleRef & {
   readonly providers: readonly string[]
+  /** By provider id: the definition it is an instance of, and that
+   *  definition's key in the manifest. Absent: each id is its own definition. */
+  readonly definitions?: Readonly<Record<string, { readonly id: string; readonly key: string }>>
   /** What its providers are. Absent: providers with their own endpoint. */
   readonly kind?: ProviderKind
 }
@@ -589,7 +592,9 @@ export class ProviderModRuntime {
           : wall.signal
         : options.signal
       try {
-        const value = await module.dispatcher.dispatch<R>(event, { locale: this.currentLocale(), ...e, provider: providerId }, core, {
+        const of = module.ref.definitions?.[providerId]
+        const about = { provider: providerId, definition: of?.id ?? providerId, ...(of ? { definitionKey: of.key } : {}) }
+        const value = await module.dispatcher.dispatch<R>(event, { locale: this.currentLocale(), ...e, ...about }, core, {
           budgetMs: this.options.budgetMs ?? Math.min(options.budgetMs ?? spec.budgetMs, spec.budgetMs),
           accepts: spec.accepts,
           scope: { provider: providerId },

@@ -38,7 +38,10 @@ afterEach(() => {
 type Worker = ModWorkerHandle & { crash(message?: string): void; id: number }
 
 function world(
-  modules: Record<string, { source: string; providers: string[]; kind?: ProviderModuleRef['kind'] }>,
+  modules: Record<
+    string,
+    { source: string; providers: string[]; kind?: ProviderModuleRef['kind']; definitions?: ProviderModuleRef['definitions'] }
+  >,
   options: Partial<ProviderModRuntimeOptions> & {
     /** How long a closed worker takes to be reported gone. */
     closeDelayMs?: number
@@ -53,6 +56,7 @@ function world(
     path,
     providers: entry.providers,
     ...(entry.kind ? { kind: entry.kind } : {}),
+    ...(entry.definitions ? { definitions: entry.definitions } : {}),
   }))
   const runtime = new ProviderModRuntime({
     readModule: async path => `${modules[path]!.source}\n// load ${++uniqueLoad}`,
@@ -108,6 +112,50 @@ const ECHO = `
     on('provider.request', ($, e) => { calls += 1; return { headers: { 'x-provider': e.provider, 'x-calls': String(calls) } } })
   }
 `
+
+describe('ProviderModRuntime — which instance an event is about', () => {
+  const ABOUT = `
+    export function register(on) {
+      on('provider.request', ($, e) => ({ headers: { 'x-about': [e.provider, e.definition, e.definitionKey].join('|') } }))
+    }
+  `
+
+  it('names the instance, its definition and the definition key, for each instance of one module', async () => {
+    const { runtime, opened } = world({
+      'acme/providers/pool.js': {
+        source: ABOUT,
+        providers: ['mod.acme.keyed', 'mod.acme.keyed.a1b2', 'mod.acme.free'],
+        definitions: {
+          'mod.acme.keyed': { id: 'mod.acme.keyed', key: 'keyed' },
+          'mod.acme.keyed.a1b2': { id: 'mod.acme.keyed', key: 'keyed' },
+          'mod.acme.free': { id: 'mod.acme.free', key: 'free' },
+        },
+      },
+    })
+    const about = async (id: string) =>
+      ((await runtime.call(id, 'provider.request', {})) as { value: { headers: Record<string, string> } }).value.headers['x-about']
+    expect(await about('mod.acme.keyed')).toBe('mod.acme.keyed|mod.acme.keyed|keyed')
+    expect(await about('mod.acme.keyed.a1b2')).toBe('mod.acme.keyed.a1b2|mod.acme.keyed|keyed')
+    expect(await about('mod.acme.free')).toBe('mod.acme.free|mod.acme.free|free')
+    expect(opened()).toBe(1)
+  })
+
+  it('an event cannot pass itself off as another instance', async () => {
+    const { runtime } = world({
+      'acme/providers/pool.js': {
+        source: ABOUT,
+        providers: ['mod.acme.keyed.a1b2'],
+        definitions: { 'mod.acme.keyed.a1b2': { id: 'mod.acme.keyed', key: 'keyed' } },
+      },
+    })
+    const outcome = await runtime.call('mod.acme.keyed.a1b2', 'provider.request', {
+      provider: 'mod.acme.other',
+      definition: 'mod.acme.other',
+      definitionKey: 'other',
+    })
+    expect(outcome).toEqual({ raised: true, value: { headers: { 'x-about': 'mod.acme.keyed.a1b2|mod.acme.keyed|keyed' } } })
+  })
+})
 
 describe('ProviderModRuntime — residency', () => {
   it('nothing loads at registration; the first call spawns, the second reuses the worker', async () => {

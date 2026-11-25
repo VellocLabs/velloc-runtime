@@ -35,6 +35,8 @@ function registration(
 ): ProviderRegistration {
   return {
     providerId: 'mod.acme.zen',
+    definition: 'mod.acme.zen',
+    definitionKey: 'zen',
     plugin: 'acme',
     manifest: manifest as ProviderManifest,
     runtime,

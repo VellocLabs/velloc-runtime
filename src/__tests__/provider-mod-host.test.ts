@@ -584,6 +584,8 @@ describe('the catalog rows', () => {
       // Where the plugin's options live: the page stores the provider's
       // settings and non-secret answers there.
       configId: 'opencode@inline',
+      definition: ZEN,
+      definitionKey: 'zen',
       displayName: { en: 'OpenCode Zen', 'zh-CN': 'OpenCode 禅' },
       defaultBaseUrl: 'https://opencode.ai/zen/v1',
       domains: ['opencode.ai'],

@@ -311,6 +311,8 @@ function validateConfig(config: unknown): string | null {
     'modVersion',
     'modOwner',
     'account',
+    'definition',
+    'name',
   ] as const) {
     if (c[k] !== undefined && typeof c[k] !== 'string') {
       return `\`${k}\` must be a string`
@@ -340,6 +342,12 @@ function validateConfig(config: unknown): string | null {
     && !(typeof c.tokenExpiresAt === 'number' && Number.isFinite(c.tokenExpiresAt) && c.tokenExpiresAt > 0)
   ) {
     return '`tokenExpiresAt` must be a positive number'
+  }
+  if (
+    c.createdAt !== undefined
+    && !(typeof c.createdAt === 'number' && Number.isFinite(c.createdAt) && c.createdAt > 0)
+  ) {
+    return '`createdAt` must be a positive number'
   }
   if (c.source !== undefined && c.source !== 'mod') {
     return '`source` must be "mod"'
@@ -543,6 +551,17 @@ async function handleUpsert(
     if (!derive && isModProviderId(payload.id)) {
       if (baseUrlBefore) merged.baseUrl = baseUrlBefore
       else delete merged.baseUrl
+      // Security: which definition an instance belongs to decides whose
+      // module and domains serve it. It is written with the entry's first
+      // write and no later write moves it.
+      const before = prev?.configs?.[payload.id]
+      if (before !== undefined) {
+        for (const field of ['definition', 'createdAt'] as const) {
+          if (before[field] !== undefined) Object.assign(merged, { [field]: before[field] })
+          else delete merged[field]
+        }
+        if (merged.name === undefined && before.name !== undefined) merged.name = before.name
+      }
     }
     next.configs[payload.id] = merged
     return next

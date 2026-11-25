@@ -61,9 +61,13 @@ export type PeerModel = {
 export type Peer = {
   /** The instance id: what a router's answer names. */
   id: string
-  /** The provider definition the instance belongs to. Equal to `id` while a
-   *  definition has one instance. */
+  /** The provider definition the instance belongs to. Equal to `id` for a
+   *  definition's first instance. */
   definition: string
+  /** The definition's key in its plugin's manifest; a mod's provider only. */
+  definitionKey?: string
+  /** When the instance was made, epoch ms; absent on a first instance. */
+  createdAt?: number
   label: string
   /** The name the person gave this instance. */
   name?: string
