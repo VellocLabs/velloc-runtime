@@ -49,6 +49,13 @@ export type QueryModelCallParams = {
   /** The ids of the reply rows this call yields, when the turn loop's own
    *  are minted through `ids.next`; otherwise the transport mints them. */
   rowUuid?: () => string
+  /**
+   * Aborted when the session's selection moved off what this request was
+   * built for. An attempt that fails after that is not retried and the call
+   * ends without a message: its caller sends the request again as the
+   * selection now stands. A call that does not fail is left to finish.
+   */
+  superseded?: AbortSignal
 }
 
 /** Sends one request and streams back the assistant messages. */

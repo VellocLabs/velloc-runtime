@@ -11,7 +11,7 @@ import type { Message, StreamEvent } from '../runtime/RuntimeTypes'
 import { MSG_TYPE_STREAM_EVENT, STREAM_COMPACT_PROGRESS } from '../runtime/VercelModelConstants'
 import { rowsSinceFoldLine } from '../context/compaction/boundary'
 import type { TurnEffect } from './turnEffects'
-import { mintRows, type EffectRunner } from './turnEnvironment'
+import { instructionsOf, mintRows, providerOf, type EffectRunner } from './turnEnvironment'
 
 type Summary = Awaited<ReturnType<QueryRuntimeDeps['autocompact']>>
 
@@ -64,13 +64,13 @@ export const fitContext: EffectRunner<Extract<TurnEffect, { kind: 'summarizeForC
         rows,
         env.ctx,
         {
-          baseInstructions: state.baseInstructions,
+          baseInstructions: instructionsOf(env, state.baseInstructions),
           userContext: state.userAmbient as { [k: string]: string },
           systemAmbient: state.systemAmbient as { [k: string]: string },
           callContext: env.ctx,
           forkSeedRows: rows,
           // The summarizer's request resolves its model through the provider.
-          providerId: input.providerId,
+          providerId: providerOf(env),
         },
         input.turnCaller,
         ledger,

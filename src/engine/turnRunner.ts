@@ -261,6 +261,14 @@ async function* loop(turn: Turn, prompt: Prompt, promptParts: SystemPromptParts)
       // A fork that moves to another model renders that model's prompt.
       renderSystemPromptForModel: async selection =>
         (await assemblePrompt(ledger, selection.modelId, ledger.rows, selection.providerId ?? config.userSpecifiedProviderId)).defaultSystemPrompt,
+      liveSelection: {
+        read: () => ({
+          providerId: config.userSpecifiedProviderId,
+          ...(config.pickedModel !== undefined ? { model: config.pickedModel } : {}),
+          thinkingTier: config.userSpecifiedThinkingTier,
+        }),
+        changed: () => ledger.selectionChange(),
+      },
       refreshPromptContext: stepRefresher(turn),
       renderPromptAfterCompaction: messages =>
         assemblePrompt(ledger, config.pickedModel ?? turn.callContext.options.mainLoopModel, messages),

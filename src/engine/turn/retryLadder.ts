@@ -212,20 +212,23 @@ export function decideRetry(input: RetryInput): RetryDecision {
 }
 
 /**
- * Wait out a backoff (or a poll pause), waking early when `signal` fires.
- * Never rejects: a Stop during the wait simply ends it, and the caller checks
- * the signal to end quietly instead of starting another attempt.
+ * Wait out a backoff (or a poll pause), waking early when `signal` or
+ * `other` fires. Never rejects: a Stop during the wait simply ends it, and
+ * the caller checks the signals to end quietly instead of starting another
+ * attempt.
  */
-export function waitRetry(delayMs: number, signal: AbortSignal): Promise<void> {
-  if (signal.aborted || delayMs <= 0) return Promise.resolve()
+export function waitRetry(delayMs: number, signal: AbortSignal, other?: AbortSignal): Promise<void> {
+  if (signal.aborted || other?.aborted || delayMs <= 0) return Promise.resolve()
   return new Promise(resolve => {
     let timer: ReturnType<typeof setTimeout> | undefined
     const finish = () => {
       if (timer !== undefined) clearTimeout(timer)
       signal.removeEventListener('abort', finish)
+      other?.removeEventListener('abort', finish)
       resolve()
     }
     timer = setTimeout(finish, delayMs)
     signal.addEventListener('abort', finish, { once: true })
+    other?.addEventListener('abort', finish, { once: true })
   })
 }

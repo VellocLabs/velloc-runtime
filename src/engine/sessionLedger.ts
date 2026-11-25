@@ -29,6 +29,11 @@ import {
   type ModelSelection,
 } from './engineConfig'
 
+/** One selection as a string two equal selections share. */
+function selectionKeyOf(selection: ModelSelection): string {
+  return JSON.stringify([selection.providerId ?? null, selection.model, selection.thinkingTier ?? null])
+}
+
 /** The three kinds of record a halted tool call leaves for the user. */
 type HaltField = 'pendingPermissions' | 'pendingPlanApproval' | 'pendingUserInteraction'
 
@@ -43,6 +48,9 @@ export class SessionLedger {
   /** Submits since the session (or the last `/clear`) began. */
   turnCount = 0
   cancelSource: AbortController
+  private selectionMoved = new AbortController()
+  /** The selection last set, as `selectionKeyOf` writes it. */
+  private selectionKey: string | undefined
   deniedCalls: Array<Record<string, unknown>> = []
   usageSoFar: Record<string, unknown> = {}
   readonly fileReadLedger: ReadFileLedger
@@ -198,9 +206,21 @@ export class SessionLedger {
   }
 
   setModelSelection(selection: ModelSelection): void {
+    const before = this.selectionKey ?? selectionKeyOf(this.modelSelection())
     this.config.userSpecifiedProviderId = selection.providerId
     this.config.pickedModel = selection.model
     this.config.userSpecifiedThinkingTier = selection.thinkingTier
+    this.selectionKey = selectionKeyOf(selection)
+    if (this.selectionKey === before) return
+    const moved = this.selectionMoved
+    this.selectionMoved = new AbortController()
+    moved.abort()
+  }
+
+  /** Aborted when the selection next moves to another provider, model or
+   *  thinking tier. Setting the selection it already has aborts nothing. */
+  selectionChange(): AbortSignal {
+    return this.selectionMoved.signal
   }
 
   modeInEffect(): string {

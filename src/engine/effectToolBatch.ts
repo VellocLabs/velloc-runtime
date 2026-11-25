@@ -12,7 +12,7 @@ import { recordSettledToolMeta } from './loop/actionLoopDetector'
 import { captureForkPrefix, rememberForkPrefix } from '../agents/forkedRun'
 import type { FileStateEntry } from '../runtime/RuntimeTypes'
 import type { ToolBatchUpdate, ToolResultDigest, TurnEffect } from './turnEffects'
-import { mintRows, type EffectRunner } from './turnEnvironment'
+import { instructionsOf, mintRows, providerOf, thinkingTierOf, type EffectRunner } from './turnEnvironment'
 import { resultPartsOf } from './turnRows'
 
 /** The batch bracket plus the loop's own bookkeeping of each settled call. */
@@ -30,14 +30,14 @@ export const runToolBatchEffect: EffectRunner<Extract<TurnEffect, { kind: 'runTo
     const replies = [...effect.replies]
     rememberForkPrefix(
       captureForkPrefix({
-        systemPrompt: state.baseInstructions,
+        systemPrompt: instructionsOf(env, state.baseInstructions),
         userContext: state.userAmbient as { [k: string]: string },
         systemContext: state.systemAmbient as { [k: string]: string },
         toolUseContext: env.ctx,
         messages: mintRows(env, state.messages),
         // A fork that keeps this model also keeps its provider and effort.
-        providerId: input.providerId,
-        thinkingTier: input.thinkingTier,
+        providerId: providerOf(env),
+        thinkingTier: thinkingTierOf(env),
         renderSystemPromptForModel: input.renderSystemPromptForModel,
       }),
       env.ctx.options.runtimeConfig,

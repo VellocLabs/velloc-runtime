@@ -522,6 +522,13 @@ function afterFailedAttempt(
   }
 }
 
+/** Whether a failure is one another provider or model could answer: not a
+ *  cancellation, and not a prompt that is too long. */
+function isRetargetable(error: unknown): boolean {
+  const kind = classifyModelFailure(error).kind
+  return kind !== 'aborted' && kind !== 'prompt_too_long'
+}
+
 /**
  * Starts the record of a call to a router provider: the session's context in
  * tokens, counted as its usage meter counts it (absent for a request of no
@@ -576,7 +583,8 @@ async function* notingReplies(messages: AsyncGenerator<Message, void, unknown>, 
  * layered over the transport here, so retries, idle handling, cancellation
  * and error messages behave the same whichever side speaks the wire format.
  * Attempts run until one succeeds, the ladder gives up, or the call is
- * cancelled during a backoff (which ends the call without a message).
+ * cancelled during a backoff (which ends the call without a message). A
+ * superseded call ends the same way at its next failure or during a backoff.
  */
 export function bridgeModelTransport(
   bridgeTransport: BrowserBridgeTransport,
@@ -599,6 +607,7 @@ export function bridgeModelTransport(
     const request = observed ? { ...settled, payload: observed.mark(settled.payload) } : settled
     const call = createModelCall({ send, params, runtimeConfig, traceLogger, sessionTag, callId }, request)
     const signal = params.callContext.cancelSource.signal
+    const superseded = params.superseded
     // The selected provider's declared retry policy; a provider without one
     // gets the platform's ladder.
     // A request to a router provider (F-27) follows the router's declared
@@ -630,6 +639,10 @@ export function bridgeModelTransport(
           return
         } catch (error) {
           const attemptMs = Date.now() - startedAt
+          if (superseded?.aborted && isRetargetable(error)) {
+            traceLine(`[llm] retries end ${sessionTag} provider=${params.providerId} attempt=${attempt}: selection moved`, { level: 'warn' })
+            return
+          }
           const recovered = raisesTurnRecover(params)
             ? await recoverThroughMods(params, error, {
                 attempt,
@@ -647,8 +660,12 @@ export function bridgeModelTransport(
           }
           if (after.notice) yield after.notice
           waitedMs += after.delayMs
-          await waitRetry(after.delayMs, signal)
+          await waitRetry(after.delayMs, signal, superseded)
           if (signal.aborted) return
+          if (superseded?.aborted) {
+            traceLine(`[llm] retries end ${sessionTag} provider=${params.providerId} attempt=${attempt}: selection moved`, { level: 'warn' })
+            return
+          }
         }
       }
     } finally {

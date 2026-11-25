@@ -62,8 +62,14 @@ export type TurnLoopInput = {
    *  request carries instruction files as they are on disk now, not as the
    *  turn found them. Unset: the turn keeps the prompt it started with. */
   renderPromptAfterCompaction?: (messages: readonly Message[]) => Promise<SystemPromptParts>
-  /** Renders the instructions for another model (a fork moved off ours). */
+  /** Renders the instructions for another model (a fork moved off ours, or
+   *  the turn itself following the session's selection). */
   renderSystemPromptForModel?: SystemPromptRenderer
+  /** The session's selection as it stands now. With it, a request whose
+   *  attempt fails after the selection moved is sent again where the
+   *  selection points, and the rest of the turn follows. Unset: the turn
+   *  stays where it started. */
+  liveSelection?: LiveSelection
   /** The stored form of a yielded row; requests are built from it. */
   keptRow?: (message: Message) => Message
   /** The turn the extensions' `turn.step` events belong to. */
@@ -73,6 +79,24 @@ export type TurnLoopInput = {
   /** Hears the turn's conclusion exactly once: before the loop returns, or
    *  before it rethrows the error that ended it. */
   commitTerminal?: (conclusion: TurnConclusion) => Promise<void>
+}
+
+/** Where a turn's requests go. `model` unset: the model the turn is on. */
+export type TurnTarget = { providerId?: string; model?: string; thinkingTier?: string }
+
+export type LiveSelection = {
+  read(): TurnTarget
+  /** Aborted when the selection next moves. */
+  changed(): AbortSignal
+}
+
+/** What a turn that left its starting selection sends with instead. */
+export type MovedTarget = {
+  providerId?: string
+  thinkingTier?: string
+  /** The new model's instructions, standing in for the ones the turn held
+   *  when it moved (`from`) for as long as it still holds those. */
+  instructions?: { from: InstructionText; to: InstructionText }
 }
 
 export type SystemPromptRenderer = (selection: { providerId?: string; modelId: string }) => Promise<InstructionText>
@@ -101,6 +125,24 @@ export type TurnEnvironment = {
   readonly idsThroughMods?: true
   prefetch: MemoryRecallPrefetch | undefined
   digest: Promise<Message | null> | undefined
+  /** Set once the turn followed the session's selection elsewhere. */
+  moved?: MovedTarget
+}
+
+/** The provider the turn's requests go to now. */
+export function providerOf(env: TurnEnvironment): string | undefined {
+  return env.moved ? env.moved.providerId : env.input.providerId
+}
+
+/** The thinking tier the turn's requests carry now. */
+export function thinkingTierOf(env: TurnEnvironment): string | undefined {
+  return env.moved ? env.moved.thinkingTier : env.input.thinkingTier
+}
+
+/** The instructions to send where the turn holds `held`. */
+export function instructionsOf(env: TurnEnvironment, held: InstructionText): InstructionText {
+  const swap = env.moved?.instructions
+  return swap && swap.from === held ? swap.to : held
 }
 
 export type EffectRunner<E extends TurnEffect = TurnEffect> = (
