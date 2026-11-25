@@ -344,8 +344,13 @@ export class ProviderCredentials {
     if (run.wallTimer !== undefined) clearTimeout(run.wallTimer)
     this.rejectPending(run, named('AbortError', 'the sign-in is over'))
     // The window shows how it ended; one still waiting for its redirect closes.
+    // Only the module's own words are shown there, as in the dialog.
     if (run.window?.capture) {
-      run.window.capture.finish(step.kind === 'done' ? { ok: true } : { ok: false, reason: step.kind === 'failed' ? step.reason : undefined })
+      run.window.capture.finish(
+        step.kind === 'done'
+          ? { ok: true }
+          : { ok: false, reason: step.kind === 'failed' && step.code === 'module' ? step.reason : undefined },
+      )
     } else {
       run.window?.abort.abort(named('AbortError', 'the sign-in is over'))
     }
@@ -557,6 +562,8 @@ export class ProviderCredentials {
           this.cancel(run.loginId)
           throw named('AbortError', 'the person closed the sign-in window')
         }
+        // A window that never opened does not use up the sign-in's one window.
+        if (run.window === windowRun && windowRun.capture === undefined) run.window = undefined
         throw error
       },
     )

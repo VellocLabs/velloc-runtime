@@ -4,12 +4,10 @@
  * are host-built form posts, and the tokens go straight into the secret store.
  */
 import { createNativePrimitives } from '../../browser/bridge/nativePrimitives'
-import { openSignInWindow, signInWindowTitle } from '../../browser/bridge/signInWindow'
+import { openSignInWindow } from '../../browser/bridge/signInWindow'
 import type { McpHostAccess } from '../mcpHost'
 import { createPrimitiveFetch } from '../primitiveTransports'
 import { McpSignInClosedError, type McpOAuthHost } from './McpOAuthService'
-
-export { signInWindowTitle }
 
 /** Everything a sign-in needs from the host, by manifest entry. */
 export const MCP_OAUTH_PRIMITIVES = [

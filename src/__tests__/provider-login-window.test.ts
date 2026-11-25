@@ -45,6 +45,11 @@ describe('the request checks', () => {
     expect(loginWindowProblem(ok, [])?.message).toMatch(/declares no credentials.loginWindow.allow/)
   })
 
+  it('refuses a plain http page except on a loopback host', () => {
+    expect(loginWindowProblem({ ...ok, url: 'http://accounts.vendor-a.test/authorize' }, allow)).toBeInstanceOf(TypeError)
+    expect(loginWindowProblem({ ...ok, url: 'http://localhost:8080/authorize' }, ['localhost'])).toBeNull()
+  })
+
   it('refuses a url that is not http or https, or carries credentials', () => {
     expect(loginWindowProblem({ ...ok, url: 'file:///c:/x.html' }, allow)).toBeInstanceOf(TypeError)
     expect(loginWindowProblem({ ...ok, url: 'https://u:p@accounts.vendor-a.test/' }, allow)).toBeInstanceOf(TypeError)
@@ -102,7 +107,7 @@ function fakeWindow() {
 
 type Login = (e: Record<string, unknown>) => Promise<unknown>
 
-function rig(login: Login, options: { allow?: string[]; noWindows?: boolean } = {}) {
+function rig(login: Login, options: { allow?: string[]; noWindows?: boolean; noIsolation?: boolean } = {}) {
   const window = fakeWindow()
   const writes: NexusProviderConfig[] = []
   const runtime: CredentialRuntime = {
@@ -119,7 +124,14 @@ function rig(login: Login, options: { allow?: string[]; noWindows?: boolean } = 
     storedConfigOf: () => ({ source: 'mod', modVersion: '1.0.0' }),
     writeConfig: async (_id, config) => void writes.push(config),
     report: () => {},
-    ...(options.noWindows ? {} : { openWindow: window.open }),
+    ...(options.noWindows
+      ? {}
+      : {
+          openWindow: (request: SignInWindowRequest) =>
+            options.noIsolation && request.isolated
+              ? Promise.reject(Object.assign(new Error('no isolated sessions'), { name: 'NotSupportedError' }))
+              : window.open(request),
+        }),
   })
   return { service, window, writes }
 }
@@ -157,6 +169,19 @@ describe('interact.openWindow in a sign-in', () => {
     r.service.startLogin(ID)
     await flush()
     expect(r.window.requests[0]).toMatchObject({ isolated: true })
+  })
+
+  it('a sign-in that fails for a reason of its own shows the window no runtime text', async () => {
+    const r = rig(async e => {
+      await r.service.openWindow(e.loginId, OWN, { url: PAGE, captureRedirect: REDIRECT })
+      return { secrets: { undeclared: 'x' } }
+    })
+    r.service.startLogin(ID)
+    await flush()
+    r.window.capture()
+    await flush()
+    expect(stepOf(r.service)).toMatchObject({ kind: 'failed', code: 'invalid_result' })
+    expect(r.window.finished).toEqual([{ ok: false, reason: undefined }])
   })
 
   it('a sign-in that fails after the capture tells the window why', async () => {
@@ -223,6 +248,30 @@ describe('interact.openWindow in a sign-in', () => {
     await flush()
     expect(stepOf(r.service)).toMatchObject({ kind: 'failed' })
     expect(r.window.requests[0]!.signal.aborted).toBe(true)
+  })
+
+  it('a window the host refused to open does not use up the sign-in\'s window', async () => {
+    const outcomes: unknown[] = []
+    let refuse = true
+    const r = rig(
+      async e => {
+        for (let i = 0; i < 2; i += 1) {
+        outcomes.push(
+          await r.service
+            .openWindow(e.loginId, OWN, { url: PAGE, captureRedirect: REDIRECT, isolated: refuse })
+            .catch(error => (error as Error).name),
+        )
+        refuse = false
+      }
+      return pending()
+      },
+      { noIsolation: true },
+    )
+    r.service.startLogin(ID)
+    await flush()
+    r.window.capture()
+    await flush()
+    expect(outcomes).toEqual(['NotSupportedError', { url: CAPTURED }])
   })
 
   it('opens one window per sign-in', async () => {

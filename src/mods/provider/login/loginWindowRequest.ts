@@ -1,12 +1,13 @@
 /**
  * The checks of an `interact.openWindow` request (F-27, the sign-in window). Security: the
- * page's host is one the manifest allows (or a sub-domain of one), and the
- * redirect to capture is a loopback http address with an explicit port, as
- * the host requires, so a capture never swallows a navigation to a real site.
+ * page is https (plain http only on a loopback host) on a host the manifest
+ * allows (or a sub-domain of one), and the redirect to capture is a loopback
+ * http address with an explicit port, as the host requires, so a capture
+ * never swallows a navigation to a real site.
  */
+import { hostCoveredBy, isLoopbackHost } from '../providerBaseUrlRule'
 import { loginUrlProblem } from './loginProtocol'
 
-const LOOPBACK_HOSTS = ['127.0.0.1', 'localhost', '[::1]']
 const MAX_TITLE_CHARS = 200
 
 function notAllowed(message: string): Error {
@@ -20,7 +21,7 @@ export function captureRedirectProblem(url: unknown): string | null {
   const problem = loginUrlProblem(url)
   if (problem) return problem
   const parsed = new URL(url as string)
-  if (parsed.protocol !== 'http:' || !LOOPBACK_HOSTS.includes(parsed.hostname.toLowerCase())) {
+  if (parsed.protocol !== 'http:' || !isLoopbackHost(parsed.hostname)) {
     return 'only an http address on 127.0.0.1, localhost or [::1] can be captured'
   }
   if (parsed.port === '') return 'the address needs an explicit port other than 80'
@@ -34,9 +35,13 @@ export function loginWindowProblem(spec: Readonly<Record<string, unknown>>, allo
   }
   const urlProblem = loginUrlProblem(spec.url)
   if (urlProblem) return new TypeError(`interact.openWindow: ${urlProblem}`)
-  const host = new URL(spec.url as string).hostname.toLowerCase()
-  if (!allow.some(allowed => host === allowed || host.endsWith(`.${allowed}`))) {
+  const page = new URL(spec.url as string)
+  const host = page.hostname.toLowerCase()
+  if (!hostCoveredBy(host, allow)) {
     return notAllowed(`interact.openWindow: ${host} is not among credentials.loginWindow.allow`)
+  }
+  if (page.protocol !== 'https:' && !isLoopbackHost(host)) {
+    return new TypeError('interact.openWindow: the page must be https (plain http only on a loopback host)')
   }
   const captureProblem = captureRedirectProblem(spec.captureRedirect)
   if (captureProblem) return new TypeError(`interact.openWindow: captureRedirect: ${captureProblem}`)

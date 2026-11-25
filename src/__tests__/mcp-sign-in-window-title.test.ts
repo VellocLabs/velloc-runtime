@@ -4,7 +4,8 @@ import type {
   BrowserBridgeRequest,
   BrowserBridgeTransport,
 } from '../browser/bridge/browserBridgeProtocol'
-import { createBridgeMcpOAuthHost, signInWindowTitle } from '../mcp/oauth/bridgeMcpOAuthHost'
+import { signInWindowTitle } from '../browser/bridge/signInWindow'
+import { createBridgeMcpOAuthHost } from '../mcp/oauth/bridgeMcpOAuthHost'
 import { MCP_OAUTH_REDIRECT_URI } from '../mcp/oauth/McpOAuthService'
 
 /** A transport that answers every request with `{ windowId: 1 }` and records it. */
