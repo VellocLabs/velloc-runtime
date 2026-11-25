@@ -7,7 +7,7 @@ import {
   type NexusModelConfig,
 } from '../../config/nexusModelConfig'
 import { dropRealmMirrorEntries } from '../../config/customProviderRegistry'
-import { isManagedProvider } from '../../models/drivers/providerRouter'
+import { isPickableProvider } from '../../models/drivers/providerRouter'
 import { createConfiguredProvider } from './configuredModels'
 
 export function isSelectionEnabled(
@@ -18,11 +18,9 @@ export function isSelectionEnabled(
     return false
   }
 
-  const provider = catalog.providers.find(
-    entry => entry.id === selection.providerId && entry.enabled,
-  )
+  const provider = catalog.providers.find(entry => entry.id === selection.providerId)
   // A provider a router manages is reached through that router only.
-  if (!provider || isManagedProvider(provider)) {
+  if (!isPickableProvider(provider)) {
     return false
   }
 
@@ -49,7 +47,7 @@ function getFirstEnabledSelection(
   catalog: BrowserLlmCatalog,
 ): BrowserLlmSelection | undefined {
   for (const provider of catalog.providers) {
-    if (!provider.enabled || isManagedProvider(provider)) {
+    if (!isPickableProvider(provider)) {
       continue
     }
 

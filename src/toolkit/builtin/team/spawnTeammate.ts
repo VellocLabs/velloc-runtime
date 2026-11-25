@@ -11,6 +11,7 @@ import {
   getTeammateSpawner,
 } from '../../../team/teammateSpawner'
 import { normalizeMemberDisplayName } from '../../../team/memberKey'
+import { isManagedProviderId } from '../../../team/providerCatalog'
 import { getTeamRegistry } from '../../../team/TeamRegistry'
 import { implicitTeamIdFor } from '../../../team/teamTypes'
 import {
@@ -153,6 +154,11 @@ export async function spawnTeammateSession(
   if (providerId && !child.known) {
     return {
       data: `Refused: provider "${providerId}" is not one of the user's configured providers, so the child would not actually run on it. Use a provider id from Settings → Models, or omit provider_id to use this session's provider.`,
+    }
+  }
+  if (providerId && isManagedProviderId(providerId)) {
+    return {
+      data: `Refused: provider "${providerId}" is managed by a router and is reached only through that router's routes, so a teammate cannot run on it. Use a provider id from TeamProviders, or omit provider_id to use this session's provider.`,
     }
   }
   // Model validation against the user's OWN enabled list — the model may

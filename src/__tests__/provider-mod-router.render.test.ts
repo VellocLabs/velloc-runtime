@@ -256,6 +256,12 @@ describe('a provider a router manages', () => {
     await openEditor(ROUTER)
     expect(screen.getByTestId(`mod-router-target-${ALPHA}`)).toBeTruthy()
     expect(screen.queryByTestId(`mod-router-target-${POOL}`)).toBeNull()
+  })
+  it('counts on its own router\'s card once it is set up, though it lists no model yet', async () => {
+    mount(harness({ [ROUTER]: ANON, [ALPHA]: ANON, [POOL]: ANON }, rows()))
+    await openEditor(ROUTER)
+    expect(screen.getByTestId('mod-router-sends-through').dataset.needsProviders).toBe('false')
+    expect(screen.queryByTestId('mod-router-needs-providers')).toBeNull()
   })
 })
 

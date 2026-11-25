@@ -193,6 +193,13 @@ export function isManagedProvider(provider: { readonly mod?: { readonly managedB
   return provider?.mod?.managedBy !== undefined
 }
 
+/** A catalog row a session may run on and a picker may list: enabled, and not one a router manages. */
+export function isPickableProvider<P extends { readonly enabled: boolean; readonly mod?: { readonly managedBy?: string } }>(
+  provider: P | undefined,
+): provider is P {
+  return !!provider?.enabled && !isManagedProvider(provider)
+}
+
 // ── registry ────────────────────────────────────────────────────────────────
 
 export type ProviderRouterBounds = {

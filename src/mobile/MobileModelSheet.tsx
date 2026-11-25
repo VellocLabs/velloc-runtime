@@ -11,7 +11,7 @@ import type {
 } from '../browser/bridge/browserBridgeProtocol'
 import { findActiveModel } from '../browser/webview/activeModel'
 import { useT } from '../browser/webview/i18n'
-import { isManagedProvider } from '../models/drivers/providerRouter'
+import { isPickableProvider } from '../models/drivers/providerRouter'
 import { MobileSheet } from './MobileSheet'
 
 export type MobileModelSheetProps = {
@@ -28,7 +28,7 @@ export function MobileModelSheet({ open, onOpenChange, catalog, selection, onSel
   const active = findActiveModel(catalog, selection)
   const activeAliasId = active?.model.pickerAliasId
   const groups = (catalog?.providers ?? [])
-    .filter(provider => provider.enabled && !isManagedProvider(provider))
+    .filter(isPickableProvider)
     .map(provider => ({
       provider,
       models: provider.models.filter(model => model.enabled && !model.pickerAliasId),

@@ -40,7 +40,7 @@ import {
 import { getProviderUsageStore } from "../../providerUsageStore";
 import { ModProviderEditor, modProviderName } from "./ModProviderEditor";
 import { isModProviderAdded, isModProviderConnected } from "../modProviderForm";
-import { isManagedProvider } from "../../../../models/drivers/providerRouter";
+import { isManagedProvider, isPickableProvider } from "../../../../models/drivers/providerRouter";
 import { isRouterMod, type RouterPeerRow } from "../modRouterView";
 import { useRouterAppShortcut } from "./models/routerAppShortcut";
 import { orderByProviderIds } from "../../modelCatalog";
@@ -624,7 +624,7 @@ export function ModelsSection({
   const guidedEmptyProviders = React.useRef(false);
   React.useEffect(() => {
     if (!configsLoaded || !registryLoaded || !catalog || view !== "home" || openProviderRequest) return;
-    if (guidedEmptyProviders.current || addedRows.length > 0 || catalog.providers.some((p) => p.enabled && !isManagedProvider(p))) return;
+    if (guidedEmptyProviders.current || addedRows.length > 0 || catalog.providers.some(isPickableProvider)) return;
     guidedEmptyProviders.current = true;
     setHighlightAddMenu(true);
     setAddMenuOpen(true);
@@ -1371,7 +1371,7 @@ export function ModelsSection({
       .map((p) => ({
         id: p.id,
         label: modProviderName(p, locale),
-        setUp: isProviderAdded(p) && p.enabled,
+        setUp: isProviderAdded(p) && p.mod?.state !== "plugin-missing",
         router: false,
         managedBy: p.mod?.managedBy,
       })),

@@ -243,6 +243,26 @@ describe('what the person picks from', () => {
 })
 
 describe('the providers a team lead is told about', () => {
+  it('tell a provider a router manages apart, so a teammate is refused one', async () => {
+    vi.resetModules()
+    vi.doMock('../config/nexusModelConfig/providers', async () => {
+      const actual = await vi.importActual<typeof import('../config/nexusModelConfig/providers')>('../config/nexusModelConfig/providers')
+      return {
+        ...actual,
+        getProviderDefinition: (id: string | undefined) =>
+          id === 'mod.hub.pool' ? { catalogMod: { state: 'ready', managedBy: 'mod.hub.router' } } : actual.getProviderDefinition(id),
+      }
+    })
+    try {
+      const { isManagedProviderId } = await import('../team/providerCatalog')
+      expect(isManagedProviderId('mod.hub.pool')).toBe(true)
+      expect(isManagedProviderId('plain')).toBe(false)
+    } finally {
+      vi.doUnmock('../config/nexusModelConfig/providers')
+      vi.resetModules()
+    }
+  })
+
   it('leave out a provider a router manages', async () => {
     vi.resetModules()
     vi.doMock('../config/nexusModelConfig/providers', async () => {

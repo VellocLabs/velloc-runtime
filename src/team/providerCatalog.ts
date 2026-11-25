@@ -107,6 +107,11 @@ function describeModel(providerId: string, modelId: string): CatalogModel {
   return model
 }
 
+/** A provider a router manages is that router's alone, never a teammate's. */
+export function isManagedProviderId(providerId: string): boolean {
+  return getProviderDefinition(providerId)?.catalogMod?.managedBy !== undefined
+}
+
 /** Read settings and describe every configured provider. */
 export async function surveyProviderCatalog(
   context: ToolCallContext,
@@ -118,9 +123,8 @@ export async function surveyProviderCatalog(
   const { settings } = await readUserLayer(homeDir, fsForContext(context))
   const configs = settings.providers?.configs ?? {}
 
-  // A provider a router manages is that router's alone, never a teammate's.
   const providers: CatalogProvider[] = Object.entries(configs)
-    .filter(([id]) => getProviderDefinition(id)?.catalogMod?.managedBy === undefined)
+    .filter(([id]) => !isManagedProviderId(id))
     .map(([id, config]) => {
     // `''` is the "no override" sentinel, so the verdict describes what is on disk,
     // not a stale publish.

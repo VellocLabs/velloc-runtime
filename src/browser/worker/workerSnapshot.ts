@@ -3,6 +3,7 @@
  * `WorkerSnapshotSources` view; new snapshot fields belong here.
  */
 import type { BrowserLlmCatalog } from '../bridge/browserBridgeProtocol'
+import { isPickableProvider } from '../../models/drivers/providerRouter'
 import type { AutoCompactChoice } from '../../context/compaction/windowSettings'
 import type { AgentRuntimeState } from '../runtime/AgentRuntimeState'
 import { renderPartsEnglish, key } from '../../input/systemMessageParts'
@@ -342,7 +343,7 @@ function getAvailableModels(
   const fallbackModel = runtime?.options.fallbackModel
 
   for (const provider of modelCatalog?.providers ?? []) {
-    if (!provider.enabled) {
+    if (!isPickableProvider(provider)) {
       continue
     }
 

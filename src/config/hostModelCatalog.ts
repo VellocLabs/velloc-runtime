@@ -4,7 +4,7 @@
  * wholesale and read synchronously. Empty = "not known yet", never "no models".
  */
 import type { BrowserLlmCatalog } from '../browser/bridge/protocol/nexus_llm'
-import { isManagedProvider } from '../models/drivers/providerRouter'
+import { isPickableProvider } from '../models/drivers/providerRouter'
 
 let modelIdsByProvider: Record<string, string[]> = {}
 
@@ -23,7 +23,7 @@ export function publishHostModelCatalog(
     // snapshot row that duplicates its curated twin, skip a provider a router
     // manages). Reporting a row the user cannot pick would be a different list
     // wearing the same name.
-    if (!provider.enabled || isManagedProvider(provider)) continue
+    if (!isPickableProvider(provider)) continue
     const ids = (provider.models ?? [])
       .filter(model => model.enabled && !model.pickerAliasId)
       .map(model => model.id)
