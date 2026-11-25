@@ -308,6 +308,16 @@ describe('$.provider calls behind the seam', () => {
     expect(rows.map(row => row.id)).toEqual(['vendor-a'])
   })
 
+  it('a provider the bound router manages is a peer and can be cleared, though routesTo does not list it', async () => {
+    const pool: Peer = { ...peer('mod.switch.pool'), managed: true }
+    const { source, cleared } = fakeSource([peer('vendor-a'), pool, peer('vendor-z')])
+    const deps = { peers: () => source, reload: async () => {} }
+    const rows = (await serveSettingsAppProviderCall(ROUTER_BINDING, 'peers', [], deps)) as Peer[]
+    expect(rows.map(row => [row.id, row.managed])).toEqual([['vendor-a', undefined], ['mod.switch.pool', true]])
+    await expect(serveSettingsAppProviderCall(ROUTER_BINDING, 'clearState', [{ provider: 'mod.switch.pool', model: 'm-1' }], deps)).resolves.toEqual({ ok: true })
+    expect(cleared).toEqual([{ provider: 'mod.switch.pool', model: 'm-1' }])
+  })
+
   it('clearState forgets a member inside routesTo and refuses one outside', async () => {
     const { source, cleared } = fakeSource([peer('vendor-a')])
     const deps = { peers: () => source, reload: async () => {} }

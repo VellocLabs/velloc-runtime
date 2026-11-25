@@ -233,6 +233,32 @@ describe('the router editor', () => {
   })
 })
 
+describe('a provider a router manages', () => {
+  const POOL = 'mod.relay.pool'
+  const rows = () => [modRow(ALPHA, 'Alpha'), modRow(BETA, 'Beta'), modRow(POOL, 'Pool', { managedBy: ROUTER, credentialMethods: ['anonymous'] }), routerRow('*')]
+
+  it('is not on the home list, set up or not', async () => {
+    mount(harness({ [ROUTER]: ANON, [ALPHA]: ANON, [POOL]: ANON }, rows()))
+    expect(await screen.findByTestId(`models-provider-kind-${ALPHA}`)).toBeTruthy()
+    expect(screen.queryByTestId(`models-provider-kind-${POOL}`)).toBeNull()
+    expect(screen.queryByTestId(`models-provider-settings-${POOL}`)).toBeNull()
+  })
+
+  it('is not in the add menu', async () => {
+    mount(harness({}, rows()))
+    fireEvent.keyDown(await screen.findByTestId('models-add-provider'), { key: 'Enter' })
+    expect(await screen.findByTestId(`models-provider-select-option-${ALPHA}`)).toBeTruthy()
+    expect(screen.queryByTestId(`models-provider-select-option-${POOL}`)).toBeNull()
+  })
+
+  it('is not among what a router sends through on its card', async () => {
+    mount(harness({ [ROUTER]: ANON, [ALPHA]: ANON, [BETA]: ANON, [POOL]: ANON }, rows()))
+    await openEditor(ROUTER)
+    expect(screen.getByTestId(`mod-router-target-${ALPHA}`)).toBeTruthy()
+    expect(screen.queryByTestId(`mod-router-target-${POOL}`)).toBeNull()
+  })
+})
+
 describe('a provider that is not a router', () => {
   it('draws as before: key and base-URL rows, no router panel', async () => {
     mount(harness({}, [modRow(ALPHA, 'Alpha')]))

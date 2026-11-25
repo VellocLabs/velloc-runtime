@@ -169,6 +169,21 @@ export function insideRoutesTo(routesTo: RoutesTo, peer: { readonly definition: 
   return routesTo === '*' || routesTo.includes(peer.definition)
 }
 
+/**
+ * Whether the router `routerId` may send through a provider. A provider that
+ * a router manages is that router's alone: its own router reaches it without
+ * listing it, and no other router does, `routesTo: "*"` included. Any other
+ * provider is decided by the boundary.
+ */
+export function routerReaches(
+  routerId: string,
+  routesTo: RoutesTo,
+  peer: { readonly definition: string; readonly managedBy?: string },
+): boolean {
+  if (peer.managedBy !== undefined) return peer.managedBy === routerId
+  return insideRoutesTo(routesTo, peer)
+}
+
 // ── registry ────────────────────────────────────────────────────────────────
 
 export type ProviderRouterBounds = {

@@ -188,11 +188,13 @@ export function routeCall(
   const call = routeCallOf(payload)
   const rowModel = payload.model ?? ''
   const facts: RouteAnswerFacts = {
+    routerId,
     routesTo: bounds.routesTo,
     isSetUp: isProviderSetUp,
     isRouter,
     // One instance per definition: an instance's definition is its own id.
     definitionOf: provider => provider,
+    managedByOf: provider => getProviderDefinition(provider)?.catalogMod?.managedBy,
     serves: (provider, model) =>
       resolveProviderSpec(provider, deps.runtimeConfig, resolveModelId(provider, model)) !== undefined,
     knownModel,

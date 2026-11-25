@@ -38,6 +38,7 @@ import { activeModelLabel, findActiveModel } from "./activeModel";
 import { useProviderUsage } from "./providerUsageStore";
 import { ProviderIcon } from "./ProviderIcon";
 import { isRouterProvider, routeMemberName } from "./routeDisplay";
+import { isManagedProvider } from "./settings/modRouterView";
 import { CUSTOM_PROVIDER_ID_PREFIX } from "../../config/customProviderRegistry";
 import type {
   BrowserLlmCatalog,
@@ -351,7 +352,7 @@ function ModelQuickPickerImpl({
   const activeAliasId = active?.model.pickerAliasId;
 
   const groups = React.useMemo(() => {
-    const providers = (catalog?.providers ?? []).filter((p) => p.enabled);
+    const providers = (catalog?.providers ?? []).filter((p) => p.enabled && !isManagedProvider(p));
     const q = query.trim().toLowerCase();
     return providers
       .map((provider) => ({
@@ -379,7 +380,7 @@ function ModelQuickPickerImpl({
     if (!publishE2eSurface) return [];
     const out: PickerE2eOption[] = [];
     for (const provider of catalog?.providers ?? []) {
-      if (!provider.enabled) continue;
+      if (!provider.enabled || isManagedProvider(provider)) continue;
       for (const model of provider.models) {
         // Same visibility rule as `groups`: alias-hidden rows are not options.
         if (!model.enabled || model.pickerAliasId) continue;

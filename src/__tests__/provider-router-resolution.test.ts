@@ -234,7 +234,9 @@ afterEach(() => {
 
 describe('checkRouteAnswer', () => {
   const facts: RouteAnswerFacts = {
+    routerId: 'the-router',
     routesTo: ['def-1', 'def-2'],
+    managedByOf: () => undefined,
     isSetUp: p => p !== 'unset',
     isRouter: p => p === 'a-router',
     definitionOf: p => (p === 'inst-1b' ? 'def-1' : p),
@@ -1207,7 +1209,9 @@ describe('knownModel', () => {
   it('takes the pooled model through the answer check', () => {
     publishFamilyVersions()
     const facts: RouteAnswerFacts = {
+      routerId: 'the-router',
       routesTo: '*',
+      managedByOf: () => undefined,
       isSetUp: () => true,
       isRouter: () => false,
       definitionOf: provider => provider,

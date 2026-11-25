@@ -155,6 +155,10 @@ export type BrowserLlmModProvider = {
   modelsUi?: ProviderModelsUi
   /** The app id of the provider's settings app (F-40), which the page opens. */
   settingsApp?: string
+  /** The provider id of the router that manages this provider. Such a
+   *  provider is not listed on the Models page or in a model picker and is
+   *  not a session's model: only its router sends through it. */
+  managedBy?: string
 }
 
 export type BrowserLlmProvider = {

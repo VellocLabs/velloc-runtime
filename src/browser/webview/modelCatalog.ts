@@ -20,7 +20,8 @@ export function isSelectionEnabled(
   const provider = catalog.providers.find(
     entry => entry.id === selection.providerId && entry.enabled,
   )
-  if (!provider) {
+  // A provider a router manages is reached through that router only.
+  if (!provider || provider.mod?.managedBy !== undefined) {
     return false
   }
 

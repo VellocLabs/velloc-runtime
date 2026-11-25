@@ -13,7 +13,7 @@ import type { NexusProviderModelConfig } from '../../config/nexusModelConfig/typ
 import { parseModelVersion } from '../../config/nexusModelConfig/providers/shared/modelVersions'
 import type { ModelVersionInfo } from '../../config/nexusModelConfig/providers/shared/modelVersions'
 import { listedModelInfo } from '../../models/drivers/runtimeProviders'
-import type { ResolvedProvider } from './providerManifest'
+import { modProviderId, type ResolvedProvider } from './providerManifest'
 import { settingsAppIdOf } from './providerSettingsApp'
 
 /** A vendor's mark is drawn into the page; anything bigger is not a mark. */
@@ -160,6 +160,7 @@ export function modProviderDefinition(options: ModProviderDefinitionOptions): Pr
       ...(manifest.credentials.readsSecrets ? { readsSecrets: true } : {}),
       ...(router ? { kind: 'router' as const, routesTo: manifest.routesTo ?? [] } : {}),
       ...(manifest.settingsApp !== undefined ? { settingsApp: settingsAppIdOf(options.plugin, manifest) } : {}),
+      ...(manifest.managedBy !== undefined ? { managedBy: modProviderId(options.plugin, manifest.managedBy) } : {}),
     },
   }
   return definition

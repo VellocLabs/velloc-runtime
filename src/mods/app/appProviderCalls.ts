@@ -114,13 +114,13 @@ export async function serveSettingsAppProviderCall(
   const routesTo = binding.routesTo ?? []
   if (method === 'peers') {
     // The table is the router's own; the boundary is checked again here so no peer outside it can pass.
-    const peers = source.peersFor(binding.providerId).filter((peer: Peer) => insideRoutesTo(routesTo, peer))
+    const peers = source.peersFor(binding.providerId).filter((peer: Peer) => peer.managed === true || insideRoutesTo(routesTo, peer))
     return source.withCost ? source.withCost(peers) : peers
   }
   const target = readClearTarget(args[0])
   // Only a listed peer: with `routesTo: "*"` the boundary alone would admit other routers and the router itself.
   const peer = source.peersFor(binding.providerId).find(each => each.id === target.provider)
-  if (!insideRoutesTo(routesTo, { definition: peer?.definition ?? target.provider })) {
+  if (peer?.managed !== true && !insideRoutesTo(routesTo, { definition: peer?.definition ?? target.provider })) {
     throw notAllowed(`$.provider.clearState: ${target.provider} is outside ${binding.providerId}'s routesTo`)
   }
   if (!peer) throw notAllowed(`$.provider.clearState: ${target.provider} is not one of ${binding.providerId}'s peers`)

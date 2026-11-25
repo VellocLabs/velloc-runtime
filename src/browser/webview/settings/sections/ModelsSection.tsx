@@ -40,7 +40,7 @@ import {
 import { getProviderUsageStore } from "../../providerUsageStore";
 import { ModProviderEditor, modProviderName } from "./ModProviderEditor";
 import { isModProviderAdded, isModProviderConnected } from "../modProviderForm";
-import { isRouterMod, type RouterPeerRow } from "../modRouterView";
+import { isManagedProvider, isRouterMod, type RouterPeerRow } from "../modRouterView";
 import { useRouterAppShortcut } from "./models/routerAppShortcut";
 import { orderByProviderIds } from "../../modelCatalog";
 import { mergeProviderConfigForSave } from "../providerConfigMerge";
@@ -361,7 +361,7 @@ export function ModelsSection({
    */
   const builtInProviders = React.useMemo(
     () =>
-      providers.filter((p) => !isCustomBackendId(p.id) && !customIds.has(p.id)),
+      providers.filter((p) => !isCustomBackendId(p.id) && !customIds.has(p.id) && !isManagedProvider(p)),
     [providers, customIds],
   );
 

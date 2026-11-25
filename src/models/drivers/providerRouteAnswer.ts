@@ -7,7 +7,7 @@
  * and looked up, never taken apart.
  */
 import { isRecord, THINKING_TIER_ORDER } from '../../config/nexusModelConfig/providers/shared/listing'
-import { insideRoutesTo, type RoutesTo } from './providerRouter'
+import { routerReaches, type RoutesTo } from './providerRouter'
 
 export const ROUTE_MODEL_MAX_LENGTH = 256
 export const ROUTE_STOP_MESSAGE_MAX_LENGTH = 2_000
@@ -15,11 +15,15 @@ export const ROUTE_STOP_MESSAGE_MAX_LENGTH = 2_000
 export type RouteTarget = { provider: string; model: string; effort?: string }
 
 export type RouteAnswerFacts = {
+  /** The router that answered. */
+  routerId: string
   routesTo: RoutesTo
   isSetUp(provider: string): boolean
   isRouter(provider: string): boolean
   /** The provider definition an instance belongs to. */
   definitionOf(provider: string): string
+  /** The router that manages the provider, if one does. */
+  managedByOf(provider: string): string | undefined
   /** The runtime can send a request of `model` to `provider`. */
   serves(provider: string, model: string): boolean
   /** `provider` lists `model`. */
@@ -51,7 +55,12 @@ export function checkRouteAnswer(answer: unknown, facts: RouteAnswerFacts): Chec
   if (typeof model !== 'string' || model === '') return refused('`model` must be a non-empty string')
   if (model.length > ROUTE_MODEL_MAX_LENGTH) return refused(`\`model\` is longer than ${ROUTE_MODEL_MAX_LENGTH} characters`)
   if (facts.isRouter(provider)) return refused(`the provider ${provider} is a router`)
-  if (!insideRoutesTo(facts.routesTo, { definition: facts.definitionOf(provider) })) {
+  const managedBy = facts.managedByOf(provider)
+  const reached = routerReaches(facts.routerId, facts.routesTo, {
+    definition: facts.definitionOf(provider),
+    ...(managedBy !== undefined ? { managedBy } : {}),
+  })
+  if (!reached) {
     return refused(`the provider ${provider} is outside what this router may send through`)
   }
   if (!facts.isSetUp(provider)) return refused(`the provider ${provider} is not set up`)

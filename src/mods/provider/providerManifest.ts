@@ -181,6 +181,10 @@ export type ProviderManifest = {
   jobs?: ProviderJobDecl[]
   /** The key of one of the plugin's app templates: the provider's settings app (F-40). */
   settingsApp?: string
+  /** The key of a router of the same plugin that manages this provider: only
+   *  that router sends through it, and the person meets it in the router's
+   *  settings app, not in the Models page or the model picker. */
+  managedBy?: string
   /** Package-relative module path, `./`-prefixed. */
   module: string
 }
@@ -971,6 +975,15 @@ function checkProvider(key: string, id: string, raw: unknown, errors: string[]):
     if (why) bad(why)
     else settingsApp = raw.settingsApp as string
   }
+  let managedBy: string | undefined
+  if (raw.managedBy !== undefined) {
+    if (router) bad('managedBy: a router is not managed by another router')
+    else if (typeof raw.managedBy !== 'string' || !KEY_PART.test(raw.managedBy)) {
+      bad('managedBy: expected the key of a router ("kind": "router") of this plugin')
+    } else if (raw.settingsApp !== undefined) {
+      bad('managedBy: a managed provider has no settingsApp of its own; its router\'s app is where it is set up')
+    } else managedBy = raw.managedBy
+  }
   const egress =
     raw.egress === undefined
       ? undefined
@@ -1001,6 +1014,7 @@ function checkProvider(key: string, id: string, raw: unknown, errors: string[]):
     ...(egress && Object.keys(egress).length > 0 ? { egressPools: egress } : {}),
     ...(jobs && jobs.length > 0 ? { jobs } : {}),
     ...(settingsApp !== undefined ? { settingsApp } : {}),
+    ...(managedBy !== undefined ? { managedBy } : {}),
     module: moduleRef,
   }
 }
@@ -1048,6 +1062,14 @@ export function checkProviderManifests(
     if (first === undefined) kindOfModule.set(module, kind)
     else if (first !== kind) {
       errors.push(`providers.${key}.module: ${provider.module} already serves a ${first}; a router and a provider cannot share a module`)
+      delete out[key]
+    }
+  }
+  // After the module check, so a router that was just left out manages nothing.
+  for (const [key, provider] of Object.entries(out)) {
+    if (provider.managedBy === undefined) continue
+    if (out[provider.managedBy]?.kind !== 'router') {
+      errors.push(`providers.${key}.managedBy: "${provider.managedBy}" is not a router of this plugin`)
       delete out[key]
     }
   }

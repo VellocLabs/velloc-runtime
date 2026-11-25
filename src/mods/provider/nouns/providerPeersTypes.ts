@@ -69,6 +69,8 @@ export type Peer = {
   name?: string
   /** A router is never a peer. */
   kind: 'provider'
+  /** The router reading this table manages the provider. */
+  managed?: true
   source: 'builtin' | 'custom' | 'mod'
   /** The provider is set up. */
   connected: boolean

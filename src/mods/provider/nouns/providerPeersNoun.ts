@@ -15,7 +15,7 @@ import type { ProviderModelInfo } from '../../../config/nexusModelConfig/provide
 import { providerModelName, providerModelPool } from '../../../config/nexusModelConfig/providerModelPool'
 import { contextWindowOf, isContextWindowKnown } from '../../../engine/contextWindow'
 import { providerStateOf } from '../../../models/drivers/providerHealthLedger'
-import { insideRoutesTo, providerRouterBoundsFor, type RoutesTo } from '../../../models/drivers/providerRouter'
+import { providerRouterBoundsFor, routerReaches, type RoutesTo } from '../../../models/drivers/providerRouter'
 import { cachedUsage } from '../../../models/drivers/providerUsageService'
 import {
   isProviderSetUp,
@@ -43,6 +43,8 @@ export type PeerInstance = {
   label: string
   name?: string
   router: boolean
+  /** The router that manages the instance's definition, if one does. */
+  managedBy?: string
   source: Peer['source']
   connected: boolean
   defaultModel?: string
@@ -86,13 +88,14 @@ export function peersTableFor(routerId: string, deps: PeersTableDeps): Peer[] {
   const peers: Peer[] = []
   for (const instance of deps.instances()) {
     if (instance.router || instance.id === routerId) continue
-    if (!insideRoutesTo(routesTo, instance)) continue
+    if (!routerReaches(routerId, routesTo, instance)) continue
     peers.push({
       id: instance.id,
       definition: instance.definition,
       label: instance.label,
       ...(instance.name !== undefined ? { name: instance.name } : {}),
       kind: 'provider',
+      ...(instance.managedBy !== undefined ? { managed: true as const } : {}),
       source: instance.source,
       connected: instance.connected,
       ...(instance.defaultModel !== undefined ? { defaultModel: instance.defaultModel } : {}),
@@ -188,6 +191,7 @@ export function runtimePeerInstances(): PeerInstance[] {
       label: definition ? runtimeProviderLabel(id) : name || id,
       ...(name ? { name } : {}),
       router: definition?.router === true || definition?.catalogMod?.kind === 'router',
+      ...(definition?.catalogMod?.managedBy !== undefined ? { managedBy: definition.catalogMod.managedBy } : {}),
       source: definition?.catalogMod || config?.source === 'mod' ? 'mod' : config?.isCustomProvider ? 'custom' : 'builtin',
       connected: isProviderSetUp(id),
       ...(defaultModel ? { defaultModel } : {}),

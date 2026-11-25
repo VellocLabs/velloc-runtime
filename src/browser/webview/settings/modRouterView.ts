@@ -15,6 +15,15 @@ export function isRouterMod(mod: BrowserLlmModProvider | undefined): boolean {
   return mod?.kind === 'router'
 }
 
+/**
+ * Whether a router manages the row's provider. Such a row stays in the
+ * catalog (a route's members are named from it) and is left out wherever
+ * providers or their models are listed for the person to pick.
+ */
+export function isManagedProvider(provider: { mod?: BrowserLlmModProvider } | undefined): boolean {
+  return provider?.mod?.managedBy !== undefined
+}
+
 /** A provider the page knows, as the card needs it. */
 export type RouterPeerRow = {
   id: string
