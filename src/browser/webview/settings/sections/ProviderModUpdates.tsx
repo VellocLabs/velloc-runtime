@@ -301,6 +301,9 @@ export function grantDeltaLines(status: ProviderModUpdateStatus, t: TranslateFn)
           : t("settings.plugins.providers.routes.widened", { id: provider, providers: added.routes.join(", ") }),
       );
     }
+    if (added.managedBy !== undefined) {
+      lines.push(t("settings.plugins.providers.updates.addedManagedBy", { id: provider, router: added.managedBy }));
+    }
     if (added.domains.length > 0) {
       lines.push(t("settings.plugins.providers.updates.addedDomains", { id: provider, domains: added.domains.join(", ") }));
     }

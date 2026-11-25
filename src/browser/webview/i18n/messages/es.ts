@@ -2475,6 +2475,7 @@ export const es: Messages = {
   'settings.plugins.providers.updates.waitingBody': 'Solicita más de lo que usted aceptó. La versión actual sigue en uso hasta que usted decida.',
   'settings.plugins.providers.updates.addedProvider': 'Proveedor nuevo: {provider}',
   'settings.plugins.providers.updates.addedLoginWindow': '{id} ahora puede abrir una ventana de inicio de sesión en: {domains}',
+  'settings.plugins.providers.updates.addedManagedBy': '{id} ahora lo configura {router} y solo se usa a través de él',
   'settings.plugins.providers.updates.addedDomains': '{id} ahora puede conectarse a: {domains}',
   'settings.plugins.providers.updates.addedProxyPools':
     '{id} ahora puede enviar solicitudes a través de servidores proxy que elige su código',

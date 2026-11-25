@@ -2472,6 +2472,7 @@ export const de: Messages = {
   'settings.plugins.providers.updates.waitingBody': 'Sie verlangt mehr, als du zugestimmt hast. Die aktuelle Version läuft weiter, bis du entscheidest.',
   'settings.plugins.providers.updates.addedProvider': 'Neuer Anbieter: {provider}',
   'settings.plugins.providers.updates.addedLoginWindow': '{id} darf jetzt ein Anmeldefenster öffnen auf: {domains}',
+  'settings.plugins.providers.updates.addedManagedBy': '{id} wird jetzt von {router} eingerichtet und nur darüber verwendet',
   'settings.plugins.providers.updates.addedDomains': '{id} darf jetzt Verbindungen aufbauen zu: {domains}',
   'settings.plugins.providers.updates.addedProxyPools':
     '{id} darf Anfragen jetzt über Proxyserver senden, die sein Code auswählt',

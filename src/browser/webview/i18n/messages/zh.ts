@@ -2336,7 +2336,7 @@ export const zh: Messages = {
   'settings.plugins.providers.consent.publisher': '发布者：{publisher}',
   'settings.plugins.providers.consent.publisherUnknown': '未说明发布者。',
   'settings.plugins.providers.consent.provider': '服务商：{provider}',
-  'settings.plugins.providers.consent.manages': '自行设置服务商，并通过它们发送你的请求：{providers}',
+  'settings.plugins.providers.consent.manages': '设置它自己的服务商，并通过它们发送你的请求：{providers}',
   'settings.plugins.providers.consent.managedBy':
     '由 {router} 设置，且只通过它使用。同意后，之后添加到它的每个账号或密钥都包括在内。',
   'settings.plugins.providers.consent.loginWindow': '登录时会打开窗口访问：{domains}',
@@ -2409,6 +2409,7 @@ export const zh: Messages = {
   'settings.plugins.providers.updates.waitingBody': '它需要的权限比你之前同意的更多。在你决定之前，现有版本会继续运行。',
   'settings.plugins.providers.updates.addedProvider': '新增服务商：{provider}',
   'settings.plugins.providers.updates.addedLoginWindow': '{id} 现在登录时可以打开窗口访问：{domains}',
+  'settings.plugins.providers.updates.addedManagedBy': '{id} 现在由 {router} 设置，且只通过它使用',
   'settings.plugins.providers.updates.addedDomains': '{id} 现在可以访问：{domains}',
   'settings.plugins.providers.updates.addedProxyPools':
     '{id} 现在可以通过它的代码自行选择的代理服务器发送请求',

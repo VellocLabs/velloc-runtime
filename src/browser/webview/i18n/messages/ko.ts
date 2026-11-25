@@ -2435,6 +2435,7 @@ export const ko: Messages = {
   'settings.plugins.providers.updates.waitingBody': '이전에 동의한 것보다 더 많은 권한을 요청합니다. 결정하기 전까지는 현재 버전이 계속 실행됩니다.',
   'settings.plugins.providers.updates.addedProvider': '새 제공업체: {provider}',
   'settings.plugins.providers.updates.addedLoginWindow': '{id}이(가) 이제 로그인 창을 열 수 있는 곳: {domains}',
+  'settings.plugins.providers.updates.addedManagedBy': '{id}은(는) 이제 {router}이(가) 설정하며 {router}을(를) 통해서만 사용됩니다',
   'settings.plugins.providers.updates.addedDomains': '{id}이(가) 이제 접속할 수 있는 곳: {domains}',
   'settings.plugins.providers.updates.addedProxyPools':
     '{id}이(가) 이제 자체 코드가 선택하는 프록시 서버를 통해 요청을 보낼 수 있습니다',

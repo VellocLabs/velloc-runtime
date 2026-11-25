@@ -2519,6 +2519,7 @@ export const en = {
   'settings.plugins.providers.updates.waitingBody': 'It asks for more than you agreed to. The version you have keeps running until you decide.',
   'settings.plugins.providers.updates.addedProvider': 'New provider: {provider}',
   'settings.plugins.providers.updates.addedLoginWindow': '{id} may now open a sign-in window on: {domains}',
+  'settings.plugins.providers.updates.addedManagedBy': '{id} is now set up by {router} and used only through it',
   'settings.plugins.providers.updates.addedDomains': '{id} may now contact: {domains}',
   'settings.plugins.providers.updates.addedProxyPools':
     '{id} may now send requests through proxy servers its code chooses',

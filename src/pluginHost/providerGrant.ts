@@ -62,6 +62,9 @@ export type ProviderGrantAddition = {
   domains: string[]
   /** Hosts its sign-in window may newly open on. Absent: none. */
   loginWindow?: string[]
+  /** The router that newly sets it up and alone sends through it: a provider
+   *  that was the person's, or another router's, before. Absent: unchanged. */
+  managedBy?: string
   secrets: string[]
   readsSecrets: boolean
   requestNeeds: ProviderRequestNeed[]
@@ -174,12 +177,17 @@ function additionOf(consented: ProviderGrant | undefined, next: ProviderGrant): 
   const widerPools = next.proxyPools === true && consented?.proxyPools !== true
   const routes = addedRoutes(consented, next)
   const loginWindow = (next.loginWindow ?? []).filter(host => !had(consented?.loginWindow, host))
-  if (loginWindow.length === 0 && domains.length === 0 && secrets.length === 0 && !readsSecrets && requestNeeds.length === 0 && !wider && !widerPools && routes === undefined) {
+  // Security: a new manager reaches every instance, the person's own included,
+  // without listing it in its routesTo.
+  const managedBy =
+    consented !== undefined && next.managedBy !== undefined && next.managedBy !== consented.managedBy ? next.managedBy : undefined
+  if (managedBy === undefined && loginWindow.length === 0 && domains.length === 0 && secrets.length === 0 && !readsSecrets && requestNeeds.length === 0 && !wider && !widerPools && routes === undefined) {
     return undefined
   }
   return {
     domains,
     ...(loginWindow.length > 0 ? { loginWindow } : {}),
+    ...(managedBy !== undefined ? { managedBy } : {}),
     secrets,
     readsSecrets,
     requestNeeds,
@@ -191,7 +199,7 @@ function additionOf(consented: ProviderGrant | undefined, next: ProviderGrant): 
 
 /**
  * Whether `next` asks for more than `consented`. A new provider key (a managed definition is one),
- * domain, sign-in window host or secret name,
+ * domain, sign-in window host or secret name, a router newly managing a provider,
  * `readsSecrets` turned on, a new `requestNeeds` value, a first proxy pool, or a larger `signNeeds`
  * (none < digest < body) is wider, as is a provider turning into a router, a router's `routesTo`
  * gaining a provider or turning to `"*"`, a folder not consented to, a read-only one asked for

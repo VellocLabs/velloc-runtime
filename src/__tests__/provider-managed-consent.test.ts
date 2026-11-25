@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 /**
- * Provider mods RP-18 - what a person consents to for a router that manages
+ * Consent for a router that manages providers (F-27 RP-18): what a person consents to for a router that manages
  * providers: the grant (the manager, the sign-in window hosts), when an
  * update widens it, what the consent dialog and the update notice say, the
  * account a managed sign-in must name, and the `autoCreate` manifest field.
@@ -124,6 +124,27 @@ describe('an update of a router that manages providers', () => {
     })
   })
 
+  it('a provider the person set up that turns managed widens, and names its router', () => {
+    const plain = grantOfPlugin({ router: ROUTER, free: { ...FREE, managedBy: undefined } })
+    const delta = widened(plain, before)
+    expect(delta.widened).toBe(true)
+    expect(delta.added.providers).toEqual([])
+    expect(delta.added.perProvider).toEqual({
+      free: { domains: [], managedBy: 'router', secrets: [], readsSecrets: false, requestNeeds: [] },
+    })
+  })
+
+  it('a managed provider moved to another router of the plugin widens', () => {
+    const two = grantOfPlugin({ router: ROUTER, other: ROUTER, free: FREE })
+    const moved = grantOfPlugin({ router: ROUTER, other: ROUTER, free: { ...FREE, managedBy: 'other' } })
+    expect(widened(two, moved).added.perProvider.free).toMatchObject({ managedBy: 'other' })
+  })
+
+  it('a managed provider handed back to the person is not wider', () => {
+    const plain = grantOfPlugin({ router: ROUTER, free: { ...FREE, managedBy: undefined } })
+    expect(widened(before, plain).widened).toBe(false)
+  })
+
   it('nothing new is not wider; a dropped sign-in window or managed definition is silent', () => {
     const full = grantOfPlugin({ router: ROUTER, free: FREE, login: LOGIN })
     expect(widened(full, full).widened).toBe(false)
@@ -193,6 +214,19 @@ describe('the consent dialog', () => {
 })
 
 describe('the update notice', () => {
+  it('names the router that newly manages a provider', () => {
+    const agreed = grantOfPlugin({ router: ROUTER, free: { ...FREE, managedBy: undefined } })
+    const next = grantOfPlugin({ router: ROUTER, free: FREE })
+    const lines = grantDeltaLines(
+      status(agreed, {
+        state: 'needs-consent',
+        pending: { version: '2.0.0', stagedAt: new Date(0).toISOString(), grant: next, delta: widened(agreed, next) },
+      } as Partial<ProviderModUpdateStatus>),
+      t,
+    )
+    expect(lines).toEqual(['free is now set up by router and used only through it'])
+  })
+
   it('names a new sign-in window host', () => {
     const agreed = grantOfPlugin({ router: ROUTER, login: { ...LOGIN, credentials: { ...LOGIN.credentials, loginWindow: undefined } } })
     const next = grantOfPlugin({ router: ROUTER, login: LOGIN })
