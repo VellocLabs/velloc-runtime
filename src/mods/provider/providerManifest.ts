@@ -12,6 +12,7 @@ import { joinRuntimePath } from '../../utils/runtimePaths'
 import type { ProviderEgressPools } from '../../models/drivers/providerEgress'
 import type { ProviderPolicy } from '../../models/drivers/providerPolicy'
 import { HOST_NAME, checkProviderEgress } from './providerEgressManifest'
+import { checkRecognizes } from './routerRecognizes'
 import { checkPolicy, reportPolicyClamp } from './providerPolicyManifest'
 import { checkProviderJobs, type ProviderJobDecl } from './providerJobsManifest'
 import { checkProviderStatus, onlyKeys, type ProviderStatusView } from './providerStatusManifest'
@@ -163,6 +164,9 @@ export type ProviderManifest = {
   /** A router's boundary: any provider the person set up, or every instance
    *  of the listed provider definitions. Read on a router alone. */
   routesTo?: '*' | string[]
+  /** A router's: the services whose set-up providers the peers table names
+   *  to it by the matched entry (`routerRecognizes.ts`). */
+  recognizes?: { hosts: string[] }
   displayName: LocalizedText
   /** Package-relative `.svg`, `./`-prefixed. */
   icon?: string
@@ -967,11 +971,14 @@ function checkProvider(key: string, id: string, raw: unknown, errors: string[]):
   if (kind === undefined) return undefined
   const router = kind === 'router'
   let routesTo: '*' | string[] | undefined
+  let recognizes: string[] | undefined
   if (router) {
     routesTo = checkRoutesTo(raw.routesTo, id, bad)
+    if (raw.recognizes !== undefined) recognizes = checkRecognizes(raw.recognizes, bad)
     refuseRouterFields(raw, bad)
-  } else if (raw.routesTo !== undefined) {
-    bad('routesTo: only a router ("kind": "router") declares routesTo')
+  } else {
+    if (raw.routesTo !== undefined) bad('routesTo: only a router ("kind": "router") declares routesTo')
+    if (raw.recognizes !== undefined) bad('recognizes: only a router ("kind": "router") declares recognizes')
   }
 
   let multiple = false
@@ -1080,6 +1087,7 @@ function checkProvider(key: string, id: string, raw: unknown, errors: string[]):
   return {
     providerApi: api,
     ...(router ? { kind, routesTo } : {}),
+    ...(recognizes ? { recognizes: { hosts: recognizes } } : {}),
     ...(multiple ? { instances: 'multiple' as const } : {}),
     displayName,
     ...(icon !== undefined ? { icon } : {}),

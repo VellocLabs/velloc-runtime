@@ -162,6 +162,7 @@ export function modProviderDefinition(options: ModProviderDefinitionOptions): Pr
       ...(manifest.modelsUi ? { modelsUi: manifest.modelsUi } : {}),
       ...(manifest.credentials.readsSecrets ? { readsSecrets: true } : {}),
       ...(router ? { kind: 'router' as const, routesTo: manifest.routesTo ?? [] } : {}),
+      ...(router && manifest.recognizes ? { recognizes: [...manifest.recognizes.hosts] } : {}),
       ...(manifest.settingsApp !== undefined ? { settingsApp: settingsAppIdOf(options.plugin, manifest) } : {}),
       ...(manifest.managedBy !== undefined ? { managedBy: modProviderId(options.plugin, manifest.managedBy) } : {}),
     },

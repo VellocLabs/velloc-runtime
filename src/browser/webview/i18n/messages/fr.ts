@@ -2412,6 +2412,7 @@ export const fr: Messages = {
   'settings.plugins.providers.consent.managedBy':
     'Configuré par {router} et utilisé uniquement par son intermédiaire. Votre accord vaut pour chaque compte ou clé qui lui sera ajouté.',
   'settings.plugins.providers.consent.loginWindow': 'Sa connexion ouvre une fenêtre sur : {domains}',
+  'settings.plugins.providers.consent.recognizes': '{name} saura si vous avez configuré ces services : {hosts}',
   'settings.plugins.providers.consent.domains': 'Peut contacter : {domains}',
   'settings.plugins.providers.consent.noDomains': 'Ne déclare aucun domaine à contacter.',
   'settings.plugins.providers.routes.any': 'Envoie vos requêtes via d’autres fournisseurs que vous avez configurés, avec leurs identifiants : n’importe quel fournisseur.',
@@ -2481,6 +2482,7 @@ export const fr: Messages = {
   'settings.plugins.providers.updates.waitingBody': 'Elle demande plus que ce que vous avez accepté. La version actuelle reste active jusqu’à votre décision.',
   'settings.plugins.providers.updates.addedProvider': 'Nouveau fournisseur : {provider}',
   'settings.plugins.providers.updates.addedLoginWindow': '{id} peut désormais ouvrir une fenêtre de connexion sur : {domains}',
+  'settings.plugins.providers.updates.addedRecognizes': '{id} peut désormais savoir si vous avez configuré : {hosts}',
   'settings.plugins.providers.updates.addedManagedBy': '{id} est désormais configuré par {router} et utilisé uniquement par son intermédiaire',
   'settings.plugins.providers.updates.addedDomains': '{id} peut désormais contacter : {domains}',
   'settings.plugins.providers.updates.addedProxyPools':

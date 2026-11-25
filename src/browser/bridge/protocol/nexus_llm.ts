@@ -148,6 +148,8 @@ export type BrowserLlmModProvider = {
   /** A router's boundary: any provider the person set up, or every instance
    *  of these provider definitions. */
   routesTo?: '*' | string[]
+  /** A router's `recognizes.hosts`, as the manifest check kept them. */
+  recognizes?: string[]
   credentialMethods?: ProviderCredentialMethod[]
   /** Credentials beyond the API key. */
   secrets?: ProviderSecretDecl[]

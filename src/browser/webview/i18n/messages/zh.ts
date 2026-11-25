@@ -2340,6 +2340,7 @@ export const zh: Messages = {
   'settings.plugins.providers.consent.managedBy':
     '由 {router} 设置，且只通过它使用。同意后，之后添加到它的每个账号或密钥都包括在内。',
   'settings.plugins.providers.consent.loginWindow': '登录时会打开窗口访问：{domains}',
+  'settings.plugins.providers.consent.recognizes': '{name} 会知道你是否配置了这些服务：{hosts}',
   'settings.plugins.providers.consent.domains': '可以访问：{domains}',
   'settings.plugins.providers.consent.noDomains': '未声明可访问的域名。',
   'settings.plugins.providers.routes.any': '通过你已设置的其他服务商发送你的请求，并使用它们的凭据：任意服务商。',
@@ -2409,6 +2410,7 @@ export const zh: Messages = {
   'settings.plugins.providers.updates.waitingBody': '它需要的权限比你之前同意的更多。在你决定之前，现有版本会继续运行。',
   'settings.plugins.providers.updates.addedProvider': '新增服务商：{provider}',
   'settings.plugins.providers.updates.addedLoginWindow': '{id} 现在登录时可以打开窗口访问：{domains}',
+  'settings.plugins.providers.updates.addedRecognizes': '{id} 现在会知道你是否配置了：{hosts}',
   'settings.plugins.providers.updates.addedManagedBy': '{id} 现在由 {router} 设置，且只通过它使用',
   'settings.plugins.providers.updates.addedDomains': '{id} 现在可以访问：{domains}',
   'settings.plugins.providers.updates.addedProxyPools':

@@ -2366,6 +2366,7 @@ export const ko: Messages = {
   'settings.plugins.providers.consent.managedBy':
     '{router}이(가) 설정하며 {router}을(를) 통해서만 사용됩니다. 동의하면 이후 추가되는 모든 계정과 키에 적용됩니다.',
   'settings.plugins.providers.consent.loginWindow': '로그인할 때 창을 여는 곳: {domains}',
+  'settings.plugins.providers.consent.recognizes': '{name}은(는) 다음 서비스를 설정했는지 알 수 있습니다: {hosts}',
   'settings.plugins.providers.consent.domains': '접속할 수 있는 곳: {domains}',
   'settings.plugins.providers.consent.noDomains': '접속할 도메인을 선언하지 않았습니다.',
   'settings.plugins.providers.routes.any': '설정해 둔 다른 제공업체를 거쳐 해당 제공업체의 자격 증명으로 요청을 보냅니다: 모든 제공업체.',
@@ -2435,6 +2436,7 @@ export const ko: Messages = {
   'settings.plugins.providers.updates.waitingBody': '이전에 동의한 것보다 더 많은 권한을 요청합니다. 결정하기 전까지는 현재 버전이 계속 실행됩니다.',
   'settings.plugins.providers.updates.addedProvider': '새 제공업체: {provider}',
   'settings.plugins.providers.updates.addedLoginWindow': '{id}이(가) 이제 로그인 창을 열 수 있는 곳: {domains}',
+  'settings.plugins.providers.updates.addedRecognizes': '{id}이(가) 이제 다음을 설정했는지 알 수 있습니다: {hosts}',
   'settings.plugins.providers.updates.addedManagedBy': '{id}은(는) 이제 {router}이(가) 설정하며 {router}을(를) 통해서만 사용됩니다',
   'settings.plugins.providers.updates.addedDomains': '{id}이(가) 이제 접속할 수 있는 곳: {domains}',
   'settings.plugins.providers.updates.addedProxyPools':

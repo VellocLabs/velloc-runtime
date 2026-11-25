@@ -7,7 +7,9 @@
  * is already in memory; nothing is fetched and the host is not asked.
  *
  * Security: an entry is assembled from named fields only, so no secret, base
- * URL or account name can ride along. Only a router provider's module may
+ * URL or account name can ride along. A router that declares `recognizes`
+ * learns of an instance's base URL only the matched entry and whether it left
+ * the definition's default origin (`routerRecognizes.ts`). Only a router provider's module may
  * ask, and only for a router it owns.
  */
 import { providerDefinitions, getProviderDefinition } from '../../../config/nexusModelConfig/providers'
@@ -29,6 +31,8 @@ import {
 import type { PlanUsageSnapshot } from '../../../models/usage/planUsage'
 import type { CustomModelDef, NexusProviderConfig } from '../../../settings/settingsTypes'
 import type { ProviderNounCall, ProviderNounTable } from '../ProviderModRuntime'
+import { resolveDriverBaseUrl } from '../../../models/drivers/driverRegistry'
+import { baseUrlChanged, recognizedHostOf } from '../routerRecognizes'
 import { providerOf } from './providerNounTable'
 import type {
   Peer,
@@ -53,12 +57,18 @@ export type PeerInstance = {
   defaultModel?: string
   models: readonly PeerModel[]
   usage?: PlanUsageSnapshot
+  /** The provider-level base URL its requests go to. Never copied into a peer. */
+  baseUrl?: string
+  /** Its definition's default base URL; absent for a custom provider. */
+  defaultBaseUrl?: string
 }
 
 export type PeersTableDeps = {
   instances: () => readonly PeerInstance[]
   /** The asking router's boundary. Undefined: not a router that is plugged in. */
   routesToOf: (routerId: string) => RoutesTo | undefined
+  /** The router's `recognizes.hosts`. Undefined: it declares none. */
+  recognizesOf?: (routerId: string) => readonly string[] | undefined
   stateOf: (instanceId: string, nowMs: number) => ProviderState
   now: () => number
 }
@@ -88,6 +98,7 @@ export function peersTableFor(routerId: string, deps: PeersTableDeps): Peer[] {
   const routesTo = deps.routesToOf(routerId)
   if (routesTo === undefined) return []
   const nowMs = deps.now()
+  const recognizes = deps.recognizesOf?.(routerId)
   const peers: Peer[] = []
   for (const instance of deps.instances()) {
     if (instance.router || instance.id === routerId) continue
@@ -107,9 +118,18 @@ export function peersTableFor(routerId: string, deps: PeersTableDeps): Peer[] {
       models: instance.models.map(copyModel),
       state: structuredClone(deps.stateOf(instance.id, nowMs)),
       ...(instance.usage !== undefined ? { usage: structuredClone(instance.usage) } : {}),
+      ...(recognizes ? recognitionOf(recognizes, instance) : {}),
     })
   }
   return peers
+}
+
+function recognitionOf(hosts: readonly string[], instance: PeerInstance): Pick<Peer, 'recognizedHost' | 'baseUrlChanged'> {
+  const recognizedHost = recognizedHostOf(hosts, instance.baseUrl)
+  return {
+    ...(recognizedHost !== undefined ? { recognizedHost } : {}),
+    ...(baseUrlChanged(instance.baseUrl, instance.defaultBaseUrl) === true ? { baseUrlChanged: true as const } : {}),
+  }
 }
 
 // ── the runtime's own source ────────────────────────────────────────────────
@@ -191,6 +211,8 @@ export function runtimePeerInstances(): PeerInstance[] {
     const mod = definition?.catalogMod
     const defaultModel = config?.defaultModel ?? config?.model
     const usage = cachedUsage(id)
+    const defaultBaseUrl = (definition?.config.defaultBaseUrl || mod?.defaultBaseUrl)?.trim()
+    const baseUrl = config?.baseUrl?.trim() || resolveDriverBaseUrl(id) || defaultBaseUrl
     return {
       id,
       definition: providerDefinitionId(id),
@@ -205,6 +227,8 @@ export function runtimePeerInstances(): PeerInstance[] {
       ...(defaultModel ? { defaultModel } : {}),
       models: modelsOf(id, config, () => pickedOnRow(id)),
       ...(usage ? { usage } : {}),
+      ...(baseUrl ? { baseUrl } : {}),
+      ...(defaultBaseUrl ? { defaultBaseUrl } : {}),
     }
   })
 }
@@ -223,6 +247,7 @@ export const runtimePeersTable: PeersTableFor = routerId =>
   peersTableFor(routerId, {
     instances: runtimePeerInstances,
     routesToOf: runtimeRoutesToOf,
+    recognizesOf: routerId => getProviderDefinition(routerId)?.catalogMod?.recognizes,
     stateOf: providerStateOf,
     now: Date.now,
   })

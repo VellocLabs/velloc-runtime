@@ -99,11 +99,14 @@ export function managedDefinitionsText(router: string, providers: ReadonlyArray<
 }
 
 function ProviderGrantBlock({
+  name,
   provider,
   grant,
   manages,
   t,
 }: {
+  /** The plugin's name. */
+  name: string;
   provider: string;
   grant: ProviderGrant;
   /** The definitions this router manages, as `managedDefinitionsText`. */
@@ -138,6 +141,11 @@ function ProviderGrantBlock({
               : t("settings.plugins.providers.consent.noDomains")}
           </li>
         )}
+        {grant.recognizes?.length ? (
+          <li data-testid={`consent-recognizes-${provider}`}>
+            {t("settings.plugins.providers.consent.recognizes", { name, hosts: grant.recognizes.join(", ") })}
+          </li>
+        ) : null}
         {grant.loginWindow?.length ? (
           <li data-testid={`consent-login-window-${provider}`}>
             {t("settings.plugins.providers.consent.loginWindow", { domains: grant.loginWindow.join(", ") })}
@@ -231,6 +239,7 @@ export function ProviderConsentDialog({
           {providers.map(([provider, grant]) => (
             <ProviderGrantBlock
               key={provider}
+              name={target?.name ?? ""}
               provider={provider}
               grant={grant}
               manages={grant.kind === "router" ? managedDefinitionsText(provider, providers) : []}
@@ -309,6 +318,9 @@ export function grantDeltaLines(status: ProviderModUpdateStatus, t: TranslateFn)
     }
     if (added.loginWindow?.length) {
       lines.push(t("settings.plugins.providers.updates.addedLoginWindow", { id: provider, domains: added.loginWindow.join(", ") }));
+    }
+    if (added.recognizes?.length) {
+      lines.push(t("settings.plugins.providers.updates.addedRecognizes", { id: provider, hosts: added.recognizes.join(", ") }));
     }
     if (added.proxyPools) {
       lines.push(t("settings.plugins.providers.updates.addedProxyPools", { id: provider }));

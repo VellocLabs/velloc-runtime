@@ -4,7 +4,9 @@
  * reads a vendor, a plugin or an account out of its text. Which vendor an
  * instance belongs to is `definition`; what to show is `label` and `name`.
  *
- * Security: a peer carries no secret, no base URL and no account name.
+ * Security: a peer carries no secret, no base URL and no account name. A
+ * router that declares `recognizes` sees `recognizedHost` and
+ * `baseUrlChanged`, and nothing else of the base URL.
  */
 import type { PlanUsageSnapshot } from '../../../models/usage/planUsage'
 import type { ProviderConnectivityIssue } from '../../../utils/providerConnectivity'
@@ -83,6 +85,12 @@ export type Peer = {
   state: ProviderState
   /** The last plan usage read, if any. */
   usage?: PlanUsageSnapshot
+  /** For a router that declares `recognizes`: the `hosts` entry, as listed,
+   *  that the instance's base URL host matches. Absent: none matches. */
+  recognizedHost?: string
+  /** For a router that declares `recognizes`: the base URL is not the same
+   *  origin as the definition's default. Absent with no default. */
+  baseUrlChanged?: true
 }
 
 /** The peers a router sees: those inside its `routesTo`. */

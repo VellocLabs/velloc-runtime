@@ -2372,6 +2372,7 @@ export const ja: Messages = {
   'settings.plugins.providers.consent.managedBy':
     '{router} が設定し、{router} を通じてのみ使用されます。同意は、今後追加されるすべてのアカウントやキーにも及びます。',
   'settings.plugins.providers.consent.loginWindow': 'ログイン時にウィンドウを開く先: {domains}',
+  'settings.plugins.providers.consent.recognizes': '{name} は、次のサービスを設定済みかどうかを知ることができます: {hosts}',
   'settings.plugins.providers.consent.domains': '接続できる先: {domains}',
   'settings.plugins.providers.consent.noDomains': '接続先のドメインは宣言されていません。',
   'settings.plugins.providers.routes.any': '設定済みのほかのプロバイダを経由して、その認証情報でリクエストを送信します: すべてのプロバイダ。',
@@ -2441,6 +2442,7 @@ export const ja: Messages = {
   'settings.plugins.providers.updates.waitingBody': '以前に同意した範囲を超える権限を求めています。あなたが決めるまで、現在のバージョンが引き続き動作します。',
   'settings.plugins.providers.updates.addedProvider': '新しいプロバイダ: {provider}',
   'settings.plugins.providers.updates.addedLoginWindow': '{id} はログイン時に次の接続先でウィンドウを開けるようになります: {domains}',
+  'settings.plugins.providers.updates.addedRecognizes': '{id} は、次を設定済みかどうかを知ることができるようになります: {hosts}',
   'settings.plugins.providers.updates.addedManagedBy': '{id} は今後 {router} が設定し、{router} を通じてのみ使用されます',
   'settings.plugins.providers.updates.addedDomains': '{id} は次にも接続できるようになります: {domains}',
   'settings.plugins.providers.updates.addedProxyPools':
