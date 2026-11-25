@@ -7,7 +7,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { providersHandlers } from '../browser/bridge/adapter/providersBridgeAdapter'
 import { resetCustomProviderRecords } from '../config/customProviderRegistry'
 import { resetModProviderDefinitions } from '../config/nexusModelConfig/providers'
-import { configureRuntimeProviders, resetRuntimeProviders } from '../models/drivers/runtimeProviders'
+import { configureRuntimeProviders, resetRuntimeProviders, setRuntimeProviderConfigs } from '../models/drivers/runtimeProviders'
+import { resetProviderHealthLedger } from '../models/drivers/providerHealthLedger'
+import { lendProviderHostSources, resetProviderHostSources } from '../mods/provider/providerHostSources'
+import { createRuntimeInstanceCalls } from '../mods/provider/providerInstanceCallsRuntime'
 import { AppBackgroundRuntime, type AppBackgroundRef } from '../mods/app/AppBackgroundRuntime'
 import { refuseAppBackgroundCall } from '../mods/app/appBackgroundEvents'
 import { resetAppStateBusForTests } from '../mods/app/appStateBus'
@@ -258,6 +261,24 @@ describe('renameInstance', () => {
     expect(configs[made.id]).not.toHaveProperty('hasApiKey')
   })
 
+  it('waits for a remove in flight, then refuses: it never writes back an instance just removed', async () => {
+    let release!: () => void
+    const gate = new Promise<void>(resolve => (release = resolve))
+    let held = false
+    const { calls, configs } = rig({ resync: () => (held ? gate : Promise.resolve()) })
+    const made = (await calls.add(ROUTER, { definition: 'open' }, 'action')) as { id: string }
+    held = true
+    const removing = calls.remove(ROUTER, { provider: made.id }, 'action')
+    await vi.waitFor(() => expect(configs).toEqual({}))
+    configs[made.id] = { source: 'mod', modOwner: OWNER, definition: OPEN, createdAt: NOW }
+    const renaming = calls.rename(ROUTER, { provider: made.id, name: 'Late' })
+    delete configs[made.id]
+    release()
+    expect(await removing).toEqual({ ok: true })
+    await expect(renaming).rejects.toMatchObject({ name: 'NotAllowedError' })
+    expect(configs).toEqual({})
+  })
+
   it('refuses a provider that is not one of the router\'s instances, and a bad name', async () => {
     const { calls, configs } = rig()
     const made = (await calls.add(ROUTER, { definition: 'open' }, 'action')) as { id: string }
@@ -338,6 +359,8 @@ describe('the settings write path', () => {
     expect(onDisk().retiredInstances).toEqual({ [OPEN]: ['a1b2'] })
     await providersHandlers.upsert({ id: `${OPEN}.c3d4`, config: { ...instance(OPEN), name: 'Kept' } }, ctx)
     await providersHandlers.setActive({ id: `${OPEN}.c3d4` }, ctx)
+    await providersHandlers.setOrder({ order: [`${OPEN}.c3d4`] }, ctx)
+    expect(onDisk().retiredInstances).toEqual({ [OPEN]: ['a1b2'] })
     await providersHandlers.remove({ id: `${OPEN}.c3d4` }, ctx)
     expect(onDisk().retiredInstances).toEqual({ [OPEN]: ['a1b2', 'c3d4'] })
     expect(onDisk().configs).toEqual({})
@@ -471,6 +494,10 @@ describe('which event a call was made in, in a real background module', () => {
       })
       on('app.action', async ($, e) => {
         await $.provider.definitions()
+        if (e.action === 'later') {
+          setTimeout(() => void $.provider.addInstance({ definition: 'free' }).catch(() => undefined), 30)
+          return { handled: true }
+        }
         return { handled: true, result: await $.provider.removeInstance({ provider: e.context.provider }) }
       })
     }`
@@ -510,8 +537,109 @@ describe('which event a call was made in, in a real background module', () => {
     }
     runtime.sync([ref])
     await vi.waitFor(() => expect(appState()).toEqual({ started: true }))
-    const outcome = await runtime.actionOutcome('switch-console', 'remove', { provider: 'p1' }, 's1')
-    expect(outcome).toEqual({ status: 'handled', result: { ok: true, args: { provider: 'p1' } } })
+    expect(await runtime.action('switch-console', 'remove', { provider: 'p1' }, 's1')).toBe(true)
     expect(phases).toEqual(['add:start', 'remove:action'])
+    // The model's AppAction tool raises the same event: not a person's action.
+    const outcome = await runtime.actionOutcome('switch-console', 'remove', { provider: 'p2' }, 's1')
+    expect(outcome).toEqual({ status: 'handled', result: { ok: true, args: { provider: 'p2' } } })
+    expect(phases).toEqual(['add:start', 'remove:action', 'remove:other'])
+    // A timer the action's hook left behind runs after the action ended.
+    expect(await runtime.action('switch-console', 'later', null, 's1')).toBe(true)
+    await vi.waitFor(() => expect(phases).toHaveLength(4))
+    expect(phases[3]).toBe('add:other')
+  })
+})
+
+describe('the calls over the realm\'s provider host, settings file and health ledger', () => {
+  function memoryFs() {
+    const files = new Map<string, string>()
+    const fs = {
+      readFile: async (path: string) => {
+        const text = files.get(path)
+        if (text === undefined) throw Object.assign(new Error(`ENOENT: ${path}`), { code: 'ENOENT' })
+        return text
+      },
+      writeFile: async (path: string, data: string | Uint8Array) => {
+        files.set(path, typeof data === 'string' ? data : new TextDecoder().decode(data))
+      },
+      mkdir: async () => {},
+    } as unknown as RuntimeFs
+    const onDisk = () => JSON.parse(files.get(`${HOME}/.velloc/${NEXUS_SETTINGS_FILE_NAME}`) ?? '{}').providers
+    return { fs, onDisk }
+  }
+
+  beforeEach(() => {
+    wipeSettingsMemos()
+    resetModProviderDefinitions()
+    resetCustomProviderRecords()
+    resetRuntimeProviders()
+    resetProviderHostSources()
+    resetProviderHealthLedger()
+  })
+
+  afterEach(() => {
+    getProviderModHost().dispose()
+    resetModProviderDefinitions()
+    resetCustomProviderRecords()
+    resetRuntimeProviders()
+    configureRuntimeProviders(undefined)
+    resetProviderHostSources()
+    resetProviderHealthLedger()
+  })
+
+  /** The realm as the runtime hub wires it: the `providers` write paths over one settings file. */
+  async function realm() {
+    const { fs, onDisk } = memoryFs()
+    const ctx = { homeDir: HOME, fs, onConfigsChanged: (configs: Record<string, NexusProviderConfig>) => setRuntimeProviderConfigs(configs) }
+    setRuntimeProviderConfigs({})
+    lendProviderHostSources({
+      writeProviderConfig: async (id, config) => void (await providersHandlers.upsert({ id, config }, ctx)),
+      removeProviderConfig: async id => void (await providersHandlers.remove({ id }, ctx)),
+    })
+    const registered: string[][] = []
+    const host = getProviderModHost()
+    host.configure({
+      createRuntime: async () => ({ register: () => {}, replace: async () => {}, unregister: () => {}, status: () => [], dispose: () => {} }) as unknown as ProviderModRuntime,
+      readText: async () => '',
+      report: () => {},
+      adopt: async () => {},
+      publish: async () => void registered.push(host.registered().map(r => r.providerId)),
+      hasStoredConfigs: () => false,
+      ownerOf: () => undefined,
+    })
+    await host.sync({ enabled: [plugin()], disabled: [] })
+    const relisted: string[] = []
+    // Every draw is "aaaa" until the slot is retired; only the record on disk keeps the next one apart.
+    const calls = createRuntimeInstanceCalls({ fs, homeDir: HOME, relist: async id => void relisted.push(id), random: () => 0 })
+    return { calls, host, onDisk, relisted }
+  }
+
+  it('an instance made, renamed and removed reaches settings.json, the registrations and the router; its slot is never given again', async () => {
+    const { calls, host, onDisk, relisted } = await realm()
+    const made = (await calls.add(ROUTER, { definition: 'free' }, 'action')) as { id: string }
+    expect(made.id).toBe(`${FREE}.aaaa`)
+    expect(onDisk().configs[made.id]).toMatchObject({ source: 'mod', modOwner: OWNER, definition: FREE, credentialMode: 'anonymous', createdAt: expect.any(Number) })
+    expect(host.registered().map(r => r.providerId)).toContain(made.id)
+    expect(relisted).toEqual([ROUTER])
+    expect(calls.instances(ROUTER)).toEqual([expect.objectContaining({ id: made.id, definition: FREE, name: 'Vendor A Free' })])
+
+    expect(await calls.rename(ROUTER, { provider: made.id, name: 'Office' })).toEqual({ ok: true })
+    expect(onDisk().configs[made.id]).toMatchObject({ name: 'Office', definition: FREE })
+
+    expect(await calls.remove(ROUTER, { provider: made.id }, 'action')).toEqual({ ok: true })
+    expect(onDisk().configs).toEqual({})
+    expect(onDisk().retiredInstances).toEqual({ [FREE]: ['aaaa'] })
+    expect(host.registered().map(r => r.providerId)).not.toContain(made.id)
+    expect(relisted).toEqual([ROUTER, ROUTER])
+
+    const again = (await calls.add(ROUTER, { definition: 'free' }, 'action')) as { id: string }
+    expect(again.id).toBe(`${FREE}.aaaaa`)
+  })
+
+  it('fails as unavailable, storing nothing, while the realm lends no write path', async () => {
+    const { calls, onDisk } = await realm()
+    resetProviderHostSources()
+    await expect(calls.add(ROUTER, { definition: 'free' }, 'action')).rejects.toMatchObject({ name: 'NotSupportedError' })
+    expect(onDisk()).toBeUndefined()
   })
 })

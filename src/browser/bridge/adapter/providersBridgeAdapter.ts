@@ -745,6 +745,7 @@ async function handleSetOrder(
       : {}),
     configs: { ...(prev?.configs ?? {}) },
     ...(order.length > 0 ? { order } : {}),
+    ...(prev?.retiredInstances ? { retiredInstances: prev.retiredInstances } : {}),
   }))
   const stored = updated.providers?.order ?? []
   ctx.broadcastChanged?.({

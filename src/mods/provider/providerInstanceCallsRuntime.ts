@@ -1,6 +1,6 @@
 /**
  * The instance calls (`providerInstanceCalls.ts`) over this realm's provider
- * host, settings and health ledger. One per realm, made at the first call.
+ * host, settings and health ledger. One per app background runtime.
  */
 
 import { clearProviderState } from '../../models/drivers/providerHealthLedger'
@@ -11,21 +11,20 @@ import { providerHostSources } from './providerHostSources'
 import { createInstanceCalls, type InstanceCalls } from './providerInstanceCalls'
 import { getProviderModHost } from './providerModHost'
 
-let calls: InstanceCalls | undefined
-
 const unavailable = (what: string): Error => {
   const error = new Error(`provider instances cannot be ${what} here: the settings write path is not attached`)
   error.name = 'NotSupportedError'
   return error
 }
 
-export function runtimeInstanceCalls(options: {
+export function createRuntimeInstanceCalls(options: {
   fs: RuntimeFs
   homeDir: string
   relist: (routerId: string) => Promise<void>
   locale?: () => string | undefined
+  random?: () => number
 }): InstanceCalls {
-  calls ??= createInstanceCalls({
+  return createInstanceCalls({
     managedBy: routerId => getProviderModHost().managedDefinitions(routerId),
     configs: runtimeProviderConfigs,
     retiredSlots: async definitionId =>
@@ -47,11 +46,6 @@ export function runtimeInstanceCalls(options: {
     models: mergedModels,
     locale: () => options.locale?.() ?? 'en',
     now: Date.now,
+    ...(options.random ? { random: options.random } : {}),
   })
-  return calls
-}
-
-/** Test seam. */
-export function resetRuntimeInstanceCalls(): void {
-  calls = undefined
 }

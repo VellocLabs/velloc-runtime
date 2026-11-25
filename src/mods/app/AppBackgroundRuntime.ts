@@ -50,6 +50,9 @@ import {
 import type { RuntimeFs } from '../../utils/fs/runtimeFs'
 import { joinRuntimePath } from '../../utils/runtimePaths'
 import type { AppActionOutcome } from './appActionBus'
+
+/** Who raised an `app.action`: a press on the app's page, or the model's `AppAction` tool. */
+export type AppActionRaiser = 'person' | 'model'
 import { AppAgentRuns, readAnalyzeRequest, type AppAgentRunner, type AppAnalyzeResult } from './appAgentRun'
 import { APP_BACKGROUND_ABI, refuseAppBackgroundCall, refuseAppBackgroundRegistrations, refuseAppBackgroundUses } from './appBackgroundEvents'
 import { sameMcpOwner, type AppBackgroundMcp, type AppBackgroundMcpOwner } from './appBackgroundMcp'
@@ -381,15 +384,23 @@ export class AppBackgroundRuntime {
    * failed, or ran past its budget — a person's press then goes to the model.
    */
   async action(appId: string, action: string, context: unknown, sessionId: string): Promise<boolean> {
-    return (await this.actionOutcome(appId, action, context, sessionId)).status === 'handled'
+    return (await this.actionOutcome(appId, action, context, sessionId, 'person')).status === 'handled'
   }
 
   /**
    * `action`, with how it ended: `handled` carries the `result` of a
    * `{handled: true, result}` answer; `timeout` is a module that was not
    * ready, or a hook that had not answered, when the budget ran out.
+   * Security: `by` is who raised it; only a person's press may make a call
+   * that needs one (`$.provider.addInstance`), never the model's `AppAction`.
    */
-  async actionOutcome(appId: string, action: string, context: unknown, sessionId: string): Promise<AppActionOutcome> {
+  async actionOutcome(
+    appId: string,
+    action: string,
+    context: unknown,
+    sessionId: string,
+    by: AppActionRaiser = 'model',
+  ): Promise<AppActionOutcome> {
     const budget = this.options.actionTimeoutMs ?? APP_ACTION_TIMEOUT_MS
     let left = budget
     const woken = this.wake(appId)
@@ -411,6 +422,7 @@ export class AppBackgroundRuntime {
       `app.action "${action}" of ${appId}`,
       '; nothing else is done with it',
       fate,
+      by,
     )
     if (raised !== undefined && handledBy(raised.result)) return { status: 'handled', ...resultOf(raised.result) }
     if (module.gone.signal.aborted) return { status: 'unavailable' }
@@ -738,6 +750,7 @@ export class AppBackgroundRuntime {
     label: string,
     after = '',
     fate?: { late?: boolean },
+    by?: AppActionRaiser,
   ): Promise<{ result: unknown } | undefined> {
     const controller = new AbortController()
     const timer = setTimeout(() => controller.abort(), timeoutMs)
@@ -748,8 +761,8 @@ export class AppBackgroundRuntime {
         signal: controller.signal,
         accepts: () => true,
         budgetMs: timeoutMs,
-        // What a `$` call of the hook is told it was made during.
-        scope: { event },
+        // What a `$` call of the hook is told it was made during, and for whom.
+        scope: by ? { event, by } : { event },
       })
       return { result }
     } catch (error) {
@@ -949,7 +962,7 @@ export class AppBackgroundRuntime {
     }
     if (call.noun === 'provider' && module.ref.settingsFor) {
       const calls = this.options.providerCalls
-      const during = (call.scope as { event?: unknown } | undefined)?.event
+      const scope = call.scope as { event?: unknown; by?: unknown } | undefined
       return await serveSettingsAppProviderCall(
         module.ref.settingsFor,
         call.method,
@@ -959,7 +972,7 @@ export class AppBackgroundRuntime {
           ...(calls?.peers ? { peers: calls.peers } : {}),
           ...(calls?.instances ? { instances: calls.instances } : {}),
         },
-        during === 'app.action' ? 'action' : during === 'app.start' ? 'start' : 'other',
+        scope?.event === 'app.action' && scope.by === 'person' ? 'action' : scope?.event === 'app.start' ? 'start' : 'other',
       )
     }
     if (call.noun === 'usage') {

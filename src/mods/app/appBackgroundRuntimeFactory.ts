@@ -24,7 +24,7 @@ import { createAppBackgroundMcp } from './appBackgroundMcp'
 import type { AppMcpStatusSource } from './appMcpStatus'
 import { currentMcpOAuthService, onMcpOAuthServiceChanged } from '../../mcp/oauth/mcpOAuthHolder'
 import { createReloadFolder, runtimeSettingsAppPeers } from './appProviderCalls'
-import { runtimeInstanceCalls } from '../provider/providerInstanceCallsRuntime'
+import { createRuntimeInstanceCalls } from '../provider/providerInstanceCallsRuntime'
 import { runtimeAppUsage } from './appUsageCalls'
 import { reloadModProvider } from '../provider/providerReload'
 
@@ -61,11 +61,12 @@ export function createAppBackgroundRuntime(
     await storePluginSecrets(writes, [], secrets, report, { prune: false })
   }
   const reloads = createReloadFolder(providerId => reloadModProvider(providerId, deps.transport, report))
+  const instances = createRuntimeInstanceCalls({ fs, homeDir, relist: reloads.reload, ...(deps.locale ? { locale: deps.locale } : {}) })
   return new AppBackgroundRuntime({
     providerCalls: {
       reload: reloads.reload,
       peers: runtimeSettingsAppPeers,
-      instances: () => runtimeInstanceCalls({ fs, homeDir, relist: reloads.reload, ...(deps.locale ? { locale: deps.locale } : {}) }),
+      instances: () => instances,
       dispose: reloads.dispose,
     },
     usage: query => runtimeAppUsage(query, deps.transport() ?? undefined),

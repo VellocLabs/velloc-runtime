@@ -155,10 +155,22 @@ export function listInstances(routerId: string, deps: InstanceCallsDeps): Instan
 
 /**
  * Serves the calls of one runtime. `add` and `remove` change what is stored,
- * so one runs at a time per router; a second is answered `busy`.
+ * so one runs at a time per router; a second is answered `busy`. A rename
+ * waits for them, so it never writes back an instance just removed.
  */
 export function createInstanceCalls(deps: InstanceCallsDeps) {
   const busy = new Set<string>()
+  const tails = new Map<string, Promise<unknown>>()
+
+  function inSeries<T>(routerId: string, run: () => Promise<T>): Promise<T> {
+    const next = (tails.get(routerId) ?? Promise.resolve()).then(run)
+    const tail = next.catch(() => undefined)
+    tails.set(routerId, tail)
+    void tail.then(() => {
+      if (tails.get(routerId) === tail) tails.delete(routerId)
+    })
+    return next
+  }
 
   async function exclusive<T>(routerId: string, method: string, run: () => Promise<T>): Promise<T | InstanceCallError> {
     if (busy.has(routerId)) {
@@ -166,7 +178,7 @@ export function createInstanceCalls(deps: InstanceCallsDeps) {
     }
     busy.add(routerId)
     try {
-      return await run()
+      return await inSeries(routerId, run)
     } finally {
       busy.delete(routerId)
     }
@@ -230,12 +242,15 @@ export function createInstanceCalls(deps: InstanceCallsDeps) {
   }
 
   async function rename(routerId: string, args: unknown): Promise<{ ok: true }> {
-    const { id, config } = managedInstance(routerId, 'renameInstance', args, deps)
+    managedInstance(routerId, 'renameInstance', args, deps)
     const name = readName('renameInstance', (args as Record<string, unknown>).name)
-    // The write path keeps the stored key when none is sent.
-    const { apiKey: _key, hasApiKey: _flag, ...rest } = config
-    await deps.writeConfig(id, { ...rest, name })
-    return { ok: true }
+    return inSeries(routerId, async () => {
+      const { id, config } = managedInstance(routerId, 'renameInstance', args, deps)
+      // The write path keeps the stored key when none is sent.
+      const { apiKey: _key, hasApiKey: _flag, ...rest } = config
+      await deps.writeConfig(id, { ...rest, name })
+      return { ok: true as const }
+    })
   }
 
   async function remove(routerId: string, args: unknown, phase: InstanceCallPhase): Promise<{ ok: true } | InstanceCallError> {
