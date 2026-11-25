@@ -262,7 +262,12 @@ export class ProviderModHost {
   /** Bring the registrations to the last scan again: a provider instance
    *  was stored or removed. Resolves undefined before the first scan. */
   resync(): Promise<ProviderSyncResult | undefined> {
-    return this.lastScan && this.options ? this.sync(this.lastScan) : Promise.resolve(undefined)
+    if (!this.options) return Promise.resolve(undefined)
+    // The scan is read when the queued run starts, so a sync queued earlier
+    // is not undone by an older scan.
+    const run = this.chain.then(() => (this.lastScan && this.options ? this.syncNow(this.lastScan) : undefined))
+    this.chain = run.catch(() => undefined)
+    return run
   }
 
   private async syncNow(installed: ProviderPluginScan): Promise<ProviderSyncResult> {

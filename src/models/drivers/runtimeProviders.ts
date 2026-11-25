@@ -38,6 +38,8 @@ import { publishListedModelPool, resetProviderModelPool } from '../../config/nex
 import type { NexusProviderConfig } from '../../settings/settingsTypes'
 import { holdsModSignIn } from '../../settings/providerSignIn'
 import { traceLine } from '../../utils/debugLog'
+import { isModProviderId } from '../../mods/provider/providerManifest'
+import { instanceSlotOf } from '../../mods/provider/providerInstances'
 import {
   entryForModelId,
   entryId,
@@ -199,9 +201,22 @@ export function modProviderOwner(providerId: string): string | undefined {
 
 /** The provider definition `providerId` is an instance of: what its catalog
  *  row states, else what its stored entry states (its plugin is gone), else
- *  itself. */
+ *  itself. Security: a stored entry is believed only when it is a provider
+ *  mod's and its id is shaped as an instance of the definition it names, so
+ *  no other entry can claim a place inside a router's boundary. */
 export function providerDefinitionId(providerId: string): string {
-  return getProviderDefinition(providerId)?.catalogMod?.definition ?? configs[providerId]?.definition ?? providerId
+  const listed = getProviderDefinition(providerId)?.catalogMod?.definition
+  if (listed !== undefined) return listed
+  const stored = configs[providerId]
+  if (
+    stored?.source === 'mod' &&
+    stored.definition !== undefined &&
+    isModProviderId(stored.definition) &&
+    instanceSlotOf(stored.definition, providerId) !== undefined
+  ) {
+    return stored.definition
+  }
+  return providerId
 }
 
 /** Every provider's config as settings.json holds it (the model entries of

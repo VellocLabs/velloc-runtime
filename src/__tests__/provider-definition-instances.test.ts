@@ -121,7 +121,7 @@ describe('the manifest field', () => {
     expect(errors).toEqual([expect.stringContaining('providers.r.instances')])
   })
 
-  it('refuses "multiple" when an instance id would not fit, and still takes the entry with one instance', () => {
+  it('refuses the entry that says "multiple" when an instance id would not fit; without the field it is taken', () => {
     // `mod.` + 26 + `.` + 32 = 63 characters: a provider id, with no room for a slot.
     const name = 'p'.repeat(26)
     const key = 'k'.repeat(32)
@@ -293,6 +293,24 @@ describe('settings.json', () => {
     expect(onDisk()[FREE]).toEqual({ source: 'mod', modOwner: OWNER })
   })
 
+  it('an existing entry with none of the fields loads and saves as it was', async () => {
+    const legacy = { source: 'mod' as const, modOwner: OWNER, credentialMode: 'anonymous' as const, enabledModels: ['m'] }
+    expect(normalizeSettings({ providers: { configs: { [FREE]: legacy } } }).providers?.configs?.[FREE]).toEqual(legacy)
+    const { fs, onDisk } = memoryFs()
+    await providersHandlers.upsert({ id: FREE, config: legacy }, { homeDir: HOME, fs })
+    await providersHandlers.upsert({ id: FREE, config: { ...legacy, enabledModels: ['n'] } }, { homeDir: HOME, fs })
+    expect(onDisk()[FREE]).toEqual({ ...legacy, enabledModels: ['n'] })
+  })
+
+  it('an entry that is not a provider mod\'s never stores a definition', async () => {
+    const { fs, onDisk } = memoryFs()
+    await providersHandlers.upsert(
+      { id: 'custom-relay', config: { isCustomProvider: true, displayName: 'Relay', definition: KEYED } },
+      { homeDir: HOME, fs },
+    )
+    expect(onDisk()['custom-relay']).toEqual({ isCustomProvider: true, displayName: 'Relay' })
+  })
+
   it('refuses a createdAt that is not a time', async () => {
     const { fs } = memoryFs()
     await expect(
@@ -406,6 +424,17 @@ describe('registration', () => {
     expect(getProviderDefinition(WORK)).toBeUndefined()
   })
 
+  it('a resync queued behind a newer scan applies that scan, not the one before it', async () => {
+    const { host } = rig(() => TWO_STORED)
+    await host.sync({ enabled: [plugin()], disabled: [] })
+    const off = host.sync({ enabled: [], disabled: [plugin()] })
+    const again = host.resync()
+    await off
+    await again
+    expect(host.registered()).toEqual([])
+    expect(isDisabledModProviderId(WORK)).toBe(true)
+  })
+
   it('a resync with nothing new registers nothing again', async () => {
     const { host, registered } = rig(() => TWO_STORED)
     await host.sync({ enabled: [plugin()], disabled: [] })
@@ -510,6 +539,26 @@ describe('registration', () => {
     it('a stored instance whose plugin is gone still names its definition', () => {
       setRuntimeProviderConfigs({ [WORK]: stored() })
       expect(providerDefinitionId(WORK)).toBe(KEYED)
+    })
+
+    it('an entry that is not shaped as an instance cannot claim a definition a router lists', () => {
+      setRuntimeProviderConfigs({
+        'custom-relay': { isCustomProvider: true, apiKey: 'k', definition: KEYED },
+        'mod.other.thing.a1b2': stored(),
+        [WORK]: stored({ source: undefined }),
+      })
+      expect(providerDefinitionId('custom-relay')).toBe('custom-relay')
+      expect(providerDefinitionId('mod.other.thing.a1b2')).toBe('mod.other.thing.a1b2')
+      expect(providerDefinitionId(WORK)).toBe(WORK)
+      const facts = {
+        routesTo: [KEYED],
+        isSetUp: () => true,
+        isRouter: () => false,
+        definitionOf: providerDefinitionId,
+        serves: () => true,
+        knownModel: () => true,
+      }
+      expect(checkRouteAnswer({ provider: 'custom-relay', model: 'm' }, facts)).toMatchObject({ kind: 'refused' })
     })
   })
 })

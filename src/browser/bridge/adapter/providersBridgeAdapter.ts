@@ -563,6 +563,8 @@ async function handleUpsert(
         if (merged.name === undefined && before.name !== undefined) merged.name = before.name
       }
     }
+    // Security: only a provider mod's entry is an instance of a definition.
+    if (!isModProviderId(payload.id)) delete merged.definition
     next.configs[payload.id] = merged
     return next
   })
