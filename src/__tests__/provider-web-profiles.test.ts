@@ -459,6 +459,31 @@ describe('a sign-in window in a web profile', () => {
     expect(t.requests).toHaveLength(1)
   })
 
+  it('a window the host refuses to open lets its new profile go, without the window saying so', async () => {
+    const r = rig()
+    const runtime: CredentialRuntime = {
+      hasHook: () => true,
+      call: (async (_id: string, event: string, e: Record<string, unknown> = {}) =>
+        event === 'provider.login'
+          ? { raised: true, value: await service.openWindow(e.loginId, [PROVIDER], spec('new')).catch(() => new Promise(() => {})) }
+          : { raised: false }) as CredentialRuntime['call'],
+    }
+    const service: ProviderCredentials = new ProviderCredentials({
+      runtime: () => runtime,
+      describe: () => ({ secrets: ['access_token'], methods: ['login'], loginWindow: ['accounts.vendor-a.test'] }),
+      storedConfigOf: () => ({ source: 'mod', modVersion: '1.0.0' }),
+      writeConfig: async () => {},
+      report: () => {},
+      openWindow: () => Promise.reject(Object.assign(new Error('the host said no'), { name: 'NotSupportedError' })),
+      holdProfile: profile => r.profiles.hold(profile),
+    })
+    service.startLogin(PROVIDER)
+    await flush()
+    await settled(r.profiles)
+    expect(await r.profiles.list()).toEqual([])
+    expect(r.deleted).toEqual(['vellocprofileb'])
+  })
+
   it('a Velloc with no web profiles refuses `new`', async () => {
     let refused = ''
     const t = signIn(async (e, service) => {

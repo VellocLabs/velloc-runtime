@@ -12,6 +12,7 @@ import { pluginsHandlers } from '../browser/bridge/adapter/pluginsBridgeAdapter'
 import { WORKSPACE_STATE_FILE } from '../browser/runtimeHub/workspaceCapability'
 import { LEGACY_WEBUI_CAPABILITIES } from '../browser/runtimeHub/legacyWebUiCapabilities'
 import { listLocalPlugins, localCopiesShadowing } from '../pluginHost/localPluginList'
+import { pluginNamed, pluginNameOfKey } from '../pluginHost/pluginNamed'
 import { forgetRegistryFile, recordInstalledPlugin } from '../pluginHost/installedRegistry'
 import { getPluginManifestPath } from '../pluginHost/pluginPaths'
 import { pluginLocaleCandidates } from '../pluginHost/pluginLocaleText'
@@ -215,5 +216,30 @@ describe('a marketplace plugin replaced by an enabled local copy', () => {
       { path: `${PROJECT_ROOT}/shared`, project: PROJECT },
     ])
     expect(byName.get('plain')).not.toHaveProperty('shadowedBy')
+  })
+})
+
+describe('pluginNamed', () => {
+  it('finds a marketplace plugin by its name and a directory plugin of the user or a sidebar project', async () => {
+    const fs = await seeded()
+    forgetRegistryFile()
+    await recordInstalledPlugin({ homeDir: HOME }, fs, 'acme@market', {
+      scope: 'user', version: '1.0', installedAt: '2026-01-01T00:00:00.000Z', installPath: '/cache/acme',
+    })
+    await fs.writeFile(
+      `${HOME}/${RUNTIME_DIR_NAME}/${WORKSPACE_STATE_FILE}`,
+      JSON.stringify({ projects: [{ path: PROJECT, addedAt: 1 }] }),
+    )
+    expect(await pluginNamed({ homeDir: HOME, fs }, 'acme')).toBe(true)
+    expect(await pluginNamed({ homeDir: HOME, fs }, 'plain')).toBe(true)
+    expect(await pluginNamed({ homeDir: HOME, fs }, 'idle-compact')).toBe(true)
+    expect(await pluginNamed({ homeDir: HOME, fs }, 'market')).toBe(false)
+    expect(await pluginNamed({ homeDir: HOME, fs }, 'gone')).toBe(false)
+    forgetRegistryFile()
+  })
+
+  it('a registry key is name@marketplace; one without a marketplace is the name', () => {
+    expect(pluginNameOfKey('acme@market')).toBe('acme')
+    expect(pluginNameOfKey('acme')).toBe('acme')
   })
 })

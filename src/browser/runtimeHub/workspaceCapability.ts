@@ -16,6 +16,7 @@ import {
   withSearchHistoryCleared,
   withSearchQuery,
   workspaceStatesEqual,
+  WORKSPACE_STATE_FILE,
 } from '../../utils/workspaceState'
 import {
   WORKSPACE_ACTION_SCOPES,
@@ -41,7 +42,7 @@ import {
 import type { TopicBroker } from './TopicBroker'
 import type { ActionSpec, ConnectionInfo, HandlerRequest, RuntimeContext, TopicProvider } from './types'
 
-export const WORKSPACE_STATE_FILE = 'workspace-state.json'
+export { WORKSPACE_STATE_FILE }
 /** On-disk format version; a file of another version is read as far as it sanitises. */
 export const WORKSPACE_STATE_FILE_VERSION = 1
 

@@ -547,9 +547,11 @@ export class ProviderCredentials {
     this.rejectPending(run, named('AbortError', 'a newer sign-in step replaced this one'))
     this.setStep(run, { kind: 'working' })
     let profileId: string | undefined
+    let releaseProfile: (() => void) | undefined
     return this.windowSession(run, spec.profile as string | undefined)
       .then(({ id, release, ...session }) => {
         profileId = id
+        releaseProfile = release
         // A kept profile is held while its window is open, whether the
         // sign-in has ended or not: the host refuses to delete it before.
         return open({
@@ -581,6 +583,9 @@ export class ProviderCredentials {
         if (run.window === windowRun && windowRun.capture === undefined) {
           run.window = undefined
         }
+        // No capture: whatever the window did, it is not one the profile
+        // must outlive. Release is idempotent with the window's own onGone.
+        if (!(error instanceof SignInWindowClosedError)) releaseProfile?.()
         throw error
       },
     )

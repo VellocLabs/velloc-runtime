@@ -26,11 +26,9 @@ import {
 import { listLocalPlugins, localCopiesShadowing } from '../../../pluginHost/localPluginList'
 import { forgetModBuilds } from '../../../mods/modBuildStore'
 import { forgetPluginWebProfiles } from '../../../mods/provider/webProfilesRuntime'
-import { pluginNamed } from '../../../pluginHost/pluginNamed'
+import { pluginNamed, pluginNameOfKey, sidebarProjects } from '../../../pluginHost/pluginNamed'
 import { RUNTIME_DIR_NAME } from '../../../branding/runtimeDir'
 import { joinRuntimePath } from '../../../utils/runtimePaths'
-import { sanitizeWorkspaceState } from '../../../utils/workspaceState'
-import { WORKSPACE_STATE_FILE } from '../../runtimeHub/workspaceCapability'
 import { loadInstalledPlugins } from '../../../pluginHost/installedRegistry'
 import { describeInstalledPlugin } from '../../../pluginHost/loadPlugins'
 import {
@@ -129,20 +127,6 @@ async function handleListInstalled(
       const withFacts = await withPluginFacts(entry, ctx.fs)
       return shadows.length > 0 ? { ...withFacts, shadowedBy: shadows } : withFacts
     })),
-  }
-}
-
-/** The sidebar's project folders (`~/.velloc/workspace-state.json`): the
- *  host's own list, never paths a client names. Empty when there is none. */
-async function sidebarProjects(ctx: PluginsAdapterContext): Promise<string[]> {
-  try {
-    const text = await ctx.fs.readFile(
-      joinRuntimePath(ctx.homeDir, RUNTIME_DIR_NAME, WORKSPACE_STATE_FILE),
-      { encoding: 'utf-8' },
-    )
-    return sanitizeWorkspaceState(JSON.parse(text)).projects.map(project => project.path)
-  } catch {
-    return []
   }
 }
 
@@ -399,8 +383,7 @@ function settleThemeSwitch(ctx: PluginsAdapterContext, run: ThemeSwitchRun | und
   else run.finish({ ok: true })
 }
 
-/** `<name>@<marketplace>` → `<name>`. */
-const pluginNameOf = (identifier: string) => identifier.slice(0, Math.max(0, identifier.lastIndexOf('@'))) || identifier
+const pluginNameOf = pluginNameOfKey
 
 async function handleUninstall(
   payload: PluginsBridgeActionMap['uninstall']['payload'],
