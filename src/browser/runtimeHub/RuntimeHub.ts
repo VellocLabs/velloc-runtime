@@ -277,7 +277,10 @@ export class RuntimeHub {
     void configureProviderHealthLedger(createProviderHealthStore(webUiBridge))
     this.stopNotingProviderConfigs = onRuntimeProviderConfigsChanged(() => noteProviderConfigs(runtimeProviderConfigs()))
     // …and so does a provider module's `$.provider.setSecrets` (sealed host-side).
-    lendProviderHostSources({ writeProviderConfig: (id, config) => providersHost.writeProviderConfig(id, config) })
+    lendProviderHostSources({
+      writeProviderConfig: (id, config) => providersHost.writeProviderConfig(id, config),
+      ...(providersHost.removeProviderConfig ? { removeProviderConfig: id => providersHost.removeProviderConfig!(id) } : {}),
+    })
     this.context = {
       fs: webUiBridge.fs,
       host: transport ? hostBridgeOver(transport, () => host.createBridgeRequestId()) : null,

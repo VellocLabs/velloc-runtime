@@ -72,6 +72,7 @@ export async function seedOpencodeZenProvider(
           activeProviderId: OPENCODE_ZEN_PROVIDER_ID,
           configs: { [OPENCODE_ZEN_PROVIDER_ID]: opencodeZenSeedConfig() },
           ...(prev?.order ? { order: prev.order } : {}),
+          ...(prev?.retiredInstances ? { retiredInstances: prev.retiredInstances } : {}),
         }
       })
     }

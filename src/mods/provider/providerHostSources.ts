@@ -14,6 +14,8 @@ export type ProviderHostSources = {
   hostEnvironment?: () => { userAgent?: string; locale?: string } | null | undefined
   /** The `providers.upsert` write path (sealing, publish and broadcast follow). */
   writeProviderConfig?: (providerId: string, config: NexusProviderConfig) => Promise<void>
+  /** The `providers.remove` write path: the entry and its sealed values go. */
+  removeProviderConfig?: (providerId: string) => Promise<void>
 }
 
 let sources: ProviderHostSources = {}

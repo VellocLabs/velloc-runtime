@@ -79,6 +79,9 @@ export type RuntimeProvidersHost = {
   /** Replace one provider's settings.json config through the `providers`
    *  write path. `apiKey` absent = keep the stored key. */
   writeProviderConfig(providerId: string, config: NexusProviderConfig): Promise<void>
+  /** Remove one provider's settings.json config through the `providers`
+   *  write path. Absent: this host removes none. */
+  removeProviderConfig?(providerId: string): Promise<void>
   readCache(providerId: string): Promise<string | undefined>
   writeCache(providerId: string, text: string): Promise<void>
   /** Publish the current `NEXUS_MODEL_CONFIG` to the host (`model.publishCatalog`)

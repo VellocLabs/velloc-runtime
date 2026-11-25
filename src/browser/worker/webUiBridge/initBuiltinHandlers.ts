@@ -660,6 +660,18 @@ export function createRuntimeProvidersHost(ctx: WebUiBridgeContext): RuntimeProv
       )
       if (!response.ok) throw new Error(response.error.message)
     },
+    async removeProviderConfig(providerId) {
+      const settingsRoot = await settingsRootForProviders(ctx)
+      const response = await handleProvidersBridgeRequest(
+        {
+          id: `runtime-provider-${crypto.randomUUID()}`,
+          route: createBridgeRoute('providers', 'remove'),
+          payload: { id: providerId },
+        } as never,
+        providersAdapterContext(ctx, settingsRoot),
+      )
+      if (!response.ok) throw new Error(response.error.message)
+    },
     async readCache(providerId) {
       try {
         return await ctx.fs.readFile(joinPath(await cacheDir(), `${providerId}.json`), {

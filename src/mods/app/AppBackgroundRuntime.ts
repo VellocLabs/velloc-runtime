@@ -748,6 +748,8 @@ export class AppBackgroundRuntime {
         signal: controller.signal,
         accepts: () => true,
         budgetMs: timeoutMs,
+        // What a `$` call of the hook is told it was made during.
+        scope: { event },
       })
       return { result }
     } catch (error) {
@@ -947,10 +949,18 @@ export class AppBackgroundRuntime {
     }
     if (call.noun === 'provider' && module.ref.settingsFor) {
       const calls = this.options.providerCalls
-      return await serveSettingsAppProviderCall(module.ref.settingsFor, call.method, call.args, {
-        reload: calls?.reload ?? (() => Promise.resolve()),
-        ...(calls?.peers ? { peers: calls.peers } : {}),
-      })
+      const during = (call.scope as { event?: unknown } | undefined)?.event
+      return await serveSettingsAppProviderCall(
+        module.ref.settingsFor,
+        call.method,
+        call.args,
+        {
+          reload: calls?.reload ?? (() => Promise.resolve()),
+          ...(calls?.peers ? { peers: calls.peers } : {}),
+          ...(calls?.instances ? { instances: calls.instances } : {}),
+        },
+        during === 'app.action' ? 'action' : during === 'app.start' ? 'start' : 'other',
+      )
     }
     if (call.noun === 'usage') {
       return await serveUsageCall(usageGrantOf(module.ref.settingsFor, module.ref.builtin), call.method, call.args, this.options.usage)

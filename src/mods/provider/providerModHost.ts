@@ -456,6 +456,23 @@ export class ProviderModHost {
     return result
   }
 
+  /**
+   * The provider definitions the router `routerId` manages, in manifest
+   * order, each with the owner of its instances' entries. Empty for an id
+   * that is not a registered router. A managed definition with no instance
+   * has no registration, so this reads the plugin's manifest.
+   */
+  managedDefinitions(routerId: string): Array<{ provider: ResolvedProvider; owner: string }> {
+    for (const plugin of this.lastScan?.enabled ?? []) {
+      if (!this.entries.has(plugin.name)) continue
+      const router = plugin.providers?.find(provider => provider.id === routerId && provider.manifest.kind === 'router')
+      if (!router) continue
+      const owner = pluginConfigId(plugin)
+      return plugin.providers!.filter(provider => provider.manifest.managedBy === router.key).map(provider => ({ provider, owner }))
+    }
+    return []
+  }
+
   /** The version a plugin's providers are registered at, if they are. */
   registeredVersion(pluginName: string): string | undefined {
     return this.entries.get(pluginName)?.version

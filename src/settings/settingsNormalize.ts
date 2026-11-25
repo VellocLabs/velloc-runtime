@@ -225,6 +225,7 @@ export function normalizeSettings(
       activeProviderId?: unknown
       configs?: unknown
       order?: unknown
+      retiredInstances?: unknown
     }
     const out_: NonNullable<NexusSettingsV1['providers']> = { configs: {} }
     if (
@@ -381,10 +382,19 @@ export function normalizeSettings(
     }
     const order = normaliseProviderOrder(rawProv.order)
     if (order.length > 0) out_.order = order
+    if (rawProv.retiredInstances && typeof rawProv.retiredInstances === 'object' && !Array.isArray(rawProv.retiredInstances)) {
+      const retired: Record<string, string[]> = {}
+      for (const [definition, slots] of Object.entries(rawProv.retiredInstances as Record<string, unknown>)) {
+        const kept = Array.isArray(slots) ? slots.filter((slot): slot is string => typeof slot === 'string' && slot.length > 0) : []
+        if (kept.length > 0) retired[definition] = [...new Set(kept)]
+      }
+      if (Object.keys(retired).length > 0) out_.retiredInstances = retired
+    }
     if (
       out_.activeProviderId !== undefined
       || Object.keys(out_.configs).length > 0
       || out_.order !== undefined
+      || out_.retiredInstances !== undefined
     ) {
       out.providers = out_
     }

@@ -1,12 +1,15 @@
 /**
  * `$.provider` in the background module of a provider's settings app (F-27,
- * F-40): `peers()`, `reload()`, `clearState({ provider, model? })`, each on
+ * F-40): `peers()`, `reload()`, `clearState({ provider, model? })`, and for a
+ * router the instances of the providers it manages (`definitions`,
+ * `instances`, `addInstance`, `renameInstance`, `removeInstance`), each on
  * the one provider that names the app as its `settingsApp`.
  * Security: the bound provider is fixed by the manifest, never by the module;
  * `peers` and `clearState` are a router's and stay inside its `routesTo`.
  */
 
 import { insideRoutesTo } from '../../models/drivers/providerRouter'
+import type { InstanceCallPhase, InstanceCalls } from '../provider/providerInstanceCalls'
 import type {
   ClearPeerStatePayload,
   ClearPeerStateResult,
@@ -23,9 +26,11 @@ export type SettingsAppBinding = {
 }
 
 /** The `$.provider` methods a settings app's background module may call. */
-export const SETTINGS_APP_PROVIDER_METHODS: readonly string[] = Object.freeze(['peers', 'reload', 'clearState'])
+const INSTANCE_METHODS: readonly string[] = Object.freeze(['definitions', 'instances', 'addInstance', 'renameInstance', 'removeInstance'])
 
-const ROUTER_ONLY: readonly string[] = Object.freeze(['peers', 'clearState'])
+export const SETTINGS_APP_PROVIDER_METHODS: readonly string[] = Object.freeze(['peers', 'reload', 'clearState', ...INSTANCE_METHODS])
+
+const ROUTER_ONLY: readonly string[] = Object.freeze(['peers', 'clearState', ...INSTANCE_METHODS])
 
 /** How long `reload()` calls are folded into one run. */
 export const SETTINGS_APP_RELOAD_FOLD_MS = 10_000
@@ -94,6 +99,8 @@ export type SettingsAppProviderDeps = {
   peers?: () => SettingsAppPeerSource | undefined | Promise<SettingsAppPeerSource | undefined>
   /** Folded per provider (`createReloadFolder`). */
   reload: (providerId: string) => Promise<void>
+  /** The instance calls; absent: they fail as unavailable. */
+  instances?: () => InstanceCalls | undefined | Promise<InstanceCalls | undefined>
 }
 
 /** Serves one call, after `refuseSettingsAppProviderCall` let it through. */
@@ -102,12 +109,24 @@ export async function serveSettingsAppProviderCall(
   method: string,
   args: readonly unknown[],
   deps: SettingsAppProviderDeps,
+  /** The event whose hook made the call. */
+  phase: InstanceCallPhase = 'other',
 ): Promise<unknown> {
   const refused = refuseSettingsAppProviderCall(method, binding)
   if (refused) throw notAllowed(refused)
   if (method === 'reload') {
     await deps.reload(binding.providerId)
     return undefined
+  }
+  if (INSTANCE_METHODS.includes(method)) {
+    const calls = await deps.instances?.()
+    if (!calls) throw named('NotSupportedError', `$.provider.${method}: provider instances are not available in this build`)
+    const router = binding.providerId
+    if (method === 'definitions') return calls.definitions(router)
+    if (method === 'instances') return calls.instances(router)
+    if (method === 'addInstance') return await calls.add(router, args[0], phase)
+    if (method === 'renameInstance') return await calls.rename(router, args[0])
+    return await calls.remove(router, args[0], phase)
   }
   const source = await deps.peers?.()
   if (!source) throw named('NotSupportedError', `$.provider.${method}: the peers table is not available in this build`)

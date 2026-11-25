@@ -303,6 +303,11 @@ export type NexusProvidersSettings = {
    * default model.
    */
   order?: string[]
+  /**
+   * By provider definition id: the slots of the instances that were removed.
+   * A slot listed here is never given to a new instance of that definition.
+   */
+  retiredInstances?: Record<string, string[]>
 }
 
 /** The flat top-level auto-memory keys; absent falls back to env vars, then the

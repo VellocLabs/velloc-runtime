@@ -32,6 +32,7 @@ import type { ProviderModelFamilies } from '../../../models/drivers/modelFamilie
 import { sanitizeUserModels } from '../../../config/nexusModelConfig/userModels'
 import { getProviderDefinition, modProviderDefinitions } from '../../../config/nexusModelConfig/providers'
 import { declaredSecretNames } from '../../../config/nexusModelConfig/providerDefinition'
+import { instanceSlotOf } from '../../../mods/provider/providerInstances'
 import { isModProviderId } from '../../../mods/provider/providerManifest'
 import { handleSetModBaseUrl } from './modBaseUrlHandler'
 import {
@@ -187,6 +188,7 @@ export async function sealPersistedProviderApiKeys(ctx: {
         : {}),
       configs: nextConfigs,
       ...(prev?.order ? { order: prev.order } : {}),
+      ...(prev?.retiredInstances ? { retiredInstances: prev.retiredInstances } : {}),
     }
     })
   } catch (err) {
@@ -527,6 +529,7 @@ async function handleUpsert(
       ...(prev?.activeProviderId || promote ? { activeProviderId: prev?.activeProviderId ?? payload.id } : {}),
       configs: { ...(prev?.configs ?? {}) },
       ...(prev?.order ? { order: prev.order } : {}),
+      ...(prev?.retiredInstances ? { retiredInstances: prev.retiredInstances } : {}),
     }
     // The WebUI never holds the key, so its form cannot echo it back:
     // absent `apiKey` = keep the stored one, `""` = clear it (the explicit
@@ -632,10 +635,21 @@ async function handleRemove(
     // The order is kept whole: it names providers, not configs, and a
     // removed built-in that is re-added returns to where the user put it.
     const order = prev?.order
+    // A removed instance gives its slot up for good: what was kept under its
+    // id is never read by a later instance of the same definition.
+    const slot = removed?.definition ? instanceSlotOf(removed.definition, payload.id) : undefined
+    const retiredInstances =
+      slot !== undefined && removed?.definition
+        ? {
+            ...prev?.retiredInstances,
+            [removed.definition]: [...new Set([...(prev?.retiredInstances?.[removed.definition] ?? []), slot])],
+          }
+        : prev?.retiredInstances
     if (
       Object.keys(nextConfigs).length === 0
       && nextActive === undefined
       && !order?.length
+      && !retiredInstances
     ) {
       return undefined
     }
@@ -643,6 +657,7 @@ async function handleRemove(
       activeProviderId: nextActive,
       configs: nextConfigs,
       ...(order ? { order } : {}),
+      ...(retiredInstances ? { retiredInstances } : {}),
     }
   })
   const configs = updated.providers?.configs ?? {}
@@ -692,6 +707,7 @@ async function handleSetActive(
       activeProviderId: payload.id,
       configs: { ...(prev?.configs ?? {}) },
       ...(prev?.order ? { order: prev.order } : {}),
+      ...(prev?.retiredInstances ? { retiredInstances: prev.retiredInstances } : {}),
     }
   })
   const effectiveConfigs = updated.providers?.configs ?? {}
