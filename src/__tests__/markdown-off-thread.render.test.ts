@@ -13,6 +13,7 @@ import type { Root } from 'hast'
 
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { MarkdownText } from '../components/assistant-ui/markdown-text'
+import { AssistantText } from '../components/assistant-ui/assistant-text'
 import { markdownToHast } from '../components/assistant-ui/markdown-hast'
 import {
   MarkdownParseClient,
@@ -38,9 +39,6 @@ const LARGE = OFF_THREAD_PARSE_LIMITS.tableRows + 20
 class HeldParser implements MarkdownParser {
   readonly sent: string[] = []
   private readonly waiting: Array<() => void> = []
-  cached(): Root | undefined {
-    return undefined
-  }
   parse(text: string): Promise<Root> {
     this.sent.push(text)
     return new Promise((resolve) => this.waiting.push(() => resolve(markdownToHast(text))))
@@ -56,8 +54,10 @@ let setText: (text: string) => void = () => {}
 let setRunning: (running: boolean) => void = () => {}
 
 const AssistantMessage: FC = () =>
-  createElement(MessagePrimitive.Parts, { components: { Text: MarkdownText } })
+  createElement(MessagePrimitive.Parts, { components: { Text: TextPart } })
 const UserMessage: FC = () => null
+
+let TextPart: FC = MarkdownText
 
 function Thread({ initial, running: startRunning }: { initial: string; running: boolean }) {
   const [text, set] = useState(initial)
@@ -97,6 +97,7 @@ const unparsed = (root: HTMLElement) =>
   root.querySelector('[data-slot="markdown-unparsed"]')?.textContent ?? ''
 
 afterEach(() => {
+  TextPart = MarkdownText
   cleanup()
   setMarkdownParseClient(null)
   vi.restoreAllMocks()
@@ -165,6 +166,54 @@ describe('a large streaming part', () => {
     expect(markdownRows(container)).toBe(LARGE)
     await parser.finishAll()
     expect(markdownRows(container)).toBe(LARGE + 1)
+  })
+})
+
+describe('a large reply in the conversation row', () => {
+  it('keeps its off-thread tree when it remounts as the reply settles', async () => {
+    TextPart = AssistantText
+    const parser = new HeldParser()
+    setMarkdownParseClient(parser)
+    const { container } = render(createElement(Thread, { initial: table(LARGE), running: true }))
+    await parser.finishAll()
+    expect(markdownRows(container)).toBe(LARGE)
+    await act(async () => setText(table(LARGE + 3)))
+    await act(async () => setRunning(false))
+    // Settled, the row draws through the mod site: a new MarkdownText that
+    // still draws the last tree and waits for the final one, never inline.
+    expect(markdownRows(container)).toBe(LARGE)
+    expect(unparsed(container)).toContain(`| ${LARGE + 2} | r${LARGE + 2} |`)
+    await parser.finishAll()
+    expect(markdownRows(container)).toBe(LARGE + 3)
+    expect(parser.sent.map((s) => s.split('\n').length)).toEqual([table(LARGE), table(LARGE + 3)].map((s) => s.split('\n').length))
+  })
+})
+
+describe('a reply that grows past the off-thread limits', () => {
+  it('keeps the formatting it had until the first tree lands', async () => {
+    const parser = new HeldParser()
+    setMarkdownParseClient(parser)
+    const small = table(OFF_THREAD_PARSE_LIMITS.tableRows - 5)
+    const { container } = render(createElement(Thread, { initial: small, running: true }))
+    await act(async () => setText(table(LARGE)))
+    expect(markdownRows(container)).toBe(OFF_THREAD_PARSE_LIMITS.tableRows - 5)
+    expect(unparsed(container)).toContain(`| ${LARGE - 1} | r${LARGE - 1} |`)
+    await parser.finishAll()
+    expect(markdownRows(container)).toBe(LARGE)
+  })
+
+  it('shows the current text, not a stale tree, when the text is replaced', async () => {
+    const parser = new HeldParser()
+    setMarkdownParseClient(parser)
+    const { container } = render(createElement(Thread, { initial: table(LARGE), running: true }))
+    await parser.finishAll()
+    const replaced = 'replaced\n\n' + table(LARGE)
+    await act(async () => setText(replaced))
+    expect(markdownRows(container)).toBe(0)
+    expect(unparsed(container)).toBe(replaced)
+    await parser.finishAll()
+    expect(markdownRows(container)).toBe(LARGE)
+    expect(container.textContent).toContain('replaced')
   })
 })
 

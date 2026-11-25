@@ -5,14 +5,13 @@ import {
   type SyntaxHighlighterProps,
   unstable_memoizeMarkdownComponents as memoizeMarkdownComponents,
 } from "@assistant-ui/react-markdown";
-import remarkGfm from "remark-gfm";
-import { memo, useDeferredValue, useMemo, useRef, useSyncExternalStore } from "react";
-import { TextMessagePartProvider, useAssistantState } from "@assistant-ui/react";
+import { memo, useDeferredValue, useId, useMemo, useRef, useSyncExternalStore } from "react";
+import { TextMessagePartProvider, useAssistantState, useAui } from "@assistant-ui/react";
 import type { Root } from "hast";
 
 import { sharedMarkdownComponents } from "@/components/assistant-ui/markdown-components";
 import { TURN_SETTLED_KEY } from "@/browser/webview/turnSettled";
-import { remarkFilePaths } from "@/components/assistant-ui/remarkFilePaths";
+import { CONVERSATION_REMARK_PLUGINS } from "@/components/assistant-ui/markdown-hast";
 import { MermaidDiagram } from "@/components/assistant-ui/mermaid-diagram";
 import { GraphvizDiagram } from "@/components/assistant-ui/graphviz-diagram";
 import {
@@ -21,12 +20,12 @@ import {
 } from "@/components/assistant-ui/shell-command-block";
 import { SHELL_FENCE_LANGUAGES } from "@/components/assistant-ui/shell-command";
 import { usePartLineAttrs, useRevealSelf } from "./part-line-context";
-import { HeavyTextBlock, useHeavyText } from "./heavy-text-block";
+import { HeavyTextBlock } from "./heavy-text-block";
 import { isHeavyText, measureText, parsesOffThread } from "@/utils/textHeaviness";
 import {
   type ParsedMarkdown,
-  hasParsedMarkdown,
   useOffThreadMarkdown,
+  useOffThreadPath,
 } from "./off-thread-markdown";
 
 // ```mermaid / ```dot / ```graphviz fences render as SVG diagrams. The
@@ -93,21 +92,25 @@ const MarkdownTextImpl = () => {
     const value = (s.part as { text?: unknown }).text;
     return typeof value === "string" ? value : "";
   });
+  const measure = useMemo(() => measureText(text), [text]);
   // A heavy part is never handed to the Markdown parser, which re-parses the
   // whole text on every streamed update (F-9).
-  const heavy = useHeavyText(text);
+  const heavy = isHeavyText(measure);
   // A large part that streams is parsed in a Worker and drawn from the newest
   // tree, so no update re-parses it on the main thread. It stays there once it
-  // settles; a settled part loaded later renders inline, once (F-9).
-  const large = useMemo(() => parsesOffThread(measureText(text)), [text]);
+  // settles, across a remount; a settled part loaded later renders inline,
+  // once (F-9).
   const running = useAssistantState((s) => s.part.status?.type === "running");
-  const streamedOffThread = useRef(false);
-  if (large && !heavy && (running || hasParsedMarkdown(text))) streamedOffThread.current = true;
-  const offThread = large && !heavy && streamedOffThread.current;
+  const partKey = usePartKey();
+  const onPath = useOffThreadPath(partKey, parsesOffThread(measure), running);
+  const offThread = onPath && !heavy;
   // A landed tree or a status flip redraws the whole part; deferring both lets
   // React split that render across tasks while the text keeps updating.
-  const parsed = useDeferredValue(useOffThreadMarkdown(offThread ? text : null));
+  const parsed = useDeferredValue(useOffThreadMarkdown(partKey, offThread ? text : null));
   const drawnRunning = useDeferredValue(running);
+  // The last text drawn inline, still under the off-thread limits: it keeps
+  // its formatting until the first tree lands.
+  const lastInline = useRef<string | null>(null);
   if (heavy) {
     return (
       <div ref={revealRef} className="min-w-0 max-w-full" {...lineAttrs}>
@@ -122,13 +125,23 @@ const MarkdownTextImpl = () => {
         className="min-w-0 max-w-full wrap-break-word"
         {...lineAttrs}
       >
-        {parsed ? (
-          <ParsedMarkdownText parsed={parsed} running={drawnRunning} />
-        ) : null}
-        <UnparsedText text={unparsedTail(text, parsed)} />
+        {parsed && text.startsWith(parsed.text) ? (
+          <>
+            <ParsedMarkdownText parsed={parsed} running={drawnRunning} />
+            <UnparsedText text={text.slice(parsed.text.length)} />
+          </>
+        ) : lastInline.current !== null && text.startsWith(lastInline.current) ? (
+          <>
+            <InlineMarkdownText text={lastInline.current} running={drawnRunning} />
+            <UnparsedText text={text.slice(lastInline.current.length)} />
+          </>
+        ) : (
+          <UnparsedText text={text} />
+        )}
       </div>
     );
   }
+  lastInline.current = text;
   return (
     // `min-w-0` lets the bubble shrink; `wrap-break-word` keeps long tokens
     // (CJK runs, URLs, base64 — common in pasted formatted paragraphs) from
@@ -139,7 +152,7 @@ const MarkdownTextImpl = () => {
       {...lineAttrs}
     >
       <MarkdownTextPrimitive
-        remarkPlugins={[remarkGfm, remarkFilePaths]}
+        remarkPlugins={CONVERSATION_REMARK_PLUGINS}
         className="aui-md"
         smooth={smooth}
         preprocess={parsableText}
@@ -160,10 +173,16 @@ function parsableText(text: string): string {
 
 const defaultComponents = memoizeMarkdownComponents(sharedMarkdownComponents);
 
-/** Text that arrived after the newest parse, shown as-is until the next one. */
-function unparsedTail(text: string, parsed: ParsedMarkdown | null): string {
-  if (!parsed) return text;
-  return text.startsWith(parsed.text) ? text.slice(parsed.text.length) : "";
+/** A part's identity across remounts: its message and its index in it. */
+function usePartKey(): string {
+  const aui = useAui();
+  const messageId = useAssistantState((s) => s.message.id);
+  const ownId = useId();
+  const part = aui.part;
+  const query = part.source === "message" ? (part.query as { type?: string; index?: unknown }) : null;
+  return query?.type === "index" && typeof query.index === "number"
+    ? `${messageId}:${query.index}`
+    : ownId;
 }
 
 function UnparsedText({ text }: { text: string }) {
@@ -181,6 +200,27 @@ const NO_PLUGINS: never[] = [];
 function treeOf(tree: Root) {
   return () => () => tree;
 }
+
+/** A fixed small text parsed in the render once, while the first tree is on its way. */
+const InlineMarkdownText = memo(function InlineMarkdownText({
+  text,
+  running,
+}: {
+  text: string;
+  running: boolean;
+}) {
+  return (
+    <TextMessagePartProvider text={text} isRunning={running}>
+      <MarkdownTextPrimitive
+        remarkPlugins={CONVERSATION_REMARK_PLUGINS}
+        className="aui-md"
+        smooth={false}
+        components={defaultComponents}
+        componentsByLanguage={componentsByLanguage}
+      />
+    </TextMessagePartProvider>
+  );
+});
 
 /**
  * Draws a finished off-thread parse through the same primitive, components

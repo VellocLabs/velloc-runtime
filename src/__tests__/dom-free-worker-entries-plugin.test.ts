@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 
-import { DOM_FREE_WORKER_ENTRIES } from '../../vite/domFreeWorkerEntriesPlugin'
+import { DOM_FREE_WORKER_ENTRIES, domFreeWorkerEntriesPlugin } from '../../vite/domFreeWorkerEntriesPlugin'
 
 describe('domFreeWorkerEntriesPlugin', () => {
   it.each(Object.entries(DOM_FREE_WORKER_ENTRIES))(
@@ -15,4 +15,13 @@ describe('domFreeWorkerEntriesPlugin', () => {
       expect(readFileSync(entry, 'utf8')).not.toMatch(/\bdocument\b/)
     },
   )
+
+  it('aliases each package for the page and its Workers, in build and dev alike', () => {
+    const config = (domFreeWorkerEntriesPlugin().config as () => { resolve: { alias: Array<{ find: RegExp; replacement: string }> } })()
+    for (const [name, entry] of Object.entries(DOM_FREE_WORKER_ENTRIES)) {
+      const alias = config.resolve.alias.find((a) => a.find.test(name))!
+      expect(alias.replacement).toBe(entry)
+      expect(alias.find.test(`${name}/index.dom.js`)).toBe(false)
+    }
+  })
 })

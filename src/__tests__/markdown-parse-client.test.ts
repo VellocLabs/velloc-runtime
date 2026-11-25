@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import { markdownToHast } from '../components/assistant-ui/markdown-hast'
+import { CONVERSATION_REMARK_PLUGINS, markdownToHast } from '../components/assistant-ui/markdown-hast'
 import { MarkdownParseClient } from '../components/assistant-ui/off-thread-markdown'
 import {
   OFF_THREAD_PARSE_LIMITS,
@@ -15,6 +15,7 @@ type Posted = { id: number; text: string }
 class FakeWorker {
   onmessage: ((event: MessageEvent) => void) | null = null
   onerror: ((event: Event) => void) | null = null
+  onmessageerror: ((event: MessageEvent) => void) | null = null
   readonly posted: Posted[] = []
   terminated = false
   postMessage(message: Posted) {
@@ -31,7 +32,7 @@ class FakeWorker {
 afterEach(() => vi.restoreAllMocks())
 
 describe('MarkdownParseClient', () => {
-  it('parses in the Worker it spawns once, and keeps the newest trees', async () => {
+  it('parses in the Worker it spawns once, matching replies by id', async () => {
     const worker = new FakeWorker()
     const spawn = vi.fn(() => worker as unknown as Worker)
     const client = new MarkdownParseClient(spawn)
@@ -45,10 +46,36 @@ describe('MarkdownParseClient', () => {
     worker.reply({ id: worker.posted[0].id, tree: markdownToHast('a *b*') })
     expect(await first).toEqual(markdownToHast('a *b*'))
     expect(await second).toEqual(markdownToHast('c'))
-    expect(client.cached('a *b*')).toEqual(markdownToHast('a *b*'))
+  })
 
-    await client.parse('a *b*')
-    expect(worker.posted).toHaveLength(2)
+  it('re-runs a request inline when the Worker does not answer in time, and stops using it', async () => {
+    vi.useFakeTimers()
+    try {
+      const worker = new FakeWorker()
+      const spawn = vi.fn(() => worker as unknown as Worker)
+      const client = new MarkdownParseClient(spawn, 1_000)
+      const result = client.parse('**slow**')
+      await vi.advanceTimersByTimeAsync(1_000)
+      expect(worker.terminated).toBe(true)
+      await vi.runAllTimersAsync()
+      expect(await result).toEqual(markdownToHast('**slow**'))
+      const after = client.parse('next')
+      await vi.runAllTimersAsync()
+      await after
+      expect(spawn).toHaveBeenCalledTimes(1)
+      expect(worker.posted).toHaveLength(1)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('re-runs in-flight requests inline when a reply cannot be read', async () => {
+    const worker = new FakeWorker()
+    const client = new MarkdownParseClient(() => worker as unknown as Worker)
+    const result = client.parse('_x_')
+    worker.onmessageerror?.({} as MessageEvent)
+    expect(worker.terminated).toBe(true)
+    expect(await result).toEqual(markdownToHast('_x_'))
   })
 
   it('rejects a request the Worker answered with an error', async () => {
@@ -93,6 +120,10 @@ describe('markdownToHast', () => {
     expect(code.position).toBeDefined()
     expect(tree.position).toBeUndefined()
     expect(json.match(/"position"/g)).toHaveLength(1)
+  })
+
+  it('runs the plugin list the inline renderer runs', () => {
+    expect(CONVERSATION_REMARK_PLUGINS).toHaveLength(2)
   })
 
   it('marks file paths in prose like the inline renderer', () => {

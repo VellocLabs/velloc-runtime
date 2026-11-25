@@ -1,10 +1,13 @@
-import { unified } from "unified";
+import { unified, type PluggableList } from "unified";
 import remarkParse from "remark-parse";
 import remarkGfm from "remark-gfm";
 import remarkRehype from "remark-rehype";
 import type { Nodes, Root } from "hast";
 
 import { remarkFilePaths } from "@/components/assistant-ui/remarkFilePaths";
+
+/** The remark plugins of the conversation's Markdown, inline and off-thread alike. */
+export const CONVERSATION_REMARK_PLUGINS: PluggableList = [remarkGfm, remarkFilePaths];
 
 /**
  * The conversation's Markdown pipeline up to hast: the same parser, plugins
@@ -16,7 +19,7 @@ import { remarkFilePaths } from "@/components/assistant-ui/remarkFilePaths";
  */
 const processor = unified()
   .use(remarkParse)
-  .use([remarkGfm, remarkFilePaths])
+  .use(CONVERSATION_REMARK_PLUGINS)
   .use(remarkRehype, { allowDangerousHtml: true });
 
 export function markdownToHast(text: string): Root {
