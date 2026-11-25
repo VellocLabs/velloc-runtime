@@ -11,15 +11,23 @@ import { buildKeyFromBuildTime } from '../../branding/buildInfo'
  */
 export function buildEntryUrl(workerHref: string, buildIso: string | null): string | null {
   const key = buildIso ? buildKeyFromBuildTime(buildIso) : ''
-  if (!key) return null
+  return key ? buildEntryUrlForKey(workerHref, key) : null
+}
+
+/**
+ * Build-entry URL on `href`'s origin and version root for a build key; null for a malformed key or
+ * a href whose path does not start with `/runtime/v<N>/`. Security: only a key of the build-key
+ * shape reaches the path, so the result never leaves that origin's version root. Pure.
+ */
+export function buildEntryUrlForKey(href: string, key: string): string | null {
+  if (!/^[0-9]{8}T[0-9]{9}Z$/.test(key)) return null
   let url: URL
   try {
-    url = new URL(workerHref)
+    url = new URL(href)
   } catch {
     return null
   }
   const m = /^\/runtime\/v([0-9]+)\//.exec(url.pathname)
   if (!m) return null
-  const versionPath = `/runtime/v${m[1]}/`
-  return `${url.origin}${versionPath}b/${key}/`
+  return `${url.origin}/runtime/v${m[1]}/b/${key}/`
 }

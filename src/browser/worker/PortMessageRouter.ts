@@ -151,8 +151,10 @@ export class PortMessageRouter {
 
     switch (message.type) {
       case 'runtime.build': {
-        // Pages in other processes read this lock to learn which build's runtime is alive.
+        // Pages in other processes read this lock to learn which build's runtime is alive. Only
+        // the first page names it, so each page is told which lock to watch.
         runtimeAliveLock.hold(typeof message.build === 'string' ? message.build : null)
+        port.postMessage({ type: 'runtime.alive', ...(runtimeAliveLock.state() ?? {}) })
         return
       }
 

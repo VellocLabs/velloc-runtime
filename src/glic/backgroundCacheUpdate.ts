@@ -208,6 +208,24 @@ type RestartGate = () => Promise<boolean>
  */
 type RuntimeRetire = () => Promise<boolean>
 
+// sessionStorage: the build key a desktop window moved to so it runs the live
+// runtime's build (browser/boot/runtimeBuildFollow.ts, the same key string).
+const BUILD_FOLLOWED_KEY = 'nexus.buildFollowedTo'
+
+/** The version root a desktop window left to follow the runtime's build, when
+ *  it sits on that build's entry; null otherwise. Such a page's own manifest is
+ *  the entry's and never changes, so updates are checked and applied at the
+ *  root. A remote page (`<base>` pinned to an entry) never moved and is left
+ *  alone. */
+function followedFromRoot(): string | null {
+  let followed: string | null = null
+  try { followed = sessionStorage.getItem(BUILD_FOLLOWED_KEY) } catch { return null }
+  if (!followed) return null
+  const m = /^(\/runtime\/v[0-9]+\/)b\/([^/]+)\/$/.exec(location.pathname)
+  if (!m || m[2] !== followed) return null
+  return `${location.origin}${m[1]}`
+}
+
 // Per page lifetime. A fresh boot starts over from the page's own meta, so
 // nothing here can outlive the page it describes (a localStorage record could
 // outlive a cleared HTTP cache and pin the page to the old build).
@@ -227,7 +245,7 @@ function checkOnce(): Promise<void> {
   // desktop's listener shows its bare origin in the address bar and pins a
   // `<base>` to the entry it was really served from (remotePairing.ts). With
   // no `<base>` — the desktop — the two are the same URL.
-  const documentUrl = document.baseURI
+  const documentUrl = followedFromRoot() ?? document.baseURI
   const manifestUrl = new URL('./assets-manifest.json', documentUrl).href
   // The warm-state record's key: the version root and each immutable entry
   // have their own manifest, and may be different builds.
@@ -340,6 +358,7 @@ function maybeReload(): Promise<void> {
   const gate = (window as { __nexusRestartGate?: RestartGate }).__nexusRestartGate
   if (typeof gate !== 'function') return Promise.resolve()
   const build = stagedBuild
+  const root = followedFromRoot()
   return gate().then(
     (ready) => {
       // Re-check: the user may have come back, or opened a form, while the
@@ -353,7 +372,8 @@ function maybeReload(): Promise<void> {
       reloading = true
       const apply = () => {
         try { sessionStorage.setItem(RELOADED_FOR_KEY, build) } catch { /* noop */ }
-        location.reload()
+        if (root) location.replace(`${root}${location.search}${location.hash}`)
+        else location.reload()
       }
       const retire = (window as { __nexusRuntimeRetire?: RuntimeRetire }).__nexusRuntimeRetire
       if (typeof retire !== 'function') return apply()

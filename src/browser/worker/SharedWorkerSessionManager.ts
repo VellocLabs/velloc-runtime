@@ -1118,7 +1118,7 @@ export class SharedWorkerSessionManager {
         this.maybeAdoptPersistentShells()
       },
       getRestartReadinessInputs: () => this.restartReadinessInputs(),
-      retireRuntime: () => retireRuntimeRealm(),
+      retireRuntime: () => retireRuntimeRealm(() => this.runtimeHub.dispose()),
       flushTrace: () => ({
         records: this.tracer.drain(),
         logEntries: this.workerLogBuffer.drain(),

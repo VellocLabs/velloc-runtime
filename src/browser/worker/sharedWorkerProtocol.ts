@@ -308,6 +308,13 @@ export type SessionCard = {
 export type SharedWorkerOutboundMessage =
   | (AgentWorkerOutboundMessage & { sessionId: string })
   | {
+      // The answer to `runtime.build`, to that port only: the alive lock the page watches, or
+      // `retiring` when the runtime is about to end and the page should load again.
+      type: 'runtime.alive'
+      lock?: string
+      retiring?: true
+    }
+  | {
       // Manager-sourced broadcast of the session's saved "next message".
       // Emitted when a running-session submit is appended to
       // `SessionEntry.pendingMessage` (`reason:'appended'`, full text) and when

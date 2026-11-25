@@ -58,6 +58,8 @@ async function bootUpdater({
   // null = no retire call registered: the page reloads without one.
   retire = null as ReturnType<typeof vi.fn> | null,
   session = memoryStorage(),
+  // The page's address; the version root unless a test moves it to a build entry.
+  address = ROOT,
 } = {}): Promise<Harness> {
   const fetched: string[] = []
   let now = 1_000_000
@@ -78,13 +80,14 @@ async function bootUpdater({
 
   vi.spyOn(Date, 'now').mockImplementation(() => now)
   vi.stubGlobal('window', win)
-  vi.stubGlobal('location', Object.assign(new URL(ROOT), { reload }))
+  const replace = vi.fn()
+  vi.stubGlobal('location', Object.assign(new URL(address), { reload, replace }))
   vi.stubGlobal('localStorage', memoryStorage())
   vi.stubGlobal('sessionStorage', session)
   vi.stubGlobal('navigator', { language: 'en-US' })
   vi.stubGlobal('setInterval', (fn: Listener) => { interval = fn; return 1 })
   vi.stubGlobal('document', {
-    baseURI: ROOT,
+    baseURI: address,
     get visibilityState() { return state },
     addEventListener: (type: string, fn: Listener) => { (docListeners[type] ??= []).push(fn) },
     querySelector: (sel: string) =>
@@ -94,20 +97,22 @@ async function bootUpdater({
     getElementById: (id: string) =>
       id === 'nexus-locales' ? { textContent: JSON.stringify({ en: 'x' }) } : null,
   })
+  // A page on a build entry is served by the version root it came from.
+  const root = address.includes('/b/') ? new URL('../../', address).href : ROOT
   vi.stubGlobal('fetch', async (input: string) => {
     const url = String(input)
     fetched.push(url)
-    if (url === MANIFEST_URL) {
+    if (url === `${root}assets-manifest.json`) {
       return new Response(JSON.stringify({
         buildId: served,
         assets: [{ url: `assets/index-${served}.js`, type: 'js' }],
       }), { status: 200 })
     }
-    if (url === ROOT) {
+    if (url === root) {
       if (htmlFails) throw new TypeError('network')
       return new Response('<html></html>', { status: 200 })
     }
-    if (url.startsWith(`${ROOT}assets/`)) {
+    if (url.startsWith(`${root}assets/`)) {
       if (chunksFail) throw new TypeError('network')
       return new Response('chunk', { status: 200 })
     }
@@ -297,6 +302,22 @@ describe('backgroundCacheUpdate — apply', () => {
     await h.fire('blur')
     expect(order).toEqual(['retire', 'retire', 'reload'])
     expect(h.session.getItem('nexus.updateReloadedFor')).toBe(NEW_BUILD)
+  })
+
+  it('on the build entry it followed, checks the version root and applies by going back to it', async () => {
+    const session = memoryStorage()
+    const key = '20260925T043208561Z'
+    session.setItem('nexus.buildFollowedTo', key)
+    const root = `${ORIGIN}/runtime/v12/`
+    const address = `${root}b/${key}/`
+    const h = await bootUpdater({ servedBuild: NEW_BUILD, visibility: 'hidden', session, address })
+    await h.run()
+    expect(h.fetched).toContain(`${root}assets-manifest.json`)
+    expect(h.fetched).not.toContain(`${address}assets-manifest.json`)
+    expect(h.reload).not.toHaveBeenCalled()
+    const replace = (location as unknown as { replace: ReturnType<typeof vi.fn> }).replace
+    expect(replace).toHaveBeenCalledWith(root)
+    expect(session.getItem('nexus.updateReloadedFor')).toBe(NEW_BUILD)
   })
 
   it('never reloads a visible page — it waits until the page is hidden', async () => {

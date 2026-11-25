@@ -3,7 +3,9 @@ import { isRuntimeHostPage, runRuntimeHostPage } from '../browser/boot/runtimeHo
 import {
   RUNTIME_LOSS_MAX_RELOADS,
   RUNTIME_LOSS_WINDOW_MS,
+  RUNTIME_ALIVE_ANSWER_MS,
   reloadWhenRuntimeLost,
+  watchRuntimeAlive,
 } from '../browser/boot/runtimeLossReload'
 import { BridgeRequestRouter } from '../browser/worker/BridgeRequestRouter'
 import {
@@ -365,5 +367,73 @@ describe('reloadWhenRuntimeLost', () => {
     const reload = vi.fn()
     await reloadWhenRuntimeLost({ locks: null, reload })
     expect(reload).not.toHaveBeenCalled()
+  })
+})
+
+describe('watchRuntimeAlive', () => {
+  const OTHER_LOCK = 'velloc-runtime-alive:20261002T080000000Z'
+
+  function rig() {
+    let onMessage: ((event: MessageEvent) => void) | undefined
+    const port = {
+      postMessage: vi.fn(),
+      addEventListener: vi.fn((_type: string, fn: unknown) => { onMessage = fn as (event: MessageEvent) => void }),
+      removeEventListener: vi.fn(),
+    } as unknown as Pick<MessagePort, 'postMessage' | 'addEventListener' | 'removeEventListener'> & {
+      postMessage: ReturnType<typeof vi.fn>
+      removeEventListener: ReturnType<typeof vi.fn>
+    }
+    const watched: string[] = []
+    const locks = {
+      query: async () => ({ held: [{ name: OTHER_LOCK }, { name: RUNTIME_ALIVE_LOCK }] }),
+      request: vi.fn(async (name: string) => { watched.push(name) }),
+    } as unknown as Pick<LockManager, 'request' | 'query'>
+    const store = new Map<string, string>()
+    const storage = {
+      getItem: (key: string) => store.get(key) ?? null,
+      setItem: (key: string, value: string) => void store.set(key, value),
+    }
+    const reload = vi.fn()
+    let timer: (() => void) | undefined
+    const setTimer = vi.fn((fn: () => void) => { timer = fn })
+    const deps = { locks, reload, storage, sleep: async () => {}, now: () => 1_000_000, setTimer, lockName: RUNTIME_ALIVE_LOCK }
+    return {
+      port, watched, reload, setTimer, deps, store,
+      answer: (data: unknown) => onMessage?.({ data } as MessageEvent),
+      timeout: () => timer?.(),
+    }
+  }
+
+  it('says the build and watches the lock the runtime names, even another build\'s', async () => {
+    const r = rig()
+    const watching = watchRuntimeAlive(r.port, '2026-09-17T10:30:00.000Z', r.deps)
+    expect(r.port.postMessage).toHaveBeenCalledWith({ type: 'runtime.build', build: '2026-09-17T10:30:00.000Z' })
+    expect(r.setTimer).toHaveBeenCalledWith(expect.any(Function), RUNTIME_ALIVE_ANSWER_MS)
+    r.answer({ type: 'other' })
+    r.answer({ type: 'runtime.alive', lock: OTHER_LOCK })
+    await watching
+    expect(r.watched).toEqual([OTHER_LOCK])
+    expect(r.reload).toHaveBeenCalledTimes(1)
+    expect(r.port.removeEventListener).toHaveBeenCalled()
+  })
+
+  it('reloads at once, counted against the cap, when the runtime is retiring', async () => {
+    const r = rig()
+    const watching = watchRuntimeAlive(r.port, '', r.deps)
+    r.answer({ type: 'runtime.alive', retiring: true })
+    await watching
+    expect(r.watched).toEqual([])
+    expect(r.reload).toHaveBeenCalledTimes(1)
+    expect(JSON.parse(r.store.get('nexus.runtimeLossReloads') ?? '[]')).toHaveLength(1)
+  })
+
+  it('watches the page\'s own lock when no answer comes in time, and only once', async () => {
+    const r = rig()
+    const watching = watchRuntimeAlive(r.port, '', r.deps)
+    r.timeout()
+    r.answer({ type: 'runtime.alive', lock: OTHER_LOCK })
+    await watching
+    expect(r.watched).toEqual([RUNTIME_ALIVE_LOCK])
+    expect(r.reload).toHaveBeenCalledTimes(1)
   })
 })

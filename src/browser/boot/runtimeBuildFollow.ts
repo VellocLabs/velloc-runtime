@@ -9,13 +9,14 @@
  * build entries and never moves. (P-2)
  */
 import { readBuildTimeFromDocument } from '../../branding/buildInfo'
+import { buildEntryUrlForKey } from '../runtimeHub/buildEntry'
 import {
   RUNTIME_DEV_BUILD_KEY,
   liveRuntimeBuildKeys,
   runtimeBuildKey,
 } from '../worker/runtimeAliveLock'
 
-/** `sessionStorage`: the build key this tab last moved to, so one target is tried once. */
+/** `sessionStorage`: the build key this tab last moved to, so one target is tried once per entry. */
 export const BUILD_FOLLOWED_KEY = 'nexus.buildFollowedTo'
 
 const VERSION_ROOT = /^(\/runtime\/v[0-9]+\/)(?:b\/([^/]+)\/)?/
@@ -90,8 +91,12 @@ export async function followLiveRuntimeBuild(deps: BuildFollowDeps = {}): Promis
     }
 
     const target = live[0]
-    if (target === RUNTIME_DEV_BUILD_KEY || target === followed) return false
-    const entry = `${location.origin}${path.root}b/${target}/`
+    if (target === RUNTIME_DEV_BUILD_KEY) return false
+    // One try per target, while the page sits on that target's entry: a page that came back to
+    // the version root may follow again.
+    if (target === followed && path.entryKey === followed) return false
+    const entry = buildEntryUrlForKey(`${location.origin}${location.pathname}`, target)
+    if (!entry) return false
     const probe = await (deps.fetch ?? ((url: string) => fetch(url, { credentials: 'same-origin' })))(entry)
     if (!probe.ok) return false
     write(storage, target)

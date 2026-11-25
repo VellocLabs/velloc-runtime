@@ -68,7 +68,7 @@ import { renderShell } from './renderShell'
 import { createRuntimeConnections } from './runtimeConnections'
 import { installUpdateRestartGate } from './updateRestartGate'
 import { holdRuntimeKeepAliveLock } from './runtimeKeepAlive'
-import { reloadWhenRuntimeLost } from './runtimeLossReload'
+import { watchRuntimeAlive } from './runtimeLossReload'
 import { fetchManagedBinaryRegistry } from '../../utils/binaryRegistry'
 import { isTraceLogUrlFlagEnabled } from '../../utils/traceLogGate'
 import type {
@@ -660,9 +660,8 @@ async function prepareNexusBoot(
   nexusTrace('created shared worker for direct bridge')
   const sharedWorkerPort = sharedWorker.port
   sharedWorker.port.start()
-  sharedWorker.port.postMessage({ type: 'runtime.build', build: getBuildTime() })
   // The runtime runs in another process: if that process ends, load again.
-  void reloadWhenRuntimeLost()
+  void watchRuntimeAlive(sharedWorker.port, getBuildTime())
   sharedWorker.port.postMessage(
     { type: 'bridge.setPort' },
     [workerPort],

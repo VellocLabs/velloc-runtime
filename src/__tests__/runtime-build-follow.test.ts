@@ -11,11 +11,14 @@ import {
 } from '../browser/boot/runtimeBuildFollow'
 import { createRuntimeRetire, installUpdateRestartGate } from '../browser/boot/updateRestartGate'
 import type { RuntimeConnection } from '../browser/runtimeClient/RuntimeConnection'
+import { PortMessageRouter } from '../browser/worker/PortMessageRouter'
 import {
   RUNTIME_RETIRE_DELAY_MS,
   createRuntimeAliveLock,
+  isRuntimeBuildKey,
   liveRuntimeBuildKeys,
   retireRuntimeRealm,
+  runtimeAliveLock,
   runtimeAliveLockName,
   runtimeBuildKey,
 } from '../browser/worker/runtimeAliveLock'
@@ -39,11 +42,14 @@ describe('the alive lock name', () => {
         { name: 'other' },
         { name: `velloc-runtime-alive:${OLD_KEY}` },
         { name: 'velloc-runtime-alive:' },
+        { name: 'velloc-runtime-alive:../../evil' },
+        { name: 'velloc-runtime-alive://evil.example/x' },
+        { name: 'velloc-runtime-alive:dev' },
         { name: `velloc-runtime-alive:${NEW_KEY}` },
         { name: `velloc-runtime-alive:${OLD_KEY}` },
         {},
       ]),
-    ).toEqual([OLD_KEY, NEW_KEY])
+    ).toEqual([OLD_KEY, 'dev', NEW_KEY])
     expect(liveRuntimeBuildKeys(undefined)).toEqual([])
   })
 })
@@ -99,18 +105,72 @@ describe('createRuntimeAliveLock', () => {
   it('is a no-op where Web Locks does not exist', () => {
     expect(createRuntimeAliveLock(null).hold(OLD_ISO)).toBe(false)
   })
+
+  it('reports the lock it holds, then retiring once released', () => {
+    const { locks } = fakeLocks()
+    const lock = createRuntimeAliveLock(locks)
+    expect(lock.state()).toBeNull()
+    lock.hold(OLD_ISO)
+    lock.hold(NEW_ISO)
+    expect(lock.state()).toEqual({ lock: `velloc-runtime-alive:${OLD_KEY}` })
+    lock.release()
+    expect(lock.state()).toEqual({ retiring: true })
+  })
+})
+
+describe('isRuntimeBuildKey', () => {
+  it('accepts a build key and the dev key only', () => {
+    expect(isRuntimeBuildKey(OLD_KEY)).toBe(true)
+    expect(isRuntimeBuildKey('dev')).toBe(true)
+    for (const bad of ['', '..', 'a/b', `${OLD_KEY}/`, `${OLD_KEY}?x`, '20260917T103000Z', 'https://x']) {
+      expect(isRuntimeBuildKey(bad)).toBe(false)
+    }
+  })
+})
+
+describe('runtime.build on the worker port', () => {
+  it('takes the lock for the first build and tells every page which lock it holds', () => {
+    const router = new PortMessageRouter({} as never)
+    const first = { postMessage: vi.fn() } as unknown as MessagePort
+    const second = { postMessage: vi.fn() } as unknown as MessagePort
+    const state = vi.spyOn(runtimeAliveLock, 'state').mockReturnValue({ lock: `velloc-runtime-alive:${OLD_KEY}` })
+    const hold = vi.spyOn(runtimeAliveLock, 'hold').mockReturnValue(true)
+    router.handle(first, { data: { type: 'runtime.build', build: OLD_ISO } } as MessageEvent)
+    router.handle(second, { data: { type: 'runtime.build', build: 42 } } as MessageEvent)
+    expect(hold.mock.calls).toEqual([[OLD_ISO], [null]])
+    for (const port of [first, second]) {
+      expect(port.postMessage).toHaveBeenCalledWith({ type: 'runtime.alive', lock: `velloc-runtime-alive:${OLD_KEY}` })
+    }
+    state.mockReturnValue({ retiring: true })
+    router.handle(second, { data: { type: 'runtime.build', build: NEW_ISO } } as MessageEvent)
+    expect(second.postMessage).toHaveBeenLastCalledWith({ type: 'runtime.alive', retiring: true })
+    state.mockRestore()
+    hold.mockRestore()
+  })
 })
 
 describe('retireRuntimeRealm', () => {
-  it('lets the lock go at once and closes the realm after the answer delay', () => {
+  it('lets the lock go at once, then says goodbye and closes the realm after the answer delay', () => {
     const release = vi.fn()
     const close = vi.fn()
+    const order: string[] = []
+    const beforeClose = vi.fn(() => { order.push('bye') })
+    close.mockImplementation(() => { order.push('close') })
     const timers: Array<{ fn: () => void; ms: number }> = []
-    retireRuntimeRealm({ release }, { close }, (fn, ms) => timers.push({ fn, ms }))
+    retireRuntimeRealm(beforeClose, { release }, { close }, (fn, ms) => timers.push({ fn, ms }))
     expect(release).toHaveBeenCalledTimes(1)
+    expect(beforeClose).not.toHaveBeenCalled()
     expect(close).not.toHaveBeenCalled()
     expect(timers.map(t => t.ms)).toEqual([RUNTIME_RETIRE_DELAY_MS])
     timers[0].fn()
+    expect(order).toEqual(['bye', 'close'])
+  })
+
+  it('closes the realm even when the goodbye throws', () => {
+    const close = vi.fn()
+    const timers: Array<() => void> = []
+    retireRuntimeRealm(() => { throw new Error('x') }, { release: vi.fn() }, { close }, fn => timers.push(fn))
+    expect(() => timers[0]()).toThrow('x')
     expect(close).toHaveBeenCalledTimes(1)
   })
 })
@@ -194,9 +254,31 @@ describe('followLiveRuntimeBuild', () => {
   })
 
   it('tries one target once: an entry that did not give that build is not loaded again', async () => {
-    const p = page({ live: [OLD_KEY], followed: OLD_KEY })
+    const p = page({ live: [OLD_KEY], pathname: `/runtime/v12/b/${OLD_KEY}/`, followed: OLD_KEY })
     expect(await p.run()).toBe(false)
     expect(p.fetch).not.toHaveBeenCalled()
+  })
+
+  it('follows again from the version root even when that target was followed before', async () => {
+    const p = page({ live: [OLD_KEY], followed: OLD_KEY })
+    expect(await p.run()).toBe(true)
+    expect(p.replace).toHaveBeenCalledWith(`${ORIGIN}/runtime/v12/b/${OLD_KEY}/?product=Velloc#x=1`)
+  })
+
+  it('never navigates for a malformed key in a lock name', async () => {
+    for (const bad of ['..', 'x/../../evil', '%2e%2e']) {
+      const p = page({ live: [bad] })
+      expect(await p.run()).toBe(false)
+      expect(p.fetch).not.toHaveBeenCalled()
+      expect(p.replace).not.toHaveBeenCalled()
+    }
+  })
+
+  it('stays when the entry probe fails on the network', async () => {
+    const p = page({ live: [OLD_KEY] })
+    p.fetch.mockRejectedValueOnce(new TypeError('network'))
+    expect(await p.run()).toBe(false)
+    expect(p.replace).not.toHaveBeenCalled()
   })
 
   it('goes back to the version root once no runtime is alive, only from the entry it moved to', async () => {

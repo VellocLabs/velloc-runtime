@@ -22,7 +22,14 @@ export function runtimeAliveLockName(buildKey: string): string {
   return `${RUNTIME_ALIVE_LOCK_PREFIX}${buildKey}`
 }
 
-/** The build keys of the runtimes alive now, read from held lock names. */
+const BUILD_KEY = /^[0-9]{8}T[0-9]{9}Z$/
+
+/** Security: a key read from a lock name becomes a URL path segment, so only these two shapes pass. */
+export function isRuntimeBuildKey(key: string): boolean {
+  return key === RUNTIME_DEV_BUILD_KEY || BUILD_KEY.test(key)
+}
+
+/** The build keys of the runtimes alive now, read from held lock names; malformed names are skipped. */
 export function liveRuntimeBuildKeys(
   held: ReadonlyArray<{ name?: string }> | null | undefined,
 ): string[] {
@@ -31,18 +38,26 @@ export function liveRuntimeBuildKeys(
     const name = lock.name
     if (typeof name !== 'string' || !name.startsWith(RUNTIME_ALIVE_LOCK_PREFIX)) continue
     const key = name.slice(RUNTIME_ALIVE_LOCK_PREFIX.length)
-    if (key && !keys.includes(key)) keys.push(key)
+    if (isRuntimeBuildKey(key) && !keys.includes(key)) keys.push(key)
   }
   return keys
 }
 
 type LockRequester = Pick<LockManager, 'request'>
 
+/**
+ * What the worker tells a page that posted `runtime.build`: the lock it holds, which the page
+ * watches, or that it is retiring and about to end.
+ */
+export type RuntimeAliveState = { lock: string } | { retiring: true }
+
 export type RuntimeAliveLock = {
   /** Hold the lock for `buildIso`'s build. Only the first call counts; false where it cannot. */
   hold(buildIso: string | null | undefined): boolean
   /** Give the lock up; a later `hold` does nothing. */
   release(): void
+  /** The held lock, `retiring` once released, null while none was taken. */
+  state(): RuntimeAliveState | null
 }
 
 export function createRuntimeAliveLock(
@@ -50,15 +65,17 @@ export function createRuntimeAliveLock(
 ): RuntimeAliveLock {
   let started = false
   let released = false
+  let name: string | null = null
   let letGo: (() => void) | null = null
   return {
     hold(buildIso) {
       if (started || released) return started
       if (!locks) return false
       started = true
+      name = runtimeAliveLockName(runtimeBuildKey(buildIso))
       try {
         void locks
-          .request(runtimeAliveLockName(runtimeBuildKey(buildIso)), () => {
+          .request(name, () => {
             if (released) return undefined
             return new Promise<void>(resolve => {
               letGo = resolve
@@ -69,6 +86,7 @@ export function createRuntimeAliveLock(
           })
         return true
       } catch {
+        name = null
         return false
       }
     },
@@ -76,6 +94,10 @@ export function createRuntimeAliveLock(
       released = true
       letGo?.()
       letGo = null
+    },
+    state() {
+      if (released) return { retiring: true }
+      return name === null ? null : { lock: name }
     },
   }
 }
@@ -88,13 +110,21 @@ export const RUNTIME_RETIRE_DELAY_MS = 100
 
 /**
  * End this worker realm for a web-build update: let the alive lock go now, so no page follows this
- * build any more, and close the realm once the caller has its answer.
+ * build any more; once the caller has its answer, run `beforeClose` (which says goodbye to every
+ * connection) and close the realm.
  */
 export function retireRuntimeRealm(
+  beforeClose: () => void = () => {},
   lock: Pick<RuntimeAliveLock, 'release'> = runtimeAliveLock,
   realm: { close?: () => void } = globalThis as { close?: () => void },
   later: (fn: () => void, ms: number) => unknown = setTimeout,
 ): void {
   lock.release()
-  later(() => realm.close?.(), RUNTIME_RETIRE_DELAY_MS)
+  later(() => {
+    try {
+      beforeClose()
+    } finally {
+      realm.close?.()
+    }
+  }, RUNTIME_RETIRE_DELAY_MS)
 }

@@ -8,7 +8,7 @@ import { getProductName } from '../branding/productName'
 import { nexusBootAndRender } from '../browser/boot/nexusBoot'
 import { isRuntimeHostPage, runRuntimeHostPage } from '../browser/boot/runtimeHostPage'
 import { followLiveRuntimeBuildOnce } from '../browser/boot/runtimeBuildFollow'
-import { reloadWhenRuntimeLost } from '../browser/boot/runtimeLossReload'
+import { watchRuntimeAlive } from '../browser/boot/runtimeLossReload'
 import {
   readRemotePairing,
   reloadOnPairingLink,
@@ -162,9 +162,8 @@ async function main(): Promise<void> {
     ])
     const worker = createBrowserRuntimeSharedWorker()
     worker.port.start()
-    worker.port.postMessage({ type: 'runtime.build', build: getBuildTime() })
     // A runtime that retired for an update, or ended alone, is replaced by loading again.
-    void reloadWhenRuntimeLost()
+    void watchRuntimeAlive(worker.port, getBuildTime())
     void runRuntimeHostPage({ workerPort: worker.port, installKernelHost: installKernelWindowHost })
     return
   }
