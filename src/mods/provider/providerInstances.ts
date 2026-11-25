@@ -4,7 +4,8 @@
  * person set it up, with its own id, credentials, picks and state. The
  * definition's own id is its first instance; each further one is
  * `<definition id>.<slot>`, stored in settings.json with `definition` naming
- * what it belongs to.
+ * what it belongs to. A definition a router manages (`managedBy`) has no
+ * first instance under its own id: every instance of it is a stored one.
  *
  * An instance id is opaque. `instanceSlotOf` is the one reader of its text,
  * and it is used to check a stored id, never to learn what an instance
@@ -75,11 +76,17 @@ export function storedInstanceIds(
     .map(([id]) => id)
 }
 
+/** How many stored instances of a definition are registered. */
+function storedInstanceLimit(provider: ResolvedProvider): number {
+  if (provider.manifest.instances === 'multiple') return Number.POSITIVE_INFINITY
+  return provider.manifest.managedBy !== undefined ? 1 : 0
+}
+
 /**
  * A plugin's providers with one entry per instance: each definition as it
- * is (its first instance), then the stored instances of a definition that
- * allows several. A stored instance of a definition that allows one is left
- * out and reported.
+ * is (its first instance; none for a managed definition), then its stored
+ * instances, as many as it allows, oldest first. A stored instance beyond
+ * that is left out and reported.
  */
 export function withStoredInstances(
   providers: readonly ResolvedProvider[],
@@ -89,14 +96,12 @@ export function withStoredInstances(
 ): ResolvedProvider[] {
   const out: ResolvedProvider[] = []
   for (const provider of providers) {
-    out.push(provider)
+    if (provider.manifest.managedBy === undefined) out.push(provider)
     const stored = storedInstanceIds(provider.id, owner, configs)
-    if (stored.length === 0) continue
-    if (provider.manifest.instances !== 'multiple') {
-      report(`${provider.id}: ${stored.join(', ')} not registered: the provider allows one instance`)
-      continue
-    }
-    for (const id of stored) out.push({ ...provider, id, definition: provider.id })
+    const limit = storedInstanceLimit(provider)
+    const extra = stored.slice(limit)
+    if (extra.length > 0) report(`${provider.id}: ${extra.join(', ')} not registered: the provider allows one instance`)
+    for (const id of stored.slice(0, limit)) out.push({ ...provider, id, definition: provider.id })
   }
   return out
 }

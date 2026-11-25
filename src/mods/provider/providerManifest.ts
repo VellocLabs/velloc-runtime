@@ -937,12 +937,15 @@ function checkProvider(key: string, id: string, raw: unknown, errors: string[]):
   if (raw.instances !== undefined && raw.instances !== 'single') {
     if (raw.instances !== 'multiple') bad('instances: must be "single" or "multiple"')
     else if (router) bad('instances: a router has one instance')
-    else if (id.length + INSTANCE_ID_RESERVE > PROVIDER_ID_MAX_LENGTH) {
-      bad(
-        `instances: the provider id "${id}" is ${id.length} characters; with "multiple" the most is ` +
-          `${PROVIDER_ID_MAX_LENGTH - INSTANCE_ID_RESERVE}, so that an instance id fits`,
-      )
-    } else multiple = true
+    else multiple = true
+  }
+  // An instance id is the definition's and a slot: both kinds carry one.
+  if ((multiple || raw.managedBy !== undefined) && id.length + INSTANCE_ID_RESERVE > PROVIDER_ID_MAX_LENGTH) {
+    bad(
+      `${multiple ? 'instances' : 'managedBy'}: the provider id "${id}" is ${id.length} characters; here the most is ` +
+        `${PROVIDER_ID_MAX_LENGTH - INSTANCE_ID_RESERVE}, so that an instance id fits`,
+    )
+    multiple = false
   }
 
   const displayName = localized(raw.displayName, 'displayName', bad)

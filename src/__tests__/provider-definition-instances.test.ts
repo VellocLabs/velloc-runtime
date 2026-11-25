@@ -614,3 +614,48 @@ describe('what a module keeps per instance', () => {
     expect(() => call('installId', { provider: `${FREE}.a1b2` })).toThrow(/not a provider of this module/)
   })
 })
+
+describe('a definition a router manages', () => {
+  const ROUTER_ENTRY = { providerApi: 1, kind: 'router', routesTo: '*', displayName: 'Router', credentials: { methods: ['anonymous'] }, module: './providers/router.js' }
+  const MANAGED = {
+    router: ROUTER_ENTRY,
+    keyed: entry({ instances: 'multiple', managedBy: 'router' }),
+    free: entry({ managedBy: 'router', credentials: { methods: ['anonymous'] } }),
+  }
+  const ids = (configs: Record<string, NexusProviderConfig>, report: string[] = []) =>
+    withStoredInstances(plugin(MANAGED).providers!, OWNER, configs, line => report.push(line)).map(p => p.id)
+
+  it('has no instance under its own id: only what is stored is registered', () => {
+    expect(ids({})).toEqual([`mod.${PLUGIN}.router`])
+    expect(ids(TWO_STORED)).toEqual([`mod.${PLUGIN}.router`, WORK, HOME_ACCOUNT])
+  })
+
+  it('that allows one instance registers its one stored instance, and reports a second', () => {
+    const report: string[] = []
+    const configs = {
+      [`${FREE}.b2b2`]: stored({ definition: FREE, createdAt: NOW + 1 }),
+      [`${FREE}.a1a1`]: stored({ definition: FREE, createdAt: NOW }),
+    }
+    expect(ids(configs, report)).toEqual([`mod.${PLUGIN}.router`, `${FREE}.a1a1`])
+    expect(report).toEqual([expect.stringContaining(`${FREE}.b2b2`)])
+  })
+
+  it('is refused when an instance id would not fit, whatever "instances" says', () => {
+    const name = 'p'.repeat(26)
+    const key = 'k'.repeat(32)
+    const { manifest, errors } = checkPluginDescriptor({
+      name,
+      version: '1.0.0',
+      providers: { router: ROUTER_ENTRY, [key]: entry({ managedBy: 'router' }) },
+    })
+    expect(errors).toEqual([expect.stringMatching(/managedBy: .*63 characters.*55/)])
+    expect(Object.keys(manifest!.providers!)).toEqual(['router'])
+  })
+
+  it('every instance row names the manager, so only that router reaches it', async () => {
+    const { modProviderDefinition } = await import('../mods/provider/modProviderDefinition')
+    const [, keyed] = plugin(MANAGED).providers!
+    const row = modProviderDefinition({ plugin: PLUGIN, provider: { ...keyed!, id: WORK, definition: KEYED }, isLoaded: () => false })
+    expect(row.catalogMod).toMatchObject({ definition: KEYED, managedBy: `mod.${PLUGIN}.router` })
+  })
+})
