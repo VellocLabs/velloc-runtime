@@ -16,10 +16,11 @@ import { HEAVY_TEXT_LIMITS } from '../utils/textHeaviness'
 // The enclosing check reads the part through one subscription and the Markdown
 // primitive through another; this stands for a render in which the check has
 // not seen the newest text yet.
-vi.mock('../components/assistant-ui/heavy-text-block', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('../components/assistant-ui/heavy-text-block')>()),
-  useHeavyText: () => false,
-}))
+vi.mock('../components/assistant-ui/heavy-text-block', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../components/assistant-ui/heavy-text-block')>()
+  const { measureText } = await import('../utils/textHeaviness')
+  return { ...actual, useTextMeasure: () => measureText('') }
+})
 
 /**
  * The Markdown parser never receives a part's text once it is over a

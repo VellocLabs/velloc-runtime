@@ -343,6 +343,7 @@ export default defineConfig(({ mode }) => ({
       bundledTemplateRegistryPlugin(),
       builtinModsPlugin(),
       xtermHeadlessWorkerPlugin(),
+      domFreeWorkerEntriesPlugin(),
       notices.collector(),
       asciiRegexLiteralsPlugin(),
     ],

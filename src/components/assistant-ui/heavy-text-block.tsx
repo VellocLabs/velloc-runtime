@@ -2,11 +2,16 @@ import { useMemo } from "react";
 
 import { cn } from "@/lib/utils";
 import { useT } from "@/browser/webview/i18n";
-import { isHeavyText, measureText } from "@/utils/textHeaviness";
+import { isHeavyText, measureText, type TextHeaviness } from "@/utils/textHeaviness";
+
+/** The measures of `text`, taken once per distinct text (F-9). */
+export function useTextMeasure(text: string): TextHeaviness {
+  return useMemo(() => measureText(text), [text]);
+}
 
 /** True when `text` is over a heavy-text limit; measured once per distinct text (F-9). */
 export function useHeavyText(text: string): boolean {
-  return useMemo(() => isHeavyText(measureText(text)), [text]);
+  return isHeavyText(useTextMeasure(text));
 }
 
 /**

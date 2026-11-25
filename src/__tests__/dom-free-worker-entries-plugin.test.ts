@@ -16,12 +16,21 @@ describe('domFreeWorkerEntriesPlugin', () => {
     },
   )
 
-  it('aliases each package for the page and its Workers, in build and dev alike', () => {
-    const config = (domFreeWorkerEntriesPlugin().config as () => { resolve: { alias: Array<{ find: RegExp; replacement: string }> } })()
-    for (const [name, entry] of Object.entries(DOM_FREE_WORKER_ENTRIES)) {
-      const alias = config.resolve.alias.find((a) => a.find.test(name))!
-      expect(alias.replacement).toBe(entry)
-      expect(alias.find.test(`${name}/index.dom.js`)).toBe(false)
+  it('takes the DOM-free entry in a Worker build, and on the page only under a Worker module', async () => {
+    const [name, entry] = Object.entries(DOM_FREE_WORKER_ENTRIES)[0]!
+    const resolveIn = async (isWorker: boolean, chain: string[]) => {
+      const plugin = domFreeWorkerEntriesPlugin()
+      ;(plugin.configResolved as (c: { isWorker: boolean }) => void)({ isWorker })
+      const resolveId = plugin.resolveId as (
+        this: unknown, source: string, importer: string | undefined, options: object,
+      ) => Promise<unknown>
+      const ctx = { resolve: async (source: string) => ({ id: `/nm/${source}.js`, external: false }) }
+      for (let k = 0; k + 1 < chain.length; k++) await resolveId.call(ctx, chain[k + 1]!, chain[k], {})
+      return resolveId.call(ctx, name, chain.at(-1), {})
     }
+    expect(await resolveIn(true, ['/src/any.ts'])).toBe(entry)
+    expect(await resolveIn(false, ['/src/page.tsx'])).toBeNull()
+    expect(await resolveIn(false, ['/src/a/markdown-parse.worker.ts'])).toBe(entry)
+    expect(await resolveIn(false, ['/src/a/markdown-parse.worker.ts', 'micromark', '/nm/micromark.js'])).toBe(entry)
   })
 })

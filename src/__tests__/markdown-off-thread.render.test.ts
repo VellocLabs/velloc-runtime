@@ -217,6 +217,34 @@ describe('a reply that grows past the off-thread limits', () => {
   })
 })
 
+describe('the off-thread state of a part', () => {
+  it('does not carry over to another reply drawn under the same message id', async () => {
+    const parser = new HeldParser()
+    setMarkdownParseClient(parser)
+    const first = render(createElement(Thread, { initial: table(LARGE), running: true }))
+    await parser.finishAll()
+    first.unmount()
+
+    // The short reply draws inline (its smooth reveal starts empty), with no
+    // plain-text block and no tree of the earlier reply.
+    const { container } = render(createElement(Thread, { initial: 'A short answer.', running: true }))
+    expect(container.querySelector('.aui-md')).not.toBeNull()
+    expect(container.querySelector('.aui-md table')).toBeNull()
+    expect(container.querySelector('[data-slot="markdown-unparsed"]')).toBeNull()
+    expect(parser.sent).toEqual([table(LARGE)])
+  })
+
+  it('parses nothing more for a part no longer drawn', async () => {
+    const parser = new HeldParser()
+    setMarkdownParseClient(parser)
+    const view = render(createElement(Thread, { initial: table(LARGE), running: true }))
+    await act(async () => setText(table(LARGE + 1)))
+    view.unmount()
+    await parser.finishAll()
+    expect(parser.sent).toEqual([table(LARGE)])
+  })
+})
+
 describe('a large settled part loaded from the transcript', () => {
   it('renders inline once, with nothing sent off the main thread', () => {
     const parser = new HeldParser()

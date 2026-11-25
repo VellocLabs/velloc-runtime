@@ -1,3 +1,4 @@
+import { useAui } from "@assistant-ui/react";
 import { pointSearchArrowAt } from "@/browser/webview/searchArrow";
 import { emphasizeTerm } from "@/browser/webview/searchEmphasis";
 import { getPartReveal } from "@/browser/webview/partRevealStore";
@@ -50,6 +51,16 @@ export function PartLineProvider({
   return (
     <PartLineContext.Provider value={value}>{children}</PartLineContext.Provider>
   );
+}
+
+/** The index of the part being drawn, when it was drawn by index from its
+ *  message (`PartByIndex`); null otherwise. */
+export function usePartIndex(): number | null {
+  const aui = useAui();
+  const part = aui.part;
+  if (part.source !== "message") return null;
+  const query = part.query as { type?: string; index?: unknown };
+  return query.type === "index" && typeof query.index === "number" ? query.index : null;
 }
 
 /** The current part's transcript line, or null. */

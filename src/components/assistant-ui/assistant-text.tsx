@@ -6,24 +6,15 @@
  * `AssistantA2uiText` and is not raised either.
  */
 import { memo, useMemo } from "react";
-import { useAssistantState, useAui } from "@assistant-ui/react";
+import { useAssistantState } from "@assistant-ui/react";
 
 import { a2uiBlockKeysOfRow } from "@/browser/webview/a2ui/a2uiRowKeys";
 import { countA2uiBlocks, hasA2uiBlock } from "@/toolkit/builtin/a2ui/express/a2uiBlocks";
 import { AssistantA2uiText } from "./assistant-a2ui-text";
 import { MarkdownText } from "./markdown-text";
+import { usePartIndex } from "./part-line-context";
 import { ModAssistantMessageSite, type ModAssistantMessageProps } from "./mod-render";
 import { StaticMarkdown } from "./static-markdown";
-
-/** The index of the part being drawn, when it was drawn by index from its
- *  message (`PartByIndex`); null otherwise. */
-function usePartIndex(): number | null {
-  const aui = useAui();
-  const part = aui.part;
-  if (part.source !== "message") return null;
-  const query = part.query as { type?: string; index?: unknown };
-  return query.type === "index" && typeof query.index === "number" ? query.index : null;
-}
 
 /** Whether a row is the model's reply: a persisted one carries no
  *  `sourceType`; a live one carries `live_events` and, unlike a live system

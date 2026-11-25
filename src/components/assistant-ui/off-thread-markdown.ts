@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { Root } from "hast";
 
 /**
@@ -101,12 +101,12 @@ export class MarkdownParseClient implements MarkdownParser {
 export type ParsedMarkdown = { text: string; tree: Root };
 
 /**
- * One part's off-thread state, kept by its key across remounts: whether it
- * is on the off-thread path, its newest finished tree, and the newest text
- * it wants parsed.
+ * One part's off-thread state, kept by its key across remounts: the start
+ * of the text it was opened for, its newest finished tree, and the newest
+ * text it wants parsed.
  */
 type PartState = {
-  offThread: boolean;
+  head: string;
   parsed: ParsedMarkdown | null;
   wanted: string | null;
   inFlight: string | null;
@@ -114,11 +114,12 @@ type PartState = {
 };
 
 const KEPT_PARTS = 16;
+const HEAD_CHARS = 256;
 
 /**
  * Runs one parse at a time for the whole window and keeps, per part, only
- * the newest text it wants. Part states are kept for the most recent parts
- * only; a part with a listener is never dropped.
+ * the newest text it wants. Only parts on the off-thread path have a state;
+ * the most recent are kept, and one with a listener is never dropped.
  */
 class ParseQueue {
   private busy = false;
@@ -126,24 +127,31 @@ class ParseQueue {
 
   constructor(private readonly parser: () => MarkdownParser) {}
 
-  state(key: string): PartState {
-    let part = this.parts.get(key);
-    if (part) {
-      this.parts.delete(key);
-    } else {
-      part = { offThread: false, parsed: null, wanted: null, inFlight: null, listeners: new Set() };
-    }
+  /** The state of `key` when it is the same reply as `text`, else none. */
+  find(key: string, text: string): PartState | undefined {
+    const part = this.parts.get(key);
+    if (!part) return undefined;
+    if (text.startsWith(part.head) || part.head.startsWith(text)) return part;
+    if (part.listeners.size === 0) this.parts.delete(key);
+    return undefined;
+  }
+
+  open(key: string, text: string): PartState {
+    const known = this.find(key, text);
+    if (known) return known;
+    const part: PartState = {
+      head: text.slice(0, HEAD_CHARS),
+      parsed: null,
+      wanted: null,
+      inFlight: null,
+      listeners: new Set(),
+    };
     this.parts.set(key, part);
-    this.trim();
+    this.trim(key);
     return part;
   }
 
-  peek(key: string): PartState | undefined {
-    return this.parts.get(key);
-  }
-
-  want(key: string, text: string): void {
-    const part = this.state(key);
+  want(part: PartState, text: string): void {
     if (part.parsed?.text === text || part.inFlight === text) {
       part.wanted = null;
       return;
@@ -152,16 +160,22 @@ class ParseQueue {
     this.pump();
   }
 
-  private trim(): void {
+  /** A part no one draws any more parses nothing further. */
+  release(part: PartState, listener: (parsed: ParsedMarkdown) => void): void {
+    part.listeners.delete(listener);
+    if (part.listeners.size === 0) part.wanted = null;
+  }
+
+  private trim(keep: string): void {
     for (const [key, part] of this.parts) {
       if (this.parts.size <= KEPT_PARTS) return;
-      if (part.listeners.size === 0) this.parts.delete(key);
+      if (key !== keep && part.listeners.size === 0) this.parts.delete(key);
     }
   }
 
   private pump(): void {
     if (this.busy) return;
-    for (const [key, part] of this.parts) {
+    for (const part of this.parts.values()) {
       const text = part.wanted;
       if (text === null) continue;
       part.wanted = null;
@@ -171,10 +185,8 @@ class ParseQueue {
         .parse(text)
         .then(
           (tree) => {
-            const current = this.parts.get(key);
-            if (!current) return;
-            current.parsed = { text, tree };
-            for (const listener of current.listeners) listener(current.parsed);
+            part.parsed = { text, tree };
+            for (const listener of part.listeners) listener(part.parsed);
           },
           () => {},
         )
@@ -210,13 +222,18 @@ export function setMarkdownParseClient(next: MarkdownParser | null): void {
 /**
  * Whether the part with `key` is on the off-thread path. It joins when it
  * is `large` while it streams, and stays on it for good, also across a
- * remount (F-9). A part first seen settled is not put on it.
+ * remount, while its key shows the same reply (F-9). A part first seen
+ * settled is not put on it.
  */
-export function useOffThreadPath(key: string, large: boolean, streaming: boolean): boolean {
-  const part = parseQueue().peek(key);
-  if (part?.offThread) return true;
+export function useOffThreadPath(
+  key: string,
+  text: string,
+  large: boolean,
+  streaming: boolean,
+): boolean {
+  if (parseQueue().find(key, text)) return true;
   if (!(large && streaming)) return false;
-  parseQueue().state(key).offThread = true;
+  parseQueue().open(key, text);
   return true;
 }
 
@@ -228,21 +245,31 @@ export function useOffThreadPath(key: string, large: boolean, streaming: boolean
  */
 export function useOffThreadMarkdown(key: string, text: string | null): ParsedMarkdown | null {
   const [parsed, setParsed] = useState<ParsedMarkdown | null>(
-    () => parseQueue().peek(key)?.parsed ?? null,
+    () => (text === null ? null : (parseQueue().find(key, text)?.parsed ?? null)),
   );
+  const subscribed = useRef<PartState | null>(null);
 
   useEffect(() => {
-    const part = parseQueue().state(key);
-    if (part.parsed) setParsed(part.parsed);
-    part.listeners.add(setParsed);
-    return () => {
-      part.listeners.delete(setParsed);
-    };
-  }, [key]);
-
-  useEffect(() => {
-    if (text !== null) parseQueue().want(key, text);
+    const previous = subscribed.current;
+    const part = text === null ? null : parseQueue().open(key, text);
+    if (part !== previous) {
+      if (previous) parseQueue().release(previous, setParsed);
+      subscribed.current = part;
+      if (part) {
+        part.listeners.add(setParsed);
+        if (part.parsed) setParsed(part.parsed);
+      }
+    }
+    if (part && text !== null) parseQueue().want(part, text);
   }, [key, text]);
+
+  useEffect(
+    () => () => {
+      if (subscribed.current) parseQueue().release(subscribed.current, setParsed);
+      subscribed.current = null;
+    },
+    [],
+  );
 
   return parsed;
 }

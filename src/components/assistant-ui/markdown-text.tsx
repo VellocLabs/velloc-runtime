@@ -6,7 +6,7 @@ import {
   unstable_memoizeMarkdownComponents as memoizeMarkdownComponents,
 } from "@assistant-ui/react-markdown";
 import { memo, useDeferredValue, useId, useMemo, useRef, useSyncExternalStore } from "react";
-import { TextMessagePartProvider, useAssistantState, useAui } from "@assistant-ui/react";
+import { TextMessagePartProvider, useAssistantState } from "@assistant-ui/react";
 import type { Root } from "hast";
 
 import { sharedMarkdownComponents } from "@/components/assistant-ui/markdown-components";
@@ -19,8 +19,8 @@ import {
   ShellSyntaxHighlighter,
 } from "@/components/assistant-ui/shell-command-block";
 import { SHELL_FENCE_LANGUAGES } from "@/components/assistant-ui/shell-command";
-import { usePartLineAttrs, useRevealSelf } from "./part-line-context";
-import { HeavyTextBlock } from "./heavy-text-block";
+import { usePartIndex, usePartLineAttrs, useRevealSelf } from "./part-line-context";
+import { HeavyTextBlock, useTextMeasure } from "./heavy-text-block";
 import { isHeavyText, measureText, parsesOffThread } from "@/utils/textHeaviness";
 import {
   type ParsedMarkdown,
@@ -92,7 +92,7 @@ const MarkdownTextImpl = () => {
     const value = (s.part as { text?: unknown }).text;
     return typeof value === "string" ? value : "";
   });
-  const measure = useMemo(() => measureText(text), [text]);
+  const measure = useTextMeasure(text);
   // A heavy part is never handed to the Markdown parser, which re-parses the
   // whole text on every streamed update (F-9).
   const heavy = isHeavyText(measure);
@@ -102,8 +102,7 @@ const MarkdownTextImpl = () => {
   // once (F-9).
   const running = useAssistantState((s) => s.part.status?.type === "running");
   const partKey = usePartKey();
-  const onPath = useOffThreadPath(partKey, parsesOffThread(measure), running);
-  const offThread = onPath && !heavy;
+  const offThread = useOffThreadPath(partKey, text, parsesOffThread(measure), running) && !heavy;
   // A landed tree or a status flip redraws the whole part; deferring both lets
   // React split that render across tasks while the text keeps updating.
   const parsed = useDeferredValue(useOffThreadMarkdown(partKey, offThread ? text : null));
@@ -175,14 +174,10 @@ const defaultComponents = memoizeMarkdownComponents(sharedMarkdownComponents);
 
 /** A part's identity across remounts: its message and its index in it. */
 function usePartKey(): string {
-  const aui = useAui();
   const messageId = useAssistantState((s) => s.message.id);
+  const index = usePartIndex();
   const ownId = useId();
-  const part = aui.part;
-  const query = part.source === "message" ? (part.query as { type?: string; index?: unknown }) : null;
-  return query?.type === "index" && typeof query.index === "number"
-    ? `${messageId}:${query.index}`
-    : ownId;
+  return index === null ? ownId : `${messageId}:${index}`;
 }
 
 function UnparsedText({ text }: { text: string }) {
