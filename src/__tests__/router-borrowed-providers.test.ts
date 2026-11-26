@@ -398,6 +398,31 @@ describe('registration', () => {
     expect(host.registered().map(r => r.providerId)).not.toContain(LENT)
   })
 
+  it('a router whose plugin is refused for another reason lends nothing, and its approval is read once', async () => {
+    const configs: Record<string, NexusProviderConfig> = {
+      [LENT]: lent(),
+      [ROUTER]: { source: 'mod', modOwner: `${HUB}@elsewhere` },
+    }
+    const { host, served } = rig(configs)
+    await host.sync({ enabled: [lender(), borrower()], disabled: [] })
+    expect(host.registered().map(r => r.providerId)).not.toContain(ROUTER)
+    expect(served(LENDER)).not.toContain(LENT)
+    expect(host.registered().map(r => r.providerId)).not.toContain(LENT)
+
+    reset()
+    const asked: string[] = []
+    const marketplace = borrower(BORROWS, 'marketplace:velloc')
+    const approved = rig({ [LENT]: lent() }, {
+      consented: async plugin => {
+        asked.push(plugin.name)
+        return true
+      },
+    })
+    await approved.host.sync({ enabled: [lender(), marketplace], disabled: [] })
+    expect(approved.served(LENDER)).toContain(LENT)
+    expect(asked.filter(name => name === HUB)).toEqual([HUB])
+  })
+
   it('an instance made while the app runs is registered by the next sync, and its definition\'s plugin serves it', async () => {
     const configs: Record<string, NexusProviderConfig> = {}
     const { host, served } = rig(configs)
@@ -497,6 +522,28 @@ describe('registration', () => {
       await host.resync()
       expect(tried).toEqual([LENT, LENT])
       expect(configs).not.toHaveProperty(LENT)
+    })
+
+    it('a removal that fails after the router was uninstalled is tried again too', async () => {
+      const configs = stored()
+      let fail = true
+      const tried: string[] = []
+      const { host } = rig(configs, {
+        removeConfig: async id => {
+          tried.push(id)
+          if (fail) throw new Error('disk full')
+          delete configs[id]
+        },
+      })
+      await host.sync({ enabled: [lender(), borrower()], disabled: [] })
+      await host.sync({ enabled: [lender()], disabled: [] })
+      await host.resync()
+      fail = false
+      await host.resync()
+      expect(tried).toEqual([LENT, LENT, LENT])
+      expect(configs).not.toHaveProperty(LENT)
+      await host.resync()
+      expect(tried).toEqual([LENT, LENT, LENT])
     })
 
     it('reads the orphans from the entries alone', () => {

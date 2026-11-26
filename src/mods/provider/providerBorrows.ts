@@ -7,9 +7,9 @@
  * it, the person meets it in the router's settings app, and it goes when
  * the router does. The stored entry names the router in `managedBy`.
  *
- * Security: a borrowed instance is believed only while a registered router
- * lists its definition in `borrows`, so a hand-written entry cannot hide a
- * provider from the Models page or hand it to a router that never asked.
+ * Security: a borrowed instance is registered only while a registered
+ * router lists its definition in `borrows`, so a hand-written entry cannot
+ * hand a provider to a router that never asked.
  */
 
 import type { NexusProviderConfig } from '../../settings/settingsTypes'

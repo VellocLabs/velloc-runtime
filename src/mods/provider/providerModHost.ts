@@ -27,7 +27,7 @@ import type { NexusProviderConfig } from '../../settings/settingsTypes'
 import { pluginConfigId } from '../modSlot'
 import { modProviderDefinition, safeIconSvg, type ModProviderDefinitionOptions } from './modProviderDefinition'
 import { clearProviderState } from '../../models/drivers/providerHealthLedger'
-import { borrowTableOf, isBorrowable, orphanedBorrowedInstances, type BorrowTable } from './providerBorrows'
+import { borrowTableOf, isBorrowable, orphanedBorrowedInstances } from './providerBorrows'
 import { providerHostSources } from './providerHostSources'
 import { withStoredInstances } from './providerInstances'
 import { INSTANCE_ID_RESERVE, PROVIDER_ID_MAX_LENGTH, type ProviderManifest, type ResolvedProvider } from './providerManifest'
@@ -175,6 +175,8 @@ export class ProviderModHost {
   private scanned = false
   /** The scan the registrations were last brought to. */
   private lastScan: ProviderPluginScan | undefined
+  /** Routers taken away while the app ran whose borrowed instances are not all removed yet. */
+  private readonly departedRouters = new Set<string>()
   private chain: Promise<unknown> = Promise.resolve()
 
   /** Give the host what it needs to build the runtime and read files. */
@@ -282,8 +284,10 @@ export class ProviderModHost {
     // One entry per instance from here on: a stored instance is registered,
     // disabled and taken away with its definition.
     const configs = (options.storedConfigs ?? runtimeProviderConfigs)()
-    const lenders = await this.borrowTable(installed)
-    const borrows = (routerId: string, definitionId: string): boolean => lenders.get(routerId)?.has(definitionId) ?? false
+    // Every lent instance a global router could vouch for; the ones whose
+    // router is not registered by this sync are dropped once that is known.
+    const candidates = borrowTableOf(installed.enabled.filter(plugin => isGlobalPluginSource(plugin.source)))
+    const borrows = (routerId: string, definitionId: string): boolean => candidates.get(routerId)?.has(definitionId) ?? false
     const perInstance = (plugin: ProviderPluginFacts): ProviderPluginFacts =>
       plugin.providers?.length
         ? { ...plugin, providers: withStoredInstances(plugin.providers, pluginConfigId(plugin), configs, options.report, borrows) }
@@ -334,6 +338,18 @@ export class ProviderModHost {
       }
       for (const provider of plugin.providers) claimed.set(provider.id, plugin.name)
       wanted.set(plugin.name, plugin)
+    }
+
+    // Security: a lent instance is registered only while its router is, with
+    // the definition in its `borrows`: approved, not clashing, not foreign.
+    const lenders = borrowTableOf([...wanted.values()])
+    for (const [name, plugin] of wanted) {
+      const kept = plugin.providers!.filter(
+        provider => provider.managedBy === undefined || (lenders.get(provider.managedBy)?.has(provider.definition ?? '') ?? false),
+      )
+      if (kept.length === plugin.providers!.length) continue
+      for (const provider of plugin.providers!) if (!kept.includes(provider)) claimed.delete(provider.id)
+      wanted.set(name, { ...plugin, providers: kept })
     }
 
     let changed = false
@@ -506,23 +522,6 @@ export class ProviderModHost {
   }
 
   /**
-   * What each router may borrow now. Security: only a global plugin's
-   * router counts, and one installed from a registry only once the person
-   * approved its grant.
-   */
-  private async borrowTable(installed: ProviderPluginScan): Promise<BorrowTable> {
-    const options = this.options!
-    const approved: ProviderPluginFacts[] = []
-    for (const plugin of installed.enabled) {
-      if (!isGlobalPluginSource(plugin.source)) continue
-      if (!plugin.providers?.some(provider => provider.manifest.borrows?.length)) continue
-      if (plugin.source.startsWith('marketplace:') && options.consented && !(await options.consented(plugin))) continue
-      approved.push(plugin)
-    }
-    return borrowTableOf(approved)
-  }
-
-  /**
    * A router that was switched off, or taken away while the app ran, takes
    * the instances it borrowed with it: their entries and sealed values are
    * removed. A failed removal is reported and tried again at the next sync.
@@ -537,21 +536,28 @@ export class ProviderModHost {
       plugins.flatMap(plugin => (plugin.providers ?? []).filter(p => p.manifest.kind === 'router').map(p => p.id))
     const present = new Set(routersOf(installed.enabled))
     const disabled = new Set(routersOf(installed.disabled).filter(id => !present.has(id)))
-    const departed = new Set(
-      previous ? routersOf([...previous.enabled, ...previous.disabled]).filter(id => !present.has(id) && !disabled.has(id)) : [],
-    )
-    const orphans = orphanedBorrowedInstances(configs, disabled, departed)
-    if (orphans.length === 0) return
-    const remove = options.removeConfig ?? providerHostSources().removeProviderConfig
-    if (!remove) return
-    for (const id of orphans) {
-      try {
-        await remove(id)
-        clearProviderState(id)
-      } catch (error) {
-        options.report(`${id}: it was lent to a router that is gone and could not be removed: ${error instanceof Error ? error.message : String(error)}`)
+    for (const id of [...this.departedRouters]) if (present.has(id) || disabled.has(id)) this.departedRouters.delete(id)
+    if (previous) {
+      for (const id of routersOf([...previous.enabled, ...previous.disabled])) {
+        if (!present.has(id) && !disabled.has(id)) this.departedRouters.add(id)
       }
     }
+    const orphans = orphanedBorrowedInstances(configs, disabled, this.departedRouters)
+    const remove = options.removeConfig ?? providerHostSources().removeProviderConfig
+    const failed = new Set<string>()
+    if (orphans.length > 0 && remove) {
+      for (const id of orphans) {
+        try {
+          await remove(id)
+          clearProviderState(id)
+        } catch (error) {
+          failed.add(configs[id]?.managedBy ?? '')
+          options.report(`${id}: it was lent to a router that is gone and could not be removed: ${error instanceof Error ? error.message : String(error)}`)
+        }
+      }
+    }
+    if (!remove) return
+    for (const id of [...this.departedRouters]) if (!failed.has(id)) this.departedRouters.delete(id)
   }
 
   /** The version a plugin's providers are registered at, if they are. */
