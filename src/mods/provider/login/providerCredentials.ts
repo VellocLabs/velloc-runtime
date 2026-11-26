@@ -315,7 +315,8 @@ export class ProviderCredentials {
       await this.write(run.providerId, () => {
         if (this.generationOf(run.providerId) !== generation) throw named('AbortError', 'the sign-in ended while it was being written')
         return {
-          secrets: parsed.result.secrets,
+          // A sign-in replaces every declared secret: a name it leaves out is removed.
+          secrets: { ...Object.fromEntries(run.secrets.map(name => [name, ''])), ...parsed.result.secrets },
           account: parsed.result.account ?? null,
           // With no account named, the mark is what says it is signed in.
           signedIn: parsed.result.account === undefined ? true : null,
@@ -627,8 +628,9 @@ export class ProviderCredentials {
   /**
    * Read-modify-write of a provider's settings entry, one at a time per
    * provider. `change` returns what to set. The write path applies `secrets`
-   * name by name (`''` removes one, a name not sent keeps its stored value);
-   * `account` / `tokenExpiresAt` `null` drop the field.
+   * name by name (`''` removes one, a name not sent keeps its stored value),
+   * so a refresh sends only what it answers and a sign-in or sign-out sends
+   * every declared name; `account` / `tokenExpiresAt` `null` drop the field.
    * Everything else of the stored entry - `source`, `modVersion`, picks,
    * verification - rides through, because an upsert replaces the entry.
    */

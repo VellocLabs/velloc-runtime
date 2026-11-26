@@ -62,12 +62,13 @@ function rig() {
       return { raised: false }
     }) as CredentialRuntime['call'],
   }
+  const upsertDeps = { homeDir: HOME, fs, encryptSecret: seal }
   const deps: CredentialDeps = {
     runtime: () => runtime,
     describe: id => (id === ID ? { secrets: ['access_token', 'refresh_token'], methods: ['login'] } : undefined),
     storedConfigOf: id => (id === ID ? entry() : undefined),
     writeConfig: async (id, config) => {
-      await providersHandlers.upsert({ id, config }, { homeDir: HOME, fs, encryptSecret: seal })
+      await providersHandlers.upsert({ id, config }, upsertDeps)
     },
     report: () => {},
   }
@@ -82,7 +83,7 @@ function rig() {
     refreshes.push(answer)
     return service.refresh(ID, 'expiry')
   }
-  return { service, signIn, refresh, stored, entry, refreshCalls }
+  return { service, signIn, refresh, stored, entry, refreshCalls, upsertDeps }
 }
 
 beforeEach(() => {
@@ -143,6 +144,32 @@ describe('a sign-in over an earlier one', () => {
     await r.signIn({ secrets: { access_token: 'at-9', refresh_token: 'rt-9' }, account: 'grace' })
     expect(r.stored()).toEqual({ access_token: 'at-9', refresh_token: 'rt-9' })
     expect(r.entry()?.account).toBe('grace')
+  })
+
+  it('a re-sign-in that omits a name clears it', async () => {
+    const r = rig()
+    await r.signIn({ secrets: { access_token: 'at-1', refresh_token: 'rt-1' } })
+    await r.signIn({ secrets: { access_token: 'at-2' } })
+    expect(r.stored()).toEqual({ access_token: 'at-2' })
+  })
+
+  it('a sign-in as another account leaves none of the earlier account\'s secrets', async () => {
+    const r = rig()
+    await r.signIn({ secrets: { access_token: 'at-1', refresh_token: 'rt-1' }, account: 'ada' })
+    await r.signIn({ secrets: { access_token: 'at-9' }, account: 'grace' })
+    expect(r.stored()).toEqual({ access_token: 'at-9' })
+    expect(r.entry()?.account).toBe('grace')
+  })
+
+  it('clears only the provider\'s declared names', async () => {
+    const r = rig()
+    await r.signIn({ secrets: { access_token: 'at-1', refresh_token: 'rt-1' } })
+    await providersHandlers.upsert(
+      { id: ID, config: { ...r.entry()!, secrets: { extra: 'kept' } } },
+      r.upsertDeps,
+    )
+    await r.signIn({ secrets: { access_token: 'at-2' } })
+    expect(r.stored()).toEqual({ access_token: 'at-2', extra: 'kept' })
   })
 
   it('after a sign-out starts from nothing: a name the new sign-in leaves out is not the old one', async () => {
