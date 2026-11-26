@@ -347,10 +347,47 @@ describe('the router\'s settings app', () => {
     expect(calls.instances(ROUTER)).toMatchObject([{ id: made.id, definition: 'google', borrowed: true, connected: true }])
   })
 
-  it('a key the person\'s own Google Gemini already holds is refused as a duplicate', async () => {
-    const { calls, configs } = rig({ google: { apiKey: 'NEXUSENC1:x', secretFingerprint: 'fp:google:AIza-free-key' } })
-    expect(await calls.add(ROUTER, { definition: 'google' }, 'action')).toMatchObject({ error: { kind: 'duplicate', existing: 'google' } })
+  /** A rig whose dialog records what it was left saying. */
+  function duplicateRig(stored: Record<string, NexusProviderConfig>) {
+    const ended: unknown[] = []
+    const made = rig(stored, {
+      askKey: async (_question, take) => {
+        const taken = await take('AIza-free-key')
+        ended.push(taken.problem)
+        return { answered: taken.value }
+      },
+    })
+    return { ...made, ended }
+  }
+
+  it('a key the person\'s own Google Gemini holds: `duplicate` naming no holder to the router, the dialog names it', async () => {
+    const { calls, configs, ended } = duplicateRig({ google: { apiKey: 'NEXUSENC1:x', name: 'Personal', secretFingerprint: 'fp:google:AIza-free-key' } })
+    const answer = (await calls.add(ROUTER, { definition: 'google' }, 'action')) as { error: Record<string, unknown> }
+    expect(answer.error).toEqual({ kind: 'duplicate', message: expect.any(String) })
+    expect(answer.error.message).not.toMatch(/google|Personal/)
+    expect(ended).toEqual([{ kind: 'duplicate', name: 'Personal' }])
     expect(Object.keys(configs)).toEqual(['google'])
+  })
+
+  it('a key another router\'s instance holds: the same answer, naming no holder to the router', async () => {
+    const { calls, configs, ended } = duplicateRig({
+      'google.aaaa': lent({ managedBy: OTHER_ROUTER, name: 'Theirs', apiKey: 'NEXUSENC1:x', secretFingerprint: 'fp:google:AIza-free-key' }),
+    })
+    const answer = (await calls.add(ROUTER, { definition: 'google' }, 'action')) as { error: Record<string, unknown> }
+    expect(answer.error).toEqual({ kind: 'duplicate', message: expect.any(String) })
+    expect(answer.error.message).not.toMatch(/google\.aaaa|Theirs/)
+    expect(ended).toEqual([{ kind: 'duplicate', name: 'Theirs' }])
+    expect(Object.keys(configs)).toEqual(['google.aaaa'])
+  })
+
+  it('a key the router\'s own instance holds: `duplicate` with that instance and its name', async () => {
+    const { calls, ended } = duplicateRig({
+      'google.bbbb': lent({ name: 'Mine', apiKey: 'NEXUSENC1:x', secretFingerprint: 'fp:google:AIza-free-key' }),
+    })
+    expect(await calls.add(ROUTER, { definition: 'google' }, 'action')).toMatchObject({
+      error: { kind: 'duplicate', existing: 'google.bbbb', name: 'Mine' },
+    })
+    expect(ended).toEqual([{ kind: 'duplicate', name: 'Mine' }])
   })
 
   it('never sees, renames or removes the person\'s own google or an instance lent to another router', async () => {

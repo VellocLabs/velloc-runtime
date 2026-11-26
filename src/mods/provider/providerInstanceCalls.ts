@@ -42,8 +42,11 @@ export type KeyQuestion = KeyRequestAbout
 /** What became of a key: the call's answer, and what the dialog says when no instance was made. */
 export type KeyStored<T> = KeyTaken<T>
 
-/** A sign-in asked of the person for a just-made instance, and how it ended. */
-export type SignInQuestion = KeyRequestAbout & { providerId: string }
+/**
+ * A sign-in asked of the person for a just-made instance, and how it ended.
+ * Always a plugin's: a lent built-in takes a key, never a sign-in.
+ */
+export type SignInQuestion = KeyRequestAbout & { providerId: string; plugin: string }
 export type SignInEnded = { kind: 'done'; account?: string } | { kind: 'failed'; code: string } | { kind: 'cancelled' }
 
 /** The sign-in service as `signIn` needs it. */
@@ -154,7 +157,7 @@ export type InstanceCallError = {
   error: {
     kind: 'single' | 'limit' | 'unsupported' | 'busy' | 'duplicate' | 'failed'
     message: string
-    /** On `duplicate`: the provider or instance that already has the key, and its name. */
+    /** On `duplicate` when the holder is one of the router's own instances: that instance, and its name. */
     existing?: string
     name?: string
   }
@@ -529,11 +532,13 @@ export function createInstanceCalls(deps: InstanceCallsDeps) {
         inSeries(routerId, async () => {
           const holder = await holderOf(definition, key)
           if (holder) {
-            const message = `$.provider.addInstance: this key is already the key of ${holder.name} (${holder.id})`
-            return {
-              value: { error: { kind: 'duplicate' as const, message, existing: holder.id, name: holder.name } },
-              problem: { kind: 'duplicate' as const, name: holder.name },
+            const problem = { kind: 'duplicate' as const, name: holder.name }
+            // Security: a holder that is not one of the router's own instances is named to the person alone.
+            if (!instanceIdsOf(definition, deps).includes(holder.id)) {
+              return { value: { error: { kind: 'duplicate' as const, message: '$.provider.addInstance: this key is already in use' } }, problem }
             }
+            const message = `$.provider.addInstance: this key is already the key of ${holder.name} (${holder.id})`
+            return { value: { error: { kind: 'duplicate' as const, message, existing: holder.id, name: holder.name } }, problem }
           }
           const made = await makeOne(routerId, definition, managed, named, { apiKey: key })
           if ('error' in made) return { value: made, problem: { kind: 'failed' as const } }

@@ -523,18 +523,22 @@ describe('addInstance of a provider that needs a key', () => {
     expect(Object.keys(configs)).toHaveLength(2)
   })
 
-  it('a borrowed provider: the key of the person\'s own on the Models page is a duplicate, and so is one lent to another router', async () => {
+  it('a borrowed provider: the key of the person\'s own on the Models page is a duplicate, and so is one lent to another router; the router is told neither holder', async () => {
     const own = { source: 'mod' as const, modOwner: LENDER_OWNER, apiKey: 'sealed', secretFingerprint: `fp:${LENT}:${KEY_A}` }
     const others = { source: 'mod' as const, modOwner: LENDER_OWNER, definition: LENT, managedBy: 'mod.other.router', name: 'Theirs', secretFingerprint: `fp:${LENT}:${KEY_B}` }
     const { calls, configs, type, opened, asked } = rig({}, { [LENT]: own, [`${LENT}.zzzz`]: others })
     const first = calls.add(ROUTER, { definition: LENT }, 'action')
     await opened()
-    await type(KEY_A)
-    expect(await first).toMatchObject({ error: { kind: 'duplicate', existing: LENT, name: 'Vendor A' } })
+    expect((await type(KEY_A)).problem).toEqual({ kind: 'duplicate', name: 'Vendor A' })
+    const firstAnswer = (await first) as { error: Record<string, unknown> }
+    expect(firstAnswer.error).toEqual({ kind: 'duplicate', message: expect.any(String) })
+    expect(firstAnswer.error.message).not.toContain(LENT)
     const second = calls.add(ROUTER, { definition: LENT }, 'action')
     await vi.waitFor(() => expect(asked).toHaveLength(2))
-    await type(KEY_B)
-    expect(await second).toMatchObject({ error: { kind: 'duplicate', existing: `${LENT}.zzzz`, name: 'Theirs' } })
+    expect((await type(KEY_B)).problem).toEqual({ kind: 'duplicate', name: 'Theirs' })
+    const secondAnswer = (await second) as { error: Record<string, unknown> }
+    expect(secondAnswer.error).toEqual({ kind: 'duplicate', message: expect.any(String) })
+    expect(secondAnswer.error.message).not.toMatch(/zzzz|Theirs/)
     expect(Object.keys(configs)).toHaveLength(2)
 
     const third = calls.add(ROUTER, { definition: LENT }, 'action')
