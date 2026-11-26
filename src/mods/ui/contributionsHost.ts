@@ -8,7 +8,9 @@
 
 import type {
   ContributedApp,
+  ContributedAppSettingsAsk,
   ContributedAppView,
+  ModelsSettingsTarget,
   ContributedTemplate,
   ContributedTopbarItem,
   ContributionIcon,
@@ -185,6 +187,8 @@ export class ModUiContributionsHost {
   /** What each app's background module asked of the pages last, by app id; kept across a scan. */
   private readonly views = new Map<string, ContributedAppView>()
   private viewSeq = 0
+  /** Where each app's background module asked the Models settings to open last, by app id; kept across a scan. */
+  private readonly settingsAsks = new Map<string, ContributedAppSettingsAsk>()
   /** The apps whose background module said it is at work, by app id; kept across a scan, cleared by the module. */
   private readonly busy = new Set<string>()
 
@@ -225,6 +229,13 @@ export class ModUiContributionsHost {
     this.republishApp(appId)
   }
 
+  /** `$.provider.openSettings` of app `appId`: published on its entry, numbered with its `$.app.view` asks. */
+  setAppSettingsAsk(appId: string, target: ModelsSettingsTarget, client: string | undefined): void {
+    this.viewSeq = Math.max(Date.now(), this.viewSeq + 1)
+    this.settingsAsks.set(appId, { seq: this.viewSeq, target, ...(client !== undefined ? { client } : {}) })
+    this.republishApp(appId)
+  }
+
   /** Whether app `appId`'s module is at work: published on its entry, now and after each scan. */
   setAppBusy(appId: string, busy: boolean): void {
     if (busy) this.busy.add(appId)
@@ -240,10 +251,17 @@ export class ModUiContributionsHost {
 
   /** An app's entry with what its background module set on it: the badge, the at-work mark, the last ask. */
   private withModuleState(app: ContributedApp): ContributedApp {
-    const { badge: _dropped, view: _asked, busy: _working, ...rest } = app
+    const { badge: _dropped, view: _asked, settingsAsk: _landing, busy: _working, ...rest } = app
     const badge = this.badges.get(app.appId)
     const view = this.views.get(app.appId)
-    return { ...rest, ...(badge !== undefined ? { badge } : {}), ...(this.busy.has(app.appId) ? { busy: true as const } : {}), ...(view ? { view } : {}) }
+    const settingsAsk = this.settingsAsks.get(app.appId)
+    return {
+      ...rest,
+      ...(badge !== undefined ? { badge } : {}),
+      ...(this.busy.has(app.appId) ? { busy: true as const } : {}),
+      ...(view ? { view } : {}),
+      ...(settingsAsk ? { settingsAsk } : {}),
+    }
   }
 
   /** Publishes `next` when it differs from the current state. */
@@ -557,6 +575,7 @@ export class ModUiContributionsHost {
     }
     // An app that is gone takes its module's last ask with it, so the app coming back does not replay it.
     for (const appId of [...this.views.keys()]) if (!apps.some(app => app.appId === appId)) this.views.delete(appId)
+    for (const appId of [...this.settingsAsks.keys()]) if (!apps.some(app => app.appId === appId)) this.settingsAsks.delete(appId)
     const next: ModContributionsState = {
       templates,
       topbar,

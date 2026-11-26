@@ -101,6 +101,7 @@ import {
 import { createOpenApp, unlistedAppSessionIds, unlistedAppSessionKey, unlistedAppSessionSet } from './apps/appLaunch'
 import { useShownApp } from './apps/appView'
 import { useAppViewAsks } from './apps/appViewAsk'
+import { useModelsLandingAsks } from './apps/providerSettingsAsk'
 import { subscribeTeammateJump } from './teammateJumpRequests'
 import { publishSessionStatuses } from './sessionStatusStore'
 import {
@@ -2656,6 +2657,14 @@ export function MultiSessionShell({
   })
   // What an app's background module asks of the pages: the app opened, or its pane closed.
   useAppViewAsks({ runtimeConnection, openApp: handleOpenApp, shownAppType, updatePaneRecord })
+  const modelsLandingRequest = useModelsLandingAsks({
+    runtimeConnection,
+    onModels: settingsSection === 'models',
+    openModels: () => {
+      setProviderSettingsRequest(null)
+      setSettingsSection('models')
+    },
+  })
 
   // THE one place teammates and channel-hidden sessions are dropped.
   // Everything the sidebar, the search corpus and the thread list read is this
@@ -3232,6 +3241,7 @@ export function MultiSessionShell({
           catalog={orderedActiveCatalog}
           transport={hostBridgeTransport}
           openProviderRequest={providerSettingsRequest}
+          modelsLandingRequest={modelsLandingRequest}
           revealPluginRequest={pluginSettingsRequest}
           revealMcpServerRequest={mcpSettingsRequest}
           // Remote access reads `remote/state` and calls `remote.*` over

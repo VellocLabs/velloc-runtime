@@ -111,6 +111,7 @@ import { renderBuiltInProviderEditor } from "./models/BuiltInProviderEditor";
 import { providerStatusPresentation } from "./models/providerStatusPresentation";
 import { customProbeKey } from "./models/customProbeKey";
 import { renderProvidersHome } from "./models/ProviderHome";
+import { useModelsLanding, type ModelsLandingActions, type ModelsLandingRequest } from "./models/modelsPageLanding";
 import { renderProviderEditorHeader } from "./models/ProviderEditorHeader";
 import {
   renderDeleteProviderDialog,
@@ -147,6 +148,7 @@ export function ModelsSection({
   onProviderConnected,
   footer,
   openProviderRequest,
+  landingRequest,
 }: {
   catalog: BrowserLlmCatalog | null | undefined;
   transport: BrowserBridgeTransport;
@@ -156,6 +158,8 @@ export function ModelsSection({
    * for the same provider twice opens it twice.
    */
   openProviderRequest?: { providerId: string; seq: number } | null;
+  /** Where a router's settings app asked the page to land (F-27). */
+  landingRequest?: ModelsLandingRequest | null;
   /**
    * Fired when a connection completes without a `providers.changed` broadcast (OAuth
    * sign-in, which lives in the C++ broker), so the shell refreshes the catalog.
@@ -623,12 +627,21 @@ export function ModelsSection({
   const [highlightAddMenu, setHighlightAddMenu] = React.useState(false);
   const guidedEmptyProviders = React.useRef(false);
   React.useEffect(() => {
-    if (!configsLoaded || !registryLoaded || !catalog || view !== "home" || openProviderRequest) return;
+    if (!configsLoaded || !registryLoaded || !catalog || view !== "home" || openProviderRequest || landingRequest) return;
     if (guidedEmptyProviders.current || addedRows.length > 0 || catalog.providers.some(isPickableProvider)) return;
     guidedEmptyProviders.current = true;
     setHighlightAddMenu(true);
     setAddMenuOpen(true);
-  }, [configsLoaded, registryLoaded, catalog, view, openProviderRequest, addedRows.length]);
+  }, [configsLoaded, registryLoaded, catalog, view, openProviderRequest, landingRequest, addedRows.length]);
+
+  // Filled below the early return, where the page's opens are defined.
+  const landingActions = React.useRef<ModelsLandingActions | null>(null);
+  useModelsLanding(
+    landingRequest,
+    Boolean(bridge && configsLoaded && registryLoaded && catalog),
+    { added: addedRows.map((row) => row.id), addable: addableBuiltIns.map((p) => p.id) },
+    landingActions,
+  );
 
   // A half-filled provider form — a built-in's key / URL, or a custom
   // provider's draft — lives only in this page: hold the background
@@ -1188,6 +1201,15 @@ export function ModelsSection({
     openRouterApp(value, openEditor, true);
   };
   const openProvider = (id: string) => openRouterApp(id, openEditor);
+  landingActions.current = {
+    edit: openEditor,
+    menu: () => {
+      goHome();
+      setAddMenuOpen(true);
+    },
+    custom: () => beginCreate("blank"),
+    home: goHome,
+  };
 
   const cancelCreate = goHome;
 

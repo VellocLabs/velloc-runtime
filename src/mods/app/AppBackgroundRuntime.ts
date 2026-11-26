@@ -70,7 +70,8 @@ import { APP_PRESS_TIMEOUT_MS, readAppPressAnswer } from './appPress'
 import { AppStateRelay, type AppStateRelayFs } from './appStateRelay'
 import { APP_STATE_TEXT_METHOD } from './workerAppNoun'
 import { AppViews, type AppViewEvent, type AppViewLayout } from './appViews'
-import { serveSettingsAppProviderCall, type SettingsAppBinding, type SettingsAppProviderDeps } from './appProviderCalls'
+import { serveSettingsAppProviderCall, type SettingsAppBinding, type SettingsAppProviderDeps, type SettingsAppSettingsDeps } from './appProviderCalls'
+import type { ModelsSettingsTarget } from '../../browser/runtimeProtocol/modContributions'
 import { serveUsageCall, usageGrantOf } from './appUsageCalls'
 import type { RequestLogQuery, RequestLogQueryResult } from '../../models/usage/requestLogStore'
 import { APP_SCRIPT_IDLE_MS, APP_SCRIPT_PRESS_START_MS, AppScriptLifetimes, untilReady } from './appScriptLifetime'
@@ -134,13 +135,15 @@ export type AppBackgroundRuntimeOptions = {
   /** `$.app.busy`: whether the app's icon shows the module at work; false too when the module stops, crashes or fails to load, and once a busy runs past its limit. */
   onBusy?: (appId: string, busy: boolean) => void
   /** `$.provider` of a settings app's module. Absent: `peers` and `clearState` fail as unavailable, `reload` does nothing. `dispose` runs once, with the runtime's. */
-  providerCalls?: Partial<SettingsAppProviderDeps> & { dispose?: () => void }
+  providerCalls?: Partial<Omit<SettingsAppProviderDeps, 'settings'>> & { settingsFacts?: Omit<SettingsAppSettingsDeps, 'show'>; dispose?: () => void }
   /** The usage log's read for `$.usage.query`; absent, or answering nothing: the call fails as unavailable. */
   usage?: (query: RequestLogQuery) => Promise<RequestLogQueryResult | undefined>
   /** How long a busy lasts unless the module says it again. */
   busyMaxMs?: number
   /** `$.app.view`: the pages are asked to open the app or close its pane; `client` undefined is every page. */
   onView?: (appId: string, want: 'open' | 'closed', client: string | undefined) => void
+  /** `$.provider.openSettings`: the pages are asked to show the Models settings at `target`; `client` undefined is every page. */
+  onSettingsAsk?: (appId: string, target: ModelsSettingsTarget, client: string | undefined) => void
   /** `$.app.reseed()`: copies the app's seed again and rebuilds its page; undefined when no page of the app is open. */
   reseed?: (appId: string) => Promise<void> | undefined
   /** `$.app.analyze`: the realm's headless spawn. Absent: a run fails as unavailable. */
@@ -972,6 +975,9 @@ export class AppBackgroundRuntime {
           ...(calls?.peers ? { peers: calls.peers } : {}),
           ...(calls?.instances ? { instances: calls.instances } : {}),
           ...(calls?.icons ? { icons: calls.icons } : {}),
+          ...(calls?.settingsFacts && this.options.onSettingsAsk
+            ? { settings: { ...calls.settingsFacts, show: target => this.options.onSettingsAsk?.(module.ref.appId, target, this.lastPress.get(module.ref.appId)) } }
+            : {}),
         },
         scope?.event === 'app.action' && scope.by === 'person' ? 'action' : scope?.event === 'app.start' ? 'start' : 'other',
       )

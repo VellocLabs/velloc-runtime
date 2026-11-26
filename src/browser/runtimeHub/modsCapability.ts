@@ -205,19 +205,23 @@ export function appPressIntentFor(intent: AppPressIntent, conn: ConnectionInfo):
  * person's servers, which `mcpAuth/status` shows from `manager` up, so a
  * connection below it gets the apps without them (F-10). An app's `view` ask
  * made before `conn` was made or resumed is left out, so a page that loads
- * or comes back does not carry out an ask it was not there for (F-40).
+ * or comes back does not carry out an ask it was not there for (F-40). An
+ * app's `settingsAsk` is held back the same way, and from a connection below
+ * `manager`, which has no settings to open (F-27).
  */
 export function projectModContributions(state: ModContributionsState, conn: ConnectionInfo): ModContributionsState {
   if (!state.apps) return state
   const withSignIn = scopeAllows(conn.scope.mode, 'manager')
   const stale = (app: ContributedApp): boolean => app.view !== undefined && app.view.seq < conn.connectedAt
-  if (withSignIn && !state.apps.some(stale)) return state
+  const keepsAsk = (app: ContributedApp): boolean => app.settingsAsk === undefined || (withSignIn && app.settingsAsk.seq >= conn.connectedAt)
+  if (withSignIn && !state.apps.some(app => stale(app) || !keepsAsk(app))) return state
   return {
     ...state,
     apps: state.apps.map(app => {
-      const { signInUrls, view, ...rest } = app
+      const { signInUrls, view, settingsAsk, ...rest } = app
       return {
         ...rest,
+        ...(settingsAsk && keepsAsk(app) ? { settingsAsk } : {}),
         ...(withSignIn && signInUrls ? { signInUrls } : {}),
         ...(view && !stale(app) ? { view } : {}),
       }

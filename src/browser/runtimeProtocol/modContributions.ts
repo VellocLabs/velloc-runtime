@@ -60,6 +60,25 @@ export type ContributedTopbarItem = {
  */
 export type ContributedAppView = { seq: number; want: 'open' | 'closed'; client?: string }
 
+/** Where on the Models settings page a router's settings app asked the pages to land (F-27). */
+export type ModelsSettingsTarget =
+  /** The editor of a provider that is set up. */
+  | { kind: 'provider'; provider: string }
+  /** The editor a definition is added through. */
+  | { kind: 'definition'; definition: string }
+  /** The list, with the add menu open. */
+  | { kind: 'addMenu' }
+  /** The form a custom provider is added through. */
+  | { kind: 'custom' }
+  /** The list as it is. */
+  | { kind: 'home' }
+
+/**
+ * A background module's last `$.provider.openSettings` call. `seq` and
+ * `client` are read as a `ContributedAppView`'s.
+ */
+export type ContributedAppSettingsAsk = { seq: number; target: ModelsSettingsTarget; client?: string }
+
 /** An app (F-40, beta only): a topbar icon that opens its template's session. */
 export type ContributedApp = {
   /** `<plugin>:<key>` — the app session's `templateType`. */
@@ -74,6 +93,8 @@ export type ContributedApp = {
   busy?: true
   /** What the app's background module asked of the pages last (`$.app.view`); absent when it asked nothing. */
   view?: ContributedAppView
+  /** Where its background module asked the Models settings to open last (`$.provider.openSettings`); absent when it asked nothing. */
+  settingsAsk?: ContributedAppSettingsAsk
   /** The http MCP server URLs its plugin declares, for a sign-in at the press (F-10); absent when none. */
   signInUrls?: string[]
   icon?: ContributionIcon

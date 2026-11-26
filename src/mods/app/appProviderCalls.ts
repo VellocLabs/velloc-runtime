@@ -2,14 +2,18 @@
  * `$.provider` in the background module of a provider's settings app (F-27,
  * F-40): `peers()`, `reload()`, `clearState({ provider, model? })`, and for a
  * router the instances of the providers it manages (`definitions`,
- * `instances`, `addInstance`, `renameInstance`, `removeInstance`) and the
- * brand marks of provider definitions (`icons({ definitions })`), each on
- * the one provider that names the app as its `settingsApp`.
+ * `instances`, `addInstance`, `renameInstance`, `removeInstance`), the
+ * brand marks of provider definitions (`icons({ definitions })`) and
+ * `openSettings({ provider?, definition?, host? })`, which asks the pages to
+ * show the Models settings, each on the one provider that names the app as
+ * its `settingsApp`.
  * Security: the bound provider is fixed by the manifest, never by the module;
- * `peers`, `clearState` and the provider mods `icons` answers are a router's and stay inside its `routesTo`.
+ * `peers`, `clearState` and the provider mods `icons` answers are a router's and stay inside its `routesTo`;
+ * `openSettings` is a router's, served only inside a person's action.
  */
 
 import { insideRoutesTo } from '../../models/drivers/providerRouter'
+import type { ModelsSettingsTarget } from '../../browser/runtimeProtocol/modContributions'
 import type { InstanceCallPhase, InstanceCalls } from '../provider/providerInstanceCalls'
 import type {
   ClearPeerStatePayload,
@@ -17,6 +21,7 @@ import type {
   Peer,
   PeersTableFor,
 } from '../provider/nouns/providerPeersTypes'
+import { readOpenSettingsRequest, settingsTargetFor } from '../provider/providerSettingsOpen'
 
 /** The provider an app's background module is bound to, from the manifest. */
 export type SettingsAppBinding = {
@@ -29,9 +34,11 @@ export type SettingsAppBinding = {
 /** The `$.provider` methods a settings app's background module may call. */
 const INSTANCE_METHODS: readonly string[] = Object.freeze(['definitions', 'instances', 'addInstance', 'renameInstance', 'removeInstance'])
 
-export const SETTINGS_APP_PROVIDER_METHODS: readonly string[] = Object.freeze(['peers', 'reload', 'clearState', 'icons', ...INSTANCE_METHODS])
+const OPEN_SETTINGS = 'openSettings'
 
-const ROUTER_ONLY: readonly string[] = Object.freeze(['peers', 'clearState', 'icons', ...INSTANCE_METHODS])
+export const SETTINGS_APP_PROVIDER_METHODS: readonly string[] = Object.freeze(['peers', 'reload', 'clearState', 'icons', ...INSTANCE_METHODS, OPEN_SETTINGS])
+
+const ROUTER_ONLY: readonly string[] = Object.freeze(['peers', 'clearState', 'icons', ...INSTANCE_METHODS, OPEN_SETTINGS])
 
 /** How long `reload()` calls are folded into one run. */
 export const SETTINGS_APP_RELOAD_FOLD_MS = 10_000
@@ -110,6 +117,16 @@ export type SettingsAppProviderDeps = {
   instances?: () => InstanceCalls | undefined | Promise<InstanceCalls | undefined>
   /** `icons(args, binding)`: validates the call and answers `{ [definition id]: image URL }` within the router's reach; absent: it fails as unavailable. */
   icons?: (args: unknown, binding: SettingsAppBinding) => Record<string, string> | Promise<Record<string, string>>
+  /** What `openSettings` needs; absent: it fails as unavailable. */
+  settings?: SettingsAppSettingsDeps
+}
+
+export type SettingsAppSettingsDeps = {
+  /** A router's `recognizes.hosts`; undefined when it declares none. */
+  recognizes: (routerId: string) => readonly string[] | undefined
+  definitionInstalled: (definition: string) => boolean
+  /** Asks the pages to show the Models settings at `target`. */
+  show: (target: ModelsSettingsTarget) => void
 }
 
 /** Serves one call, after `refuseSettingsAppProviderCall` let it through. */
@@ -144,6 +161,21 @@ export async function serveSettingsAppProviderCall(
   const source = await deps.peers?.()
   if (!source) throw named('NotSupportedError', `$.provider.${method}: the peers table is not available in this build`)
   const routesTo = binding.routesTo ?? []
+  if (method === OPEN_SETTINGS) {
+    const settings = deps.settings
+    if (!settings) throw named('NotSupportedError', '$.provider.openSettings: the Models settings cannot be opened in this build')
+    // A module cannot move the person's screen on its own.
+    if (phase !== 'action') throw notAllowed("$.provider.openSettings is served only while a person's action on the app is handled")
+    const peers = source.peersFor(binding.providerId).filter((peer: Peer) => peer.managed === true || insideRoutesTo(routesTo, peer))
+    settings.show(
+      settingsTargetFor(binding.providerId, readOpenSettingsRequest(args[0]), {
+        peers,
+        recognizes: settings.recognizes(binding.providerId),
+        definitionInstalled: settings.definitionInstalled,
+      }),
+    )
+    return { opened: true }
+  }
   if (method === 'peers') {
     // The table is the router's own; the boundary is checked again here so no peer outside it can pass.
     const peers = source.peersFor(binding.providerId).filter((peer: Peer) => peer.managed === true || insideRoutesTo(routesTo, peer))

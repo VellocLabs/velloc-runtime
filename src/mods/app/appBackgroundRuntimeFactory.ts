@@ -27,9 +27,10 @@ import { createReloadFolder, runtimeSettingsAppIcons, runtimeSettingsAppPeers } 
 import { createRuntimeInstanceCalls } from '../provider/providerInstanceCallsRuntime'
 import { runtimeAppUsage } from './appUsageCalls'
 import { reloadModProvider } from '../provider/providerReload'
+import { getProviderDefinition } from '../../config/nexusModelConfig/providers'
 
 export function createAppBackgroundRuntime(
-  deps: AppBackgroundBootDeps & { report: (line: string) => void } & Pick<AppBackgroundRuntimeOptions, 'onBadge' | 'onBusy' | 'onView' | 'reseed'>,
+  deps: AppBackgroundBootDeps & { report: (line: string) => void } & Pick<AppBackgroundRuntimeOptions, 'onBadge' | 'onBusy' | 'onView' | 'onSettingsAsk' | 'reseed'>,
 ): AppBackgroundRuntime {
   const { fs, homeDir, report } = deps
   const modsDir = providerModsDir(homeDir)
@@ -68,6 +69,10 @@ export function createAppBackgroundRuntime(
       peers: runtimeSettingsAppPeers,
       instances: () => instances,
       icons: runtimeSettingsAppIcons,
+      settingsFacts: {
+        recognizes: routerId => getProviderDefinition(routerId)?.catalogMod?.recognizes,
+        definitionInstalled: definition => getProviderDefinition(definition) !== undefined,
+      },
       dispose: reloads.dispose,
     },
     usage: query => runtimeAppUsage(query, deps.transport() ?? undefined),
@@ -111,6 +116,7 @@ export function createAppBackgroundRuntime(
     ...(deps.onBadge ? { onBadge: deps.onBadge } : {}),
     ...(deps.onBusy ? { onBusy: deps.onBusy } : {}),
     ...(deps.onView ? { onView: deps.onView } : {}),
+    ...(deps.onSettingsAsk ? { onSettingsAsk: deps.onSettingsAsk } : {}),
     ...(deps.reseed ? { reseed: deps.reseed } : {}),
     ...(deps.runAgent ? { runAgent: deps.runAgent } : {}),
   })

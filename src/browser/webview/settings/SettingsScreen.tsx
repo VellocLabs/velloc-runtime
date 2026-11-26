@@ -20,6 +20,7 @@ import { InstructionsSection } from "./sections/InstructionsSection";
 import { McpSection } from "./sections/McpSection";
 import { MemorySection } from "./sections/MemorySection";
 import { ModelsSection } from "./sections/ModelsSection";
+import type { ModelsLandingRequest } from "./sections/models/modelsPageLanding";
 import { ModelDataSection } from "./sections/ModelDataSection";
 import { NetworkSection } from "./sections/NetworkSection";
 import { SessionModelsSection } from "./sections/SessionModelsSection";
@@ -65,6 +66,7 @@ function SectionContent({
   transport,
   onProviderConnected,
   openProviderRequest,
+  modelsLandingRequest,
   revealPluginRequest,
   revealMcpServerRequest,
   remoteState,
@@ -79,6 +81,8 @@ function SectionContent({
   /** The page's runtime connection, for the Plugins page's `mods/state` read. */
   runtimeConnection?: () => Promise<RuntimeConnection>;
   openProviderRequest?: { providerId: string; seq: number } | null;
+  /** Forwarded to ModelsSection: where a router's settings app asked it to land. */
+  modelsLandingRequest?: ModelsLandingRequest | null;
   revealPluginRequest?: { plugin: string; seq: number } | null;
   revealMcpServerRequest?: { server: string; seq: number } | null;
   /** Models was reached by way of Session models (a deep link or a
@@ -108,6 +112,7 @@ function SectionContent({
           transport={transport}
           onProviderConnected={onProviderConnected}
           openProviderRequest={openProviderRequest}
+          landingRequest={modelsLandingRequest}
           footer={
             <>
               <SessionModelsSection
@@ -169,6 +174,7 @@ export function SettingsScreen({
   transport,
   onProviderConnected,
   openProviderRequest,
+  modelsLandingRequest,
   revealPluginRequest,
   revealMcpServerRequest,
   runtimeConnection,
@@ -184,6 +190,8 @@ export function SettingsScreen({
   onProviderConnected?: () => void;
   /** Forwarded to ModelsSection — open one provider's editor. */
   openProviderRequest?: { providerId: string; seq: number } | null;
+  /** Forwarded to ModelsSection: where a router's settings app asked it to land. */
+  modelsLandingRequest?: ModelsLandingRequest | null;
   /** Forwarded to PluginsSection — scroll to one plugin's row and flash it
    *  (a click on a mod's icon above the prompt). */
   revealPluginRequest?: { plugin: string; seq: number } | null;
@@ -312,6 +320,7 @@ export function SettingsScreen({
             transport={transport}
             onProviderConnected={onProviderConnected}
             openProviderRequest={openProviderRequest}
+            modelsLandingRequest={modelsLandingRequest}
             revealPluginRequest={revealPluginRequest}
             revealMcpServerRequest={revealMcpServerRequest}
             onOpenModels={() => onNavigate("models")}
