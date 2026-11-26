@@ -29,7 +29,7 @@ import { modProviderDefinition, safeIconSvg, type ModProviderDefinitionOptions }
 import { clearProviderState } from '../../models/drivers/providerHealthLedger'
 import { borrowTableOf, isBorrowable, orphanedBorrowedInstances } from './providerBorrows'
 import { providerHostSources } from './providerHostSources'
-import { withStoredInstances } from './providerInstances'
+import { planAutoCreatedInstances, withStoredInstances } from './providerInstances'
 import { INSTANCE_ID_RESERVE, PROVIDER_ID_MAX_LENGTH, type ProviderManifest, type ResolvedProvider } from './providerManifest'
 // A TYPE only: the runtime's code must stay out of a realm with no provider mod.
 import type { ProviderModRuntime, ProviderModuleRef } from './ProviderModRuntime'
@@ -119,6 +119,22 @@ export type ProviderModHostOptions = {
    * everything is approved.
    */
   consented?: (plugin: ProviderPluginFacts) => Promise<boolean>
+  /**
+   * What makes the instance of an `autoCreate` definition (RP-16). Absent:
+   * none is made. Nothing is made before `ready` (the stored instances are
+   * not known until settings.json is read), and a failed read or write makes
+   * nothing: the next sync tries again.
+   */
+  autoCreate?: {
+    ready: () => boolean
+    /** The slots of the removed instances, per definition id. */
+    retiredInstances: () => Promise<Readonly<Record<string, readonly string[]>>>
+    /** The settings write path. */
+    store: (providerId: string, config: NexusProviderConfig) => Promise<void>
+    name: (provider: ResolvedProvider) => string
+    now?: () => number
+    random?: () => number
+  }
   /** Test seams; the defaults are the runtime's. */
   adopt?: (providerId: string, version: string | undefined, owner: string) => Promise<void>
   ownerOf?: (providerId: string) => string | undefined
@@ -283,7 +299,20 @@ export class ProviderModHost {
     this.lastScan = installed
     // One entry per instance from here on: a stored instance is registered,
     // disabled and taken away with its definition.
-    const configs = (options.storedConfigs ?? runtimeProviderConfigs)()
+    // One answer per plugin and sync, whichever step asks first.
+    const approvals = new Map<string, Promise<boolean>>()
+    const approved = (plugin: ProviderPluginFacts): Promise<boolean> => {
+      const key = `${plugin.source}
+${plugin.name}`
+      let answer = approvals.get(key)
+      if (!answer) {
+        answer =
+          plugin.source.startsWith('marketplace:') && options.consented ? options.consented(plugin) : Promise.resolve(true)
+        approvals.set(key, answer)
+      }
+      return answer
+    }
+    const configs = await this.withAutoCreated(installed.enabled, (options.storedConfigs ?? runtimeProviderConfigs)(), approved)
     // Every lent instance a global router could vouch for; the ones whose
     // router is not registered by this sync are dropped once that is known.
     const candidates = borrowTableOf(installed.enabled.filter(plugin => isGlobalPluginSource(plugin.source)))
@@ -313,7 +342,7 @@ export class ProviderModHost {
         options.report(`${plugin.name}: provider ${clash.id} is already provided by ${claimed.get(clash.id)}`)
         continue
       }
-      if (plugin.source.startsWith('marketplace:') && options.consented && !(await options.consented(plugin))) {
+      if (!(await approved(plugin))) {
         // Not approved yet: nothing of it runs, and it shows as switched off,
         // not as a missing plugin. (An earlier registration is taken away below.)
         options.report(`${plugin.name}: its providers wait for your approval and are not registered`)
@@ -479,6 +508,47 @@ export class ProviderModHost {
       }
     }
     return result
+  }
+
+  /**
+   * `configs` with the instance of every `autoCreate` definition that has
+   * none and had none, stored first. Only for an enabled global plugin the
+   * person approved.
+   */
+  private async withAutoCreated(
+    enabled: readonly ProviderPluginFacts[],
+    configs: Readonly<Record<string, NexusProviderConfig>>,
+    approved: (plugin: ProviderPluginFacts) => Promise<boolean>,
+  ): Promise<Readonly<Record<string, NexusProviderConfig>>> {
+    const options = this.options!
+    const make = options.autoCreate
+    if (!make || !make.ready()) return configs
+    let next = configs
+    let retired: Readonly<Record<string, readonly string[]>> | undefined
+    for (const plugin of enabled) {
+      if (!plugin.providers?.some(provider => provider.manifest.autoCreate === true)) continue
+      if (!isGlobalPluginSource(plugin.source)) continue
+      try {
+        if (!(await approved(plugin))) continue
+        retired ??= await make.retiredInstances()
+        const plans = planAutoCreatedInstances({
+          providers: plugin.providers,
+          owner: pluginConfigId(plugin),
+          configs: next,
+          retired,
+          name: make.name,
+          now: (make.now ?? Date.now)(),
+          ...(make.random ? { random: make.random } : {}),
+        })
+        for (const plan of plans) {
+          await make.store(plan.id, plan.config)
+          next = { ...next, [plan.id]: plan.config }
+        }
+      } catch (error) {
+        options.report(`${plugin.name}: its ready-made provider was not created: ${error instanceof Error ? error.message : String(error)}`)
+      }
+    }
+    return next
   }
 
   /**

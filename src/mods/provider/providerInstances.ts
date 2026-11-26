@@ -196,3 +196,42 @@ export function planNewInstance(input: {
     },
   }
 }
+
+/**
+ * The instances to make for the definitions that ask for one without the
+ * person adding it (`autoCreate`): a managed definition whose only method is
+ * `anonymous`, with no instance now and none removed before. A removed
+ * instance leaves its slot in `retired`, so a definition the person emptied
+ * is not filled again. Nothing is written here.
+ */
+export function planAutoCreatedInstances(input: {
+  providers: readonly ResolvedProvider[]
+  owner: string
+  configs: Readonly<Record<string, NexusProviderConfig>>
+  /** The slots given up, per definition id. */
+  retired: Readonly<Record<string, readonly string[]>>
+  name: (provider: ResolvedProvider) => string
+  now: number
+  random?: () => number
+}): Array<{ id: string; config: NexusProviderConfig }> {
+  const out: Array<{ id: string; config: NexusProviderConfig }> = []
+  for (const provider of input.providers) {
+    const { manifest } = provider
+    const methods = manifest.credentials.methods
+    if (manifest.autoCreate !== true || manifest.managedBy === undefined || manifest.kind === 'router') continue
+    // Security: only a provider that needs no credential is made unasked.
+    if (methods.length !== 1 || methods[0] !== 'anonymous') continue
+    if ((input.retired[provider.id]?.length ?? 0) > 0) continue
+    if (storedInstanceIds(provider.id, input.owner, input.configs).length > 0) continue
+    const plan = planNewInstance({
+      definition: provider,
+      owner: input.owner,
+      instances: [],
+      name: input.name(provider),
+      now: input.now,
+      ...(input.random ? { random: input.random } : {}),
+    })
+    if (plan.ok) out.push({ id: plan.id, config: { ...plan.config, credentialMode: 'anonymous' } })
+  }
+  return out
+}

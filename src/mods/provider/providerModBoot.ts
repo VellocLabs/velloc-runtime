@@ -10,7 +10,11 @@ import {
   isProviderSetUp,
   onRuntimeProviderConfigsChanged,
   refreshRuntimeProviderModels,
+  runtimeProviderConfigsLoaded,
 } from '../../models/drivers/runtimeProviders'
+import { resolveLocalizedText } from '../../config/localizedText'
+import { readUserLayer } from '../../settings/settingsStore'
+import { providerHostSources } from './providerHostSources'
 import { runtimeProviderGate } from '../../pluginHost/providerGate'
 import { getModUiContributionsHost } from '../ui/contributionsHost'
 import type { RuntimeConfig } from '../../runtime/interfaces/RuntimeConfig'
@@ -245,6 +249,16 @@ export async function bootProviderMods(deps: ProviderModBootDeps): Promise<void>
     // approved; directory plugins are exempt.
     consented: plugin =>
       consentCovers({ homeDir: deps.homeDir }, deps.fs, plugin.source.slice(MARKETPLACE_SOURCE.length), plugin.manifest),
+    autoCreate: {
+      ready: runtimeProviderConfigsLoaded,
+      retiredInstances: async () => (await readUserLayer(deps.homeDir, deps.fs)).settings.providers?.retiredInstances ?? {},
+      store: async (providerId, config) => {
+        const write = providerHostSources().writeProviderConfig
+        if (!write) throw new Error('the settings write path is not attached')
+        await write(providerId, config)
+      },
+      name: provider => resolveLocalizedText(provider.manifest.displayName, deps.locale?.() ?? 'en'),
+    },
     createRuntime: async () => {
       const { createProviderModRuntime } = await import('./providerModRuntimeFactory')
       return createProviderModRuntime({
