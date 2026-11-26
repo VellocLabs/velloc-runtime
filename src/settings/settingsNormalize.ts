@@ -356,6 +356,9 @@ export function normalizeSettings(
         if (typeof r.definition === 'string' && r.definition.length > 0) {
           config.definition = r.definition
         }
+        if (typeof r.managedBy === 'string' && r.managedBy.length > 0) {
+          config.managedBy = r.managedBy
+        }
         if (typeof r.name === 'string' && r.name.length > 0) {
           config.name = r.name
         }

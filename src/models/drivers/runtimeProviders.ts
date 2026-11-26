@@ -770,6 +770,8 @@ function pluginMissingRows(): BrowserLlmProvider[] {
   const rows: BrowserLlmProvider[] = []
   for (const [id, config] of Object.entries(configs)) {
     if (config.source !== 'mod' || getProviderDefinition(id) || isDisabledModProviderId(id)) continue
+    // An instance lent to a router is that router's to show, never this page's.
+    if (config.managedBy !== undefined) continue
     rows.push({
       id,
       label: config.displayName?.trim() || id,

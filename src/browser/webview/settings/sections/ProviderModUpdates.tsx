@@ -124,6 +124,11 @@ function ProviderGrantBlock({
               : t("settings.plugins.providers.routes.list", { providers: (grant.routesTo ?? []).join(", ") })}
           </li>
         ) : null}
+        {grant.borrows?.length ? (
+          <li data-testid={`consent-borrows-${provider}`}>
+            {t("settings.plugins.providers.consent.borrows", { services: grant.borrows.join(", ") })}
+          </li>
+        ) : null}
         {manages.length > 0 ? (
           <li data-testid={`consent-manages-${provider}`}>
             {t("settings.plugins.providers.consent.manages", { providers: manages.join("; ") })}
@@ -309,6 +314,9 @@ export function grantDeltaLines(status: ProviderModUpdateStatus, t: TranslateFn)
           ? t("settings.plugins.providers.routes.widenedAny", { id: provider })
           : t("settings.plugins.providers.routes.widened", { id: provider, providers: added.routes.join(", ") }),
       );
+    }
+    if (added.borrows?.length) {
+      lines.push(t("settings.plugins.providers.updates.addedBorrows", { id: provider, services: added.borrows.join(", ") }));
     }
     if (added.managedBy !== undefined) {
       lines.push(t("settings.plugins.providers.updates.addedManagedBy", { id: provider, router: added.managedBy }));

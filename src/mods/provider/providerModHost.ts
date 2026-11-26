@@ -26,8 +26,11 @@ import type { ActivePlugin } from '../../pluginHost/pluginModel'
 import type { NexusProviderConfig } from '../../settings/settingsTypes'
 import { pluginConfigId } from '../modSlot'
 import { modProviderDefinition, safeIconSvg, type ModProviderDefinitionOptions } from './modProviderDefinition'
+import { clearProviderState } from '../../models/drivers/providerHealthLedger'
+import { borrowTableOf, isBorrowable, orphanedBorrowedInstances, type BorrowTable } from './providerBorrows'
+import { providerHostSources } from './providerHostSources'
 import { withStoredInstances } from './providerInstances'
-import type { ProviderManifest, ResolvedProvider } from './providerManifest'
+import { INSTANCE_ID_RESERVE, PROVIDER_ID_MAX_LENGTH, type ProviderManifest, type ResolvedProvider } from './providerManifest'
 // A TYPE only: the runtime's code must stay out of a realm with no provider mod.
 import type { ProviderModRuntime, ProviderModuleRef } from './ProviderModRuntime'
 
@@ -122,6 +125,8 @@ export type ProviderModHostOptions = {
   publish?: () => Promise<void>
   hasStoredConfigs?: () => boolean
   storedConfigs?: () => Readonly<Record<string, NexusProviderConfig>>
+  /** Removes a stored entry with its sealed values. Absent: the runtime's, when attached. */
+  removeConfig?: (providerId: string) => Promise<void>
 }
 
 export type ProviderPluginScan = {
@@ -153,7 +158,7 @@ function signatureOf(plugin: ProviderPluginFacts): string {
   return JSON.stringify({
     path: plugin.path,
     version: plugin.manifest?.version ?? null,
-    providers: (plugin.providers ?? []).map(p => [p.id, p.manifest, p.modulePath, p.iconPath ?? null]),
+    providers: (plugin.providers ?? []).map(p => [p.id, p.manifest, p.modulePath, p.iconPath ?? null, p.managedBy ?? null]),
   })
 }
 
@@ -272,13 +277,16 @@ export class ProviderModHost {
 
   private async syncNow(installed: ProviderPluginScan): Promise<ProviderSyncResult> {
     const options = this.options!
+    const previousScan = this.lastScan
     this.lastScan = installed
     // One entry per instance from here on: a stored instance is registered,
     // disabled and taken away with its definition.
     const configs = (options.storedConfigs ?? runtimeProviderConfigs)()
+    const lenders = await this.borrowTable(installed)
+    const borrows = (routerId: string, definitionId: string): boolean => lenders.get(routerId)?.has(definitionId) ?? false
     const perInstance = (plugin: ProviderPluginFacts): ProviderPluginFacts =>
       plugin.providers?.length
-        ? { ...plugin, providers: withStoredInstances(plugin.providers, pluginConfigId(plugin), configs, options.report) }
+        ? { ...plugin, providers: withStoredInstances(plugin.providers, pluginConfigId(plugin), configs, options.report, borrows) }
         : plugin
     const scan: ProviderPluginScan = {
       enabled: installed.enabled.map(perInstance),
@@ -444,6 +452,7 @@ export class ProviderModHost {
       await (options.publish ?? publishModProvidersChanged)()
       result.published = true
     }
+    await this.dropOrphanedBorrows(installed, previousScan, configs)
     // A provider that came in while the app runs is listed now (never at
     // boot). Not awaited: the sync must not wait on a module's cold start.
     if (!first && options.refreshListing) {
@@ -471,6 +480,78 @@ export class ProviderModHost {
       return plugin.providers!.filter(provider => provider.manifest.managedBy === router.key).map(provider => ({ provider, owner }))
     }
     return []
+  }
+
+  /**
+   * The provider definitions the router `routerId` may borrow and that are
+   * there to borrow: registered providers of other plugins, no router and
+   * none a router manages, each with the owner of its instances' entries.
+   * In the order of the router's `borrows`.
+   */
+  borrowableDefinitions(routerId: string): Array<{ provider: ResolvedProvider; owner: string }> {
+    const enabled = (this.lastScan?.enabled ?? []).filter(plugin => this.entries.has(plugin.name))
+    const home = enabled.find(plugin => plugin.providers?.some(provider => provider.id === routerId))
+    const router = home?.providers?.find(provider => provider.id === routerId)
+    if (!home || router?.manifest.kind !== 'router') return []
+    const out: Array<{ provider: ResolvedProvider; owner: string }> = []
+    for (const id of router.manifest.borrows ?? []) {
+      if (id.length + INSTANCE_ID_RESERVE > PROVIDER_ID_MAX_LENGTH) continue
+      for (const plugin of enabled) {
+        if (plugin === home) continue
+        const provider = plugin.providers?.find(each => each.id === id)
+        if (provider && isBorrowable(provider.manifest)) out.push({ provider, owner: pluginConfigId(plugin) })
+      }
+    }
+    return out
+  }
+
+  /**
+   * What each router may borrow now. Security: only a global plugin's
+   * router counts, and one installed from a registry only once the person
+   * approved its grant.
+   */
+  private async borrowTable(installed: ProviderPluginScan): Promise<BorrowTable> {
+    const options = this.options!
+    const approved: ProviderPluginFacts[] = []
+    for (const plugin of installed.enabled) {
+      if (!isGlobalPluginSource(plugin.source)) continue
+      if (!plugin.providers?.some(provider => provider.manifest.borrows?.length)) continue
+      if (plugin.source.startsWith('marketplace:') && options.consented && !(await options.consented(plugin))) continue
+      approved.push(plugin)
+    }
+    return borrowTableOf(approved)
+  }
+
+  /**
+   * A router that was switched off, or taken away while the app ran, takes
+   * the instances it borrowed with it: their entries and sealed values are
+   * removed. A failed removal is reported and tried again at the next sync.
+   */
+  private async dropOrphanedBorrows(
+    installed: ProviderPluginScan,
+    previous: ProviderPluginScan | undefined,
+    configs: Readonly<Record<string, NexusProviderConfig>>,
+  ): Promise<void> {
+    const options = this.options!
+    const routersOf = (plugins: readonly ProviderPluginFacts[]): string[] =>
+      plugins.flatMap(plugin => (plugin.providers ?? []).filter(p => p.manifest.kind === 'router').map(p => p.id))
+    const present = new Set(routersOf(installed.enabled))
+    const disabled = new Set(routersOf(installed.disabled).filter(id => !present.has(id)))
+    const departed = new Set(
+      previous ? routersOf([...previous.enabled, ...previous.disabled]).filter(id => !present.has(id) && !disabled.has(id)) : [],
+    )
+    const orphans = orphanedBorrowedInstances(configs, disabled, departed)
+    if (orphans.length === 0) return
+    const remove = options.removeConfig ?? providerHostSources().removeProviderConfig
+    if (!remove) return
+    for (const id of orphans) {
+      try {
+        await remove(id)
+        clearProviderState(id)
+      } catch (error) {
+        options.report(`${id}: it was lent to a router that is gone and could not be removed: ${error instanceof Error ? error.message : String(error)}`)
+      }
+    }
   }
 
   /** The version a plugin's providers are registered at, if they are. */

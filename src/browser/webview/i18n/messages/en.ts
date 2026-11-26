@@ -2454,6 +2454,7 @@ export const en = {
   'settings.plugins.providers.consent.domains': 'May contact: {domains}',
   'settings.plugins.providers.consent.noDomains': 'Declares no domains to contact.',
   'settings.plugins.providers.routes.any': 'Sends your requests through other providers you have set up, with their credentials: any provider.',
+  'settings.plugins.providers.consent.borrows': 'Can add keys and sign-ins of its own for these services, used only by it and not shown in your Models settings: {services}',
   'settings.plugins.providers.routes.list': 'Sends your requests through other providers you have set up, with their credentials: {providers}',
   'settings.plugins.providers.routes.widened': '{id} now sends your requests through other providers you have set up, with their credentials: {providers}',
   'settings.plugins.providers.routes.widenedAny': '{id} now sends your requests through any other provider you have set up, with its credentials.',
@@ -2521,6 +2522,7 @@ export const en = {
   'settings.plugins.providers.updates.addedProvider': 'New provider: {provider}',
   'settings.plugins.providers.updates.addedLoginWindow': '{id} may now open a sign-in window on: {domains}',
   'settings.plugins.providers.updates.addedRecognizes': '{id} may now know whether you have set up: {hosts}',
+  'settings.plugins.providers.updates.addedBorrows': '{id} can now add keys and sign-ins of its own for these services, used only by it and not shown in your Models settings: {services}',
   'settings.plugins.providers.updates.addedManagedBy': '{id} is now set up by {router} and used only through it',
   'settings.plugins.providers.updates.addedDomains': '{id} may now contact: {domains}',
   'settings.plugins.providers.updates.addedProxyPools':

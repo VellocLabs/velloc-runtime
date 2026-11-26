@@ -2344,6 +2344,7 @@ export const zh: Messages = {
   'settings.plugins.providers.consent.domains': '可以访问：{domains}',
   'settings.plugins.providers.consent.noDomains': '未声明可访问的域名。',
   'settings.plugins.providers.routes.any': '通过你已设置的其他服务商发送你的请求，并使用它们的凭据：任意服务商。',
+  'settings.plugins.providers.consent.borrows': '可以为下列服务添加只供它自己使用的密钥和登录，这些不会出现在你的模型设置中：{services}',
   'settings.plugins.providers.routes.list': '通过你已设置的其他服务商发送你的请求，并使用它们的凭据：{providers}',
   'settings.plugins.providers.routes.widened': '{id} 现在通过你已设置的其他服务商发送你的请求，并使用它们的凭据：{providers}',
   'settings.plugins.providers.routes.widenedAny': '{id} 现在可以通过你已设置的任意其他服务商发送你的请求，并使用其凭据。',
@@ -2411,6 +2412,7 @@ export const zh: Messages = {
   'settings.plugins.providers.updates.addedProvider': '新增服务商：{provider}',
   'settings.plugins.providers.updates.addedLoginWindow': '{id} 现在登录时可以打开窗口访问：{domains}',
   'settings.plugins.providers.updates.addedRecognizes': '{id} 现在会知道你是否配置了：{hosts}',
+  'settings.plugins.providers.updates.addedBorrows': '{id} 现在可以为下列服务添加只供它自己使用的密钥和登录，这些不会出现在你的模型设置中：{services}',
   'settings.plugins.providers.updates.addedManagedBy': '{id} 现在由 {router} 设置，且只通过它使用',
   'settings.plugins.providers.updates.addedDomains': '{id} 现在可以访问：{domains}',
   'settings.plugins.providers.updates.addedProxyPools':

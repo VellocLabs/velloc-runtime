@@ -2376,6 +2376,7 @@ export const ja: Messages = {
   'settings.plugins.providers.consent.domains': '接続できる先: {domains}',
   'settings.plugins.providers.consent.noDomains': '接続先のドメインは宣言されていません。',
   'settings.plugins.providers.routes.any': '設定済みのほかのプロバイダを経由して、その認証情報でリクエストを送信します: すべてのプロバイダ。',
+  'settings.plugins.providers.consent.borrows': '次のサービスについて、このルーターだけが使用し、モデル設定には表示されない独自のキーやサインインを追加できます: {services}',
   'settings.plugins.providers.routes.list': '設定済みのほかのプロバイダを経由して、その認証情報でリクエストを送信します: {providers}',
   'settings.plugins.providers.routes.widened': '{id} は、設定済みのほかのプロバイダを経由して、その認証情報でリクエストを送信するようになります: {providers}',
   'settings.plugins.providers.routes.widenedAny': '{id} は、設定済みのほかのすべてのプロバイダを経由して、その認証情報でリクエストを送信するようになります。',
@@ -2443,6 +2444,7 @@ export const ja: Messages = {
   'settings.plugins.providers.updates.addedProvider': '新しいプロバイダ: {provider}',
   'settings.plugins.providers.updates.addedLoginWindow': '{id} はログイン時に次の接続先でウィンドウを開けるようになります: {domains}',
   'settings.plugins.providers.updates.addedRecognizes': '{id} は、次を設定済みかどうかを知ることができるようになります: {hosts}',
+  'settings.plugins.providers.updates.addedBorrows': '{id} は今後、次のサービスについて、自分だけが使用し、モデル設定には表示されない独自のキーやサインインを追加できます: {services}',
   'settings.plugins.providers.updates.addedManagedBy': '{id} は今後 {router} が設定し、{router} を通じてのみ使用されます',
   'settings.plugins.providers.updates.addedDomains': '{id} は次にも接続できるようになります: {domains}',
   'settings.plugins.providers.updates.addedProxyPools':

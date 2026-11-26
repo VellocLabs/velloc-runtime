@@ -165,8 +165,12 @@ export type BrowserLlmModProvider = {
   settingsApp?: string
   /** The provider id of the router that manages this provider. Such a
    *  provider is not listed on the Models page or in a model picker and is
-   *  not a session's model: only its router sends through it. */
+   *  not a session's model: only its router sends through it. Read per
+   *  row: an instance lent to a router carries it while the other instances
+   *  of its definition do not. */
   managedBy?: string
+  /** The row is an instance of another plugin's definition lent to `managedBy`. */
+  borrowed?: true
 }
 
 export type BrowserLlmProvider = {

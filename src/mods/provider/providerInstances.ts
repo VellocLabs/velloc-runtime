@@ -6,6 +6,9 @@
  * `<definition id>.<slot>`, stored in settings.json with `definition` naming
  * what it belongs to. A definition a router manages (`managedBy`) has no
  * first instance under its own id: every instance of it is a stored one.
+ * A stored instance may be lent to a router of another plugin (its entry's
+ * `managedBy`, RP-21): it is still an instance of this definition, beside
+ * the ones the person set up, and counts toward no limit of theirs.
  *
  * An instance id is opaque. `instanceSlotOf` is the one reader of its text,
  * and it is used to check a stored id, never to learn what an instance
@@ -13,6 +16,7 @@
  */
 
 import type { NexusProviderConfig } from '../../settings/settingsTypes'
+import { isBorrowable, lentTo } from './providerBorrows'
 import {
   INSTANCE_ID_RESERVE,
   INSTANCE_SLOT,
@@ -53,6 +57,9 @@ export function newInstanceSlot(taken: ReadonlySet<string>, random: () => number
   throw new Error('no instance slot is free')
 }
 
+/** Which stored instances of a definition: all, the ones not lent, or the ones lent to one router. */
+export type InstanceHolder = 'any' | 'own' | { router: string }
+
 /**
  * The stored instances of `definitionId` beyond the first, oldest first.
  * Security: an entry counts only when it names the definition, is the
@@ -63,14 +70,18 @@ export function storedInstanceIds(
   definitionId: string,
   owner: string,
   configs: Readonly<Record<string, NexusProviderConfig>>,
+  holder: InstanceHolder = 'any',
 ): string[] {
+  const held = (config: NexusProviderConfig): boolean =>
+    holder === 'any' || (holder === 'own' ? lentTo(config) === undefined : lentTo(config) === holder.router)
   return Object.entries(configs)
     .filter(
       ([id, config]) =>
         config.definition === definitionId &&
         config.source === 'mod' &&
         config.modOwner === owner &&
-        instanceSlotOf(definitionId, id) !== undefined,
+        instanceSlotOf(definitionId, id) !== undefined &&
+        held(config),
     )
     .sort(([a, x], [b, y]) => (x.createdAt ?? 0) - (y.createdAt ?? 0) || (a < b ? -1 : a > b ? 1 : 0))
     .map(([id]) => id)
@@ -86,22 +97,31 @@ function storedInstanceLimit(provider: ResolvedProvider): number {
  * A plugin's providers with one entry per instance: each definition as it
  * is (its first instance; none for a managed definition), then its stored
  * instances, as many as it allows, oldest first. A stored instance beyond
- * that is left out and reported.
+ * that is left out and reported. Then the instances lent to a router.
+ * Security: a lent instance is kept only while `borrows(router, definition)`
+ * holds, and never of a router or a managed definition (RP-21).
  */
 export function withStoredInstances(
   providers: readonly ResolvedProvider[],
   owner: string,
   configs: Readonly<Record<string, NexusProviderConfig>>,
   report: (line: string) => void = () => {},
+  borrows: (routerId: string, definitionId: string) => boolean = () => false,
 ): ResolvedProvider[] {
   const out: ResolvedProvider[] = []
   for (const provider of providers) {
     if (provider.manifest.managedBy === undefined) out.push(provider)
-    const stored = storedInstanceIds(provider.id, owner, configs)
+    const stored = storedInstanceIds(provider.id, owner, configs, 'own')
     const limit = storedInstanceLimit(provider)
     const extra = stored.slice(limit)
     if (extra.length > 0) report(`${provider.id}: ${extra.join(', ')} not registered: the provider allows one instance`)
     for (const id of stored.slice(0, limit)) out.push({ ...provider, id, definition: provider.id })
+    if (!isBorrowable(provider.manifest)) continue
+    for (const id of storedInstanceIds(provider.id, owner, configs, 'any')) {
+      const router = lentTo(configs[id])
+      if (router === undefined || !borrows(router, provider.id)) continue
+      out.push({ ...provider, id, definition: provider.id, managedBy: router })
+    }
   }
   return out
 }
@@ -131,7 +151,9 @@ export type NewInstancePlan =
 /**
  * What making one more instance of `definition` would store, or why it is
  * refused. Nothing is written here. `instances` are the definition's present
- * instance ids; `retiredSlots` the slots of the ones removed.
+ * instance ids; `retiredSlots` the slots of the ones removed. With `lentTo`
+ * the instance is one a router borrows: it is made beside the person's own,
+ * whatever the definition's `instances` says.
  */
 export function planNewInstance(input: {
   definition: Pick<ResolvedProvider, 'id' | 'manifest'>
@@ -141,12 +163,14 @@ export function planNewInstance(input: {
   name: string
   now: number
   random?: () => number
+  /** The provider id of the router the instance is lent to. */
+  lentTo?: string
 }): NewInstancePlan {
   const { definition } = input
   if (definition.manifest.kind === 'router') {
     return { ok: false, reason: 'router', message: `${definition.id} is a router: it has one instance` }
   }
-  if (definition.manifest.instances !== 'multiple' && input.instances.length > 0) {
+  if (input.lentTo === undefined && definition.manifest.instances !== 'multiple' && input.instances.length > 0) {
     return {
       ok: false,
       reason: 'single',
@@ -162,6 +186,13 @@ export function planNewInstance(input: {
   return {
     ok: true,
     id,
-    config: { source: 'mod', modOwner: input.owner, definition: definition.id, name: input.name, createdAt: input.now },
+    config: {
+      source: 'mod',
+      modOwner: input.owner,
+      definition: definition.id,
+      ...(input.lentTo !== undefined ? { managedBy: input.lentTo } : {}),
+      name: input.name,
+      createdAt: input.now,
+    },
   }
 }

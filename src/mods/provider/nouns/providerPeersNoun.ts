@@ -216,7 +216,8 @@ export function runtimePeerInstances(): PeerInstance[] {
     return {
       id,
       definition: providerDefinitionId(id),
-      ...(mod?.definitionKey !== undefined ? { definitionKey: mod.definitionKey } : {}),
+      // A lent instance's key is of another plugin's manifest: its router finds it by `definition`.
+      ...(mod?.definitionKey !== undefined && !mod.borrowed ? { definitionKey: mod.definitionKey } : {}),
       ...(config?.createdAt !== undefined ? { createdAt: config.createdAt } : {}),
       label: definition ? runtimeProviderLabel(id) : name || id,
       ...(name ? { name } : {}),

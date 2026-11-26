@@ -2,7 +2,8 @@
  * Plugins: the GRANT a person consents to — each provider's `domains`, the hosts of its sign-in
  * window, the services a router may learn the person set up (`recognizes`), the router that manages it (consent to a managed definition covers every instance of it),
  * `secrets`, `readsSecrets`, `requestNeeds`, `signNeeds`, the reach of its proxy pools, a router's
- * `routesTo` (provider definitions, so an added instance of a listed one asks for nothing new), the folders an
+ * `routesTo` (provider definitions, so an added instance of a listed one asks for nothing new), a router's
+ * `borrows` (the services it may add keys and sign-ins for, used by it alone), the folders an
  * app's background module may reach, whether it may run the agent (F-40), and
  * whether its app pages may read each session's detail (F-42). Consent binds to the grant, not
  * the bytes: an update no wider than the consented grant needs no new consent. Pure.
@@ -27,6 +28,9 @@ export type ProviderGrant = {
   kind?: 'router'
   /** On a router alone: the providers its requests may go through. */
   routesTo?: GrantRoutes
+  /** On a router alone: the provider definitions it may have instances of
+   *  that only it uses (sorted, unique). Absent: none. */
+  borrows?: string[]
   /** Lower case, sorted, unique. */
   domains: string[]
   /** The key of the router of this plugin that sets it up and alone sends
@@ -80,6 +84,8 @@ export type ProviderGrantAddition = {
   /** It newly sends through other providers: `"*"` for any, or the provider
    *  definitions that were not inside the consented boundary. */
   routes?: GrantRoutes
+  /** The provider definitions it may newly have instances of for its own use. */
+  borrows?: string[]
 }
 
 export type GrantDelta = {
@@ -132,8 +138,10 @@ export function providerGrantOf(manifest: ProviderManifest): ProviderGrant {
   // A router whose boundary cannot be read is granted no provider at all.
   const routesTo: GrantRoutes | undefined =
     manifest.kind !== 'router' ? undefined : manifest.routesTo === '*' ? '*' : sortedUnique(listOf(manifest.routesTo))
+  const borrows = manifest.kind === 'router' ? sortedUnique(listOf(manifest.borrows)) : []
   return {
     ...(routesTo !== undefined ? { kind: 'router' as const, routesTo } : {}),
+    ...(borrows.length > 0 ? { borrows } : {}),
     domains: sortedUnique(listOf(manifest.domains).map(domain => domain.trim().toLowerCase())),
     ...(typeof manifest.managedBy === 'string' ? { managedBy: manifest.managedBy } : {}),
     ...(loginWindow.length > 0 ? { loginWindow } : {}),
@@ -190,7 +198,8 @@ function additionOf(consented: ProviderGrant | undefined, next: ProviderGrant): 
   // without listing it in its routesTo.
   const managedBy =
     consented !== undefined && next.managedBy !== undefined && next.managedBy !== consented.managedBy ? next.managedBy : undefined
-  if (managedBy === undefined && loginWindow.length === 0 && recognizes.length === 0 && domains.length === 0 && secrets.length === 0 && !readsSecrets && requestNeeds.length === 0 && !wider && !widerPools && routes === undefined) {
+  const borrows = (next.borrows ?? []).filter(definition => !had(consented?.borrows, definition))
+  if (borrows.length === 0 && managedBy === undefined && loginWindow.length === 0 && recognizes.length === 0 && domains.length === 0 && secrets.length === 0 && !readsSecrets && requestNeeds.length === 0 && !wider && !widerPools && routes === undefined) {
     return undefined
   }
   return {
@@ -204,12 +213,13 @@ function additionOf(consented: ProviderGrant | undefined, next: ProviderGrant): 
     ...(wider ? { signNeeds: next.signNeeds } : {}),
     ...(widerPools ? { proxyPools: next.proxyPools } : {}),
     ...(routes !== undefined ? { routes } : {}),
+    ...(borrows.length > 0 ? { borrows } : {}),
   }
 }
 
 /**
  * Whether `next` asks for more than `consented`. A new provider key (a managed definition is one),
- * domain, sign-in window host, `recognizes` host or secret name, a router newly managing a provider,
+ * domain, sign-in window host, `recognizes` host or secret name, a router newly managing a provider or borrowing one,
  * `readsSecrets` turned on, a new `requestNeeds` value, a first proxy pool, or a larger `signNeeds`
  * (none < digest < body) is wider, as is a provider turning into a router, a router's `routesTo`
  * gaining a provider or turning to `"*"`, a folder not consented to, a read-only one asked for

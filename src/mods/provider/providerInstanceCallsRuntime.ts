@@ -26,6 +26,7 @@ export function createRuntimeInstanceCalls(options: {
 }): InstanceCalls {
   return createInstanceCalls({
     managedBy: routerId => getProviderModHost().managedDefinitions(routerId),
+    borrowedBy: routerId => getProviderModHost().borrowableDefinitions(routerId),
     configs: runtimeProviderConfigs,
     retiredSlots: async definitionId =>
       (await readUserLayer(options.homeDir, options.fs)).settings.providers?.retiredInstances?.[definitionId] ?? [],

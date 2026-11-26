@@ -314,6 +314,7 @@ function validateConfig(config: unknown): string | null {
     'modOwner',
     'account',
     'definition',
+    'managedBy',
     'name',
   ] as const) {
     if (c[k] !== undefined && typeof c[k] !== 'string') {
@@ -559,7 +560,7 @@ async function handleUpsert(
       // write and no later write moves it.
       const before = prev?.configs?.[payload.id]
       if (before !== undefined) {
-        for (const field of ['definition', 'createdAt'] as const) {
+        for (const field of ['definition', 'createdAt', 'managedBy'] as const) {
           if (before[field] !== undefined) Object.assign(merged, { [field]: before[field] })
           else delete merged[field]
         }
@@ -568,6 +569,8 @@ async function handleUpsert(
     }
     // Security: only a provider mod's entry is an instance of a definition.
     if (!isModProviderId(payload.id)) delete merged.definition
+    // Security: only an instance of a definition is lent to a router.
+    if (merged.definition === undefined) delete merged.managedBy
     next.configs[payload.id] = merged
     return next
   })

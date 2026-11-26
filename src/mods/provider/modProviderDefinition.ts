@@ -164,7 +164,13 @@ export function modProviderDefinition(options: ModProviderDefinitionOptions): Pr
       ...(router ? { kind: 'router' as const, routesTo: manifest.routesTo ?? [] } : {}),
       ...(router && manifest.recognizes ? { recognizes: [...manifest.recognizes.hosts] } : {}),
       ...(manifest.settingsApp !== undefined ? { settingsApp: settingsAppIdOf(options.plugin, manifest) } : {}),
-      ...(manifest.managedBy !== undefined ? { managedBy: modProviderId(options.plugin, manifest.managedBy) } : {}),
+      // A definition's `managedBy` covers its every instance; an instance
+      // lent to a router carries that router on itself alone.
+      ...(provider.managedBy !== undefined
+        ? { managedBy: provider.managedBy, borrowed: true as const }
+        : manifest.managedBy !== undefined
+          ? { managedBy: modProviderId(options.plugin, manifest.managedBy) }
+          : {}),
     },
   }
   return definition

@@ -2370,6 +2370,7 @@ export const ko: Messages = {
   'settings.plugins.providers.consent.domains': '접속할 수 있는 곳: {domains}',
   'settings.plugins.providers.consent.noDomains': '접속할 도메인을 선언하지 않았습니다.',
   'settings.plugins.providers.routes.any': '설정해 둔 다른 제공업체를 거쳐 해당 제공업체의 자격 증명으로 요청을 보냅니다: 모든 제공업체.',
+  'settings.plugins.providers.consent.borrows': '다음 서비스에 대해 이 라우터만 사용하고 모델 설정에는 표시되지 않는 자체 키와 로그인을 추가할 수 있습니다: {services}',
   'settings.plugins.providers.routes.list': '설정해 둔 다른 제공업체를 거쳐 해당 제공업체의 자격 증명으로 요청을 보냅니다: {providers}',
   'settings.plugins.providers.routes.widened': '{id}이(가) 이제 설정해 둔 다른 제공업체를 거쳐 해당 제공업체의 자격 증명으로 요청을 보냅니다: {providers}',
   'settings.plugins.providers.routes.widenedAny': '{id}이(가) 이제 설정해 둔 다른 모든 제공업체를 거쳐 해당 제공업체의 자격 증명으로 요청을 보냅니다.',
@@ -2437,6 +2438,7 @@ export const ko: Messages = {
   'settings.plugins.providers.updates.addedProvider': '새 제공업체: {provider}',
   'settings.plugins.providers.updates.addedLoginWindow': '{id}이(가) 이제 로그인 창을 열 수 있는 곳: {domains}',
   'settings.plugins.providers.updates.addedRecognizes': '{id}이(가) 이제 다음을 설정했는지 알 수 있습니다: {hosts}',
+  'settings.plugins.providers.updates.addedBorrows': '{id}은(는) 이제 다음 서비스에 대해 자신만 사용하고 모델 설정에는 표시되지 않는 자체 키와 로그인을 추가할 수 있습니다: {services}',
   'settings.plugins.providers.updates.addedManagedBy': '{id}은(는) 이제 {router}이(가) 설정하며 {router}을(를) 통해서만 사용됩니다',
   'settings.plugins.providers.updates.addedDomains': '{id}이(가) 이제 접속할 수 있는 곳: {domains}',
   'settings.plugins.providers.updates.addedProxyPools':

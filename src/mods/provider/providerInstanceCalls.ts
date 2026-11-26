@@ -2,7 +2,9 @@
  * Contract: what a router's settings app may do with the provider instances
  * that router manages (F-27 RP-17): list the definitions and the instances,
  * make an instance, rename one, remove one. Every call is about the bound
- * router's own managed definitions and nothing else.
+ * router's own managed definitions, and the instances it borrowed of the
+ * definitions its manifest lists (RP-21), and nothing else: an instance the
+ * person set up on the Models page is never one of them.
  *
  * Security: no call takes or returns a secret, a base URL or a token. An
  * instance is made only of a definition that needs no credential here; one
@@ -28,9 +30,14 @@ export type ManagedDefinition = {
   owner: string
 }
 
+/** A definition of the router's own plugin, or one it borrows from another. */
+type RouterDefinition = ManagedDefinition & { borrowedBy?: string }
+
 export type InstanceCallsDeps = {
   /** The definitions `routerId` manages, in manifest order; empty when it is no registered router. */
   managedBy: (routerId: string) => readonly ManagedDefinition[]
+  /** The definitions `routerId` borrows and that are there to borrow; absent: none. */
+  borrowedBy?: (routerId: string) => readonly ManagedDefinition[]
   configs: () => Readonly<Record<string, NexusProviderConfig>>
   /** The slots of the removed instances of a definition. */
   retiredSlots: (definitionId: string) => Promise<readonly string[]> | readonly string[]
@@ -52,17 +59,21 @@ export type InstanceCallsDeps = {
 }
 
 export type DefinitionRow = {
-  key: string
+  /** The key in the router's own manifest; absent on a borrowed definition. */
+  key?: string
   id: string
   label: string
   method: ProviderCredentialMethod
   instances: 'single' | 'multiple'
+  borrowed?: true
 }
 
 export type InstanceRow = {
   id: string
   definition: string
-  definitionKey: string
+  /** Absent on an instance of a borrowed definition. */
+  definitionKey?: string
+  borrowed?: true
   name: string
   account?: string
   createdAt: number
@@ -84,17 +95,28 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value)
 
 /** The one way a definition's instances are set up; a sign-in before a key before none. */
-function methodOf(definition: ManagedDefinition): ProviderCredentialMethod {
+function methodOf(definition: RouterDefinition): ProviderCredentialMethod {
   const methods = definition.provider.manifest.credentials.methods
   return methods.includes('login') ? 'login' : methods.includes('apiKey') ? 'apiKey' : 'anonymous'
 }
 
-function labelOf(definition: ManagedDefinition, deps: InstanceCallsDeps): string {
+function labelOf(definition: RouterDefinition, deps: InstanceCallsDeps): string {
   return resolveLocalizedText(definition.provider.manifest.displayName, deps.locale())
 }
 
-function instanceIdsOf(definition: ManagedDefinition, deps: InstanceCallsDeps): string[] {
-  return storedInstanceIds(definition.provider.id, definition.owner, deps.configs())
+/** The router's definitions: the ones it manages, then the ones it borrows. */
+function definitionsOf(routerId: string, deps: InstanceCallsDeps): RouterDefinition[] {
+  const managed = deps.managedBy(routerId)
+  const borrowed = (deps.borrowedBy?.(routerId) ?? [])
+    .filter(each => !managed.some(own => own.provider.id === each.provider.id))
+    .map(each => ({ ...each, borrowedBy: routerId }))
+  return [...managed, ...borrowed]
+}
+
+/** The router's instances of a definition: of a borrowed one, only those lent to it. */
+function instanceIdsOf(definition: RouterDefinition, deps: InstanceCallsDeps): string[] {
+  const holder = definition.borrowedBy !== undefined ? { router: definition.borrowedBy } : ('own' as const)
+  return storedInstanceIds(definition.provider.id, definition.owner, deps.configs(), holder)
 }
 
 function readName(method: string, value: unknown): string {
@@ -111,36 +133,46 @@ function managedInstance(
   method: string,
   args: unknown,
   deps: InstanceCallsDeps,
-): { id: string; definition: ManagedDefinition; config: NexusProviderConfig } {
+): { id: string; definition: RouterDefinition; config: NexusProviderConfig } {
   const id = isRecord(args) ? args.provider : undefined
   if (typeof id !== 'string' || id === '') throw new TypeError(`$.provider.${method}: provider must be an instance id`)
-  for (const definition of deps.managedBy(routerId)) {
+  for (const definition of definitionsOf(routerId, deps)) {
     if (!instanceIdsOf(definition, deps).includes(id)) continue
     return { id, definition, config: deps.configs()[id]! }
   }
-  throw notAllowed(`$.provider.${method}: ${id} is not an instance of a provider ${routerId} manages`)
+  throw notAllowed(`$.provider.${method}: ${id} is not an instance of a provider ${routerId} manages or borrowed`)
 }
 
 export function listDefinitions(routerId: string, deps: InstanceCallsDeps): DefinitionRow[] {
-  return deps.managedBy(routerId).map(definition => ({
-    key: definition.provider.key,
-    id: definition.provider.id,
-    label: labelOf(definition, deps),
-    method: methodOf(definition),
-    instances: definition.provider.manifest.instances === 'multiple' ? 'multiple' : 'single',
-  }))
+  return definitionsOf(routerId, deps).map(definition =>
+    definition.borrowedBy !== undefined
+      ? {
+          id: definition.provider.id,
+          label: labelOf(definition, deps),
+          method: methodOf(definition),
+          instances: 'multiple' as const,
+          borrowed: true as const,
+        }
+      : {
+          key: definition.provider.key,
+          id: definition.provider.id,
+          label: labelOf(definition, deps),
+          method: methodOf(definition),
+          instances: definition.provider.manifest.instances === 'multiple' ? ('multiple' as const) : ('single' as const),
+        },
+  )
 }
 
 export function listInstances(routerId: string, deps: InstanceCallsDeps): InstanceRow[] {
   const configs = deps.configs()
-  return deps.managedBy(routerId).flatMap(definition =>
+  return definitionsOf(routerId, deps).flatMap(definition =>
     instanceIdsOf(definition, deps).map(id => {
       const config = configs[id]!
       const models = deps.models(id)
       return {
         id,
         definition: definition.provider.id,
-        definitionKey: definition.provider.key,
+        ...(definition.borrowedBy !== undefined ? { borrowed: true as const } : { definitionKey: definition.provider.key }),
         name: config.name ?? labelOf(definition, deps),
         ...(config.account ? { account: config.account } : {}),
         createdAt: config.createdAt ?? 0,
@@ -194,9 +226,14 @@ export function createInstanceCalls(deps: InstanceCallsDeps) {
     if (!isRecord(args) || typeof args.definition !== 'string' || args.definition === '') {
       throw new TypeError('$.provider.addInstance({ definition, name? }): definition must be the key or the id of a managed definition')
     }
-    const managed = deps.managedBy(routerId)
-    const definition = managed.find(each => each.provider.key === args.definition || each.provider.id === args.definition)
-    if (!definition) throw notAllowed(`$.provider.addInstance: ${args.definition} is not a provider ${routerId} manages`)
+    const managed = definitionsOf(routerId, deps)
+    // A key names a definition of the router's own manifest; a borrowed one is named by its id.
+    const definition = managed.find(
+      each => each.provider.id === args.definition || (each.borrowedBy === undefined && each.provider.key === args.definition),
+    )
+    if (!definition) {
+      throw notAllowed(`$.provider.addInstance: ${args.definition} is not a provider ${routerId} manages or may borrow`)
+    }
     const method = methodOf(definition)
     // Security: a model's turn or a timer never adds a provider; the one
     // exception needs no credential and no consent beyond the plugin's.
@@ -228,7 +265,9 @@ export function createInstanceCalls(deps: InstanceCallsDeps) {
       const plan = planNewInstance({
         definition: definition.provider,
         owner: definition.owner,
-        instances,
+        // Every instance of the definition holds its slot, whoever set it up.
+        instances: storedInstanceIds(definition.provider.id, definition.owner, configs),
+        ...(definition.borrowedBy !== undefined ? { lentTo: definition.borrowedBy } : {}),
         retiredSlots: await deps.retiredSlots(definition.provider.id),
         name: named ?? defaultInstanceName(label, method, usedNames),
         now: deps.now(),

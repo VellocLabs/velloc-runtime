@@ -2416,6 +2416,7 @@ export const fr: Messages = {
   'settings.plugins.providers.consent.domains': 'Peut contacter : {domains}',
   'settings.plugins.providers.consent.noDomains': 'Ne déclare aucun domaine à contacter.',
   'settings.plugins.providers.routes.any': 'Envoie vos requêtes via d’autres fournisseurs que vous avez configurés, avec leurs identifiants : n’importe quel fournisseur.',
+  'settings.plugins.providers.consent.borrows': 'Peut ajouter ses propres clés et connexions pour ces services, utilisées par lui seul et absentes de vos réglages Modèles : {services}',
   'settings.plugins.providers.routes.list': 'Envoie vos requêtes via d’autres fournisseurs que vous avez configurés, avec leurs identifiants : {providers}',
   'settings.plugins.providers.routes.widened': '{id} envoie désormais vos requêtes via d’autres fournisseurs que vous avez configurés, avec leurs identifiants : {providers}',
   'settings.plugins.providers.routes.widenedAny': '{id} envoie désormais vos requêtes via n’importe quel autre fournisseur que vous avez configuré, avec ses identifiants.',
@@ -2483,6 +2484,7 @@ export const fr: Messages = {
   'settings.plugins.providers.updates.addedProvider': 'Nouveau fournisseur : {provider}',
   'settings.plugins.providers.updates.addedLoginWindow': '{id} peut désormais ouvrir une fenêtre de connexion sur : {domains}',
   'settings.plugins.providers.updates.addedRecognizes': '{id} peut désormais savoir si vous avez configuré : {hosts}',
+  'settings.plugins.providers.updates.addedBorrows': '{id} peut désormais ajouter ses propres clés et connexions pour ces services, utilisées par lui seul et absentes de vos réglages Modèles : {services}',
   'settings.plugins.providers.updates.addedManagedBy': '{id} est désormais configuré par {router} et utilisé uniquement par son intermédiaire',
   'settings.plugins.providers.updates.addedDomains': '{id} peut désormais contacter : {domains}',
   'settings.plugins.providers.updates.addedProxyPools':

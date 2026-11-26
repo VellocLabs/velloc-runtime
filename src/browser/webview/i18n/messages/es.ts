@@ -2410,6 +2410,7 @@ export const es: Messages = {
   'settings.plugins.providers.consent.domains': 'Puede conectarse a: {domains}',
   'settings.plugins.providers.consent.noDomains': 'No declara dominios a los que conectarse.',
   'settings.plugins.providers.routes.any': 'Envía sus solicitudes a través de otros proveedores que haya configurado, con las credenciales de estos: cualquier proveedor.',
+  'settings.plugins.providers.consent.borrows': 'Puede añadir claves e inicios de sesión propios para estos servicios, que solo él usa y que no aparecen en sus ajustes de Modelos: {services}',
   'settings.plugins.providers.routes.list': 'Envía sus solicitudes a través de otros proveedores que haya configurado, con las credenciales de estos: {providers}',
   'settings.plugins.providers.routes.widened': '{id} ahora envía sus solicitudes a través de otros proveedores que haya configurado, con las credenciales de estos: {providers}',
   'settings.plugins.providers.routes.widenedAny': '{id} ahora envía sus solicitudes a través de cualquier otro proveedor que haya configurado, con las credenciales de este.',
@@ -2477,6 +2478,7 @@ export const es: Messages = {
   'settings.plugins.providers.updates.addedProvider': 'Proveedor nuevo: {provider}',
   'settings.plugins.providers.updates.addedLoginWindow': '{id} ahora puede abrir una ventana de inicio de sesión en: {domains}',
   'settings.plugins.providers.updates.addedRecognizes': '{id} ahora puede saber si ha configurado: {hosts}',
+  'settings.plugins.providers.updates.addedBorrows': '{id} ahora puede añadir claves e inicios de sesión propios para estos servicios, que solo él usa y que no aparecen en sus ajustes de Modelos: {services}',
   'settings.plugins.providers.updates.addedManagedBy': '{id} ahora lo configura {router} y solo se usa a través de él',
   'settings.plugins.providers.updates.addedDomains': '{id} ahora puede conectarse a: {domains}',
   'settings.plugins.providers.updates.addedProxyPools':

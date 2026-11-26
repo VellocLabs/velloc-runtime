@@ -30,6 +30,7 @@ import { checkProviderWire, type ProviderWireManifest } from './providerToolAlia
 import { withSettingBinds, type SettingBinding } from './providerSettingBinds'
 import { insideRoutesTo } from '../../models/drivers/providerRouter'
 import { whyNotSettingsAppKey } from './providerSettingsApp'
+import { checkBorrows } from './providerBorrows'
 
 /** The `providerApi` values this Velloc serves. A manifest naming another is
  *  refused with a message that names it. */
@@ -167,6 +168,9 @@ export type ProviderManifest = {
   /** A router's: the services whose set-up providers the peers table names
    *  to it by the matched entry (`routerRecognizes.ts`). */
   recognizes?: { hosts: string[] }
+  /** On a router: the provider definitions of other plugins it may have
+   *  instances of, which only it uses (`providerBorrows.ts`). */
+  borrows?: string[]
   displayName: LocalizedText
   /** Package-relative `.svg`, `./`-prefixed. */
   icon?: string
@@ -212,6 +216,8 @@ export type ResolvedProvider = {
   id: string
   /** The definition's id, on an instance whose id is not the definition's. */
   definition?: string
+  /** On an instance lent to a router: that router's provider id. */
+  managedBy?: string
   manifest: ProviderManifest
   modulePath: string
   iconPath?: string
@@ -980,6 +986,11 @@ function checkProvider(key: string, id: string, raw: unknown, errors: string[]):
     if (raw.routesTo !== undefined) bad('routesTo: only a router ("kind": "router") declares routesTo')
     if (raw.recognizes !== undefined) bad('recognizes: only a router ("kind": "router") declares recognizes')
   }
+  let borrows: string[] | undefined
+  if (raw.borrows !== undefined) {
+    if (!router) bad('borrows: only a router ("kind": "router") borrows providers')
+    else borrows = checkBorrows(raw.borrows, id, key, each => ID_CHARS.test(each) && each.length <= PROVIDER_ID_MAX_LENGTH, bad)
+  }
 
   let multiple = false
   if (raw.instances !== undefined && raw.instances !== 'single') {
@@ -1088,6 +1099,7 @@ function checkProvider(key: string, id: string, raw: unknown, errors: string[]):
     providerApi: api,
     ...(router ? { kind, routesTo } : {}),
     ...(recognizes ? { recognizes: { hosts: recognizes } } : {}),
+    ...(borrows?.length ? { borrows } : {}),
     ...(multiple ? { instances: 'multiple' as const } : {}),
     displayName,
     ...(icon !== undefined ? { icon } : {}),

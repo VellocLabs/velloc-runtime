@@ -2407,6 +2407,7 @@ export const de: Messages = {
   'settings.plugins.providers.consent.domains': 'Darf Verbindungen aufbauen zu: {domains}',
   'settings.plugins.providers.consent.noDomains': 'Gibt keine Domains an, zu denen es Verbindungen aufbaut.',
   'settings.plugins.providers.routes.any': 'Sendet deine Anfragen über andere Anbieter, die du eingerichtet hast, mit deren Zugangsdaten: jeden Anbieter.',
+  'settings.plugins.providers.consent.borrows': 'Kann für diese Dienste eigene Schlüssel und Anmeldungen hinzufügen, die nur es selbst verwendet und die nicht in deinen Modelleinstellungen erscheinen: {services}',
   'settings.plugins.providers.routes.list': 'Sendet deine Anfragen über andere Anbieter, die du eingerichtet hast, mit deren Zugangsdaten: {providers}',
   'settings.plugins.providers.routes.widened': '{id} sendet deine Anfragen jetzt über andere Anbieter, die du eingerichtet hast, mit deren Zugangsdaten: {providers}',
   'settings.plugins.providers.routes.widenedAny': '{id} sendet deine Anfragen jetzt über jeden anderen Anbieter, den du eingerichtet hast, mit dessen Zugangsdaten.',
@@ -2474,6 +2475,7 @@ export const de: Messages = {
   'settings.plugins.providers.updates.addedProvider': 'Neuer Anbieter: {provider}',
   'settings.plugins.providers.updates.addedLoginWindow': '{id} darf jetzt ein Anmeldefenster öffnen auf: {domains}',
   'settings.plugins.providers.updates.addedRecognizes': '{id} darf jetzt erfahren, ob du Folgendes eingerichtet hast: {hosts}',
+  'settings.plugins.providers.updates.addedBorrows': '{id} kann jetzt für diese Dienste eigene Schlüssel und Anmeldungen hinzufügen, die nur es selbst verwendet und die nicht in deinen Modelleinstellungen erscheinen: {services}',
   'settings.plugins.providers.updates.addedManagedBy': '{id} wird jetzt von {router} eingerichtet und nur darüber verwendet',
   'settings.plugins.providers.updates.addedDomains': '{id} darf jetzt Verbindungen aufbauen zu: {domains}',
   'settings.plugins.providers.updates.addedProxyPools':

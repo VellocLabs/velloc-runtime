@@ -260,6 +260,10 @@ export type NexusProviderConfig = {
    *  of, on an instance whose id is not the definition's. Written once, when
    *  the instance is made. */
   definition?: string
+  /** Security: the provider id of the router this instance is lent to. Only
+   *  that router sends through it, and it is not listed on the Models page
+   *  or in a model picker. Written once, when the instance is made. */
+  managedBy?: string
   /** The name the person sees for this instance. */
   name?: string
   /** When the instance was made, epoch milliseconds. */
