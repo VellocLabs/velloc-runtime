@@ -25,6 +25,7 @@ import { setCustomProviderRecords } from '../../config/customProviderRegistry'
 import {
   publishListingsChanged,
   setRuntimeProviderConfigs,
+  withDeclaredProviderHosts,
   withRuntimeProviderBaseUrls,
 } from '../../models/drivers/runtimeProviders'
 import { withProviderUserAgents } from '../../config/providerUserAgent'
@@ -547,7 +548,9 @@ export class ManagerBootServices {
         route: createBridgeRoute('model', 'publishProviderConfigs'),
         payload: {
           configs: withConcreteDefaultModels(
-            withRuntimeProviderBaseUrls(withProviderSecretMirror(withProviderUserAgents(configs))),
+            withDeclaredProviderHosts(
+              withRuntimeProviderBaseUrls(withProviderSecretMirror(withProviderUserAgents(configs))),
+            ),
           ),
           ...(providers?.activeProviderId
             ? { activeProviderId: providers.activeProviderId }

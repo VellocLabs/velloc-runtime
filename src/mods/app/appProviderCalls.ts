@@ -211,29 +211,36 @@ type Timers = {
  * Folds `reload` calls per provider: the first runs at once; calls within
  * `SETTINGS_APP_RELOAD_FOLD_MS` of its start share one run at the end of that
  * window. Never runs two at once for one provider.
+ *
+ * `relist` is the platform's own run after it changed the provider's instances:
+ * it runs after the one in progress and opens no window, so the module's next
+ * `reload` is not held back by a run it did not ask for.
  */
 export function createReloadFolder(
   run: (providerId: string) => Promise<void>,
   options: { now?: () => number; timers?: Timers; foldMs?: number } = {},
-): { reload: (providerId: string) => Promise<void>; dispose: () => void } {
+): { reload: (providerId: string) => Promise<void>; relist: (providerId: string) => Promise<void>; dispose: () => void } {
   const now = options.now ?? Date.now
   const set = options.timers?.set ?? ((fn, ms) => setTimeout(fn, ms))
   const clear = options.timers?.clear ?? (handle => clearTimeout(handle as ReturnType<typeof setTimeout>))
   const fold = options.foldMs ?? SETTINGS_APP_RELOAD_FOLD_MS
   type Slot = { lastStart: number; running: Promise<void>; pending?: { promise: Promise<void>; timer: unknown } }
   const slots = new Map<string, Slot>()
-  const start = (providerId: string, after: Promise<void>): Promise<void> => {
+  const start = (providerId: string, after: Promise<void>, opensWindow = true): Promise<void> => {
     const slot = slots.get(providerId)
     const running = after.catch(() => undefined).then(() => run(providerId))
     if (slot) {
-      slot.lastStart = now()
+      if (opensWindow) slot.lastStart = now()
       slot.running = running
     } else {
-      slots.set(providerId, { lastStart: now(), running })
+      slots.set(providerId, { lastStart: opensWindow ? now() : Number.NEGATIVE_INFINITY, running })
     }
     return running
   }
   return {
+    relist(providerId) {
+      return start(providerId, slots.get(providerId)?.running ?? Promise.resolve(), false)
+    },
     reload(providerId) {
       const slot = slots.get(providerId)
       if (!slot || now() - slot.lastStart >= fold) return start(providerId, slot?.running ?? Promise.resolve())

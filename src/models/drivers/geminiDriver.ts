@@ -706,4 +706,6 @@ export const geminiDriver: ProviderDriver = {
     const event = hostErrorEvent(buildProviderErrorMessage(response.status, wait, extractApiErrorMessage(response.bodyText)))
     return details.verdict ? { ...event, verdict: details.verdict } : event
   },
+  // A provider that sends its own `authorization` (a signed-in account) holds no API key.
+  authCarriedByHeaders: headers => findHeader(headers, 'authorization') !== '',
 }

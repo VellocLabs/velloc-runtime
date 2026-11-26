@@ -290,6 +290,14 @@ export type NexusProviderConfig = {
    * (`config/providerUserAgent.ts`).
    */
   userAgent?: string
+  /**
+   * Wire-only: the hosts a provider mod's manifest declares (`domains`), which
+   * the host lets its requests reach beside the base URL's own domain. NOT a
+   * settings.json field. Security: code-owned, set from the registered
+   * manifest at publish time by `withDeclaredProviderHosts`; a stored value
+   * is never sent.
+   */
+  declaredHosts?: string[]
   // `streamIdleTimeoutSeconds` / `maxConcurrentStreams` are deliberately NOT
   // settings.json fields. They are owned EXCLUSIVELY by the built-in
   // NEXUS_MODEL_CONFIG provider catalog (config/nexusModelConfig/types.ts) and

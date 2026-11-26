@@ -4,7 +4,14 @@
  */
 
 import { clearProviderState } from '../../models/drivers/providerHealthLedger'
-import { isProviderSetUp, mergedModels, runtimeProviderConfigs, verifyRuntimeProvider } from '../../models/drivers/runtimeProviders'
+import {
+  forgetListingFailure,
+  isProviderSetUp,
+  mergedModels,
+  refreshRuntimeProviderModels,
+  runtimeProviderConfigs,
+  verifyRuntimeProvider,
+} from '../../models/drivers/runtimeProviders'
 import { readUserLayer } from '../../settings/settingsStore'
 import type { RuntimeFs } from '../../utils/fs/runtimeFs'
 import { getKeyFingerprinter } from './keyRequest/keyFingerprint'
@@ -47,6 +54,14 @@ export function createRuntimeInstanceCalls(options: {
     resync: () => getProviderModHost().resync(),
     forgetState: providerId => clearProviderState(providerId),
     relist: options.relist,
+    listModels: async providerId => {
+      const transport = providerHostSources().transport?.()
+      if (transport && isProviderSetUp(providerId)) {
+        const outcome = await refreshRuntimeProviderModels(transport, providerId, { pickDefaults: true })
+        // An early try: a failure here must not hold back the next listing asked for.
+        if (!outcome.ok) forgetListingFailure(providerId)
+      }
+    },
     isSetUp: isProviderSetUp,
     models: mergedModels,
     icon: providerIconOf,

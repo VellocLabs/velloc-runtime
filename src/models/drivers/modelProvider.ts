@@ -61,20 +61,40 @@ function withoutApiKey(
 }
 
 /** The format's own auth entries (those carrying the key) leave `queryParams`
- *  when the merged headers already carry the credential. */
+ *  when the merged headers already carry the credential and the provider
+ *  holds no key (`keyed`). */
 function withoutHeaderCarriedAuth(
   codec: ProviderDriver,
   headers: Record<string, string>,
   queryParams: Record<string, string> | undefined,
   explicit: Record<string, string> | undefined,
+  keyed: boolean,
 ): Record<string, string> | undefined {
-  if (!queryParams || !codec.authCarriedByHeaders?.(headers)) return queryParams
+  if (!queryParams || keyed || !codec.authCarriedByHeaders?.(headers)) return queryParams
   const out = Object.fromEntries(
     Object.entries(queryParams).filter(
       ([name, value]) => !value.includes(API_KEY_TEMPLATE) || (explicit !== undefined && name in explicit),
     ),
   )
   return Object.keys(out).length > 0 ? out : undefined
+}
+
+/** The format's own API-key headers leave the request when the merged headers
+ *  already carry the credential and the provider holds no key (`keyed`); one
+ *  the provider declared itself stays.
+ *  Security: a header naming a secret the provider does not hold makes the
+ *  host refuse the whole request, so the default must not ride along. */
+function withoutDefaultKeyHeaders(
+  codec: ProviderDriver,
+  headers: Record<string, string>,
+  explicit: Record<string, string> | undefined,
+  keyed: boolean,
+): Record<string, string> {
+  if (keyed || !codec.authCarriedByHeaders?.(headers)) return headers
+  const declared = new Set(Object.keys(explicit ?? {}).map(name => name.toLowerCase()))
+  return Object.fromEntries(
+    Object.entries(headers).filter(([name, value]) => !value.includes(API_KEY_TEMPLATE) || declared.has(name.toLowerCase())),
+  )
 }
 
 /** Swap the path (and drop the query) of an absolute URL. */
@@ -122,10 +142,15 @@ export class ModelProvider {
     const url = this.spec.path
       ? withPath(`${this.baseUrl}/`, joinPath(this.baseUrl, this.spec.path))
       : request.url
-    const headers = mergeHeaders(request.headers, {
-      ...(this.spec.userAgent ? { 'user-agent': this.spec.userAgent } : {}),
-      ...this.spec.headers,
-    })
+    const headers = withoutDefaultKeyHeaders(
+      this.codec,
+      mergeHeaders(request.headers, {
+        ...(this.spec.userAgent ? { 'user-agent': this.spec.userAgent } : {}),
+        ...this.spec.headers,
+      }),
+      this.spec.headers,
+      providerHasStoredApiKey(this.spec.id),
+    )
     const queryParams = withoutHeaderCarriedAuth(
       this.codec,
       headers,
@@ -133,6 +158,7 @@ export class ModelProvider {
         ? { ...request.queryParams, ...this.spec.queryParams }
         : undefined,
       this.spec.queryParams,
+      providerHasStoredApiKey(this.spec.id),
     )
     const { queryParams: _dropped, ...rest } = request
     if (this.keyless) return { ...rest, url, ...withoutApiKey(headers, queryParams) }
@@ -174,10 +200,15 @@ export class ModelProvider {
     queryParams?: Record<string, string>
   } {
     const auth = this.codec.auth
-    const headers = mergeHeaders(auth.headers ?? {}, {
-      ...(this.spec.userAgent ? { 'user-agent': this.spec.userAgent } : {}),
-      ...this.spec.headers,
-    })
+    const headers = withoutDefaultKeyHeaders(
+      this.codec,
+      mergeHeaders(auth.headers ?? {}, {
+        ...(this.spec.userAgent ? { 'user-agent': this.spec.userAgent } : {}),
+        ...this.spec.headers,
+      }),
+      this.spec.headers,
+      providerHasStoredApiKey(this.spec.id),
+    )
     const queryParams = withoutHeaderCarriedAuth(
       this.codec,
       headers,
@@ -185,6 +216,7 @@ export class ModelProvider {
         ? { ...auth.queryParams, ...this.spec.queryParams }
         : undefined,
       this.spec.queryParams,
+      providerHasStoredApiKey(this.spec.id),
     )
     const url = resolveRelativeUrl(this.baseUrl, path)
     if (this.keyless) return { url, ...withoutApiKey(headers, queryParams) }

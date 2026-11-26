@@ -559,7 +559,8 @@ export type ModelBridgeCapabilityMap = {
      * Generic provider byte transport: the guest owns the wire format, the host the
      * network and secrets. `{{secret:NAME}}` in a header or query value is
      * substituted host-side and never returned; `url` must stay on the provider's
-     * registrable domain (a redirect off it drops secret headers). Resolves at the
+     * registrable domain or be exactly one of its `declaredHosts` (https, default
+     * port; a redirect off them drops secret headers). Resolves at the
      * response head; errors `CANCELLED`, `INVALID_ARGS`. Use `openRawProviderStream`.
      */
     rawStreamOpen: {

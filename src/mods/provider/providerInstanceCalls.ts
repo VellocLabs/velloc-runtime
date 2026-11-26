@@ -25,6 +25,17 @@ import { MOD_PROVIDER_ID_PREFIX, type ProviderCredentialMethod, type ResolvedPro
 export const INSTANCE_NAME_MAX = 80
 export const INSTANCES_PER_DEFINITION_MAX = 16
 export const INSTANCES_PER_ROUTER_MAX = 64
+/** How long an add waits for a signed-in instance's first listing: inside the
+ *  action that asked. A slower listing goes on and lands when it answers. */
+export const LIST_AFTER_SIGN_IN_WAIT_MS = 3_000
+
+/** Waits for `work` (its failure ignored) for at most `ms`. */
+async function settleWithin(work: Promise<unknown> | undefined, ms: number): Promise<void> {
+  if (!work) return
+  let timer: ReturnType<typeof setTimeout> | undefined
+  await Promise.race([work.catch(() => undefined), new Promise<void>(resolve => (timer = setTimeout(resolve, ms)))])
+  clearTimeout(timer)
+}
 
 /** When the call was made: only a person's action may add or remove. */
 export type InstanceCallPhase = 'action' | 'start' | 'other'
@@ -95,6 +106,10 @@ export type InstanceCallsDeps = {
   forgetState: (providerId: string) => void
   /** Ask the router for its routes again. */
   relist: (routerId: string) => Promise<void>
+  /** List an instance's own models now. Absent: they are listed when something else asks. */
+  listModels?: (providerId: string) => Promise<unknown>
+  /** How long an add waits for that listing (default `LIST_AFTER_SIGN_IN_WAIT_MS`). */
+  listWaitMs?: number
   isSetUp: (providerId: string) => boolean
   models: (providerId: string) => ReadonlyArray<{ free?: boolean }>
   /** A definition's brand mark as an image URL, if it has one. */
@@ -473,6 +488,9 @@ export function createInstanceCalls(deps: InstanceCallsDeps) {
         } finally {
           signingIn.delete(id)
         }
+        // It was registered before it could be listed: without this its models
+        // stay empty until some other change lists it.
+        await settleWithin(deps.listModels?.(id), deps.listWaitMs ?? LIST_AFTER_SIGN_IN_WAIT_MS)
         await settle(routerId)
         return { id }
       })

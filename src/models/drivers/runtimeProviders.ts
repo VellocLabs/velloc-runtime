@@ -974,6 +974,27 @@ export function withRuntimeProviderBaseUrls(
 }
 
 /**
+ * Security: the configs with each registered provider mod's declared hosts,
+ * for the host pref, which lets a provider's requests reach them beside its
+ * base URL's registrable domain (a sign-in whose token endpoint is another
+ * domain's). The list is the registered manifest's `domains`, which the
+ * person consented to with the plugin; it goes into the PUBLISHED copy only.
+ * Every other entry is sent without the field, whatever is stored under it,
+ * and the host then drops what it held for that provider.
+ */
+export function withDeclaredProviderHosts(
+  input: Record<string, NexusProviderConfig>,
+): Record<string, NexusProviderConfig> {
+  const out: Record<string, NexusProviderConfig> = {}
+  for (const [id, config] of Object.entries(input)) {
+    const { declaredHosts: _stored, ...rest } = config
+    const domains = isModProviderId(id) ? getProviderDefinition(id)?.catalogMod?.domains : undefined
+    out[id] = domains && domains.length > 0 ? { ...rest, declaredHosts: [...domains] } : rest
+  }
+  return out
+}
+
+/**
  * A runtime-only provider's catalog default base URL, for the Settings field's
  * placeholder: the host registry (`providerAuth.list`) has no row for these, so
  * the page cannot learn it there. `undefined` for any other provider.
@@ -1081,6 +1102,11 @@ export async function publishListingsChanged(providerIds: string[]): Promise<voi
       })
     }
   }
+}
+
+/** Drops a remembered listing failure, so the next listing of `providerId` is fetched. */
+export function forgetListingFailure(providerId: string): void {
+  failures.delete(providerId)
 }
 
 /** Test hook. */

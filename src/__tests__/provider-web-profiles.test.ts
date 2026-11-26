@@ -263,8 +263,13 @@ describe('an uninstalled plugin', () => {
     const files = new Map<string, string>()
     const path = () => [...files.keys()].find(key => key.endsWith(WEB_PROFILES_FILE_NAME))
     const fs = {
-      existsSync: (file: string) => files.has(file),
-      readFile: async (file: string) => files.get(file)!,
+      // As the browser's fs: it cannot say a path exists, and a missing file fails the read.
+      existsSync: () => false,
+      readFile: async (file: string) => {
+        const body = files.get(file)
+        if (body === undefined) throw Object.assign(new Error(`ENOENT: ${file}`), { code: 'ENOENT' })
+        return body
+      },
       writeFile: async (file: string, body: string) => void files.set(file, body),
       mkdir: async () => {},
     } as unknown as RuntimeFs
@@ -295,7 +300,9 @@ describe('an uninstalled plugin', () => {
     const probe = home()
     // Find where the table lives by letting a first, empty run look for it.
     const asked: string[] = []
-    ;(probe.fs as unknown as { existsSync: (file: string) => boolean }).existsSync = file => (asked.push(file), false)
+    const probed = probe.fs as unknown as { readFile: (file: string) => Promise<string> }
+    const read = probed.readFile.bind(probed)
+    probed.readFile = file => (asked.push(file), read(file))
     await forgetPluginWebProfiles({ homeDir: '/home/zed', fs: probe.fs }, 'acme')
     h.files.set(asked[0]!, '{ not json')
     await expect(

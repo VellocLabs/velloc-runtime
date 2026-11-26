@@ -84,6 +84,7 @@ function rig(over: Partial<InstanceCallsDeps> = {}, seed: Record<string, NexusPr
     resync: async () => void log.push('resync'),
     forgetState: id => void log.push(`forget ${id}`),
     relist: async id => void log.push(`relist ${id}`),
+    listModels: async id => void log.push(`list ${id}`),
     isSetUp: id => (configs[id]?.storedSecrets ?? []).length > 0,
     models: () => [],
     locale: () => 'en',
@@ -125,8 +126,34 @@ describe('addInstance of a provider that needs a sign-in', () => {
     signedIn(FIRST, 'ada@example.test')
     expect(await adding).toEqual({ id: FIRST })
     expect(configs[FIRST]).toMatchObject({ name: 'Cloud · ada@example.test', account: 'ada@example.test', storedSecrets: ['access_token'], definition: SIGNIN })
-    expect(log).toEqual([`write ${FIRST}`, 'resync', `write ${FIRST}`, 'resync', `relist ${ROUTER}`])
+    expect(log).toEqual([`write ${FIRST}`, 'resync', `write ${FIRST}`, `list ${FIRST}`, 'resync', `relist ${ROUTER}`])
     expect(calls.instances(ROUTER)).toMatchObject([{ id: FIRST, definition: SIGNIN, name: 'Cloud · ada@example.test', account: 'ada@example.test', connected: true }])
+  })
+
+  it('a listing that fails after the sign-in still gives the app the instance', async () => {
+    const { calls, opened, signedIn } = rig({
+      listModels: async () => {
+        throw new Error('the module is not loaded')
+      },
+    })
+    const adding = calls.add(ROUTER, { definition: 'signin' }, 'action')
+    await opened()
+    signedIn(FIRST, 'ada@example.test')
+    expect(await adding).toEqual({ id: FIRST })
+    expect(calls.instances(ROUTER)).toMatchObject([{ id: FIRST, connected: true }])
+  })
+
+  it('a listing slower than the wait does not hold back the answer, and lands when it answers', async () => {
+    let finish: () => void = () => {}
+    const { calls, opened, signedIn } = rig({
+      listWaitMs: 5,
+      listModels: () => new Promise<void>(resolve => (finish = resolve)),
+    })
+    const adding = calls.add(ROUTER, { definition: 'signin' }, 'action')
+    await opened()
+    signedIn(FIRST, 'ada@example.test')
+    expect(await adding).toEqual({ id: FIRST })
+    finish()
   })
 
   it('keeps the name the app gave, and the plain name when the sign-in names no account', async () => {

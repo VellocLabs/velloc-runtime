@@ -133,9 +133,10 @@ export interface ProviderDriver {
   readonly auth: { headers?: Record<string, string>; queryParams?: Record<string, string> }
   /**
    * Optional. True when these (already merged) request headers carry the
-   * credential themselves, so the format's own `auth.queryParams` entry for it
-   * must not be sent as well (a header-authenticated endpoint of a format that
-   * authenticates by query). Absent = the format's auth is always sent.
+   * credential themselves, so the format's own API-key entries must not be
+   * sent as well: its `auth.queryParams` entry, and an API-key header the
+   * provider did not declare (a signed-in provider of a format that
+   * authenticates by key). Absent = the format's auth is always sent.
    */
   authCarriedByHeaders?(headers: Record<string, string>): boolean
   buildRequest(

@@ -50,6 +50,7 @@ import {
   staleEntryIds,
   setRuntimeProviderConfigs,
   verifyRuntimeProvider,
+  withDeclaredProviderHosts,
   withRuntimeProviderBaseUrls,
   type RuntimeProvidersHost,
 } from '../../../models/drivers/runtimeProviders'
@@ -574,8 +575,10 @@ function providersAdapterContext(
                 payload: {
                   ...payload,
                   configs: withConcreteDefaultModels(
-                    withRuntimeProviderBaseUrls(
-                      withProviderSecretMirror(withProviderUserAgents(payload.configs)),
+                    withDeclaredProviderHosts(
+                      withRuntimeProviderBaseUrls(
+                        withProviderSecretMirror(withProviderUserAgents(payload.configs)),
+                      ),
                     ),
                   ),
                 },

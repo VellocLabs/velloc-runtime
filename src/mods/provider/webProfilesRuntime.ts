@@ -11,6 +11,7 @@ import { getMcpHost } from '../../mcp/mcpHost'
 import { ensureDirRecursive } from '../../pluginHost/writeExtracted'
 import type { NexusProviderConfig, ProviderWebProfileRef } from '../../settings/settingsTypes'
 import type { RuntimeFs } from '../../utils/fs/runtimeFs'
+import { isFsNotFoundError } from '../../utils/fsTransportFailure'
 import { joinRuntimePath } from '../../utils/runtimePaths'
 import { WebProfiles } from './webProfiles'
 
@@ -21,6 +22,20 @@ let where: { homeDir: string; fs: RuntimeFs; report?: (line: string) => void } |
 
 const tablePath = (homeDir: string): string =>
   `${joinRuntimePath(homeDir, RUNTIME_DIR_NAME).replace(/\\/g, '/')}/${WEB_PROFILES_FILE_NAME}`
+
+/**
+ * The table's text, or null when there is no file. Read, never probed with
+ * `existsSync`: the browser's fs answers that with false for every path, and
+ * a table taken for absent is overwritten by the next change.
+ */
+async function readTable(fs: RuntimeFs, path: string): Promise<string | null> {
+  try {
+    return await fs.readFile(path, { encoding: 'utf8' })
+  } catch (error) {
+    if (isFsNotFoundError(error)) return null
+    throw error
+  }
+}
 
 const hostKeepsProfiles = (): boolean => {
   const manifest = getMcpHost()?.manifest
@@ -40,7 +55,7 @@ export function runtimeWebProfiles(options: {
   const path = tablePath(options.homeDir)
   const dir = path.slice(0, path.lastIndexOf('/'))
   instance ??= new WebProfiles({
-    load: async () => (fs.existsSync(path) ? fs.readFile(path, { encoding: 'utf8' }) : null),
+    load: () => readTable(fs, path),
     save: async text => {
       await ensureDirRecursive(fs, dir)
       await fs.writeFile(path, text, { encoding: 'utf8' })
@@ -82,7 +97,7 @@ export async function forgetPluginWebProfiles(
 ): Promise<void> {
   const path = tablePath(options.homeDir)
   try {
-    if (!instance && !options.fs.existsSync(path)) return
+    if (!instance && (await readTable(options.fs, path)) === null) return
     if (await options.stillInstalled?.(plugin)) return
     await runtimeWebProfiles(options).forgetPlugin(plugin)
   } catch (error) {
@@ -105,7 +120,7 @@ export async function releaseWebProfileAccount(
   const report = options.report ?? where?.report
   try {
     if (Object.values(configs).some(config => config.webProfile?.id === through.id && config.webProfile.site === through.site)) return
-    if (!instance && !options.fs.existsSync(tablePath(options.homeDir))) return
+    if (!instance && (await readTable(options.fs, tablePath(options.homeDir))) === null) return
     await (currentWebProfiles() ?? runtimeWebProfiles(options)).dropAccount(through.id, through.site)
   } catch (error) {
     report?.(

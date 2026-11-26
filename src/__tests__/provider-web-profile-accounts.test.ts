@@ -19,7 +19,7 @@ import { ProviderModHost, type ProviderPluginFacts } from '../mods/provider/prov
 import { PROVIDER_WIRE_FORMATS, resolveProviders } from '../mods/provider/providerManifest'
 import type { ProviderNounCall } from '../mods/provider/ProviderModRuntime'
 import { WebProfiles, type WebProfile } from '../mods/provider/webProfiles'
-import { keepWebProfilesAt, releaseWebProfileAccount, setWebProfilesForTests } from '../mods/provider/webProfilesRuntime'
+import { keepWebProfilesAt, releaseWebProfileAccount, runtimeWebProfiles, setWebProfilesForTests } from '../mods/provider/webProfilesRuntime'
 import { checkPluginDescriptor } from '../pluginHost/manifestValidator'
 import { NEXUS_SETTINGS_FILE_NAME, wipeSettingsMemos } from '../settings/settingsStore'
 import type { NexusProviderConfig } from '../settings/settingsTypes'
@@ -231,6 +231,57 @@ describe('a sign-in that ends in a kept web profile', () => {
     expect(await old.list()).toEqual([
       { id: 'velloc-profile-3', createdAt: NOW, logins: [{ site: 'vendor-a.test', account: 'one', plugin: 'acme', at: NOW }], accounts: [] },
     ])
+  })
+})
+
+describe('the table the runtime keeps on disk', () => {
+  afterEach(() => setWebProfilesForTests(undefined))
+
+  const TABLE = `${HOME}/.velloc/web-profiles.json`
+  const stored = JSON.stringify({
+    version: 2,
+    next: 4,
+    profiles: [{ number: 3, createdAt: NOW, logins: [], accounts: [{ site: SITE, account: 'ann@example.com', at: NOW }] }],
+  })
+  // The browser's fs answers `existsSync` with false for every path.
+  const fsOver = (read: (path: string) => Promise<string>, written: string[] = []) =>
+    ({
+      existsSync: () => false,
+      readFile: read,
+      writeFile: async (_path: string, data: string) => void written.push(data),
+      mkdir: async () => {},
+    }) as unknown as RuntimeFs
+  const absent = async (path: string): Promise<string> => {
+    throw Object.assign(new Error(`ENOENT: ${path}`), { code: 'ENOENT' })
+  }
+
+  it('is read after a restart on an fs that cannot say a path exists, so the next change keeps what was stored', async () => {
+    const written: string[] = []
+    const profiles = runtimeWebProfiles({ homeDir: HOME, fs: fsOver(async path => (path === TABLE ? stored : absent(path)), written) })
+    expect(await profiles.list()).toMatchObject([{ id: 'velloc-profile-3', accounts: [{ site: SITE, account: 'ann@example.com' }] }])
+    await profiles.recordAccount('velloc-profile-3', 'other.test', 'ann')
+    expect(JSON.parse(written[0]!)).toMatchObject({ next: 4, profiles: [{ number: 3, accounts: [{ site: SITE }, { site: 'other.test' }] }] })
+  })
+
+  it('a missing file is an empty table; a file that cannot be read is not taken for one', async () => {
+    expect(await runtimeWebProfiles({ homeDir: HOME, fs: fsOver(absent) }).list()).toEqual([])
+    setWebProfilesForTests(undefined)
+    const broken = runtimeWebProfiles({
+      homeDir: HOME,
+      fs: fsOver(async () => {
+        throw new Error('EBUSY: the file is in use')
+      }),
+    })
+    await expect(broken.list()).rejects.toThrow(/could not be read/)
+  })
+
+  it('a removal lets go of the account on such an fs, in a realm that has not used the table yet', async () => {
+    const written: string[] = []
+    const fs = fsOver(async path => (path === TABLE ? stored : absent(path)), written)
+    await releaseWebProfileAccount({ homeDir: HOME, fs }, { id: 'velloc-profile-3', site: SITE }, {})
+    // No host here to delete the emptied profile's session, so the profile itself is kept.
+    expect(written).toHaveLength(1)
+    expect(JSON.parse(written[0]!).profiles).toMatchObject([{ number: 3, accounts: [] }])
   })
 })
 

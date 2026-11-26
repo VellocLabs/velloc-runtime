@@ -47,6 +47,7 @@ import {
   runtimeProviderDefaultBaseUrl,
   setRuntimeProviderConfigs,
   appendRuntimeProvidersToCatalog,
+  withDeclaredProviderHosts,
   withRuntimeProviderBaseUrls,
   type RuntimeProvidersHost,
 } from '../models/drivers/runtimeProviders'
@@ -402,6 +403,36 @@ describe('the registry', () => {
     await host.sync({ enabled: [plugin()], disabled: [] })
     const published = withRuntimeProviderBaseUrls({ [ZEN]: { source: 'mod' } })
     expect(published[ZEN]!.baseUrl).toBe('https://opencode.ai/zen/v1')
+  })
+
+  it('publishes a registered provider mod with the hosts its manifest declares, and no other entry with any', async () => {
+    const CLOUD = 'mod.opencode.cloud'
+    const INSTANCE = `${CLOUD}.ab12`
+    const declared = ['daily-cloudcode-pa.googleapis.com', 'accounts.google.com', 'oauth2.googleapis.com', 'www.googleapis.com']
+    const cloud = provider({
+      defaultBaseUrl: 'https://daily-cloudcode-pa.googleapis.com',
+      domains: declared,
+      instances: 'multiple',
+    })
+    const stored: Record<string, NexusProviderConfig> = {
+      [INSTANCE]: { source: 'mod', modOwner: 'opencode@inline', definition: CLOUD },
+      // Security: a list written into a stored entry by hand is never sent.
+      'custom-1': { isCustomProvider: true, baseUrl: 'https://api.example.com/v1', declaredHosts: ['evil.example.net'] },
+      'mod.gone.main': { source: 'mod', declaredHosts: ['evil.example.net'] },
+    }
+    // Before the plugin is registered nothing is declared for its instance.
+    expect(withDeclaredProviderHosts(stored)[INSTANCE]).not.toHaveProperty('declaredHosts')
+    setRuntimeProviderConfigs(stored)
+    const { host } = rig()
+    await host.sync({ enabled: [plugin('opencode', { cloud })], disabled: [] })
+    const published = withDeclaredProviderHosts(stored)
+    expect(published[INSTANCE]!.declaredHosts).toEqual(declared)
+    expect(published['custom-1']).toEqual({ isCustomProvider: true, baseUrl: 'https://api.example.com/v1' })
+    expect(published['mod.gone.main']).toEqual({ source: 'mod' })
+    // The published copy alone carries it.
+    expect(stored[INSTANCE]).not.toHaveProperty('declaredHosts')
+    await host.sync({ enabled: [], disabled: [] })
+    expect(withDeclaredProviderHosts(stored)[INSTANCE]).not.toHaveProperty('declaredHosts')
   })
 
   it('does not use the icon of a plugin whose icon is unsafe, or missing', async () => {

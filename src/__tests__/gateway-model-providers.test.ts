@@ -56,6 +56,7 @@ import {
   configureRuntimeProviders,
   dismissRemovedNotice,
   fetchFreshModelIds,
+  forgetListingFailure,
   listRuntimeProviderModels,
   LISTING_RETRY_MS,
   overlayBuiltInListings,
@@ -929,6 +930,16 @@ describe('runtime provider listing, entries and catalog rows', () => {
     expect(opens).toHaveLength(2)
     await refreshRuntimeProviderModels(transport, 'openrouter', { now: NOW + 2_000 + LISTING_RETRY_MS })
     expect(opens).toHaveLength(3)
+  })
+
+  it('a forgotten listing failure is asked again at once, unforced', async () => {
+    recordingHost()
+    setRuntimeProviderConfigs({ openrouter: { hasApiKey: true, enabledModels: ['gone/model'] } })
+    const { transport, opens } = scriptedHost({ [`GET ${OR}/models`]: { status: 500, body: '' } })
+    await refreshRuntimeProviderModels(transport, 'openrouter', { now: NOW })
+    forgetListingFailure('openrouter')
+    await refreshRuntimeProviderModels(transport, 'openrouter', { now: NOW + 1_000 })
+    expect(opens).toHaveLength(2)
   })
 
   it('a listing that failed before the key was saved is asked again with the key, unforced', async () => {

@@ -372,6 +372,41 @@ describe('reload folding', () => {
     await folder.reload('mod.switch.route')
     expect(runs).toHaveLength(3)
   })
+
+  it('a relist by the platform opens no window: a reload by the module right after it runs at once, after it', async () => {
+    let clock = 0
+    const timers: Array<{ fn: () => void; at: number }> = []
+    const runs: string[] = []
+    let finishFirst!: () => void
+    const first = new Promise<void>(resolve => (finishFirst = resolve))
+    const folder = createReloadFolder(
+      async id => {
+        runs.push(`start ${id}`)
+        if (runs.length === 1) await first
+        runs.push(`end ${id}`)
+      },
+      { now: () => clock, timers: { set: (fn, ms) => timers.push({ fn, at: clock + ms }), clear: () => {} } },
+    )
+    const relisted = folder.relist('mod.switch.route')
+    clock = 600
+    const reloaded = folder.reload('mod.switch.route')
+    expect(timers).toHaveLength(0)
+    await new Promise(resolve => setTimeout(resolve, 0))
+    expect(runs).toEqual(['start mod.switch.route'])
+    finishFirst()
+    await relisted
+    await reloaded
+    expect(runs).toEqual(['start mod.switch.route', 'end mod.switch.route', 'start mod.switch.route', 'end mod.switch.route'])
+    // The module's own reload did open a window: its next one within it is folded.
+    clock = 1_000
+    void folder.reload('mod.switch.route')
+    expect(timers).toHaveLength(1)
+    expect(timers[0]!.at).toBe(600 + SETTINGS_APP_RELOAD_FOLD_MS)
+    // A relist inside the module's window still runs at once and leaves the window as it was.
+    await folder.relist('mod.switch.route')
+    expect(runs).toHaveLength(6)
+    expect(timers).toHaveLength(1)
+  })
 })
 
 describe('the provider trigger of app.press', () => {

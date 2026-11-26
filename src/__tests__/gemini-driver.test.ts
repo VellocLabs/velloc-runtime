@@ -14,6 +14,7 @@ import {
 import { HostRequestError } from '../models/drivers/hostCallOptions'
 import type { DriverStreamEvent, ProviderSpec } from '../models/drivers/driverTypes'
 import { ModelProvider } from '../models/drivers/modelProvider'
+import { __resetEndpointTrustForTest, publishProviderBaseUrlsFromConfigs } from '../models/endpoints/endpointTrust'
 
 const context = {
   providerId: 'google',
@@ -817,5 +818,32 @@ describe('gemini key placement through ModelProvider', () => {
     }).buildRequest(payload, 'gemini-3.6-flash')
     expect(request.headers['x-goog-api-key']).toBeUndefined()
     expect(request.queryParams).toEqual({ key: '{{secret:api_key}}' })
+  })
+
+  it('a provider that sends its own authorization carries no API-key header, so the host is not asked for a key it lacks', () => {
+    const signedIn = provider({ headers: { authorization: 'Bearer {{secret:access_token}}' } })
+    const request = signedIn.buildRequest(payload, 'model-a')
+    expect(request.headers['authorization']).toBe('Bearer {{secret:access_token}}')
+    expect(request.headers['x-goog-api-key']).toBeUndefined()
+    expect(JSON.stringify(request)).not.toContain('{{secret:api_key}}')
+    expect(signedIn.documentRequest('/models').headers['x-goog-api-key']).toBeUndefined()
+  })
+
+  it('a provider that holds an API key keeps the key header next to an authorization of its own', () => {
+    publishProviderBaseUrlsFromConfigs({ gw: { hasApiKey: true } })
+    try {
+      const gateway = provider({ headers: { authorization: 'Bearer {{secret:gateway_token}}' } })
+      expect(gateway.buildRequest(payload, 'model-a').headers['x-goog-api-key']).toBe('{{secret:api_key}}')
+      expect(gateway.documentRequest('/models').headers['x-goog-api-key']).toBe('{{secret:api_key}}')
+    } finally {
+      __resetEndpointTrustForTest()
+    }
+  })
+
+  it('a key header the provider declares itself is kept next to its authorization', () => {
+    const request = provider({
+      headers: { authorization: 'Bearer {{secret:access_token}}', 'x-goog-api-key': '{{secret:api_key}}' },
+    }).buildRequest(payload, 'model-a')
+    expect(request.headers['x-goog-api-key']).toBe('{{secret:api_key}}')
   })
 })
