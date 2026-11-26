@@ -32,8 +32,8 @@ export type ProviderKeyRequest = {
   routerId: string
   /** That router's name, when it is registered. */
   routerLabel?: LocalizedText
-  /** The plugin whose module sends the requests made with the key. */
-  plugin: string
+  /** The plugin whose module sends the requests made with the key; absent: Velloc itself (a built-in, F-27 RP-24). */
+  plugin?: string
   /** The provider the key is for. */
   definitionId: string
   /** That provider's name. */

@@ -6,7 +6,7 @@
  */
 
 import { NEXUS_MODEL_CONFIG } from './nexusModelConfig'
-import { modProviderDefinitions } from './nexusModelConfig/providers'
+import { lentBuiltInDefinitions, modProviderDefinitions } from './nexusModelConfig/providers'
 import { findConfiguredModelIn } from './nexusModelConfig/findConfiguredModel'
 import type {
   NexusConfiguredModel,
@@ -341,7 +341,7 @@ export function setCustomProviderRecords(
   // the user's custom providers; they are the registry's definitions' own
   // objects (the listing writes its rows into them in place).
   const baseline = BASELINE_PROVIDERS.filter(entry => !overridden.has(entry.providerId))
-  const mods = modProviderDefinitions()
+  const mods = [...modProviderDefinitions(), ...lentBuiltInDefinitions()]
     .map(definition => definition.config)
     .filter(entry => !overridden.has(entry.providerId))
   const defined = new Set([...baseline, ...mods, ...overlay].map(entry => entry.providerId))

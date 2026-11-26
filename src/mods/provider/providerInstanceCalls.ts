@@ -19,7 +19,7 @@ import { resolveLocalizedText, type LocalizedText } from '../../config/localized
 import type { NexusProviderConfig } from '../../settings/settingsTypes'
 import type { KeyAsked, KeyRequestAbout, KeyTaken } from './keyRequest/providerKeyRequests'
 import type { ProviderLoginAskedBy } from './login/loginProtocol'
-import { defaultInstanceName, planNewInstance, storedInstanceIds } from './providerInstances'
+import { BUILT_IN_LENDER, defaultInstanceName, planNewInstance, storedInstanceIds } from './providerInstances'
 import { MOD_PROVIDER_ID_PREFIX, type ProviderCredentialMethod, type ResolvedProvider } from './providerManifest'
 
 export const INSTANCE_NAME_MAX = 80
@@ -519,7 +519,7 @@ export function createInstanceCalls(deps: InstanceCallsDeps) {
       const question: KeyQuestion = {
         routerId,
         ...(routerLabel !== undefined ? { routerLabel } : {}),
-        plugin: pluginOf(id),
+        ...(definition.owner === BUILT_IN_LENDER ? {} : { plugin: pluginOf(id) }),
         definitionId: id,
         label: manifest.displayName,
         ...(prompt !== undefined ? { prompt } : {}),

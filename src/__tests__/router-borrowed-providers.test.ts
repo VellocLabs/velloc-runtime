@@ -20,7 +20,7 @@ import {
 import { peersTableFor, runtimePeerInstances } from '../mods/provider/nouns/providerPeersNoun'
 import { BORROWS_MAX, orphanedBorrowedInstances } from '../mods/provider/providerBorrows'
 import { createInstanceCalls, type InstanceCallsDeps } from '../mods/provider/providerInstanceCalls'
-import { instanceSlotOf, planNewInstance, storedInstanceIds, withStoredInstances } from '../mods/provider/providerInstances'
+import { BUILT_IN_LENDER, instanceSlotOf, planNewInstance, storedInstanceIds, withStoredInstances } from '../mods/provider/providerInstances'
 import { PROVIDER_WIRE_FORMATS, resolveProviders } from '../mods/provider/providerManifest'
 import type { ProviderModRuntime } from '../mods/provider/ProviderModRuntime'
 import {
@@ -433,11 +433,12 @@ describe('registration', () => {
     expect(served(LENDER)).toContain(LENT)
   })
 
-  it('lists what a router may borrow: the installed plain providers of other plugins, in its order', async () => {
+  it('lists what a router may borrow: the installed plain providers of other plugins and the lent built-ins, in its order', async () => {
     const { host } = rig({})
     await host.sync({ enabled: [lender(), borrower([KEYED, 'google', THEIR_HUB, OPEN, THEIR_POOL, 'mod.absent.thing'])], disabled: [] })
     expect(host.borrowableDefinitions(ROUTER).map(each => [each.provider.id, each.owner])).toEqual([
       [KEYED, LENDER_OWNER],
+      ['google', BUILT_IN_LENDER],
       [OPEN, LENDER_OWNER],
     ])
     expect(host.borrowableDefinitions(THEIR_HUB)).toEqual([])
@@ -448,7 +449,7 @@ describe('registration', () => {
   it('a definition whose plugin is switched off is not there to borrow', async () => {
     const { host } = rig({})
     await host.sync({ enabled: [borrower()], disabled: [lender()] })
-    expect(host.borrowableDefinitions(ROUTER)).toEqual([])
+    expect(host.borrowableDefinitions(ROUTER).map(each => each.provider.id)).toEqual(['google'])
   })
 
   describe('when the router goes', () => {

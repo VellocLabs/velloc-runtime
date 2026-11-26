@@ -53,7 +53,9 @@ export function ProviderKeyRequestDialog({ request }: { request: ProviderKeyRequ
           <DialogDescription>{t("settings.models.mod.keyRequest.description")}</DialogDescription>
         </DialogHeader>
         <p className="text-muted-foreground text-xs" data-testid="provider-key-request-asked-by">
-          {t("settings.models.mod.keyRequest.askedBy", { router, plugin: request.plugin })}
+          {request.plugin === undefined
+            ? t("settings.models.mod.keyRequest.askedByBuiltIn", { router })
+            : t("settings.models.mod.keyRequest.askedBy", { router, plugin: request.plugin })}
         </p>
         {ended ? (
           <>

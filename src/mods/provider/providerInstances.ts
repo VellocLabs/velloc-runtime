@@ -25,6 +25,20 @@ import {
   type ResolvedProvider,
 } from './providerManifest'
 
+/**
+ * The owner that stands for Velloc itself: the instances of a built-in
+ * definition lent to a router (RP-24). Their entries carry no `source` and
+ * no `modOwner`; no plugin's install identifier can equal this value.
+ */
+export const BUILT_IN_LENDER = 'velloc:built-in'
+
+/** Whether a stored entry is `owner`'s: a plugin's by `modOwner`, or a built-in's by having none. */
+function ownedBy(config: NexusProviderConfig, owner: string): boolean {
+  return owner === BUILT_IN_LENDER
+    ? config.source === undefined && config.modOwner === undefined
+    : config.source === 'mod' && config.modOwner === owner
+}
+
 const SLOT_CHARS = 'abcdefghijklmnopqrstuvwxyz0123456789'
 const NEW_SLOT_LENGTH = 4
 /** Past this many draws at one length a slot is drawn one character longer. */
@@ -78,8 +92,7 @@ export function storedInstanceIds(
     .filter(
       ([id, config]) =>
         config.definition === definitionId &&
-        config.source === 'mod' &&
-        config.modOwner === owner &&
+        ownedBy(config, owner) &&
         instanceSlotOf(definitionId, id) !== undefined &&
         held(config),
     )
@@ -187,8 +200,7 @@ export function planNewInstance(input: {
     ok: true,
     id,
     config: {
-      source: 'mod',
-      modOwner: input.owner,
+      ...(input.owner === BUILT_IN_LENDER ? {} : { source: 'mod' as const, modOwner: input.owner }),
       definition: definition.id,
       ...(input.lentTo !== undefined ? { managedBy: input.lentTo } : {}),
       name: input.name,

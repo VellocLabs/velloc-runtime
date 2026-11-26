@@ -56,6 +56,8 @@ const BUILTIN_BY_ID = new Map(BUILTIN_PROVIDER_DEFINITIONS.map(d => [d.config.pr
 
 /** Enabled provider mods, by registered id (`mod.<plugin>.<key>`). */
 const modDefinitions = new Map<string, ProviderDefinition>()
+/** Instances of built-in definitions lent to a router, by id (`<built-in id>.<slot>`). */
+const lentDefinitions = new Map<string, ProviderDefinition>()
 /** Ids of providers whose plugin is installed but disabled. Their stored
  *  config stays; the catalog shows nothing for them. */
 let disabledModIds: ReadonlySet<string> = new Set()
@@ -78,7 +80,7 @@ function notifyRegistryChanged(): void {
  *  undefined for custom providers. */
 export function getProviderDefinition(providerId: string | undefined): ProviderDefinition | undefined {
   if (!providerId) return undefined
-  return BUILTIN_BY_ID.get(providerId) ?? modDefinitions.get(providerId)
+  return BUILTIN_BY_ID.get(providerId) ?? modDefinitions.get(providerId) ?? lentDefinitions.get(providerId)
 }
 
 /** Whether `providerId` is one of the providers Velloc ships. */
@@ -87,9 +89,38 @@ export function isBuiltInProviderId(providerId: string | undefined): boolean {
 }
 
 /** Every provider definition: the built-ins in catalog order, then the mods
- *  in registration order. */
+ *  in registration order, then the lent built-in instances. */
 export function providerDefinitions(): readonly ProviderDefinition[] {
-  return modDefinitions.size === 0 ? BUILTIN_PROVIDER_DEFINITIONS : [...BUILTIN_PROVIDER_DEFINITIONS, ...modDefinitions.values()]
+  if (modDefinitions.size === 0 && lentDefinitions.size === 0) return BUILTIN_PROVIDER_DEFINITIONS
+  return [...BUILTIN_PROVIDER_DEFINITIONS, ...modDefinitions.values(), ...lentDefinitions.values()]
+}
+
+/** The instances of built-in definitions lent to a router, by id. */
+export function lentBuiltInDefinitions(): readonly ProviderDefinition[] {
+  return [...lentDefinitions.values()]
+}
+
+/**
+ * Replace the lent built-in instances (F-27 RP-24). Each id must be
+ * `<built-in id>.<slot>`; nothing else may be registered here. Fires the
+ * change listeners and answers true when the set differs.
+ */
+export function setLentBuiltInDefinitions(definitions: readonly ProviderDefinition[]): boolean {
+  for (const definition of definitions) {
+    const id = definition.config.providerId
+    const dot = id.indexOf('.')
+    if (dot <= 0 || !BUILTIN_BY_ID.has(id.slice(0, dot)) || BUILTIN_BY_ID.has(id)) {
+      throw new Error(`a lent built-in instance id is <built-in id>.<slot>: ${id}`)
+    }
+  }
+  const same =
+    definitions.length === lentDefinitions.size &&
+    definitions.every(definition => lentDefinitions.get(definition.config.providerId) === definition)
+  if (same) return false
+  lentDefinitions.clear()
+  for (const definition of definitions) lentDefinitions.set(definition.config.providerId, definition)
+  notifyRegistryChanged()
+  return true
 }
 
 /** The enabled provider mods' definitions, in registration order. */
@@ -151,6 +182,7 @@ export function onProviderRegistryChanged(listener: () => void): () => void {
 /** Test hook: back to the built-ins alone. */
 export function resetModProviderDefinitions(): void {
   modDefinitions.clear()
+  lentDefinitions.clear()
   disabledModIds = new Set()
   modScanComplete = false
 }

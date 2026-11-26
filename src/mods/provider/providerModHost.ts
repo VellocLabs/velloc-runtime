@@ -11,6 +11,7 @@ import {
   markModProviderScanComplete,
   registerModProviderDefinition,
   setDisabledModProviderIds,
+  setLentBuiltInDefinitions,
   unregisterModProviderDefinition,
 } from '../../config/nexusModelConfig/providers'
 import type { ProviderCodeListing } from '../../config/nexusModelConfig/providerDefinition'
@@ -29,6 +30,8 @@ import { modProviderDefinition, safeIconSvg, type ModProviderDefinitionOptions }
 import { clearProviderState } from '../../models/drivers/providerHealthLedger'
 import { borrowTableOf, isBorrowable, orphanedBorrowedInstances } from './providerBorrows'
 import { providerHostSources } from './providerHostSources'
+import type { ManagedDefinition } from './providerInstanceCalls'
+import { isLendableBuiltIn, lendableBuiltIn, lentBuiltInProviderDefinition, storedLentBuiltIns } from './lentBuiltIns'
 import { planAutoCreatedInstances, storedInstanceIds, withStoredInstances } from './providerInstances'
 import { INSTANCE_ID_RESERVE, PROVIDER_ID_MAX_LENGTH, type ProviderManifest, type ResolvedProvider } from './providerManifest'
 // A TYPE only: the runtime's code must stay out of a realm with no provider mod.
@@ -474,6 +477,14 @@ ${plugin.name}`
       changed = true
     }
 
+    // Security: a lent built-in instance is registered only while its router
+    // is registered and lists the definition in `borrows` (RP-24).
+    const lentBuiltIns = storedLentBuiltIns(
+      configs,
+      (routerId, definitionId) => this.registrations.has(routerId) && (lenders.get(routerId)?.has(definitionId) ?? false),
+    )
+    if (setLentBuiltInDefinitions(lentBuiltIns.map(lentBuiltInProviderDefinition))) changed = true
+
     // A disabled plugin's providers show nothing, and are not "missing".
     const disabledIds = [...scan.disabled, ...unapproved]
       .filter(plugin => isGlobalPluginSource(plugin.source))
@@ -589,17 +600,22 @@ ${plugin.name}`
   /**
    * The provider definitions the router `routerId` may borrow and that are
    * there to borrow: registered providers of other plugins, no router and
-   * none a router manages, each with the owner of its instances' entries.
-   * In the order of the router's `borrows`.
+   * none a router manages, and the built-ins Velloc lends (RP-24), each with
+   * the owner of its instances' entries. In the order of the router's `borrows`.
    */
-  borrowableDefinitions(routerId: string): Array<{ provider: ResolvedProvider; owner: string }> {
+  borrowableDefinitions(routerId: string): ManagedDefinition[] {
     const enabled = (this.lastScan?.enabled ?? []).filter(plugin => this.entries.has(plugin.name))
     const home = enabled.find(plugin => plugin.providers?.some(provider => provider.id === routerId))
     const router = home?.providers?.find(provider => provider.id === routerId)
     if (!home || router?.manifest.kind !== 'router') return []
-    const out: Array<{ provider: ResolvedProvider; owner: string }> = []
+    const out: ManagedDefinition[] = []
     for (const id of router.manifest.borrows ?? []) {
       if (id.length + INSTANCE_ID_RESERVE > PROVIDER_ID_MAX_LENGTH) continue
+      if (isLendableBuiltIn(id)) {
+        const builtIn = lendableBuiltIn(id)
+        if (builtIn) out.push(builtIn)
+        continue
+      }
       for (const plugin of enabled) {
         if (plugin === home) continue
         const provider = plugin.providers?.find(each => each.id === id)
@@ -737,6 +753,7 @@ ${plugin.name}`
       this.runtimeInstance?.unregister(entry.plugin)
       for (const id of entry.ids) unregisterModProviderDefinition(id)
     }
+    setLentBuiltInDefinitions([])
     this.entries.clear()
     this.runtimeInstance?.dispose()
     this.runtimeInstance = undefined

@@ -19,7 +19,7 @@ import {
 export type KeyRequestAbout = {
   routerId: string
   routerLabel?: LocalizedText
-  plugin: string
+  plugin?: string
   definitionId: string
   label: LocalizedText
   prompt?: LocalizedText

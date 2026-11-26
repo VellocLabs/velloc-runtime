@@ -35,6 +35,7 @@ import { getProviderDefinition, modProviderDefinitions } from '../../../config/n
 import { declaredSecretNames } from '../../../config/nexusModelConfig/providerDefinition'
 import { instanceSlotOf } from '../../../mods/provider/providerInstances'
 import { isModProviderId } from '../../../mods/provider/providerManifest'
+import { lentBuiltInBaseUrl, lentBuiltInDefinitionOf } from '../../../mods/provider/lentBuiltIns'
 import { handleSetModBaseUrl } from './modBaseUrlHandler'
 import {
   entryForModelId,
@@ -505,9 +506,11 @@ async function handleUpsert(
   // Security: the key's fingerprint is this handler's to write, never a caller's.
   const { hasApiKey: _ignored, storedSecrets: _names, secretFingerprint: _sent, ...rawIncoming } =
     payload.config as NexusProviderConfig
+  // An id shaped as an instance of a built-in a router may borrow (F-27 RP-24).
+  const lentBuiltIn = lentBuiltInDefinitionOf(payload.id)
   let fingerprint: string | undefined
   if (!derive && ctx.fingerprintKey && rawIncoming.apiKey && !isSealedSecret(rawIncoming.apiKey)) {
-    let definitionId = payload.id
+    let definitionId = lentBuiltIn ?? payload.id
     if (isModProviderId(payload.id)) {
       // An instance's definition is written once, so what is stored decides.
       const before = (await readUserLayer(ctx.homeDir, ctx.fs)).settings.providers?.configs?.[payload.id]
@@ -594,8 +597,27 @@ async function handleUpsert(
         if (merged.name === undefined && before.name !== undefined) merged.name = before.name
       }
     }
-    // Security: only a provider mod's entry is an instance of a definition.
-    if (!isModProviderId(payload.id)) delete merged.definition
+    // Security: a lent built-in instance keeps its definition, router and
+    // creation time from its first write, belongs to no plugin, and sends
+    // only to its definition's base URL.
+    if (!derive && lentBuiltIn !== undefined) {
+      const before = prev?.configs?.[payload.id]
+      if (before !== undefined) {
+        for (const field of ['definition', 'createdAt', 'managedBy'] as const) {
+          if (before[field] !== undefined) Object.assign(merged, { [field]: before[field] })
+          else delete merged[field]
+        }
+        if (merged.name === undefined && before.name !== undefined) merged.name = before.name
+      }
+      delete merged.source
+      delete merged.modOwner
+      const baseUrl = lentBuiltInBaseUrl(lentBuiltIn)
+      if (baseUrl) merged.baseUrl = baseUrl
+      else delete merged.baseUrl
+    }
+    // Security: only a provider mod's entry, or a lent built-in instance of
+    // its own definition, is an instance of a definition.
+    if (lentBuiltIn !== undefined ? merged.definition !== lentBuiltIn : !isModProviderId(payload.id)) delete merged.definition
     // Security: only an instance of a definition is lent to a router.
     if (merged.definition === undefined) delete merged.managedBy
     const throughNow = through === undefined ? throughBefore : (through ?? undefined)
