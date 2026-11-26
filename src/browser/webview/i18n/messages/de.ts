@@ -2112,6 +2112,7 @@ export const de: Messages = {
   'settings.models.mod.keyRequest.failed': 'Der Schlüssel konnte nicht gespeichert werden.',
   'settings.models.mod.signIn.title': 'Bei {name} anmelden',
   'settings.models.mod.signIn.description': 'Folge den Schritten, um dich bei {name} anzumelden.',
+  'settings.models.mod.signIn.askedBy': 'Angefragt von {router}. Das Plugin {plugin} führt diese Anmeldung durch.',
   'settings.models.mod.signIn.working': 'Wird bearbeitet…',
   'settings.models.mod.signIn.openUrlText': 'Öffne die Anmeldeseite, um fortzufahren.',
   'settings.models.mod.signIn.openUrlButton': 'Anmeldeseite öffnen',

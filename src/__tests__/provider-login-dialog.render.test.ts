@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 
 import { ModProviderEditor } from '../browser/webview/settings/sections/ModProviderEditor'
-import { ProviderSignInDialog } from '../browser/webview/settings/sections/ProviderSignInDialog'
+import { ProviderSignInDialog, ProviderSignInHost } from '../browser/webview/settings/sections/ProviderSignInDialog'
 import type { NexusSettingsBridge } from '../browser/webview/nexusSettingsBridge'
 import {
   ProviderLoginStore,
@@ -313,5 +313,64 @@ describe('the editor\'s sign-in panel', () => {
     ;(conn.connection.request as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error('forbidden_scope'))
     fireEvent.click(await screen.findByTestId('mod-login-signin'))
     expect((await screen.findByTestId('mod-login-error')).textContent).toContain('forbidden_scope')
+  })
+})
+
+// ── a sign-in a router's settings app asked for (RP-23) ──
+
+describe('the shell dialog for a sign-in a settings app asked for', () => {
+  const NEW = 'mod.hub.cloud.aaaa'
+  const asked = (step: ProviderLoginStep, askedBy: Partial<NonNullable<ProviderLoginSession['askedBy']>> = {}): ProviderLoginSession => ({
+    loginId: 'login-9',
+    providerId: NEW,
+    stepId: 'login-9:1',
+    step,
+    askedBy: { routerId: 'mod.hub.router', plugin: 'hub', label: { en: 'Cloud', de: 'Wolke' }, ...askedBy },
+  })
+
+  function mountHost(locale = 'en') {
+    const store = new ProviderLoginStore()
+    resetProviderLoginStoreForTests(store)
+    store.attach(async () => conn.connection)
+    render(createElement(I18nProvider, { locale }, createElement(ProviderSignInHost)))
+  }
+
+  it('draws it over whatever the window shows, naming the provider, the router that asked and the plugin', async () => {
+    mountHost()
+    await waitFor(() => expect(conn.subscribed()).toBe(1))
+    expect(screen.queryByTestId('provider-signin-dialog')).toBeNull()
+    conn.publish({ logins: { [NEW]: asked({ kind: 'working' }, { routerLabel: { en: 'Free Router' } }) } })
+    const dialog = await screen.findByTestId('provider-signin-dialog')
+    expect(dialog.textContent).toContain('Sign in to Cloud')
+    expect(screen.getByTestId('provider-signin-asked-by').textContent).toBe('Asked for by Free Router. The hub plugin handles this sign-in.')
+    conn.publish({ logins: {} })
+    await waitFor(() => expect(screen.queryByTestId('provider-signin-dialog')).toBeNull())
+  })
+
+  it('names a router with no name by its id, and the provider in the language of the person', async () => {
+    mountHost('de')
+    await waitFor(() => expect(conn.subscribed()).toBe(1))
+    conn.publish({ logins: { [NEW]: asked({ kind: 'working' }) } })
+    const dialog = await screen.findByTestId('provider-signin-dialog')
+    expect(dialog.textContent).toContain('Wolke')
+    expect(screen.getByTestId('provider-signin-asked-by').textContent).toContain('mod.hub.router')
+  })
+
+  it('leaves a sign-in started on the Models page to that page, and closing cancels the one it draws', async () => {
+    mountHost()
+    await waitFor(() => expect(conn.subscribed()).toBe(1))
+    conn.publish({ logins: { [ID]: sessionOf({ kind: 'working' }) } })
+    expect(screen.queryByTestId('provider-signin-dialog')).toBeNull()
+    conn.publish({ logins: { [ID]: sessionOf({ kind: 'working' }), [NEW]: asked({ kind: 'working' }) } })
+    fireEvent.click(await screen.findByTestId('provider-signin-cancel'))
+    await waitFor(() => expect(conn.requests.find(r => r.route === 'providerLogin.cancel')?.payload).toEqual({ loginId: 'login-9' }))
+  })
+
+  it('the editor of the provider does not draw one a settings app asked for', async () => {
+    mountEditor(undefined)
+    await waitFor(() => expect(conn.subscribed()).toBe(1))
+    conn.publish({ logins: { [ID]: { ...asked({ kind: 'working' }), providerId: ID } } })
+    await screen.findByTestId('mod-login-signin')
+    expect(screen.queryByTestId('provider-signin-dialog')).toBeNull()
   })
 })

@@ -40,6 +40,10 @@ export type KeyQuestion = KeyRequestAbout
 /** What became of a key: the call's answer, and what the dialog says when no instance was made. */
 export type KeyStored<T> = KeyTaken<T>
 
+/** A sign-in asked of the person for a just-made instance, and how it ended. */
+export type SignInQuestion = KeyRequestAbout & { providerId: string }
+export type SignInEnded = { kind: 'done'; account?: string } | { kind: 'failed'; code: string } | { kind: 'cancelled' }
+
 export type ManagedDefinition = {
   provider: Pick<ResolvedProvider, 'id' | 'key' | 'manifest'>
   /** The plugin's install identifier: the owner of the instances' entries. */
@@ -84,6 +88,13 @@ export type InstanceCallsDeps = {
     take: (key: string) => Promise<KeyStored<T>>,
     signal?: AbortSignal,
   ) => Promise<KeyAsked<T>>
+  /**
+   * Security: runs the registered instance's sign-in in the platform's own
+   * dialog and stores its credentials under that instance; nothing of them
+   * comes back. Aborting `signal` cancels it. Absent: a definition that
+   * needs a sign-in is answered `unsupported`.
+   */
+  signIn?: (question: SignInQuestion, signal?: AbortSignal) => Promise<SignInEnded>
   /** A router's name, for the dialog; absent or undefined: its id is shown. */
   routerLabel?: (routerId: string) => LocalizedText | undefined
   /** The platform's fingerprint of a key for a definition; undefined when none can be made. */
@@ -120,7 +131,7 @@ export type InstanceRow = {
 
 export type InstanceCallError = {
   error: {
-    kind: 'single' | 'limit' | 'unsupported' | 'busy' | 'duplicate'
+    kind: 'single' | 'limit' | 'unsupported' | 'busy' | 'duplicate' | 'failed'
     message: string
     /** On `duplicate`: the provider or instance that already has the key, and its name. */
     existing?: string
@@ -231,10 +242,11 @@ export function listDefinitions(routerId: string, deps: InstanceCallsDeps): Defi
   )
 }
 
-export function listInstances(routerId: string, deps: InstanceCallsDeps): InstanceRow[] {
+/** `unfinished`: instances whose sign-in is still open; they are not listed. */
+export function listInstances(routerId: string, deps: InstanceCallsDeps, unfinished?: ReadonlySet<string>): InstanceRow[] {
   const configs = deps.configs()
   return definitionsOf(routerId, deps).flatMap(definition =>
-    instanceIdsOf(definition, deps).map(id => {
+    instanceIdsOf(definition, deps).filter(id => unfinished?.has(id) !== true).map(id => {
       const config = configs[id]!
       const models = deps.models(id)
       return {
@@ -260,6 +272,8 @@ export function listInstances(routerId: string, deps: InstanceCallsDeps): Instan
  */
 export function createInstanceCalls(deps: InstanceCallsDeps) {
   const busy = new Set<string>()
+  /** Instances stored for a sign-in that has not ended. */
+  const signingIn = new Set<string>()
   const tails = new Map<string, Promise<unknown>>()
 
   function inSeries<T>(routerId: string, run: () => Promise<T>): Promise<T> {
@@ -314,7 +328,7 @@ export function createInstanceCalls(deps: InstanceCallsDeps) {
     definition: RouterDefinition,
     managed: readonly RouterDefinition[],
     named: string | undefined,
-    credential: { credentialMode: 'anonymous' } | { apiKey: string },
+    credential: { credentialMode: 'anonymous' } | { apiKey: string } | { signIn: 'pending' },
   ): Promise<{ id: string } | InstanceCallError> {
     const refused = refusal(routerId, definition, managed)
     if (refused) return refused
@@ -333,9 +347,97 @@ export function createInstanceCalls(deps: InstanceCallsDeps) {
       ...(deps.random ? { random: deps.random } : {}),
     })
     if (!plan.ok) return { error: { kind: 'single' as const, message: plan.message } }
+    if ('signIn' in credential) {
+      // Stored without a credential so that its sign-in can run; listed once that is done.
+      signingIn.add(plan.id)
+      await deps.writeConfig(plan.id, plan.config)
+      await deps.resync()
+      return { id: plan.id }
+    }
     await deps.writeConfig(plan.id, { ...plan.config, ...credential })
     await settle(routerId)
     return { id: plan.id }
+  }
+
+  /** Takes back an instance whose sign-in did not finish. Runs in the router's series. */
+  async function undo(routerId: string, id: string): Promise<void> {
+    try {
+      await deps.removeConfig(id)
+      deps.forgetState(id)
+    } finally {
+      signingIn.delete(id)
+      await settle(routerId).catch(() => undefined)
+    }
+  }
+
+  /**
+   * Contract: makes an instance of a definition that needs a sign-in (RP-23).
+   * The instance is stored first, with no credential, because a sign-in
+   * runs for a registered provider; it is kept only when the sign-in is
+   * done and removed otherwise. Answers `{ id }`, `{ cancelled: true }`, or
+   * `failed` with the failure's code.
+   * Security: the credentials are written by the sign-in service under the
+   * instance's id; this code and the caller see the account name at most.
+   */
+  async function addWithSignIn(
+    routerId: string,
+    definition: RouterDefinition,
+    managed: readonly RouterDefinition[],
+    named: string | undefined,
+    waiting: InstanceCallWaiting,
+  ): Promise<{ id: string } | { cancelled: true } | InstanceCallError> {
+    const { signIn } = deps
+    const { id: definitionId, manifest } = definition.provider
+    if (!signIn) {
+      const message = `$.provider.addInstance: ${definitionId} needs a sign-in, which this Velloc cannot ask for from an app here`
+      return { error: { kind: 'unsupported', message } }
+    }
+    if (busy.has(routerId)) {
+      return { error: { kind: 'busy', message: `$.provider.addInstance: another instance of ${routerId} is being added or removed` } }
+    }
+    // Held for as long as the sign-in is open: one at a time per router.
+    busy.add(routerId)
+    try {
+      const made = await inSeries(routerId, () => makeOne(routerId, definition, managed, named, { signIn: 'pending' }))
+      if ('error' in made) return made
+      const { id } = made
+      const routerLabel = deps.routerLabel?.(routerId)
+      const question: SignInQuestion = {
+        providerId: id,
+        routerId,
+        ...(routerLabel !== undefined ? { routerLabel } : {}),
+        plugin: pluginOf(definitionId),
+        definitionId,
+        label: manifest.displayName,
+      }
+      let ended: SignInEnded
+      try {
+        const ask = () => signIn(question, waiting.signal)
+        ended = await (waiting.whileAsking ? waiting.whileAsking(ask) : ask())
+      } catch (error) {
+        await inSeries(routerId, () => undo(routerId, id))
+        throw error
+      }
+      if (ended.kind !== 'done') {
+        await inSeries(routerId, () => undo(routerId, id))
+        if (ended.kind === 'cancelled') return { cancelled: true }
+        return { error: { kind: 'failed', message: `$.provider.addInstance: the sign-in to ${definitionId} failed (${ended.code})` } }
+      }
+      const { account } = ended
+      return await inSeries(routerId, async () => {
+        const stored = deps.configs()[id]
+        if (named === undefined && account !== undefined && stored) {
+          // The write path keeps the sealed values when none is sent.
+          const { apiKey: _key, hasApiKey: _flag, ...rest } = stored
+          await deps.writeConfig(id, { ...rest, name: defaultInstanceName(labelOf(definition, deps), 'login', [], account) })
+        }
+        signingIn.delete(id)
+        await settle(routerId)
+        return { id }
+      })
+    } finally {
+      busy.delete(routerId)
+    }
   }
 
   /**
@@ -432,14 +534,7 @@ export function createInstanceCalls(deps: InstanceCallsDeps) {
       throw notAllowed('$.provider.addInstance: only while handling an action of the person (app.action)')
     }
     const named = args.name === undefined ? undefined : readName('addInstance', args.name)
-    if (method === 'login') {
-      return {
-        error: {
-          kind: 'unsupported',
-          message: `$.provider.addInstance: ${definition.provider.id} needs a sign-in, which this Velloc cannot ask for from an app yet`,
-        },
-      }
-    }
+    if (method === 'login') return addWithSignIn(routerId, definition, managed, named, waiting)
     if (method === 'apiKey') return addWithKey(routerId, definition, managed, named, waiting)
     return exclusive(routerId, 'addInstance', () => makeOne(routerId, definition, managed, named, { credentialMode: 'anonymous' }))
   }
@@ -469,7 +564,7 @@ export function createInstanceCalls(deps: InstanceCallsDeps) {
 
   return {
     definitions: (routerId: string) => listDefinitions(routerId, deps),
-    instances: (routerId: string) => listInstances(routerId, deps),
+    instances: (routerId: string) => listInstances(routerId, deps, signingIn),
     add,
     rename,
     remove,

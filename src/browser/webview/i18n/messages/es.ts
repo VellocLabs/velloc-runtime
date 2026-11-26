@@ -2116,6 +2116,7 @@ export const es: Messages = {
   'settings.models.mod.keyRequest.failed': 'No se pudo guardar la clave.',
   'settings.models.mod.signIn.title': 'Iniciar sesión en {name}',
   'settings.models.mod.signIn.description': 'Siga los pasos para iniciar sesión en {name}.',
+  'settings.models.mod.signIn.askedBy': 'Solicitado por {router}. El complemento {plugin} gestiona este inicio de sesión.',
   'settings.models.mod.signIn.working': 'Procesando…',
   'settings.models.mod.signIn.openUrlText': 'Abra la página de inicio de sesión para continuar.',
   'settings.models.mod.signIn.openUrlButton': 'Abrir la página de inicio de sesión',

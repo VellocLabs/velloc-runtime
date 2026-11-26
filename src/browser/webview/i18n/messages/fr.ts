@@ -2118,6 +2118,7 @@ export const fr: Messages = {
   'settings.models.mod.keyRequest.failed': 'La clé n’a pas pu être enregistrée.',
   'settings.models.mod.signIn.title': 'Se connecter à {name}',
   'settings.models.mod.signIn.description': 'Suivez les étapes pour vous connecter à {name}.',
+  'settings.models.mod.signIn.askedBy': 'Demandé par {router}. L’extension {plugin} gère cette connexion.',
   'settings.models.mod.signIn.working': 'Traitement en cours…',
   'settings.models.mod.signIn.openUrlText': 'Ouvrez la page de connexion pour continuer.',
   'settings.models.mod.signIn.openUrlButton': 'Ouvrir la page de connexion',

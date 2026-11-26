@@ -9,6 +9,7 @@ import { readUserLayer } from '../../settings/settingsStore'
 import type { RuntimeFs } from '../../utils/fs/runtimeFs'
 import { getKeyFingerprinter } from './keyRequest/keyFingerprint'
 import { getProviderKeyRequests } from './keyRequest/providerKeyRequests'
+import { getProviderCredentials } from './login/credentialDeps'
 import { providerHostSources } from './providerHostSources'
 import { providerIconOf } from './providerIcons'
 import { createInstanceCalls, type InstanceCalls } from './providerInstanceCalls'
@@ -52,6 +53,14 @@ export function createRuntimeInstanceCalls(options: {
     locale: () => options.locale?.() ?? 'en',
     now: Date.now,
     askKey: (question, take, signal) => getProviderKeyRequests().ask(question, take, signal),
+    signIn: async ({ providerId, routerId, routerLabel, plugin, label }, signal) => {
+      const credentials = getProviderCredentials()
+      const { loginId } = credentials.startLogin(providerId, { routerId, ...(routerLabel !== undefined ? { routerLabel } : {}), plugin, label })
+      const ended = await credentials.whenOver(loginId, signal)
+      // A finished sign-in leaves the dialog at once; a failed one stays to say why.
+      if (ended.kind === 'done') credentials.cancel(loginId)
+      return ended
+    },
     routerLabel: routerId => getProviderModHost().registered().find(each => each.providerId === routerId)?.manifest.displayName,
     fingerprint: (definitionId, key) => getKeyFingerprinter()(definitionId, key),
     verify: async providerId => {

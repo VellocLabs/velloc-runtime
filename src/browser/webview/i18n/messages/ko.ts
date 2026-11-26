@@ -2086,6 +2086,7 @@ export const ko: Messages = {
   'settings.models.mod.keyRequest.failed': '키를 저장하지 못했습니다.',
   'settings.models.mod.signIn.title': '{name}에 로그인',
   'settings.models.mod.signIn.description': '안내에 따라 {name}에 로그인하세요.',
+  'settings.models.mod.signIn.askedBy': '{router}에서 요청했습니다. 이 로그인은 {plugin} 플러그인이 처리합니다.',
   'settings.models.mod.signIn.working': '처리 중…',
   'settings.models.mod.signIn.openUrlText': '계속하려면 로그인 페이지를 여세요.',
   'settings.models.mod.signIn.openUrlButton': '로그인 페이지 열기',

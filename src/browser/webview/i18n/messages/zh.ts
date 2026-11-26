@@ -2069,6 +2069,7 @@ export const zh: Messages = {
   'settings.models.mod.keyRequest.failed': '无法保存密钥。',
   'settings.models.mod.signIn.title': '登录 {name}',
   'settings.models.mod.signIn.description': '按步骤登录 {name}。',
+  'settings.models.mod.signIn.askedBy': '由 {router} 请求。此登录由 {plugin} 插件处理。',
   'settings.models.mod.signIn.working': '处理中…',
   'settings.models.mod.signIn.openUrlText': '打开登录页面以继续。',
   'settings.models.mod.signIn.openUrlButton': '打开登录页面',

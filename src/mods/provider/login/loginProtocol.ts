@@ -54,9 +54,28 @@ export type ProviderLoginStep =
   /** Terminal. */
   | { kind: 'failed'; code: ProviderLoginFailureCode; reason: string }
 
+/** Who asked for a sign-in the person did not start on the Models page (RP-23). */
+export type ProviderLoginAskedBy = {
+  routerId: string
+  /** The router's name; absent: its id is shown. */
+  routerLabel?: LocalizedText
+  /** The plugin whose module runs the sign-in. */
+  plugin: string
+  /** The provider's display name. */
+  label: LocalizedText
+}
+
+/** How a sign-in ended, for the code that waited for it. */
+export type ProviderLoginEnd =
+  | { kind: 'done'; account?: string }
+  | { kind: 'failed'; code: ProviderLoginFailureCode }
+  | { kind: 'cancelled' }
+
 export type ProviderLoginSession = {
   loginId: string
   providerId: string
+  /** Set on a sign-in a router's settings app asked for: the shell draws it, not the Models page. */
+  askedBy?: ProviderLoginAskedBy
   /** Changes with every step; an answer names the step it answers. */
   stepId: string
   step: ProviderLoginStep

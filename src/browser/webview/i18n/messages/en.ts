@@ -2166,6 +2166,7 @@ export const en = {
   'settings.models.mod.keyRequest.failed': 'The key couldn\'t be saved.',
   'settings.models.mod.signIn.title': 'Sign in to {name}',
   'settings.models.mod.signIn.description': 'Follow the steps to sign in to {name}.',
+  'settings.models.mod.signIn.askedBy': 'Asked for by {router}. The {plugin} plugin handles this sign-in.',
   'settings.models.mod.signIn.working': 'Working…',
   'settings.models.mod.signIn.openUrlText': 'Open the sign-in page to continue.',
   'settings.models.mod.signIn.openUrlButton': 'Open the sign-in page',

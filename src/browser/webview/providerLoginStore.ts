@@ -41,8 +41,8 @@ export class ProviderLoginStore {
     return this.state
   }
 
-  /** The first listener subscribes to the topic, the last one lets go: only
-   *  the Models page reads it, and a scope below `manager` never asks. */
+  /** The first listener subscribes to the topic, the last one lets go; a
+   *  scope below `manager` is refused and the state stays empty. */
   subscribe(listener: () => void): () => void {
     this.listeners.add(listener)
     this.connect()
@@ -138,6 +138,20 @@ export function attachProviderLoginStore(connection: () => Promise<RuntimeConnec
 /** Tests: swap or forget the singleton. */
 export function resetProviderLoginStoreForTests(store: ProviderLoginStore | null = null): void {
   singleton = store
+}
+
+/** The first sign-in still running that a settings app asked for, else the first ended one. */
+export function askedLoginOf(state: ProviderLoginState): ProviderLoginSession | undefined {
+  const asked = Object.values(state.logins).filter(session => session.askedBy !== undefined)
+  return asked.find(session => session.step.kind !== 'done' && session.step.kind !== 'failed') ?? asked[0]
+}
+
+// Stable, so a render does not let go of the topic and take it again.
+const subscribeToLogins = (listener: () => void): (() => void) => getProviderLoginStore().subscribe(listener)
+const readLogins = (): ProviderLoginState => getProviderLoginStore().getState()
+
+export function useAskedProviderLogin(): ProviderLoginSession | undefined {
+  return askedLoginOf(useSyncExternalStore(subscribeToLogins, readLogins, readLogins))
 }
 
 /** One provider's published sign-in session and signed-out mark. */

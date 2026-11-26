@@ -18,6 +18,8 @@ import {
   loginUrlProblem,
   type ProviderLoginAnswerPayload,
   type ProviderLoginAnswerResult,
+  type ProviderLoginAskedBy,
+  type ProviderLoginEnd,
   type ProviderLoginFailureCode,
   type ProviderLoginSession,
   type ProviderLoginStartResult,
@@ -184,6 +186,9 @@ type LoginRun = {
   providerId: string
   secrets: readonly string[]
   session: ProviderLoginSession
+  askedBy?: ProviderLoginAskedBy
+  /** Told how the sign-in ended, once. */
+  waiters: Array<(end: ProviderLoginEnd) => void>
   abort: AbortController
   stepCount: number
   answered: Set<string>
@@ -258,7 +263,8 @@ export class ProviderCredentials {
 
   // ── sign-in ──
 
-  startLogin(providerId: string): ProviderLoginStartResult {
+  /** `askedBy`: the sign-in is one a router's settings app asked for; it is published with the session. */
+  startLogin(providerId: string, askedBy?: ProviderLoginAskedBy): ProviderLoginStartResult {
     const existing = this.byProvider.get(providerId)
     if (existing && !existing.terminal) return { loginId: existing.loginId, joined: true }
     const described = this.deps.describe(providerId)
@@ -275,7 +281,9 @@ export class ProviderCredentials {
       loginId,
       providerId,
       secrets: described.secrets,
-      session: { loginId, providerId, stepId: `${loginId}:0`, step: { kind: 'working' } },
+      session: { loginId, providerId, stepId: `${loginId}:0`, step: { kind: 'working' }, ...(askedBy ? { askedBy } : {}) },
+      ...(askedBy ? { askedBy } : {}),
+      waiters: [],
       abort: new AbortController(),
       stepCount: 0,
       answered: new Set(),
@@ -375,7 +383,13 @@ export class ProviderCredentials {
 
   private setStep(run: LoginRun, step: ProviderLoginStep): void {
     run.stepCount += 1
-    run.session = { loginId: run.loginId, providerId: run.providerId, stepId: `${run.loginId}:${run.stepCount}`, step }
+    run.session = {
+      loginId: run.loginId,
+      providerId: run.providerId,
+      stepId: `${run.loginId}:${run.stepCount}`,
+      step,
+      ...(run.askedBy ? { askedBy: run.askedBy } : {}),
+    }
     this.publish()
   }
 
@@ -397,6 +411,46 @@ export class ProviderCredentials {
     }
     run.kept?.over()
     this.setStep(run, step)
+    this.tell(
+      run,
+      step.kind === 'done'
+        ? { kind: 'done', ...(step.account !== undefined ? { account: step.account } : {}) }
+        : step.kind === 'failed'
+          ? { kind: 'failed', code: step.code }
+          : { kind: 'cancelled' },
+    )
+  }
+
+  private tell(run: LoginRun, end: ProviderLoginEnd): void {
+    for (const waiter of run.waiters.splice(0)) waiter(end)
+  }
+
+  /**
+   * How the sign-in `loginId` ends: `done` once its credentials are written,
+   * `failed` with the code alone (never the module's words), `cancelled` when
+   * the person closed it or `signal` aborted, which cancels it. A sign-in
+   * that is not running is `cancelled`.
+   */
+  whenOver(loginId: string, signal?: AbortSignal): Promise<ProviderLoginEnd> {
+    const run = this.byId.get(loginId)
+    if (!run) return Promise.resolve({ kind: 'cancelled' })
+    if (run.terminal) {
+      const { step } = run.session
+      if (step.kind === 'done') return Promise.resolve({ kind: 'done', ...(step.account !== undefined ? { account: step.account } : {}) })
+      return Promise.resolve(step.kind === 'failed' ? { kind: 'failed', code: step.code } : { kind: 'cancelled' })
+    }
+    if (signal?.aborted) {
+      this.cancel(loginId)
+      return Promise.resolve({ kind: 'cancelled' })
+    }
+    return new Promise(resolve => {
+      const onAbort = () => this.cancel(loginId)
+      signal?.addEventListener('abort', onAbort, { once: true })
+      run.waiters.push(end => {
+        signal?.removeEventListener('abort', onAbort)
+        resolve(end)
+      })
+    })
   }
 
   private fail(run: LoginRun, code: ProviderLoginFailureCode, reason: string): void {
@@ -427,6 +481,7 @@ export class ProviderCredentials {
       else run.window?.abort.abort(named('AbortError', 'the person cancelled the sign-in'))
       run.kept?.over()
     }
+    this.tell(run, { kind: 'cancelled' })
     this.dropRun(run)
     this.publish()
   }

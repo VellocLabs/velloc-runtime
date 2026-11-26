@@ -284,7 +284,9 @@ function ReadyEditor({
 
   // Sign-in is the runtime's: the session and the signed-out mark are
   // published state, read here and answered only through actions.
-  const { session: loginSession, signedOut } = useProviderLogin(providerId);
+  const { session: publishedLogin, signedOut } = useProviderLogin(providerId);
+  // One a settings app asked for is drawn by the shell.
+  const loginSession = publishedLogin?.askedBy ? undefined : publishedLogin;
   const declaredSecrets = (mod.secrets ?? []).map((secret) => secret.name);
   const holdsToken =
     declaredSecrets.length === 0 ||

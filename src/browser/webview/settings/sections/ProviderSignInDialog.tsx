@@ -19,7 +19,7 @@ import {
   type ProviderLoginSession,
 } from "../../../../mods/provider/login/loginProtocol";
 import { useLocale, useT } from "../../i18n";
-import { getProviderLoginStore } from "../../providerLoginStore";
+import { getProviderLoginStore, useAskedProviderLogin } from "../../providerLoginStore";
 
 const FAILURE_KEY = {
   timeout: "settings.models.mod.signIn.failedTimeout",
@@ -45,6 +45,7 @@ export function ProviderSignInDialog({
   session: ProviderLoginSession | undefined;
 }) {
   const t = useT();
+  const locale = useLocale();
   const store = getProviderLoginStore();
   const terminal = session ? isTerminalStep(session.step) : false;
   // Closing a running sign-in cancels it; closing an ended one dismisses it.
@@ -66,6 +67,16 @@ export function ProviderSignInDialog({
               {t("settings.models.mod.signIn.description", { name })}
             </DialogDescription>
           </DialogHeader>
+          {session.askedBy ? (
+            <p className="text-muted-foreground text-xs" data-testid="provider-signin-asked-by">
+              {t("settings.models.mod.signIn.askedBy", {
+                router: session.askedBy.routerLabel
+                  ? resolveLocalizedText(session.askedBy.routerLabel, locale)
+                  : session.askedBy.routerId,
+                plugin: session.askedBy.plugin,
+              })}
+            </p>
+          ) : null}
           <StepBody key={session.stepId} session={session} />
           <DialogFooter>
             <Button
@@ -82,6 +93,17 @@ export function ProviderSignInDialog({
       ) : null}
     </Dialog>
   );
+}
+
+/**
+ * The sign-in a router's settings app asked for, over whatever the window
+ * shows: mounted once, by the shell.
+ */
+export function ProviderSignInHost() {
+  const locale = useLocale();
+  const session = useAskedProviderLogin();
+  const name = session?.askedBy ? resolveLocalizedText(session.askedBy.label, locale) : "";
+  return <ProviderSignInDialog name={name} session={session} />;
 }
 
 function StepBody({ session }: { session: ProviderLoginSession }) {

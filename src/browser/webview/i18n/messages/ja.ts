@@ -2089,6 +2089,7 @@ export const ja: Messages = {
   'settings.models.mod.keyRequest.failed': 'キーを保存できませんでした。',
   'settings.models.mod.signIn.title': '{name} にログイン',
   'settings.models.mod.signIn.description': '手順に沿って {name} にログインします。',
+  'settings.models.mod.signIn.askedBy': '{router} からのリクエストです。このサインインは {plugin} プラグインが処理します。',
   'settings.models.mod.signIn.working': '処理中…',
   'settings.models.mod.signIn.openUrlText': '続けるにはログインページを開いてください。',
   'settings.models.mod.signIn.openUrlButton': 'ログインページを開く',
