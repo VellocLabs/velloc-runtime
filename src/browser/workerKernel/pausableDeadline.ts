@@ -75,6 +75,17 @@ export class PausableDeadline {
     return Math.max(0, this.remaining)
   }
 
+  /** Run `work` with every one of `deadlines` paused for its duration. */
+  static async whileAllPaused<T>(deadlines: Iterable<PausableDeadline>, work: () => Promise<T>): Promise<T> {
+    const paused = [...deadlines]
+    for (const deadline of paused) deadline.pause()
+    try {
+      return await work()
+    } finally {
+      for (const deadline of paused) deadline.resume()
+    }
+  }
+
   private arm(ms: number): void {
     this.deadline = Date.now() + ms
     this.timer = setTimeout(() => {

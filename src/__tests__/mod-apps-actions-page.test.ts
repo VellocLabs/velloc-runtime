@@ -19,6 +19,7 @@ import { setModContributions } from '../browser/webview/mods/modContributionsVie
 import { EMPTY_MOD_CONTRIBUTIONS } from '../browser/runtimeProtocol/modContributions'
 import type { AppSurfaceState, ModsAppActionResult } from '../browser/runtimeProtocol/modApps'
 import type { Message } from '../runtime/RuntimeTypes'
+import { KEY_REQUEST_ACTION_ANSWER_MS, KEY_REQUEST_WAIT_MS } from '../mods/provider/keyRequest/keyRequestProtocol'
 
 afterEach(() => {
   cleanup()
@@ -220,9 +221,12 @@ describe('the board\'s act', () => {
     await waitFor(() => expect(result.current).toBeDefined())
     await expect(result.current!.act('open_case', { id: 7 })).resolves.toEqual({ handled: true })
     await expect(result.current!.act('refresh', undefined)).resolves.toEqual({ handled: true })
+    // An action may hold the platform's key dialog open: the page waits longer than that dialog does.
+    const waits = { timeoutMs: KEY_REQUEST_ACTION_ANSWER_MS }
+    expect(KEY_REQUEST_ACTION_ANSWER_MS).toBeGreaterThan(KEY_REQUEST_WAIT_MS)
     expect(request.mock.calls.map(call => call as unknown[])).toEqual([
-      ['mods.appAction', { sessionId: 's1', action: 'open_case', context: { id: 7 } }],
-      ['mods.appAction', { sessionId: 's1', action: 'refresh' }],
+      ['mods.appAction', { sessionId: 's1', action: 'open_case', context: { id: 7 } }, waits],
+      ['mods.appAction', { sessionId: 's1', action: 'refresh' }, waits],
     ])
   })
 })

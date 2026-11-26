@@ -52,6 +52,7 @@ export function createRuntimeInstanceCalls(options: {
     locale: () => options.locale?.() ?? 'en',
     now: Date.now,
     askKey: (question, take, signal) => getProviderKeyRequests().ask(question, take, signal),
+    routerLabel: routerId => getProviderModHost().registered().find(each => each.providerId === routerId)?.manifest.displayName,
     fingerprint: (definitionId, key) => getKeyFingerprinter()(definitionId, key),
     verify: async providerId => {
       const transport = providerHostSources().transport?.()

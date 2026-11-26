@@ -2080,6 +2080,7 @@ export const ja: Messages = {
   'settings.models.mod.signInFailedToStart': 'ログインを開始できませんでした: {error}',
   'settings.models.mod.keyRequest.title': '{name} のキーを追加',
   'settings.models.mod.keyRequest.description': 'キーは Velloc が保存し、要求したルーター経由でのみ使用されます。プラグインがキーを見ることはありません。',
+  'settings.models.mod.keyRequest.askedBy': '{router} が要求しました。このキーを使うリクエストは {plugin} プラグインが送信します。',
   'settings.models.mod.keyRequest.add': 'キーを追加',
   'settings.models.mod.keyRequest.adding': '追加中…',
   'settings.models.mod.keyRequest.cancel': 'キャンセル',

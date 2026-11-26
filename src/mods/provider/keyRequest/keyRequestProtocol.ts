@@ -15,18 +15,26 @@ export const MAX_KEY_REQUEST_CHARS = 16 * 1024
 export const MAX_KEY_REQUEST_ID_CHARS = 128
 /** Ended requests kept for the page to show before the oldest is dropped. */
 export const MAX_ENDED_KEY_REQUESTS = 8
+/** How long a request waits for the person before it is withdrawn, as a sign-in does. */
+export const KEY_REQUEST_WAIT_MS = 10 * 60_000
+/** How long a page waits on an app action, which may hold a key request open. */
+export const KEY_REQUEST_ACTION_ANSWER_MS = KEY_REQUEST_WAIT_MS + 60_000
 
 /** Why a request ended without a new instance; shown until dismissed. */
 export type ProviderKeyRequestProblem =
   /** The key is the one of `name`, another instance of the same provider. */
   | { kind: 'duplicate'; name: string }
-  /** The key could not be stored. English, for the detail line. */
-  | { kind: 'failed'; reason: string }
+  /** The key could not be stored. */
+  | { kind: 'failed' }
 
 export type ProviderKeyRequest = {
   requestId: string
   /** The router whose settings app asked. */
   routerId: string
+  /** That router's name, when it is registered. */
+  routerLabel?: LocalizedText
+  /** The plugin whose module sends the requests made with the key. */
+  plugin: string
   /** The provider the key is for. */
   definitionId: string
   /** That provider's name. */

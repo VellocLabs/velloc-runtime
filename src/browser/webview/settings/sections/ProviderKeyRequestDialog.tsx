@@ -31,6 +31,7 @@ export function ProviderKeyRequestDialog({ request }: { request: ProviderKeyRequ
   React.useEffect(() => setKey(""), [requestId]);
   if (!request) return null;
   const name = resolveLocalizedText(request.label, locale);
+  const router = request.routerLabel ? resolveLocalizedText(request.routerLabel, locale) : request.routerId;
   const ended = request.ended;
   const close = () => void store.cancel(request.requestId).catch(() => undefined);
   const send = () => {
@@ -51,6 +52,9 @@ export function ProviderKeyRequestDialog({ request }: { request: ProviderKeyRequ
           <DialogTitle>{t("settings.models.mod.keyRequest.title", { name })}</DialogTitle>
           <DialogDescription>{t("settings.models.mod.keyRequest.description")}</DialogDescription>
         </DialogHeader>
+        <p className="text-muted-foreground text-xs" data-testid="provider-key-request-asked-by">
+          {t("settings.models.mod.keyRequest.askedBy", { router, plugin: request.plugin })}
+        </p>
         {ended ? (
           <>
             <p className="text-sm" role="alert" data-testid="provider-key-request-ended">
@@ -58,11 +62,6 @@ export function ProviderKeyRequestDialog({ request }: { request: ProviderKeyRequ
                 ? t("settings.models.mod.keyRequest.duplicate", { name: ended.name })
                 : t("settings.models.mod.keyRequest.failed")}
             </p>
-            {ended.kind === "failed" ? (
-              <p className="text-muted-foreground text-xs" data-testid="provider-key-request-reason">
-                {ended.reason}
-              </p>
-            ) : null}
             <DialogFooter>
               <Button size="sm" onClick={close} data-testid="provider-key-request-close">
                 {t("settings.models.mod.keyRequest.close")}

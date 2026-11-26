@@ -26,6 +26,8 @@ const KEY = 'sk-test-AAAA-1111'
 const REQUEST: ProviderKeyRequest = {
   requestId: 'req-1',
   routerId: 'mod.hub.router',
+  routerLabel: { en: 'Hub' },
+  plugin: 'vendor-a',
   definitionId: 'mod.vendor-a.main',
   label: { en: 'Vendor A' },
 }
@@ -82,6 +84,15 @@ describe('the key request dialog', () => {
     expect(input().value).toBe('')
   })
 
+  it('names the router that asked and the plugin whose module gets the key; a router with no name is shown by its id', () => {
+    connected()
+    const view = render(createElement(ProviderKeyRequestDialog, { request: REQUEST }))
+    expect(screen.getByTestId('provider-key-request-asked-by').textContent).toBe('Asked for by Hub. Requests with this key are sent by the vendor-a plugin.')
+    const { routerLabel: _label, ...unnamed } = REQUEST
+    view.rerender(createElement(ProviderKeyRequestDialog, { request: unnamed }))
+    expect(screen.getByTestId('provider-key-request-asked-by').textContent).toContain('mod.hub.router')
+  })
+
   it('labels the field with the provider\'s own wording when it has one', () => {
     connected()
     render(createElement(ProviderKeyRequestDialog, { request: { ...REQUEST, prompt: { en: 'Access token' } } }))
@@ -123,11 +134,10 @@ describe('the key request dialog', () => {
     expect(sent).toEqual([['providerKeyRequest.cancel', { requestId: 'req-1' }]])
   })
 
-  it('a key that could not be stored says so, with the reason', () => {
+  it('a key that could not be stored says so in the person\'s language', () => {
     connected()
-    render(createElement(ProviderKeyRequestDialog, { request: { ...REQUEST, ended: { kind: 'failed', reason: 'disk full' } } }))
+    render(createElement(ProviderKeyRequestDialog, { request: { ...REQUEST, ended: { kind: 'failed' } } }))
     expect(screen.getByTestId('provider-key-request-ended').textContent).toBe("The key couldn't be saved.")
-    expect(screen.getByTestId('provider-key-request-reason').textContent).toBe('disk full')
   })
 
   it('a key typed for one request is not carried to the next', () => {
@@ -153,6 +163,19 @@ describe('the dialog\'s host', () => {
     // An older publication arriving late changes nothing.
     await publish({ seq: 1, requests: { 'req-1': REQUEST } })
     expect(screen.queryByTestId('provider-key-request-dialog')).toBeNull()
+  })
+
+  it('an open question comes before an ended one the person has not closed yet', async () => {
+    const { publish } = connected()
+    render(createElement(ProviderKeyRequestHost))
+    await act(async () => {})
+    const stale = { ...REQUEST, ended: { kind: 'duplicate' as const, name: 'Work' } }
+    const live = { ...REQUEST, requestId: 'req-2', label: { en: 'Vendor B' } }
+    await publish({ seq: 1, requests: { 'req-1': stale, 'req-2': live } })
+    expect(screen.getByTestId('provider-key-request-dialog').textContent).toContain('Vendor B')
+    expect(screen.getByTestId('provider-key-request-input')).toBeTruthy()
+    await publish({ seq: 2, requests: { 'req-1': stale } })
+    expect(screen.getByTestId('provider-key-request-ended').textContent).toContain('Work')
   })
 
   it('shows nothing on a page that may not read the topic', async () => {

@@ -8,9 +8,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { providersHandlers, redactProviderConfigsForUi } from '../browser/bridge/adapter/providersBridgeAdapter'
 import { registerProviderKeyRequestCapability } from '../browser/runtimeHub/providerKeyRequestCapability'
-import { pausableTimer, whilePaused } from '../mods/app/pausableTimer'
+import { PausableDeadline } from '../browser/workerKernel/pausableDeadline'
 import { createKeyFingerprinter } from '../mods/provider/keyRequest/keyFingerprint'
 import {
+  KEY_REQUEST_WAIT_MS,
   MAX_ENDED_KEY_REQUESTS,
   MAX_KEY_REQUEST_CHARS,
   PROVIDER_KEY_REQUEST_TOPIC,
@@ -31,7 +32,7 @@ const HOME = '/home/u'
 const NOW = Date.UTC(2026, 10, 25, 12, 0, 0)
 const KEY_A = 'sk-test-AAAA-1111'
 const KEY_B = 'sk-test-BBBB-2222'
-const ABOUT = { routerId: 'mod.hub.free', definitionId: 'mod.vendor-a.keyed', label: { en: 'Vendor A' } }
+const ABOUT = { routerId: 'mod.hub.free', plugin: 'vendor-a', definitionId: 'mod.vendor-a.keyed', label: { en: 'Vendor A' } }
 
 function memoryRecords(): KeyRecordStore {
   const records = new Map<string, unknown>()
@@ -132,14 +133,16 @@ describe('a pending key request', () => {
     })
     requests.answer('req-1', KEY_A)
     await expect(asked).rejects.toThrow('disk full')
-    expect(requests.state().requests['req-1']!.ended).toEqual({ kind: 'failed', reason: 'disk full' })
+    // The thrown text is not shown: it is neither the person's language nor theirs to read.
+    expect(requests.state().requests['req-1']!.ended).toEqual({ kind: 'failed' })
     expect(JSON.stringify(published)).not.toContain(KEY_A)
+    expect(JSON.stringify(published)).not.toContain('disk full')
   })
 
   it('keeps only the latest ended requests', async () => {
     const { requests } = service()
     for (let i = 0; i < MAX_ENDED_KEY_REQUESTS + 2; i += 1) {
-      const asked = requests.ask(ABOUT, async () => ({ value: i, problem: { kind: 'failed' as const, reason: 'no' } }))
+      const asked = requests.ask(ABOUT, async () => ({ value: i, problem: { kind: 'failed' as const } }))
       requests.answer(`req-${i + 1}`, KEY_A)
       await asked
     }
@@ -147,6 +150,33 @@ describe('a pending key request', () => {
     expect(kept).toHaveLength(MAX_ENDED_KEY_REQUESTS)
     expect(kept).not.toContain('req-1')
     expect(kept).toContain(`req-${MAX_ENDED_KEY_REQUESTS + 2}`)
+  })
+
+  it('is withdrawn when no answer comes within the wait, and the asker is told it was cancelled', async () => {
+    vi.useFakeTimers()
+    try {
+      const { requests } = service()
+      const taken = vi.fn()
+      const asked = requests.ask(ABOUT, async key => {
+        taken(key)
+        return { value: 1 }
+      })
+      await vi.advanceTimersByTimeAsync(KEY_REQUEST_WAIT_MS - 1)
+      expect(Object.keys(requests.state().requests)).toEqual(['req-1'])
+      await vi.advanceTimersByTimeAsync(1)
+      expect(await asked).toEqual({ cancelled: true })
+      expect(requests.state().requests).toEqual({})
+      expect(requests.answer('req-1', KEY_A)).toBe(false)
+      expect(taken).not.toHaveBeenCalled()
+      // An answered request is not withdrawn later.
+      const second = requests.ask(ABOUT, async () => ({ value: 2 }))
+      requests.answer('req-2', KEY_A)
+      expect(await second).toEqual({ answered: 2 })
+      await vi.advanceTimersByTimeAsync(KEY_REQUEST_WAIT_MS)
+      expect(requests.state().requests).toEqual({})
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('before anything was asked the state is the empty one', () => {
@@ -434,7 +464,7 @@ describe('addInstance of a provider that needs a key', () => {
     const { calls, configs, log, asked, verified, type, opened } = rig()
     const adding = calls.add(ROUTER, { definition: 'keyed', name: 'Work' }, 'action')
     await opened()
-    expect(asked[0]!.question).toEqual({ routerId: ROUTER, definitionId: KEYED, label: { en: 'Keyed', de: 'Mit Schlüssel' } })
+    expect(asked[0]!.question).toEqual({ routerId: ROUTER, plugin: HUB, definitionId: KEYED, label: { en: 'Keyed', de: 'Mit Schlüssel' } })
     expect(configs).toEqual({})
     await type(KEY_A)
     const made = await adding
@@ -444,6 +474,13 @@ describe('addInstance of a provider that needs a key', () => {
     expect(configs[`${KEYED}.aaaa`]).not.toHaveProperty('credentialMode')
     expect(log).toEqual([`write ${KEYED}.aaaa`, 'resync', `relist ${ROUTER}`])
     expect(verified).toEqual([`${KEYED}.aaaa`])
+  })
+
+  it('the dialog names the router that asked and the plugin whose module gets the key: the lender, for a borrowed provider', async () => {
+    const { calls, asked, opened } = rig({ routerLabel: id => (id === ROUTER ? { en: 'Router' } : undefined) })
+    void calls.add(ROUTER, { definition: LENT }, 'action')
+    await opened()
+    expect(asked[0]!.question).toMatchObject({ routerId: ROUTER, routerLabel: { en: 'Router' }, plugin: 'vendor-a', definitionId: LENT })
   })
 
   it('the dialog shows the provider\'s own wording for its key', async () => {
@@ -627,60 +664,28 @@ describe('a hook\'s wall clock while the person is asked', () => {
   beforeEach(() => vi.useFakeTimers())
   afterEach(() => vi.useRealTimers())
 
-  it('fires after its time when nothing pauses it, and never after it was stopped', () => {
+  it('every running clock stands still for the length of the wait, however long, and goes on with what was left', async () => {
     const fired = vi.fn()
-    pausableTimer(fired, 1000)
-    vi.advanceTimersByTime(999)
-    expect(fired).not.toHaveBeenCalled()
-    vi.advanceTimersByTime(1)
-    expect(fired).toHaveBeenCalledTimes(1)
-    const never = vi.fn()
-    pausableTimer(never, 1000).stop()
-    vi.advanceTimersByTime(5000)
-    expect(never).not.toHaveBeenCalled()
-  })
-
-  it('stands still between pause and resume, however long, and goes on with what was left', () => {
-    const fired = vi.fn()
-    const timer = pausableTimer(fired, 1000)
-    vi.advanceTimersByTime(400)
-    timer.pause()
-    vi.advanceTimersByTime(60 * 60_000)
-    expect(fired).not.toHaveBeenCalled()
-    timer.resume()
-    vi.advanceTimersByTime(599)
-    expect(fired).not.toHaveBeenCalled()
-    vi.advanceTimersByTime(1)
-    expect(fired).toHaveBeenCalledTimes(1)
-  })
-
-  it('two waits at once keep it still until both are over', () => {
-    const fired = vi.fn()
-    const timer = pausableTimer(fired, 1000)
-    timer.pause()
-    timer.pause()
-    timer.resume()
-    vi.advanceTimersByTime(5000)
-    expect(fired).not.toHaveBeenCalled()
-    timer.resume()
-    vi.advanceTimersByTime(1000)
-    expect(fired).toHaveBeenCalledTimes(1)
-  })
-
-  it('whilePaused holds every running clock for the length of the wait, also when the wait fails', async () => {
-    const fired = vi.fn()
-    const timers = new Set([pausableTimer(fired, 1000)])
+    const clock = new PausableDeadline(fired)
+    clock.start(1000)
+    await vi.advanceTimersByTimeAsync(400)
     let release!: () => void
-    const waited = whilePaused(timers, () => new Promise<string>(resolve => (release = () => resolve('answered'))))
-    await vi.advanceTimersByTimeAsync(10 * 60_000)
+    const waited = PausableDeadline.whileAllPaused(new Set([clock]), () => new Promise<string>(resolve => (release = () => resolve('answered'))))
+    await vi.advanceTimersByTimeAsync(60 * 60_000)
     expect(fired).not.toHaveBeenCalled()
     release()
     expect(await waited).toBe('answered')
-    await vi.advanceTimersByTimeAsync(1000)
+    await vi.advanceTimersByTimeAsync(599)
+    expect(fired).not.toHaveBeenCalled()
+    await vi.advanceTimersByTimeAsync(1)
     expect(fired).toHaveBeenCalledTimes(1)
+  })
 
+  it('a wait that fails still lets the clocks go on', async () => {
     const again = vi.fn()
-    const failing = whilePaused(new Set([pausableTimer(again, 1000)]), async () => {
+    const clock = new PausableDeadline(again)
+    clock.start(1000)
+    const failing = PausableDeadline.whileAllPaused([clock], async () => {
       throw new Error('gone')
     })
     await expect(failing).rejects.toThrow('gone')

@@ -2077,6 +2077,7 @@ export const ko: Messages = {
   'settings.models.mod.signInFailedToStart': '로그인을 시작하지 못했습니다: {error}',
   'settings.models.mod.keyRequest.title': '{name} 키 추가',
   'settings.models.mod.keyRequest.description': '키는 Velloc이 저장하며, 요청한 라우터를 통해서만 사용됩니다. 플러그인은 키를 볼 수 없습니다.',
+  'settings.models.mod.keyRequest.askedBy': '{router}에서 요청했습니다. 이 키를 사용하는 요청은 {plugin} 플러그인이 보냅니다.',
   'settings.models.mod.keyRequest.add': '키 추가',
   'settings.models.mod.keyRequest.adding': '추가하는 중…',
   'settings.models.mod.keyRequest.cancel': '취소',

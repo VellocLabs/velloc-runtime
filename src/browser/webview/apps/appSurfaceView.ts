@@ -21,6 +21,7 @@ import {
   type ModsBuildAppResult,
 } from '../../runtimeProtocol/modApps'
 import { useModContributions } from '../mods/modContributionsView'
+import { KEY_REQUEST_ACTION_ANSWER_MS } from '../../../mods/provider/keyRequest/keyRequestProtocol'
 
 type Listener = (state: AppSurfaceState | null) => void
 type Store = { state: AppSurfaceState | null; listeners: Set<Listener>; unsubscribe: (() => void) | null }
@@ -146,7 +147,11 @@ export function useAppBoard(
     async (action: string, context: unknown): Promise<ModsAppActionResult | undefined> => {
       if (!runtimeConnection || !sessionId) return undefined
       const connection = await runtimeConnection()
-      return connection.request<ModsAppActionResult>('mods.appAction', { sessionId, action, ...(context === undefined ? {} : { context }) })
+      return connection.request<ModsAppActionResult>(
+        'mods.appAction',
+        { sessionId, action, ...(context === undefined ? {} : { context }) },
+        { timeoutMs: KEY_REQUEST_ACTION_ANSWER_MS },
+      )
     },
     [runtimeConnection, sessionId],
   )

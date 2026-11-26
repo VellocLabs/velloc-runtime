@@ -9,6 +9,7 @@
 import type { LocalizedText } from '../../../config/localizedText'
 import {
   EMPTY_KEY_REQUEST_STATE,
+  KEY_REQUEST_WAIT_MS,
   MAX_ENDED_KEY_REQUESTS,
   type ProviderKeyRequest,
   type ProviderKeyRequestProblem,
@@ -17,6 +18,8 @@ import {
 
 export type KeyRequestAbout = {
   routerId: string
+  routerLabel?: LocalizedText
+  plugin: string
   definitionId: string
   label: LocalizedText
   prompt?: LocalizedText
@@ -38,7 +41,10 @@ export class ProviderKeyRequests {
   private readonly pending = new Map<string, Pending>()
   private readonly listeners = new Set<(state: ProviderKeyRequestState) => void>()
 
-  constructor(private readonly newId: () => string = () => crypto.randomUUID()) {}
+  constructor(
+    private readonly newId: () => string = () => crypto.randomUUID(),
+    private readonly waitMs: number = KEY_REQUEST_WAIT_MS,
+  ) {}
 
   state(): ProviderKeyRequestState {
     if (this.seq === 0) return EMPTY_KEY_REQUEST_STATE
@@ -60,15 +66,20 @@ export class ProviderKeyRequests {
 
   /**
    * Ask the person for a key. Resolves once they answered and `take` is
-   * done with the key, or once they cancelled or `signal` aborted (nothing
-   * was taken). Rejects when `take` throws; the dialog then says it failed.
+   * done with the key, or once they cancelled, `signal` aborted, or no
+   * answer came within the wait (nothing was taken). Rejects when `take`
+   * throws; the dialog then says it failed.
    */
   ask<T>(about: KeyRequestAbout, take: (key: string) => Promise<KeyTaken<T>>, signal?: AbortSignal): Promise<KeyAsked<T>> {
     if (signal?.aborted) return Promise.resolve({ cancelled: true })
     const requestId = this.newId()
     return new Promise<KeyAsked<T>>((resolve, reject) => {
       const onAbort = (): void => this.cancel(requestId)
-      const done = (): void => signal?.removeEventListener('abort', onAbort)
+      const expiry = setTimeout(onAbort, this.waitMs)
+      const done = (): void => {
+        clearTimeout(expiry)
+        signal?.removeEventListener('abort', onAbort)
+      }
       this.pending.set(requestId, {
         request: { requestId, ...about },
         take,
@@ -99,7 +110,7 @@ export class ProviderKeyRequests {
         settle?.({ answered: taken.value })
       },
       error => {
-        this.finish(requestId, { kind: 'failed', reason: error instanceof Error ? error.message : String(error) })
+        this.finish(requestId, { kind: 'failed' })
         fail?.(error)
       },
     )

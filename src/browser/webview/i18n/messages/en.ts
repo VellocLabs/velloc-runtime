@@ -2157,6 +2157,7 @@ export const en = {
   'settings.models.mod.signInFailedToStart': 'Couldn\'t start signing in: {error}',
   'settings.models.mod.keyRequest.title': 'Add a key for {name}',
   'settings.models.mod.keyRequest.description': 'The key is stored by Velloc and used only through the router that asked for it. The plugin never sees it.',
+  'settings.models.mod.keyRequest.askedBy': 'Asked for by {router}. Requests with this key are sent by the {plugin} plugin.',
   'settings.models.mod.keyRequest.add': 'Add key',
   'settings.models.mod.keyRequest.adding': 'Adding…',
   'settings.models.mod.keyRequest.cancel': 'Cancel',

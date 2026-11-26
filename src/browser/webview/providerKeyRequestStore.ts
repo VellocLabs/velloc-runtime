@@ -119,7 +119,7 @@ export function resetProviderKeyRequestStoreForTests(store: ProviderKeyRequestSt
   singleton = store
 }
 
-/** The request the page shows: the first one published. */
+/** The request the page shows: the first one still open, else the first ended one. */
 export function useProviderKeyRequest(): ProviderKeyRequest | undefined {
   const store = getProviderKeyRequestStore()
   const state = useSyncExternalStore(
@@ -127,5 +127,6 @@ export function useProviderKeyRequest(): ProviderKeyRequest | undefined {
     () => store.getState(),
     () => store.getState(),
   )
-  return Object.values(state.requests)[0]
+  const requests = Object.values(state.requests)
+  return requests.find(each => !each.ended) ?? requests[0]
 }

@@ -16,8 +16,9 @@
 
 import { resolveLocalizedText, type LocalizedText } from '../../config/localizedText'
 import type { NexusProviderConfig } from '../../settings/settingsTypes'
+import type { KeyAsked, KeyRequestAbout, KeyTaken } from './keyRequest/providerKeyRequests'
 import { defaultInstanceName, planNewInstance, storedInstanceIds } from './providerInstances'
-import type { ProviderCredentialMethod, ResolvedProvider } from './providerManifest'
+import { MOD_PROVIDER_ID_PREFIX, type ProviderCredentialMethod, type ResolvedProvider } from './providerManifest'
 
 export const INSTANCE_NAME_MAX = 80
 export const INSTANCES_PER_DEFINITION_MAX = 16
@@ -35,9 +36,9 @@ export type InstanceCallWaiting = {
 }
 
 /** What is asked of the person: which provider, in whose name. */
-export type KeyQuestion = { routerId: string; definitionId: string; label: LocalizedText; prompt?: LocalizedText }
+export type KeyQuestion = KeyRequestAbout
 /** What became of a key: the call's answer, and what the dialog says when no instance was made. */
-export type KeyStored<T> = { value: T; problem?: { kind: 'duplicate'; name: string } | { kind: 'failed'; reason: string } }
+export type KeyStored<T> = KeyTaken<T>
 
 export type ManagedDefinition = {
   provider: Pick<ResolvedProvider, 'id' | 'key' | 'manifest'>
@@ -82,7 +83,9 @@ export type InstanceCallsDeps = {
     question: KeyQuestion,
     take: (key: string) => Promise<KeyStored<T>>,
     signal?: AbortSignal,
-  ) => Promise<{ answered: T } | { cancelled: true }>
+  ) => Promise<KeyAsked<T>>
+  /** A router's name, for the dialog; absent or undefined: its id is shown. */
+  routerLabel?: (routerId: string) => LocalizedText | undefined
   /** The platform's fingerprint of a key for a definition; undefined when none can be made. */
   fingerprint?: (definitionId: string, key: string) => Promise<string | undefined>
   /** Check a just-stored key against the provider. Not waited for; its result is the instance's state. */
@@ -151,6 +154,11 @@ function needsOnlyKey(definition: RouterDefinition): boolean {
   const keyPromptOnly = prompts.length === 0 || (prompts.length === 1 && prompts[0]!.key === 'api_key' && prompts[0]!.type === 'text')
   const filledIn = Object.values(settings ?? {}).some(field => field.binds === undefined)
   return keyPromptOnly && (credentials.secrets ?? []).length === 0 && !filledIn
+}
+
+/** The plugin of a definition id, `mod.<plugin>.<key>`. */
+function pluginOf(definitionId: string): string {
+  return definitionId.slice(MOD_PROVIDER_ID_PREFIX.length).split('.')[0] ?? definitionId
 }
 
 function labelOf(definition: RouterDefinition, deps: InstanceCallsDeps): string {
@@ -367,7 +375,15 @@ export function createInstanceCalls(deps: InstanceCallsDeps) {
       const early = refusal(routerId, definition, managed)
       if (early) return early
       const prompt = manifest.credentials.prompts?.[0]?.message
-      const question: KeyQuestion = { routerId, definitionId: id, label: manifest.displayName, ...(prompt !== undefined ? { prompt } : {}) }
+      const routerLabel = deps.routerLabel?.(routerId)
+      const question: KeyQuestion = {
+        routerId,
+        ...(routerLabel !== undefined ? { routerLabel } : {}),
+        plugin: pluginOf(id),
+        definitionId: id,
+        label: manifest.displayName,
+        ...(prompt !== undefined ? { prompt } : {}),
+      }
       // Security: the key is read here and by the write path, nowhere else.
       const take = (key: string): Promise<KeyStored<{ id: string } | InstanceCallError>> =>
         inSeries(routerId, async () => {
@@ -380,7 +396,7 @@ export function createInstanceCalls(deps: InstanceCallsDeps) {
             }
           }
           const made = await makeOne(routerId, definition, managed, named, { apiKey: key })
-          if ('error' in made) return { value: made, problem: { kind: 'failed' as const, reason: made.error.message } }
+          if ('error' in made) return { value: made, problem: { kind: 'failed' as const } }
           void deps.verify?.(made.id).catch(() => undefined)
           return { value: made }
         })
