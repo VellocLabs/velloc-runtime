@@ -11,7 +11,8 @@ import { NEXUS_MODEL_CONFIG } from '../config/nexusModelConfig'
 import { getProviderDefinition, resetModProviderDefinitions } from '../config/nexusModelConfig/providers'
 import { GOOGLE_PROVIDER } from '../config/nexusModelConfig/providers/google'
 import { geminiModels } from '../config/nexusModelConfig/providers/google/models'
-import { resolveProviderSpec } from '../models/drivers/driverRegistry'
+import { providerWireBaseUrl, resolveProviderSpec } from '../models/drivers/driverRegistry'
+import { publishProviderBaseUrlsFromConfigs } from '../models/endpoints/endpointTrust'
 import { resetProviderHealthLedger } from '../models/drivers/providerHealthLedger'
 import { isManagedProvider, routerReaches } from '../models/drivers/providerRouter'
 import {
@@ -20,6 +21,7 @@ import {
   resetRuntimeProviders,
   runtimeProviderCatalogRows,
   setRuntimeProviderConfigs,
+  withRuntimeProviderBaseUrls,
 } from '../models/drivers/runtimeProviders'
 import type { KeyQuestion } from '../mods/provider/providerInstanceCalls'
 import { createInstanceCalls, type InstanceCallsDeps } from '../mods/provider/providerInstanceCalls'
@@ -47,6 +49,9 @@ const OTHER_ROUTER = `mod.${OTHER_HUB}.free`
 const LENT = 'google.k3f9'
 const GOOGLE_BASE = 'https://generativelanguage.googleapis.com/v1beta'
 const GOOGLE_WIRE = GOOGLE_PROVIDER.config.wire!.format
+/** Models the built-in Google catalog offers, by its own ids. */
+const OFFERED = GOOGLE_PROVIDER.config.balancedModel!
+const ALSO_OFFERED = GOOGLE_PROVIDER.config.bestModel!
 
 function router(over: Record<string, unknown> = {}) {
   return {
@@ -105,14 +110,16 @@ describe('the Google model listing', () => {
       {
         models: [
           {
-            name: 'models/flash-3.8',
-            displayName: 'Flash 3.8',
+            name: `models/${OFFERED}`,
+            displayName: 'Balanced',
             inputTokenLimit: 1048576,
             outputTokenLimit: 65536,
             supportedGenerationMethods: ['generateContent', 'countTokens'],
           },
           { name: 'models/text-embedding-004', supportedGenerationMethods: ['embedContent'] },
-          { name: 'models/small-4', supportedGenerationMethods: ['generateContent'] },
+          { name: `models/${ALSO_OFFERED}`, supportedGenerationMethods: ['generateContent'] },
+          { name: 'models/open-weights-27b-it', supportedGenerationMethods: ['generateContent', 'countTokens'] },
+          { name: `models/${OFFERED}-image`, supportedGenerationMethods: ['generateContent'] },
           { name: 'tunedModels/mine', supportedGenerationMethods: ['generateContent'] },
           { name: 'models/', supportedGenerationMethods: ['generateContent'] },
           'junk',
@@ -121,8 +128,10 @@ describe('the Google model listing', () => {
       NOW,
     )
     expect(rows).toEqual([
-      { id: 'flash-3.8', supportsTools: true, name: 'Flash 3.8', contextWindow: 1048576, maxOutputTokens: 65536 },
-      { id: 'small-4', supportsTools: true },
+      { id: OFFERED, supportsTools: true, name: 'Balanced', contextWindow: 1048576, maxOutputTokens: 65536 },
+      { id: ALSO_OFFERED, supportsTools: true },
+      { id: 'open-weights-27b-it', supportsTools: false },
+      { id: `${OFFERED}-image`, supportsTools: false },
     ])
   })
 
@@ -199,9 +208,23 @@ describe('registration', () => {
     await host.sync({ enabled: [borrower()], disabled: [] })
     expect(NEXUS_MODEL_CONFIG.providers.find(entry => entry.providerId === LENT)).toMatchObject({
       defaultBaseUrl: GOOGLE_BASE,
-      wire: { format: GOOGLE_WIRE },
+      wire: { format: GOOGLE_WIRE, baseUrl: GOOGLE_BASE },
     })
-    expect(resolveProviderSpec(LENT)).toMatchObject({ id: LENT })
+    expect(resolveProviderSpec(LENT)).toMatchObject({ id: LENT, baseUrl: GOOGLE_BASE })
+  })
+
+  it('a base URL edited into settings.json by hand reaches neither the request, the listing nor the host', async () => {
+    const configs = { [LENT]: lent({ baseUrl: 'https://attacker.test/v1' }), google: { baseUrl: 'https://own.test/v1' } }
+    publishProviderBaseUrlsFromConfigs(configs)
+    const { host } = rig(configs)
+    await host.sync({ enabled: [borrower()], disabled: [] })
+    expect(resolveProviderSpec(LENT)?.baseUrl).toBe(GOOGLE_BASE)
+    expect(providerWireBaseUrl(LENT)).toBe(GOOGLE_BASE)
+    const published = withRuntimeProviderBaseUrls(configs)
+    expect(published[LENT]!.baseUrl).toBe(GOOGLE_BASE)
+    // The person's own google keeps the address they chose.
+    expect(published.google!.baseUrl).toBe('https://own.test/v1')
+    publishProviderBaseUrlsFromConfigs({})
   })
 
   it('its row is managed: only its router reaches it, "*" included for no other', async () => {
@@ -390,6 +413,13 @@ describe('in settings.json', () => {
     await providersHandlers.upsert({ id: LENT, config: { definition: 'openrouter', managedBy: ROUTER } }, { homeDir: HOME, fs })
     expect(onDisk()[LENT]).not.toHaveProperty('definition')
     expect(onDisk()[LENT]).not.toHaveProperty('managedBy')
+  })
+
+  it('the first write of an instance never makes it the active provider', async () => {
+    const { fs } = memoryFs()
+    const { apiKey: _key, ...entry } = lent()
+    const written = await providersHandlers.upsert({ id: LENT, config: entry }, { homeDir: HOME, fs })
+    expect(written.activeProviderId).toBeUndefined()
   })
 
   it('the built-in\'s own entry is no instance and is lent to nobody', async () => {

@@ -2104,7 +2104,7 @@ export const de: Messages = {
   'settings.models.mod.keyRequest.title': 'Schlüssel für {name} hinzufügen',
   'settings.models.mod.keyRequest.description': 'Der Schlüssel wird von Velloc gespeichert und nur über den Router verwendet, der danach gefragt hat. Das Plugin sieht ihn nie.',
   'settings.models.mod.keyRequest.askedBy': 'Angefordert von {router}. Anfragen mit diesem Schlüssel sendet das Plugin {plugin}.',
-  'settings.models.mod.keyRequest.askedByBuiltIn': 'Angefordert von {router}. Anfragen mit diesem Schlüssel sendet Velloc selbst, kein Plugin.',
+  'settings.models.mod.keyRequest.askedByBuiltIn': 'Angefordert von {router}. Anfragen mit diesem Schlüssel sendet {product} selbst, kein Plugin.',
   'settings.models.mod.keyRequest.add': 'Schlüssel hinzufügen',
   'settings.models.mod.keyRequest.adding': 'Wird hinzugefügt …',
   'settings.models.mod.keyRequest.cancel': 'Abbrechen',

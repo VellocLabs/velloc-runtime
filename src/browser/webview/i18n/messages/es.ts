@@ -2108,7 +2108,7 @@ export const es: Messages = {
   'settings.models.mod.keyRequest.title': 'Añadir una clave para {name}',
   'settings.models.mod.keyRequest.description': 'Velloc guarda la clave y solo se usa a través del router que la pidió. El complemento nunca la ve.',
   'settings.models.mod.keyRequest.askedBy': 'Solicitada por {router}. Las solicitudes con esta clave las envía el complemento {plugin}.',
-  'settings.models.mod.keyRequest.askedByBuiltIn': 'Solicitada por {router}. Las solicitudes con esta clave las envía el propio Velloc, no un complemento.',
+  'settings.models.mod.keyRequest.askedByBuiltIn': 'Solicitada por {router}. Las solicitudes con esta clave las envía el propio {product}, no un complemento.',
   'settings.models.mod.keyRequest.add': 'Añadir clave',
   'settings.models.mod.keyRequest.adding': 'Añadiendo…',
   'settings.models.mod.keyRequest.cancel': 'Cancelar',

@@ -2061,7 +2061,7 @@ export const zh: Messages = {
   'settings.models.mod.keyRequest.title': '为 {name} 添加密钥',
   'settings.models.mod.keyRequest.description': '密钥由 Velloc 保存，只通过请求它的路由使用。插件看不到它。',
   'settings.models.mod.keyRequest.askedBy': '由 {router} 请求。使用此密钥的请求由 {plugin} 插件发送。',
-  'settings.models.mod.keyRequest.askedByBuiltIn': '由 {router} 请求。使用此密钥的请求由 Velloc 自身发送，而非插件。',
+  'settings.models.mod.keyRequest.askedByBuiltIn': '由 {router} 请求。使用此密钥的请求由 {product} 自身发送，而非插件。',
   'settings.models.mod.keyRequest.add': '添加密钥',
   'settings.models.mod.keyRequest.adding': '正在添加…',
   'settings.models.mod.keyRequest.cancel': '取消',

@@ -40,6 +40,7 @@ import { holdsModSignIn } from '../../settings/providerSignIn'
 import { traceLine } from '../../utils/debugLog'
 import { isModProviderId } from '../../mods/provider/providerManifest'
 import { instanceSlotOf } from '../../mods/provider/providerInstances'
+import { withLentBuiltInBaseUrls } from '../../mods/provider/lentBuiltIns'
 import {
   entryForModelId,
   entryId,
@@ -956,7 +957,7 @@ export async function verifyRuntimeProvider(
 export function withRuntimeProviderBaseUrls(
   input: Record<string, NexusProviderConfig>,
 ): Record<string, NexusProviderConfig> {
-  const out: Record<string, NexusProviderConfig> = { ...input }
+  const out: Record<string, NexusProviderConfig> = withLentBuiltInBaseUrls(input)
   for (const id of runtimeOnlyProviderIds()) {
     const defaultBaseUrl = catalogEntry(id)?.defaultBaseUrl
     if (!defaultBaseUrl) continue

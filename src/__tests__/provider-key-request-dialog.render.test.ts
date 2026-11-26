@@ -93,6 +93,15 @@ describe('the key request dialog', () => {
     expect(screen.getByTestId('provider-key-request-asked-by').textContent).toContain('mod.hub.router')
   })
 
+  it('a key for a provider the product itself serves says no plugin sends the requests', () => {
+    connected()
+    const { plugin: _plugin, ...builtIn } = REQUEST
+    render(createElement(ProviderKeyRequestDialog, { request: builtIn }))
+    const shown = screen.getByTestId('provider-key-request-asked-by').textContent ?? ''
+    expect(shown).toMatch(/^Asked for by Hub\. Requests with this key are sent by .+ itself, not by a plugin\.$/)
+    expect(shown).not.toContain('{product}')
+  })
+
   it('labels the field with the provider\'s own wording when it has one', () => {
     connected()
     render(createElement(ProviderKeyRequestDialog, { request: { ...REQUEST, prompt: { en: 'Access token' } } }))

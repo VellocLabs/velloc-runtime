@@ -2110,7 +2110,7 @@ export const fr: Messages = {
   'settings.models.mod.keyRequest.title': 'Ajouter une clé pour {name}',
   'settings.models.mod.keyRequest.description': 'La clé est enregistrée par Velloc et utilisée uniquement via le routeur qui l’a demandée. L’extension ne la voit jamais.',
   'settings.models.mod.keyRequest.askedBy': 'Demandée par {router}. Les requêtes avec cette clé sont envoyées par l’extension {plugin}.',
-  'settings.models.mod.keyRequest.askedByBuiltIn': 'Demandée par {router}. Les requêtes avec cette clé sont envoyées par Velloc lui-même, pas par une extension.',
+  'settings.models.mod.keyRequest.askedByBuiltIn': 'Demandée par {router}. Les requêtes avec cette clé sont envoyées par {product} lui-même, pas par une extension.',
   'settings.models.mod.keyRequest.add': 'Ajouter la clé',
   'settings.models.mod.keyRequest.adding': 'Ajout…',
   'settings.models.mod.keyRequest.cancel': 'Annuler',

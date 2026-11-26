@@ -1,3 +1,5 @@
+import { NEXUS_MODEL_CONFIG } from '../../../nexusModelConfig'
+import { findConfiguredModelIn } from '../../findConfiguredModel'
 import type { ProviderDocumentSource, ProviderModelInfo } from '../../providerDefinition'
 import { isRecord, positiveInt, stringList, withDefined } from '../shared/listing'
 
@@ -6,7 +8,9 @@ const MODEL_NAME_PREFIX = 'models/'
 /**
  * `GET /models` of the Generative Language API, one page of up to 1000 rows.
  * A row is kept only when `supportedGenerationMethods` has `generateContent`
- * (embedding, image and audio-only models are not chat models). The id is
+ * (embedding models are not). It is usable (`supportsTools`) only when the
+ * built-in `google` catalog offers it: the listing also names image, speech
+ * and open-weight models that take no tools. The id is
  * `name` without its `models/` lead. Context window: `inputTokenLimit`;
  * output cap: `outputTokenLimit`. Throws when there is no `models` array.
  */
@@ -23,7 +27,7 @@ export const geminiModels: ProviderDocumentSource<ProviderModelInfo[]> = {
       if (id === '') continue
       out.push(
         withDefined<ProviderModelInfo>(
-          { id, supportsTools: true },
+          { id, supportsTools: findConfiguredModelIn(NEXUS_MODEL_CONFIG, 'google', id) !== undefined },
           {
             name: typeof row.displayName === 'string' && row.displayName.trim() !== '' ? row.displayName.trim() : undefined,
             contextWindow: positiveInt(row.inputTokenLimit),

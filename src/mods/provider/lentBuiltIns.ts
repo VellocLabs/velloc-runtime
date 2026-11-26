@@ -11,7 +11,7 @@
  * own (the settings write path holds it there).
  */
 
-import { lentBuiltInDefinitions } from '../../config/nexusModelConfig/providers'
+import { getProviderDefinition } from '../../config/nexusModelConfig/providers'
 import { GOOGLE_PROVIDER } from '../../config/nexusModelConfig/providers/google'
 import { geminiModels } from '../../config/nexusModelConfig/providers/google/models'
 import type { ProviderDefinition, ProviderDocumentSource, ProviderModelInfo } from '../../config/nexusModelConfig/providerDefinition'
@@ -100,7 +100,7 @@ export function storedLentBuiltIns(
  * an unchanged set registers nothing again.
  */
 export function lentBuiltInProviderDefinition(lent: LentBuiltIn): ProviderDefinition {
-  const registered = lentBuiltInDefinitions().find(each => each.config.providerId === lent.id)
+  const registered = getProviderDefinition(lent.id)
   if (registered?.catalogMod?.managedBy === lent.router && registered.catalogMod.definition === lent.definition) return registered
   const lendable = LENDABLE.get(lent.definition)
   if (!lendable) throw new Error(`${lent.definition} is not a built-in a router may borrow`)
@@ -109,7 +109,8 @@ export function lentBuiltInProviderDefinition(lent: LentBuiltIn): ProviderDefini
     ...base,
     label: lendable.label,
     // The host has no class for this id: the runtime builds its row and lists it.
-    config: { ...base.config, providerId: lent.id, models: [] },
+    // Security: the wire names the base URL, so no stored value moves it.
+    config: { ...base.config, providerId: lent.id, models: [], ...(base.config.wire ? { wire: { ...base.config.wire, ...(base.config.defaultBaseUrl ? { baseUrl: base.config.defaultBaseUrl } : {}) } } : {}) },
     runtimeOnly: true,
     models: lendable.models,
     catalogMod: {
@@ -122,4 +123,22 @@ export function lentBuiltInProviderDefinition(lent: LentBuiltIn): ProviderDefini
       borrowed: true,
     },
   }
+}
+
+/**
+ * `configs` as the host is told them: each entry shaped as an instance of a
+ * lendable built-in carries that built-in's base URL, whatever settings.json
+ * holds (a hand edit included). Security: the host anchors its domain rule
+ * and the key's destination on this value.
+ */
+export function withLentBuiltInBaseUrls(
+  configs: Record<string, NexusProviderConfig>,
+): Record<string, NexusProviderConfig> {
+  const out: Record<string, NexusProviderConfig> = { ...configs }
+  for (const [id, config] of Object.entries(configs)) {
+    const definition = lentBuiltInDefinitionOf(id)
+    const baseUrl = definition === undefined ? undefined : lentBuiltInBaseUrl(definition)
+    if (baseUrl !== undefined && config.baseUrl !== baseUrl) out[id] = { ...config, baseUrl }
+  }
+  return out
 }

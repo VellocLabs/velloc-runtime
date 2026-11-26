@@ -526,7 +526,8 @@ async function handleUpsert(
   let ownerBefore: string | undefined
   let baseUrlBefore: string | undefined
   let throughBefore: ProviderWebProfileRef | undefined
-  const managed = getProviderDefinition(payload.id)?.catalogMod?.managedBy !== undefined
+  // A lent built-in instance is a router's from its first write, before its definition is registered.
+  const managed = lentBuiltIn !== undefined || getProviderDefinition(payload.id)?.catalogMod?.managedBy !== undefined
   const updated = await updateProvidersSettings(ctx.homeDir, ctx.fs, prev => {
     keyBefore = prev?.configs?.[payload.id]?.apiKey
     secretsBefore = prev?.configs?.[payload.id]?.secrets ?? {}
@@ -582,9 +583,7 @@ async function handleUpsert(
     }
     if (Object.keys(secrets).length > 0) merged.secrets = secrets
     else delete merged.secrets
-    if (!derive && isModProviderId(payload.id)) {
-      if (baseUrlBefore) merged.baseUrl = baseUrlBefore
-      else delete merged.baseUrl
+    if (!derive && (isModProviderId(payload.id) || lentBuiltIn !== undefined)) {
       // Security: which definition an instance belongs to decides whose
       // module and domains serve it. It is written with the entry's first
       // write and no later write moves it.
@@ -596,24 +595,15 @@ async function handleUpsert(
         }
         if (merged.name === undefined && before.name !== undefined) merged.name = before.name
       }
-    }
-    // Security: a lent built-in instance keeps its definition, router and
-    // creation time from its first write, belongs to no plugin, and sends
-    // only to its definition's base URL.
-    if (!derive && lentBuiltIn !== undefined) {
-      const before = prev?.configs?.[payload.id]
-      if (before !== undefined) {
-        for (const field of ['definition', 'createdAt', 'managedBy'] as const) {
-          if (before[field] !== undefined) Object.assign(merged, { [field]: before[field] })
-          else delete merged[field]
-        }
-        if (merged.name === undefined && before.name !== undefined) merged.name = before.name
-      }
-      delete merged.source
-      delete merged.modOwner
-      const baseUrl = lentBuiltInBaseUrl(lentBuiltIn)
+      // Security: a lent built-in instance belongs to no plugin and sends
+      // only to its definition's base URL.
+      const baseUrl = lentBuiltIn !== undefined ? lentBuiltInBaseUrl(lentBuiltIn) : baseUrlBefore
       if (baseUrl) merged.baseUrl = baseUrl
       else delete merged.baseUrl
+      if (lentBuiltIn !== undefined) {
+        delete merged.source
+        delete merged.modOwner
+      }
     }
     // Security: only a provider mod's entry, or a lent built-in instance of
     // its own definition, is an instance of a definition.
