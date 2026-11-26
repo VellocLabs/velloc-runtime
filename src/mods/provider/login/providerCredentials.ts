@@ -3,7 +3,9 @@
  * the module's worker or the page). Sign-in raises `provider.login` and writes the
  * validated result as sealed named secrets; refresh is SINGLE-FLIGHT per provider
  * and keyed by token epoch; sign-out clears the credentials whatever the hook does.
- * A second `startLogin` while one runs joins it.
+ * A second `startLogin` while one runs joins it. A sign-in that ends in a kept
+ * web profile and names its account is recorded on that profile, under the host
+ * its window was opened on, and the entry keeps which profile and site that was.
  */
 import {
   EMPTY_LOGIN_STATE,
@@ -24,7 +26,7 @@ import {
   type ProviderSignedOut,
 } from './loginProtocol'
 import type { LocalizedText } from '../../../config/localizedText'
-import type { NexusProviderConfig } from '../../../settings/settingsTypes'
+import type { NexusProviderConfig, ProviderConfigWriteOptions, ProviderWebProfileRef } from '../../../settings/settingsTypes'
 import { queueProviderEntryWrite } from './providerEntryWrites'
 import { TEMPORARY_WEB_PROFILE } from '../webProfiles'
 import { loginWindowProblem } from './loginWindowRequest'
@@ -67,9 +69,13 @@ export type CredentialDeps = {
   /** The kept session of a web profile (`'new'` makes one), held until
    *  released; rejects for an id that names none. */
   holdProfile?: (profile: string) => Promise<{ id: string; partition: string; release: () => void }>
+  /** Records on a kept web profile who an accepted sign-in said is signed in
+   *  to a site of it. Absent: this host keeps no such record. */
+  recordAccount?: (through: ProviderWebProfileRef, account: string) => Promise<void>
   storedConfigOf: (providerId: string) => NexusProviderConfig | undefined
-  /** The settings write path (`providers.upsert`: replaces the entry, seals secrets). */
-  writeConfig: (providerId: string, config: NexusProviderConfig) => Promise<void>
+  /** The settings write path (`providers.upsert`: replaces the entry, seals
+   *  secrets). `webProfile` says where the entry's sign-in was made. */
+  writeConfig: (providerId: string, config: NexusProviderConfig, options?: Pick<ProviderConfigWriteOptions, 'webProfile'>) => Promise<void>
   report: (line: string) => void
   now?: () => number
   /** The whole sign-in's wall clock. Default 10 minutes. */
@@ -187,6 +193,10 @@ type LoginRun = {
   wallTimer?: ReturnType<typeof setTimeout>
   /** The one sign-in window of this run: aborting closes it while it waits. */
   window?: { abort: AbortController; capture?: SignInCapture }
+  /** The kept web profile the window was opened in and the host of its page.
+   *  The profile is held until `over` and until the window is gone, so the
+   *  sign-in's record is written before an empty profile could be deleted. */
+  kept?: ProviderWebProfileRef & { over: () => void }
 }
 
 const SIGN_OUT_REASON_VENDOR = 'the vendor ended the sign-in'
@@ -311,17 +321,21 @@ export class ProviderCredentials {
     // finds it moved and does not write over this sign-in.
     this.bumpGeneration(run.providerId)
     const generation = this.generationOf(run.providerId)
+    // Only a sign-in that names its account says who a kept profile holds.
+    const account = parsed.result.account
+    const through = run.kept && account !== undefined ? { id: run.kept.id, site: run.kept.site } : null
     try {
       await this.write(run.providerId, () => {
         if (this.generationOf(run.providerId) !== generation) throw named('AbortError', 'the sign-in ended while it was being written')
         return {
           // A sign-in replaces every declared secret: a name it leaves out is removed.
           secrets: { ...Object.fromEntries(run.secrets.map(name => [name, ''])), ...parsed.result.secrets },
-          account: parsed.result.account ?? null,
+          account: account ?? null,
           // With no account named, the mark is what says it is signed in.
-          signedIn: parsed.result.account === undefined ? true : null,
+          signedIn: account === undefined ? true : null,
           tokenExpiresAt: parsed.result.expiresAt ?? null,
           dropAnonymous: true,
+          webProfile: through,
         }
       })
     } catch (error) {
@@ -330,6 +344,15 @@ export class ProviderCredentials {
       return
     }
     if (run.terminal) return
+    if (through && account !== undefined && this.deps.recordAccount) {
+      try {
+        await this.deps.recordAccount(through, account)
+      } catch (error) {
+        // The sign-in stands: its credentials are stored. Only the note is missing.
+        this.deps.report(`${run.providerId}: the account was not recorded on ${through.id}: ${errorText(error)}`)
+      }
+      if (run.terminal) return
+    }
     this.bumpEpoch(run.providerId)
     this.signedOut.delete(run.providerId)
     this.finish(run, { kind: 'done', ...(parsed.result.account !== undefined ? { account: parsed.result.account } : {}) })
@@ -372,6 +395,7 @@ export class ProviderCredentials {
     } else {
       run.window?.abort.abort(named('AbortError', 'the sign-in is over'))
     }
+    run.kept?.over()
     this.setStep(run, step)
   }
 
@@ -401,6 +425,7 @@ export class ProviderCredentials {
       run.abort.abort()
       if (run.window?.capture) run.window.capture.close()
       else run.window?.abort.abort(named('AbortError', 'the person cancelled the sign-in'))
+      run.kept?.over()
     }
     this.dropRun(run)
     this.publish()
@@ -561,20 +586,32 @@ export class ProviderCredentials {
     this.rejectPending(run, named('AbortError', 'a newer sign-in step replaced this one'))
     this.setStep(run, { kind: 'working' })
     let profileId: string | undefined
-    let releaseProfile: (() => void) | undefined
+    let windowGone: (() => void) | undefined
+    let kept: LoginRun['kept']
     return this.windowSession(run, spec.profile as string | undefined)
       .then(({ id, release, ...session }) => {
         profileId = id
-        releaseProfile = release
-        // A kept profile is held while its window is open, whether the
-        // sign-in has ended or not: the host refuses to delete it before.
+        if (id !== undefined && release) {
+          // A kept profile is held while its window is open, whether the
+          // sign-in has ended or not: the host refuses to delete it before.
+          // It is also held until the sign-in is over.
+          const holding = { window: true, run: true }
+          const letGo = (holder: 'window' | 'run') => (): void => {
+            holding[holder] = false
+            if (!holding.window && !holding.run) release()
+          }
+          windowGone = letGo('window')
+          kept = { id, site: new URL(spec.url as string).hostname.toLowerCase(), over: letGo('run') }
+          if (run.terminal) kept.over()
+          else run.kept = kept
+        }
         return open({
           url: spec.url as string,
           redirectUri: spec.captureRedirect as string,
           signal: windowRun.abort.signal,
           ...(typeof spec.title === 'string' ? { title: spec.title } : {}),
           ...session,
-          ...(release ? { onGone: release } : {}),
+          ...(windowGone ? { onGone: windowGone } : {}),
         })
       })
       .then(
@@ -596,10 +633,14 @@ export class ProviderCredentials {
         // and the sign-in may then try another profile.
         if (run.window === windowRun && windowRun.capture === undefined) {
           run.window = undefined
+          if (kept && run.kept === kept) {
+            run.kept = undefined
+            kept.over()
+          }
         }
         // No capture: whatever the window did, it is not one the profile
-        // must outlive. Release is idempotent with the window's own onGone.
-        if (!(error instanceof SignInWindowClosedError)) releaseProfile?.()
+        // must outlive. Letting go is idempotent with the window's own onGone.
+        if (!(error instanceof SignInWindowClosedError)) windowGone?.()
         throw error
       },
     )
@@ -629,8 +670,8 @@ export class ProviderCredentials {
    * Read-modify-write of a provider's settings entry, one at a time per
    * provider. `secrets` is applied name by name (`''` removes one, a name not
    * sent is kept): a refresh sends what it answers, a sign-in or sign-out every
-   * declared name. `account` / `tokenExpiresAt` `null` drop the field.
-   * Everything else of the stored entry - `source`, `modVersion`, picks,
+   * declared name. `account` / `tokenExpiresAt` / `webProfile` `null` drop the
+   * field. Everything else of the stored entry - `source`, `modVersion`, picks,
    * verification - rides through, because an upsert replaces the entry.
    */
   private write(
@@ -641,6 +682,7 @@ export class ProviderCredentials {
       signedIn?: true | null
       tokenExpiresAt?: number | null
       dropAnonymous?: boolean
+      webProfile?: ProviderWebProfileRef | null
     },
   ): Promise<void> {
     return queueProviderEntryWrite(providerId, async () => {
@@ -654,6 +696,7 @@ export class ProviderCredentials {
         account: storedAccount,
         signedIn: storedSignedIn,
         tokenExpiresAt: storedExpiry,
+        webProfile: _through,
         credentialMode,
         ...rest
       } = stored
@@ -665,7 +708,7 @@ export class ProviderCredentials {
       const expiry = next.tokenExpiresAt === undefined ? storedExpiry : (next.tokenExpiresAt ?? undefined)
       if (expiry !== undefined) config.tokenExpiresAt = expiry
       if (credentialMode !== undefined && next.dropAnonymous !== true) config.credentialMode = credentialMode
-      await this.deps.writeConfig(providerId, config)
+      await this.deps.writeConfig(providerId, config, next.webProfile !== undefined ? { webProfile: next.webProfile } : undefined)
     })
   }
 
@@ -820,6 +863,7 @@ export class ProviderCredentials {
       account: null,
       signedIn: null,
       tokenExpiresAt: null,
+      webProfile: null,
     }))
     this.bumpGeneration(providerId)
     this.bumpEpoch(providerId)

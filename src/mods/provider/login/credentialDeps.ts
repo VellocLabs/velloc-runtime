@@ -43,14 +43,19 @@ export function defaultCredentialDeps(): CredentialDeps {
       return openSignInWindow(primitives.webWindow, host.manifest, request)
     },
     storedConfigOf: providerId => runtimeProviderConfigs()[providerId],
-    writeConfig: async (providerId, config) => {
+    writeConfig: async (providerId, config, options) => {
       const write = providerHostSources().writeProviderConfig
       if (!write) {
         const error = new Error('the settings store is not connected')
         error.name = 'NotSupportedError'
         throw error
       }
-      await write(providerId, config)
+      await write(providerId, config, options)
+    },
+    recordAccount: async (through, account) => {
+      const profiles = currentWebProfiles()
+      if (!profiles) throw new Error('the web profiles are not kept here')
+      await profiles.recordAccount(through.id, through.site, account)
     },
     holdProfile: async profile => {
       const profiles = currentWebProfiles()

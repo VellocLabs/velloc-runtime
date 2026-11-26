@@ -11,7 +11,7 @@ import type {
   ProvidersBridgeActionMap,
 } from '../protocol'
 import type { RuntimeFs } from '../../../utils/fs/runtimeFs'
-import type { NexusSettingsV1 } from '../../../settings/settingsTypes'
+import type { NexusSettingsV1, ProviderWebProfileRef } from '../../../settings/settingsTypes'
 import {
   readUserLayer,
   updateProvidersSettings,
@@ -23,6 +23,7 @@ import { normaliseProviderOrder } from '../../../settings/settingsNormalize'
 // Resident-tiny import (no heavy deps) — see services/endpoints/endpointTrust.
 import { publishProviderBaseUrlsFromConfigs } from '../../../models/endpoints/endpointTrust'
 import { isSealedSecret } from '../../../settings/secretValue'
+import { releaseWebProfileAccount } from '../../../mods/provider/webProfilesRuntime'
 import { getPluginConfigsMap, setPluginOptions } from '../../../pluginHost/pluginConfigs'
 import { isKnownProvider } from '../../../settings/providerTrust'
 import { traceLine } from '../../../utils/debugLog'
@@ -447,7 +448,7 @@ export function redactProviderConfigsForUi(
 ): Record<string, NexusProviderConfig> {
   const out: Record<string, NexusProviderConfig> = {}
   for (const [id, config] of Object.entries(configs)) {
-    const { apiKey, secrets, secretFingerprint: _fingerprint, ...rest } = config
+    const { apiKey, secrets, secretFingerprint: _fingerprint, webProfile: _through, ...rest } = config
     const names = Object.keys(secrets ?? {})
     out[id] = {
       ...rest,
@@ -489,6 +490,9 @@ async function handleUpsert(
   derive?: (stored: NexusProviderConfig) => NexusProviderConfig,
   /** `false`: the write never makes the provider the active one. */
   promote = true,
+  /** Security: the sign-in service's word on the entry's `webProfile` (`null`
+   *  drops it). No other write moves it, whatever its config says. */
+  through?: ProviderWebProfileRef | null,
 ): Promise<ProvidersBridgeActionMap['upsert']['result']> {
   const idError = validateId(payload.id)
   if (idError) throw new Error(idError)
@@ -518,12 +522,14 @@ async function handleUpsert(
   let secretsBefore: Readonly<Record<string, string>> = {}
   let ownerBefore: string | undefined
   let baseUrlBefore: string | undefined
+  let throughBefore: ProviderWebProfileRef | undefined
   const managed = getProviderDefinition(payload.id)?.catalogMod?.managedBy !== undefined
   const updated = await updateProvidersSettings(ctx.homeDir, ctx.fs, prev => {
     keyBefore = prev?.configs?.[payload.id]?.apiKey
     secretsBefore = prev?.configs?.[payload.id]?.secrets ?? {}
     ownerBefore = prev?.configs?.[payload.id]?.modOwner
     baseUrlBefore = prev?.configs?.[payload.id]?.baseUrl
+    throughBefore = prev?.configs?.[payload.id]?.webProfile
     // Security: a provider mod's base URL has one writer, which holds it to
     // the manifest's boundary; this write never changes it.
     if (!derive && isModProviderId(payload.id)) {
@@ -592,11 +598,20 @@ async function handleUpsert(
     if (!isModProviderId(payload.id)) delete merged.definition
     // Security: only an instance of a definition is lent to a router.
     if (merged.definition === undefined) delete merged.managedBy
+    const throughNow = through === undefined ? throughBefore : (through ?? undefined)
+    if (throughNow && isModProviderId(payload.id)) merged.webProfile = throughNow
+    else delete merged.webProfile
     next.configs[payload.id] = merged
     return next
   })
   const configs = updated.providers?.configs ?? {}
   const activeProviderId = updated.providers?.activeProviderId
+  const throughAfter = configs[payload.id]?.webProfile
+  // Queued before anything is awaited: a sign-in landing next records after it.
+  const released =
+    throughBefore && (throughBefore.id !== throughAfter?.id || throughBefore.site !== throughAfter?.site)
+      ? releaseWebProfileAccount(ctx, throughBefore, configs)
+      : undefined
   // Refresh the endpoint-trust baseUrl view on the SAME write that reaches
   // the broker, so it reclassifies before the next model call.
   publishProviderBaseUrlsFromConfigs(configs)
@@ -621,6 +636,7 @@ async function handleUpsert(
   if (isModProviderId(payload.id) && ((keyBefore ?? '') !== (after?.apiKey ?? '') || secretsChanged || ownershipChanged || baseUrlChanged)) {
     ctx.reloadPluginsOnAllSessions?.()
   }
+  await released
   return { ok: true, configs: uiConfigs, activeProviderId }
 }
 
@@ -635,6 +651,7 @@ async function handleRemove(
   const { settings: current } = await readUserLayer(ctx.homeDir, ctx.fs)
   const currentConfigs = current.providers?.configs
   let hadCredentials = false
+  let throughBefore: ProviderWebProfileRef | undefined
   const wasActive = current.providers?.activeProviderId === payload.id
   if (
     (!currentConfigs || !(payload.id in currentConfigs))
@@ -650,6 +667,7 @@ async function handleRemove(
     const nextConfigs = { ...(prev?.configs ?? {}) }
     const removed = nextConfigs[payload.id]
     hadCredentials = !!removed?.apiKey || Object.keys(removed?.secrets ?? {}).length > 0
+    throughBefore = removed?.webProfile
     delete nextConfigs[payload.id]
     // Clear activeProviderId if it was pointing at the removed id so
     // the UI doesn't surface a dangling selection.
@@ -686,6 +704,7 @@ async function handleRemove(
   })
   const configs = updated.providers?.configs ?? {}
   const activeProviderId = updated.providers?.activeProviderId
+  const released = throughBefore ? releaseWebProfileAccount(ctx, throughBefore, configs) : undefined
   // A removed override must revert the provider to official classification.
   publishProviderBaseUrlsFromConfigs(configs)
   // Push to the broker FIRST (awaited) so it has the new config before the
@@ -709,6 +728,7 @@ async function handleRemove(
     order: updated.providers?.order ?? [],
   })
   if (hadCredentials && isModProviderId(payload.id)) ctx.reloadPluginsOnAllSessions?.()
+  await released
   return { ok: true, configs: uiConfigs, activeProviderId }
 }
 

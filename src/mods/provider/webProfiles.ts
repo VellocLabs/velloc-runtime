@@ -3,15 +3,19 @@
  * session of its own (cookies and site data), kept by the host as a storage
  * partition; a sign-in window may be opened in one. Profiles are shared: every
  * plugin sees all of them and may open a window in any. What a profile is
- * signed in to is recorded in one form for all plugins: login records
- * `{ site, account, plugin }`, readable by all, each written and removed only
- * by the plugin it names. A profile with no login record and no window open
- * is deleted, its session with it.
+ * signed in to is recorded twice, both readable by all. A plugin's login
+ * records `{ site, account, plugin }` are written and removed only by the
+ * plugin they name. The profile's account records `{ site, account }`, one per
+ * site, are written by the platform when a sign-in it accepted ended in that
+ * profile, and removed by it when no provider is signed in through that site
+ * of the profile any more. A profile with no record of either kind and no
+ * window open is deleted, its session with it.
  *
  * Security: a profile's id and session are the platform's; no plugin names or
  * makes one except by opening a window in a new one. A plugin writes only its
- * own records. A record is a note every plugin reads: not a place for
- * credentials. Nothing of a profile's session is readable here.
+ * own login records and no account record. A record is a note every plugin
+ * reads: not a place for credentials. Nothing of a profile's session is
+ * readable here.
  */
 
 import { isPlainHostName } from './providerBaseUrlRule'
@@ -26,7 +30,7 @@ export const TEMPORARY_WEB_PROFILE = 'temporary'
 /** `profile` of `interact.openWindow`: a profile made for this window. */
 export const NEW_WEB_PROFILE = 'new'
 
-const FILE_VERSION = 2
+const FILE_VERSION = 3
 const PARTITION_PREFIX = 'vellocprofile'
 
 /** One sign-in a plugin made in a profile. */
@@ -43,11 +47,22 @@ export type WebProfileLogin = {
   data?: Readonly<Record<string, unknown>>
 }
 
+/** Who is signed in to a site of a profile, as the last accepted sign-in there said. */
+export type WebProfileAccount = {
+  /** The host the sign-in window was opened on, lower case. */
+  site: string
+  /** The account that sign-in answered. */
+  account: string
+  /** When it was recorded or last replaced. */
+  at: number
+}
+
 export type WebProfile = {
   id: string
   createdAt: number
   lastUsedAt?: number
   logins: readonly WebProfileLogin[]
+  accounts: readonly WebProfileAccount[]
 }
 
 type StoredProfile = WebProfile & { number: number }
@@ -136,6 +151,17 @@ function storedLogins(value: unknown): WebProfileLogin[] {
   return out
 }
 
+function storedAccounts(value: unknown): WebProfileAccount[] {
+  const out: WebProfileAccount[] = []
+  if (!Array.isArray(value)) return out
+  for (const entry of value as unknown[]) {
+    if (!isRecord(entry) || typeof entry.site !== 'string' || typeof entry.account !== 'string') continue
+    if (typeof entry.at !== 'number' || out.some(kept => kept.site === entry.site)) continue
+    out.push({ site: entry.site, account: entry.account, at: entry.at })
+  }
+  return out
+}
+
 function parseStored(text: string | null): { next: number; rows: StoredProfile[] } {
   if (!text) return { next: 1, rows: [] }
   const parsed: unknown = JSON.parse(text)
@@ -150,6 +176,7 @@ function parseStored(text: string | null): { next: number; rows: StoredProfile[]
       createdAt: entry.createdAt,
       ...(typeof entry.lastUsedAt === 'number' ? { lastUsedAt: entry.lastUsedAt } : {}),
       logins: storedLogins(entry.logins),
+      accounts: storedAccounts(entry.accounts),
     })
   }
   // A number is never given out twice, whatever the file says.
@@ -159,7 +186,7 @@ function parseStored(text: string | null): { next: number; rows: StoredProfile[]
 }
 
 const publicRow = ({ number: _number, ...row }: StoredProfile): WebProfile => row
-const isEmpty = (row: StoredProfile): boolean => row.logins.length === 0
+const isEmpty = (row: StoredProfile): boolean => row.logins.length === 0 && row.accounts.length === 0
 
 export class WebProfiles {
   private table: { next: number; rows: StoredProfile[] } | undefined
@@ -192,6 +219,7 @@ export class WebProfiles {
     const step = this.queue.then(async () => {
       const state = await this.state()
       const { next = state.next, rows, result } = await run(state)
+      if (rows === state.rows && next === state.next) return result
       await this.deps.save(
         JSON.stringify({
           version: FILE_VERSION,
@@ -206,7 +234,7 @@ export class WebProfiles {
     return step
   }
 
-  /** `rows` without the profiles that hold no login record and have no window open; their sessions are deleted first. */
+  /** `rows` without the profiles that hold no record and have no window open; their sessions are deleted first. */
   private async reaped(rows: StoredProfile[]): Promise<StoredProfile[]> {
     const kept: StoredProfile[] = []
     for (const row of rows) {
@@ -225,7 +253,7 @@ export class WebProfiles {
     return kept
   }
 
-  /** Every profile, with every plugin's login records. */
+  /** Every profile, with every plugin's login records and the profile's account records. */
   async list(): Promise<WebProfile[]> {
     await this.queue
     return (await this.state()).rows.map(publicRow)
@@ -264,7 +292,34 @@ export class WebProfiles {
     })
   }
 
-  /** A plugin is gone: its records leave every profile, and a profile left empty is deleted. */
+  /**
+   * The platform's record that `account` signed in to `site` in profile `id`,
+   * in place of the profile's earlier record of that site. Security: reached
+   * only from an accepted sign-in, never from a plugin's call.
+   */
+  recordAccount(id: string, site: string, account: string): Promise<void> {
+    return this.change(async ({ rows }) => {
+      const row = this.found(rows, 'recordAccount', id)
+      const next = { ...row, accounts: [...row.accounts.filter(each => each.site !== site), { site, account, at: this.now() }] }
+      return { rows: rows.map(each => (each === row ? next : each)), result: undefined }
+    })
+  }
+
+  /**
+   * Removes the account record of `site` from profile `id`; a profile left
+   * with no record is deleted unless a window is open in it. Nothing is
+   * written when there is no such record.
+   */
+  dropAccount(id: string, site: string): Promise<void> {
+    return this.change(async ({ rows }) => {
+      const row = rows.find(each => each.id === id)
+      if (!row || !row.accounts.some(each => each.site === site)) return { rows, result: undefined }
+      const next = { ...row, accounts: row.accounts.filter(each => each.site !== site) }
+      return { rows: await this.reaped(rows.map(each => (each === row ? next : each))), result: undefined }
+    })
+  }
+
+  /** A plugin is gone: its login records leave every profile, and a profile left empty is deleted. */
   forgetPlugin(plugin: string): Promise<void> {
     return this.change(async ({ rows }) => ({
       rows: await this.reaped(rows.map(row => ({ ...row, logins: row.logins.filter(each => each.plugin !== plugin) }))),
@@ -275,7 +330,7 @@ export class WebProfiles {
   /**
    * The profile a sign-in window opens in, held until `release`: `'new'`
    * makes one, an id names an existing one. A held profile is not deleted;
-   * on release one that still has no login record is.
+   * on release one that still has no record is.
    */
   hold(profile: string): Promise<HeldWebProfile> {
     if (!this.deps.hostKeepsProfiles()) {
@@ -288,7 +343,7 @@ export class WebProfiles {
         if (rows.length >= WEB_PROFILES_MAX) {
           throw named('QuotaExceededError', `interact.openWindow: there are ${WEB_PROFILES_MAX} web profiles, the most Velloc keeps`)
         }
-        row = { id: `${WEB_PROFILE_ID_PREFIX}${next}`, number: next, createdAt: this.now(), logins: [] }
+        row = { id: `${WEB_PROFILE_ID_PREFIX}${next}`, number: next, createdAt: this.now(), logins: [], accounts: [] }
         after = next + 1
       } else {
         const found = rows.find(each => each.id === profile)

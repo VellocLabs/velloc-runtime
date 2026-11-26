@@ -107,6 +107,7 @@ describe('web profiles', () => {
           { site: 'mail.vendor-a.test', account: 'zed@vendor-a.test', plugin: 'acme', at: NOW + 1, data: { plan: 'pro' } },
           { site: 'mail.vendor-a.test', account: 'zed@vendor-a.test', plugin: 'other', at: NOW + 2 },
         ],
+        accounts: [],
       },
     ])
   })
@@ -221,7 +222,7 @@ describe('web profiles', () => {
     const r = rig()
     const id = await signedIn(r.profiles, 'acme', 'vendor-a.test', 'one')
     expect(await r.reopen().list()).toEqual([
-      { id, createdAt: NOW, logins: [{ site: 'vendor-a.test', account: 'one', plugin: 'acme', at: NOW + 1 }] },
+      { id, createdAt: NOW, logins: [{ site: 'vendor-a.test', account: 'one', plugin: 'acme', at: NOW + 1 }], accounts: [] },
     ])
   })
 
@@ -242,7 +243,7 @@ describe('web profiles', () => {
 describe('the nouns', () => {
   it('list is the same for every plugin; a record is made for the calling plugin, whatever it says', async () => {
     const r = rig()
-    const nouns = createWebProfileNouns(() => r.profiles)
+    const nouns = createWebProfileNouns(() => r.profiles, () => undefined)
     const call = (plugin: string, ...args: unknown[]) => ({ plugin, args, providers: [] }) as unknown as ProviderNounCall
     const held = await r.profiles.hold('new')
     await nouns.webProfilesSetLogin!(call('acme', held.id, { site: 'vendor-a.test', account: 'one', plugin: 'other' }))

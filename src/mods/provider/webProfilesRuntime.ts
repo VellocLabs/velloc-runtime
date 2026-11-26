@@ -9,6 +9,7 @@ import { STORAGE_PARTITION_PRIMITIVE } from '../../browser/bridge/signInWindow'
 import { RUNTIME_DIR_NAME } from '../../branding/runtimeDir'
 import { getMcpHost } from '../../mcp/mcpHost'
 import { ensureDirRecursive } from '../../pluginHost/writeExtracted'
+import type { NexusProviderConfig, ProviderWebProfileRef } from '../../settings/settingsTypes'
 import type { RuntimeFs } from '../../utils/fs/runtimeFs'
 import { joinRuntimePath } from '../../utils/runtimePaths'
 import { WebProfiles } from './webProfiles'
@@ -86,6 +87,29 @@ export async function forgetPluginWebProfiles(
     await runtimeWebProfiles(options).forgetPlugin(plugin)
   } catch (error) {
     options.report?.(`web profiles: could not clear what ${plugin} recorded: ${error instanceof Error ? error.message : String(error)}`)
+  }
+}
+
+/**
+ * A provider's entry stopped being signed in through `through` (it signed
+ * out, signed in elsewhere, or was removed). The site's account record goes
+ * unless an entry of `configs`, the table as that write left it, is still
+ * signed in through it. Never fails the write that reports it; a table that
+ * was never written is left unwritten.
+ */
+export async function releaseWebProfileAccount(
+  options: { homeDir: string; fs: RuntimeFs; report?: (line: string) => void },
+  through: ProviderWebProfileRef,
+  configs: Readonly<Record<string, NexusProviderConfig>>,
+): Promise<void> {
+  try {
+    if (Object.values(configs).some(config => config.webProfile?.id === through.id && config.webProfile.site === through.site)) return
+    if (!instance && !options.fs.existsSync(tablePath(options.homeDir))) return
+    await runtimeWebProfiles(options).dropAccount(through.id, through.site)
+  } catch (error) {
+    options.report?.(
+      `web profiles: could not drop the account of ${through.site} in ${through.id}: ${error instanceof Error ? error.message : String(error)}`,
+    )
   }
 }
 

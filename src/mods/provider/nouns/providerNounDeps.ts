@@ -273,7 +273,10 @@ export function createProviderNounSet(options: ProviderNounSetOptions): Provider
   }
   const extra = options.extraNouns ?? {
     ...createLoginNouns(getProviderCredentials()),
-    ...createWebProfileNouns(() => runtimeWebProfiles({ homeDir: options.homeDir, fs: options.fs, report: options.report })),
+    ...createWebProfileNouns(
+      () => runtimeWebProfiles({ homeDir: options.homeDir, fs: options.fs, report: options.report }),
+      options.storedConfigOf,
+    ),
   }
   const table: ProviderNounTable = Object.freeze({
     ...extra,

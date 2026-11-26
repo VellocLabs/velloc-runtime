@@ -23,7 +23,7 @@ import {
   runtimeProviderConfigs,
 } from '../../models/drivers/runtimeProviders'
 import type { ActivePlugin } from '../../pluginHost/pluginModel'
-import type { NexusProviderConfig } from '../../settings/settingsTypes'
+import type { NexusProviderConfig, ProviderConfigWriteOptions } from '../../settings/settingsTypes'
 import { pluginConfigId } from '../modSlot'
 import { modProviderDefinition, safeIconSvg, type ModProviderDefinitionOptions } from './modProviderDefinition'
 import { clearProviderState } from '../../models/drivers/providerHealthLedger'
@@ -143,6 +143,8 @@ export type ProviderModHostOptions = {
   storedConfigs?: () => Readonly<Record<string, NexusProviderConfig>>
   /** Removes a stored entry with its sealed values. Absent: the runtime's, when attached. */
   removeConfig?: (providerId: string) => Promise<void>
+  /** Writes a stored entry. Absent: the runtime's, when attached. */
+  writeConfig?: (providerId: string, config: NexusProviderConfig, options?: ProviderConfigWriteOptions) => Promise<void>
 }
 
 export type ProviderPluginScan = {
@@ -193,6 +195,8 @@ export class ProviderModHost {
   private lastScan: ProviderPluginScan | undefined
   /** Routers taken away while the app ran whose borrowed instances are not all removed yet. */
   private readonly departedRouters = new Set<string>()
+  /** Definitions of plugins taken away while the app ran whose entries may still name a web profile. */
+  private readonly departedDefinitions = new Set<string>()
   private chain: Promise<unknown> = Promise.resolve()
 
   /** Give the host what it needs to build the runtime and read files. */
@@ -498,6 +502,7 @@ ${plugin.name}`
       result.published = true
     }
     await this.dropOrphanedBorrows(installed, previousScan, configs)
+    await this.dropDepartedSignIns(installed, previousScan, configs)
     // A provider that came in while the app runs is listed now (never at
     // boot). Not awaited: the sync must not wait on a module's cold start.
     if (!first && options.refreshListing) {
@@ -641,6 +646,41 @@ ${plugin.name}`
     }
     if (!remove) return
     for (const id of [...this.departedRouters]) if (!failed.has(id)) this.departedRouters.delete(id)
+  }
+
+  /**
+   * A plugin taken away while the app ran keeps its stored entries, but none
+   * of them counts as signed in through a web profile any more: each loses
+   * that note, and the write path drops the account records only they kept.
+   * A plugin that is merely disabled keeps it. A failed write is reported and
+   * tried again at the next sync.
+   */
+  private async dropDepartedSignIns(
+    installed: ProviderPluginScan,
+    previous: ProviderPluginScan | undefined,
+    configs: Readonly<Record<string, NexusProviderConfig>>,
+  ): Promise<void> {
+    const options = this.options!
+    const definitionsOf = (scan: ProviderPluginScan): string[] =>
+      [...scan.enabled, ...scan.disabled].flatMap(plugin => (plugin.providers ?? []).map(provider => provider.id))
+    const here = new Set(definitionsOf(installed))
+    for (const id of [...this.departedDefinitions]) if (here.has(id)) this.departedDefinitions.delete(id)
+    if (previous) for (const id of definitionsOf(previous)) if (!here.has(id)) this.departedDefinitions.add(id)
+    if (this.departedDefinitions.size === 0) return
+    const write = options.writeConfig ?? providerHostSources().writeProviderConfig
+    if (!write) return
+    let failed = false
+    for (const [id, config] of Object.entries(configs)) {
+      if (!config.webProfile || !this.departedDefinitions.has(config.definition ?? id)) continue
+      const { apiKey: _apiKey, hasApiKey: _hasApiKey, storedSecrets: _storedSecrets, secrets: _secrets, ...rest } = config
+      try {
+        await write(id, rest, { promote: false, webProfile: null })
+      } catch (error) {
+        failed = true
+        options.report(`${id}: its plugin is gone and its web profile could not be let go: ${error instanceof Error ? error.message : String(error)}`)
+      }
+    }
+    if (!failed) this.departedDefinitions.clear()
   }
 
   /** The version a plugin's providers are registered at, if they are. */

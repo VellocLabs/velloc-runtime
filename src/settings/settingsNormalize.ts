@@ -375,6 +375,11 @@ export function normalizeSettings(
         if (typeof r.tokenExpiresAt === 'number' && Number.isFinite(r.tokenExpiresAt) && r.tokenExpiresAt > 0) {
           config.tokenExpiresAt = Math.floor(r.tokenExpiresAt)
         }
+        const through = r.webProfile as { id?: unknown; site?: unknown } | undefined
+        if (through && typeof through === 'object' && typeof through.id === 'string' && through.id !== ''
+            && typeof through.site === 'string' && through.site !== '') {
+          config.webProfile = { id: through.id, site: through.site }
+        }
         // NOTE: `streamIdleTimeoutSeconds` / `maxConcurrentStreams` are NOT
         // read from settings.json. They are owned exclusively by the built-in
         // NEXUS_MODEL_CONFIG provider catalog — see types.ts. Any such keys a

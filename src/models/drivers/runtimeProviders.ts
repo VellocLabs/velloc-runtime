@@ -35,7 +35,7 @@ import {
 } from '../../config/nexusModelConfig/familyRows'
 import { modelFactsFor, withModelFacts, withProviderModelFacts } from '../../config/nexusModelConfig/modelFacts'
 import { publishListedModelPool, resetProviderModelPool } from '../../config/nexusModelConfig/providerModelPool'
-import type { NexusProviderConfig } from '../../settings/settingsTypes'
+import type { NexusProviderConfig, ProviderConfigWriteOptions } from '../../settings/settingsTypes'
 import { holdsModSignIn } from '../../settings/providerSignIn'
 import { traceLine } from '../../utils/debugLog'
 import { isModProviderId } from '../../mods/provider/providerManifest'
@@ -77,9 +77,8 @@ export const LISTING_RETRY_MS = 5 * 60 * 1000
 /** What the runtime hub lends this module: settings writes and the cache. */
 export type RuntimeProvidersHost = {
   /** Replace one provider's settings.json config through the `providers`
-   *  write path. `apiKey` absent = keep the stored key. `promote: false`:
-   *  the write never makes the provider the active one. */
-  writeProviderConfig(providerId: string, config: NexusProviderConfig, options?: { promote?: boolean }): Promise<void>
+   *  write path. `apiKey` absent = keep the stored key. */
+  writeProviderConfig(providerId: string, config: NexusProviderConfig, options?: ProviderConfigWriteOptions): Promise<void>
   /** Remove one provider's settings.json config through the `providers`
    *  write path. Absent: this host removes none. */
   removeProviderConfig?(providerId: string): Promise<void>

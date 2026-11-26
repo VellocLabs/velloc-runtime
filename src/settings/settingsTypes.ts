@@ -279,6 +279,10 @@ export type NexusProviderConfig = {
   /** When the token a sign-in (or its refresh) stored stops working, epoch
    *  milliseconds: a request near it refreshes first. Runtime-owned. */
   tokenExpiresAt?: number
+  /** The web profile and site the stored sign-in was made through. Security:
+   *  runtime-owned; only the sign-in service's write sets or drops it, and it
+   *  is sent to no page and no plugin. */
+  webProfile?: ProviderWebProfileRef
   /**
    * Wire-only: the User-Agent the host sends for this provider. NOT a
    * settings.json field (the loader drops it) — code-owned per preset and
@@ -293,6 +297,18 @@ export type NexusProviderConfig = {
   // provider's stream-guard behaviour is the
   // web provider config. A user-facing settings override for them was removed
   // so the two can never diverge.
+}
+
+/** A site of a web profile: where a provider's sign-in was made. */
+export type ProviderWebProfileRef = { id: string; site: string }
+
+/** What a write of one provider's entry may say beside the entry. */
+export type ProviderConfigWriteOptions = {
+  /** `false`: the write never makes the provider the active one. */
+  promote?: boolean
+  /** The sign-in service's word on `webProfile`: a value sets it, `null`
+   *  drops it. Absent: the stored one stays. */
+  webProfile?: ProviderWebProfileRef | null
 }
 
 /**

@@ -658,6 +658,7 @@ export function createRuntimeProvidersHost(ctx: WebUiBridgeContext): RuntimeProv
         providersAdapterContext(ctx, settingsRoot),
         undefined,
         options?.promote ?? true,
+        options?.webProfile,
       )
     },
     async removeProviderConfig(providerId) {

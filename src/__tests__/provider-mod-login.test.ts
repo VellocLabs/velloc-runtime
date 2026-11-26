@@ -73,14 +73,15 @@ function world(initial: { secrets?: Record<string, string>; config?: NexusProvid
     writes,
     config: () => config,
     storedConfigOf: (): NexusProviderConfig => config,
-    writeConfig: async (_id: string, next: NexusProviderConfig) => {
+    writeConfig: async (_id: string, next: NexusProviderConfig, options?: { webProfile?: NexusProviderConfig['webProfile'] | null }) => {
       writes.push(next)
       for (const [name, value] of Object.entries(next.secrets ?? {})) {
         if (value === '') delete secrets[name]
         else secrets[name] = value
       }
-      const { secrets: _s, ...rest } = next
-      config = rest
+      const { secrets: _s, webProfile: _given, ...rest } = next
+      const through = options?.webProfile === undefined ? config.webProfile : (options.webProfile ?? undefined)
+      config = { ...rest, ...(through ? { webProfile: through } : {}) }
     },
   }
 }
@@ -172,7 +173,7 @@ function setup(
         moduleFailed: (id, owned, message) => credentials.moduleFailed(id, owned, message),
         openWindow: (id, owned, spec) => credentials.openWindow(id, owned, spec),
       }),
-      ...createWebProfileNouns(() => webProfiles),
+      ...createWebProfileNouns(() => webProfiles, () => store.storedConfigOf()),
     },
     ...(options.idleMs !== undefined ? { idleMs: options.idleMs } : {}),
     ...(options.idleCheckMs !== undefined ? { idleCheckMs: options.idleCheckMs } : {}),
@@ -187,6 +188,7 @@ function setup(
         : undefined,
     ...(options.openWindow ? { openWindow: options.openWindow } : {}),
     holdProfile: profile => webProfiles.hold(profile),
+    recordAccount: (through, account) => webProfiles.recordAccount(through.id, through.site, account),
     storedConfigOf: () => store.storedConfigOf(),
     writeConfig: store.writeConfig,
     report: line => log.push(line),
@@ -376,6 +378,37 @@ describe('provider.login with the interact handle', () => {
     expect(t.store.writes.at(-1)?.secrets).toMatchObject({
       access_token: '0|velloc-profile-1|velloc-profile-1|acme.example|zed|acme',
     })
+  })
+
+  it('$.provider.webProfiles: a sign-in in a kept profile is listed with the account and the provider, the module having recorded nothing', async () => {
+    const t = setup(
+      `
+      export function register(on) {
+        on('provider.login', async ($, e) => {
+          const before = await $.provider.webProfiles.list()
+          const known = before.find(row => row.accounts.some(each => each.providers.includes('${ID}')))
+          await e.interact.openWindow({
+            url: 'https://auth.acme.example/authorize',
+            captureRedirect: 'http://127.0.0.1:53682/cb',
+            profile: known ? known.id : 'new',
+          })
+          return { secrets: { access_token: JSON.stringify(before.map(row => [row.id, row.accounts])) }, account: 'zed' }
+        })
+      }
+    `,
+      { openWindow: async request => ({ url: `${request.redirectUri}?code=c9`, finish: () => {}, close: () => {} }) },
+    )
+    t.credentials.startLogin(ID)
+    await until(() => stepOf(t.credentials)?.kind === 'done', 'done')
+    expect(t.store.writes.at(-1)?.secrets).toMatchObject({ access_token: '[]' })
+    expect(t.store.config().webProfile).toEqual({ id: 'velloc-profile-1', site: 'auth.acme.example' })
+    t.credentials.cancel(t.credentials.state().logins[ID]!.loginId)
+    t.credentials.startLogin(ID)
+    await until(() => stepOf(t.credentials)?.kind === 'done', 'done again')
+    expect(JSON.parse(t.store.writes.at(-1)!.secrets!.access_token!)).toEqual([
+      ['velloc-profile-1', [{ site: 'auth.acme.example', account: 'zed', at: expect.any(Number), providers: [ID] }]],
+    ])
+    expect(t.store.config().webProfile).toEqual({ id: 'velloc-profile-1', site: 'auth.acme.example' })
   })
 
   it('openUrl of another scheme is refused to the module, and the page never sees the link', async () => {
