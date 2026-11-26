@@ -1,11 +1,14 @@
 name: CI
 
-# Typecheck, unit tests and a versioned build of the chosen ref. Runs only
-# when started by hand, for a ref that is not on `main` yet: a push to `main`
-# runs build-beta.yml, which has the same gates. Nothing here deploys; a
-# deploy is build-beta.yml -> promote-production.yml, the second by hand. (G-3)
+# Typecheck, unit tests and a versioned build of a change, on every push to a
+# `ci/<change>` branch (and by hand). `ci/` branches are disposable test
+# copies of a local change: each push replaces one, and they are deleted once
+# the change is finished. `main` is covered by build-beta.yml, which runs the
+# same gates before it deploys. Nothing here deploys. (G-3)
 
 on:
+  push:
+    branches: ['ci/**']
   workflow_dispatch:
 
 # Declared explicitly, not inherited. The repository default has to be
@@ -17,29 +20,53 @@ on:
 permissions:
   contents: read
 
+# A newer push to the same branch supersedes the run still going.
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  verify:
+  typecheck:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-
       - uses: actions/setup-node@v7
         with:
-          # Must match NODE_VERSION on both Cloudflare Workers Builds projects.
-          # CI only predicts the deploy if it runs the same major.
+          # Must match build-beta.yml: the gates here predict the deploy only
+          # on the same major.
           node-version: 22
           cache: npm
-
       - run: npm ci
-
       - run: npm run typecheck
 
-      - run: npm test
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      # Every shard reports, so one re-run covers every failing shard.
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4, 5, 6]
+    name: test (shard ${{ matrix.shard }}/6)
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      # Same sharding and retry as build-beta.yml, so a branch that is green
+      # here is green there.
+      - run: npm test -- --shard=${{ matrix.shard }}/6 --retry=1
 
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
       # Compiles with VERSIONED_DEPLOY=1, which is how `deploy:stage` builds the
       # current /runtime/v<N>/ — a plain `vite build` would not catch a base-path break.
       - run: npm run build:versioned

@@ -850,6 +850,35 @@ describe('main carries no build output', () => {
   })
 })
 
+describe('branch CI runs the gates Workflow A runs', () => {
+  const ci = parse(readFileSync(join(workflows, 'ci.yml'), 'utf8'))
+  const beta = parse(readFileSync(join(workflows, 'build-beta.yml'), 'utf8'))
+  const runs = (doc: typeof ci, job: string): string[] =>
+    doc.jobs[job].steps.map((s: { run?: string }) => s.run).filter(Boolean)
+
+  it('runs on a push to a ci/<change> branch, and by hand', () => {
+    expect(ci.on.push).toEqual({ branches: ['ci/**'] })
+    expect(ci.on).toHaveProperty('workflow_dispatch')
+    // main is gated by Workflow A; a second run per push there is waste.
+    expect(beta.on.push).toEqual({ branches: ['main'] })
+  })
+
+  it('shards and retries the tests exactly as Workflow A does', () => {
+    expect(ci.jobs.test.strategy.matrix.shard).toEqual(beta.jobs.test.strategy.matrix.shard)
+    expect(ci.jobs.test.strategy['fail-fast']).toBe(false)
+    expect(runs(ci, 'test')).toEqual(runs(beta, 'test'))
+    expect(runs(ci, 'typecheck')).toEqual(runs(beta, 'typecheck'))
+  })
+
+  it('supersedes a run when the same branch is pushed again', () => {
+    expect(ci.concurrency).toEqual({ group: 'ci-${{ github.ref }}', 'cancel-in-progress': true })
+  })
+
+  it('never deploys', () => {
+    expect(readFileSync(join(workflows, 'ci.yml'), 'utf8')).not.toMatch(/wrangler|CLOUDFLARE_/)
+  })
+})
+
 describe('release workflow contract', () => {
   const read = (name: string) => readFileSync(join(workflows, name), 'utf8')
 
