@@ -5,9 +5,10 @@
  * host's domain lock is anchored to the stored base URL); `applyModelWire` merges.
  */
 import { traceLine } from '../../utils/debugLog'
-import type { CodecCompat, ModelWire } from '../../config/nexusModelConfig/providerDefinition'
+import type { CodecCompat, ModelWire, WireEnvelope } from '../../config/nexusModelConfig/providerDefinition'
 import type { ProviderSpec } from './driverTypes'
 import { readToolAliases } from './toolAliases'
+import { geminiDriver } from './geminiDriver'
 
 /** The codec switches a wire may carry — the whole set. */
 export const COMPAT_KEYS: readonly (keyof CodecCompat)[] = [
@@ -15,7 +16,27 @@ export const COMPAT_KEYS: readonly (keyof CodecCompat)[] = [
   'developerRole',
   'reasoningEffortField',
   'reasoningReplay',
+  'envelope',
 ]
+
+const ENVELOPE_KEY = /^[A-Za-z][A-Za-z0-9_]{0,63}$/
+
+/**
+ * A declared `compat.envelope`, or why it is not one. Security: each name
+ * becomes a key of the outbound JSON body, so it is held to a letter followed
+ * by letters, digits and `_`, 64 characters at most.
+ */
+export function readWireEnvelope(raw: unknown): { envelope?: WireEnvelope; problem?: string } {
+  if (!isPlainObject(raw)) return { problem: 'expected an object' }
+  const envelope: WireEnvelope = {}
+  for (const [side, name] of Object.entries(raw)) {
+    if (side !== 'request' && side !== 'response') return { problem: `unknown key "${side}"` }
+    if (typeof name !== 'string' || !ENVELOPE_KEY.test(name)) return { problem: `${side} is not a plain key name` }
+    envelope[side] = name
+  }
+  if (envelope.request === undefined && envelope.response === undefined) return { problem: 'names neither request nor response' }
+  return { envelope }
+}
 
 const MAX_TOKENS_FIELDS: ReadonlySet<unknown> = new Set(['max_tokens', 'max_completion_tokens'])
 const REASONING_REPLAYS: ReadonlySet<unknown> = new Set(['none', 'reasoning_content', 'reasoning'])
@@ -121,6 +142,10 @@ function parseCompat(providerId: string, raw: unknown): CodecCompat | undefined 
       out.reasoningReplay = value as CodecCompat['reasoningReplay']
     } else if ((key === 'developerRole' || key === 'reasoningEffortField') && typeof value === 'boolean') {
       out[key] = value
+    } else if (key === 'envelope') {
+      const read = readWireEnvelope(value)
+      if (read.envelope) out.envelope = read.envelope
+      else logOnce(providerId, `compat envelope: ${read.problem}; ignored`)
     } else {
       logOnce(providerId, `compat ${key} has an invalid value; ignored`)
     }
@@ -247,6 +272,7 @@ export function applyModelWire(spec: ProviderSpec, wire: ModelWire): ProviderSpe
   const headers = mergeSpecHeaders(spec.headers, wire.headers)
   const compat: CodecCompat | undefined =
     spec.compat || wire.compat ? { ...spec.compat, ...wire.compat } : undefined
+  if (compat?.envelope && format !== geminiDriver.id) logOnce(spec.id, `compat envelope: the ${format} codec does not read it; ignored`)
   const { path: providerPath, toolAliases: providerAliases, ...rest } = spec
   const path = wire.path ?? (format === spec.format ? providerPath : undefined)
   const toolAliases = wire.toolAliases ?? providerAliases

@@ -147,8 +147,9 @@ export interface ProviderDriver {
   /**
    * Optional. Where this wire carries ids in the parsed body `buildRequest` wrote, in
    * the request's own order. Pure. The mapper rewrites the strings at these paths.
+   * `compat` is the request context's, for a codec whose switches move the ids.
    */
-  idSites?(body: unknown): IdSite[]
+  idSites?(body: unknown, compat?: CodecCompat): IdSite[]
   /**
    * Whether the C++ provider decodes a response with this HTTP status as a
    * stream; any other status goes to `errorFromResponse`. Absent = any 2xx.

@@ -36,7 +36,16 @@ export type CodecCompat = {
   /** Whether, and under which assistant-message field, the earlier
    *  reasoning text is sent back. `none` sends none. */
   reasoningReplay?: 'none' | 'reasoning_content' | 'reasoning'
+  /** For a service that nests the codec's JSON one level down. `request`: the
+   *  body the codec builds is sent as the value of this key of an otherwise
+   *  empty object. `response`: an answer (each streamed chunk) is read from
+   *  under this key when it holds an object there, as it stands otherwise.
+   *  Each is a plain key name; at least one is set. */
+  envelope?: WireEnvelope
 }
+
+/** The key names of `CodecCompat.envelope`. */
+export type WireEnvelope = { request?: string; response?: string }
 
 /**
  * Where, and in which wire format, one model's requests go — laid over the

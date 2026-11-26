@@ -225,6 +225,45 @@ describe('resolveProviderSpec(provider, config, model)', () => {
     expect(mergeSpecHeaders(undefined, undefined)).toBeUndefined()
   })
 
+  it('compat.envelope on a codec that does not read it is logged as ignored', () => {
+    resetModelWireLog()
+    const spec: ProviderSpec = { id: 'p', format: openaiChatDriver.id, baseUrl: 'https://x.test/v1' }
+    expect(applyModelWire(spec, { compat: { envelope: { request: 'request' } } }).compat).toEqual({ envelope: { request: 'request' } })
+    expect(warnings().some(line => line.includes(`compat envelope: the ${openaiChatDriver.id} codec does not read it`))).toBe(true)
+    resetModelWireLog()
+    vi.mocked(traceLine).mockClear()
+    applyModelWire({ ...spec, format: geminiDriver.id }, { compat: { envelope: { request: 'request' } } })
+    expect(warnings().some(line => line.includes('codec does not read it'))).toBe(false)
+  })
+
+  it('compat.envelope: plain key names are kept; anything else is ignored and logged', () => {
+    expect(parseModelWire('p', { compat: { envelope: { request: 'request', response: 'response' } } }))
+      .toEqual({ compat: { envelope: { request: 'request', response: 'response' } } })
+    expect(parseModelWire('p', { compat: { envelope: { request: 'body_v2' } } })).toEqual({ compat: { envelope: { request: 'body_v2' } } })
+    expect(parseModelWire('p', { compat: { envelope: { response: 'r' } } })).toEqual({ compat: { envelope: { response: 'r' } } })
+    const malformed: unknown[] = [
+      'request',
+      {},
+      [],
+      { request: '' },
+      { request: 'a/b' },
+      { request: 'a.b' },
+      { request: '__proto__' },
+      { request: '1st' },
+      { request: 'x'.repeat(65) },
+      { request: 5 },
+      { request: 'request', reply: 'response' },
+      { request: 'request', response: 'has space' },
+    ]
+    for (const envelope of malformed) {
+      resetModelWireLog()
+      expect(parseModelWire('p', { compat: { envelope, developerRole: true } }), JSON.stringify(envelope)).toEqual({ compat: { developerRole: true } })
+    }
+    expect(parseModelWire('p', { compat: { envelope: { request: 'x'.repeat(64) } } })).toBeDefined()
+    expect(warnings().some(line => line.includes('compat envelope: request is not a plain key name'))).toBe(true)
+    expect(warnings().some(line => line.includes('compat envelope: unknown key "reply"'))).toBe(true)
+  })
+
   it('compat merges over the provider\'s own, switch by switch', () => {
     const spec: ProviderSpec = { id: 'p', format: 'openai-chat', compat: { developerRole: true, maxTokensField: 'max_tokens' } }
     expect(applyModelWire(spec, { compat: { maxTokensField: 'max_completion_tokens' } }).compat)

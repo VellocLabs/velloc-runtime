@@ -12,6 +12,9 @@ import {
   resetModProviderDefinitions,
 } from '../config/nexusModelConfig/providers'
 import type { ProviderDefinition } from '../config/nexusModelConfig/providerDefinition'
+import { geminiDriver } from '../models/drivers/geminiDriver'
+import { openaiChatDriver } from '../models/drivers/openaiChatDriver'
+import type { ProviderWireFormat } from '../mods/provider/providerManifest'
 import {
   sanitizeUserModels,
   userModelToInfo,
@@ -74,6 +77,21 @@ describe('manifest modelsUi', () => {
     expect(
       check({ customModels: { wires: { 'gemini': { baseUrlTrim: '/v1', baseUrl: 'https://a.example' } } } }).errors,
     ).not.toEqual([])
+  })
+
+  it('a customModels wire may declare compat.envelope; a malformed one refuses the manifest', () => {
+    const format = geminiDriver.id as ProviderWireFormat
+    const wire = { compat: { envelope: { request: 'request', response: 'response' } } }
+    const ok = check({ customModels: { wires: { [format]: wire } } })
+    expect(ok.errors).toEqual([])
+    expect(ok.ui?.customModels?.wires?.[format]).toEqual(wire)
+    for (const envelope of [{}, 'request', { request: 'a/b' }, { request: 'request', other: 'x' }, { response: '' }]) {
+      const refused = check({ customModels: { wires: { [format]: { compat: { envelope } } } } })
+      expect(refused.errors.join(' '), JSON.stringify(envelope)).toContain('compat.envelope')
+    }
+    const other = openaiChatDriver.id as ProviderWireFormat
+    const elsewhere = check({ customModels: { wires: { [other]: wire } } })
+    expect(elsewhere.errors.join(' ')).toContain(`only the ${geminiDriver.id} wire format reads it`)
   })
 
   it('customModels with no formats allows every wire format', () => {

@@ -10,6 +10,8 @@ import { registerProviderDriver } from '../models/drivers/driverRegistry'
 import { DriverStreamHost } from '../models/drivers/driverStreamHost'
 import { buildSystemInstruction } from '../models/drivers/hostCallOptions'
 import { createModelProvider } from '../models/drivers/modelProvider'
+import { geminiDriver } from '../models/drivers/geminiDriver'
+import '../models/drivers/builtinDrivers'
 import type { DriverStreamEvent, ProviderDriver } from '../models/drivers/driverTypes'
 import { registerProviderRequestSeam, resetProviderRequestSeams } from '../models/drivers/providerRequestSeam'
 import { registerSessionWorkingDir, sessionWorkingDirOf } from '../models/drivers/sessionWorkingDirs'
@@ -122,9 +124,13 @@ async function drain(host: DriverStreamHost, streamId: string) {
   throw new Error('stream never finished')
 }
 
-async function run(transport: BrowserBridgeTransport, extra: Record<string, unknown> = {}) {
+async function run(
+  transport: BrowserBridgeTransport,
+  extra: Record<string, unknown> = {},
+  spec: Parameters<typeof createModelProvider>[0] = { id: 'vendor', format: 'needs-json', baseUrl: BASE },
+) {
   const host = new DriverStreamHost(transport)
-  const provider = createModelProvider({ id: 'vendor', format: 'needs-json', baseUrl: BASE })
+  const provider = createModelProvider(spec)
   const { streamId } = host.start(provider, payload(extra) as never, 'm-1')
   return drain(host, streamId)
 }
@@ -344,6 +350,27 @@ describe('provider.request — requestNeeds', () => {
     const { transport, opens } = rawHost([])
     await run(transport)
     expect(bodyOf(opens[0]!)).toMatchObject({ system: 'New.', meta: { tags: ['a'], x: 1 } })
+  })
+
+  it('a codec envelope: the rebuilt body is wrapped once, and the patch addresses the wrapped body', async () => {
+    registerProviderRequestSeam('wrapped', fakeProviderRequestSeam({
+      request: { system: 'New.', tools: [TOOLS[1]], patch: [{ op: 'set', path: '/project', value: 'p-1' }] },
+    }).seam)
+    const { transport, opens } = rawHost([])
+    const chunks = await run(transport, {}, {
+      id: 'wrapped',
+      format: geminiDriver.id,
+      baseUrl: BASE,
+      compat: { envelope: { request: 'request' } },
+    })
+    expect(errorOf(chunks)).toBeUndefined()
+    expect(opens).toHaveLength(1)
+    const sent = bodyOf(opens[0]!)
+    expect(Object.keys(sent).sort()).toEqual(['project', 'request'])
+    expect(sent.project).toBe('p-1')
+    expect(Object.keys(sent.request)).not.toContain('request')
+    expect(sent.request.systemInstruction).toEqual({ parts: [{ text: 'New.' }] })
+    expect(sent.request.tools[0].functionDeclarations.map((d: { name: string }) => d.name)).toEqual(['write'])
   })
 })
 

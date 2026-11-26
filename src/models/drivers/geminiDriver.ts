@@ -38,8 +38,10 @@ import type {
   DriverRequestContext,
   DriverResponseDecoder,
   DriverStreamEvent,
+  IdSite,
   ProviderDriver,
 } from './driverTypes'
+import type { WireEnvelope } from '../../config/nexusModelConfig/providerDefinition'
 import { readGoogleErrorDetails } from './googleErrorDetails'
 import { geminiIdSites } from './idSites'
 
@@ -425,6 +427,31 @@ export function buildGeminiRequestBody(payload: BridgeModelRequestPayload, model
   return buildGoogleRequestBody(buildHostCallOptions(buildHostRequest(payload), model, providerId), model)
 }
 
+/** The body as it is sent: under `envelope.request` of an otherwise empty
+ *  object when that is declared, unchanged otherwise. */
+export function envelopedRequestBody(body: HostDict, envelope: WireEnvelope | undefined): HostDict {
+  return envelope?.request === undefined ? body : dict([[envelope.request, body]])
+}
+
+/** One answer as the decoder reads it: the object under `envelope.response`
+ *  when that is declared and present, the answer itself otherwise. */
+function envelopedResponse(answer: HostDict, envelope: WireEnvelope | undefined): HostDict {
+  if (envelope?.response === undefined) return answer
+  return findDict(answer, envelope.response) ?? answer
+}
+
+/** `geminiIdSites` for a body sent under `envelope.request`. */
+function envelopedIdSites(body: unknown, envelope: WireEnvelope | undefined): IdSite[] {
+  const key = envelope?.request
+  if (key === undefined) return geminiIdSites(body)
+  if (typeof body !== 'object' || body === null || Array.isArray(body)) return []
+  return geminiIdSites((body as Record<string, unknown>)[key]).map(site => ({
+    ...site,
+    path: [key, ...site.path],
+    messagePath: [key, ...site.messagePath],
+  }))
+}
+
 /** The streaming endpoint: one trailing '/' dropped, model id appended raw. */
 export function buildGeminiStreamUrl(baseUrl: string, model: string): string {
   const apiBase = baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl
@@ -480,6 +507,7 @@ class GeminiSseDecoder implements DriverResponseDecoder {
   constructor(
     private readonly newToolCallId: () => string,
     private readonly identity: DecoderIdentity | undefined,
+    private readonly envelope: WireEnvelope | undefined,
   ) {}
 
   push(bytes: Uint8Array): DriverStreamEvent[] {
@@ -585,14 +613,17 @@ class GeminiSseDecoder implements DriverResponseDecoder {
     } catch {
       return
     }
-    const parsed = parseHostJsonDict(text)
-    if (!parsed) return
+    const answer = parseHostJsonDict(text)
+    if (!answer) return
 
-    // An in-stream error object ends the stream as a provider error.
-    const error = findDict(parsed, 'error')
+    // An in-stream error object ends the stream as a provider error, at the
+    // top level or under the response envelope.
+    const parsed = envelopedResponse(answer, this.envelope)
+    const error = findDict(answer, 'error') ?? (parsed === answer ? undefined : findDict(parsed, 'error'))
     if (error) {
       const status = findInt(error, 'code') ?? 0
-      events.push(hostErrorEvent(buildProviderErrorMessage(status, '', extractApiErrorMessage(text))))
+      const message = extractApiErrorMessage(text) || (findString(error, 'message') ?? '')
+      events.push(hostErrorEvent(buildProviderErrorMessage(status, '', message)))
       this.failed = true
       return
     }
@@ -662,8 +693,9 @@ class GeminiSseDecoder implements DriverResponseDecoder {
 export function createGeminiDecoder(
   newToolCallId: () => string = () => globalThis.crypto.randomUUID(),
   identity?: DecoderIdentity,
+  envelope?: WireEnvelope,
 ): DriverResponseDecoder {
-  return new GeminiSseDecoder(newToolCallId, identity)
+  return new GeminiSseDecoder(newToolCallId, identity, envelope)
 }
 
 function findHeader(headers: Record<string, string>, name: string): string {
@@ -678,13 +710,16 @@ function findHeader(headers: Record<string, string>, name: string): string {
 
 export const geminiDriver: ProviderDriver = {
   id: 'gemini',
-  idSites: geminiIdSites,
+  idSites: (body, compat) => envelopedIdSites(body, compat?.envelope),
   // Security: the key goes in a header, not the URL, so it stays out of
   // proxy and server access logs.
   auth: { headers: { 'x-goog-api-key': '{{secret:api_key}}' } },
   buildRequest(payload, context) {
-    // Codec switches (`context.compat`): none applies to this wire.
-    const body = buildGeminiRequestBody(payload, context.model, context.providerId)
+    // Codec switches (`context.compat`): `envelope` only.
+    const body = envelopedRequestBody(
+      buildGeminiRequestBody(payload, context.model, context.providerId),
+      context.compat?.envelope,
+    )
     return {
       url: buildGeminiStreamUrl(context.baseUrl, context.model),
       method: 'POST',
@@ -696,7 +731,7 @@ export const geminiDriver: ProviderDriver = {
     }
   },
   createDecoder(context: DriverRequestContext) {
-    return createGeminiDecoder(undefined, { providerId: context.providerId, model: context.model })
+    return createGeminiDecoder(undefined, { providerId: context.providerId, model: context.model }, context.compat?.envelope)
   },
   errorFromResponse(response) {
     // Google puts the wait, the quota and the key's fault in the body's details.

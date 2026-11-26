@@ -29,6 +29,8 @@ import { checkModelFacts, type ProviderModelFacts } from './providerModelFacts'
 import { checkProviderWire, type ProviderWireManifest } from './providerToolAliasesManifest'
 import { withSettingBinds, type SettingBinding } from './providerSettingBinds'
 import { insideRoutesTo } from '../../models/drivers/providerRouter'
+import { readWireEnvelope } from '../../models/drivers/modelWire'
+import { geminiDriver } from '../../models/drivers/geminiDriver'
 import { whyNotSettingsAppKey } from './providerSettingsApp'
 import { checkBorrows } from './providerBorrows'
 
@@ -723,6 +725,10 @@ function checkModelsUi(value: unknown, bad: Problems): ProviderModelsUi | undefi
                   bad(`${at}.baseUrlTrim: expected a path suffix starting with '/'`)
                 } else if (wire.baseUrlTrim !== undefined && wire.baseUrl !== undefined) {
                   bad(`${at}: baseUrl and baseUrlTrim cannot both be set`)
+                } else if (isRecord(wire.compat) && wire.compat.envelope !== undefined && format !== geminiDriver.id) {
+                  bad(`${at}.compat.envelope: only the ${geminiDriver.id} wire format reads it`)
+                } else if (isRecord(wire.compat) && wire.compat.envelope !== undefined && readWireEnvelope(wire.compat.envelope).problem !== undefined) {
+                  bad(`${at}.compat.envelope: ${readWireEnvelope(wire.compat.envelope).problem}`)
                 } else {
                   wires[format] = wire
                 }

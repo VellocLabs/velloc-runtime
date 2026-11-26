@@ -168,7 +168,9 @@ export class ModelProvider {
   /** Where the codec carries ids in its JSON body (`ProviderDriver.idSites`);
    *  undefined for a codec whose wire has none. */
   get idSites(): ProviderDriver['idSites'] {
-    return this.codec.idSites?.bind(this.codec)
+    const codec = this.codec
+    if (!codec.idSites) return undefined
+    return body => codec.idSites!(body, this.spec.compat)
   }
 
   /** Whether a response with this status is decoded as a stream. */

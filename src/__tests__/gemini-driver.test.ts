@@ -12,9 +12,10 @@ import {
   requiresThoughtSignatures,
 } from '../models/drivers/geminiDriver'
 import { HostRequestError } from '../models/drivers/hostCallOptions'
-import type { DriverStreamEvent, ProviderSpec } from '../models/drivers/driverTypes'
+import type { DriverRequestContext, DriverStreamEvent, ProviderSpec } from '../models/drivers/driverTypes'
 import { ModelProvider } from '../models/drivers/modelProvider'
 import { __resetEndpointTrustForTest, publishProviderBaseUrlsFromConfigs } from '../models/endpoints/endpointTrust'
+import { applyBodyPatch, patchBodyBytes } from '../models/drivers/providerRequestSeam'
 
 const context = {
   providerId: 'google',
@@ -22,11 +23,11 @@ const context = {
   model: 'gemini-3.6-flash',
 }
 
-function build(payload: Partial<BridgeModelRequestPayload>, ctx = context) {
+function build(payload: Partial<BridgeModelRequestPayload>, ctx: DriverRequestContext = context) {
   return geminiDriver.buildRequest({ messages: [], ...payload } as BridgeModelRequestPayload, ctx)
 }
 
-function bodyText(payload: Partial<BridgeModelRequestPayload>, ctx = context): string {
+function bodyText(payload: Partial<BridgeModelRequestPayload>, ctx: DriverRequestContext = context): string {
   return new TextDecoder().decode(build(payload, ctx).body)
 }
 
@@ -845,5 +846,138 @@ describe('gemini key placement through ModelProvider', () => {
       headers: { authorization: 'Bearer {{secret:access_token}}', 'x-goog-api-key': '{{secret:api_key}}' },
     }).buildRequest(payload, 'model-a')
     expect(request.headers['x-goog-api-key']).toBe('{{secret:api_key}}')
+  })
+})
+
+describe('wire envelope (compat.envelope)', () => {
+  const enveloped = { ...context, compat: { envelope: { request: 'request', response: 'response' } } }
+  const payload = { messages: [{ role: 'user' as const, content: 'hi' }], maxOutputTokens: 64 }
+
+  it('sends the built body under the declared key of an otherwise empty object', () => {
+    const flat = JSON.parse(bodyText(payload))
+    expect(JSON.parse(bodyText(payload, enveloped))).toEqual({ request: flat })
+    expect(JSON.parse(bodyText(payload, { ...context, compat: { envelope: { request: 'inner_1' } } }))).toEqual({ inner_1: flat })
+  })
+
+  it('without the option, or with only a response key, the body is the flat one byte for byte', () => {
+    const flat = bodyText(payload)
+    expect(bodyText(payload, { ...context, compat: {} })).toBe(flat)
+    expect(bodyText(payload, { ...context, compat: { envelope: { response: 'response' } } })).toBe(flat)
+    expect(Object.keys(JSON.parse(flat)).sort()).toEqual(['contents', 'generationConfig'])
+  })
+
+  it('a request-hook patch addresses the wrapped body: top-level fields and paths under the key', () => {
+    const patch = [
+      { op: 'set' as const, path: '/model', value: 'm-high' },
+      { op: 'set' as const, path: '/project', value: 'p-1' },
+      { op: 'set' as const, path: '/request/generationConfig/thinkingConfig/includeThoughts', value: true },
+      { op: 'set' as const, path: '/request/generationConfig/thinkingConfig/thinkingBudget', value: 4000 },
+    ]
+    const flat = JSON.parse(bodyText(payload))
+    const out = JSON.parse(new TextDecoder().decode(patchBodyBytes(build(payload, enveloped).body, patch)))
+    expect(out).toEqual({
+      model: 'm-high',
+      project: 'p-1',
+      request: {
+        ...flat,
+        generationConfig: { ...flat.generationConfig, thinkingConfig: { includeThoughts: true, thinkingBudget: 4000 } },
+      },
+    })
+    // The same patch has no parent to set under in the flat body.
+    expect(() => applyBodyPatch(flat, patch)).toThrow(/parent does not exist/)
+  })
+
+  it('the provider passes its compat to the codec: request and id sites', () => {
+    const spec: ProviderSpec = { id: 'wrapped', format: geminiDriver.id, baseUrl: 'https://x.test/v1', compat: enveloped.compat }
+    const provider = new ModelProvider(spec, geminiDriver, 'https://x.test/v1')
+    const sent = provider.buildRequest(payload as BridgeModelRequestPayload, 'm')
+    expect(Object.keys(JSON.parse(new TextDecoder().decode(sent.body)))).toEqual(['request'])
+    const carried = {
+      request: {
+        contents: [
+          { role: 'model', parts: [{ functionCall: { id: 'g1', name: 'T', args: {} } }] },
+          { role: 'user', parts: [{ functionResponse: { id: 'g1', name: 'T', response: {} } }] },
+        ],
+      },
+    }
+    expect(provider.idSites!(carried).map(s => [s.value, s.path.join('.'), s.messagePath.join('.')])).toEqual([
+      ['g1', 'request.contents.0.parts.0.functionCall.id', 'request.contents.0'],
+      ['g1', 'request.contents.1.parts.0.functionResponse.id', 'request.contents.1'],
+    ])
+    expect(provider.idSites!(carried.request)).toEqual([])
+    expect(geminiDriver.idSites!(carried.request).map(s => s.path.join('.'))).toEqual([
+      'contents.0.parts.0.functionCall.id',
+      'contents.1.parts.0.functionResponse.id',
+    ])
+  })
+
+  const chunks = [
+    {
+      candidates: [{ content: { role: 'model', parts: [{ text: 'thinking', thought: true }] } }],
+      usageMetadata: { promptTokenCount: 100, cachedContentTokenCount: 40, thoughtsTokenCount: 7 },
+    },
+    {
+      candidates: [
+        {
+          content: {
+            role: 'model',
+            parts: [{ text: 'Hello' }, { functionCall: { name: 'Read', args: { path: '/a' } }, thoughtSignature: 'sig' }],
+          },
+          finishReason: 'STOP',
+        },
+      ],
+      usageMetadata: { promptTokenCount: 120, candidatesTokenCount: 30, cachedContentTokenCount: 40, thoughtsTokenCount: 9 },
+    },
+  ]
+  const identity = { providerId: 'wrapped', model: 'm' }
+  const answerKey = { response: 'response' }
+
+  function decodeEnveloped(text: string, envelope: { request?: string; response?: string } | undefined): DriverStreamEvent[] {
+    const decoder = createGeminiDecoder(counterIds(), identity, envelope)
+    return [...decoder.push(enc.encode(text)), ...decoder.end()]
+  }
+
+  it('a wrapped stream decodes to the events of the flat one', () => {
+    const flat = decodeEnveloped(sse(chunks), undefined)
+    expect(flat.map(e => e.type)).toEqual(['reasoning_delta', 'text_delta', 'tool_call', 'reasoning_signature', 'finish'])
+    const wrapped = sse(chunks.map((chunk, i) => ({ response: chunk, traceId: `t${i}` })))
+    expect(decodeEnveloped(wrapped, answerKey)).toEqual(flat)
+    for (const step of [1, 3, 64]) {
+      const decoder = createGeminiDecoder(counterIds(), identity, answerKey)
+      const events = splitEvery(enc.encode(wrapped), step).flatMap(part => decoder.push(part))
+      expect([...events, ...decoder.end()]).toEqual(flat)
+    }
+  })
+
+  it('a chunk without the declared key is read as it stands; without the option a wrapped chunk yields nothing', () => {
+    const flat = decodeEnveloped(sse(chunks), undefined)
+    expect(decodeEnveloped(sse(chunks), answerKey)).toEqual(flat)
+    expect(decodeEnveloped(sse([{ response: chunks[0] }, chunks[1]]), answerKey)).toEqual(flat)
+    expect(decodeEnveloped(sse(chunks.map(chunk => ({ response: chunk }))), undefined).map(e => e.type)).toEqual(['finish'])
+  })
+
+  it('an in-stream error beside the envelope still ends the stream as a provider error', () => {
+    const events = decodeEnveloped(
+      sse([{ response: chunks[0] }, { error: { code: 429, message: 'slow down', status: 'RESOURCE_EXHAUSTED' } }, { response: chunks[1] }]),
+      answerKey,
+    )
+    expect(events.map(e => e.type)).toEqual(['reasoning_delta', 'error'])
+  })
+
+  it('an in-stream error under the response key ends the stream as a provider error with its message', () => {
+    const events = decodeEnveloped(
+      sse([{ response: chunks[0] }, { response: { error: { code: 429, message: 'slow down', status: 'RESOURCE_EXHAUSTED' } }, traceId: 't1' }, { response: chunks[1] }]),
+      answerKey,
+    )
+    expect(events.map(e => e.type)).toEqual(['reasoning_delta', 'error'])
+    expect(JSON.stringify(events[1])).toContain('slow down')
+    expect(JSON.stringify(events[1])).toContain('429')
+  })
+
+  it('the driver decoder reads the envelope from the request context', () => {
+    const decoder = geminiDriver.createDecoder(enveloped)
+    const answer = { response: { candidates: [{ content: { parts: [{ text: 'ok' }] }, finishReason: 'STOP' }] } }
+    const events = [...decoder.push(enc.encode(sse([answer]))), ...decoder.end()]
+    expect(events.map(e => e.type)).toEqual(['text_delta', 'finish'])
   })
 })
