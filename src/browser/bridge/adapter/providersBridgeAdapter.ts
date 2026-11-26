@@ -503,11 +503,12 @@ async function handleUpsert(
     payload.config as NexusProviderConfig
   let fingerprint: string | undefined
   if (!derive && ctx.fingerprintKey && rawIncoming.apiKey && !isSealedSecret(rawIncoming.apiKey)) {
-    // An instance's definition is written once, so what is stored decides.
-    const before = isModProviderId(payload.id)
-      ? (await readUserLayer(ctx.homeDir, ctx.fs)).settings.providers?.configs?.[payload.id]
-      : undefined
-    const definitionId = (isModProviderId(payload.id) ? (before ? before.definition : rawIncoming.definition) : undefined) ?? payload.id
+    let definitionId = payload.id
+    if (isModProviderId(payload.id)) {
+      // An instance's definition is written once, so what is stored decides.
+      const before = (await readUserLayer(ctx.homeDir, ctx.fs)).settings.providers?.configs?.[payload.id]
+      definitionId = (before ? before.definition : rawIncoming.definition) ?? payload.id
+    }
     fingerprint = await ctx.fingerprintKey(definitionId, rawIncoming.apiKey)
   }
   const { configs: sealedIncoming } = derive

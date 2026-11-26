@@ -6,6 +6,7 @@
  * platform's own store step and is not echoed, and both are scope `manager`.
  */
 import type { LocalizedText } from '../../../config/localizedText'
+import { PROVIDER_LOGIN_WALL_MS } from '../login/loginProtocol'
 
 export const PROVIDER_KEY_REQUEST_CAPABILITY = 'providerKeyRequest'
 export const PROVIDER_KEY_REQUEST_TOPIC = 'providers/keyRequests'
@@ -15,10 +16,8 @@ export const MAX_KEY_REQUEST_CHARS = 16 * 1024
 export const MAX_KEY_REQUEST_ID_CHARS = 128
 /** Ended requests kept for the page to show before the oldest is dropped. */
 export const MAX_ENDED_KEY_REQUESTS = 8
-/** How long a request waits for the person before it is withdrawn, as a sign-in does. */
-export const KEY_REQUEST_WAIT_MS = 10 * 60_000
-/** How long a page waits on an app action, which may hold a key request open. */
-export const KEY_REQUEST_ACTION_ANSWER_MS = KEY_REQUEST_WAIT_MS + 60_000
+/** How long a request waits for the person before it is withdrawn: a sign-in's wall. */
+export const KEY_REQUEST_WAIT_MS = PROVIDER_LOGIN_WALL_MS
 
 /** Why a request ended without a new instance; shown until dismissed. */
 export type ProviderKeyRequestProblem =

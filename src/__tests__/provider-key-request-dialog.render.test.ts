@@ -176,6 +176,9 @@ describe('the dialog\'s host', () => {
     expect(screen.getByTestId('provider-key-request-input')).toBeTruthy()
     await publish({ seq: 2, requests: { 'req-1': stale } })
     expect(screen.getByTestId('provider-key-request-ended').textContent).toContain('Work')
+    // With every request ended, the latest is the one shown.
+    await publish({ seq: 3, requests: { 'req-1': stale, 'req-2': { ...live, ended: { kind: 'failed' } } } })
+    expect(screen.getByTestId('provider-key-request-ended').textContent).toBe("The key couldn't be saved.")
   })
 
   it('shows nothing on a page that may not read the topic', async () => {

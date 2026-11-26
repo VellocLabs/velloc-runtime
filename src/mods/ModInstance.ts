@@ -388,14 +388,7 @@ export class ModInstance {
    * the script. Each such wait is bounded where it is served. (F-25)
    */
   private whileRunsWait<T>(work: () => Promise<T>): Promise<T> {
-    const paused = [...this.runClocks]
-    for (const clock of paused) clock.pause()
-    const resume = (): void => {
-      for (const clock of paused) clock.resume()
-    }
-    const waited = Promise.resolve().then(work)
-    waited.then(resume, resume)
-    return waited
+    return PausableDeadline.whileAllPaused(this.runClocks, work)
   }
 
   /** The drawing those handles belonged to is gone: the worker forgets the

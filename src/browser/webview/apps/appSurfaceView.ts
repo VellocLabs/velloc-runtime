@@ -21,7 +21,6 @@ import {
   type ModsBuildAppResult,
 } from '../../runtimeProtocol/modApps'
 import { useModContributions } from '../mods/modContributionsView'
-import { KEY_REQUEST_ACTION_ANSWER_MS } from '../../../mods/provider/keyRequest/keyRequestProtocol'
 
 type Listener = (state: AppSurfaceState | null) => void
 type Store = { state: AppSurfaceState | null; listeners: Set<Listener>; unsubscribe: (() => void) | null }
@@ -150,7 +149,8 @@ export function useAppBoard(
       return connection.request<ModsAppActionResult>(
         'mods.appAction',
         { sessionId, action, ...(context === undefined ? {} : { context }) },
-        { timeoutMs: KEY_REQUEST_ACTION_ANSWER_MS },
+        // The runtime bounds an action (its hooks' walls, each key request's wait); the page adds none.
+        { timeoutMs: 0 },
       )
     },
     [runtimeConnection, sessionId],
