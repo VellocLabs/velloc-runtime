@@ -12,6 +12,7 @@ import {
 
 import { ModelsSection } from '../browser/webview/settings/sections/ModelsSection'
 import { settleEchoedOrder } from '../browser/webview/settings/sections/models/providerOrder'
+import type { ModelsLandingRequest } from '../browser/webview/settings/sections/models/modelsPageLanding'
 import { SettingsBridgeContext } from '../browser/webview/nexusSettingsBridge'
 import type { NexusSettingsBridge } from '../browser/webview/nexusSettingsBridge'
 import type { BrowserBridgeTransport } from '../browser/bridge/browserBridgeProtocol'
@@ -2419,5 +2420,56 @@ describe('ModelsSection — empty-provider guidance', () => {
     ))
     expect((await screen.findByTestId('models-editing-provider')).textContent).toContain(catalog.providers[0].label)
     expect(screen.queryByTestId('models-add-provider-menu')).toBeNull()
+  })
+})
+
+describe('ModelsSection — a landing a router\'s settings app asked for', () => {
+  const WRITES = ['upsert', 'remove', 'setActive', 'setOrder', 'reset']
+
+  it('lands once per request on an editor, the add menu, the custom form or the list, writing nothing, and keeps unsaved edits', async () => {
+    // The harness's first provider is set up; its third is only offered by the add menu.
+    const [setUp, , addable] = homeCatalog.providers
+    const h = makeHomeHarness()
+    const tree = (landingRequest: ModelsLandingRequest | null) =>
+      createElement(
+        SettingsBridgeContext.Provider,
+        { value: h.bridge },
+        createElement(ModelsSection, { catalog: homeCatalog, transport: h.transport, landingRequest }),
+      )
+    const view = render(tree(null))
+    await screen.findByTestId('models-provider-list')
+
+    view.rerender(tree({ seq: 1, target: { kind: 'definition', definition: addable.id } }))
+    expect((await screen.findByTestId('models-editing-provider')).textContent).toContain(addable.label)
+    fireEvent.click(screen.getByTestId('models-back-to-providers'))
+    await screen.findByTestId('models-provider-list')
+    expect(screen.queryByTestId(`models-provider-row-${addable.id}`)).toBeNull()
+
+    view.rerender(tree({ seq: 2, target: { kind: 'provider', provider: setUp.id } }))
+    expect((await screen.findByTestId('models-editing-provider')).textContent).toContain(setUp.label)
+    fireEvent.click(screen.getByTestId('models-back-to-providers'))
+    await screen.findByTestId('models-provider-list')
+    // The same request again does not land again.
+    view.rerender(tree({ seq: 2, target: { kind: 'provider', provider: setUp.id } }))
+    expect(screen.queryByTestId('models-editing-provider')).toBeNull()
+
+    view.rerender(tree({ seq: 3, target: { kind: 'addMenu' } }))
+    await screen.findByTestId('models-add-custom-provider')
+
+    view.rerender(tree({ seq: 4, target: { kind: 'custom' } }))
+    expect(((await screen.findByTestId('custom-provider-base-url')) as HTMLInputElement).value).toBe('')
+
+    view.rerender(tree({ seq: 5, target: { kind: 'home' } }))
+    await screen.findByTestId('models-provider-list')
+
+    // Unsaved edits in the open editor: the request is dropped and the edits stay.
+    await openProviderSettings(CUSTOM_ID)
+    fireEvent.change(await screen.findByTestId('custom-provider-name'), { target: { value: 'ABC Renamed' } })
+    view.rerender(tree({ seq: 6, target: { kind: 'provider', provider: setUp.id } }))
+    await act(async () => {})
+    expect((screen.getByTestId('custom-provider-name') as HTMLInputElement).value).toBe('ABC Renamed')
+
+    const actions = (h.bridge.request as unknown as BridgeRequestMock).mock.calls.map(([route]) => route.action)
+    expect(actions.filter(action => WRITES.includes(action))).toEqual([])
   })
 })

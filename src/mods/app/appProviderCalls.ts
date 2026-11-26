@@ -158,17 +158,18 @@ export async function serveSettingsAppProviderCall(
     if (!deps.icons) throw named('NotSupportedError', '$.provider.icons: provider icons are not available in this build')
     return await deps.icons(args[0], binding)
   }
-  const source = await deps.peers?.()
-  if (!source) throw named('NotSupportedError', `$.provider.${method}: the peers table is not available in this build`)
   const routesTo = binding.routesTo ?? []
   if (method === OPEN_SETTINGS) {
     const settings = deps.settings
     if (!settings) throw named('NotSupportedError', '$.provider.openSettings: the Models settings cannot be opened in this build')
     // A module cannot move the person's screen on its own.
     if (phase !== 'action') throw notAllowed("$.provider.openSettings is served only while a person's action on the app is handled")
-    const peers = source.peersFor(binding.providerId).filter((peer: Peer) => peer.managed === true || insideRoutesTo(routesTo, peer))
+    const request = readOpenSettingsRequest(args[0])
+    // Without a peers table no provider is known, so a named one is passed over as any unknown one is.
+    const source = request.provider !== undefined ? await deps.peers?.() : undefined
+    const peers = source ? source.peersFor(binding.providerId).filter((peer: Peer) => peer.managed === true || insideRoutesTo(routesTo, peer)) : []
     settings.show(
-      settingsTargetFor(binding.providerId, readOpenSettingsRequest(args[0]), {
+      settingsTargetFor(binding.providerId, request, {
         peers,
         recognizes: settings.recognizes(binding.providerId),
         definitionInstalled: settings.definitionInstalled,
@@ -176,6 +177,8 @@ export async function serveSettingsAppProviderCall(
     )
     return { opened: true }
   }
+  const source = await deps.peers?.()
+  if (!source) throw named('NotSupportedError', `$.provider.${method}: the peers table is not available in this build`)
   if (method === 'peers') {
     // The table is the router's own; the boundary is checked again here so no peer outside it can pass.
     const peers = source.peersFor(binding.providerId).filter((peer: Peer) => peer.managed === true || insideRoutesTo(routesTo, peer))

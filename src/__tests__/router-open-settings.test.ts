@@ -174,6 +174,14 @@ describe('who may call it, and when', () => {
     const { settings: _none, ...without } = deps([], [])
     await expect(serveSettingsAppProviderCall(ROUTER_BINDING, 'openSettings', [{}], without, 'action')).rejects.toMatchObject({ name: 'NotSupportedError' })
   })
+
+  it('needs no peers table unless a provider is named, and passes a named one over without it', async () => {
+    const shown: ModelsSettingsTarget[] = []
+    const { peers: _none, ...without } = deps([peer('openrouter')], shown)
+    expect(await serveSettingsAppProviderCall(ROUTER_BINDING, 'openSettings', [{ definition: 'google' }], without, 'action')).toEqual({ opened: true })
+    expect(await serveSettingsAppProviderCall(ROUTER_BINDING, 'openSettings', [{ provider: 'openrouter' }], without, 'action')).toEqual({ opened: true })
+    expect(shown).toEqual([{ kind: 'definition', definition: 'google' }, { kind: 'home' }])
+  })
 })
 
 describe('the call from a real background module', () => {
@@ -193,6 +201,13 @@ describe('the call from a real background module', () => {
         await $.app.state.set({ early })
       })
       on('app.action', async ($, e) => {
+        if (e.action === 'later') {
+          setTimeout(async () => {
+            const late = await $.provider.openSettings({ definition: 'google' }).then(() => 'opened', error => error.name)
+            await $.app.state.set({ late })
+          }, 0)
+          return { handled: true }
+        }
         const answer = await $.provider.openSettings(e.context).then(value => value, error => ({ error: error.name }))
         await $.app.state.set({ answer })
         return { handled: true, result: answer }
@@ -244,6 +259,10 @@ describe('the call from a real background module', () => {
     // The model raising the same action is not a person.
     const outcome = await runtime.actionOutcome('hub-console', 'open', { provider: 'openrouter' }, 's1')
     expect(outcome).toEqual({ status: 'handled', result: { error: 'NotAllowedError' } })
+    expect(asked).toHaveLength(1)
+    // A timer a person's action left behind runs after the action ended.
+    expect(await runtime.action('hub-console', 'later', null, 's1')).toBe(true)
+    await vi.waitFor(() => expect(appState()).toEqual({ late: 'NotAllowedError' }))
     expect(asked).toHaveLength(1)
   })
 })
@@ -341,7 +360,7 @@ describe('the page', () => {
   })
 
   it('lands on what it can show, and falls back without adding anything', () => {
-    const lists = { added: ['openrouter', 'custom-1'], addable: ['google'] }
+    const lists = { added: ['openrouter', 'custom-1', 'mod.hub.route'], addable: ['google', 'mod.other.route'], routers: ['mod.hub.route', 'mod.other.route'] }
     expect(modelsLandingFor({ kind: 'provider', provider: 'openrouter' }, lists)).toEqual({ go: 'edit', id: 'openrouter' })
     expect(modelsLandingFor({ kind: 'provider', provider: 'gone' }, lists)).toEqual({ go: 'home' })
     // A provider target never opens the add form of a definition that is only addable.
@@ -349,6 +368,10 @@ describe('the page', () => {
     expect(modelsLandingFor({ kind: 'definition', definition: 'google' }, lists)).toEqual({ go: 'edit', id: 'google' })
     expect(modelsLandingFor({ kind: 'definition', definition: 'openrouter' }, lists)).toEqual({ go: 'edit', id: 'openrouter' })
     expect(modelsLandingFor({ kind: 'definition', definition: 'mod.hub.free' }, lists)).toEqual({ go: 'menu' })
+    // A router is set up in its own app: never its generic editor.
+    expect(modelsLandingFor({ kind: 'provider', provider: 'mod.hub.route' }, lists)).toEqual({ go: 'home' })
+    expect(modelsLandingFor({ kind: 'definition', definition: 'mod.hub.route' }, lists)).toEqual({ go: 'menu' })
+    expect(modelsLandingFor({ kind: 'definition', definition: 'mod.other.route' }, lists)).toEqual({ go: 'menu' })
     expect(modelsLandingFor({ kind: 'addMenu' }, lists)).toEqual({ go: 'menu' })
     expect(modelsLandingFor({ kind: 'custom' }, lists)).toEqual({ go: 'custom' })
     expect(modelsLandingFor({ kind: 'home' }, lists)).toEqual({ go: 'home' })

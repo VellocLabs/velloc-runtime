@@ -634,28 +634,33 @@ export function ModelsSection({
     setAddMenuOpen(true);
   }, [configsLoaded, registryLoaded, catalog, view, openProviderRequest, landingRequest, addedRows.length]);
 
+  // A half-filled provider form — a built-in's key / URL, or a custom
+  // provider's draft — lives only in this page: hold the background
+  // updater's reload while the open editor is dirty (glic/unsavedEditsGate.ts).
+  // Above the early return, so hook order holds.
+  const editorHasUnsavedEdits =
+    view === "edit" &&
+    (isCustomSelection
+      ? isCustomDraftDirty(
+          draft,
+          creating ? undefined : selectedRecord,
+          creating ? createPresetDraft(createPreset) : undefined,
+        )
+      : isProviderFormDirty(form, configs[selectedId]));
+  useUnsavedEditsGate(editorHasUnsavedEdits);
+
   // Filled below the early return, where the page's opens are defined.
   const landingActions = React.useRef<ModelsLandingActions | null>(null);
   useModelsLanding(
     landingRequest,
     Boolean(bridge && configsLoaded && registryLoaded && catalog),
-    { added: addedRows.map((row) => row.id), addable: addableBuiltIns.map((p) => p.id) },
+    {
+      added: addedRows.map((row) => row.id),
+      addable: addableBuiltIns.map((p) => p.id),
+      routers: builtInProviders.filter((p) => isRouterMod(p.mod)).map((p) => p.id),
+    },
     landingActions,
-  );
-
-  // A half-filled provider form — a built-in's key / URL, or a custom
-  // provider's draft — lives only in this page: hold the background
-  // updater's reload while the open editor is dirty (glic/unsavedEditsGate.ts).
-  // Above the early return, so hook order holds.
-  useUnsavedEditsGate(
-    view === "edit" &&
-      (isCustomSelection
-        ? isCustomDraftDirty(
-            draft,
-            creating ? undefined : selectedRecord,
-            creating ? createPresetDraft(createPreset) : undefined,
-          )
-        : isProviderFormDirty(form, configs[selectedId])),
+    editorHasUnsavedEdits,
   );
 
 
