@@ -63,6 +63,7 @@ export type EventSet = Assert<
     | 'contextFitted'
     | 'contextFitFailed'
     | 'modelStreamed'
+    | 'modelMoved'
     | 'modelFailed'
     | 'toolBatchDone'
     | 'queuedInputDrained'

@@ -639,8 +639,12 @@ export function bridgeModelTransport(
           return
         } catch (error) {
           const attemptMs = Date.now() - startedAt
-          if (superseded?.aborted && isRetargetable(error)) {
+          const givenUp = () => {
+            ending = { ok: false, error, attempts }
             traceLine(`[llm] retries end ${sessionTag} provider=${params.providerId} attempt=${attempt}: selection moved`, { level: 'warn' })
+          }
+          if (superseded?.aborted && isRetargetable(error)) {
+            givenUp()
             return
           }
           const recovered = raisesTurnRecover(params)
@@ -663,7 +667,7 @@ export function bridgeModelTransport(
           await waitRetry(after.delayMs, signal, superseded)
           if (signal.aborted) return
           if (superseded?.aborted) {
-            traceLine(`[llm] retries end ${sessionTag} provider=${params.providerId} attempt=${attempt}: selection moved`, { level: 'warn' })
+            givenUp()
             return
           }
         }

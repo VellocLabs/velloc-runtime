@@ -227,6 +227,9 @@ export type TurnEvent =
   | ({ readonly type: 'contextFitted'; readonly messages: readonly Message[]; readonly compacted: boolean; readonly rows: readonly Message[]; readonly autoCompactLedger?: Readonly<AutoCompactLedger> } & Answering)
   | ({ readonly type: 'contextFitFailed'; readonly overBlockingLimit: boolean } & Answering)
   | ({ readonly type: 'modelStreamed'; readonly replies: readonly ModelReplyRow[]; readonly toolCalls: readonly QueryToolUseBlock[] } & Answering)
+  /** The request was given up before any reply because the session's
+   *  selection moved; `limits` are the new model's. */
+  | ({ readonly type: 'modelMoved'; readonly limits: TurnLimits } & Answering)
   | ({ readonly type: 'modelFailed'; readonly kind: ModelFailureKind; readonly replies: readonly ModelReplyRow[]; readonly error?: string } & Answering)
   | ({ readonly type: 'toolBatchDone'; readonly updates: readonly ToolBatchUpdate[]; readonly results: readonly ToolResultDigest[]; readonly cancelled: boolean } & Answering)
   | ({ readonly type: 'queuedInputDrained'; readonly rows: readonly Message[] } & Answering)

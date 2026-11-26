@@ -197,6 +197,19 @@ function stepRefresher(turn: Turn) {
 }
 
 /** Stage 4. Runs the request loop and returns its terminal. */
+/** The call context on the provider and model the session is set to now: a
+ *  turn that followed a new selection ended there. */
+function withLiveSelection(context: ToolCallContext, config: SessionLedger['config']): ToolCallContext {
+  return {
+    ...context,
+    options: {
+      ...context.options,
+      mainLoopProviderId: config.userSpecifiedProviderId,
+      mainLoopModel: config.pickedModel ?? context.options.mainLoopModel,
+    },
+  }
+}
+
 async function* loop(turn: Turn, prompt: Prompt, promptParts: SystemPromptParts): AsyncGenerator<StreamRecord, QueryTerminal> {
   const { ledger, writer, titler, hosts } = turn.parts
   const { config } = ledger
@@ -281,7 +294,7 @@ async function* loop(turn: Turn, prompt: Prompt, promptParts: SystemPromptParts)
       const next = await iterator.next()
       if (next.done) {
         // Subagents keep their task descriptions rather than generating session titles.
-        if (!config.isSubAgent && isSuccessfulTerminal(next.value)) titler.start(turn.callContext)
+        if (!config.isSubAgent && isSuccessfulTerminal(next.value)) titler.start(withLiveSelection(turn.callContext, config))
         return next.value
       }
       if (isStoredRow(next.value)) {

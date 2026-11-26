@@ -81,6 +81,26 @@ export function onContextFitted(
   return seal(d)
 }
 
+/** The request moved to the session's new selection before any reply: the
+ *  turn takes that model's limits, an output allowance raised past its
+ *  ceiling comes down to it, and the context is fitted again before the
+ *  request goes out (F-26). */
+export function onModelMoved(state: TurnState, limits: TurnState['limits']): Transition {
+  const d = openDraft(state)
+  const ceiling = limits.outputCeilingTokens
+  const raised = state.outputTokenCapOverride
+  patchState(d, {
+    limits,
+    ...(raised !== undefined && ceiling !== undefined && raised > ceiling ? { outputTokenCapOverride: ceiling } : {}),
+  })
+  request(d, {
+    kind: 'summarizeForCompaction',
+    messages: d.state.messages,
+    autoCompactLedger: d.state.autoCompactLedger,
+  })
+  return seal(d)
+}
+
 /** The plan rows and read restore are in: the compacted rows go out, under
  *  the prompt rendered again after the boundary when there is one. */
 export function onCompactionRows(

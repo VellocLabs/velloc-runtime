@@ -2,9 +2,9 @@
  * One model request, wrapped by the extensions' `turn.step` when a hook
  * selects it. Every streamed row is yielded as it arrives; the answer holds
  * the replies and the tool calls they asked for. A turn that follows the
- * session's selection sends the request again when an attempt failed after
- * the selection moved: to the provider and model the selection now names,
- * where the rest of the turn then goes too (F-26).
+ * session's selection moves to it when an attempt failed after the
+ * selection moved: the answer names the new model's limits, and the turn
+ * asks again there, where the rest of it then goes too (F-26).
  */
 import type { QueryToolUseBlock } from '../runtime/interfaces/QueryRuntimeDeps'
 import type { InstructionText, ModelReplyRow } from '../runtime/RuntimeTypes'
@@ -12,6 +12,7 @@ import { isAssistantMessage } from '../runtime/VercelModelConstants'
 import { callModelThroughTurnStep } from './turn/turnStepThroughMods'
 import type { TurnEffect } from './turnEffects'
 import {
+  catalogLimitsOf,
   instructionsOf,
   mintRows,
   providerOf,
@@ -72,7 +73,7 @@ async function followSelection(env: TurnEnvironment, live: LiveSelection, held: 
 }
 
 export const requestModel: EffectRunner<Extract<TurnEffect, { kind: 'requestModel' }>> =
-  async function* (effect, env) {
+  async function* (effect, env, state) {
     const { deps, input } = env
     const messages = mintRows(env, effect.messages)
     env.ctx = { ...env.ctx, messages }
@@ -80,56 +81,57 @@ export const requestModel: EffectRunner<Extract<TurnEffect, { kind: 'requestMode
     const index = env.stepIndex++
     const replies: ModelReplyRow[] = []
     const toolCalls: QueryToolUseBlock[] = []
-    for (;;) {
-      const ctx = env.ctx
-      const superseded = live ? supersededSignal(live, env) : undefined
-      const stream = callModelThroughTurnStep(
-        (req) => deps.callModel(req),
-        {
-          messages,
-          baseInstructions: instructionsOf(env, effect.baseInstructions),
-          userContext: effect.userAmbient as { [k: string]: string },
-          systemAmbient: effect.systemAmbient as { [k: string]: string },
-          callContext: ctx,
-          providerId: providerOf(env),
-          backupModel: input.backupModel,
-          querySource: input.turnCaller,
-          outputTokenCapOverride: effect.outputTokenCapOverride,
-          thinkingTier: thinkingTierOf(env),
-          noCacheWrite: input.noCacheWrite,
-          taskBudget: input.spendBudget,
-          forceFinalResponse: effect.finalResponse,
-          ...(superseded ? { superseded } : {}),
-          ...(env.idsThroughMods ? { rowUuid: () => env.ambient.ids.message() } : {}),
-          modStep: {
-            turnId: env.stepTurnId,
-            index,
-            ...(ctx.options.mods?.agentId !== undefined ? { agentId: ctx.options.mods.agentId } : {}),
-          },
-        },
-        {
+    const ctx = env.ctx
+    const superseded = live ? supersededSignal(live, env) : undefined
+    const stream = callModelThroughTurnStep(
+      (req) => deps.callModel(req),
+      {
+        messages,
+        baseInstructions: instructionsOf(env, effect.baseInstructions),
+        userContext: effect.userAmbient as { [k: string]: string },
+        systemAmbient: effect.systemAmbient as { [k: string]: string },
+        callContext: ctx,
+        providerId: providerOf(env),
+        backupModel: input.backupModel,
+        querySource: input.turnCaller,
+        outputTokenCapOverride: effect.outputTokenCapOverride,
+        thinkingTier: thinkingTierOf(env),
+        noCacheWrite: input.noCacheWrite,
+        taskBudget: input.spendBudget,
+        forceFinalResponse: effect.finalResponse,
+        ...(superseded ? { superseded } : {}),
+        ...(env.idsThroughMods ? { rowUuid: () => env.ambient.ids.message() } : {}),
+        modStep: {
           turnId: env.stepTurnId,
           index,
-          transcriptLength: messages.length,
           ...(ctx.options.mods?.agentId !== undefined ? { agentId: ctx.options.mods.agentId } : {}),
         },
-        ctx.options.mods,
-        {
-          uuid: () => env.ambient.ids.message(),
-          timestamp: () => new Date(env.ambient.clock.now()).toISOString(),
-        },
-      )
-      for await (const row of stream) {
-        yield row
-        if (!isAssistantMessage(row)) continue
-        const reply = row as ModelReplyRow
-        replies.push(reply)
-        toolCalls.push(...toolCallsOf(reply))
-      }
-      // A call that ended with no reply after the selection moved was given
-      // up for the selection's sake: it is sent again where that points.
-      if (!live || !superseded?.aborted || replies.length > 0 || ctx.cancelSource.signal.aborted) break
+      },
+      {
+        turnId: env.stepTurnId,
+        index,
+        transcriptLength: messages.length,
+        ...(ctx.options.mods?.agentId !== undefined ? { agentId: ctx.options.mods.agentId } : {}),
+      },
+      ctx.options.mods,
+      {
+        uuid: () => env.ambient.ids.message(),
+        timestamp: () => new Date(env.ambient.clock.now()).toISOString(),
+      },
+    )
+    for await (const row of stream) {
+      yield row
+      if (!isAssistantMessage(row)) continue
+      const reply = row as ModelReplyRow
+      replies.push(reply)
+      toolCalls.push(...toolCallsOf(reply))
+    }
+      // A call that ended with no reply after the selection moved was given up
+    // for the selection's sake: the turn moves there and asks again.
+    if (live && superseded?.aborted && replies.length === 0 && !ctx.cancelSource.signal.aborted) {
       await followSelection(env, live, effect.baseInstructions)
+      const limits = { ...state.limits, ...catalogLimitsOf(env.ctx.options.mainLoopModel, providerOf(env)) }
+      return { type: 'modelMoved', limits, identity: effect.identity }
     }
     return { type: 'modelStreamed', replies, toolCalls, identity: effect.identity }
   }

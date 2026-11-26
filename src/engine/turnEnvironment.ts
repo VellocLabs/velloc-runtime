@@ -24,10 +24,12 @@ import type { PermissionDecider } from '../toolkit/permissionVerdict'
 import type { ToolCallContext } from '../toolkit/toolCallContext'
 import type { AgentLoopState } from './loop/agentLoopState'
 import type { MemoryRecallPrefetch } from '../memory/relevantRecall'
-import type { LoopLedger, TurnEffect, TurnEvent, TurnState } from './turnEffects'
+import type { LoopLedger, TurnEffect, TurnEvent, TurnLimits, TurnState } from './turnEffects'
 import type { Ambient } from './ambient'
 import type { TurnConclusion } from './turnOutcome'
 import { UNMINTED_ROW_ID } from './turnStep'
+import { BLOCKING_LIMIT_BUFFER_TOKENS, contextWindowOf, getBlockingLimitTokens, getDefaultMaxOutputTokensForModel, outputBudgetOf } from './contextWindow'
+import { FALLBACK_MAX_OUTPUT_TOKENS } from './turn/modelRequestFields'
 
 export type TurnLoopInput = {
   messages: Message[]
@@ -137,6 +139,23 @@ export function providerOf(env: TurnEnvironment): string | undefined {
 /** The thinking tier the turn's requests carry now. */
 export function thinkingTierOf(env: TurnEnvironment): string | undefined {
   return env.moved ? env.moved.thinkingTier : env.input.thinkingTier
+}
+
+/** The token figures of `model` the turn works within, read from the catalog.
+ *  `blockingProviderId` names the provider the blocking limit is read for
+ *  when it differs from the one the request goes to. */
+export function catalogLimitsOf(
+  model: string,
+  providerId: string | undefined,
+  blockingProviderId: string | undefined = providerId,
+): Pick<TurnLimits, 'servingModel' | 'blockingLimitTokens' | 'outputCeilingTokens' | 'windowRoomTokens' | 'defaultOutputTokens'> {
+  return {
+    servingModel: model,
+    blockingLimitTokens: getBlockingLimitTokens(model, blockingProviderId),
+    outputCeilingTokens: outputBudgetOf(model, providerId) ?? undefined,
+    windowRoomTokens: contextWindowOf(model, providerId) - BLOCKING_LIMIT_BUFFER_TOKENS,
+    defaultOutputTokens: getDefaultMaxOutputTokensForModel(model, providerId) ?? FALLBACK_MAX_OUTPUT_TOKENS,
+  }
 }
 
 /** The instructions to send where the turn holds `held`. */

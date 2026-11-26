@@ -6,7 +6,7 @@ import type { CallContextPatch, EffectIdentity, TurnEvent, TurnPolicies, TurnSta
 import { isLastStep } from './loop/stepBudget'
 import { conclude, finish, idle, openDraft, seal } from './turnStep'
 import { onBegin, onPrefetchStarted, onPromptHooks, onTurnStartRows } from './turnAdmission'
-import { issueModelRequest, onCompactionRows, onContextFitted } from './turnRequest'
+import { issueModelRequest, onCompactionRows, onContextFitted, onModelMoved } from './turnRequest'
 import { onCancelled, onDigestSettled, onModelAnswer, onStopHandled } from './turnSettlement'
 import { onAfterToolRows, onDrained, onRefreshed, onToolBatchDone } from './turnContinuation'
 import { toolCallsOf } from './turnRows'
@@ -79,6 +79,8 @@ export function advanceTurn(state: Readonly<TurnState>, event: TurnEvent, polici
     }
     case 'modelStreamed':
       return onModelAnswer(s, event.replies, event.toolCalls, policies)
+    case 'modelMoved':
+      return onModelMoved(s, event.limits)
     case 'modelFailed':
       return onModelAnswer(s, event.replies, event.replies.flatMap(toolCallsOf), policies, event.kind, event.error)
     case 'toolBatchDone':

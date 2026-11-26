@@ -49,8 +49,6 @@ export class SessionLedger {
   turnCount = 0
   cancelSource: AbortController
   private selectionMoved = new AbortController()
-  /** The selection last set, as `selectionKeyOf` writes it. */
-  private selectionKey: string | undefined
   deniedCalls: Array<Record<string, unknown>> = []
   usageSoFar: Record<string, unknown> = {}
   readonly fileReadLedger: ReadFileLedger
@@ -206,12 +204,11 @@ export class SessionLedger {
   }
 
   setModelSelection(selection: ModelSelection): void {
-    const before = this.selectionKey ?? selectionKeyOf(this.modelSelection())
+    const before = selectionKeyOf(this.modelSelection())
     this.config.userSpecifiedProviderId = selection.providerId
     this.config.pickedModel = selection.model
     this.config.userSpecifiedThinkingTier = selection.thinkingTier
-    this.selectionKey = selectionKeyOf(selection)
-    if (this.selectionKey === before) return
+    if (selectionKeyOf(this.modelSelection()) === before) return
     const moved = this.selectionMoved
     this.selectionMoved = new AbortController()
     moved.abort()

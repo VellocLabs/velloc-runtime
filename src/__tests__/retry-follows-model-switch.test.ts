@@ -1,5 +1,9 @@
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { ConversationEngine } from '../engine/conversationEngine'
+import type { TitleServices } from '../engine/autoTitle'
+import type { ProviderOutcomeEvent } from '../models/drivers/providerOutcome'
+import { registerProviderRequestSeam, resetProviderRequestSeams } from '../models/drivers/providerRequestSeam'
+import { driveMachine } from './engine-replay/decisions/driveMachine'
 import type { QueryModelCallParams } from '../engine/turn/modelCallTypes'
 import { assembleTurnDependencies } from '../engine/turn/turnDependencies'
 import type { WorkingState, Message } from '../runtime/RuntimeTypes'
@@ -33,7 +37,10 @@ const sentOf = (params: QueryModelCallParams): Sent => ({
 })
 
 /** An engine whose model call is `callModel`, on provider `dead`, model `model-a`. */
-function makeEngine(callModel: (params: QueryModelCallParams) => AsyncGenerator<Message, void, unknown>) {
+function makeEngine(
+  callModel: (params: QueryModelCallParams) => AsyncGenerator<Message, void, unknown>,
+  titleServices: Partial<TitleServices> = { generateName: async () => null },
+) {
   let appState: WorkingState = createEmptyAppState()
   return new ConversationEngine({
     cwd: '/workspace',
@@ -55,7 +62,7 @@ function makeEngine(callModel: (params: QueryModelCallParams) => AsyncGenerator<
     userInputPipeline: new NoopUserInputPipeline(runtimeConfig, true),
     systemInitEmitter: new NoopSystemInitEmitter(),
     runtimeConfig,
-    titleServices: { generateName: async () => null },
+    titleServices,
     userSpecifiedProviderId: 'dead',
     pickedModel: 'model-a',
   })
@@ -154,6 +161,61 @@ describe('a turn follows the selection while its request is retried', () => {
     expect(sent).toEqual([{ providerId: 'dead', model: 'model-a', thinkingTier: undefined }])
   })
 
+  it('titles the session through the provider the turn moved to', async () => {
+    let titledWith: string | undefined
+    let failing!: () => void
+    const inRetries = new Promise<void>(resolve => { failing = resolve })
+    let titled!: () => void
+    const titleAsked = new Promise<void>(resolve => { titled = resolve })
+    const engine = makeEngine(
+      async function* (params) {
+        if (params.providerId === 'dead') {
+          failing()
+          await fired(params.superseded!)
+          return
+        }
+        yield answer('answer-alive', 'from alive')
+      },
+      {
+        generateName: async (_rows, context) => {
+          titledWith = context.options.mainLoopProviderId
+          titled()
+          return null
+        },
+      },
+    )
+    const turn = runTurn(engine, 'question')
+    await inRetries
+    engine.setModelSelection({ providerId: 'alive', model: 'model-b' })
+    await turn
+    await titleAsked
+
+    expect(titledWith).toBe('alive')
+  })
+
+  it('follows a pick back to a selection the model was switched away from', async () => {
+    const sent: Sent[] = []
+    let failing!: () => void
+    const inRetries = new Promise<void>(resolve => { failing = resolve })
+    const engine = makeEngine(async function* (params) {
+      sent.push(sentOf(params))
+      if (params.callContext.options.mainLoopModel === 'model-b') {
+        failing()
+        await fired(params.superseded!)
+        return
+      }
+      yield answer('answer-a', 'from model-a')
+    })
+    engine.setModelSelection({ providerId: 'dead', model: 'model-a' })
+    engine.switchModel('model-b')
+    const turn = runTurn(engine, 'question')
+    await inRetries
+    engine.setModelSelection({ providerId: 'dead', model: 'model-a' })
+    await turn
+
+    expect(sent.map(call => call.model)).toEqual(['model-b', 'model-a'])
+  })
+
   it('does not give a request up when the selection is set to what it already is', async () => {
     let signal: AbortSignal | undefined
     let asked!: () => void
@@ -177,7 +239,47 @@ describe('a turn follows the selection while its request is retried', () => {
   })
 })
 
+describe('a turn that moved takes the new model\'s limits', () => {
+  const prompt = { type: 'user', message: { role: 'user', content: 'hello' } } as Message
+
+  it('fits the context to the new window before asking again', () => {
+    let asked = 0
+    const run = driveMachine({
+      model: [],
+      state: { messages: [prompt], limits: { blockingLimitTokens: 1_000_000 } },
+      other: (effect) => {
+        if (effect.kind !== 'requestModel') return undefined
+        asked += 1
+        return { type: 'modelMoved', limits: { blockingLimitTokens: 0 }, identity: effect.identity }
+      },
+    })
+
+    expect(asked).toBe(1)
+    expect(run.effectKinds.filter(kind => kind === 'summarizeForCompaction')).toHaveLength(2)
+    expect(run.conclusion).toMatchObject({ outcome: { reason: 'prompt_too_long' } })
+  })
+
+  it('brings a raised output allowance down to the new model\'s ceiling', () => {
+    const sent: Array<number | undefined> = []
+    driveMachine({
+      model: [{ reply: 'answer' }],
+      state: { messages: [prompt], outputTokenCapOverride: 64_000, limits: { outputCeilingTokens: 64_000 } },
+      other: (effect) => {
+        if (effect.kind !== 'requestModel') return undefined
+        sent.push(effect.outputTokenCapOverride)
+        return sent.length === 1
+          ? { type: 'modelMoved', limits: { outputCeilingTokens: 8_000 }, identity: effect.identity }
+          : undefined
+      },
+    })
+
+    expect(sent).toEqual([64_000, 8_000])
+  })
+})
+
 describe('the retry ladder gives a superseded call up', () => {
+  afterEach(() => resetProviderRequestSeams())
+
   /** A bridge whose every stream fails with a retryable 503. */
   function failingBridge() {
     const starts: number[] = []
@@ -247,6 +349,23 @@ describe('the retry ladder gives a superseded call up', () => {
 
       expect(starts).toHaveLength(1)
       expect(assistants(values)).toEqual([])
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('tells the provider\'s outcome hook the call failed, not that it was cancelled', async () => {
+    vi.useFakeTimers()
+    try {
+      const outcomes: ProviderOutcomeEvent[] = []
+      registerProviderRequestSeam('dead', { outcome: event => { outcomes.push(event) } })
+      const { deps } = failingBridge()
+      const drained = drain(deps.callModel(params(AbortSignal.abort())) as AsyncGenerator<unknown>)
+      await vi.runAllTimersAsync()
+      await drained
+
+      expect(outcomes).toHaveLength(1)
+      expect(outcomes[0]).toMatchObject({ ok: false, finishReason: 'error' })
     } finally {
       vi.useRealTimers()
     }
