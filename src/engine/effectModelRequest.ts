@@ -65,6 +65,7 @@ async function followSelection(env: TurnEnvironment, live: LiveSelection, held: 
       userSpecifiedProviderId: next.providerId,
     },
   }
+  live.followed?.({ providerId: next.providerId, model })
   env.moved = {
     providerId: next.providerId,
     thinkingTier: next.thinkingTier,

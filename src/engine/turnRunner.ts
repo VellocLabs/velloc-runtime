@@ -196,26 +196,20 @@ function stepRefresher(turn: Turn) {
   }
 }
 
-/** Stage 4. Runs the request loop and returns its terminal. */
-/** The call context on the provider and model the session is set to now: a
- *  turn that followed a new selection ended there. */
-function withLiveSelection(context: ToolCallContext, config: SessionLedger['config']): ToolCallContext {
-  return {
-    ...context,
-    options: {
-      ...context.options,
-      mainLoopProviderId: config.userSpecifiedProviderId,
-      mainLoopModel: config.pickedModel ?? context.options.mainLoopModel,
-    },
-  }
+/** The call context on the provider and model the turn ended on. */
+function onTarget(context: ToolCallContext, target: { providerId?: string; model: string } | undefined): ToolCallContext {
+  if (!target) return context
+  return { ...context, options: { ...context.options, mainLoopProviderId: target.providerId, mainLoopModel: target.model } }
 }
 
+/** Stage 4. Runs the request loop and returns its terminal. */
 async function* loop(turn: Turn, prompt: Prompt, promptParts: SystemPromptParts): AsyncGenerator<StreamRecord, QueryTerminal> {
   const { ledger, writer, titler, hosts } = turn.parts
   const { config } = ledger
   const mods = config.mods
   const turnId = config.runtimeConfig.createUUID()
   const rowsBefore = ledger.rows.length
+  let movedTo: { providerId?: string; model: string } | undefined
   ledger.runningTurnId = turnId
   let endTurn!: () => void
   ledger.turnEnded = new Promise<void>(resolve => {
@@ -281,6 +275,7 @@ async function* loop(turn: Turn, prompt: Prompt, promptParts: SystemPromptParts)
           thinkingTier: config.userSpecifiedThinkingTier,
         }),
         changed: () => ledger.selectionChange(),
+        followed: target => { movedTo = target },
       },
       refreshPromptContext: stepRefresher(turn),
       renderPromptAfterCompaction: messages =>
@@ -294,7 +289,7 @@ async function* loop(turn: Turn, prompt: Prompt, promptParts: SystemPromptParts)
       const next = await iterator.next()
       if (next.done) {
         // Subagents keep their task descriptions rather than generating session titles.
-        if (!config.isSubAgent && isSuccessfulTerminal(next.value)) titler.start(withLiveSelection(turn.callContext, config))
+        if (!config.isSubAgent && isSuccessfulTerminal(next.value)) titler.start(onTarget(turn.callContext, movedTo))
         return next.value
       }
       if (isStoredRow(next.value)) {

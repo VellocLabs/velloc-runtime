@@ -90,6 +90,8 @@ export type LiveSelection = {
   read(): TurnTarget
   /** Aborted when the selection next moves. */
   changed(): AbortSignal
+  /** Told where the turn moved, once it did. */
+  followed?(target: { providerId?: string; model: string }): void
 }
 
 /** What a turn that left its starting selection sends with instead. */
