@@ -20,6 +20,7 @@
  * (`appAgentRun.ts`).
  */
 
+import { pausableTimer, whilePaused, type PausableTimer } from './pausableTimer'
 import { errorMessage } from '../chainRules'
 import { ModDispatcher } from '../ModDispatcher'
 import { ModInstance, type ModCall } from '../ModInstance'
@@ -215,6 +216,8 @@ type Module = {
   viewsOpen?: Loaded
   /** The sign-in phases of the plugin's servers, told and to tell; absent without a manifest. */
   status?: AppMcpStatusLedger
+  /** The wall clocks of the hooks now running. */
+  walls: Set<PausableTimer>
 }
 
 /** An `app.action` answer: `{handled}` read as given, anything else by its truth. */
@@ -615,6 +618,7 @@ export class AppBackgroundRuntime {
       generation: 0,
       crashes: [],
       state: 'loading',
+      walls: new Set(),
       ...(ref.mcpOwner && this.options.mcpStatus ? { status: new AppMcpStatusLedger(mcpServerUrlsOf(ref.mcpOwner)) } : {}),
     }
     this.modules.set(ref.appId, module)
@@ -756,7 +760,8 @@ export class AppBackgroundRuntime {
     by?: AppActionRaiser,
   ): Promise<{ result: unknown } | undefined> {
     const controller = new AbortController()
-    const timer = setTimeout(() => controller.abort(), timeoutMs)
+    const wall = pausableTimer(() => controller.abort(), timeoutMs)
+    module.walls.add(wall)
     const onGone = () => controller.abort()
     module.gone.signal.addEventListener('abort', onGone, { once: true })
     try {
@@ -779,7 +784,8 @@ export class AppBackgroundRuntime {
       return undefined
     } finally {
       if (fate) fate.late = controller.signal.aborted && !module.gone.signal.aborted
-      clearTimeout(timer)
+      wall.stop()
+      module.walls.delete(wall)
       module.gone.signal.removeEventListener('abort', onGone)
     }
   }
@@ -980,6 +986,11 @@ export class AppBackgroundRuntime {
             : {}),
         },
         scope?.event === 'app.action' && scope.by === 'person' ? 'action' : scope?.event === 'app.start' ? 'start' : 'other',
+        {
+          // The person's time in the platform's dialog is not the hook's.
+          whileAsking: work => whilePaused(module.walls, work),
+          signal: call.signal ? AbortSignal.any([call.signal, module.gone.signal]) : module.gone.signal,
+        },
       )
     }
     if (call.noun === 'usage') {

@@ -6,13 +6,15 @@
  * definitions its manifest lists (RP-21), and nothing else: an instance the
  * person set up on the Models page is never one of them.
  *
- * Security: no call takes or returns a secret, a base URL or a token. An
- * instance is made only of a definition that needs no credential here; one
- * that needs a key or a sign-in is refused until the platform's own dialog
- * serves it. The module never chooses an instance id.
+ * Security: no call takes or returns a secret, a base URL or a token. A
+ * definition that needs a key gets it from the person in the platform's own
+ * dialog (RP-22): the key goes from that dialog to the settings write path
+ * and the module sees only whether an instance was made. A definition that
+ * needs a sign-in is refused until that dialog serves it. The module never
+ * chooses an instance id.
  */
 
-import { resolveLocalizedText } from '../../config/localizedText'
+import { resolveLocalizedText, type LocalizedText } from '../../config/localizedText'
 import type { NexusProviderConfig } from '../../settings/settingsTypes'
 import { defaultInstanceName, planNewInstance, storedInstanceIds } from './providerInstances'
 import type { ProviderCredentialMethod, ResolvedProvider } from './providerManifest'
@@ -23,6 +25,19 @@ export const INSTANCES_PER_ROUTER_MAX = 64
 
 /** When the call was made: only a person's action may add or remove. */
 export type InstanceCallPhase = 'action' | 'start' | 'other'
+
+/** How a call that waits for the person is held and ended. */
+export type InstanceCallWaiting = {
+  /** Runs the wait with the calling hook's clock standing still. */
+  whileAsking?: <T>(work: () => Promise<T>) => Promise<T>
+  /** Aborts when the calling hook or its module is gone. */
+  signal?: AbortSignal
+}
+
+/** What is asked of the person: which provider, in whose name. */
+export type KeyQuestion = { routerId: string; definitionId: string; label: LocalizedText; prompt?: LocalizedText }
+/** What became of a key: the call's answer, and what the dialog says when no instance was made. */
+export type KeyStored<T> = { value: T; problem?: { kind: 'duplicate'; name: string } | { kind: 'failed'; reason: string } }
 
 export type ManagedDefinition = {
   provider: Pick<ResolvedProvider, 'id' | 'key' | 'manifest'>
@@ -58,6 +73,20 @@ export type InstanceCallsDeps = {
   locale: () => string
   now: () => number
   random?: () => number
+  /**
+   * Security: asks the person for a key in the platform's dialog and hands
+   * it to `take`, which is the only code that sees it. Absent: a definition
+   * that needs a key is answered `unsupported`.
+   */
+  askKey?: <T>(
+    question: KeyQuestion,
+    take: (key: string) => Promise<KeyStored<T>>,
+    signal?: AbortSignal,
+  ) => Promise<{ answered: T } | { cancelled: true }>
+  /** The platform's fingerprint of a key for a definition; undefined when none can be made. */
+  fingerprint?: (definitionId: string, key: string) => Promise<string | undefined>
+  /** Check a just-stored key against the provider. Not waited for; its result is the instance's state. */
+  verify?: (providerId: string) => Promise<unknown>
 }
 
 export type DefinitionRow = {
@@ -86,7 +115,15 @@ export type InstanceRow = {
   freeCount: number
 }
 
-export type InstanceCallError = { error: { kind: 'single' | 'limit' | 'unsupported' | 'busy'; message: string } }
+export type InstanceCallError = {
+  error: {
+    kind: 'single' | 'limit' | 'unsupported' | 'busy' | 'duplicate'
+    message: string
+    /** On `duplicate`: the provider or instance that already has the key, and its name. */
+    existing?: string
+    name?: string
+  }
+}
 
 const notAllowed = (message: string): Error => {
   const error = new Error(message)
@@ -101,6 +138,19 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
 function methodOf(definition: RouterDefinition): ProviderCredentialMethod {
   const methods = definition.provider.manifest.credentials.methods
   return methods.includes('login') ? 'login' : methods.includes('apiKey') ? 'apiKey' : 'anonymous'
+}
+
+/**
+ * Whether the platform's dialog can set the definition up: its one field is
+ * the key. A definition with named secrets, prompts of its own beyond the
+ * key's wording, or settings the person fills in is not served yet.
+ */
+function needsOnlyKey(definition: RouterDefinition): boolean {
+  const { credentials, settings } = definition.provider.manifest
+  const prompts = credentials.prompts ?? []
+  const keyPromptOnly = prompts.length === 0 || (prompts.length === 1 && prompts[0]!.key === 'api_key' && prompts[0]!.type === 'text')
+  const filledIn = Object.values(settings ?? {}).some(field => field.binds === undefined)
+  return keyPromptOnly && (credentials.secrets ?? []).length === 0 && !filledIn
 }
 
 function labelOf(definition: RouterDefinition, deps: InstanceCallsDeps): string {
@@ -232,7 +282,122 @@ export function createInstanceCalls(deps: InstanceCallsDeps) {
     await deps.relist(routerId).catch(() => undefined)
   }
 
-  async function add(routerId: string, args: unknown, phase: InstanceCallPhase): Promise<{ id: string } | InstanceCallError> {
+  /** Why no instance of `definition` can be made now, if so. */
+  function refusal(routerId: string, definition: RouterDefinition, managed: readonly RouterDefinition[]): InstanceCallError | undefined {
+    const instances = instanceIdsOf(definition, deps)
+    const total = managed.reduce((sum, each) => sum + instanceIdsOf(each, deps).length, 0)
+    if (instances.length >= INSTANCES_PER_DEFINITION_MAX || total >= INSTANCES_PER_ROUTER_MAX) {
+      const message =
+        instances.length >= INSTANCES_PER_DEFINITION_MAX
+          ? `${definition.provider.id} has ${INSTANCES_PER_DEFINITION_MAX} instances, the most one provider may have`
+          : `${routerId} manages ${INSTANCES_PER_ROUTER_MAX} instances, the most one router may manage`
+      return { error: { kind: 'limit', message } }
+    }
+    const { manifest, id } = definition.provider
+    if (definition.borrowedBy === undefined && manifest.instances !== 'multiple' && instances.length > 0) {
+      return { error: { kind: 'single', message: `${id} allows one instance and has one (its manifest does not say "instances": "multiple")` } }
+    }
+    return undefined
+  }
+
+  /** Stores one more instance of `definition` with the given credential. Runs in the router's series. */
+  async function makeOne(
+    routerId: string,
+    definition: RouterDefinition,
+    managed: readonly RouterDefinition[],
+    named: string | undefined,
+    credential: { credentialMode: 'anonymous' } | { apiKey: string },
+  ): Promise<{ id: string } | InstanceCallError> {
+    const refused = refusal(routerId, definition, managed)
+    if (refused) return refused
+    const configs = deps.configs()
+    const label = labelOf(definition, deps)
+    const usedNames = instanceIdsOf(definition, deps).map(id => configs[id]?.name ?? label)
+    const plan = planNewInstance({
+      definition: definition.provider,
+      owner: definition.owner,
+      // Every instance of the definition holds its slot, whoever set it up.
+      instances: storedInstanceIds(definition.provider.id, definition.owner, configs),
+      ...(definition.borrowedBy !== undefined ? { lentTo: definition.borrowedBy } : {}),
+      retiredSlots: await deps.retiredSlots(definition.provider.id),
+      name: named ?? defaultInstanceName(label, methodOf(definition), usedNames),
+      now: deps.now(),
+      ...(deps.random ? { random: deps.random } : {}),
+    })
+    if (!plan.ok) return { error: { kind: 'single' as const, message: plan.message } }
+    await deps.writeConfig(plan.id, { ...plan.config, ...credential })
+    await settle(routerId)
+    return { id: plan.id }
+  }
+
+  /**
+   * The provider or instance of the definition that already holds `key`:
+   * the person's own on the Models page, or any instance, whoever it is
+   * lent to. Told by the platform's fingerprint, so one stored before
+   * fingerprints were kept is not found.
+   */
+  async function holderOf(definition: RouterDefinition, key: string): Promise<{ id: string; name: string } | undefined> {
+    const { id } = definition.provider
+    const fingerprint = await deps.fingerprint?.(id, key)
+    if (fingerprint === undefined) return undefined
+    const configs = deps.configs()
+    const holder = [id, ...storedInstanceIds(id, definition.owner, configs)].find(each => configs[each]?.secretFingerprint === fingerprint)
+    return holder === undefined ? undefined : { id: holder, name: configs[holder]?.name ?? labelOf(definition, deps) }
+  }
+
+  async function addWithKey(
+    routerId: string,
+    definition: RouterDefinition,
+    managed: readonly RouterDefinition[],
+    named: string | undefined,
+    waiting: InstanceCallWaiting,
+  ): Promise<{ id: string } | { cancelled: true } | InstanceCallError> {
+    const { askKey } = deps
+    const { id, manifest } = definition.provider
+    if (!askKey || !needsOnlyKey(definition)) {
+      const why = askKey ? 'more than a key, which this Velloc cannot ask for from an app yet' : 'a key, which this Velloc cannot ask for from an app here'
+      return { error: { kind: 'unsupported', message: `$.provider.addInstance: ${id} needs ${why}` } }
+    }
+    if (busy.has(routerId)) {
+      return { error: { kind: 'busy', message: `$.provider.addInstance: another instance of ${routerId} is being added or removed` } }
+    }
+    // Held for as long as the dialog is open: one question at a time per router.
+    busy.add(routerId)
+    try {
+      const early = refusal(routerId, definition, managed)
+      if (early) return early
+      const prompt = manifest.credentials.prompts?.[0]?.message
+      const question: KeyQuestion = { routerId, definitionId: id, label: manifest.displayName, ...(prompt !== undefined ? { prompt } : {}) }
+      // Security: the key is read here and by the write path, nowhere else.
+      const take = (key: string): Promise<KeyStored<{ id: string } | InstanceCallError>> =>
+        inSeries(routerId, async () => {
+          const holder = await holderOf(definition, key)
+          if (holder) {
+            const message = `$.provider.addInstance: this key is already the key of ${holder.name} (${holder.id})`
+            return {
+              value: { error: { kind: 'duplicate' as const, message, existing: holder.id, name: holder.name } },
+              problem: { kind: 'duplicate' as const, name: holder.name },
+            }
+          }
+          const made = await makeOne(routerId, definition, managed, named, { apiKey: key })
+          if ('error' in made) return { value: made, problem: { kind: 'failed' as const, reason: made.error.message } }
+          void deps.verify?.(made.id).catch(() => undefined)
+          return { value: made }
+        })
+      const ask = () => askKey(question, take, waiting.signal)
+      const outcome = await (waiting.whileAsking ? waiting.whileAsking(ask) : ask())
+      return 'cancelled' in outcome ? { cancelled: true } : outcome.answered
+    } finally {
+      busy.delete(routerId)
+    }
+  }
+
+  async function add(
+    routerId: string,
+    args: unknown,
+    phase: InstanceCallPhase,
+    waiting: InstanceCallWaiting = {},
+  ): Promise<{ id: string } | { cancelled: true } | InstanceCallError> {
     if (!isRecord(args) || typeof args.definition !== 'string' || args.definition === '') {
       throw new TypeError('$.provider.addInstance({ definition, name? }): definition must be the key or the id of a managed definition')
     }
@@ -251,43 +416,16 @@ export function createInstanceCalls(deps: InstanceCallsDeps) {
       throw notAllowed('$.provider.addInstance: only while handling an action of the person (app.action)')
     }
     const named = args.name === undefined ? undefined : readName('addInstance', args.name)
-    if (method !== 'anonymous') {
+    if (method === 'login') {
       return {
         error: {
           kind: 'unsupported',
-          message: `$.provider.addInstance: ${definition.provider.id} needs ${method === 'login' ? 'a sign-in' : 'a key'}, which this Velloc cannot ask for from an app yet`,
+          message: `$.provider.addInstance: ${definition.provider.id} needs a sign-in, which this Velloc cannot ask for from an app yet`,
         },
       }
     }
-    return exclusive(routerId, 'addInstance', async () => {
-      const instances = instanceIdsOf(definition, deps)
-      const total = managed.reduce((sum, each) => sum + instanceIdsOf(each, deps).length, 0)
-      if (instances.length >= INSTANCES_PER_DEFINITION_MAX || total >= INSTANCES_PER_ROUTER_MAX) {
-        const message =
-          instances.length >= INSTANCES_PER_DEFINITION_MAX
-            ? `${definition.provider.id} has ${INSTANCES_PER_DEFINITION_MAX} instances, the most one provider may have`
-            : `${routerId} manages ${INSTANCES_PER_ROUTER_MAX} instances, the most one router may manage`
-        return { error: { kind: 'limit' as const, message } }
-      }
-      const configs = deps.configs()
-      const label = labelOf(definition, deps)
-      const usedNames = instances.map(id => configs[id]?.name ?? label)
-      const plan = planNewInstance({
-        definition: definition.provider,
-        owner: definition.owner,
-        // Every instance of the definition holds its slot, whoever set it up.
-        instances: storedInstanceIds(definition.provider.id, definition.owner, configs),
-        ...(definition.borrowedBy !== undefined ? { lentTo: definition.borrowedBy } : {}),
-        retiredSlots: await deps.retiredSlots(definition.provider.id),
-        name: named ?? defaultInstanceName(label, method, usedNames),
-        now: deps.now(),
-        ...(deps.random ? { random: deps.random } : {}),
-      })
-      if (!plan.ok) return { error: { kind: 'single' as const, message: plan.message } }
-      await deps.writeConfig(plan.id, { ...plan.config, credentialMode: 'anonymous' })
-      await settle(routerId)
-      return { id: plan.id }
-    })
+    if (method === 'apiKey') return addWithKey(routerId, definition, managed, named, waiting)
+    return exclusive(routerId, 'addInstance', () => makeOne(routerId, definition, managed, named, { credentialMode: 'anonymous' }))
   }
 
   async function rename(routerId: string, args: unknown): Promise<{ ok: true }> {

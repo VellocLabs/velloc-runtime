@@ -4,9 +4,11 @@
  */
 
 import { clearProviderState } from '../../models/drivers/providerHealthLedger'
-import { isProviderSetUp, mergedModels, runtimeProviderConfigs } from '../../models/drivers/runtimeProviders'
+import { isProviderSetUp, mergedModels, runtimeProviderConfigs, verifyRuntimeProvider } from '../../models/drivers/runtimeProviders'
 import { readUserLayer } from '../../settings/settingsStore'
 import type { RuntimeFs } from '../../utils/fs/runtimeFs'
+import { getKeyFingerprinter } from './keyRequest/keyFingerprint'
+import { getProviderKeyRequests } from './keyRequest/providerKeyRequests'
 import { providerHostSources } from './providerHostSources'
 import { providerIconOf } from './providerIcons'
 import { createInstanceCalls, type InstanceCalls } from './providerInstanceCalls'
@@ -49,6 +51,12 @@ export function createRuntimeInstanceCalls(options: {
     icon: providerIconOf,
     locale: () => options.locale?.() ?? 'en',
     now: Date.now,
+    askKey: (question, take, signal) => getProviderKeyRequests().ask(question, take, signal),
+    fingerprint: (definitionId, key) => getKeyFingerprinter()(definitionId, key),
+    verify: async providerId => {
+      const transport = providerHostSources().transport?.()
+      if (transport) await verifyRuntimeProvider(transport, providerId)
+    },
     ...(options.random ? { random: options.random } : {}),
   })
 }

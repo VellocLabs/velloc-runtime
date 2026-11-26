@@ -55,6 +55,7 @@ import {
 import type { AgentRuntimeWorkerInitPayload } from '../worker/workerProtocol'
 import { attachWorkspaceStore } from '../webview/workspaceStore'
 import { attachProviderLoginStore } from '../webview/providerLoginStore'
+import { attachProviderKeyRequestStore } from '../webview/providerKeyRequestStore'
 import { attachProviderUsageStore } from '../webview/providerUsageStore'
 import { attachProviderStatusStore } from '../webview/providerStatusStore'
 import { showHostNotification } from '../webview/nexusBridgeActions'
@@ -913,6 +914,8 @@ async function prepareNexusBoot(
   if (!options.createWorkerTransport) attachProviderUsageStore(getRuntimeConnection)
   // Provider sign-in (the dialog is the runtime's published state): likewise.
   if (!options.createWorkerTransport) attachProviderLoginStore(getRuntimeConnection)
+  // A key a router's settings app asks for: the dialog is the runtime's published state too.
+  if (!options.createWorkerTransport) attachProviderKeyRequestStore(getRuntimeConnection)
   // Provider mod status views: the runtime's shaped table, likewise.
   if (!options.createWorkerTransport) attachProviderStatusStore(getRuntimeConnection)
   // The background updater reloads a hidden page into a newer build only when

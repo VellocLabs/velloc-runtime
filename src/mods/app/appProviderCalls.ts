@@ -14,7 +14,7 @@
 
 import { insideRoutesTo } from '../../models/drivers/providerRouter'
 import type { ModelsSettingsTarget } from '../../browser/runtimeProtocol/modContributions'
-import type { InstanceCallPhase, InstanceCalls } from '../provider/providerInstanceCalls'
+import type { InstanceCallPhase, InstanceCallWaiting, InstanceCalls } from '../provider/providerInstanceCalls'
 import type {
   ClearPeerStatePayload,
   ClearPeerStateResult,
@@ -137,6 +137,8 @@ export async function serveSettingsAppProviderCall(
   deps: SettingsAppProviderDeps,
   /** The event whose hook made the call. */
   phase: InstanceCallPhase = 'other',
+  /** How a call that waits for the person is held and ended. */
+  waiting: InstanceCallWaiting = {},
 ): Promise<unknown> {
   const refused = refuseSettingsAppProviderCall(method, binding)
   if (refused) throw notAllowed(refused)
@@ -150,7 +152,7 @@ export async function serveSettingsAppProviderCall(
     const router = binding.providerId
     if (method === 'definitions') return calls.definitions(router)
     if (method === 'instances') return calls.instances(router)
-    if (method === 'addInstance') return await calls.add(router, args[0], phase)
+    if (method === 'addInstance') return await calls.add(router, args[0], phase, waiting)
     if (method === 'renameInstance') return await calls.rename(router, args[0])
     return await calls.remove(router, args[0], phase)
   }

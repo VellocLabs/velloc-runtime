@@ -19,6 +19,7 @@ import {
   type ProvidersAdapterContext,
 } from '../../bridge/adapter/providersBridgeAdapter'
 import { handleSessionImportBridgeRequest } from '../../bridge/adapter/sessionImportBridgeAdapter'
+import { getKeyFingerprinter } from '../../../mods/provider/keyRequest/keyFingerprint'
 import { installStockSkills } from '../../../skillLibrary/builtin/catalog'
 import { listSessionMCPPools } from '../../../mcp/sessionPools'
 import { getMcpHost, hostServesWorkerMcp } from '../../../mcp/mcpHost'
@@ -625,6 +626,7 @@ function providersAdapterContext(
           () => `seal-secret-${crypto.randomUUID()}`,
         )
       : undefined,
+    fingerprintKey: (definitionId, key) => getKeyFingerprinter()(definitionId, key),
   }
 }
 

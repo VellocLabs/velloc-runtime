@@ -359,6 +359,9 @@ export function normalizeSettings(
         if (typeof r.managedBy === 'string' && r.managedBy.length > 0) {
           config.managedBy = r.managedBy
         }
+        if (typeof r.secretFingerprint === 'string' && r.secretFingerprint.length > 0) {
+          config.secretFingerprint = r.secretFingerprint
+        }
         if (typeof r.name === 'string' && r.name.length > 0) {
           config.name = r.name
         }

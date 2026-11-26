@@ -264,6 +264,10 @@ export type NexusProviderConfig = {
    *  that router sends through it, and it is not listed on the Models page
    *  or in a model picker. Written once, when the instance is made. */
   managedBy?: string
+  /** Security: the platform's fingerprint of the stored key, by which the
+   *  same key entered twice for one provider is told. Written by the
+   *  settings write path alone; never sent to a client or a plugin. */
+  secretFingerprint?: string
   /** The name the person sees for this instance. */
   name?: string
   /** When the instance was made, epoch milliseconds. */

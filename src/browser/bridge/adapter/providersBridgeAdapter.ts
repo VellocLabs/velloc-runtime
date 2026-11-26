@@ -236,6 +236,10 @@ export type ProvidersAdapterContext = {
    *  which only native code can open. Optional so unit tests + hosts
    *  without the route degrade to storing the key as entered. */
   encryptSecret?: SecretSealer
+  /** Security: the fingerprint of a key as entered, for the provider
+   *  definition it is stored under (`keyFingerprint.ts`). Absent, or
+   *  answering undefined: no fingerprint is stored. */
+  fingerprintKey?: (definitionId: string, key: string) => Promise<string | undefined>
   /** Called with the effective configs after every successful write, BEFORE
    *  the broker publish and the WebUI broadcast. The worker wires this to
    *  `setCustomProviderRecords` so a just-created custom provider is routable
@@ -443,7 +447,7 @@ export function redactProviderConfigsForUi(
 ): Record<string, NexusProviderConfig> {
   const out: Record<string, NexusProviderConfig> = {}
   for (const [id, config] of Object.entries(configs)) {
-    const { apiKey, secrets, ...rest } = config
+    const { apiKey, secrets, secretFingerprint: _fingerprint, ...rest } = config
     const names = Object.keys(secrets ?? {})
     out[id] = {
       ...rest,
@@ -494,8 +498,16 @@ async function handleUpsert(
   // must not write it. Seal the incoming key BEFORE anything is persisted
   // or fanned out: the file and the broker publish carry the sealed form,
   // the WebUI-facing result and broadcast carry `hasApiKey` only.
-  const { hasApiKey: _ignored, storedSecrets: _names, ...rawIncoming } =
+  // Security: the key's fingerprint is this handler's to write, never a caller's.
+  const { hasApiKey: _ignored, storedSecrets: _names, secretFingerprint: _sent, ...rawIncoming } =
     payload.config as NexusProviderConfig
+  let fingerprint: string | undefined
+  if (!derive && ctx.fingerprintKey && rawIncoming.apiKey && !isSealedSecret(rawIncoming.apiKey)) {
+    // An instance's definition is written once, so what is stored decides.
+    const before = (await readUserLayer(ctx.homeDir, ctx.fs)).settings.providers?.configs?.[payload.id]
+    const definitionId = (isModProviderId(payload.id) ? (before ? before.definition : rawIncoming.definition) : undefined) ?? payload.id
+    fingerprint = await ctx.fingerprintKey(definitionId, rawIncoming.apiKey)
+  }
   const { configs: sealedIncoming } = derive
     ? { configs: {} as Record<string, NexusProviderConfig> }
     : await sealProviderApiKeys({ [payload.id]: rawIncoming }, ctx.encryptSecret)
@@ -539,10 +551,14 @@ async function handleUpsert(
     // "remove saved key" affordance), non-empty = replace (already sealed).
     const stored = prev?.configs?.[payload.id]?.apiKey
     const merged: NexusProviderConfig = { ...incoming }
+    const fingerprintBefore = prev?.configs?.[payload.id]?.secretFingerprint
     if (incoming.apiKey === undefined) {
       if (stored) merged.apiKey = stored
+      if (stored && fingerprintBefore) merged.secretFingerprint = fingerprintBefore
     } else if (incoming.apiKey === '') {
       delete merged.apiKey
+    } else if (fingerprint !== undefined) {
+      merged.secretFingerprint = fingerprint
     }
     // Named secrets, name by name, the same three-way rule; an absent map
     // (every form that only edits other fields) keeps them all.

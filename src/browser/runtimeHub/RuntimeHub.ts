@@ -87,9 +87,11 @@ import { registerThemeSwitchTopic } from './themeSwitchTopic'
 import { registerMcpAuthCapability } from './mcpAuthCapability'
 import { registerRenderCacheCapability } from './renderCacheCapability'
 import { registerProviderLoginCapability } from './providerLoginCapability'
+import { registerProviderKeyRequestCapability } from './providerKeyRequestCapability'
 import { registerProviderUsageCapability } from './providerUsageCapability'
 import { registerProviderStatusCapability } from './providerStatusCapability'
 import { getProviderCredentials } from '../../mods/provider/login/credentialDeps'
+import { getProviderKeyRequests } from '../../mods/provider/keyRequest/providerKeyRequests'
 import { registerModsCapability } from './modsCapability'
 import { modSlotsClientGone } from '../../mods/modSlotRegistry'
 import { appViewClientGone } from '../../mods/app/appSurfaceRegistry'
@@ -431,6 +433,9 @@ export class RuntimeHub {
     // Provider sign-in (PM-7): the dialog is the `providers/login` topic, the
     // person's answers are `providerLogin.*` actions (`manager`).
     registerProviderLoginCapability(this.registry, this.broker, getProviderCredentials())
+    // A key a router's settings app asks for (RP-22): the request is the
+    // `providers/keyRequests` topic, the answer a `providerKeyRequest.*` action (`manager`).
+    registerProviderKeyRequestCapability(this.registry, this.broker, getProviderKeyRequests())
 
     // Remote access: the dialer + its capability + the remote/state
     // topic. The dialer dials OUT only (the runtime never listens); every leg

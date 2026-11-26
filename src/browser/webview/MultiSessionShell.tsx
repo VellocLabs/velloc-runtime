@@ -228,6 +228,7 @@ import {
   useContributionsSnapshot,
 } from './mods/modContributionsView'
 import { createProviderAppOpener, ProviderAppOpenerContext } from './apps/providerSettingsApp'
+import { ProviderKeyRequestHost } from './settings/sections/ProviderKeyRequestDialog'
 import type { TurnFileChange } from '../../utils/turnDiffs'
 import {
   getBootDiagnosticTraceId,
@@ -3229,6 +3230,8 @@ export function MultiSessionShell({
       ) : null}
       {/* Theme switches (F-25): over every screen, Customize and Settings included. */}
       <ThemeSwitchPanel runtimeConnection={runtimeConnection} />
+      {/* A key a router's settings app asked for: the platform's own dialog, over every screen. */}
+      <ProviderKeyRequestHost />
       {/* Settings is an overlay SIBLING: the session area stays mounted (`display:none`), so
           mounted threads keep their UI state and attention acknowledgements. */}
       {settingsSection ? (
