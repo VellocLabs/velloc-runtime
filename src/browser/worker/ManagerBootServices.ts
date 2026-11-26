@@ -3,6 +3,7 @@ import type { DirectPortBridgeTransport } from '../bridge/DirectPortBridgeTransp
 import type { BrowserHostManifest } from '../bridge/protocol/manifest'
 import { createBridgeRoute } from '../bridge/protocol/core'
 import { lendProviderHostSources } from '../../mods/provider/providerHostSources'
+import { withLentBuiltInBaseUrls } from '../../mods/provider/lentBuiltIns'
 import { fetchManagedBinaryRegistry } from '../../utils/binaryRegistry'
 import { createBrowserFsOperations } from '../../utils/BrowserFsOperations'
 import {
@@ -537,7 +538,7 @@ export class ManagerBootServices {
           configs[id] = config
         }
       }
-      publishProviderBaseUrlsFromConfigs(configs)
+      publishProviderBaseUrlsFromConfigs(withLentBuiltInBaseUrls(configs))
       if (Object.keys(configs).length === 0) {
         return
       }

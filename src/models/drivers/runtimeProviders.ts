@@ -160,7 +160,8 @@ function listingAccess(config: NexusProviderConfig | undefined): string {
  */
 export function setRuntimeProviderConfigs(next: Record<string, NexusProviderConfig> | undefined): void {
   const before = configs
-  configs = next ?? {}
+  // Security: a lent built-in instance reads its definition's address, whatever the file holds.
+  configs = withLentBuiltInBaseUrls(next ?? {})
   for (const id of [...failures.keys()]) {
     if (listingAccess(before[id]) !== listingAccess(configs[id])) failures.delete(id)
   }

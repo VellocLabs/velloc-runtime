@@ -35,7 +35,7 @@ import { getProviderDefinition, modProviderDefinitions } from '../../../config/n
 import { declaredSecretNames } from '../../../config/nexusModelConfig/providerDefinition'
 import { instanceSlotOf } from '../../../mods/provider/providerInstances'
 import { isModProviderId } from '../../../mods/provider/providerManifest'
-import { lentBuiltInBaseUrl, lentBuiltInDefinitionOf } from '../../../mods/provider/lentBuiltIns'
+import { lentBuiltInBaseUrl, lentBuiltInDefinitionOf, withLentBuiltInBaseUrls } from '../../../mods/provider/lentBuiltIns'
 import { handleSetModBaseUrl } from './modBaseUrlHandler'
 import {
   entryForModelId,
@@ -626,7 +626,7 @@ async function handleUpsert(
       : undefined
   // Refresh the endpoint-trust baseUrl view on the SAME write that reaches
   // the broker, so it reclassifies before the next model call.
-  publishProviderBaseUrlsFromConfigs(configs)
+  publishProviderBaseUrlsFromConfigs(withLentBuiltInBaseUrls(configs))
   // Push to the broker FIRST (awaited) so it has the new config before the
   // WebUI is told to refresh; broadcasting first lets the shell's
   // `providers.changed` → refreshModelCatalog race ahead of the broker update.
@@ -718,7 +718,7 @@ async function handleRemove(
   const activeProviderId = updated.providers?.activeProviderId
   const released = throughBefore ? releaseWebProfileAccount(ctx, throughBefore, configs) : undefined
   // A removed override must revert the provider to official classification.
-  publishProviderBaseUrlsFromConfigs(configs)
+  publishProviderBaseUrlsFromConfigs(withLentBuiltInBaseUrls(configs))
   // Push to the broker FIRST (awaited) so it has the new config before the
   // WebUI is told to refresh; broadcasting first lets the shell's
   // `providers.changed` → refreshModelCatalog race ahead of the broker update.
@@ -768,7 +768,7 @@ async function handleSetActive(
   })
   const effectiveConfigs = updated.providers?.configs ?? {}
   const activeProviderId = updated.providers?.activeProviderId
-  publishProviderBaseUrlsFromConfigs(effectiveConfigs)
+  publishProviderBaseUrlsFromConfigs(withLentBuiltInBaseUrls(effectiveConfigs))
   // Publish to the broker FIRST (awaited), THEN notify the WebUI — see the
   // upsert handler + publishToBroker doc for the refresh-race rationale.
   ctx.onConfigsChanged?.(effectiveConfigs)

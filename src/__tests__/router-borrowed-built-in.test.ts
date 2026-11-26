@@ -11,7 +11,7 @@ import { NEXUS_MODEL_CONFIG } from '../config/nexusModelConfig'
 import { getProviderDefinition, resetModProviderDefinitions } from '../config/nexusModelConfig/providers'
 import { GOOGLE_PROVIDER } from '../config/nexusModelConfig/providers/google'
 import { geminiModels } from '../config/nexusModelConfig/providers/google/models'
-import { providerWireBaseUrl, resolveProviderSpec } from '../models/drivers/driverRegistry'
+import { providerWireBaseUrl, resolveDriverBaseUrl, resolveProviderSpec } from '../models/drivers/driverRegistry'
 import { publishProviderBaseUrlsFromConfigs } from '../models/endpoints/endpointTrust'
 import { resetProviderHealthLedger } from '../models/drivers/providerHealthLedger'
 import { isManagedProvider, routerReaches } from '../models/drivers/providerRouter'
@@ -20,13 +20,14 @@ import {
   providerDefinitionId,
   resetRuntimeProviders,
   runtimeProviderCatalogRows,
+  runtimeProviderConfigs,
   setRuntimeProviderConfigs,
   withRuntimeProviderBaseUrls,
 } from '../models/drivers/runtimeProviders'
 import type { KeyQuestion } from '../mods/provider/providerInstanceCalls'
 import { createInstanceCalls, type InstanceCallsDeps } from '../mods/provider/providerInstanceCalls'
 import { BUILT_IN_LENDER, instanceSlotOf } from '../mods/provider/providerInstances'
-import { isLendableBuiltIn, lendableBuiltIn, lentBuiltInDefinitionOf } from '../mods/provider/lentBuiltIns'
+import { isLendableBuiltIn, lendableBuiltIn, lentBuiltInDefinitionOf, withLentBuiltInBaseUrls } from '../mods/provider/lentBuiltIns'
 import { resolveProviders } from '../mods/provider/providerManifest'
 import type { ProviderModRuntime } from '../mods/provider/ProviderModRuntime'
 import {
@@ -215,16 +216,22 @@ describe('registration', () => {
 
   it('a base URL edited into settings.json by hand reaches neither the request, the listing nor the host', async () => {
     const configs = { [LENT]: lent({ baseUrl: 'https://attacker.test/v1' }), google: { baseUrl: 'https://own.test/v1' } }
-    publishProviderBaseUrlsFromConfigs(configs)
-    const { host } = rig(configs)
-    await host.sync({ enabled: [borrower()], disabled: [] })
-    expect(resolveProviderSpec(LENT)?.baseUrl).toBe(GOOGLE_BASE)
-    expect(providerWireBaseUrl(LENT)).toBe(GOOGLE_BASE)
-    const published = withRuntimeProviderBaseUrls(configs)
-    expect(published[LENT]!.baseUrl).toBe(GOOGLE_BASE)
-    // The person's own google keeps the address they chose.
-    expect(published.google!.baseUrl).toBe('https://own.test/v1')
-    publishProviderBaseUrlsFromConfigs({})
+    try {
+      publishProviderBaseUrlsFromConfigs(withLentBuiltInBaseUrls(configs))
+      const { host } = rig(configs)
+      await host.sync({ enabled: [borrower()], disabled: [] })
+      expect(resolveProviderSpec(LENT)?.baseUrl).toBe(GOOGLE_BASE)
+      expect(providerWireBaseUrl(LENT)).toBe(GOOGLE_BASE)
+      expect(resolveDriverBaseUrl(LENT)).toBe(GOOGLE_BASE)
+      expect(runtimeProviderConfigs()[LENT]!.baseUrl).toBe(GOOGLE_BASE)
+      const published = withRuntimeProviderBaseUrls(configs)
+      expect(published[LENT]!.baseUrl).toBe(GOOGLE_BASE)
+      // The person's own google keeps the address they chose.
+      expect(published.google!.baseUrl).toBe('https://own.test/v1')
+      expect(resolveDriverBaseUrl('google')).toBe('https://own.test/v1')
+    } finally {
+      publishProviderBaseUrlsFromConfigs({})
+    }
   })
 
   it('its row is managed: only its router reaches it, "*" included for no other', async () => {
