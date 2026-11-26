@@ -181,6 +181,30 @@ describe('the dialog\'s host', () => {
     expect(screen.getByTestId('provider-key-request-ended').textContent).toBe("The key couldn't be saved.")
   })
 
+  it('holds one subscription while mounted, however often the runtime publishes', async () => {
+    // The topic answers each subscription with a snapshot, as the broker does;
+    // capped, so a host that re-subscribes on every render fails instead of spinning.
+    let subscribes = 0
+    const connection = {
+      subscribe: (_topic: string, listener: (event: { payload: unknown }) => void) => {
+        subscribes += 1
+        if (subscribes <= 25) queueMicrotask(() => listener({ payload: { seq: 0, requests: {} } }))
+        return () => {}
+      },
+      request: async () => ({}),
+    } as unknown as RuntimeConnection
+    const store = new ProviderKeyRequestStore()
+    store.attach(async () => connection)
+    resetProviderKeyRequestStoreForTests(store)
+    render(createElement(ProviderKeyRequestHost))
+    for (let tick = 0; tick < 10; tick += 1) {
+      await act(async () => {
+        await new Promise(resolve => setTimeout(resolve, 0))
+      })
+    }
+    expect(subscribes).toBe(1)
+  })
+
   it('shows nothing on a page that may not read the topic', async () => {
     const store = new ProviderKeyRequestStore()
     store.attach(async () => {

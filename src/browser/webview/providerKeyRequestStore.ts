@@ -4,7 +4,7 @@
  * copy of a key: it lives in the dialog's field until it is sent. A page
  * whose scope is below `manager` is refused the topic and shows nothing.
  */
-import { useSyncExternalStore } from 'react'
+import { useCallback, useSyncExternalStore } from 'react'
 import type { RouteKey } from '../runtimeProtocol'
 import type { RuntimeConnection } from '../runtimeClient/RuntimeConnection'
 import {
@@ -122,11 +122,10 @@ export function resetProviderKeyRequestStoreForTests(store: ProviderKeyRequestSt
 /** The request the page shows: the first one still open, else the latest ended one. */
 export function useProviderKeyRequest(): ProviderKeyRequest | undefined {
   const store = getProviderKeyRequestStore()
-  const state = useSyncExternalStore(
-    listener => store.subscribe(listener),
-    () => store.getState(),
-    () => store.getState(),
-  )
+  // Stable: a new function each render makes React let go and take hold again,
+  // which re-subscribes the topic, whose snapshot renders again, without end.
+  const subscribe = useCallback((listener: () => void) => store.subscribe(listener), [store])
+  const state = useSyncExternalStore(subscribe, () => store.getState(), () => store.getState())
   const requests = Object.values(state.requests)
   return requests.find(each => !each.ended) ?? requests.at(-1)
 }
