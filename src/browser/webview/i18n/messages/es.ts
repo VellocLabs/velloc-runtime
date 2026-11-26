@@ -2406,7 +2406,7 @@ export const es: Messages = {
   'settings.plugins.providers.consent.managedBy':
     'Lo configura {router} y solo se usa a través de él. Al aceptar se incluyen todas las cuentas o claves que se le añadan.',
   'settings.plugins.providers.consent.loginWindow': 'Su inicio de sesión abre una ventana en: {domains}',
-  'settings.plugins.providers.consent.recognizes': '{name} sabrá si has configurado estos servicios: {hosts}',
+  'settings.plugins.providers.consent.recognizes': '{name} sabrá si ha configurado estos servicios: {hosts}',
   'settings.plugins.providers.consent.domains': 'Puede conectarse a: {domains}',
   'settings.plugins.providers.consent.noDomains': 'No declara dominios a los que conectarse.',
   'settings.plugins.providers.routes.any': 'Envía sus solicitudes a través de otros proveedores que haya configurado, con las credenciales de estos: cualquier proveedor.',
@@ -2476,7 +2476,7 @@ export const es: Messages = {
   'settings.plugins.providers.updates.waitingBody': 'Solicita más de lo que usted aceptó. La versión actual sigue en uso hasta que usted decida.',
   'settings.plugins.providers.updates.addedProvider': 'Proveedor nuevo: {provider}',
   'settings.plugins.providers.updates.addedLoginWindow': '{id} ahora puede abrir una ventana de inicio de sesión en: {domains}',
-  'settings.plugins.providers.updates.addedRecognizes': '{id} ahora puede saber si has configurado: {hosts}',
+  'settings.plugins.providers.updates.addedRecognizes': '{id} ahora puede saber si ha configurado: {hosts}',
   'settings.plugins.providers.updates.addedManagedBy': '{id} ahora lo configura {router} y solo se usa a través de él',
   'settings.plugins.providers.updates.addedDomains': '{id} ahora puede conectarse a: {domains}',
   'settings.plugins.providers.updates.addedProxyPools':

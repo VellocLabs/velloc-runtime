@@ -11,6 +11,7 @@
  * accepted in the list.
  */
 import { isPlainHostName } from './providerBaseUrlRule'
+import { onlyKeys } from './providerStatusManifest'
 
 export const RECOGNIZES_HOSTS_MAX = 64
 
@@ -37,9 +38,7 @@ export function checkRecognizes(value: unknown, bad: Problems): string[] | undef
     return undefined
   }
   const record = value as Record<string, unknown>
-  for (const key of Object.keys(record)) {
-    if (key !== 'hosts') bad(`${at}.${key}: not a field of recognizes (it has hosts)`)
-  }
+  onlyKeys(record, ['hosts'], at, bad)
   const { hosts } = record
   if (!Array.isArray(hosts) || hosts.length === 0 || hosts.length > RECOGNIZES_HOSTS_MAX || !hosts.every(entry => typeof entry === 'string')) {
     bad(`${at}.hosts: expected a list of 1 to ${RECOGNIZES_HOSTS_MAX} host names`)
