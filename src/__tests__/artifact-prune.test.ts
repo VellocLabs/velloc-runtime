@@ -6,12 +6,13 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { parse } from 'yaml'
 
 // @ts-expect-error — plain .mjs build script, no types
-import { DEFAULT_RATIO, directoryBytes, planKeepOnly, planPrune } from '../../scripts/prune_artifacts.mjs'
+import { DEFAULT_RATIO, directoryBytes, pendingPromoteRunIds, planKeepOnly, planPrune, planRetain } from '../../scripts/prune_artifacts.mjs'
 
 /**
  * Candidate storage pruning (G-3): before Workflow A uploads a candidate, the
  * oldest candidates are deleted once storage would pass 70% of the quota; after
- * beta serves the new candidate, every older one is deleted.
+ * beta serves the new candidate, all but the newest few, the one production
+ * serves and any an unfinished promote names are deleted.
  */
 
 const MB = 1_000_000
@@ -126,6 +127,86 @@ describe('planKeepOnly', () => {
   })
 })
 
+describe('planRetain', () => {
+  const runId = (a: Artifact) => a.workflow_run!.id
+
+  it('keeps the newest N successful runs and deletes the rest, oldest first', () => {
+    const runs = [1, 2, 3, 4, 5].map(day => artifact(day, 100))
+    const plan = planRetain({
+      artifacts: runs, successfulRunIds: runs.map(runId), newest: 3,
+    })
+    expect(ids(plan.deletions)).toEqual([runs[0].id, runs[1].id])
+    expect(plan.kept).toEqual([runs[4], runs[3], runs[2]].map(a => String(runId(a))))
+  })
+
+  it('keeps a soaked candidate through pushes that land during its soak', () => {
+    // Soaked run, then two pushes: all three survive at N = 3.
+    const soaked = artifact(1, 100)
+    const pushes = [artifact(2, 100), artifact(3, 100)]
+    const plan = planRetain({
+      artifacts: [soaked, ...pushes], successfulRunIds: [soaked, ...pushes].map(runId), newest: 3,
+    })
+    expect(plan.deletions).toEqual([])
+  })
+
+  it('never deletes a kept run, such as the one production serves, however old', () => {
+    const prod = artifact(1, 100)
+    const rest = [2, 3, 4, 5].map(day => artifact(day, 100))
+    const plan = planRetain({
+      artifacts: [prod, ...rest], successfulRunIds: [prod, ...rest].map(runId),
+      newest: 3, keepRunIds: [String(runId(prod))],
+    })
+    expect(ids(plan.deletions)).toEqual([rest[0].id])
+  })
+
+  it('counts only successful runs that still hold a candidate toward N', () => {
+    // A failed run's candidate is not among the newest successful, and a
+    // successful run whose candidate is gone does not take a place.
+    const ok = [1, 2, 3].map(day => artifact(day, 100))
+    const failed = artifact(4, 100)
+    const plan = planRetain({
+      artifacts: [...ok, failed], successfulRunIds: [...ok.map(runId), 9999], newest: 3,
+    })
+    expect(ids(plan.deletions)).toEqual([failed.id])
+  })
+
+  it('orders run ids numerically, not as text', () => {
+    const small = artifact(1, 100, { workflow_run: { id: 99 } })
+    const big = artifact(2, 100, { workflow_run: { id: 100 } })
+    const plan = planRetain({ artifacts: [small, big], successfulRunIds: [99, 100], newest: 1 })
+    expect(ids(plan.deletions)).toEqual([small.id])
+  })
+
+  it('deletes nothing when nothing qualifies to be kept', () => {
+    const plan = planRetain({ artifacts: [artifact(1, 100)], successfulRunIds: [], newest: 3 })
+    expect(plan.deletions).toEqual([])
+  })
+
+  it('rejects a retention count below one', () => {
+    expect(() => planRetain({ artifacts: [], successfulRunIds: [], newest: 0 })).toThrow(/--retain-newest/)
+    expect(() => planRetain({ artifacts: [], successfulRunIds: [], newest: Number.NaN })).toThrow(/--retain-newest/)
+  })
+})
+
+describe('pendingPromoteRunIds', () => {
+  it('reads the candidate run id from each unfinished promote run title', () => {
+    expect(pendingPromoteRunIds([
+      { status: 'waiting', display_title: 'B · Promote candidate run 45854406322' },
+      { status: 'in_progress', display_title: 'B · Promote candidate run 7' },
+      { status: 'completed', display_title: 'B · Promote candidate run 8' },
+      { status: 'queued', display_title: 'B · Promote Production' },
+      { status: 'queued' },
+    ])).toEqual(['45854406322', '7'])
+  })
+
+  it('matches the run-name promote-production.yml sets', () => {
+    const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..')
+    const promote = parse(readFileSync(join(repoRoot, '.github', 'workflows', 'promote-production.yml'), 'utf8'))
+    const title = String(promote['run-name']).replace('${{ inputs.candidate_run_id }}', '123')
+    expect(pendingPromoteRunIds([{ status: 'waiting', display_title: title }])).toEqual(['123'])
+  })
+})
+
 describe('directoryBytes', () => {
   let tmp: string
   beforeAll(() => {
@@ -160,10 +241,11 @@ describe('Workflow A prunes storage before the upload', () => {
     expect(pack.steps[prune].run).toContain('--incoming artifact/')
   })
 
-  it('keeps the candidate beta serves and can delete the rest', () => {
+  it('keeps the candidate beta serves and any a pending promote names, and can delete the rest', () => {
     const prune = pack.steps.find(s => /prune_artifacts/.test(s.run ?? ''))!
     expect(prune.env?.BETA_RUN).toBe('${{ steps.beta_baseline.outputs.run_id }}')
     expect(prune.run).toContain('--keep-run "$BETA_RUN"')
+    expect(prune.run).toContain('--protect-pending-promotes')
     const baseline = pack.steps.find(s => s.id === 'beta_baseline')!
     expect(baseline.run).toContain('echo "run_id=$BRUN" >> "$GITHUB_OUTPUT"')
     expect(pack.permissions).toEqual({ contents: 'read', actions: 'write' })
@@ -182,19 +264,31 @@ describe('Workflow A retires superseded candidates after the beta deploy', () =>
     needs: string[]
     'continue-on-error'?: boolean
     permissions: Record<string, string>
-    steps: Array<{ uses?: string, run?: string, with?: Record<string, string> }>
+    env: Record<string, string | number>
+    steps: Array<{ id?: string, uses?: string, run?: string, with?: Record<string, string>, env?: Record<string, string> }>
   }
 
   it('runs only after deploy, on the commit `source` resolved', () => {
-    expect([retire.needs].flat().sort()).toEqual(['deploy', 'source'])
+    expect([retire.needs].flat().sort()).toEqual(['deploy', 'pack', 'source'])
     const checkout = retire.steps.find(s => s.uses?.startsWith('actions/checkout@'))
     expect(checkout?.with?.ref).toBe('${{ needs.source.outputs.commit }}')
     expect(retire.permissions).toEqual({ contents: 'read', actions: 'write' })
   })
 
-  it('keeps only this run\'s candidate, and no failure in the job can fail the run', () => {
+  it('keeps the newest three, the one production serves and any a pending promote names', () => {
+    expect(retire.env.RETAIN).toBe(3)
     const step = retire.steps.find(s => /prune_artifacts/.test(s.run ?? ''))!
-    expect(step.run).toBe('node scripts/prune_artifacts.mjs --keep-only --keep-run "$GITHUB_RUN_ID"')
+    expect(step.run).toContain('--retain-newest "$RETAIN" --this-run "$GITHUB_RUN_ID" --protect-pending-promotes')
+    expect(step.run).toContain('--keep-run "$PROD_RUN"')
+    expect(step.run).not.toContain('--keep-only')
+    expect(step.env?.PROD_RUN).toBe('${{ steps.prod.outputs.run_id }}')
+    const prod = retire.steps.find(s => s.id === 'prod')!
+    expect(prod.env?.PROD_ORIGIN).toBe('https://app.velloc.app')
+    expect(prod.run).toContain('$PROD_ORIGIN/runtime/v$V/build-info.json')
+    expect(prod.run).toContain("sed -nE 's/^candidate-v[0-9]+-[0-9a-f]{7,}-([0-9]+)$/\\1/p'")
+  })
+
+  it('lets no failure in the job fail the run', () => {
     expect(retire['continue-on-error']).toBe(true)
   })
 })

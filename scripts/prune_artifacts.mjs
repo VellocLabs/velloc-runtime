@@ -1,8 +1,8 @@
 // Frees Actions artifact storage by deleting `candidate` artifacts (G-3).
-// Quota mode (before an upload) deletes the oldest until storage fits a share
-// of the quota; --keep-only (after a beta deploy) deletes all but the kept runs.
-// Flags: --quota-bytes <N> [--ratio <0..1>] [--incoming <dir>] | --keep-only
-//   [--keep-run <id>]... [--name <artifact>] [--dry-run]
+// --quota-bytes <N> [--ratio] [--incoming <dir>]: oldest first until storage fits.
+// --retain-newest <N> [--this-run <id>]: keep the newest N successful builds.
+// Every mode keeps each --keep-run <id> and, with --protect-pending-promotes,
+// the candidate each unfinished promote names. Also --name, --dry-run.
 // Env: GH_TOKEN (needs `actions: write`), GITHUB_REPOSITORY, GITHUB_API_URL.
 import fs from 'node:fs'
 import path from 'node:path'
@@ -11,11 +11,17 @@ import { isMainModule } from './lib/isMainModule.mjs'
 import { asList, parseArgs } from './pack_artifact.mjs'
 
 export const DEFAULT_RATIO = 0.7
+export const BUILD_WORKFLOW = 'build-beta.yml'
+export const PROMOTE_WORKFLOW = 'promote-production.yml'
+// promote-production.yml's `run-name`, which ends in the candidate run id.
+const PROMOTE_TITLE = /^B · Promote candidate run (\d+)$/
 
 // Thrown, not exited: exiting with a fetch still open aborts Node on Windows.
 function fail(message) {
   throw new Error(message)
 }
+
+const runOf = artifact => String(artifact.workflow_run?.id ?? '')
 
 /**
  * Every live artifact called `name` whose run id is not in `keepRunIds`,
@@ -29,6 +35,38 @@ export function planKeepOnly({ artifacts, keepRunIds, name = 'candidate' }) {
     .filter(a => !a.expired && a.name === name && !keep.has(String(a.workflow_run?.id ?? '')))
     .sort((a, b) => Date.parse(a.created_at) - Date.parse(b.created_at) || a.id - b.id)
   return { deletions }
+}
+
+/**
+ * Keeps the live candidates of the `newest` highest run ids among
+ * `successfulRunIds` (run ids grow with creation time; a run whose candidate
+ * is already gone does not take a place), plus every run in `keepRunIds`.
+ * Deletes every other live candidate, oldest first.
+ */
+export function planRetain({ artifacts, successfulRunIds, newest, keepRunIds = [], name = 'candidate' }) {
+  if (!(Number.isInteger(newest) && newest >= 1)) {
+    throw new Error(`--retain-newest must be a whole number of at least 1, got ${newest}`)
+  }
+  const withCandidate = new Set(artifacts.filter(a => !a.expired && a.name === name).map(runOf))
+  const recent = [...new Set(successfulRunIds.map(String))]
+    .filter(id => /^\d+$/.test(id) && withCandidate.has(id))
+    .sort((a, b) => (BigInt(a) < BigInt(b) ? 1 : BigInt(a) > BigInt(b) ? -1 : 0))
+    .slice(0, newest)
+  const kept = [...new Set([...recent, ...keepRunIds.map(String).filter(Boolean)])]
+  if (kept.length === 0) return { deletions: [], kept }
+  return { ...planKeepOnly({ artifacts, keepRunIds: kept, name }), kept }
+}
+
+/**
+ * Candidate run ids named by promote runs that have not completed. A promote
+ * downloads its candidate in `resolve` and again in `deploy`; deleting it in
+ * between fails the deploy half.
+ */
+export function pendingPromoteRunIds(promoteRuns) {
+  return promoteRuns
+    .filter(run => run.status !== 'completed')
+    .map(run => PROMOTE_TITLE.exec(run.display_title ?? '')?.[1])
+    .filter(Boolean)
 }
 
 /**
@@ -54,8 +92,7 @@ export function planPrune({
     .filter(a => a.name === name)
     .sort((a, b) => Date.parse(a.created_at) - Date.parse(b.created_at) || a.id - b.id)
   const newest = named.at(-1)
-  const deletable = named.filter(a =>
-    a !== newest && !keep.has(String(a.workflow_run?.id ?? '')))
+  const deletable = named.filter(a => a !== newest && !keep.has(runOf(a)))
 
   const deletions = []
   let projected = liveBytes + incomingBytes
@@ -108,26 +145,40 @@ async function listArtifacts(repo) {
   }
 }
 
+async function workflowRuns(repo, workflow, query = '') {
+  const body = await github('GET',
+    `/repos/${repo}/actions/workflows/${workflow}/runs?per_page=100${query}`)
+  return body.workflow_runs
+}
+
 async function main() {
   const args = parseArgs(process.argv.slice(2))
-  const keepOnly = args['keep-only'] === true
+  const retainNewest = args['retain-newest'] === undefined ? undefined : Number(args['retain-newest'])
   const quotaBytes = Number(args['quota-bytes'])
   const ratio = args.ratio === undefined ? DEFAULT_RATIO : Number(args.ratio)
   const repo = process.env.GITHUB_REPOSITORY
   if (!repo) fail('GITHUB_REPOSITORY is not set')
   if (!process.env.GH_TOKEN) fail('GH_TOKEN is not set')
   const incomingBytes = typeof args.incoming === 'string' ? directoryBytes(args.incoming) : 0
-  const keepRunIds = asList(args['keep-run'])
+  const keepRunIds = asList(args['keep-run']).map(String)
   const name = typeof args.name === 'string' ? args.name : 'candidate'
+  if (args['protect-pending-promotes']) {
+    const pending = pendingPromoteRunIds(await workflowRuns(repo, PROMOTE_WORKFLOW))
+    if (pending.length) console.log(`keeping the candidate of each unfinished promote: run(s) ${pending.join(', ')}`)
+    keepRunIds.push(...pending)
+  }
 
   const artifacts = await listArtifacts(repo)
-  const plan = keepOnly
-    ? planKeepOnly({ artifacts, keepRunIds, name })
-    : planPrune({ artifacts, quotaBytes, ratio, incomingBytes, keepRunIds, name })
-
-  if (keepOnly) {
-    console.log(`keeping only the ${name} artifacts of run(s) ${keepRunIds.filter(Boolean).join(', ')}`)
+  let plan
+  if (retainNewest !== undefined) {
+    const successful = (await workflowRuns(repo, BUILD_WORKFLOW, '&status=success')).map(run => run.id)
+    if (typeof args['this-run'] === 'string' || typeof args['this-run'] === 'number') {
+      successful.push(String(args['this-run']))
+    }
+    plan = planRetain({ artifacts, successfulRunIds: successful, newest: retainNewest, keepRunIds, name })
+    console.log(`keeping the ${name} artifacts of run(s) ${plan.kept.join(', ') || 'none'}`)
   } else {
+    plan = planPrune({ artifacts, quotaBytes, ratio, incomingBytes, keepRunIds, name })
     console.log(`artifact storage: ${mb(plan.liveBytes)} live + ${mb(incomingBytes)} incoming, ` +
       `budget ${mb(plan.budgetBytes)} (${Math.round(ratio * 100)}% of ${mb(quotaBytes)})`)
   }

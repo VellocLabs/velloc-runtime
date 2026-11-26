@@ -6,6 +6,8 @@ name: A · Build & Deploy Beta
 # Runs on every push to `main`, building the pushed commit, and by hand for
 # any other ref. A push run has no inputs: each `inputs.*` read below falls
 # back to the pushed commit, and an empty `runtime_version` asserts nothing.
+# Every push runs, docs-only ones included: beta must serve main's tip, which
+# the installer's boot bundle check pins.
 
 on:
   push:
@@ -33,13 +35,20 @@ on:
         description: 'What this candidate contains (free text, recorded in manifest.json)'
         required: false
         default: ''
+      deploy_older:
+        description: >-
+          Deploy even though main has moved past this commit, putting an older
+          build back on beta. Off: such a run fails before it touches beta.
+        type: boolean
+        default: false
 
 # Beta is a shared environment: two candidates deploying at once would leave
 # whichever finished last serving, with no record of the race. Queue instead
 # of cancelling — a cancelled run has already uploaded nothing but may have
-# already deployed. The group holds one waiting run: a newer push replaces an
-# older one still waiting, so a burst of pushes builds the running commit and
-# then the newest.
+# already deployed. The group holds one waiting run, whatever started it: a
+# newer push or dispatch replaces the one still waiting (shown as cancelled),
+# so a burst of pushes builds the running commit and then the newest, and a
+# dispatch queued behind a running push is dropped by the next push.
 concurrency:
   group: beta-deploy
   cancel-in-progress: false
@@ -61,16 +70,28 @@ jobs:
   # Resolves `ref` to one commit, so the gates and the build check out the same
   # bytes even if a branch moves mid-run. A push run builds the pushed commit
   # (`github.sha`), never the branch tip a queued run would find later.
+  # `source_ref` is the ref every later step records; a push run has no input,
+  # so it is the pushed branch.
   source:
     runs-on: ubuntu-latest
     outputs:
       commit: ${{ steps.rev.outputs.commit }}
+      source_ref: ${{ steps.rev.outputs.source_ref }}
     steps:
       - uses: actions/checkout@v7
         with:
           ref: ${{ inputs.ref || github.sha }}
       - id: rev
-        run: echo "commit=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+        env:
+          SOURCE_REF: ${{ inputs.ref || github.ref_name }}
+        run: |
+          set -euo pipefail
+          echo "commit=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          # Security: one line, so the value cannot add a second output.
+          case "$SOURCE_REF" in
+            ''|*$'\n'*|*$'\r'*) echo "::error::source ref is empty or spans lines"; exit 1 ;;
+          esac
+          printf 'source_ref=%s\n' "$SOURCE_REF" >> "$GITHUB_OUTPUT"
 
   typecheck:
     needs: source
@@ -140,7 +161,7 @@ jobs:
         id: id
         env:
           GH_TOKEN: ${{ github.token }}
-          SOURCE_REF: ${{ inputs.ref || github.ref_name }}
+          SOURCE_REF: ${{ needs.source.outputs.source_ref }}
         run: |
           set -euo pipefail
           V=$(sed -nE 's/^export const NEXUS_INTERFACE_VERSION = ([0-9]+)$/\1/p' \
@@ -341,7 +362,7 @@ jobs:
         # spliced into the shell command.
         env:
           CANDIDATE_ID: ${{ steps.id.outputs.candidate_id }}
-          SOURCE_REF: ${{ inputs.ref || github.ref_name }}
+          SOURCE_REF: ${{ needs.source.outputs.source_ref }}
           SOURCE_COMMIT: ${{ steps.id.outputs.source_commit }}
           EXPECT_VERSION: ${{ inputs.runtime_version }}
           BASELINE_TAG: ${{ steps.baseline.outputs.tag }}
@@ -378,11 +399,11 @@ jobs:
           node scripts/pack_artifact.mjs "${ARGS[@]}"
 
       # Storage is a per-account quota and a full quota fails the upload. Over
-      # 70% of it, the oldest candidates go first; the newest candidate and the
-      # one beta serves are kept. A deleted candidate can no longer be promoted,
-      # exactly like an expired one. ARTIFACT_QUOTA_BYTES (a repository
-      # variable) is the plan's artifact storage; 500 MB (the Free plan) when
-      # unset.
+      # 70% of it, the oldest candidates go first; the newest candidate, the
+      # one beta serves and the one each unfinished promote names are kept. A
+      # deleted candidate can no longer be promoted, exactly like an expired
+      # one. ARTIFACT_QUOTA_BYTES (a repository variable) is the plan's
+      # artifact storage; 500 MB (the Free plan) when unset.
       - name: Free artifact storage
         env:
           GH_TOKEN: ${{ github.token }}
@@ -390,13 +411,13 @@ jobs:
           BETA_RUN: ${{ steps.beta_baseline.outputs.run_id }}
         run: |
           set -euo pipefail
-          ARGS=(--quota-bytes "$QUOTA" --incoming artifact/)
+          ARGS=(--quota-bytes "$QUOTA" --incoming artifact/ --protect-pending-promotes)
           if [ -n "$BETA_RUN" ]; then ARGS+=(--keep-run "$BETA_RUN"); fi
           node scripts/prune_artifacts.mjs "${ARGS[@]}"
 
       # Security: uploaded before the gates finish, so a run whose gates fail
-      # still holds a `candidate`; promote accepts only a successful run, pinned
-      # or not, which keeps those bytes off production.
+      # still holds a `candidate`; promote accepts only a successful run, which
+      # keeps those bytes off production.
       - uses: actions/upload-artifact@v7
         with:
           # Promote downloads `--name candidate` as a directory of files, which
@@ -414,15 +435,38 @@ jobs:
           if-no-files-found: error
 
   deploy:
-    needs: [typecheck, test, pack]
+    needs: [source, typecheck, test, pack]
     runs-on: ubuntu-latest
     env:
       WRANGLER_PKG: wrangler@4.120.0
     steps:
-      # Wrangler and the summary script only; the bundle was compiled in `pack`.
+      # Wrangler, the order check and the summary script only; the bundle was
+      # compiled in `pack`.
       - uses: actions/setup-node@v7
         with:
           node-version: 22
+
+      # Security: a re-run of an older run, or a dispatch of a commit main has
+      # moved past, would put an older build on beta after a newer one. Checked
+      # inside this job, before anything touches beta, so every attempt of
+      # `deploy` ("Re-run failed jobs" included) checks again. A refusal fails
+      # the job, which skips `retire` and fails the run, so promote refuses it.
+      # The runs of this workflow are serialized, so no other run deploys
+      # between the check and the deploy.
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.source.outputs.commit }}
+          sparse-checkout: scripts
+          path: order-check
+          persist-credentials: false
+      - name: Check main has not moved past this commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+          COMMIT: ${{ needs.source.outputs.commit }}
+          DEPLOY_OLDER: ${{ inputs.deploy_older || false }}
+        run: >-
+          node order-check/scripts/beta_deploy_order.mjs --commit "$COMMIT" --branch main
+          --event "$GITHUB_EVENT_NAME" --deploy-older "$DEPLOY_OLDER"
 
       # Installs while the candidate downloads; `Deploy to beta` waits for it
       # and falls back to npx if it failed. Exit code lands in install.rc.
@@ -491,7 +535,7 @@ jobs:
         env:
           V: ${{ needs.pack.outputs.interface_version }}
           CANDIDATE_ID: ${{ needs.pack.outputs.candidate_id }}
-          SOURCE_REF: ${{ inputs.ref || github.ref_name }}
+          SOURCE_REF: ${{ needs.source.outputs.source_ref }}
           SOURCE_COMMIT: ${{ needs.pack.outputs.source_commit }}
           BASELINE_TAG: ${{ needs.pack.outputs.baseline_tag }}
           NOTE: ${{ inputs.note }}
@@ -619,12 +663,10 @@ jobs:
             echo "Soak: <https://beta.velloc.app/runtime/v$V/>"
             echo "Provenance: <https://beta.velloc.app/runtime/v$V/build-info.json> reports this candidate ID."
             echo
-            echo "Then run [**B · Promote Production**]($PROMOTE_URL) — it defaults to"
-            echo "the newest successful build, which is this one, so both inputs can be"
-            echo "left empty if you promote before another build finishes."
-            echo
-            echo "To promote **this** candidate specifically — not merely whatever is"
-            echo "newest when you get there — run:"
+            echo "Then run [**B · Promote Production**]($PROMOTE_URL) with"
+            echo "\`candidate_run_id = $GITHUB_RUN_ID\` once this candidate has soaked."
+            echo "Promote takes no default: every push redeploys beta, so the newest"
+            echo "build is rarely the one that soaked. Or run:"
             echo
             echo '```bash'
             echo "gh workflow run promote-production.yml --repo $GITHUB_REPOSITORY -f candidate_run_id=$GITHUB_RUN_ID"
@@ -637,19 +679,22 @@ jobs:
             echo "\`candidate_run_id = $GITHUB_RUN_ID\` into the form.</sub>"
           } >> "$GITHUB_STEP_SUMMARY"
 
-  # Once beta serves this candidate, every older one is superseded: promote
-  # resolves the newest successful run, which is this one, and the next build's
-  # baselines read only beta and production. Deleting them leaves one candidate
-  # in storage between builds. Best-effort at the job level: no failure here,
-  # in any step, may fail the run, or promote would refuse the candidate beta
-  # now serves.
+  # After the deploy, keeps the candidates a promote can still want: the newest
+  # RETAIN successful runs (this one among them), the run production serves,
+  # and the run each unfinished promote names; deletes the rest. A candidate
+  # stays promotable until RETAIN newer runs have succeeded, or until the
+  # quota prune in `pack`, the backstop, needs its space. Best-effort at the
+  # job level: no failure here, in any step, may fail the run, or promote
+  # would refuse the candidate beta now serves.
   retire:
-    needs: [source, deploy]
+    needs: [source, pack, deploy]
     runs-on: ubuntu-latest
     continue-on-error: true
     permissions:
       contents: read
       actions: write
+    env:
+      RETAIN: 3
     steps:
       - uses: actions/checkout@v7
         with:
@@ -659,7 +704,28 @@ jobs:
         with:
           node-version: 22
 
-      - name: Delete superseded candidates
+      - name: Read the run production serves
+        id: prod
+        env:
+          V: ${{ needs.pack.outputs.interface_version }}
+          PROD_ORIGIN: https://app.velloc.app
+        run: |
+          set -uo pipefail
+          PCAND=$(curl -fsS --max-time 20 -H 'Cache-Control: no-cache' \
+                    "$PROD_ORIGIN/runtime/v$V/build-info.json" 2>/dev/null \
+                  | jq -r '.candidateId // empty') || PCAND=''
+          PRUN=$(printf '%s' "$PCAND" | sed -nE 's/^candidate-v[0-9]+-[0-9a-f]{7,}-([0-9]+)$/\1/p')
+          if [ -z "$PRUN" ]; then
+            echo "::warning::could not read a production candidate run id (got '${PCAND:-nothing}')"
+          fi
+          echo "run_id=$PRUN" >> "$GITHUB_OUTPUT"
+
+      - name: Delete candidates no promote can want
         env:
           GH_TOKEN: ${{ github.token }}
-        run: node scripts/prune_artifacts.mjs --keep-only --keep-run "$GITHUB_RUN_ID"
+          PROD_RUN: ${{ steps.prod.outputs.run_id }}
+        run: |
+          set -euo pipefail
+          ARGS=(--retain-newest "$RETAIN" --this-run "$GITHUB_RUN_ID" --protect-pending-promotes)
+          if [ -n "$PROD_RUN" ]; then ARGS+=(--keep-run "$PROD_RUN"); fi
+          node scripts/prune_artifacts.mjs "${ARGS[@]}"

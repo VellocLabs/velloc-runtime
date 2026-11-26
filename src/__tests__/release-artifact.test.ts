@@ -18,6 +18,8 @@ import { resolveRetentionBaseline, resolveRetentionBaselines, retainBaselineAsse
 // @ts-expect-error — plain .mjs build script, no types
 import { buildKeyFromBuildTime as buildKeyMjs, readBuildKeyFromIndexHtml } from '../../scripts/lib/buildKey.mjs'
 import { buildKeyFromBuildTime as buildKeyTs, BUILD_TIME_META_NAME } from '../branding/buildInfo'
+// @ts-expect-error — plain .mjs build script, no types
+import { deployOrderVerdict } from '../../scripts/beta_deploy_order.mjs'
 
 /**
  * The build-once release artifact (G-3): the hand-rolled zip writer (deterministic, no stamped mtimes, so the
@@ -369,21 +371,51 @@ describe('computeAssetChurn', () => {
 
 describe('Workflow A gates the deploy, not the build', () => {
   const doc = parse(readFileSync(join(workflows, 'build-beta.yml'), 'utf8'))
+  type Step = { id?: string, name?: string, uses?: string, run?: string, with?: Record<string, unknown>, env?: Record<string, string> }
   const jobs = doc.jobs as Record<string, {
-    needs?: string | string[], steps: Array<{ uses?: string, run?: string, with?: Record<string, unknown> }>
+    needs?: string | string[], permissions?: Record<string, string>, env?: Record<string, string>, steps: Step[]
   }>
   const needsOf = (job: string) => [jobs[job].needs ?? []].flat()
   const body = (job: string) => JSON.stringify(jobs[job].steps)
 
   it('deploys only after typecheck, every test shard and pack succeed', () => {
-    expect(needsOf('deploy').sort()).toEqual(['pack', 'test', 'typecheck'])
+    expect(needsOf('deploy').sort()).toEqual(['pack', 'source', 'test', 'typecheck'])
+    expect(jobs.order).toBeUndefined()
     for (const gate of ['typecheck', 'test', 'pack']) {
       expect(needsOf(gate)).toEqual(['source'])
     }
   })
 
-  it('runs on a push to main and by hand, and a push builds the pushed commit', () => {
+  it('starts on a push to main or by hand, and on nothing else', () => {
+    // Security: no pull_request or pull_request_target, so neither a PR nor a
+    // fork can start a run that holds the deploy secrets.
+    expect(Object.keys(doc.on).sort()).toEqual(['push', 'workflow_dispatch'])
     expect(doc.on.push).toEqual({ branches: ['main'] })
+  })
+
+  it('resolves the recorded source ref once, and every step reads that output', () => {
+    const rev = jobs.source.steps.find(s => s.id === 'rev')!
+    expect(rev.env?.SOURCE_REF).toBe('${{ inputs.ref || github.ref_name }}')
+    expect(rev.run).toContain(`printf 'source_ref=%s\\n' "$SOURCE_REF" >> "$GITHUB_OUTPUT"`)
+    expect(rev.run).toMatch(/''\|\*\$'\\n'\*\|\*\$'\\r'\*\) echo "::error::/)
+    expect((doc.jobs.source.outputs as Record<string, string>).source_ref)
+      .toBe('${{ steps.rev.outputs.source_ref }}')
+    const readers = Object.values(jobs).flatMap(j => j.steps)
+      .filter(s => s.env && 'SOURCE_REF' in s.env && s !== rev)
+    expect(readers.length).toBeGreaterThanOrEqual(3)
+    for (const s of readers) expect(s.env!.SOURCE_REF, s.name).toBe('${{ needs.source.outputs.source_ref }}')
+    for (const job of Object.keys(jobs).filter(j => readers.some(s => jobs[j].steps.includes(s)))) {
+      expect(needsOf(job), job).toContain('source')
+    }
+  })
+
+  it('asserts the interface version only when a dispatch asked for one', () => {
+    const pack = jobs.pack.steps.find(s => /pack_artifact\.mjs/.test(s.run ?? ''))!
+    expect(pack.env?.EXPECT_VERSION).toBe('${{ inputs.runtime_version }}')
+    expect(pack.run).toContain('if [ -n "$EXPECT_VERSION" ] && [ "$EXPECT_VERSION" != "auto" ]; then')
+  })
+
+  it('runs on a push to main and by hand, and a push builds the pushed commit', () => {
     expect(doc.on.workflow_dispatch.inputs.ref.default).toBe('main')
     // A push run carries no inputs. An empty checkout ref would build the
     // branch tip at the time a queued run starts, not the commit pushed.
@@ -443,6 +475,39 @@ describe('Workflow A gates the deploy, not the build', () => {
     expect(body('test')).toContain(`--shard=\${{ matrix.shard }}/${shards.length} --retry=1`)
   })
 
+  it('checks main has not moved past the commit inside deploy, before anything touches beta', () => {
+    // In `deploy` itself, so "Re-run failed jobs" on `deploy` checks again
+    // instead of reusing an earlier success.
+    const steps = jobs.deploy.steps
+    const at = steps.findIndex(s => /beta_deploy_order\.mjs/.test(s.run ?? ''))
+    expect(at).toBeGreaterThan(-1)
+    const step = steps[at]
+    const checkout = steps.slice(0, at).find(s => s.uses?.startsWith('actions/checkout@'))
+    expect(checkout?.with?.ref).toBe('${{ needs.source.outputs.commit }}')
+    expect(checkout?.with?.['persist-credentials']).toBe(false)
+    expect(step.run).toContain(`node ${checkout?.with?.path}/scripts/beta_deploy_order.mjs`)
+    expect(step.env?.COMMIT).toBe('${{ needs.source.outputs.commit }}')
+    expect(step.env?.DEPLOY_OLDER).toBe('${{ inputs.deploy_older || false }}')
+    expect(step.run).toContain('--branch main')
+    expect(step.run).toContain('--event "$GITHUB_EVENT_NAME"')
+    expect(step.env).not.toHaveProperty('CLOUDFLARE_API_TOKEN')
+    const deployAt = steps.findIndex(s => s.name === 'Deploy to beta')
+    expect(at).toBeLessThan(deployAt)
+    // Not best-effort: a refusal must fail the run, so promote refuses it.
+    expect((doc.jobs.deploy as Record<string, unknown>)['continue-on-error']).toBeUndefined()
+    expect((step as Record<string, unknown>)['continue-on-error']).toBeUndefined()
+    expect(doc.on.workflow_dispatch.inputs.deploy_older).toMatchObject({ type: 'boolean', default: false })
+  })
+
+  it('keeps the deploy secrets in the deploy job alone', () => {
+    const raw = readFileSync(join(workflows, 'build-beta.yml'), 'utf8')
+    expect(raw.match(/secrets\./g)?.length).toBe(2)
+    for (const job of Object.keys(jobs)) {
+      if (job === 'deploy') continue
+      expect(JSON.stringify(doc.jobs[job]), job).not.toMatch(/secrets\./)
+    }
+  })
+
   it('uploads `candidate` once, from pack, and deploys what it downloads', () => {
     const uploads = Object.entries(jobs).flatMap(([job, j]) => j.steps
       .filter(s => s.uses?.startsWith('actions/upload-artifact@'))
@@ -454,27 +519,31 @@ describe('Workflow A gates the deploy, not the build', () => {
 })
 
 describe('promote input ergonomics', () => {
-  // Both promote inputs are optional and resolved by the workflow: the run id
-  // defaults to the newest successful build, the tag is generated from the
-  // candidate's own manifest. A required free-text field here was an 11-digit
-  // number retyped by hand and a version number a human could get wrong in a
-  // way nothing downstream would catch.
+  // The operator names the soaked candidate: every push redeploys beta, so
+  // "the newest successful build" is rarely the one that soaked. The tag stays
+  // generated from the candidate's own manifest.
   const doc = parse(readFileSync(join(workflows, 'promote-production.yml'), 'utf8'))
   const inputs = doc.on.workflow_dispatch.inputs
 
-  it('asks the operator to type nothing', () => {
-    for (const name of Object.keys(inputs)) {
+  it('requires the candidate run id, with no default, and nothing else', () => {
+    expect(inputs.candidate_run_id.required).toBe(true)
+    expect(inputs.candidate_run_id).not.toHaveProperty('default')
+    for (const name of Object.keys(inputs).filter(n => n !== 'candidate_run_id')) {
       expect(inputs[name].required, `${name} must be optional`).toBe(false)
     }
   })
 
-  it('resolves the candidate and the tag instead of trusting input', () => {
+  it('never picks a candidate for the operator', () => {
     const body = readFileSync(join(workflows, 'promote-production.yml'), 'utf8')
-    // Newest successful build-beta run, not "whatever was pasted".
-    expect(body).toMatch(/gh run list[\s\S]{0,200}--workflow build-beta\.yml/)
-    expect(body).toMatch(/--status success/)
+    expect(body).not.toMatch(/gh run list/)
+    const step = doc.jobs.resolve.steps.find((s: { id?: string }) => s.id === 'run')
+    expect(step.run).toMatch(/''\|\*\[!0-9\]\*\) echo "::error::candidate_run_id must be/)
     // The tag's version segment comes from the manifest, never from input.
     expect(body).toMatch(/runtime-v\$V-\$DATE\.\$N/)
+  })
+
+  it('names its candidate in the run title, where Workflow A reads it', () => {
+    expect(doc['run-name']).toBe('B · Promote candidate run ${{ inputs.candidate_run_id }}')
   })
 
   it('gates only the irreversible half, after publishing what it will ship', () => {
@@ -495,39 +564,33 @@ describe('promote input ergonomics', () => {
     expect(resolveSteps).not.toMatch(/wrangler@|gh release create|gh release edit/)
   })
 
-  it('refuses to promote bytes beta is not serving', () => {
-    // Deployment protection rules are unavailable on this repo's plan, so
-    // there is no approval step in which a human compares the candidate id
-    // against beta. The workflow does it instead — and it must FAIL, not warn,
-    // when the candidate was auto-resolved, because in that path nobody chose
-    // the thing being shipped.
+  it('reports whether beta still serves the candidate, as a warning only', () => {
+    // The operator named the candidate, and beta has usually moved on since
+    // the soak, so a mismatch is shown to the approver rather than refused.
     const step = doc.jobs.resolve.steps.find(
       (s: { id?: string }) => s.id === 'beta')
     expect(step, 'resolve must cross-check beta').toBeDefined()
     expect(step.run).toContain('BETA_ORIGIN')
     expect(step.run).toContain('candidateId')
-    // Auto-resolved mismatch is fatal.
-    expect(step.run).toMatch(/::error::beta serves/)
-    // A deliberately pinned run id downgrades it to a warning — the operator
-    // said which candidate they meant, so this is information, not a veto.
-    expect(step.run).toMatch(/::warning::beta serves/)
-    // Unreachable beta must not silently pass in the auto path either.
-    expect(step.run).toMatch(/::error::could not read/)
+    expect(step.run).toMatch(/::warning::beta now serves/)
+    expect(step.run).toMatch(/::warning::could not read/)
+    expect(step.run).not.toMatch(/::error::/)
+    expect(step.run).toContain('state=**MISMATCH**')
   })
 
-  it('promotes only a completed, successful Workflow A run, pinned or not', () => {
+  it('promotes only a completed, successful Workflow A run', () => {
     // A failed-gate run still holds a `candidate` (pack uploads it before the
     // gates finish), so the run's own state is what keeps it off production.
     const step = doc.jobs.resolve.steps.find(
       (s: { id?: string }) => s.id === 'run')
     expect(step, 'resolve must resolve the run').toBeDefined()
-    const check = step.run.slice(step.run.lastIndexOf('fi\n'))
+    const check = step.run.slice(step.run.indexOf('RUN_STATE='))
     expect(check).toMatch(/gh api "repos\/\$GITHUB_REPOSITORY\/actions\/runs\/\$RUN_ID"/)
     expect(check).toContain('"\\(.path) \\(.status) \\(.conclusion)"')
     expect(check).toContain('".github/workflows/build-beta.yml completed success") : ;;')
     expect(check).toMatch(/\*\) echo "::error::run \$RUN_ID is not a successful[^\n]*\n\s*exit 1/)
-    // The check runs on both paths: after the pinned/resolved branch closes,
-    // before the run id is published to the deploy job.
+    // Before the run id is published to the deploy job.
+    expect(check.indexOf('gh api')).toBeGreaterThanOrEqual(0)
     expect(check.indexOf('gh api')).toBeLessThan(check.indexOf('run_id=$RUN_ID'))
   })
 
@@ -592,6 +655,44 @@ describe('promote input ergonomics', () => {
     const deploySteps = JSON.stringify(doc.jobs.deploy.steps)
     expect(deploySteps).toContain('sha256sum -c SHA256SUMS')
     expect(deploySteps).toMatch(/digest changed between resolve/)
+  })
+})
+
+describe('the beta deploy order guard', () => {
+  const commit = 'a'.repeat(40)
+  const verdict = (status: string, event: string, deployOlder = false) =>
+    deployOrderVerdict({ status, event, deployOlder, commit, branch: 'main' })
+
+  it('deploys the branch tip, from a push or a dispatch', () => {
+    expect(verdict('identical', 'push').deploy).toBe(true)
+    expect(verdict('identical', 'workflow_dispatch').deploy).toBe(true)
+  })
+
+  it('refuses a push run, or a re-run of one, once main has moved on', () => {
+    // A re-run keeps its event, so re-running an older push run lands here.
+    for (const status of ['ahead', 'behind', 'diverged']) {
+      const v = verdict(status, 'push')
+      expect(v.deploy, status).toBe(false)
+      expect(v.line).toMatch(/^::error::main has moved on/)
+    }
+    expect(verdict('ahead', 'push', true).deploy).toBe(false)
+  })
+
+  it('refuses a dispatch of a commit main has moved past unless deploy_older says so', () => {
+    expect(verdict('ahead', 'workflow_dispatch')).toMatchObject({ deploy: false })
+    expect(verdict('ahead', 'workflow_dispatch').line).toMatch(/^::error::main has moved past/)
+    expect(verdict('ahead', 'workflow_dispatch', true)).toMatchObject({ deploy: true })
+    expect(verdict('ahead', 'workflow_dispatch', true).line).toMatch(/^::warning::/)
+  })
+
+  it('deploys a dispatched ref that is not on main, such as a hotfix branch', () => {
+    expect(verdict('behind', 'workflow_dispatch').deploy).toBe(true)
+    expect(verdict('diverged', 'workflow_dispatch').deploy).toBe(true)
+  })
+
+  it('refuses a compare status it does not know', () => {
+    expect(verdict('', 'workflow_dispatch').deploy).toBe(false)
+    expect(verdict('weird', 'push').deploy).toBe(false)
   })
 })
 
@@ -714,13 +815,14 @@ describe('beta summary hands off to promote', () => {
   const betaBody = readFileSync(join(workflows, 'build-beta.yml'), 'utf8')
 
   it('links the promote workflow and offers a command that pins THIS candidate', () => {
-    // Two different needs. The link is for "promote what I just soaked", which
-    // is the default path and needs no inputs. The `gh` command is for "promote
-    // this one specifically" — the case the link cannot serve, because GitHub
-    // has no way to prefill workflow_dispatch inputs from a URL.
+    // The link opens the form, where the run id must be typed; the `gh`
+    // command carries it, because GitHub cannot prefill workflow_dispatch
+    // inputs from a URL.
     expect(betaBody).toMatch(/actions\/workflows\/promote-production\.yml/)
     expect(betaBody).toMatch(/gh workflow run promote-production\.yml/)
     expect(betaBody).toMatch(/candidate_run_id=\$GITHUB_RUN_ID/)
+    expect(betaBody).not.toMatch(/defaults to\s*"?\s*\n?\s*echo "the newest successful build/)
+    expect(betaBody).not.toMatch(/both inputs can be/)
   })
 
   it('says why the link cannot carry the run id, so nobody re-adds a query string', () => {

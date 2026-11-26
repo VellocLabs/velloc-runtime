@@ -1,4 +1,7 @@
 name: B · Promote Production
+# Workflow A's prune steps read the candidate run id from this title, to keep
+# the candidate of a promote that has not finished.
+run-name: B · Promote candidate run ${{ inputs.candidate_run_id }}
 
 # Ships a candidate that already soaked on beta to app.velloc.app by deploying
 # the same archive. No checkout, no install: nothing here can compile (the
@@ -12,12 +15,10 @@ on:
     inputs:
       candidate_run_id:
         description: >-
-          Run ID of an "A · Build & Deploy Beta" run. LEAVE EMPTY to promote
-          the newest successful build — which is what you want right after
-          soaking it. Fill it in to pin a specific one (e.g. someone has
-          rebuilt since you soaked).
-        required: false
-        default: ''
+          Run ID of the "A · Build & Deploy Beta" run you soaked (its job
+          summary prints it). Required: every push to main redeploys beta, so
+          the newest build is not necessarily the one that soaked.
+        required: true
       release_tag:
         description: >-
           LEAVE EMPTY to generate runtime-v<N>-<today>.<n> — <N> is read from
@@ -81,10 +82,8 @@ jobs:
           fi
           echo "guard: no build or checkout step in the promote path"
 
-      # Empty input = "the one I just soaked". Resolving it here rather than
-      # making the human copy an 11-digit number removes the transcription
-      # error, and the summary below still names exactly what was chosen — the
-      # decision stays informed, it just stops being manual.
+      # The operator names the run that soaked; nothing is resolved for them,
+      # since beta moves on every push and "newest" is rarely "soaked".
       - name: Resolve candidate run
         id: run
         env:
@@ -92,27 +91,14 @@ jobs:
           RUN_ID_INPUT: ${{ inputs.candidate_run_id }}
         run: |
           set -euo pipefail
-          if [ -n "$RUN_ID_INPUT" ]; then
-            case "$RUN_ID_INPUT" in
-              *[!0-9]*) echo "::error::candidate_run_id must be numeric"; exit 1 ;;
-            esac
-            RUN_ID="$RUN_ID_INPUT"
-            echo "pinned by input: $RUN_ID"
-          else
-            RUN_ID=$(gh run list --repo "$GITHUB_REPOSITORY" \
-              --workflow build-beta.yml --status success --limit 1 \
-              --json databaseId --jq '.[0].databaseId // empty')
-            if [ -z "$RUN_ID" ]; then
-              echo "::error::no successful 'A · Build & Deploy Beta' run to promote." \
-                   "Run Workflow A first."
-              exit 1
-            fi
-            echo "resolved newest successful build: $RUN_ID"
-          fi
+          case "$RUN_ID_INPUT" in
+            ''|*[!0-9]*) echo "::error::candidate_run_id must be a Workflow A run id (digits only)"; exit 1 ;;
+          esac
+          RUN_ID="$RUN_ID_INPUT"
+          echo "candidate run: $RUN_ID"
           # Security: Build & Deploy Beta uploads `candidate` before its gates
           # finish, so a run whose typecheck or tests failed still holds one.
-          # Only a completed, successful run of that workflow is promotable,
-          # whether resolved above or pinned by hand.
+          # Only a completed, successful run of that workflow is promotable.
           RUN_STATE=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID" \
                         --jq '"\(.path) \(.status) \(.conclusion)"') || {
             echo "::error::could not read run $RUN_ID"; exit 1; }
@@ -153,10 +139,10 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           RUN_ID: ${{ steps.run.outputs.run_id }}
-        # Fails loudly when the run's artifact has aged out of retention.
-        # That is the correct outcome: an expired candidate cannot be
-        # promoted, because rebuilding the same commit produces a different
-        # artifact that nobody soaked.
+        # Fails loudly when the run's artifact has expired or been pruned
+        # (Workflow A keeps the newest few). That is the correct outcome:
+        # rebuilding the same commit produces a different artifact that nobody
+        # soaked.
         run: |
           set -euo pipefail
           gh run download "$RUN_ID" --repo "$GITHUB_REPOSITORY" \
@@ -220,17 +206,15 @@ jobs:
             echo "digest=$(awk '$2 == "runtime.zip" {print $1}' artifact/SHA256SUMS)"
           } >> "$GITHUB_OUTPUT"
 
-      # "Production serves what beta soaked", enforced here rather than by a human
-      # comparing ids: the candidate must be the one beta serves. It catches a
-      # pinned older run or a beta redeploy/rollback since; it cannot catch a
-      # rebuild after your soak. A pinned candidate downgrades a mismatch to a
-      # warning.
+      # Reports whether beta still serves the candidate. Every push redeploys
+      # beta, so a candidate soaked earlier has usually been replaced there; the
+      # operator named it, so a mismatch or an unreadable beta is a warning
+      # shown to the approver, never a refusal.
       - name: Cross-check the candidate against beta
         id: beta
         env:
           V: ${{ steps.meta.outputs.interface_version }}
           CANDIDATE_ID: ${{ steps.meta.outputs.candidate_id }}
-          PINNED_RUN: ${{ inputs.candidate_run_id }}
         # No `set -e`: a failed fetch is handled below rather than ending the
         # step, so "beta is unreachable" and "beta disagrees" stay distinct.
         run: |
@@ -248,15 +232,9 @@ jobs:
           done
 
           if [ -z "$LIVE" ]; then
-            if [ -n "$PINNED_RUN" ]; then
-              echo "::warning::could not read $URL — skipping the beta cross-check, candidate_run_id was pinned explicitly"
-              echo "state=unreachable (cross-check skipped)" >> "$GITHUB_OUTPUT"
-              exit 0
-            fi
-            echo "::error::could not read $URL after 3 attempts. The candidate was" \
-                 "auto-resolved, so there is nothing to check it against. Pass" \
-                 "candidate_run_id explicitly to promote without the cross-check."
-            exit 1
+            echo "::warning::could not read $URL — skipping the beta cross-check"
+            echo "state=unreachable (cross-check skipped)" >> "$GITHUB_OUTPUT"
+            exit 0
           fi
 
           if [ "$LIVE" = "$CANDIDATE_ID" ]; then
@@ -265,17 +243,10 @@ jobs:
             exit 0
           fi
 
-          if [ -n "$PINNED_RUN" ]; then
-            echo "::warning::beta serves $LIVE but this promotes $CANDIDATE_ID (pinned" \
-                 "explicitly). Production will serve bytes beta is not serving."
-            echo "state=**MISMATCH** — beta serves \`$LIVE\` (pinned override)" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
-          echo "::error::beta serves $LIVE, but the newest successful build is" \
-               "$CANDIDATE_ID. Deploy that candidate to beta and soak it, or pass" \
-               "candidate_run_id=<run> to promote deliberately."
-          exit 1
+          echo "::warning::beta now serves $LIVE, not $CANDIDATE_ID. Production will" \
+               "serve the candidate you named, which beta has since replaced."
+          echo "state=**MISMATCH** — beta now serves \`$LIVE\`" >> "$GITHUB_OUTPUT"
+          exit 0
 
       # The tag encodes the interface version, and a mislabelled tag is a
       # rollback pointed at the wrong wire contract months from now. Generating
@@ -327,7 +298,6 @@ jobs:
       - name: Summary — what approving will ship
         env:
           RUN_ID: ${{ steps.run.outputs.run_id }}
-          PINNED_RUN: ${{ inputs.candidate_run_id }}
           PINNED_TAG: ${{ inputs.release_tag }}
           TAG: ${{ steps.tag.outputs.release_tag }}
           V: ${{ steps.meta.outputs.interface_version }}
@@ -402,7 +372,7 @@ jobs:
             echo '| | |'
             echo '|---|---|'
             echo "| Candidate | \`$CANDIDATE_ID\` |"
-            echo "| From run | [$RUN_ID]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$RUN_ID) ${PINNED_RUN:+(pinned)}${PINNED_RUN:-(newest successful build)} |"
+            echo "| From run | [$RUN_ID]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$RUN_ID) |"
             echo "| Release tag | \`$TAG\` ${PINNED_TAG:+(pinned)}${PINNED_TAG:-(generated)} |"
             echo "| Interface version | v$V |"
             echo "| Source commit | \`$SOURCE_COMMIT\` |"
@@ -430,13 +400,9 @@ jobs:
             fi
             echo
             echo "Integrity verified: digests match, the manifest names this run,"
-            echo "the bundle's baked-in base is \`/runtime/v$V/assets/\`, and beta was"
-            echo "compared against this candidate rather than taken on trust."
-            echo
-            echo "Note what the cross-check cannot know: whether the candidate beta"
-            echo "is serving now is the one you actually soaked. If someone rebuilt"
-            echo "after your soak, beta moved with it — pin \`candidate_run_id\` when"
-            echo "you need a specific build."
+            echo "and the bundle's baked-in base is \`/runtime/v$V/assets/\`. The beta"
+            echo "row says whether beta still serves it; every push to main redeploys"
+            echo "beta, so a soaked candidate has often been replaced there."
           } >> "$GITHUB_STEP_SUMMARY"
 
   deploy:
@@ -457,7 +423,8 @@ jobs:
     steps:
       # Re-downloaded rather than passed along: jobs get separate runners, and
       # re-verifying the digest here means the bytes that reach production were
-      # checked on the machine that deploys them.
+      # checked on the machine that deploys them. Workflow A's prune steps keep
+      # the candidate of a promote that has not finished, approval wait included.
       - name: Download and re-verify candidate
         env:
           GH_TOKEN: ${{ github.token }}
