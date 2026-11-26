@@ -10,13 +10,15 @@
  * definition that needs a key gets it from the person in the platform's own
  * dialog (RP-22): the key goes from that dialog to the settings write path
  * and the module sees only whether an instance was made. A definition that
- * needs a sign-in is refused until that dialog serves it. The module never
+ * needs a sign-in gets it in the platform's own sign-in dialog (RP-23); the
+ * module sees the instance id, or how the sign-in ended. The module never
  * chooses an instance id.
  */
 
 import { resolveLocalizedText, type LocalizedText } from '../../config/localizedText'
 import type { NexusProviderConfig } from '../../settings/settingsTypes'
 import type { KeyAsked, KeyRequestAbout, KeyTaken } from './keyRequest/providerKeyRequests'
+import type { ProviderLoginAskedBy } from './login/loginProtocol'
 import { defaultInstanceName, planNewInstance, storedInstanceIds } from './providerInstances'
 import { MOD_PROVIDER_ID_PREFIX, type ProviderCredentialMethod, type ResolvedProvider } from './providerManifest'
 
@@ -43,6 +45,25 @@ export type KeyStored<T> = KeyTaken<T>
 /** A sign-in asked of the person for a just-made instance, and how it ended. */
 export type SignInQuestion = KeyRequestAbout & { providerId: string }
 export type SignInEnded = { kind: 'done'; account?: string } | { kind: 'failed'; code: string } | { kind: 'cancelled' }
+
+/** The sign-in service as `signIn` needs it. */
+export type SignInService = {
+  startLogin(providerId: string, askedBy: ProviderLoginAskedBy): { loginId: string }
+  whenOver(loginId: string, signal?: AbortSignal): Promise<SignInEnded>
+  cancel(loginId: string): void
+}
+
+/** `signIn` over a sign-in service: one sign-in for the instance, published with who asked. */
+export function signInThrough(service: () => SignInService): NonNullable<InstanceCallsDeps['signIn']> {
+  return async ({ providerId, routerId, routerLabel, plugin, label }, signal) => {
+    const credentials = service()
+    const { loginId } = credentials.startLogin(providerId, { routerId, ...(routerLabel !== undefined ? { routerLabel } : {}), plugin, label })
+    const ended = await credentials.whenOver(loginId, signal)
+    // A finished sign-in leaves the dialog at once; a failed one stays to say why.
+    if (ended.kind === 'done') credentials.cancel(loginId)
+    return ended
+  }
+}
 
 export type ManagedDefinition = {
   provider: Pick<ResolvedProvider, 'id' | 'key' | 'manifest'>
@@ -350,8 +371,13 @@ export function createInstanceCalls(deps: InstanceCallsDeps) {
     if ('signIn' in credential) {
       // Stored without a credential so that its sign-in can run; listed once that is done.
       signingIn.add(plan.id)
-      await deps.writeConfig(plan.id, plan.config)
-      await deps.resync()
+      try {
+        await deps.writeConfig(plan.id, plan.config)
+        await deps.resync()
+      } catch (error) {
+        await undo(routerId, plan.id)
+        throw error
+      }
       return { id: plan.id }
     }
     await deps.writeConfig(plan.id, { ...plan.config, ...credential })
@@ -359,11 +385,17 @@ export function createInstanceCalls(deps: InstanceCallsDeps) {
     return { id: plan.id }
   }
 
-  /** Takes back an instance whose sign-in did not finish. Runs in the router's series. */
+  /**
+   * Takes back an instance whose sign-in did not finish. Runs in the router's
+   * series. Never throws: an entry that cannot be removed stays, listed as not
+   * connected, for the person to remove.
+   */
   async function undo(routerId: string, id: string): Promise<void> {
     try {
-      await deps.removeConfig(id)
+      if (deps.configs()[id]) await deps.removeConfig(id)
       deps.forgetState(id)
+    } catch {
+      // Kept as described above.
     } finally {
       signingIn.delete(id)
       await settle(routerId).catch(() => undefined)
@@ -426,12 +458,18 @@ export function createInstanceCalls(deps: InstanceCallsDeps) {
       const { account } = ended
       return await inSeries(routerId, async () => {
         const stored = deps.configs()[id]
-        if (named === undefined && account !== undefined && stored) {
-          // The write path keeps the sealed values when none is sent.
-          const { apiKey: _key, hasApiKey: _flag, ...rest } = stored
-          await deps.writeConfig(id, { ...rest, name: defaultInstanceName(labelOf(definition, deps), 'login', [], account) })
+        try {
+          if (named === undefined && account !== undefined && stored) {
+            // The write path keeps the sealed values when none is sent.
+            const { apiKey: _key, hasApiKey: _flag, ...rest } = stored
+            // The name is cosmetic: an instance signed in is kept under its first name if this fails.
+            await deps
+              .writeConfig(id, { ...rest, name: defaultInstanceName(labelOf(definition, deps), 'login', [], account) })
+              .catch(() => undefined)
+          }
+        } finally {
+          signingIn.delete(id)
         }
-        signingIn.delete(id)
         await settle(routerId)
         return { id }
       })

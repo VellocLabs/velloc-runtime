@@ -335,6 +335,30 @@ describe('the shell dialog for a sign-in a settings app asked for', () => {
     render(createElement(I18nProvider, { locale }, createElement(ProviderSignInHost)))
   }
 
+  it('holds one subscription while mounted, however often the runtime publishes', async () => {
+    // The topic answers each subscription with a snapshot, as the broker does;
+    // capped, so a host that re-subscribes on every render fails instead of spinning.
+    let subscribes = 0
+    const connection = {
+      subscribe: (_topic: string, listener: (event: { payload: unknown }) => void) => {
+        subscribes += 1
+        if (subscribes <= 25) queueMicrotask(() => listener({ payload: { seq: 0, logins: {}, signedOut: {} } }))
+        return () => {}
+      },
+      request: async () => ({}),
+    } as unknown as RuntimeConnection
+    const store = new ProviderLoginStore()
+    store.attach(async () => connection)
+    resetProviderLoginStoreForTests(store)
+    render(createElement(I18nProvider, { locale: 'en' }, createElement(ProviderSignInHost)))
+    for (let tick = 0; tick < 10; tick += 1) {
+      await act(async () => {
+        await new Promise(resolve => setTimeout(resolve, 0))
+      })
+    }
+    expect(subscribes).toBe(1)
+  })
+
   it('draws it over whatever the window shows, naming the provider, the router that asked and the plugin', async () => {
     mountHost()
     await waitFor(() => expect(conn.subscribed()).toBe(1))

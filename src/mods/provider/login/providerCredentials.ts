@@ -108,6 +108,12 @@ function errorText(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
 }
 
+/** How a sign-in at its final step ended: the account at most, a failure by its code alone. */
+function endOf(step: ProviderLoginStep): ProviderLoginEnd {
+  if (step.kind === 'done') return { kind: 'done', ...(step.account !== undefined ? { account: step.account } : {}) }
+  return step.kind === 'failed' ? { kind: 'failed', code: step.code } : { kind: 'cancelled' }
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
@@ -411,14 +417,7 @@ export class ProviderCredentials {
     }
     run.kept?.over()
     this.setStep(run, step)
-    this.tell(
-      run,
-      step.kind === 'done'
-        ? { kind: 'done', ...(step.account !== undefined ? { account: step.account } : {}) }
-        : step.kind === 'failed'
-          ? { kind: 'failed', code: step.code }
-          : { kind: 'cancelled' },
-    )
+    this.tell(run, endOf(step))
   }
 
   private tell(run: LoginRun, end: ProviderLoginEnd): void {
@@ -434,11 +433,7 @@ export class ProviderCredentials {
   whenOver(loginId: string, signal?: AbortSignal): Promise<ProviderLoginEnd> {
     const run = this.byId.get(loginId)
     if (!run) return Promise.resolve({ kind: 'cancelled' })
-    if (run.terminal) {
-      const { step } = run.session
-      if (step.kind === 'done') return Promise.resolve({ kind: 'done', ...(step.account !== undefined ? { account: step.account } : {}) })
-      return Promise.resolve(step.kind === 'failed' ? { kind: 'failed', code: step.code } : { kind: 'cancelled' })
-    }
+    if (run.terminal) return Promise.resolve(endOf(run.session.step))
     if (signal?.aborted) {
       this.cancel(loginId)
       return Promise.resolve({ kind: 'cancelled' })

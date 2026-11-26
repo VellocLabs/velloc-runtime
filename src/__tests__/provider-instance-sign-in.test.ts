@@ -12,6 +12,7 @@ import {
   type InstanceCallsDeps,
   type SignInEnded,
   type SignInQuestion,
+  signInThrough,
 } from '../mods/provider/providerInstanceCalls'
 import { instanceSlotOf } from '../mods/provider/providerInstances'
 import { PROVIDER_WIRE_FORMATS, resolveProviders } from '../mods/provider/providerManifest'
@@ -179,6 +180,57 @@ describe('addInstance of a provider that needs a sign-in', () => {
     await opened(2)
     signedIn(`${SIGNIN}.bbbb`, 'ada@example.test')
     expect(await again).toEqual({ id: `${SIGNIN}.bbbb` })
+  })
+
+  it('a registration that fails after the instance was stored takes it back and frees the router', async () => {
+    let failing = true
+    const { calls, configs, asked, opened, signedIn } = rig({
+      resync: async () => {
+        if (failing) throw new Error('the host could not register it')
+      },
+    })
+    await expect(calls.add(ROUTER, { definition: 'signin' }, 'action')).rejects.toThrow('the host could not register it')
+    expect(configs).toEqual({})
+    expect(asked).toEqual([])
+    failing = false
+    const again = calls.add(ROUTER, { definition: 'signin' }, 'action')
+    await opened()
+    signedIn(`${SIGNIN}.bbbb`)
+    expect(await again).toEqual({ id: `${SIGNIN}.bbbb` })
+  })
+
+  it('an instance that cannot be taken back is listed as not connected, and the app still gets how the sign-in ended', async () => {
+    const { calls, asked, opened } = rig({
+      removeConfig: async () => {
+        throw new Error('settings.json is locked')
+      },
+    })
+    const adding = calls.add(ROUTER, { definition: 'signin' }, 'action')
+    await opened()
+    asked[0]!.end({ kind: 'cancelled' })
+    expect(await adding).toEqual({ cancelled: true })
+    expect(calls.instances(ROUTER)).toMatchObject([{ id: FIRST, connected: false }])
+  })
+
+  it('a done sign-in whose new name cannot be written keeps the instance under its first name and lists it', async () => {
+    let writes = 0
+    const stored: Record<string, NexusProviderConfig> = {}
+    const { calls, opened, signedIn } = rig(
+      {
+        writeConfig: async (id, config) => {
+          writes += 1
+          if (writes > 1) throw new Error('settings.json is locked')
+          stored[id] = config
+        },
+        configs: () => stored,
+      },
+    )
+    const adding = calls.add(ROUTER, { definition: 'signin' }, 'action')
+    await opened()
+    stored[FIRST] = { ...stored[FIRST]!, storedSecrets: ['access_token'], account: 'ada@example.test' }
+    signedIn(FIRST, 'ada@example.test')
+    expect(await adding).toEqual({ id: FIRST })
+    expect(calls.instances(ROUTER)).toMatchObject([{ id: FIRST, name: 'Cloud', connected: true }])
   })
 
   it('one at a time for a router: a second add while the sign-in is open is answered `busy`; a rename is not held up', async () => {
@@ -363,12 +415,7 @@ describe('the calls over the real sign-in service', () => {
       locale: () => 'en',
       now: () => NOW,
       random: () => 0,
-      signIn: async ({ providerId, routerId, plugin, label }, signal) => {
-        const { loginId } = credentials.startLogin(providerId, { routerId, plugin, label })
-        const ended = await credentials.whenOver(loginId, signal)
-        if (ended.kind === 'done') credentials.cancel(loginId)
-        return ended
-      },
+      signIn: signInThrough(() => credentials),
     })
     const made = await calls.add(ROUTER, { definition: 'signin' }, 'action')
     expect(made).toEqual({ id: FIRST })
