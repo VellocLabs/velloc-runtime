@@ -4,6 +4,7 @@
  * stores it, and that it is made once.
  */
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { providersHandlers } from '../browser/bridge/adapter/providersBridgeAdapter'
 import { resetCustomProviderRecords } from '../config/customProviderRegistry'
 import { resetModProviderDefinitions } from '../config/nexusModelConfig/providers'
 import { configureRuntimeProviders, resetRuntimeProviders } from '../models/drivers/runtimeProviders'
@@ -18,6 +19,7 @@ import {
   type ProviderPluginFacts,
 } from '../mods/provider/providerModHost'
 import { checkPluginDescriptor } from '../pluginHost/manifestValidator'
+import { wipeSettingsMemos } from '../settings/settingsStore'
 import type { NexusProviderConfig } from '../settings/settingsTypes'
 
 const HOME = '/home/u'
@@ -374,5 +376,27 @@ describe('the provider host', () => {
     }
     await host.sync({ enabled: [plugin()], disabled: [] })
     expect(stores).toEqual([])
+  })
+
+  it('no write makes a managed instance the active provider; a provider nobody manages still is', async () => {
+    const { host, stores } = rig()
+    await host.sync({ enabled: [plugin()], disabled: [] })
+    const files = new Map<string, string>()
+    const fs = {
+      readFile: async (path: string) => {
+        const text = files.get(path)
+        if (text === undefined) throw Object.assign(new Error(`ENOENT: ${path}`), { code: 'ENOENT' })
+        return text
+      },
+      writeFile: async (path: string, data: string) => void files.set(path, data),
+      mkdir: async () => {},
+    } as never
+    const active = () => JSON.parse([...files.values()][0]!).providers.activeProviderId
+    wipeSettingsMemos()
+    await providersHandlers.upsert({ id: stores[0]!, config: { source: 'mod', modOwner: OWNER, enabledModels: ['m'] } }, { homeDir: HOME, fs })
+    expect(active()).toBeUndefined()
+    await providersHandlers.upsert({ id: ROUTER, config: { source: 'mod', modOwner: OWNER } }, { homeDir: HOME, fs })
+    expect(active()).toBe(ROUTER)
+    wipeSettingsMemos()
   })
 })

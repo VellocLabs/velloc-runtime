@@ -651,19 +651,12 @@ export function createRuntimeProvidersHost(ctx: WebUiBridgeContext): RuntimeProv
   return {
     async writeProviderConfig(providerId, config, options) {
       const settingsRoot = await settingsRootForProviders(ctx)
-      if (options?.promote === false) {
-        await providersHandlers.upsert({ id: providerId, config }, providersAdapterContext(ctx, settingsRoot), undefined, false)
-        return
-      }
-      const response = await handleProvidersBridgeRequest(
-        {
-          id: `runtime-provider-${crypto.randomUUID()}`,
-          route: createBridgeRoute('providers', 'upsert'),
-          payload: { id: providerId, config },
-        } as never,
+      await providersHandlers.upsert(
+        { id: providerId, config },
         providersAdapterContext(ctx, settingsRoot),
+        undefined,
+        options?.promote ?? true,
       )
-      if (!response.ok) throw new Error(response.error.message)
     },
     async removeProviderConfig(providerId) {
       const settingsRoot = await settingsRootForProviders(ctx)

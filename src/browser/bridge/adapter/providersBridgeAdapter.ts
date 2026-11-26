@@ -503,6 +503,7 @@ async function handleUpsert(
   let secretsBefore: Readonly<Record<string, string>> = {}
   let ownerBefore: string | undefined
   let baseUrlBefore: string | undefined
+  const managed = getProviderDefinition(payload.id)?.catalogMod?.managedBy !== undefined
   const updated = await updateProvidersSettings(ctx.homeDir, ctx.fs, prev => {
     keyBefore = prev?.configs?.[payload.id]?.apiKey
     secretsBefore = prev?.configs?.[payload.id]?.secrets ?? {}
@@ -526,8 +527,9 @@ async function handleUpsert(
       // nexus-provider-settings.spec.ts). Only when none is set yet, so a
       // user's explicit active selection survives an unrelated upsert. Without
       // this the quick model picker stays empty after the very first provider
-      // save (no active provider → no default selection to seed).
-      ...(prev?.activeProviderId || promote ? { activeProviderId: prev?.activeProviderId ?? payload.id } : {}),
+      // save (no active provider → no default selection to seed). A provider
+      // a router manages is never picked, so it is never made active.
+      ...(prev?.activeProviderId || (promote && !managed) ? { activeProviderId: prev?.activeProviderId ?? payload.id } : {}),
       configs: { ...(prev?.configs ?? {}) },
       ...(prev?.order ? { order: prev.order } : {}),
       ...(prev?.retiredInstances ? { retiredInstances: prev.retiredInstances } : {}),
