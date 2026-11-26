@@ -836,6 +836,18 @@ export async function updateProvidersSettingsInSource(
   return updateSectionInSource(source, ctx, fs, 'providers', updater)
 }
 
+/**
+ * Runs `task` in turn with the writes to `userSettings`: it starts after every
+ * write already queued has finished, and a write queued while it runs waits for
+ * it. `task` must not write that file itself.
+ */
+export function runInUserSettingsTurn<T>(
+  homeDir: string,
+  task: () => Promise<T>,
+): Promise<T> {
+  return enqueueSettingsUpdate(layerFilePath('userSettings', { homeDir }), task)
+}
+
 /** Read-modify-write the `providers` section in `userSettings`. */
 export function updateProvidersSettings(
   homeDir: string,

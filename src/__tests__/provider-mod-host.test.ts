@@ -549,6 +549,49 @@ describe('republishing', () => {
     await expect(publishModProvidersChanged()).resolves.toBeUndefined()
     expect(order).toEqual(['catalog', 'broadcast', 'broadcast2'])
   })
+
+  it('sends the host the provider configs again between the two, and goes on when that fails', async () => {
+    const order: string[] = []
+    const base = { writeProviderConfig: async () => {}, readCache: async () => undefined, writeCache: async () => {} }
+    configureRuntimeProviders({
+      ...base,
+      republishCatalog: async () => void order.push('catalog'),
+      republishProviderConfigs: async () => void order.push('configs'),
+      broadcastProvidersChanged: async () => void order.push('broadcast'),
+    })
+    await publishModProvidersChanged()
+    expect(order).toEqual(['catalog', 'configs', 'broadcast'])
+    configureRuntimeProviders({
+      ...base,
+      republishProviderConfigs: async () => {
+        throw new Error('no host')
+      },
+      broadcastProvidersChanged: async () => void order.push('broadcast2'),
+    })
+    await expect(publishModProvidersChanged()).resolves.toBeUndefined()
+    expect(order.at(-1)).toBe('broadcast2')
+  })
+
+  it('an instance stored before it was registered is published with its default address once it is', async () => {
+    const INSTANCE = `${ZEN}.ab12`
+    const stored: Record<string, NexusProviderConfig> = {
+      [INSTANCE]: { source: 'mod', modOwner: 'opencode@inline', definition: ZEN, name: 'Second', createdAt: 1 },
+    }
+    setRuntimeProviderConfigs(stored)
+    // What the entry's own write published: the catalog did not have the instance yet.
+    expect(withRuntimeProviderBaseUrls(stored)[INSTANCE]?.baseUrl).toBeUndefined()
+    const sent: Array<string | undefined> = []
+    configureRuntimeProviders({
+      writeProviderConfig: async () => {},
+      readCache: async () => undefined,
+      writeCache: async () => {},
+      republishProviderConfigs: async () => void sent.push(withRuntimeProviderBaseUrls(stored)[INSTANCE]?.baseUrl),
+    })
+    const { host } = rig({ publish: undefined, adopt: undefined })
+    await host.sync({ enabled: [plugin('opencode', { zen: provider({ instances: 'multiple' }) })], disabled: [] })
+    expect(host.registered().map(each => each.providerId)).toContain(INSTANCE)
+    expect(sent).toEqual(['https://opencode.ai/zen/v1'])
+  })
 })
 
 /** The runtime-provider host that the runtime hub installs, over a memory cache. */

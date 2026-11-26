@@ -88,6 +88,11 @@ export type RuntimeProvidersHost = {
   /** Publish the current `NEXUS_MODEL_CONFIG` to the host (`model.publishCatalog`)
    *  — a provider mod was added or removed. Absent = no host. */
   republishCatalog?(): Promise<void>
+  /** Publish the stored provider configs to the host again
+   *  (`model.publishProviderConfigs`), after the catalog changed: the default
+   *  address a runtime-only provider is published with comes from the catalog.
+   *  Absent = no host. */
+  republishProviderConfigs?(): Promise<void>
   /** Broadcast `providers.changed` to every open surface. Absent = no hub. */
   broadcastProvidersChanged?(extra?: ProvidersChangedListing): Promise<void>
 }
@@ -1036,12 +1041,19 @@ function flushModAdoptions(): Promise<void> {
 }
 
 /**
- * A provider mod was added or removed: the host gets the catalog again and
- * every open surface hears `providers.changed`, in that order — a surface
- * refreshes the catalog the moment it hears. Never rejects.
+ * A provider mod was added or removed: the host gets the catalog again, then
+ * the provider configs (an entry stored before its provider was in the
+ * catalog was published without its default address, and the host reaches
+ * no provider without one), and every open surface hears
+ * `providers.changed`, in that order — a surface refreshes the catalog the
+ * moment it hears. Never rejects.
  */
 export async function publishModProvidersChanged(): Promise<void> {
-  for (const step of [() => host?.republishCatalog?.(), () => host?.broadcastProvidersChanged?.()]) {
+  for (const step of [
+    () => host?.republishCatalog?.(),
+    () => host?.republishProviderConfigs?.(),
+    () => host?.broadcastProvidersChanged?.(),
+  ]) {
     try {
       await step()
     } catch (error) {

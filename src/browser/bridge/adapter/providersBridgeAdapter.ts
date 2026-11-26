@@ -14,6 +14,7 @@ import type { RuntimeFs } from '../../../utils/fs/runtimeFs'
 import type { NexusSettingsV1, ProviderWebProfileRef } from '../../../settings/settingsTypes'
 import {
   readUserLayer,
+  runInUserSettingsTurn,
   updateProvidersSettings,
 } from '../../../settings/settingsStore'
 import { normaliseProviderOrder } from '../../../settings/settingsNormalize'
@@ -475,6 +476,27 @@ async function handleList(
     source,
     order: providers?.order ?? [],
   }
+}
+
+/**
+ * Sends the host the stored provider configs again, unchanged, so an entry
+ * written before its provider was in the catalog gets its default address.
+ * Nothing is written and no surface is told. Runs in turn with settings
+ * writes: the host merges a publish per provider, so a snapshot older than a
+ * save's must not reach it after that save's own publish.
+ */
+export async function republishStoredProviderConfigs(ctx: ProvidersAdapterContext): Promise<void> {
+  const publish = ctx.publishToBroker
+  if (!publish) return
+  await runInUserSettingsTurn(ctx.homeDir, async () => {
+    const providers = (await readUserLayer(ctx.homeDir, ctx.fs)).settings.providers
+    const configs = providers?.configs ?? {}
+    if (Object.keys(configs).length === 0) return
+    await publish({
+      configs,
+      ...(providers?.activeProviderId ? { activeProviderId: providers.activeProviderId } : {}),
+    })
+  })
 }
 
 async function handleUpsert(

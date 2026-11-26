@@ -6,6 +6,7 @@ import {
 } from '../browser/webview/settings/clients'
 import type { NexusSettingsBridge } from '../browser/webview/nexusSettingsBridge'
 import type { RuntimeFs } from '../utils/fs/runtimeFs'
+import type { NexusProviderConfig } from '../browser/bridge/protocol'
 import {
   NEXUS_SETTINGS_FILE_NAME,
   wipeSettingsMemos,
@@ -17,6 +18,7 @@ import {
   providersHandlers,
   sealPersistedProviderApiKeys,
   sealProviderApiKeys,
+  republishStoredProviderConfigs,
 } from '../browser/bridge/adapter/providersBridgeAdapter'
 import { withProviderSecretMirror } from '../config/providerSecrets'
 import { isSealedSecret } from '../settings/secretValue'
@@ -271,6 +273,51 @@ describe('providersHandlers.upsert', () => {
       configs: { openai: { apiKey: 'sk-test' } },
       activeProviderId: 'openai',
     })
+  })
+
+  it('sends the stored configs to the host again on request, writing and announcing nothing', async () => {
+    const { fs, files } = makeMemoryFs()
+    const atWrite = vi.fn()
+    await providersHandlers.upsert({ id: 'mod.acme.main', config: { source: 'mod', name: 'Acme' } }, { homeDir: HOME, fs, publishToBroker: atWrite })
+    const before = new Map(files)
+    const publishToBroker = vi.fn()
+    const broadcastChanged = vi.fn()
+    await republishStoredProviderConfigs({ homeDir: HOME, fs, publishToBroker, broadcastChanged })
+    expect(publishToBroker).toHaveBeenCalledTimes(1)
+    expect(publishToBroker.mock.calls[0]).toEqual(atWrite.mock.calls[0])
+    expect(Object.keys(publishToBroker.mock.calls[0]![0].configs)).toEqual(['mod.acme.main'])
+    expect(broadcastChanged).not.toHaveBeenCalled()
+    expect(new Map(files)).toEqual(before)
+    // Nothing stored, or no host: nothing is sent.
+    const empty = vi.fn()
+    await republishStoredProviderConfigs({ homeDir: '/home/nobody', fs: makeMemoryFs().fs, publishToBroker: empty })
+    expect(empty).not.toHaveBeenCalled()
+    await expect(republishStoredProviderConfigs({ homeDir: HOME, fs })).resolves.toBeUndefined()
+  })
+
+  it('a save made while the configs are sent again publishes after them, so the host keeps the newer one', async () => {
+    const { fs } = makeMemoryFs()
+    await providersHandlers.upsert({ id: 'mod.acme.main', config: { source: 'mod', name: 'Old' } }, { homeDir: HOME, fs })
+    const sent: string[] = []
+    let release: (() => void) | undefined
+    const slow = vi.fn(async (payload: { configs: Record<string, NexusProviderConfig> }) => {
+      await new Promise<void>(resolve => {
+        release = resolve
+      })
+      sent.push(payload.configs['mod.acme.main']!.name!)
+    })
+    const resent = republishStoredProviderConfigs({ homeDir: HOME, fs, publishToBroker: slow })
+    await new Promise(resolve => setTimeout(resolve, 5))
+    expect(slow).toHaveBeenCalledTimes(1)
+    const saved = providersHandlers.upsert(
+      { id: 'mod.acme.main', config: { source: 'mod', name: 'New' } },
+      { homeDir: HOME, fs, publishToBroker: async payload => void sent.push(payload.configs['mod.acme.main']!.name!) },
+    )
+    await new Promise(resolve => setTimeout(resolve, 5))
+    expect(sent).toEqual([])
+    release?.()
+    await Promise.all([resent, saved])
+    expect(sent).toEqual(['Old', 'New'])
   })
 
   // Regression: the "new provider missing from the current session's quick

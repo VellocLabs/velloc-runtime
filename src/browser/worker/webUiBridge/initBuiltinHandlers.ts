@@ -14,6 +14,7 @@ import { listPluginMcpServers } from '../../../pluginHost/pluginMcpServerList'
 import { handleSkillsBridgeRequest } from '../../bridge/adapter/skillsBridgeAdapter'
 import {
   handleProvidersBridgeRequest,
+  republishStoredProviderConfigs,
   makeBridgeSecretSealer,
   providersHandlers,
   type ProvidersAdapterContext,
@@ -683,7 +684,8 @@ export function createRuntimeProvidersHost(ctx: WebUiBridgeContext): RuntimeProv
       }
     },
     // A provider mod was added or removed: the host learns the catalog's new
-    // entries, then every open surface is told (it refreshes on hearing).
+    // entries, then the stored configs again, then every open surface is told
+    // (it refreshes on hearing).
     async republishCatalog() {
       if (!ctx.directBridge) return
       await ctx.directBridge.request({
@@ -691,6 +693,10 @@ export function createRuntimeProvidersHost(ctx: WebUiBridgeContext): RuntimeProv
         route: createBridgeRoute('model', 'publishCatalog'),
         payload: { catalog: serializeNexusModelConfig(NEXUS_MODEL_CONFIG) },
       })
+    },
+    async republishProviderConfigs() {
+      const settingsRoot = await settingsRootForProviders(ctx)
+      await republishStoredProviderConfigs(providersAdapterContext(ctx, settingsRoot))
     },
     async broadcastProvidersChanged(extra) {
       const settingsRoot = await settingsRootForProviders(ctx)
