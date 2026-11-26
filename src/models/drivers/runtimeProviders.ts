@@ -77,8 +77,9 @@ export const LISTING_RETRY_MS = 5 * 60 * 1000
 /** What the runtime hub lends this module: settings writes and the cache. */
 export type RuntimeProvidersHost = {
   /** Replace one provider's settings.json config through the `providers`
-   *  write path. `apiKey` absent = keep the stored key. */
-  writeProviderConfig(providerId: string, config: NexusProviderConfig): Promise<void>
+   *  write path. `apiKey` absent = keep the stored key. `promote: false`:
+   *  the write never makes the provider the active one. */
+  writeProviderConfig(providerId: string, config: NexusProviderConfig, options?: { promote?: boolean }): Promise<void>
   /** Remove one provider's settings.json config through the `providers`
    *  write path. Absent: this host removes none. */
   removeProviderConfig?(providerId: string): Promise<void>

@@ -250,6 +250,19 @@ describe('WebUI settings root', () => {
     expect(files.size).toBe(0)
   })
 
+  it('the runtime providers host makes the first provider active unless the write says not to', async () => {
+    const { fs, files } = makeMemoryFs()
+    const host = createRuntimeProvidersHost(makeCtx(fs, null, '/home/u'))
+    const stored = () => JSON.parse([...files.values()].find(text => text.includes('"providers"'))!).providers
+
+    await host.writeProviderConfig('mod.acme.free.ab12', { source: 'mod', modOwner: 'acme@shop' }, { promote: false })
+    expect(stored().configs).toHaveProperty(['mod.acme.free.ab12'])
+    expect(stored().activeProviderId).toBeUndefined()
+
+    await host.writeProviderConfig('custom-a', { apiKey: '' })
+    expect(stored().activeProviderId).toBe('custom-a')
+  })
+
   it('the provider health store keeps its text under the cache directory, and rejects a read with no settings root', async () => {
     const { fs, files } = makeMemoryFs()
     const store = createProviderHealthStore(makeCtx(fs, null, '/home/from-env'))

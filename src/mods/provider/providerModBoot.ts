@@ -255,7 +255,7 @@ export async function bootProviderMods(deps: ProviderModBootDeps): Promise<void>
       store: async (providerId, config) => {
         const write = providerHostSources().writeProviderConfig
         if (!write) throw new Error('the settings write path is not attached')
-        await write(providerId, config)
+        await write(providerId, config, { promote: false })
       },
       name: provider => resolveLocalizedText(provider.manifest.displayName, deps.locale?.() ?? 'en'),
     },

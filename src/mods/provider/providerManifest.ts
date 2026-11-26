@@ -1085,6 +1085,9 @@ function checkProvider(key: string, id: string, raw: unknown, errors: string[]):
     } else if (raw.autoCreate && !(Array.isArray(methods) && methods.length === 1 && methods[0] === 'anonymous')) {
       // Security: nothing that takes a key or a sign-in comes to exist unasked.
       bad('autoCreate: only a provider whose credentials.methods are ["anonymous"] and nothing else')
+    } else if (raw.autoCreate && raw.instances === 'multiple') {
+      // The one made unasked and one the router's app adds would both stand.
+      bad('autoCreate: only a provider with one instance ("instances": "single")')
     } else autoCreate = raw.autoCreate
   }
   const egress =

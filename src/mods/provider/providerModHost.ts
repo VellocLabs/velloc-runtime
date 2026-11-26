@@ -29,7 +29,7 @@ import { modProviderDefinition, safeIconSvg, type ModProviderDefinitionOptions }
 import { clearProviderState } from '../../models/drivers/providerHealthLedger'
 import { borrowTableOf, isBorrowable, orphanedBorrowedInstances } from './providerBorrows'
 import { providerHostSources } from './providerHostSources'
-import { planAutoCreatedInstances, withStoredInstances } from './providerInstances'
+import { planAutoCreatedInstances, storedInstanceIds, withStoredInstances } from './providerInstances'
 import { INSTANCE_ID_RESERVE, PROVIDER_ID_MAX_LENGTH, type ProviderManifest, type ResolvedProvider } from './providerManifest'
 // A TYPE only: the runtime's code must stay out of a realm with no provider mod.
 import type { ProviderModRuntime, ProviderModuleRef } from './ProviderModRuntime'
@@ -120,7 +120,7 @@ export type ProviderModHostOptions = {
    */
   consented?: (plugin: ProviderPluginFacts) => Promise<boolean>
   /**
-   * What makes the instance of an `autoCreate` definition (RP-16). Absent:
+   * What makes the instance of an `autoCreate` definition (RP-18). Absent:
    * none is made. Nothing is made before `ready` (the stored instances are
    * not known until settings.json is read), and a failed read or write makes
    * nothing: the next sync tries again.
@@ -129,7 +129,7 @@ export type ProviderModHostOptions = {
     ready: () => boolean
     /** The slots of the removed instances, per definition id. */
     retiredInstances: () => Promise<Readonly<Record<string, readonly string[]>>>
-    /** The settings write path. */
+    /** The settings write path; it never makes the instance the active provider. */
     store: (providerId: string, config: NexusProviderConfig) => Promise<void>
     name: (provider: ResolvedProvider) => string
     now?: () => number
@@ -297,8 +297,6 @@ export class ProviderModHost {
     const options = this.options!
     const previousScan = this.lastScan
     this.lastScan = installed
-    // One entry per instance from here on: a stored instance is registered,
-    // disabled and taken away with its definition.
     // One answer per plugin and sync, whichever step asks first.
     const approvals = new Map<string, Promise<boolean>>()
     const approved = (plugin: ProviderPluginFacts): Promise<boolean> => {
@@ -312,7 +310,9 @@ ${plugin.name}`
       }
       return answer
     }
-    const configs = await this.withAutoCreated(installed.enabled, (options.storedConfigs ?? runtimeProviderConfigs)(), approved)
+    const configs = await this.withAutoCreated(installed.enabled, approved)
+    // One entry per instance from here on: a stored instance is registered,
+    // disabled and taken away with its definition.
     // Every lent instance a global router could vouch for; the ones whose
     // router is not registered by this sync are dropped once that is known.
     const candidates = borrowTableOf(installed.enabled.filter(plugin => isGlobalPluginSource(plugin.source)))
@@ -511,30 +511,43 @@ ${plugin.name}`
   }
 
   /**
-   * `configs` with the instance of every `autoCreate` definition that has
-   * none and had none, stored first. Only for an enabled global plugin the
-   * person approved.
+   * The stored configs, with the instance of every `autoCreate` definition
+   * that has none and had none stored first. Only for an enabled global
+   * plugin the person approved and the registration below would take: the
+   * same clash and owner refusals, in the same order.
    */
   private async withAutoCreated(
     enabled: readonly ProviderPluginFacts[],
-    configs: Readonly<Record<string, NexusProviderConfig>>,
     approved: (plugin: ProviderPluginFacts) => Promise<boolean>,
   ): Promise<Readonly<Record<string, NexusProviderConfig>>> {
     const options = this.options!
+    const stored = options.storedConfigs ?? runtimeProviderConfigs
     const make = options.autoCreate
-    if (!make || !make.ready()) return configs
-    let next = configs
+    if (!make || !make.ready()) return stored()
+    const ownerOf = options.ownerOf ?? modProviderOwner
+    let made: Record<string, NexusProviderConfig> = {}
+    // Read at each use: an instance stored while this awaits counts.
+    const current = (): Record<string, NexusProviderConfig> => ({ ...stored(), ...made })
     let retired: Readonly<Record<string, readonly string[]>> | undefined
+    const claimed = new Set<string>()
     for (const plugin of enabled) {
-      if (!plugin.providers?.some(provider => provider.manifest.autoCreate === true)) continue
-      if (!isGlobalPluginSource(plugin.source)) continue
+      if (!plugin.providers?.length || !isGlobalPluginSource(plugin.source)) continue
+      const own = plugin.providers.filter(provider => provider.manifest.managedBy === undefined).map(provider => provider.id)
+      if (own.some(id => claimed.has(id))) continue
+      const owner = pluginConfigId(plugin)
       try {
         if (!(await approved(plugin))) continue
+        if (plugin.providers.some(provider => (ownerOf(provider.id) ?? owner) !== owner)) continue
+        for (const id of own) claimed.add(id)
+        const missing = plugin.providers.filter(
+          provider => provider.manifest.autoCreate === true && storedInstanceIds(provider.id, owner, current()).length === 0,
+        )
+        if (missing.length === 0) continue
         retired ??= await make.retiredInstances()
         const plans = planAutoCreatedInstances({
-          providers: plugin.providers,
-          owner: pluginConfigId(plugin),
-          configs: next,
+          providers: missing,
+          owner,
+          configs: current(),
           retired,
           name: make.name,
           now: (make.now ?? Date.now)(),
@@ -542,13 +555,13 @@ ${plugin.name}`
         })
         for (const plan of plans) {
           await make.store(plan.id, plan.config)
-          next = { ...next, [plan.id]: plan.config }
+          made = { ...made, [plan.id]: plan.config }
         }
       } catch (error) {
         options.report(`${plugin.name}: its ready-made provider was not created: ${error instanceof Error ? error.message : String(error)}`)
       }
     }
-    return next
+    return current()
   }
 
   /**

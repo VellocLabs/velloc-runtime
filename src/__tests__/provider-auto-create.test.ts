@@ -1,6 +1,6 @@
 /**
  * A managed definition that asks for an instance without the person adding
- * it (F-27 RP-16, `autoCreate`): what is planned, when the provider host
+ * it (F-27 RP-18, `autoCreate`): what is planned, when the provider host
  * stores it, and that it is made once.
  */
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
@@ -159,7 +159,7 @@ describe('the provider host', () => {
       publish: async () => {},
       hasStoredConfigs: () => false,
       ownerOf: id => configs[id]?.modOwner,
-      storedConfigs: () => configs,
+      storedConfigs: () => ({ ...configs }),
       autoCreate: {
         ready: () => true,
         retiredInstances: async () => retired,
@@ -341,5 +341,38 @@ describe('the provider host', () => {
     expect(stores).toEqual([id])
     expect(Object.keys(configs)).toEqual([id])
     expect(ids()).toEqual([ROUTER, id])
+  })
+
+  it('makes nothing for a plugin whose router another plugin of the same name holds', async () => {
+    const { host, configs, stores, report, ids } = rig()
+    configs[ROUTER] = { source: 'mod', modOwner: 'vendor-a@elsewhere' }
+    await host.sync({ enabled: [plugin(PROVIDERS, () => `marketplace:${PLUGIN}@shop`)], disabled: [] })
+    expect(stores).toEqual([])
+    expect(ids()).toEqual([])
+    expect(report.join('\n')).toMatch(/holds the sign-in and keys of vendor-a@elsewhere/)
+  })
+
+  it('makes nothing for the second of two plugins that offer the same router', async () => {
+    const { host, stores } = rig()
+    const first = plugin()
+    const second = { ...plugin(PROVIDERS, () => `marketplace:${PLUGIN}@shop`), installIdentifier: `${PLUGIN}@shop` }
+    await host.sync({ enabled: [first, second], disabled: [] })
+    expect(stores).toHaveLength(1)
+    expect(host.registered().find(each => each.providerId === stores[0])?.configId).toBe(pluginConfigId(first))
+  })
+
+  it('counts an instance stored while it waited for the removed slots', async () => {
+    let late: (() => void) | undefined
+    const { host, configs, stores, retired } = rig({
+      retiredInstances: async () => {
+        late?.()
+        return retired
+      },
+    })
+    late = () => {
+      configs[`${FREE}.cc33`] = { source: 'mod', modOwner: OWNER, definition: FREE, createdAt: NOW, credentialMode: 'anonymous' }
+    }
+    await host.sync({ enabled: [plugin()], disabled: [] })
+    expect(stores).toEqual([])
   })
 })

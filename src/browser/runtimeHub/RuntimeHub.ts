@@ -278,7 +278,7 @@ export class RuntimeHub {
     this.stopNotingProviderConfigs = onRuntimeProviderConfigsChanged(() => noteProviderConfigs(runtimeProviderConfigs()))
     // …and so does a provider module's `$.provider.setSecrets` (sealed host-side).
     lendProviderHostSources({
-      writeProviderConfig: (id, config) => providersHost.writeProviderConfig(id, config),
+      writeProviderConfig: (id, config, options) => providersHost.writeProviderConfig(id, config, options),
       ...(providersHost.removeProviderConfig ? { removeProviderConfig: id => providersHost.removeProviderConfig!(id) } : {}),
     })
     this.context = {

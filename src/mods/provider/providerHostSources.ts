@@ -12,8 +12,9 @@ export type ProviderHostSources = {
   transport?: () => BrowserBridgeTransport | null
   /** The host half of the init payload the desktop page published. */
   hostEnvironment?: () => { userAgent?: string; locale?: string } | null | undefined
-  /** The `providers.upsert` write path (sealing, publish and broadcast follow). */
-  writeProviderConfig?: (providerId: string, config: NexusProviderConfig) => Promise<void>
+  /** The `providers.upsert` write path (sealing, publish and broadcast follow).
+   *  `promote: false`: the write never makes the provider the active one. */
+  writeProviderConfig?: (providerId: string, config: NexusProviderConfig, options?: { promote?: boolean }) => Promise<void>
   /** The `providers.remove` write path: the entry and its sealed values go. */
   removeProviderConfig?: (providerId: string) => Promise<void>
 }

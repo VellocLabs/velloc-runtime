@@ -69,6 +69,10 @@ import {
   bootProviderMods,
 } from '../mods/provider/providerModBoot'
 import { getProviderModHost } from '../mods/provider/providerModHost'
+import { lendProviderHostSources, resetProviderHostSources } from '../mods/provider/providerHostSources'
+import { resetRuntimeProviders, setRuntimeProviderConfigs } from '../models/drivers/runtimeProviders'
+import { wipeSettingsMemos } from '../settings/settingsStore'
+import { NEXUS_SETTINGS_VERSION, type NexusProviderConfig } from '../settings/settingsTypes'
 import {
   acquireProviderModUpdateService,
   providerModUpdatesAvailable,
@@ -273,5 +277,87 @@ describe('the first consent at a built-in install', () => {
   it('rejects when the service refuses the plugin', async () => {
     fakeService.recordInitialConsent.mockRejectedValueOnce(new Error('nebius@velloc is not an installed provider mod'))
     await expect(recordProviderPluginConsent('nebius@velloc', AT)).rejects.toThrow('not an installed provider mod')
+  })
+})
+
+describe('the ready-made instance a managed definition asks for', () => {
+  const FREE = {
+    ...PROVIDER,
+    displayName: { en: 'Pool Free', fr: 'Pool gratuit' },
+    managedBy: 'router',
+    autoCreate: true,
+    credentials: { methods: ['anonymous'] },
+  }
+  const ROUTER = { providerApi: 1, kind: 'router', routesTo: '*', displayName: 'Router', credentials: { methods: ['anonymous'] }, module: './r.js' }
+
+  function router(): ActivePlugin {
+    const path = '/home/u/.velloc/plugins/acme'
+    const providers = { router: ROUTER, free: FREE }
+    return {
+      name: 'acme',
+      manifest: { name: 'acme', version: '1.0.0', providers: providers as never },
+      path,
+      source: 'marketplace:acme@shop',
+      installIdentifier: 'acme@shop',
+      enabled: true,
+      providers: resolveProviders('acme', path, providers as never),
+    }
+  }
+
+  /** settings.json in memory, read by the real settings store. */
+  function settingsFs(providers: Record<string, unknown>) {
+    const text = JSON.stringify({ version: NEXUS_SETTINGS_VERSION, providers })
+    return {
+      readFile: vi.fn(async (path: string) => {
+        if (path.replace(/\\/g, '/').endsWith('/.velloc/settings.json')) return text
+        const error = new Error(`ENOENT: ${path}`) as Error & { code: string }
+        error.code = 'ENOENT'
+        throw error
+      }),
+    }
+  }
+
+  const writes: Array<{ id: string; config: NexusProviderConfig; options?: { promote?: boolean } }> = []
+  let stored: Record<string, NexusProviderConfig> = {}
+
+  beforeEach(() => {
+    writes.length = 0
+    stored = {}
+    wipeSettingsMemos()
+    lendProviderHostSources({
+      writeProviderConfig: async (id, config, options) => {
+        writes.push({ id, config, ...(options ? { options } : {}) })
+        stored = { ...stored, [id]: config }
+        setRuntimeProviderConfigs(stored)
+      },
+    })
+  })
+
+  afterEach(() => {
+    resetProviderHostSources()
+    resetRuntimeProviders()
+    wipeSettingsMemos()
+  })
+
+  it('waits for the stored configs, then writes one keyless instance in the locale, never as the active provider', async () => {
+    scanResult = { enabled: [router()], disabled: [], errors: [] }
+    const fs = settingsFs({})
+    await bootProviderMods({ homeDir: '/home/u', fs: fs as never, transport: () => null, locale: () => 'fr' })
+    expect(writes).toEqual([])
+
+    setRuntimeProviderConfigs({})
+    await reloadProviderMods()
+    expect(writes).toHaveLength(1)
+    expect(writes[0]!.id).toMatch(/^mod\.acme\.free\.[a-z0-9]{4}$/)
+    expect(writes[0]!.config).toMatchObject({ source: 'mod', modOwner: 'acme@shop', definition: 'mod.acme.free', name: 'Pool gratuit', credentialMode: 'anonymous' })
+    expect(writes[0]!.options).toEqual({ promote: false })
+  })
+
+  it('reads the removed slots from settings.json and makes none for a definition the person emptied', async () => {
+    scanResult = { enabled: [router()], disabled: [], errors: [] }
+    const fs = settingsFs({ configs: {}, retiredInstances: { 'mod.acme.free': ['ab12'] } })
+    setRuntimeProviderConfigs({})
+    await bootProviderMods({ homeDir: '/home/u', fs: fs as never, transport: () => null })
+    expect(writes).toEqual([])
   })
 })

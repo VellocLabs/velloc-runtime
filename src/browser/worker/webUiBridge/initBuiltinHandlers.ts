@@ -15,6 +15,7 @@ import { handleSkillsBridgeRequest } from '../../bridge/adapter/skillsBridgeAdap
 import {
   handleProvidersBridgeRequest,
   makeBridgeSecretSealer,
+  providersHandlers,
   type ProvidersAdapterContext,
 } from '../../bridge/adapter/providersBridgeAdapter'
 import { handleSessionImportBridgeRequest } from '../../bridge/adapter/sessionImportBridgeAdapter'
@@ -648,8 +649,12 @@ export function createRuntimeProvidersHost(ctx: WebUiBridgeContext): RuntimeProv
     return joinPath(root, NEXUS_DIR_NAME, 'cache', 'provider-models')
   }
   return {
-    async writeProviderConfig(providerId, config) {
+    async writeProviderConfig(providerId, config, options) {
       const settingsRoot = await settingsRootForProviders(ctx)
+      if (options?.promote === false) {
+        await providersHandlers.upsert({ id: providerId, config }, providersAdapterContext(ctx, settingsRoot), undefined, false)
+        return
+      }
       const response = await handleProvidersBridgeRequest(
         {
           id: `runtime-provider-${crypto.randomUUID()}`,

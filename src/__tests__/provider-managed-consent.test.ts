@@ -299,6 +299,7 @@ describe('manifest: autoCreate', () => {
     ['a provider that signs in', { ...LOGIN, autoCreate: true }, /\["anonymous"\] and nothing else/],
     ['a provider that also takes a key', { ...FREE, credentials: { methods: ['anonymous', 'apiKey'] }, autoCreate: true }, /\["anonymous"\] and nothing else/],
     ['a value that is not a boolean', { ...FREE, autoCreate: 'yes' }, /expected true or false/],
+    ['a provider with several instances', { ...FREE, instances: 'multiple', autoCreate: true }, /only a provider with one instance/],
   ])('refuses it on %s, and keeps the other providers', (_what, provider, message) => {
     const { providers, errors } = check({ router: ROUTER, free: provider })
     expect(errors).toMatch(message)
