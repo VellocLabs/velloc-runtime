@@ -23,7 +23,7 @@ import type { AppBackgroundBootDeps } from './appBackgroundBoot'
 import { createAppBackgroundMcp } from './appBackgroundMcp'
 import type { AppMcpStatusSource } from './appMcpStatus'
 import { currentMcpOAuthService, onMcpOAuthServiceChanged } from '../../mcp/oauth/mcpOAuthHolder'
-import { createReloadFolder, runtimeSettingsAppPeers } from './appProviderCalls'
+import { createReloadFolder, runtimeSettingsAppIcons, runtimeSettingsAppPeers } from './appProviderCalls'
 import { createRuntimeInstanceCalls } from '../provider/providerInstanceCallsRuntime'
 import { runtimeAppUsage } from './appUsageCalls'
 import { reloadModProvider } from '../provider/providerReload'
@@ -67,6 +67,7 @@ export function createAppBackgroundRuntime(
       reload: reloads.reload,
       peers: runtimeSettingsAppPeers,
       instances: () => instances,
+      icons: runtimeSettingsAppIcons,
       dispose: reloads.dispose,
     },
     usage: query => runtimeAppUsage(query, deps.transport() ?? undefined),

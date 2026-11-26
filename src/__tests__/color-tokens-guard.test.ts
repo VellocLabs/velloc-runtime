@@ -18,6 +18,8 @@ const ALLOWLIST: Record<string, string> = {
     'the 16 ANSI colours a terminal program names by number, plus the fallbacks used when a token does not resolve; the screen, cursor and selection colours come from the tokens.',
   'browser/webview/settings/appearanceOptions.ts':
     'theme-colour SEEDS, not painted UI: each hex is a value sent to the host, which resolves it through the Chrome colour pipeline. The swatch paints its own seed on purpose — it is the colour being chosen, so it must NOT follow the theme.',
+  'mods/provider/providerIcons.ts':
+    'the ink a brand mark drawn in the text colour gets inside an image URL handed to a mod: an image reads no token of the page, so it states one colour per scheme itself.',
   'browser/webview/remote/QrCodeSvg.tsx':
     'a QR code is black modules on a white quiet zone in every theme: phone scanners need that contrast, so it must NOT follow the theme.',
 }

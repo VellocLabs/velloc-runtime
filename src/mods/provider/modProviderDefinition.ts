@@ -132,7 +132,7 @@ export function modProviderDefinition(options: ModProviderDefinitionOptions): Pr
     // The English name stands for the row's plain `label`; the page resolves
     // the person's language from `catalogMod.displayName`.
     label: resolveLocalizedText(manifest.displayName, 'en'),
-    ...(options.iconSvg !== undefined ? { iconSvg: iconAsImage(options.iconSvg) } : {}),
+    ...(options.iconSvg !== undefined ? { iconSvg: iconAsImage(options.iconSvg), iconSource: options.iconSvg } : {}),
     codeListing: {
       isLoaded: options.isLoaded,
       list: options.list ?? (() => Promise.reject(new Error(NOT_CONNECTED))),

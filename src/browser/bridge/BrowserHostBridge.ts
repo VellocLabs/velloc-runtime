@@ -43,6 +43,7 @@ import { refreshBrokerProviderBaseUrls } from '../worker/brokerProviderView'
 import { awaitCatalogFigures } from '../../catalog/builtinCatalogFill'
 import { publishHostModelCatalog } from '../../config/hostModelCatalog'
 import { publishCatalogModelPool } from '../../config/nexusModelConfig/providerModelPool'
+import { publishHostProviderIcons } from '../../config/hostProviderIcons'
 import { getProductName } from '../../branding/productName'
 import {
   createBrowserNetworkOperations,
@@ -433,6 +434,7 @@ export class BrowserHostBridge implements PlatformCapabilities {
     // …and, for the providers with no listing of their own, everything they
     // can run — the tier ladder's search space (providerModelPool.ts).
     publishCatalogModelPool(spliced)
+    publishHostProviderIcons(spliced)
     return spliced as BrowserBridgeResult<
       'model',
       'catalog'

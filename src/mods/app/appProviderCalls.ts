@@ -2,7 +2,8 @@
  * `$.provider` in the background module of a provider's settings app (F-27,
  * F-40): `peers()`, `reload()`, `clearState({ provider, model? })`, and for a
  * router the instances of the providers it manages (`definitions`,
- * `instances`, `addInstance`, `renameInstance`, `removeInstance`), each on
+ * `instances`, `addInstance`, `renameInstance`, `removeInstance`) and the
+ * brand marks of provider definitions (`icons({ definitions })`), each on
  * the one provider that names the app as its `settingsApp`.
  * Security: the bound provider is fixed by the manifest, never by the module;
  * `peers` and `clearState` are a router's and stay inside its `routesTo`.
@@ -28,9 +29,9 @@ export type SettingsAppBinding = {
 /** The `$.provider` methods a settings app's background module may call. */
 const INSTANCE_METHODS: readonly string[] = Object.freeze(['definitions', 'instances', 'addInstance', 'renameInstance', 'removeInstance'])
 
-export const SETTINGS_APP_PROVIDER_METHODS: readonly string[] = Object.freeze(['peers', 'reload', 'clearState', ...INSTANCE_METHODS])
+export const SETTINGS_APP_PROVIDER_METHODS: readonly string[] = Object.freeze(['peers', 'reload', 'clearState', 'icons', ...INSTANCE_METHODS])
 
-const ROUTER_ONLY: readonly string[] = Object.freeze(['peers', 'clearState', ...INSTANCE_METHODS])
+const ROUTER_ONLY: readonly string[] = Object.freeze(['peers', 'clearState', 'icons', ...INSTANCE_METHODS])
 
 /** How long `reload()` calls are folded into one run. */
 export const SETTINGS_APP_RELOAD_FOLD_MS = 10_000
@@ -61,6 +62,12 @@ export async function runtimeSettingsAppPeers(): Promise<SettingsAppPeerSource> 
       return { ok: true }
     },
   }
+}
+
+/** The runtime's provider marks; the module is loaded only with the background runtime. */
+export async function runtimeSettingsAppIcons(args: unknown): Promise<Record<string, string>> {
+  const { serveProviderIcons } = await import('../provider/providerIcons')
+  return serveProviderIcons(args)
 }
 
 /** Why the background module may not call `$.provider.<method>`, or null. `binding` absent: the app is no provider's settings app. */
@@ -101,6 +108,8 @@ export type SettingsAppProviderDeps = {
   reload: (providerId: string) => Promise<void>
   /** The instance calls; absent: they fail as unavailable. */
   instances?: () => InstanceCalls | undefined | Promise<InstanceCalls | undefined>
+  /** `icons(args)`: validates the call and answers `{ [definition id]: image URL }`; absent: it fails as unavailable. */
+  icons?: (args: unknown) => Record<string, string> | Promise<Record<string, string>>
 }
 
 /** Serves one call, after `refuseSettingsAppProviderCall` let it through. */
@@ -127,6 +136,10 @@ export async function serveSettingsAppProviderCall(
     if (method === 'addInstance') return await calls.add(router, args[0], phase)
     if (method === 'renameInstance') return await calls.rename(router, args[0])
     return await calls.remove(router, args[0], phase)
+  }
+  if (method === 'icons') {
+    if (!deps.icons) throw named('NotSupportedError', '$.provider.icons: provider icons are not available in this build')
+    return await deps.icons(args[0])
   }
   const source = await deps.peers?.()
   if (!source) throw named('NotSupportedError', `$.provider.${method}: the peers table is not available in this build`)

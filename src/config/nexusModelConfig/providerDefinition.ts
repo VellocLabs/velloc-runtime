@@ -256,6 +256,8 @@ export type ProviderDefinition = {
    * the marks of the providers it has a class for. Absent = the generic mark.
    */
   iconSvg?: string
+  /** A provider mod's checked icon text, the source `iconSvg` was drawn from. */
+  iconSource?: string
   /**
    * The provider's model listing, fetched by the runtime
    * (`models/drivers/providerDocuments.ts`). On a `runtimeOnly`

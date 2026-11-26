@@ -53,6 +53,8 @@ export type InstanceCallsDeps = {
   relist: (routerId: string) => Promise<void>
   isSetUp: (providerId: string) => boolean
   models: (providerId: string) => ReadonlyArray<{ free?: boolean }>
+  /** A definition's brand mark as an image URL, if it has one. */
+  icon?: (definitionId: string) => string | undefined
   locale: () => string
   now: () => number
   random?: () => number
@@ -63,6 +65,7 @@ export type DefinitionRow = {
   key?: string
   id: string
   label: string
+  icon?: string
   method: ProviderCredentialMethod
   instances: 'single' | 'multiple'
   borrowed?: true
@@ -119,6 +122,11 @@ function instanceIdsOf(definition: RouterDefinition, deps: InstanceCallsDeps): s
   return storedInstanceIds(definition.provider.id, definition.owner, deps.configs(), holder)
 }
 
+function iconOf(definition: ManagedDefinition, deps: InstanceCallsDeps): { icon?: string } {
+  const icon = deps.icon?.(definition.provider.id)
+  return icon !== undefined ? { icon } : {}
+}
+
 function readName(method: string, value: unknown): string {
   const name = typeof value === 'string' ? value.trim() : ''
   if (name.length < 1 || name.length > INSTANCE_NAME_MAX) {
@@ -149,6 +157,7 @@ export function listDefinitions(routerId: string, deps: InstanceCallsDeps): Defi
       ? {
           id: definition.provider.id,
           label: labelOf(definition, deps),
+          ...iconOf(definition, deps),
           method: methodOf(definition),
           instances: 'multiple' as const,
           borrowed: true as const,
@@ -157,6 +166,7 @@ export function listDefinitions(routerId: string, deps: InstanceCallsDeps): Defi
           key: definition.provider.key,
           id: definition.provider.id,
           label: labelOf(definition, deps),
+          ...iconOf(definition, deps),
           method: methodOf(definition),
           instances: definition.provider.manifest.instances === 'multiple' ? ('multiple' as const) : ('single' as const),
         },

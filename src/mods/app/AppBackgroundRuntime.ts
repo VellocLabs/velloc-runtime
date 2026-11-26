@@ -971,6 +971,7 @@ export class AppBackgroundRuntime {
           reload: calls?.reload ?? (() => Promise.resolve()),
           ...(calls?.peers ? { peers: calls.peers } : {}),
           ...(calls?.instances ? { instances: calls.instances } : {}),
+          ...(calls?.icons ? { icons: calls.icons } : {}),
         },
         scope?.event === 'app.action' && scope.by === 'person' ? 'action' : scope?.event === 'app.start' ? 'start' : 'other',
       )

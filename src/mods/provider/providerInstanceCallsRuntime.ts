@@ -8,6 +8,7 @@ import { isProviderSetUp, mergedModels, runtimeProviderConfigs } from '../../mod
 import { readUserLayer } from '../../settings/settingsStore'
 import type { RuntimeFs } from '../../utils/fs/runtimeFs'
 import { providerHostSources } from './providerHostSources'
+import { providerIconOf } from './providerIcons'
 import { createInstanceCalls, type InstanceCalls } from './providerInstanceCalls'
 import { getProviderModHost } from './providerModHost'
 
@@ -45,6 +46,7 @@ export function createRuntimeInstanceCalls(options: {
     relist: options.relist,
     isSetUp: isProviderSetUp,
     models: mergedModels,
+    icon: providerIconOf,
     locale: () => options.locale?.() ?? 'en',
     now: Date.now,
     ...(options.random ? { random: options.random } : {}),

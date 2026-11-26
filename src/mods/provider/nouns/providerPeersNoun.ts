@@ -33,6 +33,7 @@ import type { CustomModelDef, NexusProviderConfig } from '../../../settings/sett
 import type { ProviderNounCall, ProviderNounTable } from '../ProviderModRuntime'
 import { resolveDriverBaseUrl } from '../../../models/drivers/driverRegistry'
 import { baseUrlChanged, recognizedHostOf } from '../routerRecognizes'
+import { providerIconField } from '../providerIcons'
 import { providerOf } from './providerNounTable'
 import type {
   Peer,
@@ -48,6 +49,7 @@ export type PeerInstance = {
   definitionKey?: string
   createdAt?: number
   label: string
+  icon?: string
   name?: string
   router: boolean
   /** The router that manages the instance's definition, if one does. */
@@ -109,6 +111,7 @@ export function peersTableFor(routerId: string, deps: PeersTableDeps): Peer[] {
       ...(instance.definitionKey !== undefined ? { definitionKey: instance.definitionKey } : {}),
       ...(instance.createdAt !== undefined ? { createdAt: instance.createdAt } : {}),
       label: instance.label,
+      ...(instance.icon !== undefined ? { icon: instance.icon } : {}),
       ...(instance.name !== undefined ? { name: instance.name } : {}),
       kind: 'provider',
       ...(instance.managedBy !== undefined ? { managed: true as const } : {}),
@@ -220,6 +223,7 @@ export function runtimePeerInstances(): PeerInstance[] {
       ...(mod?.definitionKey !== undefined && !mod.borrowed ? { definitionKey: mod.definitionKey } : {}),
       ...(config?.createdAt !== undefined ? { createdAt: config.createdAt } : {}),
       label: definition ? runtimeProviderLabel(id) : name || id,
+      ...providerIconField(id),
       ...(name ? { name } : {}),
       router: definition?.router === true || definition?.catalogMod?.kind === 'router',
       ...(definition?.catalogMod?.managedBy !== undefined ? { managedBy: definition.catalogMod.managedBy } : {}),

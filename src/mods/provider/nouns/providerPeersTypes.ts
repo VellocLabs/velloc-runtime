@@ -71,6 +71,8 @@ export type Peer = {
   /** When the instance was made, epoch ms; absent on a first instance. */
   createdAt?: number
   label: string
+  /** The definition's brand mark as an image URL; absent when it has none. */
+  icon?: string
   /** The name the person gave this instance. */
   name?: string
   /** A router is never a peer. */

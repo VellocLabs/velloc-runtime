@@ -22,6 +22,7 @@ import { getSessionTracer } from '../../utils/sessionTrace'
 import { isModelUploadTraceEnabled } from '../../engine/turn/modelTrace'
 import { publishHostModelCatalog } from '../../config/hostModelCatalog'
 import { publishCatalogModelPool } from '../../config/nexusModelConfig/providerModelPool'
+import { publishHostProviderIcons } from '../../config/hostProviderIcons'
 import { withSuccessorModel } from '../../config/nexusModelConfig/retiredModels'
 
 export type AgentModelSnapshot = {
@@ -129,6 +130,7 @@ export class AgentModelController {
     // session that never refreshes its catalog leaves the survey blind.
     publishHostModelCatalog(catalog)
     publishCatalogModelPool(catalog)
+    publishHostProviderIcons(catalog)
   }
 
   getInitPromise(): Promise<void> | null {
