@@ -602,6 +602,12 @@ describe('the router\'s settings app', () => {
     expect(rig().calls.definitions(THEIR_HUB)).toEqual([])
   })
 
+  it('definitions() gives a borrowed row its icon as it does an own one', () => {
+    const rows = rig({ icon: id => `data:image/svg+xml,${id}` }).calls.definitions(ROUTER)
+    expect(rows.find(row => row.id === OPEN)).toMatchObject({ borrowed: true, icon: `data:image/svg+xml,${OPEN}` })
+    expect(rows.find(row => row.id === OWN_POOL)).toMatchObject({ icon: `data:image/svg+xml,${OWN_POOL}` })
+  })
+
   it('addInstance makes an instance of the borrowed definition, recorded as the router\'s', async () => {
     const { calls, configs, log } = rig()
     const made = (await calls.add(ROUTER, { definition: OPEN, name: 'Free key' }, 'action')) as { id: string }
