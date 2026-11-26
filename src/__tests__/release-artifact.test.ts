@@ -382,6 +382,19 @@ describe('Workflow A gates the deploy, not the build', () => {
     }
   })
 
+  it('runs on a push to main and by hand, and a push builds the pushed commit', () => {
+    expect(doc.on.push).toEqual({ branches: ['main'] })
+    expect(doc.on.workflow_dispatch.inputs.ref.default).toBe('main')
+    // A push run carries no inputs. An empty checkout ref would build the
+    // branch tip at the time a queued run starts, not the commit pushed.
+    const checkout = jobs.source.steps.find(s => /actions\/checkout/.test(s.uses ?? ''))
+    expect(checkout?.with?.ref).toBe('${{ inputs.ref || github.sha }}')
+    const raw = readFileSync(join(workflows, 'build-beta.yml'), 'utf8')
+    expect(raw).not.toMatch(/\$\{\{\s*inputs\.ref\s*\}\}/)
+    // One run deploys at a time, and none is cancelled mid-deploy.
+    expect(doc.concurrency).toEqual({ group: 'beta-deploy', 'cancel-in-progress': false })
+  })
+
   it('touches beta from the deploy job alone', () => {
     for (const job of Object.keys(jobs)) {
       if (job === 'deploy') continue

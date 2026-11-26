@@ -1,9 +1,9 @@
 name: CI
 
 # Typecheck, unit tests and a versioned build of the chosen ref. Runs only
-# when started by hand: nothing runs on push, so a commit costs no Actions
-# minutes. Nothing here deploys; a deploy is build-beta.yml ->
-# promote-production.yml, also by hand. (G-3)
+# when started by hand, for a ref that is not on `main` yet: a push to `main`
+# runs build-beta.yml, which has the same gates. Nothing here deploys; a
+# deploy is build-beta.yml -> promote-production.yml, the second by hand. (G-3)
 
 on:
   workflow_dispatch:

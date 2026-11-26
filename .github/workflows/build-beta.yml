@@ -3,9 +3,13 @@ name: A · Build & Deploy Beta
 # The only place the web runtime is compiled. Beta soak, production promote
 # and rollback consume the artifact this job uploads and never rebuild, so
 # the bytes soaked on beta are the bytes production serves. (G-3)
-# Manual trigger only; pushing `main` runs CI (ci.yml) and deploys nothing.
+# Runs on every push to `main`, building the pushed commit, and by hand for
+# any other ref. A push run has no inputs: each `inputs.*` read below falls
+# back to the pushed commit, and an empty `runtime_version` asserts nothing.
 
 on:
+  push:
+    branches: [main]
   workflow_dispatch:
     inputs:
       ref:
@@ -33,7 +37,9 @@ on:
 # Beta is a shared environment: two candidates deploying at once would leave
 # whichever finished last serving, with no record of the race. Queue instead
 # of cancelling — a cancelled run has already uploaded nothing but may have
-# already deployed.
+# already deployed. The group holds one waiting run: a newer push replaces an
+# older one still waiting, so a burst of pushes builds the running commit and
+# then the newest.
 concurrency:
   group: beta-deploy
   cancel-in-progress: false
@@ -53,7 +59,8 @@ jobs:
   # failed jobs" repeats only the gate that failed.
 
   # Resolves `ref` to one commit, so the gates and the build check out the same
-  # bytes even if a branch moves mid-run.
+  # bytes even if a branch moves mid-run. A push run builds the pushed commit
+  # (`github.sha`), never the branch tip a queued run would find later.
   source:
     runs-on: ubuntu-latest
     outputs:
@@ -61,7 +68,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: ${{ inputs.ref }}
+          ref: ${{ inputs.ref || github.sha }}
       - id: rev
         run: echo "commit=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
@@ -133,7 +140,7 @@ jobs:
         id: id
         env:
           GH_TOKEN: ${{ github.token }}
-          SOURCE_REF: ${{ inputs.ref }}
+          SOURCE_REF: ${{ inputs.ref || github.ref_name }}
         run: |
           set -euo pipefail
           V=$(sed -nE 's/^export const NEXUS_INTERFACE_VERSION = ([0-9]+)$/\1/p' \
@@ -334,7 +341,7 @@ jobs:
         # spliced into the shell command.
         env:
           CANDIDATE_ID: ${{ steps.id.outputs.candidate_id }}
-          SOURCE_REF: ${{ inputs.ref }}
+          SOURCE_REF: ${{ inputs.ref || github.ref_name }}
           SOURCE_COMMIT: ${{ steps.id.outputs.source_commit }}
           EXPECT_VERSION: ${{ inputs.runtime_version }}
           BASELINE_TAG: ${{ steps.baseline.outputs.tag }}
@@ -484,7 +491,7 @@ jobs:
         env:
           V: ${{ needs.pack.outputs.interface_version }}
           CANDIDATE_ID: ${{ needs.pack.outputs.candidate_id }}
-          SOURCE_REF: ${{ inputs.ref }}
+          SOURCE_REF: ${{ inputs.ref || github.ref_name }}
           SOURCE_COMMIT: ${{ needs.pack.outputs.source_commit }}
           BASELINE_TAG: ${{ needs.pack.outputs.baseline_tag }}
           NOTE: ${{ inputs.note }}
