@@ -627,10 +627,9 @@ export class ProviderCredentials {
 
   /**
    * Read-modify-write of a provider's settings entry, one at a time per
-   * provider. `change` returns what to set. The write path applies `secrets`
-   * name by name (`''` removes one, a name not sent keeps its stored value),
-   * so a refresh sends only what it answers and a sign-in or sign-out sends
-   * every declared name; `account` / `tokenExpiresAt` `null` drop the field.
+   * provider. `secrets` is applied name by name (`''` removes one, a name not
+   * sent is kept): a refresh sends what it answers, a sign-in or sign-out every
+   * declared name. `account` / `tokenExpiresAt` `null` drop the field.
    * Everything else of the stored entry - `source`, `modVersion`, picks,
    * verification - rides through, because an upsert replaces the entry.
    */
