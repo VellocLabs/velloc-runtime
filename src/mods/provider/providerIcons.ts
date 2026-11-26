@@ -13,12 +13,13 @@
  */
 import { hostProviderIconSvg } from '../../config/hostProviderIcons'
 import { getProviderDefinition } from '../../config/nexusModelConfig/providers'
+import { routerReaches, type RoutesTo } from '../../models/drivers/providerRouter'
 import { providerDefinitionId } from '../../models/drivers/runtimeProviders'
 
 /** The most definitions one `icons` call may name. */
 export const ICON_DEFINITIONS_MAX = 32
 
-/** How many converted marks are kept; the oldest is dropped first. */
+/** How many converted marks are kept; the one read longest ago is dropped first. */
 export const ICON_URL_CACHE_SIZE = 64
 
 /**
@@ -44,18 +45,33 @@ function withSchemeColour(svg: string): string {
 /** The image URL of a mark's SVG text. */
 export function iconImageUrl(svg: string): string {
   const held = urls.get(svg)
-  if (held !== undefined) return held
+  if (held !== undefined) {
+    urls.delete(svg)
+    urls.set(svg, held)
+    return held
+  }
   const url = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(withSchemeColour(svg))}`
   urls.set(svg, url)
   if (urls.size > ICON_URL_CACHE_SIZE) urls.delete(urls.keys().next().value as string)
   return url
 }
 
-/** The mark of one registered definition; undefined for an id that is none, and for one without a mark. */
-function definitionIcon(definitionId: string): string | undefined {
+/** The router asking `icons`, and its boundary. */
+export type IconReader = { routerId: string; routesTo: RoutesTo }
+
+/**
+ * The mark of one registered definition; undefined for an id that is none, and for one without a mark.
+ * Security: with `reader`, a provider mod's definition is answered only when the router reaches it, so
+ * the answer says no more about which plugins are installed than the router's peers do.
+ */
+function definitionIcon(definitionId: string, reader?: IconReader): string | undefined {
   const definition = getProviderDefinition(definitionId)
   if (!definition) return undefined
-  const svg = definition.catalogMod
+  const mod = definition.catalogMod
+  if (reader && mod && !routerReaches(reader.routerId, reader.routesTo, { definition: definitionId, ...(mod.managedBy !== undefined ? { managedBy: mod.managedBy } : {}) })) {
+    return undefined
+  }
+  const svg = mod
     ? definition.iconSource
     : (definition.iconSvg ?? hostProviderIconSvg(definitionId))
   return svg ? iconImageUrl(svg) : undefined
@@ -86,13 +102,13 @@ function readDefinitionIds(args: unknown): string[] {
 
 /**
  * `$.provider.icons({ definitions })`: the mark of each named definition that
- * is a built-in or a registered provider mod's, set up or not. An id that is
- * neither, or whose definition has no mark, is left out.
+ * is a built-in or a registered provider mod's the router reaches, set up or
+ * not. An id that is neither, or whose definition has no mark, is left out.
  */
-export function serveProviderIcons(args: unknown): Record<string, string> {
+export function serveProviderIcons(args: unknown, reader: IconReader): Record<string, string> {
   const found = new Map<string, string>()
   for (const id of readDefinitionIds(args)) {
-    const icon = definitionIcon(id)
+    const icon = definitionIcon(id, reader)
     if (icon !== undefined) found.set(id, icon)
   }
   return Object.fromEntries(found)

@@ -6,7 +6,7 @@
  * brand marks of provider definitions (`icons({ definitions })`), each on
  * the one provider that names the app as its `settingsApp`.
  * Security: the bound provider is fixed by the manifest, never by the module;
- * `peers` and `clearState` are a router's and stay inside its `routesTo`.
+ * `peers`, `clearState` and the provider mods `icons` answers are a router's and stay inside its `routesTo`.
  */
 
 import { insideRoutesTo } from '../../models/drivers/providerRouter'
@@ -65,9 +65,9 @@ export async function runtimeSettingsAppPeers(): Promise<SettingsAppPeerSource> 
 }
 
 /** The runtime's provider marks; the module is loaded only with the background runtime. */
-export async function runtimeSettingsAppIcons(args: unknown): Promise<Record<string, string>> {
+export async function runtimeSettingsAppIcons(args: unknown, binding: SettingsAppBinding): Promise<Record<string, string>> {
   const { serveProviderIcons } = await import('../provider/providerIcons')
-  return serveProviderIcons(args)
+  return serveProviderIcons(args, { routerId: binding.providerId, routesTo: binding.routesTo ?? [] })
 }
 
 /** Why the background module may not call `$.provider.<method>`, or null. `binding` absent: the app is no provider's settings app. */
@@ -108,8 +108,8 @@ export type SettingsAppProviderDeps = {
   reload: (providerId: string) => Promise<void>
   /** The instance calls; absent: they fail as unavailable. */
   instances?: () => InstanceCalls | undefined | Promise<InstanceCalls | undefined>
-  /** `icons(args)`: validates the call and answers `{ [definition id]: image URL }`; absent: it fails as unavailable. */
-  icons?: (args: unknown) => Record<string, string> | Promise<Record<string, string>>
+  /** `icons(args, binding)`: validates the call and answers `{ [definition id]: image URL }` within the router's reach; absent: it fails as unavailable. */
+  icons?: (args: unknown, binding: SettingsAppBinding) => Record<string, string> | Promise<Record<string, string>>
 }
 
 /** Serves one call, after `refuseSettingsAppProviderCall` let it through. */
@@ -139,7 +139,7 @@ export async function serveSettingsAppProviderCall(
   }
   if (method === 'icons') {
     if (!deps.icons) throw named('NotSupportedError', '$.provider.icons: provider icons are not available in this build')
-    return await deps.icons(args[0])
+    return await deps.icons(args[0], binding)
   }
   const source = await deps.peers?.()
   if (!source) throw named('NotSupportedError', `$.provider.${method}: the peers table is not available in this build`)

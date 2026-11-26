@@ -4,7 +4,8 @@
  */
 import { afterEach, describe, expect, it } from 'vitest'
 import type { BrowserLlmCatalog } from '../browser/bridge/protocol/nexus_llm'
-import { publishHostProviderIcons, resetHostProviderIcons } from '../config/hostProviderIcons'
+import { AgentModelController } from '../browser/worker/AgentModelController'
+import { hostProviderIconSvg, publishHostProviderIcons, resetHostProviderIcons } from '../config/hostProviderIcons'
 import {
   BUILTIN_PROVIDER_DEFINITIONS,
   registerModProviderDefinition,
@@ -21,12 +22,16 @@ import {
 } from '../mods/app/appProviderCalls'
 import { iconAsImage, modProviderDefinition } from '../mods/provider/modProviderDefinition'
 import { runtimePeersTable } from '../mods/provider/nouns/providerPeersNoun'
+import type { Peer } from '../mods/provider/nouns/providerPeersTypes'
+import { createModProviderRouter } from '../mods/provider/providerRouterAdapter'
+import type { ProviderSeamRuntime } from '../mods/provider/providerSeamAdapter'
 import {
   ICON_DEFINITIONS_MAX,
   iconImageUrl,
   providerIconOf,
   resetProviderIconUrls,
-  serveProviderIcons,
+  serveProviderIcons as serveIcons,
+  type IconReader,
 } from '../mods/provider/providerIcons'
 import { listDefinitions, type InstanceCallsDeps } from '../mods/provider/providerInstanceCalls'
 import { PROVIDER_WIRE_FORMATS, resolveProviders } from '../mods/provider/providerManifest'
@@ -75,6 +80,9 @@ function modProvider(id: string, iconSvg?: string): void {
     modProviderDefinition({ plugin: 'acme', provider: provider!, ...(iconSvg !== undefined ? { iconSvg } : {}), isLoaded: () => true }),
   )
 }
+
+const EVERY: IconReader = { routerId: ROUTER, routesTo: '*' }
+const serveProviderIcons = (args: unknown, reader: IconReader = EVERY) => serveIcons(args, reader)
 
 const ROUTER_APP: SettingsAppBinding = { providerId: ROUTER, router: true, routesTo: '*' }
 const PLAIN_APP: SettingsAppBinding = { providerId: MOD, router: false }
@@ -265,9 +273,70 @@ describe('$.provider.icons', () => {
     expect(asked).toBe(0)
   })
 
+  it("answers a provider mod's mark only to a router that reaches it; a built-in's to every router", async () => {
+    publishHostProviderIcons(hostCatalog({ [HOSTED]: COLOURED }))
+    modProvider(MOD, VENDOR)
+    const listed: SettingsAppBinding = { providerId: ROUTER, router: true, routesTo: [HOSTED] }
+    const deps = { reload: async () => undefined, icons: runtimeSettingsAppIcons }
+    expect(await serveSettingsAppProviderCall(listed, 'icons', [{ definitions: [HOSTED, MOD] }], deps)).toEqual({ [HOSTED]: iconImageUrl(COLOURED) })
+    expect(await serveSettingsAppProviderCall({ ...listed, routesTo: [MOD] }, 'icons', [{ definitions: [MOD] }], deps)).toEqual({ [MOD]: iconImageUrl(VENDOR) })
+    expect(serveProviderIcons({ definitions: [MOD] }, { routerId: ROUTER, routesTo: [] })).toEqual({})
+  })
+
+  it("leaves out a provider another router manages, whatever the boundary", () => {
+    const { manifest, errors } = checkPluginDescriptor({
+      name: 'other',
+      version: '1.0.0',
+      providers: {
+        router: { providerApi: 1, kind: 'router', routesTo: '*', displayName: 'Other', credentials: { methods: ['anonymous'] }, module: './r.js' },
+        free: {
+          providerApi: 1,
+          displayName: 'Free',
+          defaultBaseUrl: 'https://api.free.test/v1',
+          domains: ['api.free.test'],
+          format: PROVIDER_WIRE_FORMATS[0],
+          credentials: { methods: ['anonymous'] },
+          managedBy: 'router',
+          module: './p.js',
+        },
+      },
+    })
+    expect(errors).toEqual([])
+    const free = resolveProviders('other', '/plugins/other', manifest!.providers!).find(p => p.manifest.managedBy === 'router')!
+    registerModProviderDefinition(modProviderDefinition({ plugin: 'other', provider: free, iconSvg: VENDOR, isLoaded: () => true }))
+    expect(serveProviderIcons({ definitions: [free.id] })).toEqual({})
+    expect(serveProviderIcons({ definitions: [free.id] }, { routerId: 'mod.other.router', routesTo: [] })).toEqual({ [free.id]: iconImageUrl(VENDOR) })
+  })
+
   it('fails as unavailable where no icon source is attached', async () => {
     await expect(
       serveSettingsAppProviderCall(ROUTER_APP, 'icons', [{ definitions: [HOSTED] }], { reload: async () => undefined }),
     ).rejects.toMatchObject({ name: 'NotSupportedError' })
+  })
+})
+
+describe('where the marks come from and where they go', () => {
+  it("a host catalog the model controller adopts at boot publishes its marks", () => {
+    new AgentModelController({} as never).setCatalog(hostCatalog({ [HOSTED]: COLOURED }))
+    expect(hostProviderIconSvg(HOSTED)).toBe(COLOURED)
+  })
+
+  it('the peers a router module is asked to route with carry no icon', async () => {
+    publishHostProviderIcons(hostCatalog({ [HOSTED]: COLOURED }))
+    openRouter()
+    expect(runtimePeersTable(ROUTER).some(peer => peer.icon !== undefined)).toBe(true)
+    let seen: readonly Peer[] = []
+    const runtime = {
+      whenLoaded: async () => undefined,
+      call: async (_id: string, _event: string, payload: { peers: readonly Peer[] }) => {
+        seen = payload.peers
+        return { raised: true, value: undefined }
+      },
+    } as unknown as ProviderSeamRuntime
+    const router = createModProviderRouter(runtime, ROUTER, runtimePeersTable)
+    const event = { model: 'row', requestContext: {}, callId: 'c', attempt: 1, request: { tools: false, images: false, documents: false } }
+    await router.route(event as never, new AbortController().signal)
+    expect(seen.length).toBeGreaterThan(0)
+    expect(seen.some(peer => 'icon' in peer)).toBe(false)
   })
 })

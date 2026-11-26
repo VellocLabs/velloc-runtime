@@ -18,6 +18,15 @@ import type { Peer, PeersTableFor, ProviderState } from './nouns/providerPeersTy
 
 type CallPeers = { table: readonly Peer[]; failed: Set<string> }
 
+/** The table as `provider.route` gets it: a brand mark is for drawing, never for a routing choice. */
+function withoutIcons(table: readonly Peer[]): Peer[] {
+  return table.map(peer => {
+    if (peer.icon === undefined) return peer
+    const { icon: _icon, ...rest } = peer
+    return rest
+  })
+}
+
 /**
  * The router for `providerId`. `peersTableFor` is read once per call, on its
  * first ask, and that table is handed to every later ask of the call, with
@@ -38,7 +47,7 @@ export function createModProviderRouter(
     const key = event.requestContext as object
     const held = peersOfCall.get(key)
     if (!held || event.attempt === 1) {
-      const table = peersTableFor(providerId)
+      const table = withoutIcons(peersTableFor(providerId))
       peersOfCall.set(key, { table, failed: new Set() })
       return table
     }
