@@ -19,7 +19,7 @@ import { ProviderModHost, type ProviderPluginFacts } from '../mods/provider/prov
 import { PROVIDER_WIRE_FORMATS, resolveProviders } from '../mods/provider/providerManifest'
 import type { ProviderNounCall } from '../mods/provider/ProviderModRuntime'
 import { WebProfiles, type WebProfile } from '../mods/provider/webProfiles'
-import { setWebProfilesForTests } from '../mods/provider/webProfilesRuntime'
+import { keepWebProfilesAt, releaseWebProfileAccount, setWebProfilesForTests } from '../mods/provider/webProfilesRuntime'
 import { checkPluginDescriptor } from '../pluginHost/manifestValidator'
 import { NEXUS_SETTINGS_FILE_NAME, wipeSettingsMemos } from '../settings/settingsStore'
 import type { NexusProviderConfig } from '../settings/settingsTypes'
@@ -216,7 +216,7 @@ describe('a sign-in that ends in a kept web profile', () => {
     expect(profile!.accounts.find(each => each.site === SITE)).not.toHaveProperty('identity')
   })
 
-  it('is there again after a restart, and a table written before account records loads', async () => {
+  it('is there again after a restart, and a table with no account records loads', async () => {
     const w = world()
     await w.signIn(A, { profile: 'new', account: 'ann@example.com' })
     const again = new WebProfiles({ load: async () => w.table.text, save: async () => {}, hostKeepsProfiles: () => true, deletePartition: async () => {} })
@@ -378,14 +378,14 @@ describe('a plugin that is taken away', () => {
     return { name, manifest: manifest!, path, source: `user:${path}`, enabled: true, providers: resolveProviders(name, path, manifest!.providers!) } as ProviderPluginFacts
   }
 
-  function host(w: ReturnType<typeof world>): ProviderModHost {
+  function host(w: ReturnType<typeof world>, publish: () => Promise<void> = async () => {}): ProviderModHost {
     const made = new ProviderModHost()
     made.configure({
       createRuntime: async () => ({ register: () => {}, unregister: () => {}, replace: async () => {}, dispose: () => {} }) as never,
       readText: async () => '',
       report: line => w.lines.push(line),
       adopt: async () => {},
-      publish: async () => {},
+      publish,
       hasStoredConfigs: () => true,
       storedConfigs: runtimeProviderConfigs,
       writeConfig: w.write,
@@ -415,6 +415,41 @@ describe('a plugin that is taken away', () => {
     expect(profile!.accounts).toMatchObject([{ site: SITE, providers: [O] }])
     expect(w.lines).toEqual([])
     mods.dispose()
+  })
+
+  it('an entry removed while the sync runs is not written back', async () => {
+    const w = world()
+    await w.signIn(A, { profile: 'new', account: 'ann@example.com' })
+    let removing = false
+    const mods = host(w, async () => {
+      if (removing) await providersHandlers.remove({ id: A }, w.ctx)
+    })
+    await mods.sync({ enabled: [plugin('acme')], disabled: [] })
+    removing = true
+    await mods.sync({ enabled: [], disabled: [] })
+    await w.settled()
+    expect(w.stored()).not.toHaveProperty(A)
+    expect(await w.list('other', [O])).toEqual([])
+    expect(w.lines).toEqual([])
+    mods.dispose()
+  })
+})
+
+describe('a release before the profiles were first used', () => {
+  afterEach(() => setWebProfilesForTests(undefined))
+
+  it('reports through the runtime\'s reporter, not the settings write\'s', async () => {
+    const w = world()
+    setWebProfilesForTests(undefined)
+    const lines: string[] = []
+    keepWebProfilesAt({ homeDir: HOME, fs: w.fs, report: line => lines.push(line) })
+    w.files.set(
+      `${HOME}/.velloc/web-profiles.json`,
+      JSON.stringify({ version: 3, next: 2, profiles: [{ number: 1, createdAt: NOW, logins: [], accounts: [{ site: SITE, account: 'ann@example.com', at: NOW }] }] }),
+    )
+    await releaseWebProfileAccount({ homeDir: HOME, fs: w.fs }, { id: P1, site: SITE }, {})
+    // No host here, so the emptied profile cannot be deleted: it is kept and said so.
+    expect(lines).toEqual([expect.stringContaining(`${P1} could not be deleted`)])
   })
 })
 

@@ -669,9 +669,12 @@ ${plugin.name}`
     if (this.departedDefinitions.size === 0) return
     const write = options.writeConfig ?? providerHostSources().writeProviderConfig
     if (!write) return
+    const stored = options.storedConfigs ?? runtimeProviderConfigs
     let failed = false
-    for (const [id, config] of Object.entries(configs)) {
-      if (!config.webProfile || !this.departedDefinitions.has(config.definition ?? id)) continue
+    for (const id of Object.keys(configs)) {
+      // Read at each write: an entry removed since the sync began stays removed.
+      const config = stored()[id]
+      if (!config?.webProfile || !this.departedDefinitions.has(config.definition ?? id)) continue
       const { apiKey: _apiKey, hasApiKey: _hasApiKey, storedSecrets: _storedSecrets, secrets: _secrets, ...rest } = config
       try {
         await write(id, rest, { promote: false, webProfile: null })

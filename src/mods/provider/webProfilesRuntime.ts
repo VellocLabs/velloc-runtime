@@ -102,12 +102,13 @@ export async function releaseWebProfileAccount(
   through: ProviderWebProfileRef,
   configs: Readonly<Record<string, NexusProviderConfig>>,
 ): Promise<void> {
+  const report = options.report ?? where?.report
   try {
     if (Object.values(configs).some(config => config.webProfile?.id === through.id && config.webProfile.site === through.site)) return
     if (!instance && !options.fs.existsSync(tablePath(options.homeDir))) return
-    await runtimeWebProfiles(options).dropAccount(through.id, through.site)
+    await (currentWebProfiles() ?? runtimeWebProfiles(options)).dropAccount(through.id, through.site)
   } catch (error) {
-    options.report?.(
+    report?.(
       `web profiles: could not drop the account of ${through.site} in ${through.id}: ${error instanceof Error ? error.message : String(error)}`,
     )
   }
