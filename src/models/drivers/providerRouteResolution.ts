@@ -50,6 +50,7 @@ import {
   type MediaKinds,
 } from './routedMedia'
 import type { RouteDecision, RouteLeg, RoutedSend, StreamRouting } from './routedStream'
+import { timingColumns } from './streamTiming'
 import { requestLogCallerOf, type RequestLogCaller, type RequestLogRow } from '../usage/requestLogStore'
 import { recordRequest } from '../usage/requestLogWriter'
 import { isProviderSetUp, mergedModels, providerDefinitionId, providerEntries, runtimeProviderConfigs } from './runtimeProviders'
@@ -174,6 +175,7 @@ export function logRowOf(
     outcome: send.outcome,
     ...(failureKind ? { failureKind } : {}),
     ...(send.outcome === 'failed' && httpStatus !== undefined ? { httpStatus } : {}),
+    ...timingColumns(send.startedMs, send.timings),
   }
 }
 

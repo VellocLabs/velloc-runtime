@@ -18,7 +18,7 @@ import type { RuntimeConfig } from '../../runtime/interfaces/RuntimeConfig'
 import { classifyProviderConnectivityIssue, ProviderApiError } from '../../utils/providerConnectivity'
 import type { DeclaredVerdict } from '../../utils/providerVerdict'
 import { providerRouterFor } from '../drivers/providerRouter'
-import { takeStreamTimings, type StreamTimings } from '../drivers/streamTiming'
+import { takeStreamTimings, timingColumns } from '../drivers/streamTiming'
 import {
   foldUsage,
   requestLogCallerOf,
@@ -49,16 +49,6 @@ type Starting = Omit<Open, 'hop'>
 type Fields = Record<string, unknown>
 
 type Ending = Pick<RequestLogRow, 'outcome' | 'failureKind' | 'httpStatus' | 'firstContentMs' | 'maxGapMs' | 'queuedMs'>
-
-/** The row's timing fields, `firstContentAt` made relative to the row's start. */
-function timingFields(startedMs: number, timings: StreamTimings | undefined): Pick<Ending, 'firstContentMs' | 'maxGapMs' | 'queuedMs'> {
-  if (!timings) return {}
-  return {
-    queuedMs: timings.queuedMs,
-    ...(timings.firstContentAt !== undefined ? { firstContentMs: Math.max(0, timings.firstContentAt - startedMs) } : {}),
-    ...(timings.maxGapMs !== undefined ? { maxGapMs: timings.maxGapMs } : {}),
-  }
-}
 
 function fields(value: unknown): Fields {
   return value && typeof value === 'object' ? (value as Fields) : {}
@@ -126,7 +116,7 @@ export function withRequestLog(
     const stream = open.get(streamId)
     if (!stream) return
     open.delete(streamId)
-    write(stream, { ...ending, ...timingFields(stream.startedMs, takeStreamTimings(streamId)) })
+    write(stream, { ...ending, ...timingColumns(stream.startedMs, takeStreamTimings(streamId)) })
   }
 
   const started = (payload: Fields, startedMs: number): Starting | undefined => {

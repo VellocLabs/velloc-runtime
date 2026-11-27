@@ -102,7 +102,7 @@ const refusedWith = (status: number, text = 'no'): Reply => ({ status, body: new
 /** A reply that starts and then loses its connection. */
 const cutAfter = (text: string): Reply => ({ status: 200, body: enc([{ type: 'text_delta', text }]), cut: true })
 
-type Reply = { status: number; body: Uint8Array; cut?: boolean; hang?: boolean }
+type Reply = { status: number; body: Uint8Array; cut?: boolean; hang?: boolean; stall?: boolean }
 
 /** A host that answers each provider's `rawStreamOpen` from that provider's
  *  script and records every open. */
@@ -132,6 +132,11 @@ function rawHost(script: Record<string, Reply[]>) {
       if (!entry) return { ok: true, result: { done: true, chunk: new Uint8Array() } } as any
       entry.reads += 1
       if (entry.reply.hang) {
+        await new Promise<void>(resolve => { entry.release = resolve })
+        return { ok: true, result: { done: true, chunk: new Uint8Array() } } as any
+      }
+      if (entry.reply.stall) {
+        if (entry.reads === 1) return { ok: true, result: { done: false, chunk: entry.reply.body } } as any
         await new Promise<void>(resolve => { entry.release = resolve })
         return { ok: true, result: { done: true, chunk: new Uint8Array() } } as any
       }
@@ -425,6 +430,45 @@ describe('a request to a router provider', () => {
     registerProviderRouter(ROUTER, testRouter([toA]).router, { routesTo: '*' })
     await stream(withModelProviders(transport, config()))
     expect(loggedRows()[0]!.usage).toEqual({ inputTokens: 40, outputTokens: 5, cacheReadTokens: 30, cacheWriteTokens: 6 })
+  })
+
+  it('the row of a leg carries when its response arrived, relative to the start of the leg', async () => {
+    vi.mocked(recordRequest).mockClear()
+    const answered = enc([
+      { type: 'text_delta', text: 'hi' },
+      { type: 'finish', finishReason: 'stop' },
+    ])
+    const { transport } = rawHost({ [A]: [{ status: 200, body: answered }] })
+    registerProviderRouter(ROUTER, testRouter([toA]).router, { routesTo: '*' })
+    await stream(withModelProviders(transport, config()))
+    const [row] = loggedRows()
+    expect(row).toMatchObject({ queuedMs: 0, firstContentMs: expect.any(Number), maxGapMs: expect.any(Number) })
+    expect(row!.firstContentMs!).toBeLessThanOrEqual(row!.durationMs)
+  })
+
+  it('the longest gap of a leg that went silent ends when the leg is cancelled, not when the router has answered', async () => {
+    vi.mocked(recordRequest).mockClear()
+    const stalled: Reply = { status: 200, body: enc([{ type: 'text_delta', text: 'part' }]), stall: true }
+    const { transport } = rawHost({ [A]: [stalled] })
+    const slowAnswerMs = 400
+    registerProviderRouter(ROUTER, {
+      async route(e) {
+        if (e.attempt === 1) return toA
+        await new Promise(resolve => setTimeout(resolve, slowAnswerMs))
+        return { stop: true }
+      },
+    }, { routesTo: '*' })
+    const wrapped = withModelProviders(transport, config())
+
+    const started = await model(wrapped, 'streamStart', payload())
+    for (let i = 0; i < 20; i += 1) {
+      const read = await model(wrapped, 'streamRead', { streamId: started.result.streamId, waitMs: 40 })
+      if (read.result.done || read.result.status === 'timeout') break
+    }
+
+    const [row] = loggedRows()
+    expect(row).toMatchObject({ firstContentMs: expect.any(Number), maxGapMs: expect.any(Number) })
+    expect(row!.maxGapMs!).toBeLessThan(slowAnswerMs)
   })
 
   it('a cancel mid-leg writes that leg as aborted, once', async () => {
@@ -1134,6 +1178,14 @@ describe('logRowOf', () => {
     expect(again).not.toHaveProperty('switchedFrom')
     expect(first).not.toHaveProperty('sessionId')
     expect(again).not.toHaveProperty('failureKind')
+  })
+
+  it('carries the timings of the send relative to its start, and none when it measured none', () => {
+    const call = routeCallOf({})
+    const timed = logRowOf('r', 'row', {}, call, { ...send('a', 'm', 'ok'), timings: { queuedMs: 5, firstContentAt: 1_300, maxGapMs: 40 } })
+    expect(timed).toMatchObject({ firstContentMs: 300, maxGapMs: 40, queuedMs: 5 })
+    const bare = logRowOf('r', 'row', {}, call, send('a', 'm', 'ok'))
+    for (const field of ['firstContentMs', 'maxGapMs', 'queuedMs']) expect(bare).not.toHaveProperty(field)
   })
 
   it('a move off a cancelled send names the kind as error', () => {

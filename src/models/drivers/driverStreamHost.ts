@@ -74,7 +74,7 @@ import { modelMasking, withMaskedUserAgent, withMaskedValues, type MaskingStream
 import { MaskingResidualError, MaskingUnavailableError, MaskingUndecodableError } from '../masking/egressGuard'
 import { storedKeyProblemFromReason, withStoredKeyMarker } from '../../utils/storedKeyProblem'
 import { RoutedStream, type LegRouteHook, type StreamReadResult, type StreamRouting } from './routedStream'
-import { publishStreamTimings, StreamTimingTracker } from './streamTiming'
+import { publishStreamTimings, StreamTimingTracker, type StreamTimings } from './streamTiming'
 
 // A non-2xx body is read whole for the error message; cap it.
 const MAX_ERROR_BODY_BYTES = 64 * 1024
@@ -210,6 +210,12 @@ class DriverStream {
     this.timingKey = streamId
   }
 
+  /** Ends the timing measurement and returns it: for a leg a router drives. */
+  endTimings(): StreamTimings {
+    this.timing.end()
+    return this.timing.timings()
+  }
+
   private publishTimings(): void {
     if (this.timingKey === undefined) return
     this.timing.end()
@@ -271,6 +277,7 @@ class DriverStream {
   async cancel(): Promise<void> {
     this.abort.abort()
     // Before the round trip: the reader writes the row as soon as cancel returns.
+    this.timing.end()
     this.publishTimings()
     await this.raw?.cancel()
   }

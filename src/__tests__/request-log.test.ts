@@ -386,13 +386,33 @@ describe('request log queries', () => {
         {
           start: T0, provider: 'acme', model: 'acme-large', requests: 2, failures: 1,
           inputTokens: 110, outputTokens: 20, cacheReadTokens: 7, cacheWriteTokens: 3, switches: 0,
+          timed: 0, firstContentMs: 0, maxGapMs: 0, queuedMs: 0,
         },
         {
           start: T0 + HOUR_MS, provider: 'acme', model: 'acme-large', router: 'mod.pool.main', routerRow: 'fast',
           requests: 1, failures: 0, inputTokens: 100, outputTokens: 20, cacheReadTokens: 7, cacheWriteTokens: 3, switches: 0,
+          timed: 0, firstContentMs: 0, maxGapMs: 0, queuedMs: 0,
         },
       ],
     })
+  })
+
+  it('sums the timings over the sends that reported a first content, and lists the timings of each send', async () => {
+    const { store } = makeStore()
+    await store.record(row({ firstContentMs: 800, maxGapMs: 300, queuedMs: 0 }))
+    await store.record(row({ startedMs: T0 + 5 * 60_000 + 1, firstContentMs: 1200, maxGapMs: 100, queuedMs: 50 }))
+    // Only a queue wait: the stream carried no content, so it is not in the sums.
+    await store.record(row({ startedMs: T0 + 5 * 60_000 + 2, queuedMs: 9000 }))
+    await store.record(row({ startedMs: T0 + 5 * 60_000 + 3 }))
+    const hour = await store.query({ from: T0, to: T0 + HOUR_MS, by: 'hour' })
+    if (hour.by !== 'hour') throw new Error('unexpected')
+    expect(hour.buckets).toHaveLength(1)
+    expect(hour.buckets[0]).toMatchObject({ requests: 4, timed: 2, firstContentMs: 2000, maxGapMs: 400, queuedMs: 50 })
+    const listed = await store.query({ from: T0, to: T0 + HOUR_MS, by: 'request' })
+    if (listed.by !== 'request') throw new Error('unexpected')
+    const timings = listed.requests.map(r => [r.firstContentMs ?? null, r.maxGapMs ?? null, r.queuedMs ?? null])
+    expect(timings).toEqual([[null, null, null], [null, null, 9000], [1200, 100, 50], [800, 300, 0]])
+    expect(listed.requests[0]).not.toHaveProperty('firstContentMs')
   })
 
   it('sums hours into days of the given offset', async () => {

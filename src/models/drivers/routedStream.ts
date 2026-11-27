@@ -22,6 +22,7 @@ import type { FailureEvent } from './providerClassify'
 import type { RouteTarget } from './providerRouteAnswer'
 import type { RouteErrorMark } from './providerRouter'
 import { foldUsage } from '../usage/requestLogStore'
+import type { StreamTimings } from './streamTiming'
 
 export type StreamReadResult = {
   chunks: BridgeModelStreamChunk[]
@@ -61,6 +62,8 @@ export type RoutedSend = {
   outcome: 'ok' | 'failed' | 'aborted'
   failure?: FailureEvent
   usage: { inputTokens?: number; outputTokens?: number; cacheReadTokens?: number; cacheWriteTokens?: number }
+  /** When the leg's response arrived; absent when the leg does not measure it. */
+  timings?: StreamTimings
 }
 
 /** The resolution step, as one call's stream uses it. */
@@ -92,6 +95,8 @@ export interface LegStream {
   cancel(): Promise<void>
   /** The error event the leg ended with. */
   failed(): FailureEvent | undefined
+  /** Ends the leg's timing measurement and returns it (F-27). */
+  endTimings?(): StreamTimings
 }
 
 export type OpenLeg = (leg: RouteLeg, hook: LegRouteHook) => LegStream
@@ -159,6 +164,7 @@ export class RoutedStream {
     current.told = true
     if (!this.routing.sent) return
     try {
+      const timings = current.stream.endTimings?.()
       this.routing.sent({
         target: current.leg.target,
         model: current.leg.model,
@@ -167,6 +173,7 @@ export class RoutedStream {
         outcome,
         ...(failure ? { failure } : {}),
         usage: current.usage,
+        ...(timings ? { timings } : {}),
       })
     } catch {
       // An observer.

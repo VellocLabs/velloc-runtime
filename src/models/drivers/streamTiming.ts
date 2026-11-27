@@ -69,6 +69,18 @@ export class StreamTimingTracker {
   }
 }
 
+/** A send's timings as the usage log stores them, relative to the send's start. */
+export type TimingColumns = { firstContentMs?: number; maxGapMs?: number; queuedMs?: number }
+
+export function timingColumns(startedMs: number, timings: StreamTimings | undefined): TimingColumns {
+  if (!timings) return {}
+  return {
+    queuedMs: timings.queuedMs,
+    ...(timings.firstContentAt !== undefined ? { firstContentMs: Math.max(0, timings.firstContentAt - startedMs) } : {}),
+    ...(timings.maxGapMs !== undefined ? { maxGapMs: timings.maxGapMs } : {}),
+  }
+}
+
 /** Timings kept for streams whose reader has not taken them; past it the oldest go. */
 export const STREAM_TIMINGS_MAX = 512
 

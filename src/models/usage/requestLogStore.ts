@@ -189,6 +189,12 @@ export type RequestLogBucket = {
   cacheReadTokens: number
   cacheWriteTokens: number
   switches: number
+  /** Sends that reported a first-content time; the three sums below run over them alone. */
+  timed: number
+  /** Sums of `first_content_ms`, `max_gap_ms` and `queued_ms`: divide by `timed` for the mean. */
+  firstContentMs: number
+  maxGapMs: number
+  queuedMs: number
 }
 
 export type RequestLogSwitch = {
@@ -217,6 +223,10 @@ export type RequestLogRequest = {
   outputTokens: number
   cacheReadTokens: number
   cacheWriteTokens: number
+  /** The send's timings; absent when it reported none. */
+  firstContentMs?: number
+  maxGapMs?: number
+  queuedMs?: number
 }
 
 export type RequestLogQueryResult =
@@ -265,6 +275,16 @@ function readNumber(value: SqlValue | undefined): number {
   if (typeof value === 'number') return value
   if (value && typeof value === 'object' && '$int' in value) return Number(value.$int)
   return 0
+}
+
+/** The fields of the columns that hold a number, keyed by `name`. */
+function readOptionalNumbers<K extends string>(names: readonly K[], values: readonly (SqlValue | undefined)[]): Partial<Record<K, number>> {
+  const read: Partial<Record<K, number>> = {}
+  names.forEach((name, at) => {
+    const value = values[at]
+    if (value !== null && value !== undefined) read[name] = readNumber(value)
+  })
+  return read
 }
 
 function readText(value: SqlValue | undefined): string | undefined {
@@ -558,7 +578,10 @@ export class RequestLogStore {
         p.text, m.text, r.text, w.text,
         COUNT(*), SUM(CASE WHEN s.outcome = ${OUTCOME_FAILED} THEN 1 ELSE 0 END),
         SUM(s.input_tokens), SUM(s.output_tokens), SUM(s.cache_read_tokens), SUM(s.cache_write_tokens),
-        SUM(CASE WHEN s.from_provider IS NOT NULL THEN 1 ELSE 0 END)
+        SUM(CASE WHEN s.from_provider IS NOT NULL THEN 1 ELSE 0 END),
+        COUNT(s.first_content_ms), TOTAL(s.first_content_ms),
+        TOTAL(CASE WHEN s.first_content_ms IS NOT NULL THEN s.max_gap_ms END),
+        TOTAL(CASE WHEN s.first_content_ms IS NOT NULL THEN s.queued_ms END)
       FROM sends s
         JOIN names p ON p.id = s.provider
         JOIN names m ON m.id = s.model
@@ -587,6 +610,10 @@ export class RequestLogStore {
         cacheReadTokens: readNumber(row[9]),
         cacheWriteTokens: readNumber(row[10]),
         switches: readNumber(row[11]),
+        timed: readNumber(row[12]),
+        firstContentMs: readNumber(row[13]),
+        maxGapMs: readNumber(row[14]),
+        queuedMs: readNumber(row[15]),
       }
     })
     return { by: query.by as 'hour' | 'day', buckets, truncated: result.truncated }
@@ -636,7 +663,8 @@ export class RequestLogStore {
     const filters = sendFilters(query, params)
     const result = await this.read(
       `SELECT s.started_ms, s.duration_ms, s.call_id, s.hop, p.text, m.text, r.text, w.text,
-        s.input_tokens, s.output_tokens, s.cache_read_tokens, s.cache_write_tokens
+        s.input_tokens, s.output_tokens, s.cache_read_tokens, s.cache_write_tokens,
+        s.first_content_ms, s.max_gap_ms, s.queued_ms
       FROM sends s
         JOIN names p ON p.id = s.provider
         JOIN names m ON m.id = s.model
@@ -665,6 +693,7 @@ export class RequestLogStore {
         outputTokens: readNumber(row[9]),
         cacheReadTokens: readNumber(row[10]),
         cacheWriteTokens: readNumber(row[11]),
+        ...readOptionalNumbers(['firstContentMs', 'maxGapMs', 'queuedMs'] as const, row.slice(12, 15)),
       }
     })
     return { by: 'request', requests }
