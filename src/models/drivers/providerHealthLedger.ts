@@ -11,6 +11,8 @@
  * under the model the request named, whatever its scope: one model failing
  * says nothing about the instance's other models. A record is replaced only
  * by one that lasts at least as long; `disabled` is replaced by nothing.
+ * Only a provider's own refusal (an HTTP status) disables a model; a
+ * credentials verdict no server gave cools it for a while instead.
  */
 import type { PeerModelState, PeerUntilFrom, ProviderState } from '../../mods/provider/nouns/providerPeersTypes'
 import type { ProviderConnectivityIssue } from '../../utils/providerConnectivity'
@@ -23,6 +25,8 @@ export const QUOTA_UNKNOWN_MS = 60 * 60_000
 /** Requests served in a UTC day from which a quota reads as a daily one. */
 export const QUOTA_DAILY_SERVED = 10
 export const BILLING_COOL_MS = 30 * 60_000
+/** How long a credentials verdict with no HTTP status holds a model. */
+export const UNCONFIRMED_CREDENTIALS_MS = 10 * 60_000
 export const MODEL_UNAVAILABLE_MS = 60 * 60_000
 export const TRANSIENT_COOL_MS = 30_000
 /** The longest a run of service or network failures holds a model. */
@@ -172,6 +176,9 @@ function recordFor(
     case 'billing':
       return { status: 'cooling', until: nowMs + BILLING_COOL_MS, untilFrom: 'platform', reason: 'billing' }
     case 'credentials':
+      if (verdict.status === undefined) {
+        return { status: 'cooling', until: nowMs + UNCONFIRMED_CREDENTIALS_MS, untilFrom: 'platform', reason: 'credentials' }
+      }
       return { status: 'disabled', reason: 'credentials' }
     case 'model_unavailable':
       return { status: 'cooling', until: nowMs + MODEL_UNAVAILABLE_MS, untilFrom: 'platform', reason: 'model_unavailable' }

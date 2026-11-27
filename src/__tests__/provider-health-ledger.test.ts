@@ -22,6 +22,7 @@ import {
   retryProviderHealthLedgerLoad,
   TRANSIENT_COOL_MS,
   TRANSIENT_MAX_MS,
+  UNCONFIRMED_CREDENTIALS_MS,
   type ProviderHealthStore,
 } from '../models/drivers/providerHealthLedger'
 import type { ProviderConnectivityIssue } from '../utils/providerConnectivity'
@@ -93,7 +94,7 @@ describe('what a verdict records', () => {
     expect(held('acme', NOON, 'stated').untilFrom).toBe('provider')
     expect(held('acme', NOON, 'chosen').untilFrom).toBe('platform')
     expect(held('acme', NOON, 'guessed').untilFrom).toBe('platform')
-    recordProviderVerdict('acme', 'off', verdict('credentials', { scope: 'key' }), NOON)
+    recordProviderVerdict('acme', 'off', verdict('credentials', { scope: 'key', status: 401 }), NOON)
     expect(held('acme', NOON, 'off')).toEqual({ status: 'disabled', reason: 'credentials' })
   })
 
@@ -151,9 +152,26 @@ describe('what a verdict records', () => {
   })
 
   it('credentials disables the model with no end', () => {
-    recordProviderVerdict('acme', 'm1', verdict('credentials', { scope: 'key' }), NOON)
+    recordProviderVerdict('acme', 'm1', verdict('credentials', { scope: 'key', status: 401 }), NOON)
     expect(held('acme', NOON)).toEqual({ status: 'disabled', reason: 'credentials' })
     expect(held('acme', NOON + 365 * 24 * 60 * MIN)).toEqual({ status: 'disabled', reason: 'credentials' })
+  })
+
+  it('credentials no server answered cools the model for ten minutes instead of disabling it', () => {
+    recordProviderVerdict('acme', 'm1', verdict('credentials', { scope: 'key' }), NOON)
+    expect(held('acme', NOON)).toEqual({
+      status: 'cooling',
+      until: NOON + UNCONFIRMED_CREDENTIALS_MS,
+      untilFrom: 'platform',
+      reason: 'credentials',
+    })
+    expect(held('acme', NOON + UNCONFIRMED_CREDENTIALS_MS)).toEqual({ status: 'ok' })
+  })
+
+  it('a server refusal after an unconfirmed credentials verdict disables the model', () => {
+    recordProviderVerdict('acme', 'm1', verdict('credentials'), NOON)
+    recordProviderVerdict('acme', 'm1', verdict('credentials', { status: 403 }), NOON + MIN)
+    expect(held('acme', NOON + 60 * MIN)).toEqual({ status: 'disabled', reason: 'credentials' })
   })
 
   it('model_unavailable holds that model for one hour', () => {
@@ -209,7 +227,7 @@ describe('where a verdict is recorded', () => {
 
   it('a verdict with no model named records nothing', () => {
     recordProviderVerdict('acme', '', verdict('rate_limit', { scope: 'model' }), NOON)
-    recordProviderVerdict('acme', '', verdict('credentials', { scope: 'key' }), NOON)
+    recordProviderVerdict('acme', '', verdict('credentials', { scope: 'key', status: 401 }), NOON)
     expect(providerStateOf('acme', NOON)).toEqual(NONE)
   })
 
@@ -249,7 +267,7 @@ describe('where a verdict is recorded', () => {
   })
 
   it('one instance being frozen says nothing about another', () => {
-    recordProviderVerdict('acme', 'm1', verdict('credentials', { scope: 'key' }), NOON)
+    recordProviderVerdict('acme', 'm1', verdict('credentials', { scope: 'key', status: 401 }), NOON)
     expect(providerStateOf('other', NOON)).toEqual(NONE)
   })
 
@@ -257,7 +275,7 @@ describe('where a verdict is recorded', () => {
     recordProviderVerdict('acme', 'm1', verdict('quota', { resetsAt: NOON + 60 * MIN }), NOON)
     recordProviderVerdict('acme', 'm1', verdict('network'), NOON + 1_000)
     expect(held('acme', NOON + 1_000).reason).toBe('quota')
-    recordProviderVerdict('acme', 'm1', verdict('credentials'), NOON + 2_000)
+    recordProviderVerdict('acme', 'm1', verdict('credentials', { status: 401 }), NOON + 2_000)
     recordProviderVerdict('acme', 'm1', verdict('quota', { resetsAt: NOON + 600 * MIN }), NOON + 3_000)
     expect(held('acme', NOON + 3_000)).toEqual({ status: 'disabled', reason: 'credentials' })
   })
@@ -295,8 +313,8 @@ describe('what ends a record', () => {
   })
 
   it('clearing one model leaves the other models of the instance', () => {
-    recordProviderVerdict('acme', 'm1', verdict('credentials', { scope: 'key' }), NOON)
-    recordProviderVerdict('acme', 'm2', verdict('credentials', { scope: 'key' }), NOON)
+    recordProviderVerdict('acme', 'm1', verdict('credentials', { scope: 'key', status: 401 }), NOON)
+    recordProviderVerdict('acme', 'm2', verdict('credentials', { scope: 'key', status: 401 }), NOON)
     recordProviderVerdict('acme', 'm3', verdict('quota', { scope: 'model', resetsAt: NOON + MIN }), NOON)
     clearProviderState('acme', 'm1')
     expect(providerStateOf('acme', NOON)).toEqual({
@@ -314,7 +332,7 @@ describe('what ends a record', () => {
 
   it('a changed config clears the billing and credentials records of all that instance\'s models, and nothing else', () => {
     noteProviderConfigs({ a: { hasApiKey: true }, b: { hasApiKey: true }, c: { hasApiKey: true } })
-    recordProviderVerdict('a', 'm1', verdict('credentials', { scope: 'key' }), NOON)
+    recordProviderVerdict('a', 'm1', verdict('credentials', { scope: 'key', status: 401 }), NOON)
     recordProviderVerdict('a', 'm3', verdict('billing', { scope: 'account' }), NOON)
     recordProviderVerdict('a', 'm2', verdict('quota', { scope: 'model', resetsAt: NOON + MIN }), NOON)
     recordProviderVerdict('b', 'm1', verdict('billing'), NOON)
@@ -330,7 +348,7 @@ describe('what ends a record', () => {
   })
 
   it('the first configs seen clear nothing, and a removed config counts as a change', () => {
-    recordProviderVerdict('a', 'm1', verdict('credentials'), NOON)
+    recordProviderVerdict('a', 'm1', verdict('credentials', { status: 401 }), NOON)
     noteProviderConfigs({ a: { hasApiKey: true } })
     expect(held('a', NOON).status).toBe('disabled')
     noteProviderConfigs({})
@@ -342,7 +360,7 @@ describe('kept between runs', () => {
   it('a record written by one run is read by the next, and ends when it would have', async () => {
     const store = memoryStore()
     await configureProviderHealthLedger(store)
-    recordProviderVerdict('acme', 'm1', verdict('credentials', { scope: 'key' }), NOON)
+    recordProviderVerdict('acme', 'm1', verdict('credentials', { scope: 'key', status: 401 }), NOON)
     recordProviderVerdict('acme', 'm2', verdict('quota', { scope: 'model', resetsAt: NOON + 60 * MIN }), NOON)
     recordProviderVerdict('other', 'm1', verdict('rate_limit'), NOON)
     await providerHealthLedgerSettled()
@@ -388,7 +406,7 @@ describe('kept between runs', () => {
 
     resetProviderHealthLedger()
     const ready = configureProviderHealthLedger(memoryStore(earlier.text))
-    recordProviderVerdict('acme', 'm1', verdict('credentials'), NOON + 1_000)
+    recordProviderVerdict('acme', 'm1', verdict('credentials', { status: 401 }), NOON + 1_000)
     await ready
     expect(held('acme', NOON + 1_000).status).toBe('disabled')
     expect(held('other', NOON + 1_000).reason).toBe('billing')
@@ -438,7 +456,7 @@ describe('kept between runs', () => {
   it('a store that could not be read at first is read before it is written, so nothing stored is lost', async () => {
     const earlier = memoryStore()
     await configureProviderHealthLedger(earlier)
-    recordProviderVerdict('stored', 'm1', verdict('credentials'), NOON)
+    recordProviderVerdict('stored', 'm1', verdict('credentials', { status: 401 }), NOON)
     await providerHealthLedgerSettled()
 
     resetProviderHealthLedger()
@@ -466,7 +484,7 @@ describe('kept between runs', () => {
   it('a store that becomes readable later is taken when asked again, with no change needed', async () => {
     const earlier = memoryStore()
     await configureProviderHealthLedger(earlier)
-    recordProviderVerdict('stored', 'm1', verdict('credentials'), NOON)
+    recordProviderVerdict('stored', 'm1', verdict('credentials', { status: 401 }), NOON)
     await providerHealthLedgerSettled()
 
     resetProviderHealthLedger()
@@ -487,7 +505,7 @@ describe('kept between runs', () => {
   it('a clear made before the stored ledger was taken is not undone by it, and is written', async () => {
     const earlier = memoryStore()
     await configureProviderHealthLedger(earlier)
-    recordProviderVerdict('acme', 'm1', verdict('credentials'), NOON)
+    recordProviderVerdict('acme', 'm1', verdict('credentials', { status: 401 }), NOON)
     recordProviderVerdict('acme', 'm2', verdict('quota', { scope: 'model', resetsAt: NOON + MIN }), NOON)
     recordProviderVerdict('other', 'm1', verdict('billing'), NOON)
     await providerHealthLedgerSettled()
@@ -514,8 +532,8 @@ describe('kept between runs', () => {
     const store = memoryStore()
     await configureProviderHealthLedger(store)
     noteProviderConfigs({ a: { hasApiKey: true }, b: { hasApiKey: true } })
-    recordProviderVerdict('a', 'm1', verdict('credentials'), NOON)
-    recordProviderVerdict('b', 'm1', verdict('credentials'), NOON)
+    recordProviderVerdict('a', 'm1', verdict('credentials', { status: 401 }), NOON)
+    recordProviderVerdict('b', 'm1', verdict('credentials', { status: 401 }), NOON)
     await providerHealthLedgerSettled()
     expect(store.text).not.toContain('hasApiKey')
 

@@ -35,8 +35,9 @@ export type PeerModelState = {
  * `until` is gone when read. Every verdict is recorded under the model the
  * request named, whatever its scope: the instance itself has no state, and a
  * model with no entry is `ok`. `billing` is a 30-minute cooldown;
- * `credentials` is `disabled` until the instance's config changes. Any
- * change to the instance's config clears both, for all its models.
+ * `credentials` with an HTTP status is `disabled` until the instance's
+ * config changes; with none it is a 10-minute cooldown. Any change to the
+ * instance's config clears all of these, for all its models.
  */
 export type ProviderState = {
   /** By model id: what holds for that model alone. */

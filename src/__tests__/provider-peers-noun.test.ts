@@ -410,7 +410,7 @@ describe('the runtime\'s own table', () => {
     expect(before[0]!.models.find(model => model.id === 'coder-small')!.picked).toBe(false)
 
     await refreshProviderUsage({} as BrowserBridgeTransport, 'mod.acme.gateway', { now: NOW })
-    recordProviderVerdict('mod.acme.gateway', 'coder-large', verdict('credentials', { scope: 'key' }), Date.now())
+    recordProviderVerdict('mod.acme.gateway', 'coder-large', verdict('credentials', { scope: 'key', status: 401 }), Date.now())
     const after = runtimePeersTable(ROUTER)
     expect(after[0]!.usage).toEqual(USAGE)
     expect(after[0]!.state).toEqual({ models: { 'coder-large': { status: 'disabled', reason: 'credentials' } } })
