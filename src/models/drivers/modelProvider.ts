@@ -60,17 +60,13 @@ function withoutApiKey(
   return { headers: outHeaders, ...(Object.keys(outQuery).length > 0 ? { queryParams: outQuery } : {}) }
 }
 
-/** The format's own auth entries (those carrying the key) leave `queryParams`
- *  when the merged headers already carry the credential and the provider
- *  holds no key (`keyed`). */
+/** The format's own auth entries (those carrying the key) leave `queryParams`;
+ *  called when the headers already carry the credential. */
 function withoutHeaderCarriedAuth(
-  codec: ProviderDriver,
-  headers: Record<string, string>,
   queryParams: Record<string, string> | undefined,
   explicit: Record<string, string> | undefined,
-  keyed: boolean,
 ): Record<string, string> | undefined {
-  if (!queryParams || keyed || !codec.authCarriedByHeaders?.(headers)) return queryParams
+  if (!queryParams) return queryParams
   const out = Object.fromEntries(
     Object.entries(queryParams).filter(
       ([name, value]) => !value.includes(API_KEY_TEMPLATE) || (explicit !== undefined && name in explicit),
@@ -79,18 +75,14 @@ function withoutHeaderCarriedAuth(
   return Object.keys(out).length > 0 ? out : undefined
 }
 
-/** The format's own API-key headers leave the request when the merged headers
- *  already carry the credential and the provider holds no key (`keyed`); one
- *  the provider declared itself stays.
+/** The format's own API-key headers leave the request; one the provider
+ *  declared itself stays. Called when the headers already carry the credential.
  *  Security: a header naming a secret the provider does not hold makes the
  *  host refuse the whole request, so the default must not ride along. */
 function withoutDefaultKeyHeaders(
-  codec: ProviderDriver,
   headers: Record<string, string>,
   explicit: Record<string, string> | undefined,
-  keyed: boolean,
 ): Record<string, string> {
-  if (keyed || !codec.authCarriedByHeaders?.(headers)) return headers
   const declared = new Set(Object.keys(explicit ?? {}).map(name => name.toLowerCase()))
   return Object.fromEntries(
     Object.entries(headers).filter(([name, value]) => !value.includes(API_KEY_TEMPLATE) || declared.has(name.toLowerCase())),
@@ -121,10 +113,29 @@ export class ModelProvider {
     return this.codec.id
   }
 
-  /** No key is stored for a provider that may run without one. Read per
-   *  request: a key stored or removed later applies to the next call. */
-  private get keyless(): boolean {
-    return !!this.spec.apiKeyOptional && !providerHasStoredApiKey(this.spec.id)
+  /**
+   * The spec's headers / User-Agent / query over the codec's, with the auth
+   * rules every request shares: when the merged headers carry the credential
+   * and the provider holds no key, the format's default key entries leave;
+   * a keyless call (`ProviderSpec.apiKeyOptional`, no key stored) sends the
+   * empty credential. The key store is read per request: a key stored or
+   * removed later applies to the next call.
+   */
+  private withSpecAuth(
+    baseHeaders: Record<string, string>,
+    baseQuery: Record<string, string> | undefined,
+  ): { headers: Record<string, string>; queryParams?: Record<string, string> } {
+    const keyed = providerHasStoredApiKey(this.spec.id)
+    const merged = mergeHeaders(baseHeaders, {
+      ...(this.spec.userAgent ? { 'user-agent': this.spec.userAgent } : {}),
+      ...this.spec.headers,
+    })
+    const query = baseQuery || this.spec.queryParams ? { ...baseQuery, ...this.spec.queryParams } : undefined
+    const headerCarried = !keyed && !!this.codec.authCarriedByHeaders?.(merged)
+    const headers = headerCarried ? withoutDefaultKeyHeaders(merged, this.spec.headers) : merged
+    const queryParams = headerCarried ? withoutHeaderCarriedAuth(query, this.spec.queryParams) : query
+    if (this.spec.apiKeyOptional && !keyed) return withoutApiKey(headers, queryParams)
+    return { headers, ...(queryParams ? { queryParams } : {}) }
   }
 
   context(model: string): DriverRequestContext {
@@ -142,27 +153,8 @@ export class ModelProvider {
     const url = this.spec.path
       ? withPath(`${this.baseUrl}/`, joinPath(this.baseUrl, this.spec.path))
       : request.url
-    const headers = withoutDefaultKeyHeaders(
-      this.codec,
-      mergeHeaders(request.headers, {
-        ...(this.spec.userAgent ? { 'user-agent': this.spec.userAgent } : {}),
-        ...this.spec.headers,
-      }),
-      this.spec.headers,
-      providerHasStoredApiKey(this.spec.id),
-    )
-    const queryParams = withoutHeaderCarriedAuth(
-      this.codec,
-      headers,
-      request.queryParams || this.spec.queryParams
-        ? { ...request.queryParams, ...this.spec.queryParams }
-        : undefined,
-      this.spec.queryParams,
-      providerHasStoredApiKey(this.spec.id),
-    )
     const { queryParams: _dropped, ...rest } = request
-    if (this.keyless) return { ...rest, url, ...withoutApiKey(headers, queryParams) }
-    return { ...rest, url, headers, ...(queryParams ? { queryParams } : {}) }
+    return { ...rest, url, ...this.withSpecAuth(request.headers, request.queryParams) }
   }
 
   /** Where the codec carries ids in its JSON body (`ProviderDriver.idSites`);
@@ -202,27 +194,7 @@ export class ModelProvider {
     queryParams?: Record<string, string>
   } {
     const auth = this.codec.auth
-    const headers = withoutDefaultKeyHeaders(
-      this.codec,
-      mergeHeaders(auth.headers ?? {}, {
-        ...(this.spec.userAgent ? { 'user-agent': this.spec.userAgent } : {}),
-        ...this.spec.headers,
-      }),
-      this.spec.headers,
-      providerHasStoredApiKey(this.spec.id),
-    )
-    const queryParams = withoutHeaderCarriedAuth(
-      this.codec,
-      headers,
-      auth.queryParams || this.spec.queryParams
-        ? { ...auth.queryParams, ...this.spec.queryParams }
-        : undefined,
-      this.spec.queryParams,
-      providerHasStoredApiKey(this.spec.id),
-    )
-    const url = resolveRelativeUrl(this.baseUrl, path)
-    if (this.keyless) return { url, ...withoutApiKey(headers, queryParams) }
-    return { url, headers, ...(queryParams ? { queryParams } : {}) }
+    return { url: resolveRelativeUrl(this.baseUrl, path), ...this.withSpecAuth(auth.headers ?? {}, auth.queryParams) }
   }
 }
 

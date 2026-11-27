@@ -727,10 +727,12 @@ function checkModelsUi(value: unknown, bad: Problems): ProviderModelsUi | undefi
                   bad(`${at}: baseUrl and baseUrlTrim cannot both be set`)
                 } else if (isRecord(wire.compat) && wire.compat.envelope !== undefined && format !== geminiDriver.id) {
                   bad(`${at}.compat.envelope: only the ${geminiDriver.id} wire format reads it`)
-                } else if (isRecord(wire.compat) && wire.compat.envelope !== undefined && readWireEnvelope(wire.compat.envelope).problem !== undefined) {
-                  bad(`${at}.compat.envelope: ${readWireEnvelope(wire.compat.envelope).problem}`)
                 } else {
-                  wires[format] = wire
+                  const envelopeProblem = isRecord(wire.compat) && wire.compat.envelope !== undefined
+                    ? readWireEnvelope(wire.compat.envelope).problem
+                    : undefined
+                  if (envelopeProblem !== undefined) bad(`${at}.compat.envelope: ${envelopeProblem}`)
+                  else wires[format] = wire
                 }
               }
             }

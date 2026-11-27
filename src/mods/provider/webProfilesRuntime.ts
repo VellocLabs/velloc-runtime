@@ -45,17 +45,30 @@ const hostKeepsProfiles = (): boolean => {
   )
 }
 
-export function runtimeWebProfiles(options: {
-  homeDir: string
-  fs: RuntimeFs
-  report?: (line: string) => void
-}): WebProfiles {
+/** A table text already read from `fs` at `path`, served as the first load
+ *  of the instance made over that same file. */
+type ReadTable = { fs: RuntimeFs; path: string; text: string }
+
+export function runtimeWebProfiles(
+  options: {
+    homeDir: string
+    fs: RuntimeFs
+    report?: (line: string) => void
+  },
+  alreadyRead?: ReadTable,
+): WebProfiles {
   where ??= options
   const { fs } = options
   const path = tablePath(options.homeDir)
   const dir = path.slice(0, path.lastIndexOf('/'))
+  let first = alreadyRead?.fs === fs && alreadyRead.path === path ? alreadyRead.text : undefined
   instance ??= new WebProfiles({
-    load: () => readTable(fs, path),
+    load: () => {
+      if (first === undefined) return readTable(fs, path)
+      const text = first
+      first = undefined
+      return Promise.resolve(text)
+    },
     save: async text => {
       await ensureDirRecursive(fs, dir)
       await fs.writeFile(path, text, { encoding: 'utf8' })
@@ -97,9 +110,14 @@ export async function forgetPluginWebProfiles(
 ): Promise<void> {
   const path = tablePath(options.homeDir)
   try {
-    if (!instance && (await readTable(options.fs, path)) === null) return
+    let read: ReadTable | undefined
+    if (!instance) {
+      const text = await readTable(options.fs, path)
+      if (text === null) return
+      read = { fs: options.fs, path, text }
+    }
     if (await options.stillInstalled?.(plugin)) return
-    await runtimeWebProfiles(options).forgetPlugin(plugin)
+    await runtimeWebProfiles(options, read).forgetPlugin(plugin)
   } catch (error) {
     options.report?.(`web profiles: could not clear what ${plugin} recorded: ${error instanceof Error ? error.message : String(error)}`)
   }
@@ -120,8 +138,15 @@ export async function releaseWebProfileAccount(
   const report = options.report ?? where?.report
   try {
     if (Object.values(configs).some(config => config.webProfile?.id === through.id && config.webProfile.site === through.site)) return
-    if (!instance && (await readTable(options.fs, tablePath(options.homeDir))) === null) return
-    await (currentWebProfiles() ?? runtimeWebProfiles(options)).dropAccount(through.id, through.site)
+    let read: ReadTable | undefined
+    const at = where ?? options
+    if (!instance) {
+      const path = tablePath(at.homeDir)
+      const text = await readTable(at.fs, path)
+      if (text === null) return
+      read = { fs: at.fs, path, text }
+    }
+    await (instance ?? runtimeWebProfiles(at, read)).dropAccount(through.id, through.site)
   } catch (error) {
     report?.(
       `web profiles: could not drop the account of ${through.site} in ${through.id}: ${error instanceof Error ? error.message : String(error)}`,

@@ -841,6 +841,26 @@ describe('gemini key placement through ModelProvider', () => {
     }
   })
 
+  it('model calls and documents apply the same auth rules to the same spec', () => {
+    const specs: Partial<ProviderSpec>[] = [
+      {},
+      { headers: { 'x-goog-api-key': '' }, queryParams: { key: '{{secret:api_key}}' } },
+      { headers: { authorization: 'Bearer {{secret:access_token}}' } },
+      { headers: { authorization: 'Bearer {{secret:access_token}}', 'x-goog-api-key': '{{secret:api_key}}' } },
+      { apiKeyOptional: true },
+      { apiKeyOptional: true, headers: { 'x-goog-api-key': '' }, queryParams: { key: '{{secret:api_key}}', alt: 'sse' } },
+    ]
+    const auth = (request: { headers: Record<string, string>; queryParams?: Record<string, string> }) => ({
+      key: request.headers['x-goog-api-key'],
+      authorization: request.headers['authorization'],
+      query: request.queryParams,
+    })
+    for (const spec of specs) {
+      const p = provider(spec)
+      expect(auth(p.documentRequest('/models'))).toEqual(auth(p.buildRequest(payload, 'model-a')))
+    }
+  })
+
   it('a key header the provider declares itself is kept next to its authorization', () => {
     const request = provider({
       headers: { authorization: 'Bearer {{secret:access_token}}', 'x-goog-api-key': '{{secret:api_key}}' },

@@ -283,6 +283,21 @@ describe('the table the runtime keeps on disk', () => {
     expect(written).toHaveLength(1)
     expect(JSON.parse(written[0]!).profiles).toMatchObject([{ number: 3, accounts: [] }])
   })
+
+  it('a removal in a realm that has not used the table reads the file once', async () => {
+    const reads: string[] = []
+    const fs = fsOver(async path => (reads.push(path), path === TABLE ? stored : absent(path)))
+    await releaseWebProfileAccount({ homeDir: HOME, fs }, { id: 'velloc-profile-3', site: SITE }, {})
+    expect(reads).toEqual([TABLE])
+  })
+
+  it('a removal reads the file once when the provider runtime keeps the table through its own fs', async () => {
+    const reads: string[] = []
+    const read = async (path: string) => (reads.push(path), path === TABLE ? stored : absent(path))
+    keepWebProfilesAt({ homeDir: HOME, fs: fsOver(read) })
+    await releaseWebProfileAccount({ homeDir: HOME, fs: fsOver(read) }, { id: 'velloc-profile-3', site: SITE }, {})
+    expect(reads).toEqual([TABLE])
+  })
 })
 
 describe('a sign-in that leaves no account record', () => {

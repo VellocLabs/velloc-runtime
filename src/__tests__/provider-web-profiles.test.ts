@@ -312,6 +312,21 @@ describe('an uninstalled plugin', () => {
     expect(h.files.get(asked[0]!)).toBe('{ not json')
     setWebProfilesForTests(undefined)
   })
+
+  it('reads the table once in a realm that has not used it', async () => {
+    setWebProfilesForTests(undefined)
+    const h = home()
+    const asked: string[] = []
+    const probed = h.fs as unknown as { readFile: (file: string) => Promise<string> }
+    const read = probed.readFile.bind(probed)
+    probed.readFile = file => (asked.push(file), read(file))
+    await forgetPluginWebProfiles({ homeDir: '/home/zed', fs: h.fs }, 'acme')
+    h.files.set(asked[0]!, JSON.stringify({ version: 2, next: 0, profiles: [] }))
+    asked.length = 0
+    await forgetPluginWebProfiles({ homeDir: '/home/zed', fs: h.fs }, 'acme')
+    expect(asked).toHaveLength(1)
+    setWebProfilesForTests(undefined)
+  })
 })
 
 const PROVIDER = 'mod.acme.main'
