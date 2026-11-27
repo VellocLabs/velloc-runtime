@@ -297,6 +297,22 @@ export function classifyProviderConnectivityIssue(
 
 type PlatformIssue = Omit<ProviderConnectivityIssue, 'scope'>
 
+const MODEL_GONE_CODE = /\bmodel_(?:not_found|decommissioned|deprecated|retired)\b/
+const MODEL_GONE_WORDING =
+  /(?<![/\w])models?\b[\s\S]{0,120}?\b(?:not found|no longer (?:available|supported|served)|does not exist|has been (?:deprecated|decommissioned|retired|removed)|is (?:deprecated|decommissioned|retired))\b/
+
+/**
+ * The provider answered that the requested model does not exist or was
+ * withdrawn: another model, or the same model elsewhere, may still serve the
+ * request. A bare 404 without model wording, or one that only echoes a
+ * `/models/` URL path, is a wrong endpoint, not this. The code counts in a
+ * stream too: no status, or a 2xx reply that failed after it opened.
+ */
+function isModelGone(text: string, status: number | undefined): boolean {
+  if (MODEL_GONE_CODE.test(text)) return status === undefined || status < 300 || status >= 400
+  return (status === 404 || status === 410) && MODEL_GONE_WORDING.test(text)
+}
+
 function classifyPlatformIssue(value: unknown): PlatformIssue | null {
   const raw = getErrorText(value)
   const detail = cleanupDetail(raw)
@@ -636,6 +652,20 @@ function classifyPlatformIssue(value: unknown): PlatformIssue | null {
       titleKey: 'providerIssue.network.title',
       summaryKey: 'providerIssue.network.summary',
       retryable: true,
+      settingsRecommended: false,
+      detail,
+      status,
+      retryAfterMs,
+    }
+  }
+
+  if (isModelGone(text, status)) {
+    return {
+      kind: 'model_unavailable',
+      error: 'invalid_request',
+      titleKey: 'providerIssue.modelUnavailable.title',
+      summaryKey: 'providerIssue.modelUnavailable.summary',
+      retryable: false,
       settingsRecommended: false,
       detail,
       status,

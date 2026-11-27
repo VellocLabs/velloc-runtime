@@ -270,7 +270,7 @@ function fingerprint(config: unknown): string {
   return `${text.length.toString(36)}-${(hash >>> 0).toString(36)}`
 }
 
-const LIFTED_BY_CONFIG: readonly string[] = ['billing', 'credentials']
+const LIFTED_BY_CONFIG: readonly string[] = ['billing', 'credentials', 'model_unavailable']
 
 /** Lift what a config change may have fixed for `instanceId`. True when something was lifted. */
 function liftForConfigChange(instanceId: string): boolean {
@@ -294,8 +294,9 @@ function changedBetween(before: Map<string, string>, after: Map<string, string>)
 
 /**
  * The provider configs as they are now. An instance whose config differs
- * from the one last seen loses its models' `billing` and `credentials` records: the
- * person may have paid or replaced the key. The configs last seen are kept
+ * from the one last seen loses its models' `billing`, `credentials` and
+ * `model_unavailable` records: the person may have paid, replaced the key, or
+ * pointed it at another endpoint or API version. The configs last seen are kept
  * with the ledger, so a change made while no run was watching counts too.
  */
 export function noteProviderConfigs(configs: Readonly<Record<string, unknown>>): void {
