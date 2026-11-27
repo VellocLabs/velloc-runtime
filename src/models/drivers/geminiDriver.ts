@@ -33,6 +33,7 @@ import {
   type HostList,
   type HostValue,
 } from './hostValue'
+import { MALFORMED_REPLY_RETRY_LIMIT } from '../../utils/providerConnectivity'
 import type {
   DriverFinishReason,
   DriverRequestContext,
@@ -493,6 +494,8 @@ class GeminiSseDecoder implements DriverResponseDecoder {
   private scanFrom = 0
   private lastFinishReason = ''
   private blockReason = ''
+  /** Text or a tool call reached the reader: the reply has an answer. */
+  private answered = false
   private promptTokens = 0
   private completionTokens = 0
   private thoughtsTokens = 0
@@ -531,6 +534,23 @@ class GeminiSseDecoder implements DriverResponseDecoder {
     const signature = this.signatureEnvelope()
     if (signature !== undefined) events.push({ type: 'reasoning_signature', signature })
     const blocked = this.blockReason !== ''
+    // A request fault with no answer is a failed send, not an empty turn: the
+    // router and the retry ladder take it like a server error. It says nothing
+    // about the model's health, so it is scoped to this request; a resend of
+    // the same history often faults again, so it is resent once.
+    if (!blocked && !this.answered && REQUEST_FAULT_FINISH_REASONS.has(this.lastFinishReason)) {
+      events.push({
+        ...hostErrorEvent(`The model ended its reply with ${this.lastFinishReason} and gave no answer.`),
+        verdict: {
+          kind: 'service',
+          scope: 'request',
+          retryable: true,
+          retryLimit: MALFORMED_REPLY_RETRY_LIMIT,
+          code: this.lastFinishReason.toLowerCase(),
+        },
+      })
+      return events
+    }
     events.push({
       type: 'finish',
       finishReason: blocked ? 'content_filter' : mapGeminiFinishReason(this.lastFinishReason),
@@ -548,7 +568,9 @@ class GeminiSseDecoder implements DriverResponseDecoder {
         ? { stopDetails: { type: 'prompt_blocked', category: this.blockReason } }
         : POLICY_FINISH_REASONS.has(this.lastFinishReason)
           ? { stopDetails: { type: 'response_blocked', category: this.lastFinishReason } }
-          : {}),
+          : REQUEST_FAULT_FINISH_REASONS.has(this.lastFinishReason)
+            ? { stopDetails: { type: 'request_fault', category: this.lastFinishReason } }
+            : {}),
     })
     return events
   }
@@ -668,9 +690,13 @@ class GeminiSseDecoder implements DriverResponseDecoder {
         events.push({ type: 'reasoning_delta', text })
         continue
       }
-      if (text) events.push({ type: 'text_delta', text })
+      if (text) {
+        this.answered = true
+        events.push({ type: 'text_delta', text })
+      }
       const functionCall = findDict(partValue, 'functionCall')
       if (functionCall) {
+        this.answered = true
         if (signature) this.callSignatures.push([this.callOrdinal, signature])
         this.callOrdinal += 1
         const name = findString(functionCall, 'name')

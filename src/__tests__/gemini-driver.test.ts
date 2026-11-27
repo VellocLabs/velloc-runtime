@@ -506,14 +506,51 @@ describe('gemini SSE decoding', () => {
         stopDetails: { type: 'response_blocked', category: reason },
       })
     }
+    const answeredFinishOf = (reason: string) =>
+      decodeText(sse([{ candidates: [{ content: { parts: [{ text: 'partial' }] }, finishReason: reason }] }])).at(-1)
     for (const reason of [
       'MALFORMED_FUNCTION_CALL', 'UNEXPECTED_TOOL_CALL', 'TOO_MANY_TOOL_CALLS',
       'MISSING_THOUGHT_SIGNATURE', 'MALFORMED_RESPONSE',
     ]) {
-      expect(finishOf(reason), reason).toMatchObject({ finishReason: 'error' })
+      expect(answeredFinishOf(reason), reason).toMatchObject({
+        type: 'finish',
+        finishReason: 'error',
+        stopDetails: { type: 'request_fault', category: reason },
+      })
     }
     expect(finishOf('LANGUAGE')).toMatchObject({ finishReason: 'other' })
     expect(finishOf('')).toMatchObject({ finishReason: 'unknown' })
+  })
+
+  it('a request fault with no text and no tool call ends as a retryable service error, not a finish', () => {
+    for (const reason of [
+      'MALFORMED_FUNCTION_CALL', 'UNEXPECTED_TOOL_CALL', 'TOO_MANY_TOOL_CALLS',
+      'MISSING_THOUGHT_SIGNATURE', 'MALFORMED_RESPONSE',
+    ]) {
+      const events = decodeText(sse([{ candidates: [{ finishReason: reason }] }]))
+      expect(events.some(e => e.type === 'finish'), reason).toBe(false)
+      expect(events.at(-1), reason).toMatchObject({
+        type: 'error',
+        message: expect.stringContaining(reason),
+        verdict: { kind: 'service', scope: 'request', retryable: true, retryLimit: 1, code: reason.toLowerCase() },
+      })
+    }
+  })
+
+  it('thinking alone is no answer: a fault after only thoughts and a signature is an error', () => {
+    const events = decodeText(sse([
+      { candidates: [{ content: { parts: [{ thought: true, text: 'planning', thoughtSignature: 'sig' }] } }] },
+      { candidates: [{ finishReason: 'MALFORMED_FUNCTION_CALL' }] },
+    ]))
+    expect(events.map(e => e.type)).toEqual(['reasoning_delta', 'error'])
+  })
+
+  it('a request fault after a tool call keeps the call and finishes with the fault reason', () => {
+    const events = decodeText(sse([
+      { candidates: [{ content: { parts: [{ functionCall: { name: 'Read', args: { path: 'a' } } }] }, finishReason: 'TOO_MANY_TOOL_CALLS' }] },
+    ]))
+    expect(events.map(e => e.type)).toEqual(['tool_call', 'finish'])
+    expect(events.at(-1)).toMatchObject({ finishReason: 'error', stopDetails: { type: 'request_fault', category: 'TOO_MANY_TOOL_CALLS' } })
   })
 
   it('a blocked prompt (promptFeedback, no candidates) ends as content_filter with the block reason and usage', () => {

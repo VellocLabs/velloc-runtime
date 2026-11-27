@@ -53,6 +53,8 @@ export type DeclaredVerdict = {
   kind: ProviderConnectivityIssueKind
   scope?: VerdictScope
   retryable?: boolean
+  /** Resends allowed, when fewer than the ladder's own limit. */
+  retryLimit?: number
   /** Epoch ms. */
   resetsAt?: number
   code?: string
@@ -81,6 +83,7 @@ export function readDeclaredVerdict(value: unknown): DeclaredVerdict | undefined
   const out: DeclaredVerdict = { kind: v.kind }
   if (isOneOf(VERDICT_SCOPES, v.scope)) out.scope = v.scope
   if (typeof v.retryable === 'boolean') out.retryable = v.retryable
+  if (Number.isInteger(v.retryLimit) && (v.retryLimit as number) >= 0) out.retryLimit = v.retryLimit as number
   if (typeof v.resetsAt === 'number' && Number.isFinite(v.resetsAt) && v.resetsAt >= 0) out.resetsAt = v.resetsAt
   if (typeof v.code === 'string' && v.code !== '') out.code = v.code
   if (isLocalizedText(v.message)) out.message = v.message
@@ -217,6 +220,7 @@ export function overlayDeclaredVerdict(
   return {
     ...start,
     retryable: declared.retryable ?? start.retryable,
+    ...(declared.retryLimit !== undefined ? { retryLimit: declared.retryLimit } : {}),
     scope: declared.scope ?? (sameKind ? start.scope : defaults.scope),
     ...(declared.resetsAt !== undefined ? { resetsAt: declared.resetsAt } : {}),
     ...(declared.code !== undefined ? { code: declared.code } : {}),

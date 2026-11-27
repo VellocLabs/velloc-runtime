@@ -39,6 +39,7 @@ import {
   VERDICT_MESSAGE_MAX_LENGTH,
   VERDICT_QUOTA_RESET_CEILING_MS,
   VERDICT_RESET_CEILING_MS,
+  readDeclaredVerdict,
   type DeclaredVerdict,
 } from '../utils/providerVerdict'
 import {
@@ -353,6 +354,21 @@ describe('policy.retry: the ladder under a declared policy', () => {
     expect(decide({ on: [] })).toEqual({ retry: false })
     expect(decide({}).retry).toBe(true)
   })
+
+  it('a declared retry limit resends the request that many times and no more', () => {
+    const failure = classifyModelFailure(declaredError('fault', undefined, { kind: 'service', scope: 'request', retryable: true, retryLimit: 1 }))
+    expect(failure).toMatchObject({ issue: { kind: 'service', retryLimit: 1, scope: 'request' } })
+    expect(decide({}, { failure, attempt: 1 }).retry).toBe(true)
+    expect(decide({}, { failure, attempt: 2 })).toEqual({ retry: false })
+  })
+
+  it('a retry limit that is not a whole number of resends is dropped', () => {
+    for (const retryLimit of [-1, 1.5, '1', Number.NaN]) {
+      expect(readDeclaredVerdict({ kind: 'service', retryLimit }), String(retryLimit)).toEqual({ kind: 'service' })
+    }
+    expect(readDeclaredVerdict({ kind: 'service', retryLimit: 0 })).toEqual({ kind: 'service', retryLimit: 0 })
+  })
+
 
   it('`on` matches the kind a rule gave the failure', () => {
     const failure = classifyModelFailure(declaredError('HTTP 503 down', 503, { kind: 'model_unavailable', retryable: true }))
