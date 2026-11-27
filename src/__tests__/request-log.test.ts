@@ -18,6 +18,7 @@ import {
   type RequestLogRow,
 } from '../models/usage/requestLogStore'
 import { withRequestLog } from '../models/usage/requestLogTransport'
+import { publishStreamTimings, resetStreamTimings } from '../models/drivers/streamTiming'
 import {
   attachRequestLogBridge,
   openRequestLog,
@@ -195,7 +196,7 @@ describe('request log schema', () => {
     const store = new RequestLogStore({ transport: () => older.transport, dbPath: '/home/tester/.velloc/usage/usage.sqlite' })
     expect(await store.schemaVersion()).toBe(REQUEST_LOG_SCHEMA_VERSION)
     expect(older.all(`SELECT ${SEND_COLUMNS.join(', ')} FROM sends`)).toEqual([
-      [1, 1000, 20, null, 5, 1, 1, 2, null, null, null, null, null, 11, 12, 13, 14, 0, null, null, null, null, null, null],
+      [1, 1000, 20, null, 5, 1, 1, 2, null, null, null, null, null, 11, 12, 13, 14, 0, null, null, null, null, null, null, null, null, null],
     ])
     const tables = older.all("SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name").map(r => r[0])
     expect(tables).toEqual(['file_ops', 'log_meta', 'names', 'sends'])
@@ -232,6 +233,7 @@ describe('request log schema', () => {
       'router', 'router_row', 'from_provider', 'from_model', 'switch_kind',
       'input_tokens', 'output_tokens', 'cache_read_tokens', 'cache_write_tokens',
       'outcome', 'failure', 'http_status', 'project', 'purpose', 'source', 'agent',
+      'first_content_ms', 'max_gap_ms', 'queued_ms',
     ])
     expect(columns('file_ops')).toEqual([...FILE_OP_COLUMNS])
     expect([...FILE_OP_COLUMNS]).toEqual([
@@ -972,6 +974,32 @@ describe('request log transport', () => {
     expect(await sends()).toEqual([])
     await send('streamRead', { streamId: 's1' })
     expect(await sends()).toEqual([['acme', 'acme-large', 'session-a', 1, 50, 12, 9, 4, 0, null, null]])
+  })
+
+  it('records the timings the stream host published, relative to the row, and none for a blocking call', async () => {
+    resetStreamTimings()
+    let next = 0
+    const { bridge, send, sends } = serving(request => {
+      if (request.route.action === 'streamStart') return { ok: true, result: { streamId: `s${next += 1}` } }
+      if (request.route.action === 'call') return { ok: true, result: { message: { role: 'assistant', content: [] } } }
+      return { ok: true, result: { done: true, status: 'done', chunks: [{ type: 'message_stop' }] } }
+    })
+    const before = Date.now()
+    await send('streamStart', { ...start })
+    publishStreamTimings('s1', { queuedMs: 40, firstContentAt: before + 60_000, maxGapMs: 900 })
+    await send('streamRead', { streamId: 's1' })
+    // A stream that carried no content: only its queue wait.
+    await send('streamStart', { ...start })
+    publishStreamTimings('s2', { queuedMs: 0 })
+    await send('streamRead', { streamId: 's2' })
+    await send('call', { ...start })
+    expect(await sends()).toHaveLength(3)
+    const [first, second, call] = bridge.all('SELECT first_content_ms, max_gap_ms, queued_ms FROM sends ORDER BY id')
+    expect(first![0]).toBeGreaterThan(59_000)
+    expect(first![0]).toBeLessThanOrEqual(60_000)
+    expect(first!.slice(1)).toEqual([900, 40])
+    expect(second).toEqual([null, null, 0])
+    expect(call).toEqual([null, null, null])
   })
 
   it('records what the request was for and the loop that asked', async () => {

@@ -9,7 +9,8 @@
  * seen here and is part of that stream's row. A request that was refused
  * before it could leave (no driver, no model) writes no row. A request made
  * to a router provider writes none here: its sends are recorded where its
- * targets are chosen.
+ * targets are chosen. A stream's row carries the timings its stream host
+ * published for it; a blocking call's carries none.
  */
 import type { BrowserBridgeTransport } from '../../browser/bridge/browserBridgeProtocol'
 import { resolveModelId } from '../../config/nexusModelConfig/modelEntryResolution'
@@ -17,6 +18,7 @@ import type { RuntimeConfig } from '../../runtime/interfaces/RuntimeConfig'
 import { classifyProviderConnectivityIssue, ProviderApiError } from '../../utils/providerConnectivity'
 import type { DeclaredVerdict } from '../../utils/providerVerdict'
 import { providerRouterFor } from '../drivers/providerRouter'
+import { takeStreamTimings, type StreamTimings } from '../drivers/streamTiming'
 import {
   foldUsage,
   requestLogCallerOf,
@@ -45,6 +47,18 @@ type Open = {
 type Starting = Omit<Open, 'hop'>
 
 type Fields = Record<string, unknown>
+
+type Ending = Pick<RequestLogRow, 'outcome' | 'failureKind' | 'httpStatus' | 'firstContentMs' | 'maxGapMs' | 'queuedMs'>
+
+/** The row's timing fields, `firstContentAt` made relative to the row's start. */
+function timingFields(startedMs: number, timings: StreamTimings | undefined): Pick<Ending, 'firstContentMs' | 'maxGapMs' | 'queuedMs'> {
+  if (!timings) return {}
+  return {
+    queuedMs: timings.queuedMs,
+    ...(timings.firstContentAt !== undefined ? { firstContentMs: Math.max(0, timings.firstContentAt - startedMs) } : {}),
+    ...(timings.maxGapMs !== undefined ? { maxGapMs: timings.maxGapMs } : {}),
+  }
+}
 
 function fields(value: unknown): Fields {
   return value && typeof value === 'object' ? (value as Fields) : {}
@@ -91,7 +105,7 @@ export function withRequestLog(
   attachRequestLogBridge(base, runtimeConfig)
   const open = new Map<string, Open>()
 
-  const write = (stream: Open, ending: Pick<RequestLogRow, 'outcome' | 'failureKind' | 'httpStatus'>): void => {
+  const write = (stream: Open, ending: Ending): void => {
     recordRequest(
       {
         startedMs: stream.startedMs,
@@ -108,11 +122,11 @@ export function withRequestLog(
     )
   }
 
-  const finish = (streamId: string, ending: Pick<RequestLogRow, 'outcome' | 'failureKind' | 'httpStatus'>): void => {
+  const finish = (streamId: string, ending: Ending): void => {
     const stream = open.get(streamId)
     if (!stream) return
     open.delete(streamId)
-    write(stream, ending)
+    write(stream, { ...ending, ...timingFields(stream.startedMs, takeStreamTimings(streamId)) })
   }
 
   const started = (payload: Fields, startedMs: number): Starting | undefined => {

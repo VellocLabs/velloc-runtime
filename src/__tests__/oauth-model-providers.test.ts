@@ -31,6 +31,7 @@ import { publishBrokerProviderBaseUrls } from '../models/endpoints/endpointTrust
 import { withModelProviders } from '../models/drivers/driverTransport'
 import '../models/drivers/builtinDrivers'
 import type { DriverStreamEvent, ProviderDriver } from '../models/drivers/driverTypes'
+import { resetStreamTimings, takeStreamTimings } from '../models/drivers/streamTiming'
 
 const OAUTH_IDS = ['chatgpt-pro', 'github-copilot', 'qwen-code'] as const
 const env = (value?: string) =>
@@ -341,6 +342,64 @@ describe('maxConcurrentStreams: a FIFO in the runtime, as the C++ LlmStreamGuard
     host.finishOne()
     expect((await readAll(b, second.streamId)).map(c => c.type)).toContain('message_stop')
     expect(queuedDriverStreamCount('capped')).toBe(0)
+  })
+
+  it('publishes the timings of each stream when it ends: the wait for the slot and the first content', async () => {
+    resetStreamTimings()
+    const host = hostTransport(() => OPEN_200)
+    const streams = new DriverStreamHost(host.transport)
+    const first = streams.start(capped(), payload, 'm', { reportTimings: true })
+    const second = streams.start(capped(), payload, 'm', { reportTimings: true })
+    await settle()
+    await settle()
+    host.finishOne()
+    await readAll(streams, first.streamId)
+    await settle()
+    host.finishOne()
+    await readAll(streams, second.streamId)
+    const firstTimings = takeStreamTimings(first.streamId)
+    const secondTimings = takeStreamTimings(second.streamId)
+    expect(firstTimings).toMatchObject({ queuedMs: 0, maxGapMs: expect.any(Number) })
+    expect(firstTimings!.firstContentAt).toEqual(expect.any(Number))
+    // The second waited for the first to finish before it was sent.
+    expect(secondTimings!.queuedMs).toBeGreaterThan(0)
+    expect(secondTimings!.firstContentAt).toBeGreaterThanOrEqual(firstTimings!.firstContentAt!)
+  })
+
+  it('a stream cancelled while queued publishes its wait before the cancel returns', async () => {
+    resetStreamTimings()
+    const host = hostTransport(() => OPEN_200)
+    const streams = new DriverStreamHost(host.transport)
+    const first = streams.start(capped(), payload, 'm', { reportTimings: true })
+    const second = streams.start(capped(), payload, 'm', { reportTimings: true })
+    await settle()
+    await settle()
+    await streams.cancel(second.streamId)
+    expect(takeStreamTimings(second.streamId)!.queuedMs).toBeGreaterThan(0)
+    host.finishOne()
+    await readAll(streams, first.streamId)
+  })
+
+  it('a stream that is not asked to report its timings publishes none', async () => {
+    resetStreamTimings()
+    const host = hostTransport(() => OPEN_200)
+    const streams = new DriverStreamHost(host.transport)
+    const { streamId } = streams.start(capped(), payload, 'm')
+    await settle()
+    host.finishOne()
+    await readAll(streams, streamId)
+    expect(takeStreamTimings(streamId)).toBeUndefined()
+  })
+
+  it('a stream cancelled mid-response publishes its timings before the cancel returns', async () => {
+    resetStreamTimings()
+    const host = hostTransport(() => OPEN_200)
+    const streams = new DriverStreamHost(host.transport)
+    const { streamId } = streams.start(capped(), payload, 'm', { reportTimings: true })
+    await settle()
+    const cancelled = streams.cancel(streamId)
+    expect(takeStreamTimings(streamId)).toEqual({ queuedMs: 0 })
+    await cancelled
   })
 
   it('a request cancelled while queued never opens and frees nothing it did not hold', async () => {

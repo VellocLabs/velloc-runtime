@@ -137,7 +137,7 @@ export function withModelProviders(
       // is served here too: a fresh stream, read whole (blockingCall.ts).
       return action === 'call'
         ? { result: await runBlockingCall(host, provider, request, request.model) }
-        : { result: host.start(provider, request, request.model) }
+        : { result: host.start(provider, request, request.model, { reportTimings: true }) }
     }
     const streamId = typeof payload.streamId === 'string' ? payload.streamId : ''
     if (action === 'streamCancel') {

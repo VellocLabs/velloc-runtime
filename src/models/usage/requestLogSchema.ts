@@ -9,7 +9,7 @@
 
 /** Raised when a later build changes a table; `SCHEMA_STEPS` then carries the
  *  statements that take a file from each older version to the next. */
-export const REQUEST_LOG_SCHEMA_VERSION = 2
+export const REQUEST_LOG_SCHEMA_VERSION = 3
 
 /** `SCHEMA_STEPS[n]`: the statements that take a version `n` file to `n + 1`. */
 export const SCHEMA_STEPS: Readonly<Record<number, readonly string[]>> = {
@@ -19,6 +19,11 @@ export const SCHEMA_STEPS: Readonly<Record<number, readonly string[]>> = {
     'ALTER TABLE sends ADD COLUMN source INTEGER',
     'ALTER TABLE sends ADD COLUMN agent INTEGER',
     'DROP TABLE IF EXISTS hourly',
+  ],
+  2: [
+    'ALTER TABLE sends ADD COLUMN first_content_ms INTEGER',
+    'ALTER TABLE sends ADD COLUMN max_gap_ms INTEGER',
+    'ALTER TABLE sends ADD COLUMN queued_ms INTEGER',
   ],
 }
 
@@ -34,7 +39,7 @@ export const OUTCOME_ABORTED = 2
  * NULL for a request no router sent or moved; `failure` and `http_status` are
  * NULL unless the provider reported them. `project`, `purpose`, `source` (the
  * caller tag) and `agent` (the loop under the session: a sub-agent or a side
- * run) are NULL when the request did not name them.
+ * run) and the timing columns (F-27) are NULL when nothing reported them.
  */
 export const SEND_COLUMNS = [
   'id',
@@ -61,6 +66,9 @@ export const SEND_COLUMNS = [
   'purpose',
   'source',
   'agent',
+  'first_content_ms',
+  'max_gap_ms',
+  'queued_ms',
 ] as const
 
 /** `file_ops.op`. */
@@ -130,7 +138,10 @@ export const CREATE_STATEMENTS: readonly string[] = [
     project INTEGER,
     purpose INTEGER,
     source INTEGER,
-    agent INTEGER
+    agent INTEGER,
+    first_content_ms INTEGER,
+    max_gap_ms INTEGER,
+    queued_ms INTEGER
   )`,
   'CREATE INDEX IF NOT EXISTS sends_started ON sends (started_ms)',
   `CREATE TABLE IF NOT EXISTS file_ops (
@@ -172,10 +183,10 @@ export const INTERN_NAME_SQL = 'INSERT OR IGNORE INTO names (text) VALUES (?)'
 /** Parameters, in order: started_ms, duration_ms, session, call_id, hop,
  *  provider, model, router, router_row, from_provider, from_model,
  *  switch_kind, the four token counts, outcome, failure, http_status,
- *  project, purpose, source, agent. */
+ *  project, purpose, source, agent, first_content_ms, max_gap_ms, queued_ms. */
 export const INSERT_SEND_SQL = `INSERT INTO sends (${SEND_COLUMNS.slice(1).join(', ')}) VALUES (
   ?, ?, ${NAME_ID}, ?, ?, ${NAME_ID}, ${NAME_ID}, ${NAME_ID}, ${NAME_ID}, ${NAME_ID}, ${NAME_ID}, ${NAME_ID},
-  ?, ?, ?, ?, ?, ${NAME_ID}, ?, ${NAME_ID}, ${NAME_ID}, ${NAME_ID}, ${NAME_ID})`
+  ?, ?, ?, ?, ?, ${NAME_ID}, ?, ${NAME_ID}, ${NAME_ID}, ${NAME_ID}, ${NAME_ID}, ?, ?, ?)`
 
 /** Parameters, in order: at_ms, session, agent, call_id, project, repo, worktree,
  *  path, from_path, tool, op, bytes, lines, added, removed, partial, created,

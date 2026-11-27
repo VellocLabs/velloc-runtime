@@ -103,6 +103,12 @@ export type RequestLogRow = {
   source?: string
   /** The loop under the session that asked: a sub-agent or a side run. */
   agentId?: string
+  /** From `startedMs` to the first content event; absent: not reported. */
+  firstContentMs?: number
+  /** The longest wait between content events, the stream's end included. */
+  maxGapMs?: number
+  /** The wait for the provider's concurrency slot. */
+  queuedMs?: number
 }
 
 /** Who asked, as a request's context names it. */
@@ -250,6 +256,11 @@ function count(value: number | undefined): number {
   return typeof value === 'number' && Number.isFinite(value) && value > 0 ? Math.floor(value) : 0
 }
 
+/** A duration the row may lack: NULL when absent, else as `count` reads it. */
+function optionalCount(value: number | undefined): number | null {
+  return value === undefined ? null : count(value)
+}
+
 function readNumber(value: SqlValue | undefined): number {
   if (typeof value === 'number') return value
   if (value && typeof value === 'object' && '$int' in value) return Number(value.$int)
@@ -339,6 +350,9 @@ export function recordStatements(row: RequestLogRow): Statement[] {
         row.purpose ?? null,
         row.source ?? null,
         row.agentId ?? null,
+        optionalCount(row.firstContentMs),
+        optionalCount(row.maxGapMs),
+        optionalCount(row.queuedMs),
       ],
     },
   ]

@@ -74,6 +74,7 @@ import { modelMasking, withMaskedUserAgent, withMaskedValues, type MaskingStream
 import { MaskingResidualError, MaskingUnavailableError, MaskingUndecodableError } from '../masking/egressGuard'
 import { storedKeyProblemFromReason, withStoredKeyMarker } from '../../utils/storedKeyProblem'
 import { RoutedStream, type LegRouteHook, type StreamReadResult, type StreamRouting } from './routedStream'
+import { publishStreamTimings, StreamTimingTracker } from './streamTiming'
 
 // A non-2xx body is read whole for the error message; cap it.
 const MAX_ERROR_BODY_BYTES = 64 * 1024
@@ -182,6 +183,9 @@ class DriverStream {
   private lastContext: PreparedProviderRequest['context'] | undefined
   private lastRoute: ProviderRoute | undefined
   private readonly startedAt = Date.now()
+  private readonly timing = new StreamTimingTracker()
+  /** The stream id its timings are published under when it ends; absent: not published. */
+  private timingKey: string | undefined
   /** The caller's open outcome call, when it counts the request's streams itself. */
   private readonly outcomeCall: string | undefined
 
@@ -199,6 +203,18 @@ class DriverStream {
 
   failed(): FailureEvent | undefined {
     return this.failure
+  }
+
+  /** Publishes this stream's timings under `streamId` once it ends (F-27). */
+  reportTimingsAs(streamId: string): void {
+    this.timingKey = streamId
+  }
+
+  private publishTimings(): void {
+    if (this.timingKey === undefined) return
+    this.timing.end()
+    publishStreamTimings(this.timingKey, this.timing.timings())
+    this.timingKey = undefined
   }
 
   start(): void {
@@ -254,6 +270,8 @@ class DriverStream {
 
   async cancel(): Promise<void> {
     this.abort.abort()
+    // Before the round trip: the reader writes the row as soon as cancel returns.
+    this.publishTimings()
     await this.raw?.cancel()
   }
 
@@ -263,6 +281,7 @@ class DriverStream {
 
   private push(events: readonly DriverStreamEvent[]): void {
     if (this.emitter.terminalEmitted || events.length === 0) return
+    this.timing.note(events)
     this.tally?.note(events)
     if (this.tally || this.route) {
       this.failure = events.find((event): event is FailureEvent => event.type === 'error') ?? this.failure
@@ -270,6 +289,7 @@ class DriverStream {
     this.queue.push(...this.emitter.emit(events.map(withHostFinishUsage)))
     if (this.emitter.terminalEmitted) {
       this.done = true
+      this.publishTimings()
       this.reportOutcome()
     }
     this.wake?.()
@@ -280,6 +300,7 @@ class DriverStream {
       this.queue.push(...this.emitter.finalizeIfOpen())
     }
     this.done = true
+    this.publishTimings()
     this.reportOutcome()
     this.wake?.()
   }
@@ -473,15 +494,18 @@ class DriverStream {
     if (pool.tryAcquire()) return Promise.resolve(true)
     if (this.abort.signal.aborted) return Promise.resolve(false)
     this.queued = true
+    const queuedSince = Date.now()
     return new Promise<boolean>(resolve => {
       const onAbort = () => {
         if (remove()) {
           this.queued = false
+          this.timing.queuedFor(Date.now() - queuedSince)
           resolve(false)
         }
       }
       const remove = pool.enqueue(() => {
         this.queued = false
+        this.timing.queuedFor(Date.now() - queuedSince)
         this.abort.signal.removeEventListener('abort', onAbort)
         resolve(true)
       })
@@ -1031,10 +1055,13 @@ export class DriverStreamHost {
     provider: ModelProvider,
     payload: BridgeModelRequestPayload,
     model: string,
+    /** Publish the stream's timings when it ends, for a reader that takes them. */
+    options: { reportTimings?: boolean } = {},
   ): { streamId: string } {
     nextStreamId += 1
     const streamId = `driver-${provider.format}-${Date.now().toString(36)}-${nextStreamId}`
     const stream = new DriverStream(this.transport, provider, payload, model)
+    if (options.reportTimings) stream.reportTimingsAs(streamId)
     this.streams.set(streamId, stream)
     stream.start()
     return { streamId }
