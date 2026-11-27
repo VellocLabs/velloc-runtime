@@ -425,7 +425,11 @@ export function createInstanceCalls(deps: InstanceCallsDeps) {
    * The instance is stored first, with no credential, because a sign-in
    * runs for a registered provider; it is kept only when the sign-in is
    * done and removed otherwise. Answers `{ id }`, `{ cancelled: true }`, or
-   * `failed` with the failure's code.
+   * `failed` with the failure's code. An instance of the same definition
+   * already signed in to the same account is removed and named in
+   * `replaced`: two instances of one account share its quota, and the older
+   * one's sign-in may have ended. Its token is not withdrawn upstream, which
+   * could end the new sign-in too.
    * Security: the credentials are written by the sign-in service under the
    * instance's id; this code and the caller see the account name at most.
    */
@@ -435,7 +439,7 @@ export function createInstanceCalls(deps: InstanceCallsDeps) {
     managed: readonly RouterDefinition[],
     named: string | undefined,
     waiting: InstanceCallWaiting,
-  ): Promise<{ id: string } | { cancelled: true } | InstanceCallError> {
+  ): Promise<{ id: string; replaced?: string[] } | { cancelled: true } | InstanceCallError> {
     const { signIn } = deps
     const { id: definitionId, manifest } = definition.provider
     if (!signIn) {
@@ -488,15 +492,41 @@ export function createInstanceCalls(deps: InstanceCallsDeps) {
         } finally {
           signingIn.delete(id)
         }
+        const replaced = account === undefined ? [] : await removeSameAccount(definition, id, account)
         // It was registered before it could be listed: without this its models
         // stay empty until some other change lists it.
         await settleWithin(deps.listModels?.(id), deps.listWaitMs ?? LIST_AFTER_SIGN_IN_WAIT_MS)
         await settle(routerId)
-        return { id }
+        return replaced.length > 0 ? { id, replaced } : { id }
       })
     } finally {
       busy.delete(routerId)
     }
+  }
+
+  /**
+   * Removes the router's other instances of `definition` signed in to
+   * `account` (compared without case), keeping `keep`. One that cannot be
+   * removed stays and is not named. Answers the ids removed.
+   */
+  async function removeSameAccount(definition: RouterDefinition, keep: string, account: string): Promise<string[]> {
+    const wanted = account.trim().toLowerCase()
+    if (!wanted) return []
+    const configs = deps.configs()
+    const same = instanceIdsOf(definition, deps).filter(
+      each => each !== keep && configs[each]?.account?.trim().toLowerCase() === wanted,
+    )
+    const removed: string[] = []
+    for (const each of same) {
+      try {
+        await deps.removeConfig(each)
+        deps.forgetState(each)
+        removed.push(each)
+      } catch {
+        // Listed as before, for the person to remove.
+      }
+    }
+    return removed
   }
 
   /**
@@ -576,7 +606,7 @@ export function createInstanceCalls(deps: InstanceCallsDeps) {
     args: unknown,
     phase: InstanceCallPhase,
     waiting: InstanceCallWaiting = {},
-  ): Promise<{ id: string } | { cancelled: true } | InstanceCallError> {
+  ): Promise<{ id: string; replaced?: string[] } | { cancelled: true } | InstanceCallError> {
     if (!isRecord(args) || typeof args.definition !== 'string' || args.definition === '') {
       throw new TypeError('$.provider.addInstance({ definition, name? }): definition must be the key or the id of a managed definition')
     }

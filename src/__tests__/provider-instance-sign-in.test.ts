@@ -316,6 +316,75 @@ describe('addInstance of a provider that needs a sign-in', () => {
   })
 })
 
+describe('a sign-in to an account an instance already holds', () => {
+  const OLD = `${SIGNIN}.qqqq`
+  const OTHER = `${SIGNIN}.rrrr`
+  const held = (account: string): NexusProviderConfig => ({
+    source: 'mod',
+    modOwner: OWNER,
+    definition: SIGNIN,
+    name: `Cloud · ${account}`,
+    createdAt: NOW - 1,
+    account,
+    storedSecrets: ['access_token'],
+  })
+
+  it('replaces the older instance, told apart from others by account without case, and names it in `replaced`', async () => {
+    const { calls, configs, retired, log, opened, signedIn } = rig({}, { [OLD]: held('Ada@Example.test'), [OTHER]: held('bob@example.test') })
+    const adding = calls.add(ROUTER, { definition: 'signin' }, 'action')
+    await opened()
+    signedIn(FIRST, 'ada@example.test')
+    expect(await adding).toEqual({ id: FIRST, replaced: [OLD] })
+    expect(Object.keys(configs).sort()).toEqual([FIRST, OTHER].sort())
+    expect(retired[SIGNIN]).toEqual(['qqqq'])
+    // Gone before the router is asked for its routes again.
+    expect(log.indexOf(`remove ${OLD}`)).toBeLessThan(log.lastIndexOf(`relist ${ROUTER}`))
+    expect(log).toContain(`forget ${OLD}`)
+    expect(calls.instances(ROUTER).map(row => row.id).sort()).toEqual([FIRST, OTHER].sort())
+  })
+
+  it('another account, or none named, replaces nothing', async () => {
+    const other = rig({}, { [OLD]: held('ada@example.test') })
+    const adding = other.calls.add(ROUTER, { definition: 'signin' }, 'action')
+    await other.opened()
+    other.signedIn(FIRST, 'bob@example.test')
+    expect(await adding).toEqual({ id: FIRST })
+    expect(other.configs[OLD]).toBeDefined()
+
+    const unnamed = rig({}, { [OLD]: held('ada@example.test') })
+    const again = unnamed.calls.add(ROUTER, { definition: 'signin' }, 'action')
+    await unnamed.opened()
+    unnamed.signedIn(FIRST)
+    expect(await again).toEqual({ id: FIRST })
+    expect(unnamed.configs[OLD]).toBeDefined()
+  })
+
+  it('a sign-in that does not finish keeps the older instance', async () => {
+    const { calls, configs, asked, opened } = rig({}, { [OLD]: held('ada@example.test') })
+    const adding = calls.add(ROUTER, { definition: 'signin' }, 'action')
+    await opened()
+    asked[0]!.end({ kind: 'cancelled' })
+    expect(await adding).toEqual({ cancelled: true })
+    expect(Object.keys(configs)).toEqual([OLD])
+  })
+
+  it('an older instance that cannot be removed stays listed and is not named', async () => {
+    const { calls, configs, opened, signedIn } = rig(
+      {
+        removeConfig: async () => {
+          throw new Error('settings.json is locked')
+        },
+      },
+      { [OLD]: held('ada@example.test') },
+    )
+    const adding = calls.add(ROUTER, { definition: 'signin' }, 'action')
+    await opened()
+    signedIn(FIRST, 'ada@example.test')
+    expect(await adding).toEqual({ id: FIRST })
+    expect(configs[OLD]).toBeDefined()
+  })
+})
+
 describe('a sign-in a settings app asked for, in the sign-in service', () => {
   const ASKED_BY: ProviderLoginAskedBy = { routerId: ROUTER, plugin: HUB, label: { en: 'Cloud' } }
 
