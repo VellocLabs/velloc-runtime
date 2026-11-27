@@ -30,7 +30,12 @@ import {
  * update depth exceeded"), and the header matches the todo card ("Working"/"Done" plus a narration line).
  */
 
-type Indices = { startIndex: number; endIndex: number; callTotal: number }
+type Indices = {
+  startIndex: number
+  endIndex: number
+  callTotal: number
+  narrationIndex?: number
+}
 
 function makeHarness(
   message: ThreadMessageLike,
@@ -125,6 +130,17 @@ const RUNNING_WITH_PREAMBLE: ThreadMessageLike = {
     { type: 'tool-call', toolCallId: 'a', toolName: 'Read', args: { file_path: '/repo/a.ts' }, result: 'ok' },
     { type: 'text', text: 'now editing the file' },
     { type: 'tool-call', toolCallId: 'b', toolName: 'Edit', args: { file_path: '/repo/b.ts' } },
+  ],
+}
+
+// Narration, then two settled calls (the latest a Bash); the turn may still be live.
+// Parts: [text, tool-call(ok), tool-call(ok)].
+const NARRATED_LIVE_GAP: ThreadMessageLike = {
+  role: 'assistant',
+  content: [
+    { type: 'text', text: 'checking the two files' },
+    { type: 'tool-call', toolCallId: 'a', toolName: 'Read', args: { file_path: '/repo/a.ts' }, result: 'ok' },
+    { type: 'tool-call', toolCallId: 'b', toolName: 'Bash', args: { command: 'npm test' }, result: 'ok' },
   ],
 }
 
@@ -944,6 +960,42 @@ describe('ToolPlanStream unified header', () => {
     )
     expect(update).not.toBeNull()
     expect(update!.textContent).toContain('now editing the file')
+  })
+
+  it('a narrated card keeps its tool line between calls while the turn is live', () => {
+    // The card's own narration sits above it, so the line is the tool line.
+    // In the gap before the next call nothing is running; the line must keep
+    // the latest call instead of disappearing and reappearing per call.
+    const Harness = makeHarness(
+      NARRATED_LIVE_GAP,
+      { startIndex: 1, endIndex: 2, callTotal: 2, narrationIndex: 0 },
+      true,
+    )
+    render(createElement(Harness))
+    openPlanCards()
+    const root = document.querySelector('[data-slot="tool-plan-stream-root"]')!
+    const update = root.querySelector(
+      '[data-slot="tool-plan-stream-current-update"]',
+    )
+    expect(update).not.toBeNull()
+    const text = (update!.textContent ?? '').replace(/\s+/g, ' ')
+    expect(text).toContain('Bash: npm test')
+    // Nothing runs in the gap, so the line names the call without "Running".
+    expect(text).not.toContain('Running')
+  })
+
+  it('a settled narrated card draws no tool line', () => {
+    const Harness = makeHarness(
+      NARRATED_LIVE_GAP,
+      { startIndex: 1, endIndex: 2, callTotal: 2, narrationIndex: 0 },
+      false,
+    )
+    render(createElement(Harness))
+    openPlanCards()
+    const root = document.querySelector('[data-slot="tool-plan-stream-root"]')!
+    expect(
+      root.querySelector('[data-slot="tool-plan-stream-current-update"]'),
+    ).toBeNull()
   })
 
   it('carries the last narration into a follow-up card of the same message', () => {

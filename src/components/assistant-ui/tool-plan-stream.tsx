@@ -143,6 +143,9 @@ type ToolPlanStreamSnapshot = {
   /** Formatted label of the running tool (e.g. "Sub-agent: …", "create tab"),
    *  used as the narration fallback when the tool has no preamble text. */
   runningToolLabel: string | undefined;
+  /** Formatted label of the range's latest call, set only while no call
+   *  runs: the tool line between calls, without the "Running" verb. */
+  latestToolLabel: string | undefined;
   activeCount: number;
   concurrentBatchSize: number;
   callTotal: number;
@@ -323,6 +326,7 @@ const ToolPlanStreamImpl: FC<ToolPlanStreamProps> = ({
     useShallow(({ message }): ToolPlanStreamSnapshot => {
       let runningToolName: string | undefined;
       let runningToolLabel: string | undefined;
+      let lastToolPart: AggregateMessagePart | undefined;
       let activeCount = 0;
       let concurrentBatchSize = 0;
       let cancelled = 0;
@@ -383,6 +387,7 @@ const ToolPlanStreamImpl: FC<ToolPlanStreamProps> = ({
           getConcurrentBatchSize(part),
         );
         if (firstToolCallId === undefined) firstToolCallId = part.toolCallId;
+        lastToolPart = part;
         const kindCount = work[classifyToolGroupWork(part.toolName)];
         kindCount.total++;
         const target = getTodoSectionToolTarget(part.toolName, part.args);
@@ -407,6 +412,11 @@ const ToolPlanStreamImpl: FC<ToolPlanStreamProps> = ({
         }
       }
 
+      const latestToolLabel =
+        runningToolLabel === undefined && lastToolPart
+          ? formatToolLabel(lastToolPart.toolName ?? "", lastToolPart.args)
+          : undefined;
+
       // A run followed by a tool call or by text is past: the text starts the
       // next run or ends the turn. Reasoning and blank text do not end it.
       let hasWorkAfterRange = false;
@@ -426,6 +436,7 @@ const ToolPlanStreamImpl: FC<ToolPlanStreamProps> = ({
       return {
         runningToolName,
         runningToolLabel,
+        latestToolLabel,
         activeCount,
         concurrentBatchSize,
         callTotal,
@@ -547,9 +558,10 @@ const ToolPlanStreamImpl: FC<ToolPlanStreamProps> = ({
 
   // Second line: the latest thought in this card's range, else — for a card
   // with no narration of its own — the message-wide memory, else the running
-  // tool's label. Shown while the card is active. An unnarrated card keeps
-  // its line between calls through the memory; a narrated card's line is its
-  // own thought or running call, since its narration already stands above it.
+  // tool's label, else between calls the latest call's plain label. Shown
+  // while the card is active. An unnarrated card keeps its line between calls
+  // through the memory; a narrated card's line is its own thought or tool
+  // line, since its narration already stands above it.
   // A thought keeps its glyph wherever it comes from — a recalled one too.
   const narrationSource: { text: string; isReasoning: boolean } | undefined =
     !isActive
@@ -569,7 +581,9 @@ const ToolPlanStreamImpl: FC<ToolPlanStreamProps> = ({
                 }),
                 isReasoning: false,
               }
-            : undefined));
+            : snapshot.latestToolLabel
+              ? { text: snapshot.latestToolLabel, isReasoning: false }
+              : undefined));
   const narration = narrationSource?.text;
   const narrationIsReasoning = narrationSource?.isReasoning === true;
   const narrationLead =
