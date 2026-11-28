@@ -2,7 +2,7 @@
 // importer of recharts and is itself lazy-imported, so the chart library loads
 // the first time a surface draws a chart.
 
-import type { ReactElement } from 'react'
+import { memo, type ReactElement } from 'react'
 import {
   Bar,
   BarChart,
@@ -55,6 +55,27 @@ export function valueText(value: unknown, prefix?: string, suffix?: string): str
   return `${negative ? '-' : ''}${prefix ?? ''}${negative ? raw.slice(1) : raw}${suffix ?? ''}`
 }
 
+/** A prop's value for comparison: an object or array by its JSON text, anything else as it is. */
+function signature(value: unknown): unknown {
+  if (!value || typeof value !== 'object') return value
+  try {
+    return JSON.stringify(value)
+  } catch {
+    return value
+  }
+}
+
+/** Whether a chart draws the same as before: every prop holds the same value, an object or array compared by content. */
+export function sameChartProps(prev: object, next: object): boolean {
+  const a = prev as Record<string, unknown>
+  const b = next as Record<string, unknown>
+  const keys = new Set([...Object.keys(a), ...Object.keys(b)])
+  for (const key of keys) {
+    if (signature(a[key]) !== signature(b[key])) return false
+  }
+  return true
+}
+
 type ValueUnit = { valuePrefix?: string; valueSuffix?: string }
 
 function unitProps({ valuePrefix, valueSuffix }: ValueUnit) {
@@ -91,7 +112,7 @@ function Frame({ title, height, empty, children }: {
   )
 }
 
-export function PieChartView({ title, data, donut, height, valuePrefix, valueSuffix }: {
+export const PieChartView = memo(function PieChartView({ title, data, donut, height, valuePrefix, valueSuffix }: {
   title?: unknown
   data: unknown
   donut?: boolean
@@ -132,9 +153,9 @@ export function PieChartView({ title, data, donut, height, valuePrefix, valueSuf
       </PieChart>
     </Frame>
   )
-}
+}, sameChartProps)
 
-export function LineChartView({ title, data, xKey, series, curved, height, ...unit }: {
+export const LineChartView = memo(function LineChartView({ title, data, xKey, series, curved, height, ...unit }: {
   title?: unknown
   data: unknown
   xKey: string
@@ -167,9 +188,9 @@ export function LineChartView({ title, data, xKey, series, curved, height, ...un
       </LineChart>
     </Frame>
   )
-}
+}, sameChartProps)
 
-export function BarChartView({ title, data, xKey, series, stacked, height, ...unit }: {
+export const BarChartView = memo(function BarChartView({ title, data, xKey, series, stacked, height, ...unit }: {
   title?: unknown
   data: unknown
   xKey: string
@@ -201,4 +222,4 @@ export function BarChartView({ title, data, xKey, series, stacked, height, ...un
       </BarChart>
     </Frame>
   )
-}
+}, sameChartProps)

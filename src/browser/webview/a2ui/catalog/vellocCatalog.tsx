@@ -2,7 +2,7 @@
 // Tabs, plus the chart, data and dashboard components. Chart renderers are
 // lazy, so recharts loads on the first chart.
 
-import { createContext, lazy, Suspense, useContext, useLayoutEffect, useRef, useState, type ReactElement, type ReactNode, type RefObject } from 'react'
+import { createContext, lazy, memo, Suspense, useContext, useEffect, useLayoutEffect, useRef, useState, type ReactElement, type ReactNode, type RefObject } from 'react'
 import { createComponentImplementation, type ReactCatalogComponent } from '@a2ui/react'
 import { Catalog, type ComponentApi } from '@a2ui/web_core/v1_0'
 import { basicCatalog } from '@a2ui/web_core/catalogs/basic/v1'
@@ -64,7 +64,9 @@ const TONE_VARIANT = {
 function BadgeView({ text: label, tone }: { text?: unknown; tone?: unknown }): ReactElement {
   const known = badgeTone(tone)
   return (
-    <Badge data-slot="a2ui-badge" data-tone={known} variant={TONE_VARIANT[known]} className="h-auto rounded-full">
+    // A badge is not interactive; without a colour transition a changed value
+    // restyles once instead of animating each cell.
+    <Badge data-slot="a2ui-badge" data-tone={known} variant={TONE_VARIANT[known]} className="h-auto rounded-full transition-none">
       {text(label)}
     </Badge>
   )
@@ -206,9 +208,50 @@ function MetricView({ label, value, delta, trend: bound, caption, better, action
   )
 }
 
+const alignClass = (column: TableColumn) => (column.align === 'end' ? 'text-right' : 'text-left')
+
+/** Rows drawn in the first commit of a table, and added per task after it. */
+export const TABLE_ROW_CHUNK = 100
+
+/** Whether a row draws the same as before: the same columns and the same text in each cell. */
+export function sameTableRow(prev: TableRowProps, next: TableRowProps): boolean {
+  if (prev.columnsKey !== next.columnsKey) return false
+  if (prev.row === next.row) return true
+  return next.columns.every(column => text(prev.row[column.key]) === text(next.row[column.key]))
+}
+
+export const TableRow = memo(function TableRow({ columns, row }: TableRowProps): ReactElement {
+  return (
+    <tr className="border-b last:border-b-0">
+      {columns.map((column) => (
+        <td key={column.key} className={`px-2 py-1.5 ${alignClass(column)} tabular-nums`}>
+          {column.badge && text(row[column.key]) ? (
+            <BadgeView text={row[column.key]} tone={column.badge[text(row[column.key])]} />
+          ) : (
+            text(row[column.key])
+          )}
+        </td>
+      ))}
+    </tr>
+  )
+}, sameTableRow)
+
+/** How many of `total` rows to draw: one chunk at first, then a chunk more per task until all are drawn. */
+function useDrawnRows(total: number): number {
+  const [drawn, setDrawn] = useState(TABLE_ROW_CHUNK)
+  useEffect(() => {
+    if (drawn >= total) return
+    const timer = setTimeout(() => setDrawn(count => count + TABLE_ROW_CHUNK), 0)
+    return () => clearTimeout(timer)
+  }, [drawn, total])
+  return Math.min(drawn, total)
+}
+
 function DataTableView({ columns = [], rows }: DataTableProps): ReactElement {
-  const align = (column: TableColumn) => (column.align === 'end' ? 'text-right' : 'text-left')
+  const align = alignClass
   const list = asRows(rows)
+  const columnsKey = JSON.stringify(columns)
+  const drawn = useDrawnRows(list.length)
   return (
     <div data-slot="a2ui-table" className="w-full overflow-x-auto">
       <table className="w-full border-collapse text-sm">
@@ -225,18 +268,8 @@ function DataTableView({ columns = [], rows }: DataTableProps): ReactElement {
           </tr>
         </thead>
         <tbody>
-          {list.map((row, index) => (
-            <tr key={index} className="border-b last:border-b-0">
-              {columns.map((column) => (
-                <td key={column.key} className={`px-2 py-1.5 ${align(column)} tabular-nums`}>
-                  {column.badge && text(row[column.key]) ? (
-                    <BadgeView text={row[column.key]} tone={column.badge[text(row[column.key])]} />
-                  ) : (
-                    text(row[column.key])
-                  )}
-                </td>
-              ))}
-            </tr>
+          {list.slice(0, drawn).map((row, index) => (
+            <TableRow key={index} columns={columns} columnsKey={columnsKey} row={row} />
           ))}
         </tbody>
       </table>
@@ -257,6 +290,7 @@ type MetricProps = {
 }
 type TableColumn = { key: string; label: string; align?: 'start' | 'end'; badge?: Record<string, BadgeTone> }
 type DataTableProps = { columns?: TableColumn[]; rows?: unknown }
+type TableRowProps = { columns: TableColumn[]; columnsKey: string; row: Record<string, unknown> }
 type ChartProps = {
   title?: unknown
   data?: unknown
