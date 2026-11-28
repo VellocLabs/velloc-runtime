@@ -140,6 +140,8 @@ export type InstanceCallsDeps = {
   fingerprint?: (definitionId: string, key: string) => Promise<string | undefined>
   /** Check a just-stored key against the provider. Not waited for; its result is the instance's state. */
   verify?: (providerId: string) => Promise<unknown>
+  /** A line for the plugin log; absent: nothing is logged. */
+  report?: (line: string) => void
 }
 
 export type DefinitionRow = {
@@ -403,6 +405,12 @@ export function createInstanceCalls(deps: InstanceCallsDeps) {
     return { id: plan.id }
   }
 
+  /** Removes an instance's entry, then forgets its models' state. Throws what removing threw. */
+  async function drop(id: string): Promise<void> {
+    await deps.removeConfig(id)
+    deps.forgetState(id)
+  }
+
   /**
    * Takes back an instance whose sign-in did not finish. Runs in the router's
    * series. Never throws: an entry that cannot be removed stays, listed as not
@@ -410,8 +418,8 @@ export function createInstanceCalls(deps: InstanceCallsDeps) {
    */
   async function undo(routerId: string, id: string): Promise<void> {
     try {
-      if (deps.configs()[id]) await deps.removeConfig(id)
-      deps.forgetState(id)
+      if (deps.configs()[id]) await drop(id)
+      else deps.forgetState(id)
     } catch {
       // Kept as described above.
     } finally {
@@ -519,11 +527,13 @@ export function createInstanceCalls(deps: InstanceCallsDeps) {
     const removed: string[] = []
     for (const each of same) {
       try {
-        await deps.removeConfig(each)
-        deps.forgetState(each)
+        await drop(each)
         removed.push(each)
-      } catch {
+      } catch (error) {
         // Listed as before, for the person to remove.
+        deps.report?.(
+          `${each}: signed in to the same account as ${keep} and could not be removed: ${error instanceof Error ? error.message : String(error)}`,
+        )
       }
     }
     return removed
@@ -646,8 +656,7 @@ export function createInstanceCalls(deps: InstanceCallsDeps) {
     if (phase !== 'action') throw notAllowed('$.provider.removeInstance: only while handling an action of the person (app.action)')
     const { id } = managedInstance(routerId, 'removeInstance', args, deps)
     return exclusive(routerId, 'removeInstance', async () => {
-      await deps.removeConfig(id)
-      deps.forgetState(id)
+      await drop(id)
       await settle(routerId)
       return { ok: true as const }
     })

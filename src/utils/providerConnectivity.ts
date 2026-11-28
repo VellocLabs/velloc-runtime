@@ -10,6 +10,7 @@ import type { LocalizedText } from '../config/localizedText'
 import {
   clampVerdict,
   defaultVerdictScope,
+  kindDefaultFields,
   overlayDeclaredVerdict,
   readDeclaredVerdict,
   type DeclaredVerdict,
@@ -661,12 +662,7 @@ function classifyPlatformIssue(value: unknown): PlatformIssue | null {
 
   if (isModelGone(text, status)) {
     return {
-      kind: 'model_unavailable',
-      error: 'invalid_request',
-      titleKey: 'providerIssue.modelUnavailable.title',
-      summaryKey: 'providerIssue.modelUnavailable.summary',
-      retryable: false,
-      settingsRecommended: false,
+      ...kindDefaultFields('model_unavailable'),
       detail,
       status,
       retryAfterMs,

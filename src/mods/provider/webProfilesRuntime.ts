@@ -93,6 +93,15 @@ export function runtimeWebProfiles(
   return instance
 }
 
+/** The table as read while no instance is made yet; undefined once one is;
+ *  null: it was never written, so there is nothing to change. */
+async function readUnlessMade(at: { homeDir: string; fs: RuntimeFs }): Promise<ReadTable | undefined | null> {
+  if (instance) return undefined
+  const path = tablePath(at.homeDir)
+  const text = await readTable(at.fs, path)
+  return text === null ? null : { fs: at.fs, path, text }
+}
+
 /**
  * A plugin was uninstalled: what it recorded in the web profiles goes, and a
  * profile left with nothing is deleted. Records are filed by plugin name, so
@@ -108,14 +117,9 @@ export async function forgetPluginWebProfiles(
   },
   plugin: string,
 ): Promise<void> {
-  const path = tablePath(options.homeDir)
   try {
-    let read: ReadTable | undefined
-    if (!instance) {
-      const text = await readTable(options.fs, path)
-      if (text === null) return
-      read = { fs: options.fs, path, text }
-    }
+    const read = await readUnlessMade(options)
+    if (read === null) return
     if (await options.stillInstalled?.(plugin)) return
     await runtimeWebProfiles(options, read).forgetPlugin(plugin)
   } catch (error) {
@@ -138,14 +142,9 @@ export async function releaseWebProfileAccount(
   const report = options.report ?? where?.report
   try {
     if (Object.values(configs).some(config => config.webProfile?.id === through.id && config.webProfile.site === through.site)) return
-    let read: ReadTable | undefined
     const at = where ?? options
-    if (!instance) {
-      const path = tablePath(at.homeDir)
-      const text = await readTable(at.fs, path)
-      if (text === null) return
-      read = { fs: at.fs, path, text }
-    }
+    const read = await readUnlessMade(at)
+    if (read === null) return
     await (instance ?? runtimeWebProfiles(at, read)).dropAccount(through.id, through.site)
   } catch (error) {
     report?.(

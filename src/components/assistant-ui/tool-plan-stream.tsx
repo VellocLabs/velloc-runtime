@@ -144,7 +144,8 @@ type ToolPlanStreamSnapshot = {
    *  used as the narration fallback when the tool has no preamble text. */
   runningToolLabel: string | undefined;
   /** Formatted label of the range's latest call, set only while no call
-   *  runs: the tool line between calls, without the "Running" verb. */
+   *  runs and the card is active: the tool line between calls, without the
+   *  "Running" verb. */
   latestToolLabel: string | undefined;
   activeCount: number;
   concurrentBatchSize: number;
@@ -412,11 +413,6 @@ const ToolPlanStreamImpl: FC<ToolPlanStreamProps> = ({
         }
       }
 
-      const latestToolLabel =
-        runningToolLabel === undefined && lastToolPart
-          ? formatToolLabel(lastToolPart.toolName ?? "", lastToolPart.args)
-          : undefined;
-
       // A run followed by a tool call or by text is past: the text starts the
       // next run or ends the turn. Reasoning and blank text do not end it.
       let hasWorkAfterRange = false;
@@ -432,6 +428,17 @@ const ToolPlanStreamImpl: FC<ToolPlanStreamProps> = ({
           break;
         }
       }
+
+      // Read only by an active card, which with nothing running is a live
+      // message with no work after this range.
+      const isMessageLive = message.status?.type === "running";
+      const latestToolLabel =
+        runningToolLabel === undefined &&
+        lastToolPart &&
+        isMessageLive &&
+        !hasWorkAfterRange
+          ? formatToolLabel(lastToolPart.toolName ?? "", lastToolPart.args)
+          : undefined;
 
       return {
         runningToolName,
@@ -456,7 +463,7 @@ const ToolPlanStreamImpl: FC<ToolPlanStreamProps> = ({
         currentUpdateText,
         currentUpdateIsReasoning,
         messageId: message.id,
-        isMessageLive: message.status?.type === "running",
+        isMessageLive,
         hasWorkAfterRange,
         persistKey: firstToolCallId,
         fingerprint,
@@ -557,11 +564,11 @@ const ToolPlanStreamImpl: FC<ToolPlanStreamProps> = ({
       : undefined;
 
   // Second line: the latest thought in this card's range, else — for a card
-  // with no narration of its own — the message-wide memory, else the running
-  // tool's label, else between calls the latest call's plain label. Shown
-  // while the card is active. An unnarrated card keeps its line between calls
-  // through the memory; a narrated card's line is its own thought or tool
-  // line, since its narration already stands above it.
+  // with no narration of its own — the message-wide memory, else the
+  // running tool's label, else between calls the latest call's plain label.
+  // Shown while the card is active. An unnarrated card keeps its line
+  // between calls through the memory; a narrated card's line is its own
+  // thought or tool line, since its narration already stands above it.
   // A thought keeps its glyph wherever it comes from — a recalled one too.
   const narrationSource: { text: string; isReasoning: boolean } | undefined =
     !isActive

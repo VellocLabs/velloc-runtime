@@ -10,6 +10,7 @@ import {
   classifyProviderConnectivityIssue,
   shouldRetryProviderConnectivityIssue,
 } from '../utils/providerConnectivity'
+import { overlayDeclaredVerdict } from '../utils/providerVerdict'
 
 const NOON = Date.UTC(2026, 10, 27, 12, 0, 0)
 
@@ -24,6 +25,14 @@ const GONE = [
 ]
 
 describe('a provider answer that the model is gone', () => {
+  it('carries the same wording and retry fields as a declared model_unavailable verdict', () => {
+    const issue = classifyProviderConnectivityIssue(new Error(GONE[0]))!
+    const declared = overlayDeclaredVerdict(null, { kind: 'model_unavailable' }, { detail: issue.detail })
+    for (const field of ['kind', 'error', 'titleKey', 'summaryKey', 'retryable', 'settingsRecommended', 'scope'] as const) {
+      expect(issue[field]).toEqual(declared[field])
+    }
+  })
+
   it.each(GONE)('%s is model_unavailable for that model, not retried in place', message => {
     const issue = classifyProviderConnectivityIssue(new Error(message))
     expect(issue).toMatchObject({ kind: 'model_unavailable', scope: 'model', retryable: false })

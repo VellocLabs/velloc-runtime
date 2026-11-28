@@ -175,6 +175,14 @@ const KIND_DEFAULTS: Readonly<Record<ProviderConnectivityIssueKind, KindDefaults
   },
 }
 
+/** A kind's wording and retry fields, without its scope. */
+export function kindDefaultFields(
+  kind: ProviderConnectivityIssueKind,
+): Pick<ProviderConnectivityIssue, 'kind' | 'error' | 'titleKey' | 'summaryKey' | 'retryable' | 'settingsRecommended'> {
+  const { error, titleKey, summaryKey, retryable, settingsRecommended } = KIND_DEFAULTS[kind]
+  return { kind, error, titleKey, summaryKey, retryable, settingsRecommended }
+}
+
 /** The scope the platform assumes for one of its own classifications. */
 export function defaultVerdictScope(
   issue: Pick<ProviderConnectivityIssue, 'kind' | 'retryLimit'>,
@@ -206,12 +214,7 @@ export function overlayDeclaredVerdict(
   const start: ProviderConnectivityIssue = sameKind
     ? platform
     : {
-        kind: declared.kind,
-        error: defaults.error,
-        titleKey: defaults.titleKey,
-        summaryKey: defaults.summaryKey,
-        retryable: defaults.retryable,
-        settingsRecommended: defaults.settingsRecommended,
+        ...kindDefaultFields(declared.kind),
         detail: platform?.detail ?? base.detail,
         status: platform?.status ?? base.status,
         retryAfterMs: platform?.retryAfterMs ?? base.retryAfterMs,

@@ -383,6 +383,26 @@ describe('a sign-in to an account an instance already holds', () => {
     expect(await adding).toEqual({ id: FIRST })
     expect(configs[OLD]).toBeDefined()
   })
+
+  it('an older instance that cannot be removed is reported with why', async () => {
+    const lines: string[] = []
+    const { calls, opened, signedIn } = rig(
+      {
+        removeConfig: async () => {
+          throw new Error('settings.json is locked')
+        },
+        report: line => void lines.push(line),
+      },
+      { [OLD]: held('ada@example.test') },
+    )
+    const adding = calls.add(ROUTER, { definition: 'signin' }, 'action')
+    await opened()
+    signedIn(FIRST, 'ada@example.test')
+    await adding
+    expect(lines).toHaveLength(1)
+    expect(lines[0]).toContain(OLD)
+    expect(lines[0]).toContain('settings.json is locked')
+  })
 })
 
 describe('a sign-in a settings app asked for, in the sign-in service', () => {

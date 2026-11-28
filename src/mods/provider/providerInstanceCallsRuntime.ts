@@ -34,6 +34,7 @@ export function createRuntimeInstanceCalls(options: {
   relist: (routerId: string) => Promise<void>
   locale?: () => string | undefined
   random?: () => number
+  report?: (line: string) => void
 }): InstanceCalls {
   return createInstanceCalls({
     managedBy: routerId => getProviderModHost().managedDefinitions(routerId),
@@ -76,5 +77,6 @@ export function createRuntimeInstanceCalls(options: {
       if (transport) await verifyRuntimeProvider(transport, providerId)
     },
     ...(options.random ? { random: options.random } : {}),
+    ...(options.report ? { report: options.report } : {}),
   })
 }

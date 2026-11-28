@@ -62,7 +62,13 @@ export function createAppBackgroundRuntime(
     await storePluginSecrets(writes, [], secrets, report, { prune: false })
   }
   const reloads = createReloadFolder(providerId => reloadModProvider(providerId, deps.transport, report))
-  const instances = createRuntimeInstanceCalls({ fs, homeDir, relist: reloads.relist, ...(deps.locale ? { locale: deps.locale } : {}) })
+  const instances = createRuntimeInstanceCalls({
+    fs,
+    homeDir,
+    relist: reloads.relist,
+    report: deps.report,
+    ...(deps.locale ? { locale: deps.locale } : {}),
+  })
   return new AppBackgroundRuntime({
     providerCalls: {
       reload: reloads.reload,

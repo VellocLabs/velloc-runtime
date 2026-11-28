@@ -165,20 +165,15 @@ ${status.controlToken}`
     // 'listening' event with no token can't be dialed from the event alone —
     // a transition re-reads the full getStatus (full-trust) so the token is
     // available to dial.
-    statusGeneration += 1
-    const generation = statusGeneration
-    void request({ capability: 'remoteAccess', action: 'getStatus' }, {}).then(response => {
-      if (generation !== statusGeneration) return
-      if (response && response.ok) applyStatus(response.result as RemoteAccessStatus)
-      else if (payload && typeof payload === 'object') {
-        // getStatus failed; at least reflect the event's token-free status.
-        current = toAccessState(payload as RemoteAccessStatus)
-        dialedRun = null
-        // A manual dial is not ours to disconnect (see reconcile) — and the
-        // dialer is already re-dialling with backoff on its own.
-        if (!externalDial) options.dialer.disconnect()
-        options.publishState()
-      }
+    readStatus(() => {
+      if (!payload || typeof payload !== 'object') return
+      // getStatus failed; at least reflect the event's token-free status.
+      current = toAccessState(payload as RemoteAccessStatus)
+      dialedRun = null
+      // A manual dial is not ours to disconnect (see reconcile) — and the
+      // dialer is already re-dialling with backoff on its own.
+      if (!externalDial) options.dialer.disconnect()
+      options.publishState()
     })
   }
 
@@ -195,12 +190,14 @@ ${status.controlToken}`
     })
   }
 
-  function readStatus(): void {
+  /** Re-reads getStatus; an answer overtaken by a later read is dropped. */
+  function readStatus(onFailed?: () => void): void {
     statusGeneration += 1
     const generation = statusGeneration
     void request({ capability: 'remoteAccess', action: 'getStatus' }, {}).then(response => {
       if (generation !== statusGeneration) return
       if (response && response.ok) applyStatus(response.result as RemoteAccessStatus)
+      else onFailed?.()
     })
   }
 

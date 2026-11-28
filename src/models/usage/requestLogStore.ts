@@ -277,14 +277,8 @@ function readNumber(value: SqlValue | undefined): number {
   return 0
 }
 
-/** The fields of the columns that hold a number, keyed by `name`. */
-function readOptionalNumbers<K extends string>(names: readonly K[], values: readonly (SqlValue | undefined)[]): Partial<Record<K, number>> {
-  const read: Partial<Record<K, number>> = {}
-  names.forEach((name, at) => {
-    const value = values[at]
-    if (value !== null && value !== undefined) read[name] = readNumber(value)
-  })
-  return read
+function readOptionalNumber(value: SqlValue | undefined): number | undefined {
+  return value === null || value === undefined ? undefined : readNumber(value)
 }
 
 function readText(value: SqlValue | undefined): string | undefined {
@@ -680,6 +674,9 @@ export class RequestLogStore {
     const requests = result.rows.map((row): RequestLogRequest => {
       const router = readText(row[6])
       const routerRow = readText(row[7])
+      const firstContentMs = readOptionalNumber(row[12])
+      const maxGapMs = readOptionalNumber(row[13])
+      const queuedMs = readOptionalNumber(row[14])
       return {
         startedMs: readNumber(row[0]),
         durationMs: readNumber(row[1]),
@@ -693,7 +690,9 @@ export class RequestLogStore {
         outputTokens: readNumber(row[9]),
         cacheReadTokens: readNumber(row[10]),
         cacheWriteTokens: readNumber(row[11]),
-        ...readOptionalNumbers(['firstContentMs', 'maxGapMs', 'queuedMs'] as const, row.slice(12, 15)),
+        ...(firstContentMs !== undefined ? { firstContentMs } : {}),
+        ...(maxGapMs !== undefined ? { maxGapMs } : {}),
+        ...(queuedMs !== undefined ? { queuedMs } : {}),
       }
     })
     return { by: 'request', requests }

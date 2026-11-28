@@ -2,6 +2,7 @@
  * Contract: the runtime's outbound leg to a relay (F-24); the runtime never listens.
  *   control  ws(s)://<relay>/host/control?token=<T>   → {"hello":1,"entryPath":…}; ← {"open"|"closed":"<legId>"}
  *   leg      ws(s)://<relay>/host/leg/<legId>?token=<T>  spliced verbatim to that client's /rt socket
+ * The hello opens every control socket and is sent again whenever the entry path changes.
  * Each `open` attaches a new hub connection. The control socket reconnects with jittered backoff
  * (1 s → 30 s); legs never reconnect.
  */
@@ -93,7 +94,8 @@ export function createRelayDialer(options: RelayDialerOptions): RelayDialer {
       attempt = 0
       setState('online')
       // First message: the hello the relay uses to mark the runtime online and
-      // to redirect GET / to this runtime's entry path.
+      // to redirect GET / to this runtime's entry path; entryPathChanged
+      // repeats it.
       sendHello(socket)
     })
     socket.addEventListener('message', onControlMessage)
