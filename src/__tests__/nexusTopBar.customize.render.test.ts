@@ -29,15 +29,15 @@ function button(html: string, testId: string): string {
 }
 
 describe('NexusTopBar Customize button', () => {
-  beforeEach(() => __setUiChannelForTest('beta'))
+  beforeEach(() => __setUiChannelForTest('stable'))
   afterEach(() => __setUiChannelForTest(null))
 
-  it('is absent on the stable channel, button and folded row alike', () => {
-    __setUiChannelForTest('stable')
-    const html = markup({ onOpenCustomize: () => {} }, 'full')
-    expect(button(html, 'topbar-customize')).toBe('')
-    expect(html).not.toContain('topbar-folded-customize')
-    expect(html).not.toContain('data-topbar-fold="customize"')
+  it('shows on the stable channel as on beta', () => {
+    for (const channel of ['stable', 'beta'] as const) {
+      __setUiChannelForTest(channel)
+      const html = markup({ onOpenCustomize: () => {} }, 'full')
+      expect(button(html, 'topbar-customize')).toContain('data-topbar-fold="customize"')
+    }
   })
 
   it('sits right after the import buttons, labelled', () => {

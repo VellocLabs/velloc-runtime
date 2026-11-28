@@ -129,7 +129,6 @@ import {
 } from './externalLinkClicks'
 import type { RuntimeConnection } from '../runtimeClient/RuntimeConnection'
 import { ForbiddenScopeNotice } from './forbiddenScopeNotice'
-import { customizeOnThisChannel } from './customize/customizeRoutes'
 import {
   createGlobalDefaultMirror,
   followGlobalDefault,
@@ -2346,7 +2345,6 @@ export function MultiSessionShell({
   )
   const customizeShown = remoteHost === undefined
     && runtimeCapabilities.can('customizePage', 'show')
-    && customizeOnThisChannel()
   // The active session's theme paints the whole window: its tokens and backdrop sit on the shell.
   // Across a switch the previous one stays until the new session's is known.
   // A session not listed yet (just created) holds too; only a CLI's never does.
