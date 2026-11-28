@@ -239,6 +239,23 @@ describe('addInstance of a provider that needs a sign-in', () => {
     expect(calls.instances(ROUTER)).toMatchObject([{ id: FIRST, connected: false }])
   })
 
+  it('an instance that cannot be taken back is reported with why', async () => {
+    const lines: string[] = []
+    const { calls, asked, opened } = rig({
+      removeConfig: async () => {
+        throw new Error('settings.json is locked')
+      },
+      report: line => void lines.push(line),
+    })
+    const adding = calls.add(ROUTER, { definition: 'signin' }, 'action')
+    await opened()
+    asked[0]!.end({ kind: 'cancelled' })
+    await adding
+    expect(lines).toHaveLength(1)
+    expect(lines[0]).toContain(FIRST)
+    expect(lines[0]).toContain('settings.json is locked')
+  })
+
   it('a done sign-in whose new name cannot be written keeps the instance under its first name and lists it', async () => {
     let writes = 0
     const stored: Record<string, NexusProviderConfig> = {}

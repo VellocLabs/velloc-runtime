@@ -420,8 +420,11 @@ export function createInstanceCalls(deps: InstanceCallsDeps) {
     try {
       if (deps.configs()[id]) await drop(id)
       else deps.forgetState(id)
-    } catch {
+    } catch (error) {
       // Kept as described above.
+      deps.report?.(
+        `${id}: its sign-in did not finish and it could not be removed: ${error instanceof Error ? error.message : String(error)}`,
+      )
     } finally {
       signingIn.delete(id)
       await settle(routerId).catch(() => undefined)
