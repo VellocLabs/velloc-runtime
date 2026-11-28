@@ -874,6 +874,8 @@ export const ko: Messages = {
   'apps.refreshTooltip': '새로 고침(F5) · {key}+클릭 또는 {key}+F5: 플러그인에서 페이지 다시 설치(설정과 데이터는 유지됩니다)',
   'apps.pageFrame': '앱 페이지',
   'apps.pageFailed': '앱 페이지를 열 수 없습니다.',
+  'apps.pageStopped': '이 앱이 응답하지 않습니다.',
+  'apps.pageRetry': '다시 시도',
   'topbar.pluginItemWaiting': '이 플러그인은 먼저 제공업체를 설정해야 합니다',
   'topbar.pluginItemUnavailable': '이 항목은 더 이상 사용할 수 없습니다',
   'topbar.pluginItemNoSession': '이 항목을 사용하려면 세션을 여세요',

@@ -884,6 +884,8 @@ export const fr: Messages = {
   'apps.refreshTooltip': 'Actualiser (F5) · {key}+clic ou {key}+F5 : réinstaller la page depuis l’extension (réglages et données conservés)',
   'apps.pageFrame': "Page de l'application",
   'apps.pageFailed': "Impossible d'ouvrir la page de l'application.",
+  'apps.pageStopped': 'Cette application ne répond plus.',
+  'apps.pageRetry': 'Réessayer',
   'topbar.pluginItemWaiting': "Cette extension a d'abord besoin que son fournisseur soit configuré",
   'topbar.pluginItemUnavailable': "Cet élément n'est plus disponible",
   'topbar.pluginItemNoSession': 'Ouvrez une session pour utiliser cet élément',

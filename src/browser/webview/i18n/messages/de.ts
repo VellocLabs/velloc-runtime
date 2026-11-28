@@ -883,6 +883,8 @@ export const de: Messages = {
   'apps.refreshTooltip': 'Aktualisieren (F5) · {key}+Klick oder {key}+F5: Seite aus dem Plugin neu installieren (Einstellungen und Daten bleiben erhalten)',
   'apps.pageFrame': 'App-Seite',
   'apps.pageFailed': 'Die App-Seite konnte nicht geöffnet werden.',
+  'apps.pageStopped': 'Diese App reagiert nicht mehr.',
+  'apps.pageRetry': 'Erneut versuchen',
   'topbar.pluginItemWaiting': 'Für dieses Plugin muss zuerst sein Anbieter eingerichtet werden',
   'topbar.pluginItemUnavailable': 'Dieses Element ist nicht mehr verfügbar',
   'topbar.pluginItemNoSession': 'Öffne eine Sitzung, um dieses Element zu verwenden',

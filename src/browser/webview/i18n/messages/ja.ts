@@ -877,6 +877,8 @@ export const ja: Messages = {
   'apps.refreshTooltip': '更新（F5）· {key}+クリックまたは {key}+F5：プラグインからページを再インストール（設定とデータは保持されます）',
   'apps.pageFrame': 'アプリのページ',
   'apps.pageFailed': 'アプリのページを開けませんでした。',
+  'apps.pageStopped': 'このアプリは応答しなくなりました。',
+  'apps.pageRetry': '再試行',
   'topbar.pluginItemWaiting': 'このプラグインは先にプロバイダーの設定が必要です',
   'topbar.pluginItemUnavailable': 'この項目は利用できなくなりました',
   'topbar.pluginItemNoSession': 'この項目を使うにはセッションを開いてください',

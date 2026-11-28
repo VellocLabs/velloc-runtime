@@ -872,6 +872,8 @@ export const zh: Messages = {
   'apps.refreshTooltip': '刷新（F5）· {key}+点击或 {key}+F5：从插件重新安装页面（设置和数据保留）',
   'apps.pageFrame': '应用页面',
   'apps.pageFailed': '无法打开应用页面。',
+  'apps.pageStopped': '此应用已停止响应。',
+  'apps.pageRetry': '重试',
   'topbar.pluginItemWaiting': '请先设置此插件的服务商',
   'topbar.pluginItemUnavailable': '此项已不可用',
   'topbar.pluginItemNoSession': '请先打开一个会话再使用此项',

@@ -7,12 +7,15 @@
  * first document only; another document loading, or the pane closing, ends it.
  */
 
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { Button } from '@/components/ui/button'
 import type { ModsAppPageResult } from '../../runtimeProtocol/modApps'
 import { openObserverPort } from '../../runtimeClient/observerPorts'
+import { A2uiPaneSkeleton } from '../a2ui/A2uiPaneSkeleton'
 import { useT } from '../i18n'
 import { APP_PAGE_CSP, withAppPageCsp } from './appPageCsp'
 import { APP_PAGE_PORT_MESSAGE, relayAppPagePort, type AppPageRelay } from './appPageRelay'
+import { appPageHiddenReleaseMs, watchAppPage } from './appPageWatch'
 
 /**
  * Security: the host keys its block on this name, read when the frame is added
@@ -26,11 +29,24 @@ export type AppPageFrameProps = {
   readPage(): Promise<ModsAppPageResult | undefined>
 }
 
+/**
+ * Contract: the host element's `data-state`. `stopped`: the page left its
+ * pings unanswered; `failed`: no page or no port; `released`: hidden past
+ * `appPageHiddenReleaseMs`, rebuilt when shown. A stopped or failed page
+ * comes back only through Retry.
+ */
+type Phase = 'loading' | 'running' | 'stopped' | 'failed' | 'released'
+type Problem = 'stopped' | 'failed'
+
 export function AppPageFrame({ readPage }: AppPageFrameProps) {
   const t = useT()
   const hostRef = useRef<HTMLDivElement>(null)
   const frameRef = useRef<HTMLIFrameElement | null>(null)
-  const [failed, setFailed] = useState(false)
+  const [phase, setPhase] = useState<Phase>('loading')
+  const [problem, setProblem] = useState<Problem | null>(null)
+  // Each value is one frame; a new value builds a new frame (Retry, or a show
+  // after a release).
+  const [build, setBuild] = useState(0)
   const frameTitle = t('apps.pageFrame')
   const titleRef = useRef(frameTitle)
   titleRef.current = frameTitle
@@ -45,20 +61,41 @@ export function AppPageFrame({ readPage }: AppPageFrameProps) {
     let live = true
     let frame: HTMLIFrameElement | null = null
     let relay: AppPageRelay | null = null
+    let endWatch: (() => void) | null = null
+    let releaseTimer: ReturnType<typeof setTimeout> | undefined
     let loads = 0
-    const fail = () => {
+    const teardown = () => {
+      live = false
+      clearTimeout(releaseTimer)
+      document.removeEventListener('visibilitychange', onVisibility)
+      endWatch?.()
+      endWatch = null
       relay?.close()
+      relay = null
       frame?.remove()
       frame = null
       frameRef.current = null
-      setFailed(true)
     }
-    setFailed(false)
+    const end = (next: Problem | 'released') => {
+      if (!live) return
+      teardown()
+      setPhase(next)
+      setProblem(next === 'released' ? null : next)
+    }
+    function onVisibility() {
+      clearTimeout(releaseTimer)
+      if (document.visibilityState === 'hidden') {
+        releaseTimer = setTimeout(() => end('released'), appPageHiddenReleaseMs())
+      }
+    }
+    document.addEventListener('visibilitychange', onVisibility)
+    onVisibility()
+    setPhase('loading')
     void readPage()
       .then(result => {
         if (!live) return
         if (!result?.ok) {
-          setFailed(true)
+          end('failed')
           return
         }
         const created = document.createElement('iframe')
@@ -72,39 +109,62 @@ export function AppPageFrame({ readPage }: AppPageFrameProps) {
         created.addEventListener('load', () => {
           if (!live || frame !== created) return
           loads += 1
-          if (loads > 1) {
-            fail()
+          const page = created.contentWindow
+          if (loads > 1 || !page) {
+            end('failed')
             return
           }
-          const runtimePort = created.contentWindow ? openObserverPort(result.topics) : null
+          const runtimePort = openObserverPort(result.topics)
           if (!runtimePort) {
-            fail()
+            end('failed')
             return
           }
           relay = relayAppPagePort(runtimePort)
-          created.contentWindow!.postMessage({ kind: APP_PAGE_PORT_MESSAGE }, '*', [relay.pagePort])
+          page.postMessage({ kind: APP_PAGE_PORT_MESSAGE }, '*', [relay.pagePort])
+          endWatch = watchAppPage(page, () => end('stopped'))
+          setProblem(null)
+          setPhase('running')
         })
         frame = created
         frameRef.current = created
         host.appendChild(created)
       })
-      .catch(() => {
-        if (live) setFailed(true)
-      })
-    return () => {
-      live = false
-      relay?.close()
-      frame?.remove()
-      frameRef.current = null
+      .catch(() => end('failed'))
+    return teardown
+  }, [readPage, build])
+
+  useEffect(() => {
+    if (phase !== 'released') return
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') setBuild(n => n + 1)
     }
-  }, [readPage])
+    document.addEventListener('visibilitychange', onVisibility)
+    onVisibility()
+    return () => document.removeEventListener('visibilitychange', onVisibility)
+  }, [phase])
+
+  const retry = useCallback(() => setBuild(n => n + 1), [])
 
   return (
-    <div ref={hostRef} data-slot="app-page" className="relative h-full min-h-0 w-full">
-      {failed ? (
-        <p role="alert" className="p-3 text-sm text-muted-foreground">
-          {t('apps.pageFailed')}
-        </p>
+    <div ref={hostRef} data-slot="app-page" data-state={phase} className="relative h-full min-h-0 w-full">
+      {problem ? (
+        <div className="flex flex-col items-start gap-2 p-3">
+          <p role="alert" className="text-sm text-muted-foreground">
+            {t(problem === 'stopped' ? 'apps.pageStopped' : 'apps.pageFailed')}
+          </p>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            data-testid="app-page-retry"
+            disabled={phase === 'loading'}
+            onClick={retry}
+          >
+            {t('apps.pageRetry')}
+          </Button>
+        </div>
+      ) : phase === 'released' || phase === 'loading' ? (
+        <A2uiPaneSkeleton />
       ) : null}
     </div>
   )

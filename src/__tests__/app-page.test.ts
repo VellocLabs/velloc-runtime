@@ -15,7 +15,7 @@ import { registerModsCapability } from '../browser/runtimeHub/modsCapability'
 import { MODS_ACTION_SCOPES } from '../browser/runtimeProtocol/mods'
 import { isModsAppPagePayload } from '../browser/runtimeProtocol/modApps'
 import { relayAppPagePort, APP_PAGE_PORT_MESSAGE } from '../browser/webview/apps/appPageRelay'
-import { APP_PAGE_CSP, withAppPageCsp } from '../browser/webview/apps/appPageCsp'
+import { APP_PAGE_CSP, APP_PAGE_PRELUDE, withAppPageCsp } from '../browser/webview/apps/appPageCsp'
 import { openObserverPort, provideObserverPorts, resetObserverPortsForTests } from '../browser/runtimeClient/observerPorts'
 import { read, SRC, staticClosure, stripComments } from './_helpers/staticImportGraph'
 
@@ -201,14 +201,30 @@ describe('the page policy', () => {
     }
   })
 
-  it('goes first in the page, after a leading doctype', () => {
-    const meta = `<meta http-equiv="Content-Security-Policy" content="${APP_PAGE_CSP}">`
+  it('goes first in the page, then the prelude, after a leading doctype', () => {
+    const meta = `<meta http-equiv="Content-Security-Policy" content="${APP_PAGE_CSP}">${APP_PAGE_PRELUDE}`
     expect(withAppPageCsp('<p>x</p>')).toBe(`${meta}<p>x</p>`)
     expect(withAppPageCsp('<!DOCTYPE html><html><head><meta http-equiv="Content-Security-Policy" content="default-src *"></head></html>')).toBe(
       `<!DOCTYPE html>${meta}<html><head><meta http-equiv="Content-Security-Policy" content="default-src *"></head></html>`,
     )
     expect(withAppPageCsp('<p><!doctype html></p>')).toBe(`${meta}<p><!doctype html></p>`)
     expect(withAppPageCsp('<!-- licence --><!doctype html><p>x</p>')).toBe(`<!-- licence --><!doctype html>${meta}<p>x</p>`)
+  })
+
+  it('has a prelude that answers only its parent\'s pings, with the same number', () => {
+    const script = /^<script>([\s\S]*)<\/script>$/.exec(APP_PAGE_PRELUDE)![1]!
+    const listeners: ((event: { source: unknown; data: unknown }) => void)[] = []
+    const parent = { postMessage: vi.fn() }
+    new Function('addEventListener', 'parent', script)(
+      (_type: string, listener: (event: { source: unknown; data: unknown }) => void) => listeners.push(listener),
+      parent,
+    )
+    expect(listeners).toHaveLength(1)
+    listeners[0]!({ source: {}, data: { kind: 'velloc.ping', n: 1 } })
+    listeners[0]!({ source: parent, data: { kind: 'other', n: 2 } })
+    expect(parent.postMessage).not.toHaveBeenCalled()
+    listeners[0]!({ source: parent, data: { kind: 'velloc.ping', n: 7 } })
+    expect(parent.postMessage).toHaveBeenCalledWith({ kind: 'velloc.pong', n: 7 }, '*')
   })
 })
 

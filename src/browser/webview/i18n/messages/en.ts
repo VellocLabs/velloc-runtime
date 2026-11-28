@@ -914,6 +914,8 @@ export const en = {
   'apps.refreshTooltip': 'Refresh (F5) · {key}+click or {key}+F5: reinstall page from the plugin (settings and data are kept)',
   'apps.pageFrame': 'App page',
   'apps.pageFailed': 'The app page could not be opened.',
+  'apps.pageStopped': 'This app stopped responding.',
+  'apps.pageRetry': 'Retry',
   'topbar.pluginItemWaiting': 'This plugin needs its provider set up first',
   'topbar.pluginItemUnavailable': 'This item is no longer available',
   'topbar.pluginItemNoSession': 'Open a session to use this item',

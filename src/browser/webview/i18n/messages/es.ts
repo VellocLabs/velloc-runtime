@@ -884,6 +884,8 @@ export const es: Messages = {
   'apps.refreshTooltip': 'Actualizar (F5) · {key}+clic o {key}+F5: reinstalar la página desde el complemento (se conservan la configuración y los datos)',
   'apps.pageFrame': 'Página de la aplicación',
   'apps.pageFailed': 'No se pudo abrir la página de la aplicación.',
+  'apps.pageStopped': 'Esta aplicación ha dejado de responder.',
+  'apps.pageRetry': 'Reintentar',
   'topbar.pluginItemWaiting': 'Este complemento necesita que configures antes su proveedor',
   'topbar.pluginItemUnavailable': 'Este elemento ya no está disponible',
   'topbar.pluginItemNoSession': 'Abre una sesión para usar este elemento',
