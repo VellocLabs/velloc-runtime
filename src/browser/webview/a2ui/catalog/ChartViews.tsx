@@ -2,7 +2,7 @@
 // importer of recharts and is itself lazy-imported, so the chart library loads
 // the first time a surface draws a chart.
 
-import { memo, type ReactElement } from 'react'
+import { createElement, memo, useEffect, useRef, useState, type ComponentType, type ReactElement } from 'react'
 import {
   Bar,
   BarChart,
@@ -76,6 +76,50 @@ export function sameChartProps(prev: object, next: object): boolean {
   return true
 }
 
+/** The most points a Line or Bar chart draws; longer data is sampled evenly, its first and last points kept. */
+export const CHART_POINT_LIMIT = 300
+
+/** `rows` cut to `limit` evenly spaced rows, the first and last among them. */
+export function samplePoints<T>(rows: T[], limit: number = CHART_POINT_LIMIT): T[] {
+  if (rows.length <= limit) return rows
+  if (limit <= 1) return rows.slice(0, limit)
+  return Array.from({ length: limit }, (_, i) => rows[Math.round((i * (rows.length - 1)) / (limit - 1))]!)
+}
+
+/** The least time between two redraws of one chart. */
+export const CHART_REDRAW_MS = 2000
+
+/** `value` as last drawn: a change is drawn at once when the last redraw is
+ *  `ms` old (mounting is not a redraw), else once it is, with the latest value. */
+function useCoalesced<T>(value: T, ms: number): T {
+  const [shown, setShown] = useState(value)
+  const drawnAt = useRef(Number.NEGATIVE_INFINITY)
+  const latest = useRef(value)
+  latest.current = value
+  useEffect(() => {
+    if (value === shown) return
+    const show = () => {
+      drawnAt.current = Date.now()
+      setShown(latest.current)
+    }
+    const wait = drawnAt.current + ms - Date.now()
+    if (wait <= 0) {
+      show()
+      return
+    }
+    const timer = setTimeout(show, wait)
+    return () => clearTimeout(timer)
+  }, [value, shown, ms])
+  return shown
+}
+
+/** A chart that redraws when its props' content changes, at most once per `CHART_REDRAW_MS`. */
+function coalesced<P extends object>(Body: ComponentType<P>) {
+  return memo(function CoalescedChart(props: P): ReactElement {
+    return createElement(Body, useCoalesced(props, CHART_REDRAW_MS))
+  }, sameChartProps)
+}
+
 type ValueUnit = { valuePrefix?: string; valueSuffix?: string }
 
 function unitProps({ valuePrefix, valueSuffix }: ValueUnit) {
@@ -112,7 +156,7 @@ function Frame({ title, height, empty, children }: {
   )
 }
 
-export const PieChartView = memo(function PieChartView({ title, data, donut, height, valuePrefix, valueSuffix }: {
+const PieChartBody = memo(function PieChartBody({ title, data, donut, height, valuePrefix, valueSuffix }: {
   title?: unknown
   data: unknown
   donut?: boolean
@@ -155,7 +199,7 @@ export const PieChartView = memo(function PieChartView({ title, data, donut, hei
   )
 }, sameChartProps)
 
-export const LineChartView = memo(function LineChartView({ title, data, xKey, series, curved, height, ...unit }: {
+const LineChartBody = memo(function LineChartBody({ title, data, xKey, series, curved, height, ...unit }: {
   title?: unknown
   data: unknown
   xKey: string
@@ -163,7 +207,7 @@ export const LineChartView = memo(function LineChartView({ title, data, xKey, se
   curved?: boolean
   height?: number
 } & ValueUnit): ReactElement {
-  const rows = asRows(data)
+  const rows = samplePoints(asRows(data))
   const units = unitProps(unit)
   return (
     <Frame title={title} height={height} empty={rows.length === 0 || series.length === 0}>
@@ -190,7 +234,7 @@ export const LineChartView = memo(function LineChartView({ title, data, xKey, se
   )
 }, sameChartProps)
 
-export const BarChartView = memo(function BarChartView({ title, data, xKey, series, stacked, height, ...unit }: {
+const BarChartBody = memo(function BarChartBody({ title, data, xKey, series, stacked, height, ...unit }: {
   title?: unknown
   data: unknown
   xKey: string
@@ -198,7 +242,7 @@ export const BarChartView = memo(function BarChartView({ title, data, xKey, seri
   stacked?: boolean
   height?: number
 } & ValueUnit): ReactElement {
-  const rows = asRows(data)
+  const rows = samplePoints(asRows(data))
   const units = unitProps(unit)
   return (
     <Frame title={title} height={height} empty={rows.length === 0 || series.length === 0}>
@@ -223,3 +267,7 @@ export const BarChartView = memo(function BarChartView({ title, data, xKey, seri
     </Frame>
   )
 }, sameChartProps)
+
+export const PieChartView = coalesced(PieChartBody)
+export const LineChartView = coalesced(LineChartBody)
+export const BarChartView = coalesced(BarChartBody)

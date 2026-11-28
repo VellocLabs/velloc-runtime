@@ -1328,6 +1328,7 @@ export const ja: Messages = {
   'a2ui.studio.noMatch': '一致する項目がありません',
   'a2ui.studio.pickDate': '日付を選択',
   'a2ui.chart.noData': '表示するデータがありません。',
+  'a2ui.table.truncated': '{total} 行のうち最初の {shown} 行を表示しています。',
   'a2ui.building': 'インターフェイスを作成中…',
   'a2ui.blockFailed': 'このインターフェイスを描画できませんでした。',
 

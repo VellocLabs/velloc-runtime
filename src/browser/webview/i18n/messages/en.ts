@@ -1369,6 +1369,7 @@ export const en = {
   'a2ui.studio.noMatch': 'No match found',
   'a2ui.studio.pickDate': 'Pick a date',
   'a2ui.chart.noData': 'No data to show.',
+  'a2ui.table.truncated': 'Showing the first {shown} of {total} rows.',
   'a2ui.building': 'Building the interface…',
   'a2ui.blockFailed': 'This interface could not be drawn.',
 

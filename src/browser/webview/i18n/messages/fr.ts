@@ -1336,6 +1336,7 @@ export const fr: Messages = {
   'a2ui.studio.noMatch': 'Aucun résultat',
   'a2ui.studio.pickDate': 'Choisir une date',
   'a2ui.chart.noData': 'Aucune donnée à afficher.',
+  'a2ui.table.truncated': 'Affichage des {shown} premières lignes sur {total}.',
   'a2ui.building': 'Création de l’interface…',
   'a2ui.blockFailed': 'Impossible d’afficher cette interface.',
 

@@ -1325,6 +1325,7 @@ export const ko: Messages = {
   'a2ui.studio.noMatch': '일치하는 항목이 없습니다',
   'a2ui.studio.pickDate': '날짜 선택',
   'a2ui.chart.noData': '표시할 데이터가 없습니다.',
+  'a2ui.table.truncated': '{total}행 중 처음 {shown}행을 표시합니다.',
   'a2ui.building': '인터페이스를 만드는 중…',
   'a2ui.blockFailed': '이 인터페이스를 그릴 수 없습니다.',
 

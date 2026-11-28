@@ -1323,6 +1323,7 @@ export const zh: Messages = {
   'a2ui.studio.noMatch': '没有匹配项',
   'a2ui.studio.pickDate': '选择日期',
   'a2ui.chart.noData': '没有可显示的数据。',
+  'a2ui.table.truncated': '显示前 {shown} 行，共 {total} 行。',
   'a2ui.building': '正在生成界面…',
   'a2ui.blockFailed': '此界面无法绘制。',
 

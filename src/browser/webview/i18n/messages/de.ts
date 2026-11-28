@@ -1335,6 +1335,7 @@ export const de: Messages = {
   'a2ui.studio.noMatch': 'Kein Treffer',
   'a2ui.studio.pickDate': 'Datum wählen',
   'a2ui.chart.noData': 'Keine Daten zum Anzeigen.',
+  'a2ui.table.truncated': 'Die ersten {shown} von {total} Zeilen werden angezeigt.',
   'a2ui.building': 'Oberfläche wird erstellt…',
   'a2ui.blockFailed': 'Diese Oberfläche konnte nicht gezeichnet werden.',
 

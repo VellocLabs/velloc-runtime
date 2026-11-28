@@ -4,7 +4,7 @@ import { act, createElement } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { A2uiSurface, type ReactCatalogComponent } from '@a2ui/react'
 import { MessageProcessor } from '@a2ui/web_core/v1_0'
-import { sameTableRow, TABLE_ROW_CHUNK, TableRow, vellocCatalog } from '../browser/webview/a2ui/catalog/vellocCatalog'
+import { sameTableRow, TABLE_ROW_CHUNK, TABLE_ROW_LIMIT, TableRow, vellocCatalog } from '../browser/webview/a2ui/catalog/vellocCatalog'
 import { createA2uiExpressCompiler } from '../toolkit/builtin/a2ui/express/a2uiExpressCompiler'
 
 ;(globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true
@@ -31,8 +31,14 @@ function setUp() {
   const draw = async () => {
     await act(async () => root!.render(createElement(A2uiSurface, { surface: processor.getSurface('orders')! })))
   }
-  const settle = () => act(async () => new Promise(resolve => setTimeout(resolve, 50)))
   const rows = () => [...container.querySelectorAll('[data-slot="a2ui-table"] tbody tr')]
+  // Waits until no row is added for 50 ms; the chunks arrive one task apart.
+  const settle = async () => {
+    for (let count = -1, rounds = 0; rows().length !== count && rounds < 200; rounds++) {
+      count = rows().length
+      await act(async () => new Promise(resolve => setTimeout(resolve, 50)))
+    }
+  }
   return { compile, container, draw, settle, rows }
 }
 
@@ -55,6 +61,26 @@ describe('the A2UI DataTable', () => {
     expect(rows().map(row => row.querySelector('td')?.textContent), 'in the data\'s order').toEqual(
       Array.from({ length: 250 }, (_, i) => `#${i}`),
     )
+  })
+
+  it('a table over the row limit draws the limit and says how many rows there are', async () => {
+    const { compile, container, draw, settle, rows } = setUp()
+    const total = 1234
+    compile(['surface("orders")', ordersOf(total), 'root = Column([orders])', `orders = DataTable(${COLUMNS}, $/orders)`].join('\n'))
+    await draw()
+    await settle()
+    expect(rows()).toHaveLength(TABLE_ROW_LIMIT)
+    expect(rows().at(-1)?.querySelector('td')?.textContent, 'the first rows, in order').toBe(`#${TABLE_ROW_LIMIT - 1}`)
+    expect(container.querySelector('[data-slot="a2ui-table-truncated"]')?.textContent)
+      .toBe(`Showing the first ${TABLE_ROW_LIMIT} of 1,234 rows.`)
+  })
+
+  it('a table within the limit has no count line', async () => {
+    const { compile, container, draw, settle } = setUp()
+    compile(['surface("orders")', ordersOf(TABLE_ROW_LIMIT), 'root = Column([orders])', `orders = DataTable(${COLUMNS}, $/orders)`].join('\n'))
+    await draw()
+    await settle()
+    expect(container.querySelector('[data-slot="a2ui-table-truncated"]')).toBeNull()
   })
 
   it('a short table draws every row in its first commit', async () => {

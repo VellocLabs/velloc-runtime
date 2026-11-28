@@ -9,6 +9,7 @@ import { basicCatalog } from '@a2ui/web_core/catalogs/basic/v1'
 import { CircleHelpIcon, EllipsisIcon, SparklesIcon, TrendingDownIcon, TrendingUpIcon } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
+import { useLocale, useT } from '../../i18n'
 import { Popover as PopoverPrimitive } from 'radix-ui'
 import {
   BADGE_TONES,
@@ -213,6 +214,9 @@ const alignClass = (column: TableColumn) => (column.align === 'end' ? 'text-righ
 /** Rows drawn in the first commit of a table, and added per task after it. */
 export const TABLE_ROW_CHUNK = 100
 
+/** The most rows a table draws; a line under it says how many there are. */
+export const TABLE_ROW_LIMIT = 500
+
 /** Whether a row draws the same as before: the same columns and the same text in each cell. */
 export function sameTableRow(prev: TableRowProps, next: TableRowProps): boolean {
   if (prev.columnsKey !== next.columnsKey) return false
@@ -251,7 +255,10 @@ function DataTableView({ columns = [], rows }: DataTableProps): ReactElement {
   const align = alignClass
   const list = asRows(rows)
   const columnsKey = JSON.stringify(columns)
-  const drawn = useDrawnRows(list.length)
+  const t = useT()
+  const locale = useLocale()
+  const limit = Math.min(list.length, TABLE_ROW_LIMIT)
+  const drawn = useDrawnRows(limit)
   return (
     <div data-slot="a2ui-table" className="w-full overflow-x-auto">
       <table className="w-full border-collapse text-sm">
@@ -273,6 +280,11 @@ function DataTableView({ columns = [], rows }: DataTableProps): ReactElement {
           ))}
         </tbody>
       </table>
+      {list.length > limit && (
+        <p data-slot="a2ui-table-truncated" className="px-2 py-1.5 text-xs text-muted-foreground">
+          {t('a2ui.table.truncated', { shown: limit.toLocaleString(locale), total: list.length.toLocaleString(locale) })}
+        </p>
+      )}
     </div>
   )
 }
