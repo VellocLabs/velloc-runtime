@@ -66,6 +66,11 @@ export type RemoteAccessDriverOptions = {
 export type RemoteAccessDriver = {
   /** Arm/disarm the manifest gate. Arming triggers the one initial getStatus. */
   setSupported(supported: boolean): void
+  /**
+   * The host bridge was replaced: status events subscribed on the old one are gone. Armed, this
+   * subscribes on the current bridge and re-reads getStatus, since a change may have been missed.
+   */
+  bridgeChanged(): void
   /** Mark a dial the driver did NOT make (remote.connectRelay's manual
    *  ?rtDevRelay= dial) as externally owned: the driver's reconcile must not
    *  disconnect it. The next driver-owned dial/disconnect resumes ownership. */
@@ -177,6 +182,28 @@ ${status.controlToken}`
     })
   }
 
+  function subscribe(): void {
+    if (unsubscribe) { unsubscribe(); unsubscribe = null }
+    if (!options.subscribeEvents) return
+    unsubscribe = options.subscribeEvents(event => {
+      if (
+        event.route.capability === 'remoteAccess' &&
+        event.route.action === 'onStatusChanged'
+      ) {
+        onEvent(event.payload)
+      }
+    })
+  }
+
+  function readStatus(): void {
+    statusGeneration += 1
+    const generation = statusGeneration
+    void request({ capability: 'remoteAccess', action: 'getStatus' }, {}).then(response => {
+      if (generation !== statusGeneration) return
+      if (response && response.ok) applyStatus(response.result as RemoteAccessStatus)
+    })
+  }
+
   return {
     noteManualDial(): void {
       externalDial = true
@@ -198,22 +225,14 @@ ${status.controlToken}`
       // Armed: subscribe to status changes, then take the ONE initial
       // getStatus (the only unconditional call — and it is conditional on
       // this gate).
-      if (options.subscribeEvents && !unsubscribe) {
-        unsubscribe = options.subscribeEvents(event => {
-          if (
-            event.route.capability === 'remoteAccess' &&
-            event.route.action === 'onStatusChanged'
-          ) {
-            onEvent(event.payload)
-          }
-        })
-      }
-      statusGeneration += 1
-      const generation = statusGeneration
-      void request({ capability: 'remoteAccess', action: 'getStatus' }, {}).then(response => {
-        if (generation !== statusGeneration) return
-        if (response && response.ok) applyStatus(response.result as RemoteAccessStatus)
-      })
+      subscribe()
+      readStatus()
+    },
+
+    bridgeChanged(): void {
+      if (!supported) return
+      subscribe()
+      if (options.host()) readStatus()
     },
 
     access(): RemoteAccessState {

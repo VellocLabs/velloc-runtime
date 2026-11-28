@@ -73,14 +73,11 @@ export const NETWORK_PARTS: Array<{ id: SettingsPartId; gate: SettingsGate }> = 
   { id: "proxy", gate: { needs: { cap: "network", act: "proxyGet" }, desktopOnly: true } },
   // Every `remote.*` action is `full`, AND the section exists only when the
   // host advertises `remoteAccess` (`access.supported` on remote/state).
-  // Beta-only while the remote-access surface hardens: deleting `betaOnly`
-  // ships it to stable.
   {
     id: "remoteAccess",
     gate: {
       needs: { cap: "remote", act: "pairList" },
       needsRemoteAccessSupported: true,
-      betaOnly: true,
       desktopOnly: true,
     },
   },

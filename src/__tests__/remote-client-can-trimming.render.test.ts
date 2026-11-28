@@ -188,9 +188,7 @@ describe('useCan — trimming a smaller grant', () => {
     // The manifest gate's UI half: even a full (desktop) connection does NOT
     // see the section until remote/state.access.supported is true — an older
     // binary publishes supported:false and simply has no Remote access.
-    // (The section is beta-only; pin beta so THIS test exercises only the
-    // capability + manifest gates. The channel gate is its own describe.)
-    __setUiChannelForTest('beta')
+    __setUiChannelForTest('stable')
     const full = queryFor(DESKTOP_CAPABILITIES)
     expect(visibleNetworkParts(full, false)).toEqual(['proxy'])
     expect(visibleNetworkParts(full, true)).toEqual(['proxy', 'remoteAccess'])
@@ -252,31 +250,15 @@ describe('useCan — trimming a smaller grant', () => {
   })
 })
 
-describe('the Remote access section follows the channel (beta-only)', () => {
-  // The section carries a declarative `betaOnly` flag: deleting it ships it
-  // to stable. Until then a full desktop connection on STABLE does not see
-  // Remote access — the capability AND the host manifest both pass and it is
-  // still hidden — while BETA shows it. `__setUiChannelForTest` pins the
-  // channel the way `__setTemplateChannelForTest` pins the template one.
-  it('hidden on stable, shown on beta', () => {
+describe('the Remote access section on every channel', () => {
+  it('shown on stable and on beta', () => {
     const full = queryFor(DESKTOP_CAPABILITIES)
-    __setUiChannelForTest('stable')
-    expect(visibleNetworkParts(full, true)).not.toContain('remoteAccess')
-    __setUiChannelForTest('beta')
-    expect(visibleNetworkParts(full, true)).toContain('remoteAccess')
-  })
-
-  it('an explicit channel argument decides over the pinned realm', () => {
-    // The channel is a parameter (defaulting to the realm's): a caller can
-    // ask about another channel without mutating state.
-    const full = queryFor(DESKTOP_CAPABILITIES)
-    __setUiChannelForTest('beta')
-    expect(visibleNetworkParts(full, true, 'stable')).not.toContain('remoteAccess')
-    expect(visibleNetworkParts(full, true, 'beta')).toContain('remoteAccess')
-    expect(isSettingsSectionVisible('remoteAccess', full, true, 'stable')).toBe(false)
-    // The deep link still lands on the page that holds the gated-off part: the
-    // page renders only the sections this connection may see.
-    expect(resolveSettingsPage('remoteAccess', visibleNav(full, true, 'stable'))).toBe('network')
+    for (const channel of ['stable', 'beta'] as const) {
+      __setUiChannelForTest(channel)
+      expect(visibleNetworkParts(full, true)).toContain('remoteAccess')
+      expect(isSettingsSectionVisible('remoteAccess', full, true, channel)).toBe(true)
+      expect(resolveSettingsPage('remoteAccess', visibleNav(full, true, channel))).toBe('network')
+    }
   })
 })
 

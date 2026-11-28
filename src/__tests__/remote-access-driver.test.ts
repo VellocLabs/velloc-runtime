@@ -16,6 +16,7 @@ type EventHandler = (event: { route: { capability: string; action: string }; pay
 function makeRig(overrides: {
   hostResults?: Partial<Record<string, RemoteAccessStatus>>
 } = {}) {
+  let subscriptions = 0
   const calls: Array<{ capability: string; action: string; payload: unknown }> = []
   const dialer = {
     state: 'off' as 'off' | 'connecting' | 'online' | 'error',
@@ -41,12 +42,21 @@ function makeRig(overrides: {
   const onStatusApplied = vi.fn()
   const driver = createRemoteAccessDriver({
     host: () => host,
-    subscribeEvents: handler => { eventHandler = handler; return () => { eventHandler = null } },
+    subscribeEvents: handler => {
+      subscriptions += 1
+      eventHandler = handler
+      return () => { if (eventHandler === handler) eventHandler = null }
+    },
     dialer: dialer as unknown as RelayDialer,
     publishState,
     onStatusApplied,
   })
-  return { driver, calls, dialer, publishState, onStatusApplied, host, hostResults, emit: (e: Parameters<EventHandler>[0]) => eventHandler?.(e) }
+  return {
+    driver, calls, dialer, publishState, onStatusApplied, host, hostResults,
+    emit: (e: Parameters<EventHandler>[0]) => eventHandler?.(e),
+    dropBridge: () => { eventHandler = null },
+    subscriptions: () => subscriptions,
+  }
 }
 
 const LISTENING: RemoteAccessStatus = {
@@ -239,6 +249,45 @@ describe('remoteAccessDriver dial/disconnect', () => {
     rig.emit({ route: { capability: 'remoteAccess', action: 'onStatusChanged' }, payload: LISTENING })
     await flush()
     expect(rig.dialer.connect).toHaveBeenCalledTimes(3)
+  })
+
+  it('a replaced host bridge re-subscribes and re-reads: the listening that landed meanwhile dials', async () => {
+    // The status push for 'listening' arrives on the bridge that is live at the time. A window
+    // closing or reopening replaces that bridge; without a fresh subscription the driver stays
+    // on 'starting' and never dials, so the listener never learns the entry path.
+    const STARTING: RemoteAccessStatus = { ...OFF, enabled: true, state: 'starting' }
+    const rig = makeRig({
+      hostResults: { 'remoteAccess.getStatus': OFF, 'remoteAccess.configure': STARTING },
+    })
+    rig.driver.setSupported(true)
+    await flush()
+    await rig.driver.setAccess({ enabled: true })
+    expect(rig.driver.access().state).toBe('starting')
+
+    rig.dropBridge()
+    rig.hostResults['remoteAccess.getStatus'] = LISTENING
+    rig.emit({ route: { capability: 'remoteAccess', action: 'onStatusChanged' }, payload: LISTENING })
+    await flush()
+    expect(rig.driver.access().state).toBe('starting')
+
+    rig.driver.bridgeChanged()
+    await flush()
+    expect(rig.subscriptions()).toBe(2)
+    expect(rig.driver.access().state).toBe('listening')
+    expect(rig.dialer.connect).toHaveBeenCalledWith(LISTENING.controlUrl, LISTENING.controlToken)
+
+    rig.hostResults['remoteAccess.getStatus'] = OFF
+    rig.emit({ route: { capability: 'remoteAccess', action: 'onStatusChanged' }, payload: OFF })
+    await flush()
+    expect(rig.driver.access().state).toBe('off')
+  })
+
+  it('a bridge change while unsupported makes no host call and no subscription', async () => {
+    const rig = makeRig({ hostResults: { 'remoteAccess.getStatus': LISTENING } })
+    rig.driver.bridgeChanged()
+    await flush()
+    expect(rig.calls).toHaveLength(0)
+    expect(rig.subscriptions()).toBe(0)
   })
 
   it('ignores events for other capabilities/actions', async () => {

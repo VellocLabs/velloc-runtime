@@ -31,6 +31,8 @@ export type RelayDialer = {
   connect(controlUrl: string, token: string): void
   /** Tear down and do not reconnect. */
   disconnect(): void
+  /** The entry path became known or changed: an open control socket repeats the hello with it. */
+  entryPathChanged(): void
   readonly state: RelayDialerState
 }
 
@@ -58,6 +60,10 @@ export function createRelayDialer(options: RelayDialerOptions): RelayDialer {
   const dialLeg = (legId: string): void => {
     const socket = options.createSocket(legUrlFor(legId))
     options.attachTransport(createWebSocketTransport(socket))
+  }
+
+  const sendHello = (socket: SocketSurface): void => {
+    socket.send(JSON.stringify({ hello: 1, entryPath: options.getEntryPath() }))
   }
 
   const onControlMessage = (event: MessageEvent): void => {
@@ -88,7 +94,7 @@ export function createRelayDialer(options: RelayDialerOptions): RelayDialer {
       setState('online')
       // First message: the hello the relay uses to mark the runtime online and
       // to redirect GET / to this runtime's entry path.
-      socket.send(JSON.stringify({ hello: 1, entryPath: options.getEntryPath() }))
+      sendHello(socket)
     })
     socket.addEventListener('message', onControlMessage)
     const onGone = (): void => {
@@ -129,6 +135,9 @@ export function createRelayDialer(options: RelayDialerOptions): RelayDialer {
       attempt = 0
       current = { controlUrl, token }
       dialControl(generation)
+    },
+    entryPathChanged() {
+      if (control && state === 'online' && options.getEntryPath()) sendHello(control)
     },
     disconnect() {
       generation += 1

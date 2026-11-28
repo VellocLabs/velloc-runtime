@@ -136,10 +136,11 @@ describe('isSettingsSectionVisible (the topbar button\'s destination gate)', () 
   const all: CapabilityQuery = { can: () => true }
   const none: CapabilityQuery = { can: () => false }
 
-  it('is true for Remote access only with the grant, host support and the beta channel', () => {
-    expect(isSettingsSectionVisible('remoteAccess', all, true, 'beta')).toBe(true)
-    expect(isSettingsSectionVisible('remoteAccess', all, false, 'beta')).toBe(false)
-    expect(isSettingsSectionVisible('remoteAccess', none, true, 'beta')).toBe(false)
-    expect(isSettingsSectionVisible('remoteAccess', all, true, 'stable')).toBe(false)
+  it('is true for Remote access with the grant and host support, on stable and beta alike', () => {
+    for (const channel of ['stable', 'beta'] as const) {
+      expect(isSettingsSectionVisible('remoteAccess', all, true, channel)).toBe(true)
+      expect(isSettingsSectionVisible('remoteAccess', all, false, channel)).toBe(false)
+      expect(isSettingsSectionVisible('remoteAccess', none, true, channel)).toBe(false)
+    }
   })
 })

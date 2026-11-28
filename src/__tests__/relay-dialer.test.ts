@@ -171,3 +171,42 @@ describe('relayDialer (WP-3)', () => {
     expect(FakeSocket.instances).toHaveLength(before)
   })
 })
+
+describe('relayDialer entry path learned after the dial', () => {
+  it('repeats the hello with the entry path once it is known', () => {
+    // A runtime can dial before its boot page reported a build: the first hello names no entry
+    // and the listener answers GET / with 503 until a hello that does.
+    let entryPath: string | null = null
+    FakeSocket.instances = []
+    const dialer = createRelayDialer({
+      createSocket: url => new FakeSocket(url),
+      attachTransport: () => {},
+      getEntryPath: () => entryPath,
+      onState: () => {},
+      schedule: () => {},
+    })
+    dialer.connect('ws://127.0.0.1:4100/host/control', 'tok')
+    const control = FakeSocket.instances[0]
+    control.open()
+    expect(control.sent).toEqual([JSON.stringify({ hello: 1, entryPath: null })])
+
+    entryPath = '/runtime/v3/b/K/'
+    dialer.entryPathChanged()
+    expect(control.sent[1]).toBe(JSON.stringify({ hello: 1, entryPath: '/runtime/v3/b/K/' }))
+  })
+
+  it('sends nothing while the control socket is not open', () => {
+    FakeSocket.instances = []
+    const dialer = createRelayDialer({
+      createSocket: url => new FakeSocket(url),
+      attachTransport: () => {},
+      getEntryPath: () => '/runtime/v3/b/K/',
+      onState: () => {},
+      schedule: () => {},
+    })
+    dialer.entryPathChanged()
+    dialer.connect('ws://127.0.0.1:4100/host/control', 'tok')
+    dialer.entryPathChanged()
+    expect(FakeSocket.instances[0].sent).toEqual([])
+  })
+})

@@ -616,6 +616,7 @@ export class RuntimeHub {
     // A new bridge is the one moment the host's identity can be asked for
     // (and the only moment it can change: a different binary).
     this.refreshHostIdentity()
+    this.remoteAccess.bridgeChanged()
     if (transport) {
       void retryProviderHealthLedgerLoad()
       void this.ensureHomeDir()
@@ -716,6 +717,7 @@ export class RuntimeHub {
     if (hello.client.kind !== 'desktop-shell') return
     if (!hello.client.build || !buildKeyFromBuildTime(hello.client.build)) return
     this._bootBuild = hello.client.build
+    this.relay.entryPathChanged()
   }
 
   closeAll(code: ByeCode): void {

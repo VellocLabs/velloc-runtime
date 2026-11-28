@@ -46,6 +46,7 @@ function makeRig(options: { now?: () => number; settled?: boolean } = {}) {
   }
   const remoteAccess: RemoteAccessDriver = {
     setSupported: vi.fn(),
+    bridgeChanged: vi.fn(),
     noteManualDial: vi.fn(),
     access: () => accessState,
     getAccess: vi.fn(async () => accessState),

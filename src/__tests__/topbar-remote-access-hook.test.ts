@@ -50,8 +50,7 @@ const pairings = [
 ]
 
 describe('useTopbarRemoteAccess', () => {
-  // The Remote access section is beta-only for now.
-  beforeEach(() => __setUiChannelForTest('beta'))
+  beforeEach(() => __setUiChannelForTest('stable'))
   afterEach(() => __setUiChannelForTest(null))
 
   it('gives the count and the source while remote access is on, and nothing once off', async () => {
