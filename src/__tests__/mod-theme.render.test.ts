@@ -417,6 +417,47 @@ describe('the backdrop', () => {
     expect(highlights['--accent']).toBe('color-mix(in srgb, #faf5e9 15%, transparent)')
     expect(highlights['--sidebar-accent']).toBe('color-mix(in srgb, #dddddd 15%, transparent)')
   })
+
+  it("a glass with no palette fills a ghost control from the text color, never the app's own accent", () => {
+    const own = { '--foreground': '#18181b', '--accent': '#f4f4f5', '--muted': '#f4f4f5' }
+    const fills = {
+      '--control-hover': 'color-mix(in srgb, #18181b 5%, transparent)',
+      '--control-pressed': 'color-mix(in srgb, #18181b 10%, transparent)',
+    }
+    // Translucent glass: the fills tint whatever shows through; the highlights stay frosted.
+    const frosted = glassTokensOf({ blur: 14, opacity: 0.55, tint: '#f6ead9' }, {}, own)
+    expect(frosted).toMatchObject(fills)
+    expect(frosted['--accent']).toBe('color-mix(in srgb, #f4f4f5 15%, transparent)')
+    // Opaque tint: the highlights the palette leaves out are a step off the tint, not the app's gray.
+    const opaque = glassTokensOf({ blur: 14, opacity: 1, tint: '#f6ead9' }, {}, own)
+    expect(opaque).toMatchObject(fills)
+    expect(opaque['--accent']).toBe('color-mix(in srgb, #18181b 6%, #f6ead9)')
+    expect(opaque['--muted']).toBe('color-mix(in srgb, #18181b 6%, #f6ead9)')
+    // The palette's own text, fills and highlights win.
+    const painted = { '--foreground': '#2a241d', '--muted': '#efe6d3' }
+    const withPalette = glassTokensOf({ blur: 14, opacity: 1, tint: '#f6ead9' }, painted, own)
+    expect(withPalette['--control-pressed']).toBe('color-mix(in srgb, #2a241d 10%, transparent)')
+    expect(withPalette['--muted']).toBeUndefined()
+    const paletteFills = glassTokensOf({ blur: 14, opacity: 1, tint: '#f6ead9' }, { '--control-hover': 'x', '--control-pressed': 'y' }, own)
+    expect(paletteFills['--control-hover']).toBeUndefined()
+    // No tint on opaque glass: the surfaces are the palette's or the app's, so their highlights stand.
+    expect(glassTokensOf({ blur: 14, opacity: 1 }, {}, own)['--accent']).toBeUndefined()
+  })
+
+  it('a tinted glass carrier with no palette paints its ghost control fills', () => {
+    document.documentElement.style.setProperty('--foreground', '#18181b')
+    function Carrier({ theme }: { theme: ModsUiTheme }) {
+      const look = useThemeLookOf(theme, false)
+      return createElement('div', { 'data-testid': 'carrier', ...look.attributes, style: look.style })
+    }
+    const dawn: ModsUiTheme = { plugin: 'look', requestId: 'backdrop', backdrop: { scene: 'dawn', glass: { blur: 14, opacity: 0.55, tint: '#f6ead9' } } }
+    render(createElement(Carrier, { theme: dawn }))
+    const carrier = screen.getByTestId('carrier')
+    expect(carrier.style.getPropertyValue('--toolbar')).toBe('color-mix(in srgb, #f6ead9 100%, transparent)')
+    expect(carrier.style.getPropertyValue('--control-pressed')).toBe('color-mix(in srgb, #18181b 10%, transparent)')
+    expect(carrier.style.getPropertyValue('--accent')).toBe('color-mix(in srgb, #18181b 6%, #f6ead9)')
+    document.documentElement.style.removeProperty('--foreground')
+  })
 })
 
 describe('the app\'s own look', () => {

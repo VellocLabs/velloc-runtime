@@ -125,6 +125,18 @@ export const GLASS_TOKENS: readonly string[] = ['--background', '--base', '--too
 export const GLASS_HIGHLIGHT_TOKENS: readonly string[] = ['--accent', '--sidebar-accent', '--muted', '--secondary']
 export const GLASS_HIGHLIGHT_OPACITY = 0.15
 
+/** On an opaque tint, the share of text color a highlight the palette leaves
+ *  out is mixed into the tint at, so it sits a step off the surface. */
+const TINT_HIGHLIGHT_SHARE = 0.06
+
+/** The ghost control fills as `text` at the control shares. */
+function controlFillsOf(text: string): Record<string, string> {
+  return {
+    '--control-hover': `color-mix(in srgb, ${text} ${Math.round(CONTROL_HOVER_SHARE * 100)}%, transparent)`,
+    '--control-pressed': `color-mix(in srgb, ${text} ${Math.round(CONTROL_PRESSED_SHARE * 100)}%, transparent)`,
+  }
+}
+
 /** Velloc's floor for every text token on every surface token; under it, or
  *  where a pair cannot be judged, the whole palette is refused. */
 export const MIN_TEXT_CONTRAST = 4.5
@@ -267,8 +279,7 @@ export function paletteTokensOf(colors: unknown, mode: ThemeMode, own: Record<st
   }
   const ownText = own['--foreground']
   if (tokens['--accent'] !== undefined && tokens['--control-hover'] === undefined && ownText) {
-    tokens['--control-hover'] = `color-mix(in srgb, ${ownText} ${Math.round(CONTROL_HOVER_SHARE * 100)}%, transparent)`
-    tokens['--control-pressed'] = `color-mix(in srgb, ${ownText} ${Math.round(CONTROL_PRESSED_SHARE * 100)}%, transparent)`
+    Object.assign(tokens, controlFillsOf(ownText))
   }
   for (const [text, surface] of CONTRAST_PAIRS) {
     if (tokens[text] === undefined && tokens[surface] === undefined) continue
@@ -418,7 +429,9 @@ export function sceneGlassOf(backdrop: unknown): PaintedGlass | undefined {
 
 /** The surface tokens a glass paints: each surface (the palette's where it
  *  painted one, else the app's own, `own`) or the tint, at the glass's
- *  opacity. */
+ *  opacity. A ghost control's fills the palette leaves out are the text
+ *  color at the control shares, so they tint whatever surface the glass
+ *  shows; on an opaque tint, the highlights it leaves out are mixed from it. */
 export function glassTokensOf(
   glass: PaintedGlass,
   painted: Record<string, string>,
@@ -430,8 +443,17 @@ export function glassTokensOf(
     if (!base) continue
     tokens[token] = `color-mix(in srgb, ${base} ${Math.round(glass.opacity * 100)}%, transparent)`
   }
+  const text = painted['--foreground'] ?? own['--foreground']
+  if (text && painted['--control-hover'] === undefined) Object.assign(tokens, controlFillsOf(text))
   // Opaque glass hides what is behind it, so its highlights stay opaque too.
-  if (glass.opacity >= 1) return tokens
+  if (glass.opacity >= 1) {
+    if (!glass.tint || !text) return tokens
+    for (const token of GLASS_HIGHLIGHT_TOKENS) {
+      if (painted[token] !== undefined) continue
+      tokens[token] = `color-mix(in srgb, ${text} ${Math.round(TINT_HIGHLIGHT_SHARE * 100)}%, ${glass.tint})`
+    }
+    return tokens
+  }
   for (const token of GLASS_HIGHLIGHT_TOKENS) {
     const base = painted[token] ?? own[token]
     if (!base) continue
