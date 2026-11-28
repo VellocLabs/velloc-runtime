@@ -67,10 +67,12 @@ function signature(value: unknown): unknown {
 
 /** Whether a chart draws the same as before: every prop holds the same value, an object or array compared by content. */
 export function sameChartProps(prev: object, next: object): boolean {
+  if (prev === next) return true
   const a = prev as Record<string, unknown>
   const b = next as Record<string, unknown>
   const keys = new Set([...Object.keys(a), ...Object.keys(b)])
   for (const key of keys) {
+    if (a[key] === b[key]) continue
     if (signature(a[key]) !== signature(b[key])) return false
   }
   return true

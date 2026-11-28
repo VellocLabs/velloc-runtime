@@ -67,6 +67,18 @@ describe('an A2UI chart redraws only when what it shows changes, at most once pe
     expect(sameChartProps(base, { ...base, height: 300 }), 'a prop added').toBe(false)
   })
 
+  it('props holding the same arrays and objects are the same without reading their content', () => {
+    const base = { title: 'Sales', data: points(0), xKey: 'x', series: SERIES }
+    const stringify = vi.spyOn(JSON, 'stringify')
+    try {
+      expect(sameChartProps(base, base)).toBe(true)
+      expect(sameChartProps(base, { ...base, title: 'Sales' })).toBe(true)
+      expect(stringify).not.toHaveBeenCalled()
+    } finally {
+      stringify.mockRestore()
+    }
+  })
+
   for (const [name, View, make] of CHARTS) {
     it(`${name}: equal data draws nothing; changes within the period are drawn together at its end, with the latest data`, async () => {
       const container = document.createElement('div')

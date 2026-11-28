@@ -252,7 +252,6 @@ function useDrawnRows(total: number): number {
 }
 
 function DataTableView({ columns = [], rows }: DataTableProps): ReactElement {
-  const align = alignClass
   const list = asRows(rows)
   const columnsKey = JSON.stringify(columns)
   const t = useT()
@@ -267,7 +266,7 @@ function DataTableView({ columns = [], rows }: DataTableProps): ReactElement {
             {columns.map((column) => (
               <th
                 key={column.key}
-                className={`border-b px-2 py-1.5 ${align(column)} text-[0.7rem] font-semibold uppercase tracking-wider text-muted-foreground`}
+                className={`border-b px-2 py-1.5 ${alignClass(column)} text-[0.7rem] font-semibold uppercase tracking-wider text-muted-foreground`}
               >
                 {column.label}
               </th>
