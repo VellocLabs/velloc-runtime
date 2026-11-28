@@ -530,12 +530,7 @@ function classifyPlatformIssue(value: unknown): PlatformIssue | null {
       }
     }
     return {
-      kind: 'rate_limit',
-      error: 'rate_limit',
-      titleKey: 'providerIssue.rateLimit.title',
-      summaryKey: 'providerIssue.rateLimit.summary',
-      retryable: true,
-      settingsRecommended: false,
+      ...kindDefaultFields('rate_limit'),
       detail,
       status,
       retryAfterMs,
@@ -630,12 +625,7 @@ function classifyPlatformIssue(value: unknown): PlatformIssue | null {
     /\b(service unavailable|server error|internal error|bad gateway|gateway timeout|capacity|temporarily unavailable|upstream)\b/.test(text)
   ) {
     return {
-      kind: 'service',
-      error: 'server_error',
-      titleKey: 'providerIssue.serviceUnavailable.title',
-      summaryKey: 'providerIssue.serviceUnavailable.summaryUpstream',
-      retryable: true,
-      settingsRecommended: false,
+      ...kindDefaultFields('service'),
       detail,
       status,
       retryAfterMs,
@@ -648,12 +638,7 @@ function classifyPlatformIssue(value: unknown): PlatformIssue | null {
     /\bconnection\b.*\b(reset|refused|closed|failed|lost|aborted)\b/.test(text)
   ) {
     return {
-      kind: 'network',
-      error: 'unknown',
-      titleKey: 'providerIssue.network.title',
-      summaryKey: 'providerIssue.network.summary',
-      retryable: true,
-      settingsRecommended: false,
+      ...kindDefaultFields('network'),
       detail,
       status,
       retryAfterMs,
@@ -676,12 +661,7 @@ function classifyPlatformIssue(value: unknown): PlatformIssue | null {
     (status !== undefined && status >= 400)
   ) {
     return {
-      kind: 'configuration',
-      error: 'invalid_request',
-      titleKey: 'providerIssue.configuration.title',
-      summaryKey: 'providerIssue.configuration.summary',
-      retryable: false,
-      settingsRecommended: true,
+      ...kindDefaultFields('configuration'),
       detail,
       status,
       retryAfterMs,
